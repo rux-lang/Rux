@@ -16,6 +16,7 @@
 #include "Object/Rcu/Rcu.h"
 #include "Object/Rcu/RcuDumper.h"
 #include "Object/Rcu/RcuWriter.h"
+#include "Optimization/Pipeline.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Semantic/SemanticPrinter.h"
@@ -518,6 +519,13 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         std::filesystem::create_directories(hirDir);
         HirPrinter::Dump(hirPackage, hirDir / "hir.txt");
     }
+    auto optimizationPipeline = Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile);
+    const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
+    if (!hirOptimization.reachedFixedPoint) {
+        Emit(ErrorDiagnostic("HIR optimization did not reach a fixed point after " +
+                             std::to_string(hirOptimization.iterations) + " iterations"));
+        return false;
+    }
     stats.hir = ElapsedMs(hirStart);
 
     // LIR
@@ -525,8 +533,14 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     if (opts.verbose) {
         std::print("Emitting LIR for {}\n", opts.manifest.package.name.Text());
     }
-    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target, compileTimeContext.profile);
+    HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     auto lirPackage = lirLowering.Generate();
+    const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
+    if (!lirOptimization.reachedFixedPoint) {
+        Emit(ErrorDiagnostic("LIR optimization did not reach a fixed point after " +
+                             std::to_string(lirOptimization.iterations) + " iterations"));
+        return false;
+    }
     if (opts.dumpLir) {
         auto lirDir = root / "Temp" / "Lir";
         std::filesystem::create_directories(lirDir);

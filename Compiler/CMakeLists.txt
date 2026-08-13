@@ -114,19 +114,20 @@ rux_add_component(RuxHir
     Ir/Hir/HirDump.cpp)
 target_link_libraries(RuxHir PUBLIC RuxSemantic RuxLexer RuxSourceModel RuxTarget)
 
-rux_add_component(RuxHirPasses
-    Ir/Hir/Passes/PassManager.cpp)
-target_link_libraries(RuxHirPasses PUBLIC RuxHir)
-
 rux_add_component(RuxLir
     Ir/Lir/LirDump.cpp)
 target_link_libraries(RuxLir PUBLIC RuxSemantic)
+
+rux_add_component(RuxOptimization
+    Optimization/LegacyHirOptimizer.cpp
+    Optimization/Pipeline.cpp)
+target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxHir RuxLir)
 
 rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHir.cpp
     Lowering/HirToLir/HirToLir.cpp)
 target_link_libraries(RuxLowering PUBLIC
-    RuxSyntax RuxSemantic RuxHir RuxHirPasses RuxLir)
+    RuxSyntax RuxSemantic RuxHir RuxLir)
 
 rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
@@ -172,7 +173,7 @@ rux_add_component(RuxDriver
     Driver/Registry.cpp)
 target_link_libraries(RuxDriver PUBLIC
     RuxBuildInfo RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
-    RuxHir RuxHirPasses RuxLir RuxLowering RuxCodeGenX86_64 RuxCodeGenAArch64
+    RuxHir RuxLir RuxLowering RuxOptimization RuxCodeGenX86_64 RuxCodeGenAArch64
     RuxObjectRcu RuxLinker)
 
 # Compatibility aggregation target for embedders and existing tests. It owns
@@ -211,7 +212,7 @@ set_target_properties(rux PROPERTIES
 
 if (WIN32)
     set_property(TARGET rux RuxTarget RuxDiagnostics RuxSource RuxSystem RuxCrypto RuxPackage
-        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxHirPasses RuxLir
+        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY

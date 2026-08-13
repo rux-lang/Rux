@@ -1,18 +1,25 @@
-#include "Ir/Hir/Passes/PassManager.h"
+#include "Optimization/LegacyHirOptimizer.h"
 
 #include <charconv>
 #include <memory>
 #include <optional>
 #include <string>
 
-namespace Rux {
-void HirPassManager::Run(HirPackage &package) {
+namespace Rux::Optimization {
+std::string_view LegacyHirOptimizer::Name() const noexcept {
+    return "legacy-hir-optimizer";
+}
+
+PassChange LegacyHirOptimizer::Run(HirPackage &package, const PassContext &) {
+    changed_ = false;
+    constants_.clear();
     for (auto &module : package.modules) {
         OptimizeModule(module);
     }
+    return changed_ ? PassChange::Changed : PassChange::None;
 }
 
-void HirPassManager::OptimizeModule(HirModule &module) {
+void LegacyHirOptimizer::OptimizeModule(HirModule &module) {
     for (auto &func : module.funcs) {
         OptimizeFunc(func);
     }
@@ -24,18 +31,19 @@ void HirPassManager::OptimizeModule(HirModule &module) {
     }
 
     for (auto &c : module.consts) {
+        constants_.clear();
         OptimizeExpr(c.value);
     }
 }
 
-void HirPassManager::OptimizeFunc(HirFunc &func) {
-    constants.clear();
+void LegacyHirOptimizer::OptimizeFunc(HirFunc &func) {
+    constants_.clear();
     if (func.body) {
         OptimizeBlock(*func.body);
     }
 }
 
-void HirPassManager::OptimizeBlock(HirBlock &block) {
+void LegacyHirOptimizer::OptimizeBlock(HirBlock &block) {
     std::vector<HirStmtPtr> optimizedStmts;
     bool unreachable = false;
 
@@ -45,6 +53,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
 
         if (unreachable) {
             // Élimination du code mort
+            changed_ = true;
             continue;
         }
 
@@ -70,6 +79,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                                 optimizedStmts.push_back(std::move(subStmt));
                             }
                         }
+                        changed_ = true;
                         stmt.reset();
                         stmtProcessed = true;
                     }
@@ -91,6 +101,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                                     }
                                 }
                             }
+                            changed_ = true;
                             stmt.reset();
                             stmtProcessed = true;
                         }
@@ -106,6 +117,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
                             newIfStmt->elseBlock = std::move(ifStmt->elseBlock);
 
                             stmt = std::move(newIfStmt);
+                            changed_ = true;
                             // La boucle continue pour optimiser ce nouveau IfStmt
                         }
                     }
@@ -130,7 +142,7 @@ void HirPassManager::OptimizeBlock(HirBlock &block) {
     block.stmts = std::move(optimizedStmts);
 }
 
-void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
+void LegacyHirOptimizer::OptimizeStmt(HirStmtPtr &stmt) {
     if (auto *exprStmt = dynamic_cast<HirExprStmt *>(stmt.get())) {
         OptimizeExpr(exprStmt->expr);
     }
@@ -149,11 +161,11 @@ void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
                 const TypeRef &type = letStmt->type.IsUnknown() ? letStmt->init->type : letStmt->type;
                 if (IsIntegerLiteral(letStmt->init.get())) {
                     if (const auto value = GetIntegerLiteral(letStmt->init.get())) {
-                        constants[letStmt->name] = ConstantValue{false, *value, false, type};
+                        constants_[letStmt->name] = ConstantValue{false, *value, false, type};
                     }
                 }
                 else if (IsBoolLiteral(letStmt->init.get())) {
-                    constants[letStmt->name] = {true, 0, GetBoolLiteral(letStmt->init.get()), type};
+                    constants_[letStmt->name] = {true, 0, GetBoolLiteral(letStmt->init.get()), type};
                 }
             }
         }
@@ -197,15 +209,15 @@ void HirPassManager::OptimizeStmt(HirStmtPtr &stmt) {
     }
 }
 
-void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
+void LegacyHirOptimizer::OptimizeExpr(HirExprPtr &expr) {
     if (!expr) {
         return;
     }
 
     if (auto *var = dynamic_cast<HirVarExpr *>(expr.get())) {
-        auto it = constants.find(var->name);
+        auto it = constants_.find(var->name);
 
-        if (it != constants.end()) {
+        if (it != constants_.end()) {
             const auto &value = it->second;
 
             if (value.isBool) {
@@ -215,6 +227,7 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
                 expr = MakeIntegerLiteral(value.intValue, value.type);
             }
 
+            changed_ = true;
             return;
         }
     }
@@ -224,14 +237,19 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
         OptimizeExpr(bin->right);
 
         if (FoldBinary(expr)) {
+            changed_ = true;
             return;
         }
 
-        SimplifyBinary(expr);
+        if (SimplifyBinary(expr)) {
+            changed_ = true;
+        }
     }
     else if (auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get())) {
         OptimizeExpr(unary->operand);
-        FoldUnary(expr);
+        if (FoldUnary(expr)) {
+            changed_ = true;
+        }
     }
     else if (auto *tern = dynamic_cast<HirTernaryExpr *>(expr.get())) {
         OptimizeExpr(tern->condition);
@@ -308,17 +326,17 @@ void HirPassManager::OptimizeExpr(HirExprPtr &expr) {
     }
 }
 
-bool HirPassManager::IsIntegerLiteral(const HirExpr *expr) {
+bool LegacyHirOptimizer::IsIntegerLiteral(const HirExpr *expr) {
     const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     return lit && lit->type.IsInteger();
 }
 
-bool HirPassManager::IsBoolLiteral(const HirExpr *expr) {
+bool LegacyHirOptimizer::IsBoolLiteral(const HirExpr *expr) {
     const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     return lit && lit->type.IsBool();
 }
 
-std::optional<std::int64_t> HirPassManager::GetIntegerLiteral(const HirExpr *expr) {
+std::optional<std::int64_t> LegacyHirOptimizer::GetIntegerLiteral(const HirExpr *expr) {
     const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     if (!lit) {
         return std::nullopt;
@@ -392,7 +410,7 @@ std::optional<std::int64_t> HirPassManager::GetIntegerLiteral(const HirExpr *exp
     return svalue;
 }
 
-bool HirPassManager::GetBoolLiteral(const HirExpr *expr) {
+bool LegacyHirOptimizer::GetBoolLiteral(const HirExpr *expr) {
     const auto *lit = dynamic_cast<const HirLiteralExpr *>(expr);
     if (!lit) {
         return false;
@@ -440,21 +458,21 @@ static std::int64_t TruncateToType(std::int64_t value, const TypeRef &type) {
     return static_cast<std::int64_t>(uval);
 }
 
-HirExprPtr HirPassManager::MakeIntegerLiteral(std::int64_t value, const TypeRef &type) {
+HirExprPtr LegacyHirOptimizer::MakeIntegerLiteral(std::int64_t value, const TypeRef &type) {
     auto lit = std::make_unique<HirLiteralExpr>();
     lit->type = type;
     lit->value = std::to_string(TruncateToType(value, type));
     return lit;
 }
 
-HirExprPtr HirPassManager::MakeBoolLiteral(bool value, const TypeRef &type) {
+HirExprPtr LegacyHirOptimizer::MakeBoolLiteral(bool value, const TypeRef &type) {
     auto lit = std::make_unique<HirLiteralExpr>();
     lit->type = type;
     lit->value = value ? "true" : "false";
     return lit;
 }
 
-bool HirPassManager::FoldBinary(HirExprPtr &expr) {
+bool LegacyHirOptimizer::FoldBinary(HirExprPtr &expr) {
     auto *bin = dynamic_cast<HirBinaryExpr *>(expr.get());
     if (!bin) {
         return false;
@@ -547,7 +565,7 @@ bool HirPassManager::FoldBinary(HirExprPtr &expr) {
     return false;
 }
 
-bool HirPassManager::FoldUnary(HirExprPtr &expr) {
+bool LegacyHirOptimizer::FoldUnary(HirExprPtr &expr) {
     auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get());
 
     if (!unary) {
@@ -601,7 +619,7 @@ bool HirPassManager::FoldUnary(HirExprPtr &expr) {
     return false;
 }
 
-bool HirPassManager::SimplifyBinary(HirExprPtr &expr) {
+bool LegacyHirOptimizer::SimplifyBinary(HirExprPtr &expr) {
     auto *bin = dynamic_cast<HirBinaryExpr *>(expr.get());
     if (!bin) {
         return false;
@@ -685,4 +703,4 @@ bool HirPassManager::SimplifyBinary(HirExprPtr &expr) {
 
     return false;
 }
-} // namespace Rux
+} // namespace Rux::Optimization

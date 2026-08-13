@@ -9,6 +9,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Optimization/Pipeline.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
@@ -41,8 +42,10 @@ static LirPackage CompileToLirFor(const std::string &source, const std::string &
 
     AstToHirLowering hirLowering(semaModel);
     auto hirPackage = hirLowering.Generate();
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    REQUIRE(pipeline.RunHir(hirPackage).reachedFixedPoint);
 
-    HirToLirLowering lirLowering(std::move(hirPackage), target, BuildProfile::Release);
+    HirToLirLowering lirLowering(std::move(hirPackage), target);
     return lirLowering.Generate();
 }
 
@@ -526,8 +529,7 @@ TEST_CASE("C variadic call metadata survives package-wide extern lookup and Link
 
     const auto package =
         HirToLirLowering(std::move(hir),
-                         Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")),
-                         BuildProfile::Release)
+                         Driver::TargetContextForTriple(*Target::TargetTriple::Parse("windows-aarch64")))
             .Generate();
     REQUIRE_EQ(package.modules.size(), 2);
     REQUIRE_EQ(package.modules[0].funcs.size(), 1);

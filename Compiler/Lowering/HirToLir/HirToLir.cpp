@@ -2,8 +2,6 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 
-#include "Ir/Hir/Passes/PassManager.h"
-
 #include <format>
 #include <optional>
 #include <string>
@@ -2403,17 +2401,12 @@ private:
 };
 
 // Lir public API
-HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target, const BuildProfile profile)
+HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target)
     : hir_(std::move(package))
-    , target_(target)
-    , profile_(profile) {
+    , target_(target) {
 }
 
 LirPackage HirToLirLowering::Generate() {
-    if (profile_ == BuildProfile::Release) {
-        HirPassManager::Run(hir_);
-    }
-
     LirLowering lowering(target_);
     return lowering.Run(hir_);
 }

@@ -49,6 +49,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Semantic`             | Symbols, types, conditional compilation, and validated semantic model        | BuildInfo, Syntax, and Diagnostics    |
 | `Ir/Hir`               | High-level IR and its transformations                                        | Semantic, Lexer, SourceModel, Target  |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                           | Semantic                              |
+| `Optimization`         | Bounded profile-selected HIR/LIR pass pipelines                              | BuildInfo, HIR, and LIR               |
 | `Lowering`             | AST/semantic model → HIR → LIR                                               | Frontend and IR components            |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result | LIR                                   |
 | `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction           | BuildInfo, LIR, Object, Diagnostics   |
@@ -64,8 +65,11 @@ The CMake target graph enforces these dependencies. `RuxBuildInfo` and `RuxSourc
 driver composition and then passed unchanged through compile-time evaluation,
 lowering, and RCU emission; those stages do not include generated compiler-version data or read the clock themselves.
 `BuildProfile` is the single source for profile names, build mode, optimization level, debug assertions, and debug
-information. Debug selects O0/None and HIR-to-LIR lowering performs no HIR transformation. Release selects Speed and is
-the only profile allowed to invoke the legacy HIR pass manager while the replacement optimization pipeline is built.
+information. The driver selects one explicit optimization pipeline per compilation: Debug selects O0/None and schedules
+no optimizing passes, while Release selects Speed and currently schedules `legacy-hir-optimizer`. HIR-to-LIR lowering is
+transformation-free. Every HIR and LIR pass receives a per-run `PassContext`, reports whether it changed the IR, and runs
+to a fixed point capped at eight iterations. Exhausting that limit stops compilation with an internal diagnostic. Pass
+instances and their analysis state belong to one pipeline, so independent compilations share no mutable optimizer state.
 `SourceModel` and `Target` expose no source discovery or loading. Source loading reports failures as diagnostic values and
 never prints them itself. Prefer adding a dependency to the narrowest owning component rather than reaching through
 `RuxCore`.
@@ -106,7 +110,7 @@ Canonical target names combine the lowercase OS identifier with the machine iden
 
 The principal ownership namespaces currently enforced at cross-platform and orchestration boundaries are `Rux::Target`, `Rux::System`, and `Rux::Driver`. New standalone tools use `Rux::Formatting` and `Rux::Linting`. Existing language model types remain in `Rux` while those large APIs are migrated incrementally; new code must not add declarations to `Misc` or recreate a generic `Utils` component.
 
-The build exposes focused targets such as `RuxBuildInfo`, `RuxSourceModel`, `RuxTarget`, `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxBuildInfo` carries immutable per-compilation identity and time values without orchestration APIs. `RuxSourceModel` owns immutable source identity values shared by diagnostics and target assembly models without exposing loading APIs. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
+The build exposes focused targets such as `RuxBuildInfo`, `RuxSourceModel`, `RuxTarget`, `RuxCrypto`, `RuxSyntax`, `RuxSemantic`, `RuxHir`, `RuxLir`, `RuxOptimization`, `RuxLowering`, `RuxCodeGenCommon`, `RuxCodeGenX86_64`, `RuxCodeGenAArch64`, `RuxObjectRcu`, `RuxArchive`, `RuxLinker`, and `RuxDriver`. `RuxBuildInfo` carries immutable per-compilation identity and time values without orchestration APIs. `RuxSourceModel` owns immutable source identity values shared by diagnostics and target assembly models without exposing loading APIs. `RuxCrypto` owns narrow byte-oriented cryptographic primitives shared across otherwise unrelated stages; package checksum formatting remains in `RuxPackage`, while Mach-O signing remains in `RuxLinker`. `RuxCore` is an interface-only compatibility aggregation target.
 
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 

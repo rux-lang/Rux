@@ -1,13 +1,15 @@
 #include "Ir/Hir/Hir.h"
-#include "Ir/Hir/Passes/PassManager.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Optimization/Pipeline.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
 #include <doctest.h>
+#include <memory>
+#include <string_view>
 
 using namespace Rux;
 
@@ -31,12 +33,128 @@ static HirPackage CompileToHir(const std::string &source) {
 
 static HirPackage CompileAndOptimize(const std::string &source) {
     auto package = CompileToHir(source);
-    HirPassManager::Run(package);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    REQUIRE(pipeline.RunHir(package).reachedFixedPoint);
     return package;
 }
 
 static LirPackage CompileToLir(const std::string &source, const BuildProfile profile) {
-    return HirToLirLowering(CompileToHir(source), TargetContext::CreateNative(), profile).Generate();
+    auto package = CompileToHir(source);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(profile);
+    REQUIRE(pipeline.RunHir(package).reachedFixedPoint);
+    return HirToLirLowering(std::move(package), TargetContext::CreateNative()).Generate();
+}
+
+namespace {
+class RecordingHirPass final : public Optimization::HirPass {
+public:
+    RecordingHirPass(std::string_view name, std::vector<std::string_view> &runs, std::size_t changesRemaining)
+        : name_(name)
+        , runs_(runs)
+        , changesRemaining_(changesRemaining) {
+    }
+
+    [[nodiscard]] std::string_view Name() const noexcept override {
+        return name_;
+    }
+
+    Optimization::PassChange Run(HirPackage &, const Optimization::PassContext &context) override {
+        runs_.push_back(name_);
+        contexts.push_back(context);
+        if (changesRemaining_ == 0) {
+            return Optimization::PassChange::None;
+        }
+        --changesRemaining_;
+        return Optimization::PassChange::Changed;
+    }
+
+    std::vector<Optimization::PassContext> contexts;
+
+private:
+    std::string_view name_;
+    std::vector<std::string_view> &runs_;
+    std::size_t changesRemaining_;
+};
+} // namespace
+
+TEST_CASE("optimization pipelines are selected explicitly by profile") {
+    auto debug = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Debug);
+    auto release = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+
+    CHECK(debug.HirPassNames().empty());
+    CHECK(debug.LirPassNames().empty());
+    CHECK(release.HirPassNames() == std::vector<std::string_view>{"legacy-hir-optimizer"});
+    CHECK(release.LirPassNames().empty());
+}
+
+TEST_CASE("pass pipeline reports changes and preserves explicit order") {
+    HirPackage package;
+    std::vector<std::string_view> runs;
+    Optimization::HirPassPipeline pipeline(BuildProfile::Release, 4);
+    auto first = std::make_unique<RecordingHirPass>("first", runs, 1);
+    auto *firstObserver = first.get();
+    pipeline.Add(std::move(first));
+    pipeline.Add(std::make_unique<RecordingHirPass>("second", runs, 0));
+
+    const auto report = pipeline.Run(package);
+
+    CHECK(report.change == Optimization::PassChange::Changed);
+    CHECK(report.reachedFixedPoint);
+    CHECK(report.iterations == 2);
+    CHECK(runs == std::vector<std::string_view>{"first", "second", "first", "second"});
+    REQUIRE(firstObserver->contexts.size() == 2);
+    CHECK(firstObserver->contexts[0].iteration == 0);
+    CHECK(firstObserver->contexts[1].iteration == 1);
+    CHECK(firstObserver->contexts[0].fixedPointLimit == 4);
+}
+
+TEST_CASE("pass pipeline stops at its fixed-point limit") {
+    HirPackage package;
+    std::vector<std::string_view> runs;
+    Optimization::HirPassPipeline pipeline(BuildProfile::Release, 3);
+    pipeline.Add(std::make_unique<RecordingHirPass>("never-settles", runs, 10));
+
+    const auto report = pipeline.Run(package);
+
+    CHECK(report.change == Optimization::PassChange::Changed);
+    CHECK_FALSE(report.reachedFixedPoint);
+    CHECK(report.iterations == 3);
+    CHECK(runs.size() == 3);
+}
+
+TEST_CASE("independent optimization pipelines do not share legacy analysis state") {
+    HirPackage firstPackage;
+    HirModule firstModule;
+    HirFunc firstFunction;
+    HirBlock firstBody;
+    auto binding = std::make_unique<HirLetStmt>();
+    binding->name = "private-value";
+    binding->type = TypeRef::MakeInt32();
+    auto literal = std::make_unique<HirLiteralExpr>();
+    literal->type = TypeRef::MakeInt32();
+    literal->value = "41";
+    binding->init = std::move(literal);
+    firstBody.stmts.push_back(std::move(binding));
+    firstFunction.body = std::move(firstBody);
+    firstModule.funcs.push_back(std::move(firstFunction));
+    firstPackage.modules.push_back(std::move(firstModule));
+
+    HirPackage secondPackage;
+    HirModule secondModule;
+    HirConst independentConstant;
+    auto independentValue = std::make_unique<HirVarExpr>();
+    independentValue->name = "private-value";
+    independentValue->type = TypeRef::MakeInt32();
+    independentConstant.value = std::move(independentValue);
+    secondModule.consts.push_back(std::move(independentConstant));
+    secondPackage.modules.push_back(std::move(secondModule));
+
+    auto firstPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    auto secondPipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    CHECK(firstPipeline.RunHir(firstPackage).reachedFixedPoint);
+    CHECK(secondPipeline.RunHir(secondPackage).reachedFixedPoint);
+
+    CHECK(dynamic_cast<HirVarExpr *>(secondPackage.modules[0].consts[0].value.get()) != nullptr);
 }
 
 TEST_CASE("HIR-to-LIR optimization is gated by the build profile") {

@@ -13,6 +13,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Optimization/Pipeline.h"
 #include "Semantic/CompileTimeContext.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
@@ -56,8 +57,10 @@ LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view
 
     AstToHirLowering hirLowering(semaModel);
     auto hirPackage = hirLowering.Generate();
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    REQUIRE(pipeline.RunHir(hirPackage).reachedFixedPoint);
 
-    HirToLirLowering lirLowering(std::move(hirPackage), target, BuildProfile::Release);
+    HirToLirLowering lirLowering(std::move(hirPackage), target);
     return lirLowering.Generate();
 }
 

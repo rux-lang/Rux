@@ -3,6 +3,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Optimization/Pipeline.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/Platform.h"
@@ -40,7 +41,10 @@ LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
     REQUIRE_FALSE(model.HasErrors());
 
     AstToHirLowering hirLowering(model);
-    HirToLirLowering lirLowering(hirLowering.Generate(), context.target, context.profile);
+    auto hir = hirLowering.Generate();
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(context.profile);
+    REQUIRE(pipeline.RunHir(hir).reachedFixedPoint);
+    HirToLirLowering lirLowering(std::move(hir), context.target);
     return lirLowering.Generate();
 }
 
