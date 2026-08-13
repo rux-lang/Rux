@@ -10,6 +10,10 @@
 
 namespace Rux {
 // Format constants
+namespace RcuFileFlag {
+constexpr uint8_t HasMetadata = 0x01;
+} // namespace RcuFileFlag
+
 namespace RcuSecType {
 constexpr uint32_t Null = 0;
 constexpr uint32_t Text = 1;

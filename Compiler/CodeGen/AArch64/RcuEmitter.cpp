@@ -3833,7 +3833,7 @@ RcuFile AArch64CodeGen::Generate() {
     }
 
     file.symbols = std::move(symbols);
-    file.flags = 0x01; // F_HAS_METADATA
+    file.flags = RcuFileFlag::HasMetadata;
     file.hasMetadata = true;
     return file;
 }

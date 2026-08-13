@@ -43,6 +43,7 @@ set(RUX_TEST_SOURCES
     PlatformAsmTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
+    RcuModuleBuilderTests.cpp
     RcuTests.cpp
     RegistryTests.cpp
     SemanticProgramIndexTests.cpp

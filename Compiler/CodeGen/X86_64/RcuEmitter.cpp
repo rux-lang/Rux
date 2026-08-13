@@ -2896,7 +2896,7 @@ RcuFile RcuCodeGen::Generate() {
     file.symbols = std::move(symbols);
     // Build string table offsets (intern all names into the file's
     // string table) (done during Emit/Dump)
-    file.flags = 0x01; // F_HAS_METADATA
+    file.flags = RcuFileFlag::HasMetadata;
     file.hasMetadata = true;
     return file;
 }
