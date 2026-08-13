@@ -11,7 +11,9 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
-                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities)
+                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
+                             std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
+                             std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
     , modules(std::move(inputModules))
@@ -21,7 +23,9 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , patternTypes(std::move(inputPatternTypes))
     , callableBindings(std::move(inputCallableBindings))
     , symbolIdentities(std::move(inputSymbolIdentities))
-    , vtableIdentities(std::move(inputVtableIdentities)) {
+    , vtableIdentities(std::move(inputVtableIdentities))
+    , typeLayouts(std::move(inputTypeLayouts))
+    , sizeOfValues(std::move(inputSizeOfValues)) {
 }
 
 bool SemanticModel::HasErrors() const noexcept {
@@ -57,5 +61,20 @@ const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &de
 const ResolvedVtableIdentity *SemanticModel::TryGetVtableIdentity(const ImplDecl &declaration) const noexcept {
     const auto identity = vtableIdentities.find(&declaration);
     return identity == vtableIdentities.end() ? nullptr : &identity->second;
+}
+
+const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {
+    const auto layout = typeLayouts.find(type.ToString());
+    return layout == typeLayouts.end() ? nullptr : &layout->second;
+}
+
+const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeExpr &typeNode) const noexcept {
+    const TypeRef *type = TryGetType(typeNode);
+    return type ? TryGetLayout(*type) : nullptr;
+}
+
+const std::uint64_t *SemanticModel::TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept {
+    const auto value = sizeOfValues.find(&expression);
+    return value == sizeOfValues.end() ? nullptr : &value->second;
 }
 } // namespace Rux

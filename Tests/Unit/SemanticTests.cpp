@@ -161,6 +161,121 @@ TEST_CASE("semantic model omits unresolved type facts") {
     CHECK(model.TryGetType(*binding->init) == nullptr);
 }
 
+TEST_CASE("semantic model retains validated compile-time layouts and folded sizeof values") {
+    Lexer lexer(R"(
+        struct Slice<T> { data: *T; length: uint; }
+        struct Box<T> { value: T; }
+        enum Choice<T> {
+            None,
+            Some(T),
+            Pair { left: T; right: uint8; }
+        }
+        union Storage {
+            word: uint32,
+            bytes: uint8[3]
+        }
+
+        func Main() {
+            let primitive = sizeof(int32);
+            let pointer = sizeof(*uint8);
+            let structure = sizeof(Box<uint16>);
+            let enumeration = sizeof(Choice<uint16>);
+            let unionValue = sizeof(Storage);
+            let tuple = sizeof((uint8, uint64));
+            let array = sizeof(uint16[3]);
+            let slice = sizeof(Slice<uint8>);
+        }
+    )",
+                "layouts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "layouts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    CompileTimeContext context;
+    context.target.arch = Target::Arch::AArch64;
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "layouts", std::move(context));
+    const SemanticModel model = analyzer.Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[4].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 8);
+
+    const std::array expected{
+        ResolvedTypeLayout{4, 4}, ResolvedTypeLayout{8, 8},  ResolvedTypeLayout{2, 2}, ResolvedTypeLayout{16, 8},
+        ResolvedTypeLayout{4, 4}, ResolvedTypeLayout{16, 8}, ResolvedTypeLayout{6, 2}, ResolvedTypeLayout{16, 8},
+    };
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[i].get());
+        REQUIRE(binding != nullptr);
+        const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+        REQUIRE(sizeOf != nullptr);
+
+        const std::uint64_t *value = model.TryGetSizeOfValue(*sizeOf);
+        const ResolvedTypeLayout *layout = model.TryGetLayout(*sizeOf->type);
+        REQUIRE(value != nullptr);
+        REQUIRE(layout != nullptr);
+        CHECK_EQ(*value, expected[i].size);
+        CHECK_EQ(layout->size, expected[i].size);
+        CHECK_EQ(layout->alignment, expected[i].alignment);
+    }
+
+    const ResolvedTypeLayout *substituted = model.TryGetLayout(TypeRef::MakeNamed("Box<uint16>"));
+    REQUIRE(substituted != nullptr);
+    CHECK_EQ(substituted->size, 2);
+    CHECK_EQ(substituted->alignment, 2);
+
+    SizeOfExpr nodeOutsideAnalyzedModules;
+    CHECK(model.TryGetSizeOfValue(nodeOutsideAnalyzedModules) == nullptr);
+}
+
+TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
+    Lexer lexer(R"(
+        struct Recursive { next: Recursive; }
+        func Main() {
+            let recursive = sizeof(Recursive);
+            let unsized = sizeof(uint8[]);
+            let overflow = sizeof(uint64[2305843009213693952]);
+        }
+    )",
+                "invalid_layouts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "invalid_layouts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "invalid_layouts", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE(model.HasErrors());
+    CHECK(std::ranges::any_of(model.diagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "cannot determine size of type 'Recursive'";
+    }));
+    CHECK(std::ranges::any_of(model.diagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "cannot determine size of type 'uint64[2305843009213693952]'";
+    }));
+
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 3);
+    for (const auto &statement : main->body->stmts) {
+        const auto *binding = dynamic_cast<const LetStmt *>(statement.get());
+        REQUIRE(binding != nullptr);
+        const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+        REQUIRE(sizeOf != nullptr);
+        CHECK(model.TryGetSizeOfValue(*sizeOf) == nullptr);
+        CHECK(model.TryGetLayout(*sizeOf->type) == nullptr);
+    }
+    CHECK(model.TryGetLayout(TypeRef::MakeNamed("Recursive")) == nullptr);
+}
+
 TEST_CASE("semantic model retains facts for dependency modules") {
     Lexer depLexer("func DependencyValue() -> int32 { return 7i32; }", "dependency.rux");
     auto depLexed = depLexer.Tokenize();

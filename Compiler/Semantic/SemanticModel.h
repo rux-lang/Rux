@@ -68,6 +68,13 @@ struct ResolvedVtableIdentity {
     std::vector<std::string> entries;
 };
 
+// Target-specific compile-time layout of a fully resolved type. Layout facts
+// are only published after every component type has a valid, finite layout.
+struct ResolvedTypeLayout {
+    std::uint64_t size = 0;
+    std::uint64_t alignment = 1;
+};
+
 // Persistent output of semantic analysis. Besides diagnostics and exported
 // symbols it owns the ordered, validated module view and resolved type facts
 // consumed by lowering. The model does not own the AST: every Module supplied
@@ -86,7 +93,9 @@ struct SemanticModel {
                   std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
-                  std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities);
+                  std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
+                  std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
+                  std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues);
 
     [[nodiscard]] bool HasErrors() const noexcept;
 
@@ -107,6 +116,16 @@ struct SemanticModel {
     // Returns null for extend blocks that do not emit an interface vtable.
     [[nodiscard]] const ResolvedVtableIdentity *TryGetVtableIdentity(const ImplDecl &declaration) const noexcept;
 
+    // Returns null when the type is unresolved, unsized, recursive, or was not
+    // validated in this analysis. Type-expression queries first use the
+    // resolved type fact for that AST node.
+    [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeRef &type) const noexcept;
+    [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeExpr &typeNode) const noexcept;
+
+    // Returns the constant folded for an accepted sizeof expression. Rejected
+    // sizeof expressions deliberately have no usable value.
+    [[nodiscard]] const std::uint64_t *TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept;
+
 private:
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
@@ -114,5 +133,7 @@ private:
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
+    std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
+    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
 };
 } // namespace Rux

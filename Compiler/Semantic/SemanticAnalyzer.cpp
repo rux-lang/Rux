@@ -131,7 +131,9 @@ public:
              std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
              std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
              std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
-             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities)
+             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
+             std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
+             std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
@@ -144,6 +146,8 @@ public:
         , callableBindings(inputCallableBindings)
         , symbolIdentities(inputSymbolIdentities)
         , vtableIdentities(inputVtableIdentities)
+        , typeLayouts(inputTypeLayouts)
+        , sizeOfValues(inputSizeOfValues)
         , currentScope(&globalScope) {
     }
 
@@ -199,6 +203,7 @@ public:
             CheckModule(*mod);
         }
         ValidatePendingGenericInstantiations();
+        RecordResolvedTypeLayouts();
         BuildFinalSymbolIdentities();
     }
 
@@ -215,6 +220,8 @@ private:
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
+    std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
+    std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -232,6 +239,7 @@ private:
     std::vector<std::string> currentTypeParams;
     std::unordered_map<std::string, const StructDecl *> structDecls;
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
+    std::unordered_map<std::string, const UnionDecl *> unionDecls;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, std::vector<const FuncDecl *>> functionsByName;
@@ -274,6 +282,7 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
     std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
+    std::unordered_set<std::string> activeLayoutTypes;
 
     struct FunctionSignature {
         std::size_t typeParamCount = 0;
@@ -558,6 +567,7 @@ private:
             simple(Symbol::Kind::Type, enumDecl->name, SemanticSymbol::Kind::Type, "enum");
         }
         else if (auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+            unionDecls[unionDecl->name] = unionDecl;
             simple(Symbol::Kind::Type, unionDecl->name, SemanticSymbol::Kind::Type, "union");
         }
         else if (auto *ifaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
@@ -2304,147 +2314,214 @@ private:
         return MakeFuncType(decl.params, decl.returnType, decl.typeParams);
     }
 
-    std::optional<std::uint64_t> SizeOfTypeRef(const TypeRef &type,
-                                               const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (type.kind == TypeRef::Kind::Named) {
-            if (type.name.starts_with("Slice<")) {
-                return 16;
+    static std::optional<std::uint64_t> CheckedAlignUp(const std::uint64_t value, const std::uint64_t alignment) {
+        if (alignment == 0 || value > std::numeric_limits<std::uint64_t>::max() - (alignment - 1)) {
+            return std::nullopt;
+        }
+        return AlignUp(value, alignment);
+    }
+
+    std::optional<ResolvedTypeLayout>
+    LayoutOfTypeRef(const TypeRef &inputType, const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        if ((inputType.kind == TypeRef::Kind::Named || inputType.kind == TypeRef::Kind::TypeParam) &&
+            substitutions.contains(inputType.name) &&
+            substitutions.at(inputType.name).ToString() != inputType.ToString()) {
+            return LayoutOfTypeRef(substitutions.at(inputType.name), substitutions);
+        }
+
+        const std::string key = inputType.ToString();
+        if (const auto known = typeLayouts.find(key); known != typeLayouts.end()) {
+            return known->second;
+        }
+        if (!activeLayoutTypes.insert(key).second) {
+            return std::nullopt;
+        }
+
+        const auto finish = [&](std::optional<ResolvedTypeLayout> result) {
+            activeLayoutTypes.erase(key);
+            if (result) {
+                typeLayouts.insert_or_assign(key, *result);
             }
-            if (auto it = substitutions.find(type.name); it != substitutions.end()) {
-                return SizeOfTypeRef(it->second, substitutions);
+            return result;
+        };
+        const auto checkedAdd = [](const std::uint64_t left,
+                                   const std::uint64_t right) -> std::optional<std::uint64_t> {
+            if (right > std::numeric_limits<std::uint64_t>::max() - left) {
+                return std::nullopt;
             }
-            if (!type.inner.empty()) {
-                return SizeOfTypeRef(type.inner[0], substitutions);
+            return left + right;
+        };
+        const auto checkedMultiply = [](const std::uint64_t left,
+                                        const std::uint64_t right) -> std::optional<std::uint64_t> {
+            if (left != 0 && right > std::numeric_limits<std::uint64_t>::max() / left) {
+                return std::nullopt;
             }
-            const std::string baseName = BaseTypeName(type.name);
-            std::unordered_map<std::string, TypeRef> localSubs = substitutions;
-            const auto structIt = structDecls.find(baseName);
-            if (structIt != structDecls.end()) {
-                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
-                const auto &params = structIt->second->typeParams;
-                const std::size_t count = std::min(params.size(), typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[params[i]] = typeArgs[i];
-                }
-            }
-            const auto enumIt = enumDecls.find(baseName);
-            if (enumIt != enumDecls.end()) {
-                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
-                const auto &params = enumIt->second->typeParams;
-                const std::size_t count = std::min(params.size(), typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[params[i]] = typeArgs[i];
-                }
+            return left * right;
+        };
+
+        if (inputType.kind == TypeRef::Kind::Named) {
+            if (inputType.name.starts_with("Slice<") || inputType.name == "Slice") {
+                return finish(ResolvedTypeLayout{16, 8});
             }
 
-            if (enumIt != enumDecls.end()) {
-                return SizeOfEnum(*enumIt->second, localSubs);
+            const std::string baseName = BaseTypeName(inputType.name);
+            std::unordered_map<std::string, TypeRef> localSubs = substitutions;
+            const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType.name);
+            if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
+                const std::size_t count = std::min(structure->second->typeParams.size(), typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    localSubs[structure->second->typeParams[i]] = typeArgs[i];
+                }
+                return finish(LayoutOfStruct(*structure->second, localSubs));
             }
-            // Interface fat pointers are {data: *opaque, vtable: *opaque} =
-            // 16 bytes
+            if (const auto enumeration = enumDecls.find(baseName); enumeration != enumDecls.end()) {
+                const std::size_t count = std::min(enumeration->second->typeParams.size(), typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    localSubs[enumeration->second->typeParams[i]] = typeArgs[i];
+                }
+                return finish(LayoutOfEnum(*enumeration->second, localSubs));
+            }
+            if (const auto unionType = unionDecls.find(baseName); unionType != unionDecls.end()) {
+                return finish(LayoutOfUnion(*unionType->second, localSubs));
+            }
+
+            // Interface values are fat pointers: {data, vtable}.
             if (Symbol *sym = currentScope->Lookup(baseName); sym) {
                 if (sym->kind == Symbol::Kind::Interface) {
-                    return 16;
+                    return finish(ResolvedTypeLayout{16, 8});
                 }
-                if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown()) {
-                    return SizeOfTypeRef(sym->type, localSubs);
+                if (sym->kind == Symbol::Kind::Type && !sym->type.IsUnknown() && !(sym->type == inputType)) {
+                    return finish(LayoutOfTypeRef(sym->type, localSubs));
                 }
             }
-            return SizeOfStruct(baseName, localSubs);
+            if (!inputType.inner.empty()) {
+                return finish(LayoutOfTypeRef(inputType.inner[0], localSubs));
+            }
+            return finish(std::nullopt);
         }
 
-        if (type.IsRange()) {
-            if (type.kind == TypeRef::Kind::RangeFull) {
-                return 0;
+        if (inputType.kind == TypeRef::Kind::Tuple) {
+            std::uint64_t offset = 0;
+            std::uint64_t alignment = 1;
+            for (const TypeRef &element : inputType.inner) {
+                const auto elementLayout = LayoutOfTypeRef(element, substitutions);
+                if (!elementLayout) {
+                    return finish(std::nullopt);
+                }
+                const auto alignedOffset = CheckedAlignUp(offset, elementLayout->alignment);
+                if (!alignedOffset) {
+                    return finish(std::nullopt);
+                }
+                offset = *alignedOffset;
+                const auto end = checkedAdd(offset, elementLayout->size > 0 ? elementLayout->size : 8);
+                if (!end) {
+                    return finish(std::nullopt);
+                }
+                offset = *end;
+                alignment = std::max(alignment, elementLayout->alignment);
             }
-            if (type.inner.empty()) {
-                return std::nullopt;
-            }
-            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-            if (!elemSize || *elemSize == 0) {
-                return std::nullopt;
-            }
-            return (type.kind == TypeRef::Kind::Range || type.kind == TypeRef::Kind::RangeInclusive) ? 2 * *elemSize
-                                                                                                     : *elemSize;
+            const auto size = CheckedAlignUp(offset, alignment);
+            return finish(size ? std::optional(ResolvedTypeLayout{*size, alignment}) : std::nullopt);
         }
 
-        if (type.kind == TypeRef::Kind::Tuple) {
-            const auto layout = Layout::FieldsSizeAndAlign(
-                type.inner, [&](const TypeRef &elem) { return SizeOfTypeRef(elem, substitutions); });
-            if (!layout) {
-                return std::nullopt;
+        if (inputType.kind == TypeRef::Kind::Array) {
+            if (inputType.inner.empty() || !inputType.arrayLength) {
+                return finish(std::nullopt);
             }
-            return layout->first;
+            const auto elementLayout = LayoutOfTypeRef(inputType.inner[0], substitutions);
+            if (!elementLayout) {
+                return finish(std::nullopt);
+            }
+            const auto size = checkedMultiply(elementLayout->size, *inputType.arrayLength);
+            return finish(size ? std::optional(ResolvedTypeLayout{*size, elementLayout->alignment}) : std::nullopt);
         }
 
-        if (type.kind == TypeRef::Kind::Array) {
-            if (type.inner.empty() || !type.arrayLength) {
-                return std::nullopt;
+        if (inputType.IsRange()) {
+            if (inputType.kind == TypeRef::Kind::RangeFull) {
+                return finish(ResolvedTypeLayout{0, 1});
             }
-            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-            return elemSize ? std::optional<std::uint64_t>(*elemSize * *type.arrayLength) : std::nullopt;
+            if (inputType.inner.empty()) {
+                return finish(std::nullopt);
+            }
+            const auto elementLayout = LayoutOfTypeRef(inputType.inner[0], substitutions);
+            if (!elementLayout || elementLayout->size == 0) {
+                return finish(std::nullopt);
+            }
+            const std::uint64_t count =
+                inputType.kind == TypeRef::Kind::Range || inputType.kind == TypeRef::Kind::RangeInclusive ? 2 : 1;
+            const auto size = checkedMultiply(elementLayout->size, count);
+            return finish(size ? std::optional(ResolvedTypeLayout{*size, elementLayout->alignment}) : std::nullopt);
         }
 
-        return type.SizeInBytes();
+        const auto size = inputType.SizeInBytes();
+        return finish(size ? std::optional(ResolvedTypeLayout{*size, Layout::FieldAlign(*size)}) : std::nullopt);
     }
 
-    std::optional<std::uint64_t> AlignOfTypeRef(const TypeRef &type,
-                                                const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (type.kind == TypeRef::Kind::Array) {
-            return type.inner.empty() ? std::optional<std::uint64_t>(1) : AlignOfTypeRef(type.inner[0], substitutions);
+    std::optional<ResolvedTypeLayout>
+    LayoutOfFields(const std::vector<TypeRef> &fields,
+                   const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        std::uint64_t offset = 0;
+        std::uint64_t alignment = 1;
+        for (const TypeRef &field : fields) {
+            const auto fieldLayout = LayoutOfTypeRef(field, substitutions);
+            if (!fieldLayout) {
+                return std::nullopt;
+            }
+            const auto alignedOffset = CheckedAlignUp(offset, fieldLayout->alignment);
+            if (!alignedOffset) {
+                return std::nullopt;
+            }
+            offset = *alignedOffset;
+            if (fieldLayout->size > std::numeric_limits<std::uint64_t>::max() - offset) {
+                return std::nullopt;
+            }
+            offset += fieldLayout->size > 0 ? fieldLayout->size : 8;
+            alignment = std::max(alignment, fieldLayout->alignment);
         }
-        const auto size = SizeOfTypeRef(type, substitutions);
-        return size ? std::optional<std::uint64_t>(Layout::FieldAlign(*size)) : std::nullopt;
+        const auto size = CheckedAlignUp(offset, alignment);
+        return size ? std::optional(ResolvedTypeLayout{*size, alignment}) : std::nullopt;
     }
 
-    std::optional<std::uint64_t> SizeOfEnum(const EnumDecl &decl,
-                                            const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
-        if (!tagSize) {
+    std::optional<ResolvedTypeLayout> LayoutOfEnum(const EnumDecl &decl,
+                                                   const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        const auto tagLayout = LayoutOfTypeRef(EnumBaseType(decl), substitutions);
+        if (!tagLayout) {
             return std::nullopt;
         }
 
         bool hasPayload = false;
-        std::uint64_t maxPayloadSize = 0;
-        std::uint64_t maxPayloadAlign = 1;
-
-        auto fieldLayout = [&](const auto &fields) {
-            return Layout::FieldsSizeAndAlign(
-                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field, substitutions); });
-        };
-
-        auto namedFieldLayout = [&](const auto &fields) {
-            return Layout::FieldsSizeAndAlign(
-                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field.type, substitutions); });
-        };
-
+        ResolvedTypeLayout maximumPayload;
         for (const auto &variant : decl.variants) {
-            if (variant.fields.empty() && variant.namedFields.empty()) {
+            std::vector<TypeRef> fields;
+            fields.reserve(variant.fields.size() + variant.namedFields.size());
+            for (const auto &field : variant.fields) {
+                fields.push_back(ResolveTypeWithSubstitution(*field, substitutions));
+            }
+            for (const auto &field : variant.namedFields) {
+                fields.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
+            }
+            if (fields.empty()) {
                 continue;
             }
-
             hasPayload = true;
-            auto payload =
-                !variant.fields.empty() ? fieldLayout(variant.fields) : namedFieldLayout(variant.namedFields);
+            const auto payload = LayoutOfFields(fields, substitutions);
             if (!payload) {
                 return std::nullopt;
             }
-            maxPayloadSize = std::max(maxPayloadSize, payload->first);
-            maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
+            maximumPayload.size = std::max(maximumPayload.size, payload->size);
+            maximumPayload.alignment = std::max(maximumPayload.alignment, payload->alignment);
         }
 
         if (!hasPayload) {
-            return tagSize;
+            return tagLayout;
         }
-
-        const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
-        const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
-        std::uint64_t offset = *tagSize;
-        if (maxPayloadAlign > 1) {
-            offset = AlignUp(offset, maxPayloadAlign);
+        const std::uint64_t alignment = std::max(tagLayout->alignment, maximumPayload.alignment);
+        const auto payloadOffset = CheckedAlignUp(tagLayout->size, maximumPayload.alignment);
+        if (!payloadOffset || maximumPayload.size > std::numeric_limits<std::uint64_t>::max() - *payloadOffset) {
+            return std::nullopt;
         }
-        offset += maxPayloadSize;
-        return AlignUp(offset, align);
+        const auto size = CheckedAlignUp(*payloadOffset + maximumPayload.size, alignment);
+        return size ? std::optional(ResolvedTypeLayout{*size, alignment}) : std::nullopt;
     }
 
     TypeRef EnumBaseType(const EnumDecl &decl) {
@@ -2474,61 +2551,92 @@ private:
             for (std::size_t i = 0; i < typeArgs.size(); ++i) {
                 substitutions.emplace(decl.typeParams[i], typeArgs[i]);
             }
-            if (const auto size = SizeOfEnum(decl, substitutions)) {
-                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), *size));
+            if (const auto layout = LayoutOfEnum(decl, substitutions)) {
+                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
             }
         }
         return type;
     }
 
-    std::optional<std::uint64_t> SizeOfStruct(const std::string &name,
-                                              const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        const auto structIt = structDecls.find(name);
-        if (structIt == structDecls.end()) {
-            return std::nullopt;
-        }
-
+    std::optional<ResolvedTypeLayout>
+    LayoutOfStruct(const StructDecl &decl, const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
         std::uint64_t offset = 0;
         std::uint64_t maxAlign = 1;
-        for (const auto &field : structIt->second->fields) {
+        for (const auto &field : decl.fields) {
             const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
-            const auto align = AlignOfTypeRef(fieldType, substitutions);
-            if (!align) {
+            std::optional<ResolvedTypeLayout> fieldLayout;
+            if (fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength && !fieldType.inner.empty()) {
+                const auto elementLayout = LayoutOfTypeRef(fieldType.inner[0], substitutions);
+                if (elementLayout) {
+                    fieldLayout = ResolvedTypeLayout{0, elementLayout->alignment};
+                }
+            }
+            else {
+                fieldLayout = LayoutOfTypeRef(fieldType, substitutions);
+            }
+            if (!fieldLayout) {
                 return std::nullopt;
             }
-            offset = AlignUp(offset, *align);
-            if (!(fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength)) {
-                const auto size = SizeOfTypeRef(fieldType, substitutions);
-                if (!size) {
-                    return std::nullopt;
-                }
-                offset += *size;
+            const auto alignedOffset = CheckedAlignUp(offset, fieldLayout->alignment);
+            if (!alignedOffset) {
+                return std::nullopt;
             }
-            maxAlign = std::max(maxAlign, *align);
+            offset = *alignedOffset;
+            if (fieldLayout->size > std::numeric_limits<std::uint64_t>::max() - offset) {
+                return std::nullopt;
+            }
+            offset += fieldLayout->size;
+            maxAlign = std::max(maxAlign, fieldLayout->alignment);
         }
-        return AlignUp(offset, maxAlign);
+        const auto size = CheckedAlignUp(offset, maxAlign);
+        return size ? std::optional(ResolvedTypeLayout{*size, maxAlign}) : std::nullopt;
     }
 
-    std::optional<std::uint64_t>
-    SizeOfTypeExprWithSubstitution(const TypeExpr &expr,
-                                   const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-            const auto structIt = structDecls.find(t->name);
-            if (structIt != structDecls.end()) {
-                std::unordered_map<std::string, TypeRef> fieldSubstitutions = substitutions;
-                const auto &params = structIt->second->typeParams;
-                for (std::size_t i = 0; i < params.size() && i < t->typeArgs.size(); ++i) {
-                    fieldSubstitutions[params[i]] = ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
-                }
-                return SizeOfStruct(t->name, fieldSubstitutions);
+    std::optional<ResolvedTypeLayout>
+    LayoutOfUnion(const UnionDecl &decl, const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        std::uint64_t size = 0;
+        std::uint64_t alignment = 1;
+        for (const auto &field : decl.fields) {
+            const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
+            const auto fieldLayout = LayoutOfTypeRef(fieldType, substitutions);
+            if (!fieldLayout) {
+                return std::nullopt;
             }
+            size = std::max(size, fieldLayout->size);
+            alignment = std::max(alignment, fieldLayout->alignment);
         }
-
-        return SizeOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
+        const auto alignedSize = CheckedAlignUp(size, alignment);
+        return alignedSize ? std::optional(ResolvedTypeLayout{*alignedSize, alignment}) : std::nullopt;
     }
 
-    std::optional<std::uint64_t> SizeOfTypeExpr(const TypeExpr &expr) {
-        return SizeOfTypeExprWithSubstitution(expr);
+    std::optional<ResolvedTypeLayout>
+    LayoutOfTypeExpr(const TypeExpr &expr, const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
+        return LayoutOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
+    }
+
+    void RecordResolvedTypeLayouts() {
+        std::vector<TypeRef> resolvedTypes;
+        resolvedTypes.reserve(typeNodeTypes.size() + expressionTypes.size() + patternTypes.size());
+        for (const auto &[_, type] : typeNodeTypes) {
+            resolvedTypes.push_back(type);
+        }
+        for (const auto &[_, type] : expressionTypes) {
+            resolvedTypes.push_back(type);
+        }
+        for (const auto &[_, type] : patternTypes) {
+            resolvedTypes.push_back(type);
+        }
+        for (const auto &[_, binding] : callableBindings) {
+            for (const auto &[__, type] : binding.substitutions) {
+                resolvedTypes.push_back(type);
+            }
+            if (binding.receiverType) {
+                resolvedTypes.push_back(*binding.receiverType);
+            }
+        }
+        for (const TypeRef &type : resolvedTypes) {
+            LayoutOfTypeRef(type);
+        }
     }
 
     std::optional<FunctionSignature> ResolveFunctionSignature(const FuncDecl &decl, const bool isMethod) {
@@ -4215,8 +4323,13 @@ private:
         if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
             ValidateArrayType(*e->type);
             TypeRef t = ResolveType(*e->type);
-            if (!t.IsUnknown() && t.kind != TypeRef::Kind::TypeParam && !SizeOfTypeExpr(*e->type)) {
-                EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
+            if (!t.IsUnknown() && t.kind != TypeRef::Kind::TypeParam) {
+                if (const auto layout = LayoutOfTypeExpr(*e->type)) {
+                    sizeOfValues.insert_or_assign(e, layout->size);
+                }
+                else {
+                    EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
+                }
             }
             return TypeRef::MakeUInt64();
         }
@@ -5499,8 +5612,11 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
+    std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
+    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
     Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes,
-                      typeNodeTypes, patternTypes, callableBindings, symbolIdentities, vtableIdentities);
+                      typeNodeTypes, patternTypes, callableBindings, symbolIdentities, vtableIdentities, typeLayouts,
+                      sizeOfValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -5518,6 +5634,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(patternTypes),
                          std::move(callableBindings),
                          std::move(symbolIdentities),
-                         std::move(vtableIdentities)};
+                         std::move(vtableIdentities),
+                         std::move(typeLayouts),
+                         std::move(sizeOfValues)};
 }
 } // namespace Rux
