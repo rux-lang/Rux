@@ -58,6 +58,10 @@ public:
     // Zero-pad a section and return the offset at which the next value begins.
     [[nodiscard]] std::uint32_t AlignSection(RcuModuleSection section, std::uint16_t alignment);
     [[nodiscard]] std::uint32_t Append(RcuModuleSection section, std::span<const std::uint8_t> bytes);
+    // Discard a speculative suffix of a section and its relocations. AArch64
+    // uses this when a branch-layout pass must be emitted again with widened
+    // conditional branches.
+    [[nodiscard]] bool TruncateSection(RcuModuleSection section, std::size_t dataSize, std::size_t relocationCount);
 
     // Repeated compatible declarations name the same symbol. Definitions are
     // separate so functions can be declared before their forward references

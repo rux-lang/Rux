@@ -20,6 +20,7 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace Rux;
@@ -126,6 +127,64 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
     for (const auto &symbol : object.symbols) {
         CHECK(names.insert(symbol.name).second);
     }
+}
+
+TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
+    const auto package = CompileToLir(R"(
+        func Sink(text: Slice<char8>, value: float32) {}
+
+        func Power(base: int, exponent: int) -> int {
+            Sink("shared", 1.3f32);
+            Sink("shared", 1.3f32);
+            return base ** exponent;
+        }
+
+        func Main() -> int {
+            return Power(2, 3);
+        }
+    )");
+    RcuEmitter x86Emitter(package, "test", Target::OS::Linux);
+    AArch64RcuEmitter aarch64Emitter(package, "test", Target::OS::Linux);
+    const auto x86Objects = x86Emitter.Generate();
+    const auto aarch64Objects = aarch64Emitter.Generate();
+    REQUIRE(x86Emitter.Diagnostics().empty());
+    REQUIRE(aarch64Emitter.Diagnostics().empty());
+    REQUIRE(x86Objects.size() == 1);
+    REQUIRE(aarch64Objects.size() == 1);
+    const auto &x86 = x86Objects.front();
+    const auto &aarch64 = aarch64Objects.front();
+
+    REQUIRE(aarch64.sections.size() == 3);
+    for (const std::size_t section : {RCU_TEXT_IDX, RCU_RODATA_IDX, RCU_DATA_IDX}) {
+        CHECK(aarch64.sections[section].name == x86.sections[section].name);
+        CHECK(aarch64.sections[section].type == x86.sections[section].type);
+        CHECK(aarch64.sections[section].flags == x86.sections[section].flags);
+        CHECK(aarch64.sections[section].alignment == x86.sections[section].alignment);
+    }
+    CHECK(aarch64.sections[RCU_RODATA_IDX].data == x86.sections[RCU_RODATA_IDX].data);
+    CHECK(aarch64.sections[RCU_DATA_IDX].data == x86.sections[RCU_DATA_IDX].data);
+
+    const auto countSymbols = [&](const std::string_view prefix) {
+        return std::ranges::count_if(aarch64.symbols,
+                                     [prefix](const RcuSymbol &symbol) { return symbol.name.starts_with(prefix); });
+    };
+    CHECK(countSymbols("__str") == 1);
+    CHECK(countSymbols("__f32_") == 1);
+    const auto helper = std::ranges::find(aarch64.symbols, "__rux_ipow", &RcuSymbol::name);
+    REQUIRE(helper != aarch64.symbols.end());
+    CHECK(helper->sectionIdx == RCU_TEXT_IDX);
+    CHECK(helper->size > 0);
+
+    std::unordered_set<std::string> names;
+    for (const auto &symbol : aarch64.symbols) {
+        CHECK(names.insert(symbol.name).second);
+    }
+    CHECK(std::ranges::any_of(aarch64.sections[RCU_TEXT_IDX].relocs,
+                              [](const RcuReloc &relocation) { return relocation.type == RcuRelType::AArch64Call26; }));
+    CHECK(std::ranges::all_of(aarch64.sections[RCU_TEXT_IDX].relocs, [&](const RcuReloc &relocation) {
+        return relocation.symbolIndex < aarch64.symbols.size() &&
+               relocation.sectionOffset < aarch64.sections[RCU_TEXT_IDX].data.size();
+    }));
 }
 
 TEST_CASE("RCU System V calls preserve register-allocated arguments") {

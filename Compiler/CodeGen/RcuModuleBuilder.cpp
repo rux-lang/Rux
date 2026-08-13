@@ -87,6 +87,23 @@ std::uint32_t RcuModuleBuilder::Append(const RcuModuleSection section, const std
     return offset;
 }
 
+bool RcuModuleBuilder::TruncateSection(const RcuModuleSection section, const std::size_t dataSize,
+                                       const std::size_t relocationCount) {
+    if (finalized) {
+        Report("cannot truncate an RCU section after module finalization");
+        return false;
+    }
+    auto &data = SectionData(section);
+    auto &relocations = sectionRelocations[SectionIndex(section)];
+    if (dataSize > data.size() || relocationCount > relocations.size()) {
+        Report("cannot grow an RCU section while truncating it");
+        return false;
+    }
+    data.resize(dataSize);
+    relocations.resize(relocationCount);
+    return true;
+}
+
 std::optional<std::uint32_t> RcuModuleBuilder::FindSymbol(const std::string_view name) const {
     const auto found = std::ranges::find(symbolNames, name, &decltype(symbolNames)::value_type::first);
     if (found == symbolNames.end()) {

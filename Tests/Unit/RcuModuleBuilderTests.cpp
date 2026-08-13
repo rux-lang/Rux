@@ -185,3 +185,19 @@ TEST_CASE("RCU module builder aligns section buffers without owning literal enco
     CHECK(builder.SectionData(RcuModuleSection::RoData) == std::vector<std::uint8_t>{0xFF, 0, 0, 0, 0, 0, 0, 0});
     CHECK(builder.AlignSection(RcuModuleSection::RoData, 4) == 8);
 }
+
+TEST_CASE("RCU module builder truncates speculative section data and relocations together") {
+    RcuModuleBuilder builder(Description(RcuArch::AArch64));
+    const auto target = builder.DeclareExternal("Target", RcuSymKind::ExternFunc);
+    REQUIRE(target.has_value());
+    builder.SectionData(RcuModuleSection::Text).resize(8);
+    REQUIRE(builder.AddRelocation(RcuModuleSection::Text, 0, *target, RcuRelType::AArch64Call26));
+    REQUIRE(builder.AddRelocation(RcuModuleSection::Text, 4, *target, RcuRelType::AArch64Call26));
+
+    REQUIRE(builder.TruncateSection(RcuModuleSection::Text, 4, 1));
+    CHECK(builder.SectionData(RcuModuleSection::Text).size() == 4);
+    REQUIRE(builder.Relocations(RcuModuleSection::Text).size() == 1);
+    CHECK(builder.Relocations(RcuModuleSection::Text).front().sectionOffset == 0);
+    CHECK_FALSE(builder.TruncateSection(RcuModuleSection::Text, 5, 1));
+    CHECK(builder.Diagnostics().back().message == "cannot grow an RCU section while truncating it");
+}

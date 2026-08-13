@@ -27,7 +27,7 @@ Source loading -> SourceModel -> Lexer -> Syntax -> SemanticModel
                                         Linker -> ELF / Mach-O / PE
 ```
 
-The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. The x86-64 emitter supplies target-encoded instruction and literal bytes plus relocation kinds through that boundary; it no longer assembles an `RcuFile` or mutates its symbol table directly. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
+The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. Both emitters supply target-encoded instruction and literal bytes plus relocation kinds through that boundary; neither assembles an `RcuFile` or mutates its symbol table directly. Its narrow section-truncation operation lets AArch64 retry branch layout while keeping speculative instruction bytes and their relocations together. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
