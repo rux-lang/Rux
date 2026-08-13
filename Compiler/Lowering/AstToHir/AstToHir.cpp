@@ -214,7 +214,6 @@ private:
     std::unordered_set<std::string> generatedMonomorphizedFuncNames;
     std::unordered_map<std::string, const StructDecl *> structDecls;
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
-    std::unordered_map<std::string, std::vector<const FuncDecl *>> functionsByName;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
@@ -226,17 +225,9 @@ private:
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
 
-    // Free functions live in a single flat lookup table, so a module path is
-    // kept alongside each one: it decides which candidates a call site can see
-    // and keeps same-named functions from different modules apart in the object
-    // file. Empty means the function was declared outside any `module`.
-    std::unordered_map<const FuncDecl *, std::string> funcModulePath;
-    // Module paths named by each source file's `import` declarations.
-    std::unordered_map<std::string, std::vector<std::string>> fileImports;
-    // Declared module path of the enclosing `module`, during collection and
-    // during lowering respectively. Distinct from currentModulePath, which is
-    // derived from the file name for the `#source.module` intrinsic.
-    std::string collectModulePath;
+    // Declared module path of the enclosing `module`. Distinct from
+    // currentModulePath, which is derived from the file name for the
+    // `#source.module` intrinsic.
     std::string declModulePath;
 
     template <typename Fact>
@@ -328,27 +319,9 @@ private:
     // First pass: collect global names
     void CollectModule(const Module &mod) {
         currentFile = mod.name;
-        collectModulePath.clear();
         for (const auto &decl : mod.items) {
             CollectDecl(*decl);
         }
-    }
-
-    // The module a bare `import` makes visible: `import Io::Print` names
-    static std::string ImportedModulePath(const UseDecl &d) {
-        if (d.path.empty()) {
-            return "";
-        }
-        // A Single import ends in the imported name, not in a module segment.
-        const std::size_t end = d.kind == UseDecl::Kind::Single ? d.path.size() - 1 : d.path.size();
-        if (end == 0) {
-            return "";
-        }
-        std::string out = d.path[0];
-        for (std::size_t i = 1; i < end; ++i) {
-            out += "::" + d.path[i];
-        }
-        return out;
     }
 
     TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
@@ -398,8 +371,6 @@ private:
             globalScope.Define(std::move(sym));
         };
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            functionsByName[fn->name].push_back(fn);
-            funcModulePath[fn] = collectModulePath;
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Func;
             sym.name = fn->name;
@@ -408,11 +379,6 @@ private:
             sym.intrinsicName = fn->intrinsicName;
             sym.funcOverloads.push_back(fn);
             globalScope.Define(std::move(sym));
-        }
-        else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
-            if (std::string path = ImportedModulePath(*useDecl); !path.empty()) {
-                fileImports[currentFile].push_back(std::move(path));
-            }
         }
         else if (auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
             structDecls[structDecl->name] = structDecl;
@@ -465,12 +431,9 @@ private:
             }
         }
         else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            const auto saved = collectModulePath;
-            collectModulePath = collectModulePath.empty() ? modDecl->name : collectModulePath + "::" + modDecl->name;
             for (auto &item : modDecl->items) {
                 CollectDecl(*item);
             }
-            collectModulePath = saved;
         }
         else if (auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
             const std::string typeName =
@@ -1348,24 +1311,6 @@ private:
         return substitutions;
     }
 
-    TypeRef InstantiateAssociatedReceiver(TypeRef receiverType, const std::vector<TypeExprPtr> &typeArgs) {
-        const std::string typeName = NamedBaseTypeName(receiverType);
-        const auto structIt = structDecls.find(typeName);
-        if (structIt == structDecls.end() || structIt->second->typeParams.empty() || typeArgs.empty()) {
-            return receiverType;
-        }
-
-        std::string name = typeName + "<";
-        for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-            if (i) {
-                name += ", ";
-            }
-            name += ResolveType(*typeArgs[i]).ToString();
-        }
-        name += ">";
-        return TypeRef::MakeNamed(std::move(name));
-    }
-
     TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method) {
         const auto substitutions = MethodTypeSubstitutions(receiverType);
         std::vector<TypeRef> params;
@@ -1408,12 +1353,6 @@ private:
         return methodIt != typeIt->second.end() && methodIt->second.size() > 1;
     }
 
-    const std::string &ModulePathOf(const FuncDecl &decl) const {
-        static const std::string empty;
-        const auto it = funcModulePath.find(&decl);
-        return it == funcModulePath.end() ? empty : it->second;
-    }
-
     static std::string MangleTypeName(const TypeRef &type) {
         std::string out;
         for (const char c : type.ToString()) {
@@ -1438,25 +1377,21 @@ private:
     }
 
     std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
-                                         const FuncDecl &method, const std::string_view recordedName = {}) {
+                                         const FuncDecl &method) {
         const auto substitutions = MethodTypeSubstitutions(receiverType);
         if (substitutions.empty() || MethodIsFromConcreteImpl(method)) {
-            return recordedName.empty() ? CalleeName(typeName, method.name, receiverType, method)
-                                        : std::string(recordedName);
+            if (const auto *identity = model.TryGetSymbolIdentity(method)) {
+                return identity->linkerName;
+            }
+            return CalleeName(typeName, method.name, receiverType, method);
         }
 
-        std::string name;
-        if (!recordedName.empty()) {
-            name = recordedName;
-        }
-        else {
-            name = CalleeName(typeName, method.name, receiverType, method);
-            const auto structIt = structDecls.find(typeName);
-            if (structIt != structDecls.end()) {
-                for (const auto &param : structIt->second->typeParams) {
-                    if (const auto it = substitutions.find(param); it != substitutions.end()) {
-                        name += "_" + MangleTypeName(it->second);
-                    }
+        std::string name = CalleeName(typeName, method.name, receiverType, method);
+        const auto structIt = structDecls.find(typeName);
+        if (structIt != structDecls.end()) {
+            for (const auto &param : structIt->second->typeParams) {
+                if (const auto it = substitutions.find(param); it != substitutions.end()) {
+                    name += "_" + MangleTypeName(it->second);
                 }
             }
         }
@@ -1471,146 +1406,8 @@ private:
         return name;
     }
 
-    std::string FunctionCalleeName(const FuncDecl &decl) {
-        const auto *identity = model.TryGetSymbolIdentity(decl);
-        assert(identity && "function declaration is missing its semantic symbol identity");
-        return identity ? identity->linkerName : std::string{};
-    }
-
-    [[nodiscard]] std::string_view RecordedCallLinkerName(const CallExpr &call) const {
-        const auto *binding = model.TryGetCallableBinding(call);
-        return binding ? std::string_view(binding->linkerName) : std::string_view{};
-    }
-
-    // Whether a call in the file being lowered may bind to this function: it is
-    // declared outside any module, in the same module as the call, or in a
-    // module the file imports. Everything else is only reachable through the
-    // fallback in LookupFunction.
-    bool FunctionIsVisibleHere(const FuncDecl &decl) const {
-        const std::string &modulePath = ModulePathOf(decl);
-        if (modulePath.empty() || modulePath == declModulePath) {
-            return true;
-        }
-        const auto it = fileImports.find(currentFile);
-        if (it == fileImports.end()) {
-            return false;
-        }
-        return std::ranges::find(it->second, modulePath) != it->second.end();
-    }
-
-    const FuncDecl *LookupFunction(const std::string &name, const std::vector<TypeRef> &argTypes,
-                                   const std::vector<TypeExprPtr> &typeArgs = {}) {
-        const auto it = functionsByName.find(name);
-        if (it == functionsByName.end() || it->second.empty()) {
-            return nullptr;
-        }
-        // An imported or same-module function always wins over one that merely
-        // shares its name from somewhere else in the program. Only if none of
-        // them fits do we consider the rest, which keeps existing code that
-        // relies on the flat lookup working.
-        std::vector<const FuncDecl *> visible;
-        for (const auto *decl : it->second) {
-            if (FunctionIsVisibleHere(*decl)) {
-                visible.push_back(decl);
-            }
-        }
-        if (!visible.empty() && visible.size() < it->second.size()) {
-            if (const FuncDecl *decl = ResolveOverload(visible, argTypes, typeArgs)) {
-                return decl;
-            }
-        }
-        return ResolveOverload(it->second, argTypes, typeArgs);
-    }
-
-    const FuncDecl *ResolveOverload(const std::vector<const FuncDecl *> &candidates,
-                                    const std::vector<TypeRef> &argTypes, const std::vector<TypeExprPtr> &typeArgs) {
-        if (candidates.size() == 1) {
-            // Single-candidate validation. We must still verify arity and
-            // assignability to prevent bogus calls from silently bypassing
-            // the type-checker.
-            const auto *decl = candidates[0];
-            std::unordered_map<std::string, TypeRef> substitutions;
-            const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
-            for (std::size_t i = 0; i < count; ++i) {
-                substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
-            }
-            TypeRef ft = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
-            if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) {
-                return decl;
-            }
-            const std::size_t paramCount = ft.inner.size() - 1;
-            const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-            std::size_t requiredCount = 0;
-            for (const auto &p : decl->params) {
-                if (!p.isVariadic && !p.defaultValue) {
-                    ++requiredCount;
-                }
-            }
-            const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
-                                            : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-            if (!arityOk) {
-                return nullptr;
-            }
-            for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                if (argTypes[i].IsUnknown() || ft.inner[i].IsUnknown()) {
-                    continue;
-                }
-                if (!argTypes[i].IsAssignableTo(ft.inner[i]) && !(argTypes[i].IsInteger() && ft.inner[i].IsInteger())) {
-                    return nullptr;
-                }
-            }
-            return decl;
-        }
-        for (const bool allowVariadic : {false, true}) {
-            for (const bool exactOnly : {true, false}) {
-                for (const auto *decl : candidates) {
-                    std::unordered_map<std::string, TypeRef> substitutions;
-                    const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
-                    for (std::size_t i = 0; i < count; ++i) {
-                        substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
-                    }
-                    TypeRef ft =
-                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
-                    if (ft.kind != TypeRef::Kind::Func || ft.inner.empty()) {
-                        continue;
-                    }
-                    const std::size_t paramCount = ft.inner.size() - 1;
-                    const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                    if (isVariadic != allowVariadic) {
-                        continue;
-                    }
-                    std::size_t requiredCount = 0;
-                    for (const auto &p : decl->params) {
-                        if (!p.isVariadic && !p.defaultValue) {
-                            ++requiredCount;
-                        }
-                    }
-                    const bool arityOk = isVariadic
-                                           ? argTypes.size() >= requiredCount
-                                           : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
-                    if (!arityOk) {
-                        continue;
-                    }
-                    bool match = true;
-                    for (std::size_t i = 0; i < std::min(argTypes.size(), paramCount); ++i) {
-                        const TypeRef &paramType = ft.inner[i];
-                        if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
-                            continue;
-                        }
-                        if (exactOnly ? !(argTypes[i] == paramType)
-                                      : !(argTypes[i].IsAssignableTo(paramType) ||
-                                          (argTypes[i].IsInteger() && paramType.IsInteger()))) {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match) {
-                        return decl;
-                    }
-                }
-            }
-        }
-        return nullptr;
+    const std::string &FunctionCalleeName(const FuncDecl &decl) const {
+        return RequireSemanticFact(model.TryGetSymbolIdentity(decl)).linkerName;
     }
 
     const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName, const std::string &variantName) const {
@@ -1749,54 +1546,6 @@ private:
             }
         }
         return nullptr;
-    }
-
-    int InterfaceMethodIndex(const std::string &ifaceName, const std::string &methodName) const {
-        auto it = interfaceDecls.find(ifaceName);
-        if (it == interfaceDecls.end()) {
-            return -1;
-        }
-        const auto &methods = it->second->methods;
-        for (int i = 0; i < static_cast<int>(methods.size()); ++i) {
-            if (methods[i]->name == methodName) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    TypeRef InterfaceMethodReturnType(const std::string &ifaceName, const std::string &methodName) {
-        auto it = interfaceDecls.find(ifaceName);
-        if (it == interfaceDecls.end()) {
-            return TypeRef::MakeUnknown();
-        }
-        for (const auto &m : it->second->methods) {
-            if (m->name == methodName) {
-                return m->returnType ? ResolveType(**m->returnType) : TypeRef::MakeOpaque();
-            }
-        }
-        return TypeRef::MakeUnknown();
-    }
-
-    std::vector<TypeRef> InterfaceMethodParamTypes(const std::string &ifaceName, const std::string &methodName) {
-        std::vector<TypeRef> params;
-        auto it = interfaceDecls.find(ifaceName);
-        if (it == interfaceDecls.end()) {
-            return params;
-        }
-        for (const auto &m : it->second->methods) {
-            if (m->name != methodName) {
-                continue;
-            }
-            for (const auto &param : m->params) {
-                if (param.isVariadic) {
-                    continue;
-                }
-                params.push_back(ResolveType(*param.type));
-            }
-            return params;
-        }
-        return params;
     }
 
     std::optional<TypeRef> InterfaceImplementationType(const TypeRef &exprType, const TypeRef &targetType) const {
@@ -3103,6 +2852,240 @@ private:
         return TypeRef::MakeUnknown();
     }
 
+    [[nodiscard]] ResolvedCallableBinding ResolvedCall(const CallExpr &call) const {
+        return RequireSemanticFact(model.TryGetCallableBinding(call)).Instantiate(currentSubstitutions);
+    }
+
+    [[nodiscard]] const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) const {
+        const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
+        assert(function != nullptr && "call binding does not select a function declaration");
+        if (!function) {
+            std::abort();
+        }
+        return *function;
+    }
+
+    std::vector<HirExprPtr> LowerBoundArguments(const CallExpr &call, const FuncDecl &declaration,
+                                                const ResolvedCallableBinding &binding, const TypeRef &functionType,
+                                                const bool hasReceiver) {
+        std::vector<const Param *> parameters;
+        parameters.reserve(declaration.params.size());
+        for (const auto &parameter : declaration.params) {
+            if (!hasReceiver || parameter.name != "self") {
+                parameters.push_back(&parameter);
+            }
+        }
+
+        const std::size_t typeOffset = hasReceiver ? 1 : 0;
+        const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
+        std::vector<HirExprPtr> arguments;
+        arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
+        for (std::size_t i = 0; i < std::min(call.args.size(), fixedCount); ++i) {
+            const std::size_t typeIndex = typeOffset + i;
+            arguments.push_back(typeIndex + 1 < functionType.inner.size()
+                                    ? LowerExprAs(*call.args[i], functionType.inner[typeIndex])
+                                    : LowerExpr(*call.args[i]));
+        }
+        for (std::size_t i = arguments.size(); i < fixedCount; ++i) {
+            assert(i < parameters.size() && parameters[i]->defaultValue &&
+                   "accepted call is missing a recorded default argument");
+            const std::size_t typeIndex = typeOffset + i;
+            const TypeRef parameterType =
+                typeIndex + 1 < functionType.inner.size() ? functionType.inner[typeIndex] : TypeRef::MakeUnknown();
+            arguments.push_back(LowerDefaultArg(**parameters[i]->defaultValue, parameterType, call.location));
+        }
+
+        if (!binding.variadicBoundary) {
+            return arguments;
+        }
+
+        assert(fixedCount < parameters.size() && parameters[fixedCount]->isVariadic &&
+               "Rux variadic binding has no variadic parameter");
+        const TypeRef elementType = ResolveTypeWithSubstitution(*parameters[fixedCount]->type, binding.substitutions);
+        const bool singleSpread = call.args.size() == fixedCount + 1 &&
+                                  dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
+        if (singleSpread) {
+            HirExprPtr slice = LowerExpr(*call.args[fixedCount]);
+            slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+            arguments.push_back(std::move(slice));
+            return arguments;
+        }
+
+        auto slice = std::make_unique<HirArrayExpr>();
+        slice->location = call.location;
+        slice->elementType = elementType;
+        slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+        for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
+            slice->elements.push_back(LowerExprAs(*call.args[i], elementType));
+        }
+        arguments.push_back(std::move(slice));
+        return arguments;
+    }
+
+    void EnsureBoundFunctionInstance(const FuncDecl &declaration, const ResolvedCallableBinding &binding) {
+        if (declaration.typeParams.empty()) {
+            return;
+        }
+        assert(!binding.linkerName.empty() && "generic call binding is missing its linker name");
+        if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
+            monomorphizedFuncs.push_back(LowerFunc(declaration, false, binding.substitutions, binding.linkerName));
+        }
+    }
+
+    void EnsureBoundMethodInstance(const FuncDecl &method, const ResolvedCallableBinding &binding) {
+        if (binding.substitutions.empty() || MethodIsFromConcreteImpl(method)) {
+            return;
+        }
+        assert(binding.receiverType && !binding.linkerName.empty() &&
+               "generic method binding is missing its receiver or linker name");
+        if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
+            const TypeRef savedSelfType = currentSelfType;
+            currentSelfType = binding.receiverType->kind == TypeRef::Kind::Pointer
+                                ? *binding.receiverType
+                                : TypeRef::MakePointer(*binding.receiverType);
+            monomorphizedFuncs.push_back(LowerFunc(method, true, binding.substitutions, binding.linkerName));
+            currentSelfType = savedSelfType;
+        }
+    }
+
+    HirExprPtr LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+        if (const auto *external = dynamic_cast<const ExternFuncDecl *>(binding.selectedDeclaration)) {
+            TypeRef functionType = MakeFuncType(external->params, external->returnType);
+            functionType.isVariadic = external->isVariadic;
+            auto lowered = std::make_unique<HirCallExpr>();
+            lowered->location = call.location;
+            lowered->isNoReturn = external->isNoReturn;
+            lowered->type = functionType.inner.back();
+            auto callee = std::make_unique<HirVarExpr>();
+            callee->location = call.callee->location;
+            // HIR-to-LIR owns the source-name to imported-symbol mapping.
+            callee->name = external->name;
+            callee->type = functionType;
+            lowered->callee = std::move(callee);
+            for (std::size_t i = 0; i < call.args.size(); ++i) {
+                lowered->args.push_back(i < external->params.size() ? LowerExprAs(*call.args[i], functionType.inner[i])
+                                                                    : LowerExpr(*call.args[i]));
+            }
+            return lowered;
+        }
+
+        const FuncDecl &function = SelectedFunction(binding);
+        const TypeRef functionType = MakeFuncTypeWithSubstitution(function.params, function.returnType,
+                                                                  binding.substitutions, function.typeParams);
+        auto lowered = std::make_unique<HirCallExpr>();
+        lowered->location = call.location;
+        lowered->isNoReturn = function.isNoReturn;
+        lowered->type = functionType.inner.back();
+        auto callee = std::make_unique<HirVarExpr>();
+        callee->location = call.callee->location;
+        callee->name = binding.linkerName;
+        callee->type = functionType;
+        lowered->callee = std::move(callee);
+        lowered->args = LowerBoundArguments(call, function, binding, functionType, false);
+        EnsureBoundFunctionInstance(function, binding);
+        return lowered;
+    }
+
+    HirExprPtr LowerBoundMethodCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+        const FuncDecl &method = SelectedFunction(binding);
+        assert(binding.receiverType && !binding.linkerName.empty() &&
+               "method call binding is missing its receiver or linker name");
+        EnsureBoundMethodInstance(method, binding);
+
+        auto lowered = std::make_unique<HirCallExpr>();
+        lowered->location = call.location;
+        lowered->isNoReturn = method.isNoReturn;
+        auto callee = std::make_unique<HirVarExpr>();
+        callee->location = call.callee->location;
+        callee->name = binding.linkerName;
+
+        if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
+            HirExprPtr receiver = LowerExpr(*field->object);
+            HirExprPtr self;
+            if (receiver->type.kind == TypeRef::Kind::Pointer) {
+                self = std::move(receiver);
+            }
+            else {
+                auto address = std::make_unique<HirUnaryExpr>();
+                address->location = receiver->location;
+                address->op = TokenKind::At;
+                address->type = TypeRef::MakePointer(receiver->type);
+                address->operand = std::move(receiver);
+                self = std::move(address);
+            }
+            callee->type = MethodType(self->type, method);
+            lowered->args.push_back(std::move(self));
+            std::vector<HirExprPtr> arguments = LowerBoundArguments(call, method, binding, callee->type, true);
+            for (auto &argument : arguments) {
+                lowered->args.push_back(std::move(argument));
+            }
+        }
+        else {
+            assert(dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr &&
+                   "method binding has neither a receiver nor an associated path");
+            callee->type = AssociatedFunctionType(*binding.receiverType, method);
+            lowered->args = LowerBoundArguments(call, method, binding, callee->type, false);
+        }
+        lowered->type = callee->type.inner.back();
+        lowered->callee = std::move(callee);
+        return lowered;
+    }
+
+    HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+        const FuncDecl &method = SelectedFunction(binding);
+        const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
+        assert(field && binding.receiverType && "interface binding is missing its receiver");
+        const std::string interfaceName = BaseTypeName(binding.receiverType->name);
+        const auto interface = interfaceDecls.find(interfaceName);
+        assert(interface != interfaceDecls.end() && "interface binding names an unknown interface");
+        const auto methodIt = std::ranges::find_if(interface->second->methods,
+                                                   [&](const auto &candidate) { return candidate.get() == &method; });
+        assert(methodIt != interface->second->methods.end() && "bound interface method has no vtable slot");
+
+        const TypeRef functionType =
+            MakeFuncTypeWithSubstitution(method.params, method.returnType, binding.substitutions, method.typeParams);
+        auto lowered = std::make_unique<HirInterfaceCallExpr>();
+        lowered->location = call.location;
+        lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
+        lowered->type = functionType.inner.back();
+        lowered->fatPtrExpr = LowerExpr(*field->object);
+        lowered->args = LowerBoundArguments(call, method, binding, functionType, false);
+        return lowered;
+    }
+
+    HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+        auto lowered = std::make_unique<HirCallExpr>();
+        lowered->location = call.location;
+        lowered->callee = LowerExpr(*call.callee);
+        lowered->type = lowered->callee->type.inner.back();
+        const std::size_t fixedCount = binding.variadicBoundary.value_or(call.args.size());
+        for (std::size_t i = 0; i < call.args.size(); ++i) {
+            lowered->args.push_back(i < fixedCount && i + 1 < lowered->callee->type.inner.size()
+                                        ? LowerExprAs(*call.args[i], lowered->callee->type.inner[i])
+                                        : LowerExpr(*call.args[i]));
+        }
+        return lowered;
+    }
+
+    HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+        const auto *declaration = dynamic_cast<const EnumDecl *>(binding.selectedDeclaration);
+        assert(declaration && binding.selectedVariant && "enum constructor binding is incomplete");
+        std::vector<TypeRef> typeArguments;
+        typeArguments.reserve(declaration->typeParams.size());
+        for (const auto &parameter : declaration->typeParams) {
+            typeArguments.push_back(binding.substitutions.at(parameter));
+        }
+        const TypeRef constructor = EnumVariantConstructorType(*declaration, *binding.selectedVariant, typeArguments);
+        auto lowered = std::make_unique<HirEnumConstructExpr>();
+        lowered->location = call.location;
+        lowered->type = constructor.inner.back();
+        for (std::size_t i = 0; i < call.args.size(); ++i) {
+            lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
+        }
+        lowered->discriminant = LookupEnumVariantDiscriminant(declaration->name, binding.selectedVariant->name).value();
+        return lowered;
+    }
+
     HirExprPtr LowerExpr(const Expr &expr) {
         if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
             auto he = std::make_unique<HirLiteralExpr>();
@@ -3489,372 +3472,21 @@ private:
                 return he;
             }
 
-            if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && path->segments.size() == 2) {
-                const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
-                if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
-                    const EnumDecl &decl = *enumDecls.at(path->segments[0]);
-                    std::vector<TypeRef> typeArgs;
-                    typeArgs.reserve(e->typeArgs.size());
-                    for (const auto &typeArg : e->typeArgs) {
-                        typeArgs.push_back(ResolveType(*typeArg));
-                    }
-                    const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
-                    const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
-                    if (e->args.size() == paramCount) {
-                        auto he = std::make_unique<HirEnumConstructExpr>();
-                        he->location = e->location;
-                        he->type = constructor.inner.back();
-                        for (std::size_t i = 0; i < e->args.size(); ++i) {
-                            he->payloads.push_back(LowerExprAs(*e->args[i], constructor.inner[i]));
-                        }
-                        he->discriminant =
-                            LookupEnumVariantDiscriminant(path->segments[0], path->segments[1]).value_or("0");
-                        return he;
-                    }
-
-                    auto he = std::make_unique<HirLiteralExpr>();
-                    he->location = e->location;
-                    he->type = EnumType(decl, typeArgs);
-                    he->value = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1]).value_or("0");
-                    return he;
-                }
+            const ResolvedCallableBinding binding = ResolvedCall(*e);
+            using Dispatch = ResolvedCallableBinding::DispatchKind;
+            switch (binding.dispatch) {
+            case Dispatch::Direct:
+                return LowerBoundDirectCall(*e, binding);
+            case Dispatch::Method:
+                return LowerBoundMethodCall(*e, binding);
+            case Dispatch::Interface:
+                return LowerBoundInterfaceCall(*e, binding);
+            case Dispatch::Indirect:
+                return LowerBoundIndirectCall(*e, binding);
+            case Dispatch::EnumVariant:
+                return LowerBoundEnumCall(*e, binding);
             }
-
-            if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && path->segments.size() == 2) {
-                HirSymbol *first = currentScope->Lookup(path->segments[0]);
-                if (first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface) &&
-                    !LookupEnumVariant(path->segments[0], path->segments[1])) {
-                    TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
-                    receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
-                    std::vector<HirExprPtr> args;
-                    std::vector<TypeRef> argTypes;
-                    args.reserve(e->args.size());
-                    argTypes.reserve(e->args.size());
-                    for (const auto &arg : e->args) {
-                        auto lowered = LowerExpr(*arg);
-                        argTypes.push_back(lowered->type);
-                        args.push_back(std::move(lowered));
-                    }
-                    if (const FuncDecl *method = LookupMethod(receiverType, path->segments[1], argTypes)) {
-                        TypeRef funcType = AssociatedFunctionType(receiverType, *method);
-                        auto callee = std::make_unique<HirVarExpr>();
-                        callee->location = path->location;
-                        callee->name = ConcreteMethodCalleeName(path->segments[0], receiverType, *method,
-                                                                RecordedCallLinkerName(*e));
-                        callee->type = funcType;
-                        auto he = std::make_unique<HirCallExpr>();
-                        he->location = e->location;
-                        he->isNoReturn = method->isNoReturn;
-                        he->callee = std::move(callee);
-                        for (std::size_t i = 0; i < args.size(); ++i) {
-                            if (i + 1 < funcType.inner.size()) {
-                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
-                            }
-                            he->args.push_back(std::move(args[i]));
-                        }
-                        he->type = funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
-                        return he;
-                    }
-                }
-            }
-
-            if (auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && path->segments.size() >= 2) {
-                std::vector<HirExprPtr> args;
-                std::vector<TypeRef> argTypes;
-                args.reserve(e->args.size());
-                argTypes.reserve(e->args.size());
-                for (const auto &arg : e->args) {
-                    auto lowered = LowerExpr(*arg);
-                    argTypes.push_back(lowered->type);
-                    args.push_back(std::move(lowered));
-                }
-                const std::string &funcName = path->segments.back();
-                HirSymbol *sym = currentScope->Lookup(funcName);
-                if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    if (const FuncDecl *decl = LookupFunction(funcName, argTypes, e->typeArgs)) {
-                        std::unordered_map<std::string, TypeRef> substitutions;
-                        const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
-                        for (std::size_t i = 0; i < count; ++i) {
-                            substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
-                        }
-                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
-                                                                        decl->typeParams);
-                        if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
-                            const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                            const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
-                            for (std::size_t i = 0; i < std::min(e->args.size(), fixedCount); ++i) {
-                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
-                            }
-                            for (std::size_t i = args.size(); i < fixedCount; ++i) {
-                                if (decl->params[i].defaultValue) {
-                                    TypeRef pt =
-                                        (i + 1 < funcType.inner.size()) ? funcType.inner[i] : TypeRef::MakeUnknown();
-                                    args.push_back(LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
-                                }
-                            }
-                            if (isVariadic) {
-                                TypeRef varElemType = ResolveType(*decl->params.back().type);
-                                const bool isSingleSpread =
-                                    (e->args.size() == fixedCount + 1 &&
-                                     dynamic_cast<const SpreadExpr *>(e->args[fixedCount].get()));
-                                if (isSingleSpread) {
-                                    HirExprPtr sliceArg = std::move(args[fixedCount]);
-                                    sliceArg->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    args.resize(fixedCount);
-                                    args.push_back(std::move(sliceArg));
-                                }
-                                else {
-                                    auto slice = std::make_unique<HirArrayExpr>();
-                                    slice->location = e->location;
-                                    slice->elementType = varElemType;
-                                    slice->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    for (std::size_t i = fixedCount; i < e->args.size(); ++i) {
-                                        slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
-                                    }
-                                    args.resize(fixedCount);
-                                    args.push_back(std::move(slice));
-                                }
-                            }
-
-                            auto callee = std::make_unique<HirVarExpr>();
-                            callee->location = path->location;
-                            if (!decl->typeParams.empty()) {
-                                const std::string specializedName(RecordedCallLinkerName(*e));
-                                assert(!specializedName.empty() &&
-                                       "generic call is missing its semantic symbol identity");
-                                if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
-                                    monomorphizedFuncs.push_back(
-                                        LowerFunc(*decl, false, substitutions, specializedName));
-                                }
-                                callee->name = specializedName;
-                            }
-                            else {
-                                callee->name = FunctionCalleeName(*decl);
-                            }
-                            callee->type = funcType;
-
-                            auto he = std::make_unique<HirCallExpr>();
-                            he->location = e->location;
-                            he->isNoReturn = decl->isNoReturn;
-                            he->type = funcType.inner.back();
-                            he->callee = std::move(callee);
-                            for (std::size_t i = 0; i < args.size(); ++i) {
-                                if (i < e->args.size() && i + 1 < funcType.inner.size() &&
-                                    UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i])) {
-                                    args[i]->type = funcType.inner[i];
-                                }
-                                he->args.push_back(std::move(args[i]));
-                            }
-                            return he;
-                        }
-                    }
-                }
-            }
-
-            if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
-                std::vector<HirExprPtr> args;
-                std::vector<TypeRef> argTypes;
-                args.reserve(e->args.size());
-                argTypes.reserve(e->args.size());
-                for (const auto &arg : e->args) {
-                    auto lowered = LowerExpr(*arg);
-                    argTypes.push_back(lowered->type);
-                    args.push_back(std::move(lowered));
-                }
-                HirSymbol *sym = currentScope->Lookup(ident->name);
-                if (sym && sym->kind == HirSymbol::Kind::Func && !sym->funcOverloads.empty()) {
-                    if (const FuncDecl *decl = LookupFunction(ident->name, argTypes, e->typeArgs)) {
-                        std::unordered_map<std::string, TypeRef> substitutions;
-                        const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
-                        for (std::size_t i = 0; i < count; ++i) {
-                            substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
-                        }
-                        TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
-                                                                        decl->typeParams);
-                        if (funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty()) {
-                            const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
-                            const std::size_t fixedCount = decl->params.size() - (isVariadic ? 1 : 0);
-                            for (std::size_t i = 0; i < std::min(e->args.size(), fixedCount); ++i) {
-                                args[i] = LowerExprAs(*e->args[i], funcType.inner[i]);
-                            }
-                            // Inject default arguments for omitted fixed
-                            // parameters
-                            for (std::size_t i = args.size(); i < fixedCount; ++i) {
-                                if (decl->params[i].defaultValue) {
-                                    TypeRef pt =
-                                        (i + 1 < funcType.inner.size()) ? funcType.inner[i] : TypeRef::MakeUnknown();
-                                    args.push_back(LowerDefaultArg(**decl->params[i].defaultValue, pt, e->location));
-                                }
-                            }
-                            if (isVariadic) {
-                                TypeRef varElemType = ResolveType(*decl->params.back().type);
-                                const bool isSingleSpread =
-                                    (e->args.size() == fixedCount + 1 &&
-                                     dynamic_cast<const SpreadExpr *>(e->args[fixedCount].get()));
-                                if (isSingleSpread) {
-                                    // Pass the already-lowered slice
-                                    // through directly
-                                    HirExprPtr sliceArg = std::move(args[fixedCount]);
-                                    sliceArg->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    args.resize(fixedCount);
-                                    args.push_back(std::move(sliceArg));
-                                }
-                                else {
-                                    auto slice = std::make_unique<HirArrayExpr>();
-                                    slice->location = e->location;
-                                    slice->elementType = varElemType;
-                                    slice->type = TypeRef::MakeNamed(SliceTypeName(varElemType));
-                                    for (std::size_t i = fixedCount; i < e->args.size(); ++i) {
-                                        slice->elements.push_back(LowerExprAs(*e->args[i], varElemType));
-                                    }
-                                    args.resize(fixedCount);
-                                    args.push_back(std::move(slice));
-                                }
-                            }
-
-                            auto callee = std::make_unique<HirVarExpr>();
-                            callee->location = ident->location;
-                            if (!decl->typeParams.empty()) {
-                                const std::string specializedName(RecordedCallLinkerName(*e));
-                                assert(!specializedName.empty() &&
-                                       "generic call is missing its semantic symbol identity");
-                                if (generatedMonomorphizedFuncNames.insert(specializedName).second) {
-                                    monomorphizedFuncs.push_back(
-                                        LowerFunc(*decl, false, substitutions, specializedName));
-                                }
-                                callee->name = specializedName;
-                            }
-                            else {
-                                callee->name = FunctionCalleeName(*decl);
-                            }
-                            callee->type = funcType;
-
-                            auto he = std::make_unique<HirCallExpr>();
-                            he->location = e->location;
-                            he->isNoReturn = decl->isNoReturn;
-                            he->type = funcType.inner.back();
-                            he->callee = std::move(callee);
-                            for (std::size_t i = 0; i < args.size(); ++i) {
-                                if (i < e->args.size() && i + 1 < funcType.inner.size() &&
-                                    UnsuffixedIntegerLiteralFits(*e->args[i], funcType.inner[i])) {
-                                    args[i]->type = funcType.inner[i];
-                                }
-                                he->args.push_back(std::move(args[i]));
-                            }
-                            return he;
-                        }
-                    }
-                }
-            }
-
-            auto he = std::make_unique<HirCallExpr>();
-            he->location = e->location;
-            if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
-                HirExprPtr receiver = LowerExpr(*field->object);
-                const std::string receiverBase = NamedBaseTypeName(receiver->type);
-                // Pre-lower args when we have overloads so we can pick the
-                // right one.
-                std::vector<HirExprPtr> preArgs;
-                std::vector<TypeRef> argTypes;
-                if (MethodIsOverloaded(receiverBase, field->field)) {
-                    for (const auto &arg : e->args) {
-                        preArgs.push_back(LowerExpr(*arg));
-                        argTypes.push_back(preArgs.back()->type);
-                    }
-                }
-                if (const FuncDecl *method = LookupMethod(receiver->type, field->field, argTypes)) {
-                    he->isNoReturn = method->isNoReturn;
-                    HirExprPtr selfArg;
-                    if (receiver->type.kind == TypeRef::Kind::Pointer) {
-                        selfArg = std::move(receiver);
-                    }
-                    else {
-                        auto addr = std::make_unique<HirUnaryExpr>();
-                        addr->location = receiver->location;
-                        addr->op = TokenKind::At;
-                        addr->type = TypeRef::MakePointer(receiver->type);
-                        addr->operand = std::move(receiver);
-                        selfArg = std::move(addr);
-                    }
-                    auto callee = std::make_unique<HirVarExpr>();
-                    callee->location = field->location;
-                    callee->name =
-                        ConcreteMethodCalleeName(receiverBase, selfArg->type, *method, RecordedCallLinkerName(*e));
-                    callee->type = MethodType(selfArg->type, *method);
-                    he->callee = std::move(callee);
-                    he->args.push_back(std::move(selfArg));
-                    if (!preArgs.empty()) {
-                        for (std::size_t i = 0; i < preArgs.size(); ++i) {
-                            if (i + 1 < he->callee->type.inner.size()) {
-                                const TypeRef &expectedType = he->callee->type.inner[i + 1];
-                                preArgs[i] = LowerExprAs(*e->args[i], expectedType);
-                            }
-                            he->args.push_back(std::move(preArgs[i]));
-                        }
-                    }
-                    else {
-                        for (std::size_t i = 0; i < e->args.size(); ++i) {
-                            he->args.push_back(i + 1 < he->callee->type.inner.size()
-                                                   ? LowerExprAs(*e->args[i], he->callee->type.inner[i + 1])
-                                                   : LowerExpr(*e->args[i]));
-                        }
-                    }
-                    he->type = he->callee->type.inner.back();
-                    return he;
-                }
-                // Interface dispatch: receiver type is a known interface
-                if (receiver && receiver->type.kind == TypeRef::Kind::Named) {
-                    const std::string receiverName = BaseTypeName(receiver->type.name);
-                    if (HirSymbol *sym = currentScope->Lookup(receiverName);
-                        sym && sym->kind == HirSymbol::Kind::Interface) {
-                        const int idx = InterfaceMethodIndex(receiverName, field->field);
-                        if (idx >= 0) {
-                            auto ic = std::make_unique<HirInterfaceCallExpr>();
-                            ic->location = e->location;
-                            ic->methodIdx = idx;
-                            ic->type = InterfaceMethodReturnType(receiverName, field->field);
-                            ic->fatPtrExpr = std::move(receiver);
-                            if (!preArgs.empty()) {
-                                for (auto &a : preArgs) {
-                                    ic->args.push_back(std::move(a));
-                                }
-                            }
-                            else {
-                                const std::vector<TypeRef> paramTypes =
-                                    InterfaceMethodParamTypes(receiverName, field->field);
-                                for (std::size_t i = 0; i < e->args.size(); ++i) {
-                                    ic->args.push_back(i < paramTypes.size() ? LowerExprAs(*e->args[i], paramTypes[i])
-                                                                             : LowerExpr(*e->args[i]));
-                                }
-                            }
-                            return ic;
-                        }
-                    }
-                }
-            }
-
-            he->callee = LowerExpr(*e->callee);
-            if (const auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
-                if (const HirSymbol *symbol = currentScope->Lookup(ident->name)) {
-                    he->isNoReturn = symbol->isNoReturn;
-                }
-            }
-            else if (const auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); !path->segments.empty()) {
-                if (const HirSymbol *symbol = currentScope->Lookup(path->segments.back())) {
-                    he->isNoReturn = symbol->isNoReturn;
-                }
-            }
-            const bool hasParamTypes =
-                he->callee->type.kind == TypeRef::Kind::Func && he->callee->type.inner.size() == e->args.size() + 1;
-            for (std::size_t i = 0; i < e->args.size(); ++i) {
-                he->args.push_back(hasParamTypes ? LowerExprAs(*e->args[i], he->callee->type.inner[i])
-                                                 : LowerExpr(*e->args[i]));
-            }
-            // Propagate return type if callee is a known func type
-            if (he->callee->type.kind == TypeRef::Kind::Func && !he->callee->type.inner.empty()) {
-                he->type = he->callee->type.inner.back();
-            }
-            return he;
+            std::abort();
         }
         if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
             auto he = std::make_unique<HirIndexExpr>();

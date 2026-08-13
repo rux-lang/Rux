@@ -54,6 +54,19 @@ struct ResolvedCallableBinding {
     // Final linker-visible name for direct calls. Interface and indirect
     // dispatch do not have one statically selected target.
     std::string linkerName;
+    // A semantic identity recipe for calls inside generic declarations. The
+    // recorded linkerName is the identity in the declaration's symbolic
+    // context; lowering supplies the concrete substitutions of each emitted
+    // instance without recreating overload or mangling rules.
+    std::string linkerNameBase;
+    bool linkerNameHasOverloadSignature = false;
+    std::vector<TypeRef> linkerOverloadTypes;
+    std::vector<std::string> linkerSpecializationParameters;
+
+    [[nodiscard]] std::string
+    LinkerNameFor(const std::unordered_map<std::string, TypeRef> &concreteSubstitutions) const;
+    [[nodiscard]] ResolvedCallableBinding
+    Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const;
 };
 
 // Final linker-visible identity of a declaration that emits or imports a

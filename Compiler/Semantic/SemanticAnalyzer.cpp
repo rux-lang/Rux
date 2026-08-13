@@ -4091,6 +4091,28 @@ private:
         return name;
     }
 
+    void RecordMethodIdentityRecipe(ResolvedCallableBinding &binding, const FuncDecl &method) const {
+        assert(binding.receiverType && "method binding is missing its receiver type");
+        const std::string typeName = NamedBaseTypeName(*binding.receiverType);
+        binding.linkerNameBase = typeName + "::" + method.name;
+        binding.linkerNameHasOverloadSignature = MethodIsOverloadedForIdentity(typeName, method.name);
+        if (binding.linkerNameHasOverloadSignature) {
+            for (const auto &parameter : method.params) {
+                if (parameter.name != "self" && !parameter.isVariadic) {
+                    binding.linkerOverloadTypes.push_back(IdentityParameterType(parameter, binding.substitutions));
+                }
+            }
+        }
+
+        const auto implementation = methodImpls.find(&method);
+        if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
+            return;
+        }
+        if (const auto structure = structDecls.find(typeName); structure != structDecls.end()) {
+            binding.linkerSpecializationParameters = structure->second->typeParams;
+        }
+    }
+
     void BuildFinalSymbolIdentities() {
         std::unordered_map<std::string, std::unordered_set<std::string>> owners;
         for (const auto &[name, declarations] : functionsByName) {
@@ -4163,10 +4185,13 @@ private:
             const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
             if (function && binding.dispatch == ResolvedCallableBinding::DispatchKind::Method && binding.receiverType) {
                 binding.linkerName = MethodLinkerName(*function, *binding.receiverType, binding.substitutions);
+                RecordMethodIdentityRecipe(binding, *function);
                 continue;
             }
             if (function && !function->typeParams.empty()) {
                 binding.linkerName = function->name;
+                binding.linkerNameBase = function->name;
+                binding.linkerSpecializationParameters = function->typeParams;
                 for (const auto &parameter : function->typeParams) {
                     if (const auto substitution = binding.substitutions.find(parameter);
                         substitution != binding.substitutions.end()) {

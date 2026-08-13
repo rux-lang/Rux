@@ -284,6 +284,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
     std::unordered_map<const Expr *, TypeRef> expressionTypes{{sizeOf, TypeRef::MakeUInt64()}};
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes{{main->params[0].type.get(), TypeRef::MakeUInt16()},
                                                                 {sizeOf->type.get(), TypeRef::MakeInt32()}};
+    std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities{{main, {"Main"}}};
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts{{"int32", {4, 4}}};
     std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues{{sizeOf, 37}};
 
@@ -295,7 +296,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         std::move(typeNodeTypes),
                         {},
                         {},
-                        {},
+                        std::move(symbolIdentities),
                         {},
                         std::move(typeLayouts),
                         std::move(sizeOfValues)};
@@ -499,6 +500,44 @@ TEST_CASE("semantic model retains resolved callable bindings") {
     CHECK_EQ(external.importedSymbolOverride, "native_actual");
     REQUIRE(external.variadicBoundary.has_value());
     CHECK_EQ(*external.variadicBoundary, 1);
+
+    const HirPackage package = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(package.modules.size(), 1);
+    const auto loweredMain =
+        std::ranges::find_if(package.modules[0].funcs, [](const HirFunc &function) { return function.name == "Main"; });
+    REQUIRE(loweredMain != package.modules[0].funcs.end());
+    REQUIRE(loweredMain->body.has_value());
+
+    const auto loweredInitializerAt = [&](const std::size_t statementIndex) -> const HirExpr & {
+        const auto *statement = dynamic_cast<const HirLetStmt *>(loweredMain->body->stmts[statementIndex].get());
+        REQUIRE(statement != nullptr);
+        return *statement->init;
+    };
+    const auto loweredCalleeAt = [&](const std::size_t statementIndex) -> const HirVarExpr & {
+        const auto *call = dynamic_cast<const HirCallExpr *>(&loweredInitializerAt(statementIndex));
+        REQUIRE(call != nullptr);
+        const auto *callee = dynamic_cast<const HirVarExpr *>(call->callee.get());
+        REQUIRE(callee != nullptr);
+        return *callee;
+    };
+
+    CHECK_EQ(loweredCalleeAt(2).name, "Choose__int32");
+    CHECK_EQ(loweredCalleeAt(3).name, "Identity_int64");
+    CHECK_EQ(loweredCalleeAt(4).name, "Gather");
+    CHECK_EQ(loweredCalleeAt(5).name, "Number::Read");
+    CHECK_EQ(loweredCalleeAt(7).name, "Native");
+    const auto *interfaceDispatch = dynamic_cast<const HirInterfaceCallExpr *>(&loweredInitializerAt(6));
+    REQUIRE(interfaceDispatch != nullptr);
+    CHECK_EQ(interfaceDispatch->methodIdx, 0);
+
+    const auto *variadicCall = dynamic_cast<const HirCallExpr *>(&loweredInitializerAt(4));
+    REQUIRE(variadicCall != nullptr);
+    REQUIRE_EQ(variadicCall->args.size(), 2);
+    const auto *packedArguments = dynamic_cast<const HirArrayExpr *>(variadicCall->args[1].get());
+    REQUIRE(packedArguments != nullptr);
+    CHECK_EQ(packedArguments->elements.size(), 2);
+    CHECK(std::ranges::any_of(package.modules[0].funcs,
+                              [](const HirFunc &function) { return function.name == "Identity_int64"; }));
 }
 
 TEST_CASE("semantic model omits bindings for rejected calls") {
@@ -635,8 +674,96 @@ TEST_CASE("semantic model records final linker symbol identities") {
     CHECK_EQ(callAt(4).linkerName, "Box::Get_int64");
     CHECK_EQ(callAt(5).linkerName, "native_actual");
 
+    const HirPackage package = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(package.modules.size(), 1);
+    const auto hasFunction = [&](const std::string_view name) {
+        return std::ranges::any_of(package.modules[0].funcs,
+                                   [&](const HirFunc &function) { return function.name == name; });
+    };
+    CHECK(hasFunction("Alpha::Hidden"));
+    CHECK(hasFunction("Pick__int32"));
+    CHECK(hasFunction("Pick__bool8"));
+    CHECK(hasFunction("Beta::Hidden"));
+    CHECK(hasFunction("Box::Get_int64"));
+
+    const auto loweredMain =
+        std::ranges::find_if(package.modules[0].funcs, [](const HirFunc &function) { return function.name == "Main"; });
+    REQUIRE(loweredMain != package.modules[0].funcs.end());
+    REQUIRE(loweredMain->body.has_value());
+    const auto calleeAt = [&](const std::size_t statementIndex) -> const HirVarExpr & {
+        const auto *statement = dynamic_cast<const HirLetStmt *>(loweredMain->body->stmts[statementIndex].get());
+        REQUIRE(statement != nullptr);
+        const auto *call = dynamic_cast<const HirCallExpr *>(statement->init.get());
+        REQUIRE(call != nullptr);
+        const auto *callee = dynamic_cast<const HirVarExpr *>(call->callee.get());
+        REQUIRE(callee != nullptr);
+        return *callee;
+    };
+    CHECK_EQ(calleeAt(2).name, "Identity_int64");
+    CHECK_EQ(calleeAt(3).name, "Number::Convert__int32");
+    CHECK_EQ(calleeAt(4).name, "Box::Get_int64");
+    CHECK_EQ(calleeAt(5).name, "Native");
+    REQUIRE_EQ(package.modules[0].externFuncs.size(), 1);
+    CHECK_EQ(package.modules[0].externFuncs[0].symbolName, "native_actual");
+
     FuncDecl nodeOutsideAnalyzedModules;
     CHECK(model.TryGetSymbolIdentity(nodeOutsideAnalyzedModules) == nullptr);
+}
+
+TEST_CASE("AST-to-HIR instantiates symbolic method bindings for each generic receiver") {
+    Lexer lexer(R"(
+        struct Box<T> { value: T; }
+        extend Box<T> {
+            func Read(self) -> T { return self.value; }
+            func Forward(self) { self.Read(); }
+        }
+
+        func Main() -> int64 {
+            let box = Box<int64> { value: 7i64 };
+            box.Forward();
+            return 0i64;
+        }
+    )",
+                "generic_binding.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "generic_binding.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "generic_binding", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *implementation = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    REQUIRE(implementation != nullptr);
+    REQUIRE_EQ(implementation->methods.size(), 2);
+    REQUIRE(implementation->methods[1]->body != nullptr);
+    const auto *statement = dynamic_cast<const ExprStmt *>(implementation->methods[1]->body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *symbolicCall = dynamic_cast<const CallExpr *>(statement->expr.get());
+    REQUIRE(symbolicCall != nullptr);
+    const ResolvedCallableBinding *symbolicBinding = model.TryGetCallableBinding(*symbolicCall);
+    REQUIRE(symbolicBinding != nullptr);
+    CHECK_EQ(symbolicBinding->linkerName, "Box::Read_T");
+    CHECK_EQ(symbolicBinding->linkerNameBase, "Box::Read");
+
+    const HirPackage package = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(package.modules.size(), 1);
+    const auto read = std::ranges::find_if(package.modules[0].funcs,
+                                           [](const HirFunc &function) { return function.name == "Box::Read_int64"; });
+    const auto forward = std::ranges::find_if(
+        package.modules[0].funcs, [](const HirFunc &function) { return function.name == "Box::Forward_int64"; });
+    REQUIRE(read != package.modules[0].funcs.end());
+    REQUIRE(forward != package.modules[0].funcs.end());
+    REQUIRE(forward->body.has_value());
+    const auto *loweredStatement = dynamic_cast<const HirExprStmt *>(forward->body->stmts[0].get());
+    REQUIRE(loweredStatement != nullptr);
+    const auto *loweredCall = dynamic_cast<const HirCallExpr *>(loweredStatement->expr.get());
+    REQUIRE(loweredCall != nullptr);
+    const auto *callee = dynamic_cast<const HirVarExpr *>(loweredCall->callee.get());
+    REQUIRE(callee != nullptr);
+    CHECK_EQ(callee->name, "Box::Read_int64");
 }
 
 TEST_CASE("let and var independently control binding and pointee mutability") {
@@ -1101,6 +1228,53 @@ TEST_CASE("importing a module's item through its full path resolves") {
     )");
 
     CHECK(diagnostics.empty());
+}
+
+TEST_CASE("AST-to-HIR uses the recorded binding for an imported function") {
+    Lexer dependencyLexer(R"(
+        module Foo {
+            func Bar() -> int { return 7; }
+        }
+    )",
+                          "dependency.rux");
+    auto dependencyTokens = dependencyLexer.Tokenize();
+    REQUIRE_FALSE(dependencyTokens.HasErrors());
+    Parser dependencyParser(std::move(dependencyTokens.tokens), "dependency.rux");
+    auto dependency = dependencyParser.Parse();
+    REQUIRE_FALSE(dependency.HasErrors());
+
+    Lexer userLexer(R"(
+        import Foo::Foo::Bar;
+        func Main() -> int { return Bar(); }
+    )",
+                    "main.rux");
+    auto userTokens = userLexer.Tokenize();
+    REQUIRE_FALSE(userTokens.HasErrors());
+    Parser userParser(std::move(userTokens.tokens), "main.rux");
+    auto user = userParser.Parse();
+    REQUIRE_FALSE(user.HasErrors());
+
+    DepPackage packageDependency;
+    packageDependency.name = "Foo";
+    packageDependency.modules.push_back({"Foo", &dependency.module});
+    SemanticAnalyzer analyzer({&user.module}, {std::move(packageDependency)}, "App", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const HirPackage package = AstToHirLowering(model).Generate();
+    const auto userModule =
+        std::ranges::find_if(package.modules, [](const HirModule &module) { return module.name == "main.rux"; });
+    REQUIRE(userModule != package.modules.end());
+    REQUIRE_EQ(userModule->funcs.size(), 1);
+    REQUIRE(userModule->funcs[0].body.has_value());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(userModule->funcs[0].body->stmts[0].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *call = dynamic_cast<const HirCallExpr *>(returned->value->get());
+    REQUIRE(call != nullptr);
+    const auto *callee = dynamic_cast<const HirVarExpr *>(call->callee.get());
+    REQUIRE(callee != nullptr);
+    CHECK_EQ(callee->name, "Bar");
 }
 
 TEST_CASE("all six range expressions type-check for collection slicing") {
