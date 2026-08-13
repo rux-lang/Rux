@@ -1,4 +1,5 @@
 #include "Lexer/Lexer.h"
+#include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
@@ -161,6 +162,33 @@ TEST_CASE("semantic model omits unresolved type facts") {
     CHECK(model.TryGetType(*binding->init) == nullptr);
 }
 
+TEST_CASE("semantic model retains implicit self parameter type facts") {
+    Lexer lexer(R"(
+        struct Number { value: int32; }
+        extend Number {
+            func Value(self) -> int32 { return self.value; }
+        }
+    )",
+                "self_type.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "self_type.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "self_type", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *implementation = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    REQUIRE(implementation != nullptr);
+    REQUIRE_EQ(implementation->methods.size(), 1);
+    REQUIRE_EQ(implementation->methods[0]->params.size(), 1);
+    const TypeRef *selfType = model.TryGetType(*implementation->methods[0]->params[0].type);
+    REQUIRE(selfType != nullptr);
+    CHECK_EQ(selfType->ToString(), "*Number");
+}
+
 TEST_CASE("semantic model retains validated compile-time layouts and folded sizeof values") {
     Lexer lexer(R"(
         struct Slice<T> { data: *T; length: uint; }
@@ -233,6 +261,59 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
 
     SizeOfExpr nodeOutsideAnalyzedModules;
     CHECK(model.TryGetSizeOfValue(nodeOutsideAnalyzedModules) == nullptr);
+}
+
+TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
+    Lexer lexer("func Main(value: int32) { let size = sizeof(int32); }", "lowering_facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "lowering_facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(main != nullptr);
+    REQUIRE_EQ(main->params.size(), 1);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 1);
+    const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
+    REQUIRE(binding != nullptr);
+    const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+    REQUIRE(sizeOf != nullptr);
+
+    std::unordered_map<const Expr *, TypeRef> expressionTypes{{sizeOf, TypeRef::MakeUInt64()}};
+    std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes{{main->params[0].type.get(), TypeRef::MakeUInt16()},
+                                                                {sizeOf->type.get(), TypeRef::MakeInt32()}};
+    std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts{{"int32", {4, 4}}};
+    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues{{sizeOf, 37}};
+
+    SemanticModel model{{},
+                        {},
+                        {&parsed.module},
+                        CompileTimeContext{},
+                        std::move(expressionTypes),
+                        std::move(typeNodeTypes),
+                        {},
+                        {},
+                        {},
+                        {},
+                        std::move(typeLayouts),
+                        std::move(sizeOfValues)};
+    const HirPackage package = AstToHirLowering(model).Generate();
+
+    REQUIRE_EQ(package.modules.size(), 1);
+    REQUIRE_EQ(package.modules[0].funcs.size(), 1);
+    const HirFunc &loweredMain = package.modules[0].funcs[0];
+    REQUIRE_EQ(loweredMain.params.size(), 1);
+    CHECK_EQ(loweredMain.params[0].type, TypeRef::MakeUInt16());
+    REQUIRE(loweredMain.body.has_value());
+    REQUIRE_EQ(loweredMain.body->stmts.size(), 1);
+    const auto *loweredBinding = dynamic_cast<const HirLetStmt *>(loweredMain.body->stmts[0].get());
+    REQUIRE(loweredBinding != nullptr);
+    const auto *literal = dynamic_cast<const HirLiteralExpr *>(loweredBinding->init.get());
+    REQUIRE(literal != nullptr);
+    CHECK_EQ(literal->type, TypeRef::MakeUInt64());
+    CHECK_EQ(literal->value, "37");
 }
 
 TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {

@@ -2818,6 +2818,7 @@ private:
         bool seenDefault = false;
         for (const auto &param : d.params) {
             if (param.name == "self") {
+                ResolveType(*param.type);
                 continue;
             }
             ValidateArrayType(*param.type);

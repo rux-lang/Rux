@@ -3,7 +3,6 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
-#include "Target/Layout.h"
 #include "Target/Platform.h"
 
 #include <algorithm>
@@ -12,6 +11,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
 #include <format>
@@ -23,8 +23,6 @@
 #include <unordered_set>
 
 namespace Rux {
-using Layout::AlignUp;
-
 static bool UtcTime(std::time_t time, std::tm &out) {
 #if RUX_OS_WINDOWS
     return gmtime_s(&out, &time) == 0;
@@ -240,6 +238,39 @@ private:
     // derived from the file name for the `#source.module` intrinsic.
     std::string collectModulePath;
     std::string declModulePath;
+
+    template <typename Fact>
+    [[nodiscard]] static const Fact &RequireSemanticFact(const Fact *fact) {
+        assert(fact != nullptr && "accepted AST node is missing a required semantic fact");
+        if (!fact) {
+            std::abort();
+        }
+        return *fact;
+    }
+
+    [[nodiscard]] const TypeRef &ResolvedType(const TypeExpr &type) const {
+        return RequireSemanticFact(model.TryGetType(type));
+    }
+
+    [[nodiscard]] const ResolvedTypeLayout &ResolvedLayout(const TypeRef &type) const {
+        return RequireSemanticFact(model.TryGetLayout(type));
+    }
+
+    [[nodiscard]] std::uint64_t ResolvedSizeOf(const SizeOfExpr &expression) {
+        if (const std::uint64_t *value = model.TryGetSizeOfValue(expression)) {
+            return *value;
+        }
+
+        const TypeRef type = ResolveTypeWithSubstitution(*expression.type, currentSubstitutions);
+        if (type.kind == TypeRef::Kind::TypeParam) {
+            // Generic templates are retained in HIR but never emitted. Keep
+            // their historical placeholder; each concrete instance below is
+            // required to have a validated semantic layout fact.
+            assert(currentSubstitutions.empty());
+            return 0;
+        }
+        return ResolvedLayout(type).size;
+    }
 
     // Scope management
     void PushScope() {
@@ -1190,100 +1221,8 @@ private:
     }
 
     TypeRef ResolveType(const TypeExpr &expr) {
-        if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-            if (t->typeArgs.empty()) {
-                if (auto it = currentSubstitutions.find(t->name); it != currentSubstitutions.end()) {
-                    return it->second;
-                }
-                for (const auto &tp : currentTypeParams) {
-                    if (tp == t->name) {
-                        return TypeRef::MakeTypeParam(t->name);
-                    }
-                }
-            }
-            if (t->name == "RangeFull" && t->typeArgs.empty()) {
-                return TypeRef::MakeRangeFull();
-            }
-            if (t->typeArgs.size() == 1) {
-                TypeRef elemType = ResolveType(*t->typeArgs[0]);
-                if (t->name == "Range") {
-                    return TypeRef::MakeRange(std::move(elemType));
-                }
-                if (t->name == "RangeInclusive") {
-                    return TypeRef::MakeRange(std::move(elemType), true, true, true);
-                }
-                if (t->name == "RangeFrom") {
-                    return TypeRef::MakeRange(std::move(elemType), true, false);
-                }
-                if (t->name == "RangeTo") {
-                    return TypeRef::MakeRange(std::move(elemType), false, true);
-                }
-                if (t->name == "RangeToInclusive") {
-                    return TypeRef::MakeRange(std::move(elemType), false, true, true);
-                }
-            }
-            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
-                std::vector<TypeRef> typeArgs;
-                typeArgs.reserve(t->typeArgs.size());
-                for (const auto &typeArg : t->typeArgs) {
-                    typeArgs.push_back(ResolveType(*typeArg));
-                }
-                return EnumType(*enumIt->second, typeArgs);
-            }
-            HirSymbol *sym = currentScope->Lookup(t->name);
-            if (sym && (sym->kind == HirSymbol::Kind::Type || sym->kind == HirSymbol::Kind::Interface)) {
-                if (t->typeArgs.empty() && !sym->type.IsUnknown()) {
-                    return sym->type;
-                }
-                return TypeRef::MakeNamed(GenericTypeName(*t));
-            }
-            return TypeRef::MakeNamed(GenericTypeName(*t)); // best-effort for unresolved names
-        }
-        if (auto *t = dynamic_cast<const PathTypeExpr *>(&expr)) {
-            return TypeRef::MakeNamed(t->segments.back());
-        }
-        if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
-            return TypeRef::MakePointer(ResolveType(*t->pointee));
-        }
-        if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
-            return TypeRef::MakeArray(ResolveType(*t->element), t->size ? FixedArrayTypeSize(expr) : std::nullopt);
-        }
-        if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
-            std::vector<TypeRef> elems;
-            for (auto &e : t->elements) {
-                elems.push_back(ResolveType(*e));
-            }
-            return TypeRef::MakeTuple(std::move(elems));
-        }
-        if (dynamic_cast<const SelfTypeExpr *>(&expr)) {
-            return currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
-        }
-        if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
-            std::vector<TypeRef> paramTypes;
-            paramTypes.reserve(t->params.size());
-            for (const auto &p : t->params) {
-                paramTypes.push_back(ResolveType(*p));
-            }
-            TypeRef ret = t->returnType ? ResolveType(*t->returnType->get()) : TypeRef::MakeOpaque();
-            TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
-            funcType.isVariadic = t->isVariadic;
-            return funcType;
-        }
-        return TypeRef::MakeUnknown();
-    }
-
-    std::optional<std::uint64_t> FixedArrayTypeSize(const TypeExpr &expr) {
-        const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expr);
-        if (!array || !array->size) {
-            return std::nullopt;
-        }
-        if (const auto *literal = dynamic_cast<const LiteralExpr *>(array->size.get())) {
-            return ParseUnsuffixedIntegerLiteral(literal->token);
-        }
-        if (const auto *ident = dynamic_cast<const IdentExpr *>(array->size.get())) {
-            return LookupConstInteger(ident->name);
-        }
-        return std::nullopt;
+        return currentSubstitutions.empty() ? ResolvedType(expr)
+                                            : ResolveTypeWithSubstitution(expr, currentSubstitutions);
     }
 
     TypeRef ResolveTypeWithSubstitution(const TypeExpr &expr,
@@ -1293,7 +1232,7 @@ private:
                 if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                     return it->second;
                 }
-                return ResolveType(expr);
+                return ResolvedType(expr);
             }
 
             if (t->typeArgs.size() == 1) {
@@ -1327,11 +1266,13 @@ private:
             return named;
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
-            return TypeRef::MakePointer(ResolveTypeWithSubstitution(*t->pointee, substitutions));
+            TypeRef pointee = ResolveTypeWithSubstitution(*t->pointee, substitutions);
+            pointee.isMut = pointee.isMut || t->pointeeMut;
+            return TypeRef::MakePointer(std::move(pointee));
         }
         if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
             return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
-                                      t->size ? FixedArrayTypeSize(expr) : std::nullopt);
+                                      ResolvedType(expr).arrayLength);
         }
         if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
             std::vector<TypeRef> elems;
@@ -1340,7 +1281,19 @@ private:
             }
             return TypeRef::MakeTuple(std::move(elems));
         }
-        return ResolveType(expr);
+        if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+            std::vector<TypeRef> paramTypes;
+            paramTypes.reserve(t->params.size());
+            for (const auto &param : t->params) {
+                paramTypes.push_back(ResolveTypeWithSubstitution(*param, substitutions));
+            }
+            TypeRef returnType = t->returnType ? ResolveTypeWithSubstitution(*t->returnType->get(), substitutions)
+                                               : TypeRef::MakeOpaque();
+            TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
+            functionType.isVariadic = t->isVariadic;
+            return functionType;
+        }
+        return ResolvedType(expr);
     }
 
     TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName) {
@@ -1872,142 +1825,6 @@ private:
         return std::nullopt;
     }
 
-    std::optional<std::uint64_t> SizeOfTypeRef(const TypeRef &type,
-                                               const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (type.kind == TypeRef::Kind::Named) {
-            if (type.name.starts_with("Slice<")) {
-                return 16;
-            }
-            if (auto it = substitutions.find(type.name); it != substitutions.end()) {
-                return SizeOfTypeRef(it->second, substitutions);
-            }
-            if (!type.inner.empty()) {
-                return SizeOfTypeRef(type.inner[0], substitutions);
-            }
-            const std::string baseName = BaseTypeName(type.name);
-            std::unordered_map<std::string, TypeRef> localSubs = substitutions;
-            const auto structIt = structDecls.find(baseName);
-            if (structIt != structDecls.end()) {
-                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
-                const auto &params = structIt->second->typeParams;
-                const std::size_t count = std::min(params.size(), typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[params[i]] = typeArgs[i];
-                }
-            }
-            const auto enumIt = enumDecls.find(baseName);
-            if (enumIt != enumDecls.end()) {
-                std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(type.name);
-                const auto &params = enumIt->second->typeParams;
-                const std::size_t count = std::min(params.size(), typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[params[i]] = typeArgs[i];
-                }
-            }
-
-            if (enumIt != enumDecls.end()) {
-                return SizeOfEnum(*enumIt->second, localSubs);
-            }
-            if (interfaceDecls.contains(baseName)) {
-                return 16;
-            }
-            return SizeOfStruct(baseName, localSubs);
-        }
-
-        if (type.IsRange()) {
-            if (type.kind == TypeRef::Kind::RangeFull) {
-                return 0;
-            }
-            if (type.inner.empty()) {
-                return std::nullopt;
-            }
-            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-            if (!elemSize || *elemSize == 0) {
-                return std::nullopt;
-            }
-            return (type.kind == TypeRef::Kind::Range || type.kind == TypeRef::Kind::RangeInclusive) ? 2 * *elemSize
-                                                                                                     : *elemSize;
-        }
-
-        if (type.kind == TypeRef::Kind::Tuple) {
-            const auto layout = Layout::FieldsSizeAndAlign(
-                type.inner, [&](const TypeRef &elem) { return SizeOfTypeRef(elem, substitutions); });
-            if (!layout) {
-                return std::nullopt;
-            }
-            return layout->first;
-        }
-
-        if (type.kind == TypeRef::Kind::Array) {
-            if (type.inner.empty() || !type.arrayLength) {
-                return std::nullopt;
-            }
-            const auto elemSize = SizeOfTypeRef(type.inner[0], substitutions);
-            return elemSize ? std::optional<std::uint64_t>(*elemSize * *type.arrayLength) : std::nullopt;
-        }
-
-        return type.SizeInBytes();
-    }
-
-    std::optional<std::uint64_t> AlignOfTypeRef(const TypeRef &type,
-                                                const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (type.kind == TypeRef::Kind::Array) {
-            return type.inner.empty() ? std::optional<std::uint64_t>(1) : AlignOfTypeRef(type.inner[0], substitutions);
-        }
-        const auto size = SizeOfTypeRef(type, substitutions);
-        return size ? std::optional<std::uint64_t>(Layout::FieldAlign(*size)) : std::nullopt;
-    }
-
-    std::optional<std::uint64_t> SizeOfEnum(const EnumDecl &decl,
-                                            const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        const auto tagSize = SizeOfTypeRef(EnumBaseType(decl), substitutions);
-        if (!tagSize) {
-            return std::nullopt;
-        }
-
-        bool hasPayload = false;
-        std::uint64_t maxPayloadSize = 0;
-        std::uint64_t maxPayloadAlign = 1;
-
-        auto fieldLayout = [&](const auto &fields) {
-            return Layout::FieldsSizeAndAlign(
-                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field, substitutions); });
-        };
-
-        auto namedFieldLayout = [&](const auto &fields) {
-            return Layout::FieldsSizeAndAlign(
-                fields, [&](const auto &field) { return SizeOfTypeExprWithSubstitution(*field.type, substitutions); });
-        };
-
-        for (const auto &variant : decl.variants) {
-            if (variant.fields.empty() && variant.namedFields.empty()) {
-                continue;
-            }
-
-            hasPayload = true;
-            auto payload =
-                !variant.fields.empty() ? fieldLayout(variant.fields) : namedFieldLayout(variant.namedFields);
-            if (!payload) {
-                return std::nullopt;
-            }
-            maxPayloadSize = std::max(maxPayloadSize, payload->first);
-            maxPayloadAlign = std::max(maxPayloadAlign, payload->second);
-        }
-
-        if (!hasPayload) {
-            return tagSize;
-        }
-
-        const std::uint64_t tagAlign = *tagSize > 0 ? std::min<std::uint64_t>(*tagSize, 8) : 1;
-        const std::uint64_t align = std::max(tagAlign, maxPayloadAlign);
-        std::uint64_t offset = *tagSize;
-        if (maxPayloadAlign > 1) {
-            offset = AlignUp(offset, maxPayloadAlign);
-        }
-        offset += maxPayloadSize;
-        return AlignUp(offset, align);
-    }
-
     TypeRef EnumBaseType(const EnumDecl &decl) {
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
@@ -2031,65 +1848,9 @@ private:
             return type;
         }
         if (typeArgs.size() == decl.typeParams.size()) {
-            std::unordered_map<std::string, TypeRef> substitutions;
-            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-                substitutions.emplace(decl.typeParams[i], typeArgs[i]);
-            }
-            if (const auto size = SizeOfEnum(decl, substitutions)) {
-                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), *size));
-            }
+            type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), ResolvedLayout(type).size));
         }
         return type;
-    }
-
-    std::optional<std::uint64_t> SizeOfStruct(const std::string &name,
-                                              const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        const auto structIt = structDecls.find(name);
-        if (structIt == structDecls.end()) {
-            return std::nullopt;
-        }
-
-        std::uint64_t offset = 0;
-        std::uint64_t maxAlign = 1;
-        for (const auto &field : structIt->second->fields) {
-            const TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
-            const auto align = AlignOfTypeRef(fieldType, substitutions);
-            if (!align) {
-                return std::nullopt;
-            }
-            offset = AlignUp(offset, *align);
-            if (!(fieldType.kind == TypeRef::Kind::Array && !fieldType.arrayLength)) {
-                const auto size = SizeOfTypeRef(fieldType, substitutions);
-                if (!size) {
-                    return std::nullopt;
-                }
-                offset += *size;
-            }
-            maxAlign = std::max(maxAlign, *align);
-        }
-        return AlignUp(offset, maxAlign);
-    }
-
-    std::optional<std::uint64_t>
-    SizeOfTypeExprWithSubstitution(const TypeExpr &expr,
-                                   const std::unordered_map<std::string, TypeRef> &substitutions = {}) {
-        if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-            const auto structIt = structDecls.find(t->name);
-            if (structIt != structDecls.end()) {
-                std::unordered_map<std::string, TypeRef> fieldSubstitutions = substitutions;
-                const auto &params = structIt->second->typeParams;
-                for (std::size_t i = 0; i < params.size() && i < t->typeArgs.size(); ++i) {
-                    fieldSubstitutions[params[i]] = ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions);
-                }
-                return SizeOfStruct(t->name, fieldSubstitutions);
-            }
-        }
-
-        return SizeOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
-    }
-
-    std::optional<std::uint64_t> SizeOfTypeExpr(const TypeExpr &expr) {
-        return SizeOfTypeExprWithSubstitution(expr);
     }
 
     static std::uint32_t DecodeUtf8CodePoint(const std::string &text, std::size_t i) {
@@ -3443,8 +3204,8 @@ private:
         if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
             auto he = std::make_unique<HirLiteralExpr>();
             he->location = e->location;
-            he->type = TypeRef::MakeUInt64();
-            he->value = std::to_string(SizeOfTypeExpr(*e->type).value_or(0));
+            he->type = RequireSemanticFact(model.TryGetType(*e));
+            he->value = std::to_string(ResolvedSizeOf(*e));
             return he;
         }
         if (auto *e = dynamic_cast<const IntrinsicExpr *>(&expr)) {
