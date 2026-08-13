@@ -120,7 +120,7 @@ target_link_libraries(RuxLir PUBLIC RuxSemantic)
 
 rux_add_component(RuxOptimization
     Optimization/ConstantEvaluator.cpp
-    Optimization/LegacyHirOptimizer.cpp
+    Optimization/HirConstantFolder.cpp
     Optimization/Pipeline.cpp)
 target_link_libraries(RuxOptimization PUBLIC RuxBuildInfo RuxHir RuxLir)
 

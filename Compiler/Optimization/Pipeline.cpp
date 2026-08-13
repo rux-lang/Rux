@@ -1,6 +1,6 @@
 #include "Optimization/Pipeline.h"
 
-#include "Optimization/LegacyHirOptimizer.h"
+#include "Optimization/HirConstantFolder.h"
 
 #include <memory>
 
@@ -13,7 +13,7 @@ OptimizationPipeline::OptimizationPipeline(const BuildProfile profile, const std
 OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile, const std::size_t fixedPointLimit) {
     OptimizationPipeline pipeline(profile, fixedPointLimit);
     if (profile == BuildProfile::Release) {
-        pipeline.hir_.Add(std::make_unique<LegacyHirOptimizer>());
+        pipeline.hir_.Add(std::make_unique<HirConstantFolder>());
     }
     return pipeline;
 }

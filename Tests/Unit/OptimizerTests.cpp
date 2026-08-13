@@ -83,7 +83,7 @@ TEST_CASE("optimization pipelines are selected explicitly by profile") {
 
     CHECK(debug.HirPassNames().empty());
     CHECK(debug.LirPassNames().empty());
-    CHECK(release.HirPassNames() == std::vector<std::string_view>{"legacy-hir-optimizer"});
+    CHECK(release.HirPassNames() == std::vector<std::string_view>{"hir-constant-folder"});
     CHECK(release.LirPassNames().empty());
 }
 
@@ -122,7 +122,7 @@ TEST_CASE("pass pipeline stops at its fixed-point limit") {
     CHECK(runs.size() == 3);
 }
 
-TEST_CASE("independent optimization pipelines do not share legacy analysis state") {
+TEST_CASE("independent optimization pipelines do not share constant-folding analysis state") {
     HirPackage firstPackage;
     HirModule firstModule;
     HirFunc firstFunction;
@@ -328,4 +328,122 @@ TEST_CASE("optimizer folds integer wrapping and parses hex/binary literals") {
     auto *lit = dynamic_cast<HirLiteralExpr *>(ret->value->get());
     REQUIRE(lit != nullptr);
     CHECK(lit->value == "100");
+}
+
+TEST_CASE("optimizer does not discard calls or potentially trapping expressions") {
+    const std::string source = R"(
+        func Observe() -> int {
+            return 7;
+        }
+
+        func Main(value: int) -> int {
+            let product = 0 * Observe();
+            let remainder = Observe() % 1;
+            let trap = 0 * (10 / value);
+            return product + remainder + trap;
+        }
+    )";
+
+    auto package = CompileAndOptimize(source);
+    REQUIRE(package.modules.size() == 1);
+    REQUIRE(package.modules[0].funcs.size() == 2);
+    auto &body = *package.modules[0].funcs[1].body;
+    REQUIRE(body.stmts.size() == 4);
+
+    const auto *product = dynamic_cast<const HirLetStmt *>(body.stmts[0].get());
+    const auto *remainder = dynamic_cast<const HirLetStmt *>(body.stmts[1].get());
+    const auto *trap = dynamic_cast<const HirLetStmt *>(body.stmts[2].get());
+    REQUIRE(product != nullptr);
+    REQUIRE(remainder != nullptr);
+    REQUIRE(trap != nullptr);
+
+    const auto *productExpr = dynamic_cast<const HirBinaryExpr *>(product->init.get());
+    const auto *remainderExpr = dynamic_cast<const HirBinaryExpr *>(remainder->init.get());
+    const auto *trapExpr = dynamic_cast<const HirBinaryExpr *>(trap->init.get());
+    REQUIRE(productExpr != nullptr);
+    REQUIRE(remainderExpr != nullptr);
+    REQUIRE(trapExpr != nullptr);
+    CHECK(dynamic_cast<const HirCallExpr *>(productExpr->right.get()) != nullptr);
+    CHECK(dynamic_cast<const HirCallExpr *>(remainderExpr->left.get()) != nullptr);
+    CHECK(dynamic_cast<const HirBinaryExpr *>(trapExpr->right.get()) != nullptr);
+}
+
+TEST_CASE("optimizer keeps lexical shadowing isolated") {
+    const std::string source = R"(
+        func Main(condition: bool) -> int {
+            let value = 1;
+            if condition {
+                let value = 2;
+                if condition {
+                    return value;
+                }
+            }
+            return value;
+        }
+    )";
+
+    auto package = CompileAndOptimize(source);
+    auto &body = *package.modules[0].funcs[0].body;
+    REQUIRE(body.stmts.size() == 3);
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(body.stmts[2].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    CHECK(dynamic_cast<const HirVarExpr *>(returned->value->get()) != nullptr);
+}
+
+TEST_CASE("optimizer never substitutes an address operand") {
+    const std::string source = R"(
+        func Main() -> int {
+            let value: int = 41;
+            let pointer = @value;
+            return value;
+        }
+    )";
+
+    auto package = CompileAndOptimize(source);
+    auto &body = *package.modules[0].funcs[0].body;
+    REQUIRE(body.stmts.size() == 3);
+    const auto *pointer = dynamic_cast<const HirLetStmt *>(body.stmts[1].get());
+    REQUIRE(pointer != nullptr);
+    const auto *address = dynamic_cast<const HirUnaryExpr *>(pointer->init.get());
+    REQUIRE(address != nullptr);
+    CHECK(address->op == TokenKind::At);
+    CHECK(dynamic_cast<const HirVarExpr *>(address->operand.get()) != nullptr);
+
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(body.stmts[2].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    CHECK(dynamic_cast<const HirLiteralExpr *>(returned->value->get()) != nullptr);
+}
+
+TEST_CASE("optimizer invalidates facts across loops and mutation") {
+    const std::string source = R"(
+        func Main(condition: bool) -> int {
+            let constant = 3;
+            var mutable = 1;
+            while condition {
+                let inside = constant;
+                mutable = inside;
+            }
+            mutable = constant;
+            return constant + mutable;
+        }
+    )";
+
+    auto package = CompileAndOptimize(source);
+    auto &body = *package.modules[0].funcs[0].body;
+    REQUIRE(body.stmts.size() == 5);
+    const auto *loop = dynamic_cast<const HirWhileStmt *>(body.stmts[2].get());
+    REQUIRE(loop != nullptr);
+    const auto *inside = dynamic_cast<const HirLetStmt *>(loop->body.stmts[0].get());
+    REQUIRE(inside != nullptr);
+    CHECK(dynamic_cast<const HirVarExpr *>(inside->init.get()) != nullptr);
+
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(body.stmts[4].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *sum = dynamic_cast<const HirBinaryExpr *>(returned->value->get());
+    REQUIRE(sum != nullptr);
+    CHECK(dynamic_cast<const HirVarExpr *>(sum->left.get()) != nullptr);
+    CHECK(dynamic_cast<const HirVarExpr *>(sum->right.get()) != nullptr);
 }
