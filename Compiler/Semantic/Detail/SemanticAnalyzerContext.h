@@ -4,6 +4,7 @@
 #include "Semantic/SemanticProgramIndex.h"
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -32,6 +33,18 @@ public:
     void Run();
 
 protected:
+    void EmitError(SourceLocation location, std::string message) const;
+    void EmitWarning(SourceLocation location, std::string message) const;
+
+    void PushScope();
+    void PopScope();
+    bool Define(Symbol symbol) const;
+
+    void CheckBlock(const Block &block);
+    void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
+    [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
+                                                             const std::string &variantName) const;
+
     std::vector<const Module *> &modules;
     std::vector<DepPackage> &deps;
     const std::string &packageName;
@@ -80,8 +93,22 @@ private:
     void RegisterBuiltins();
     void IndexDeclarations();
     void CollectModule(const Module &module);
+    void CheckStatement(const Stmt &statement);
+    void CheckLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
 
     virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
+    virtual TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
+                                                const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
+    virtual TypeRef CheckExpr(const Expr &expression) = 0;
+    virtual void CheckDecl(const Decl &declaration) = 0;
+    virtual void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) = 0;
+    [[nodiscard]] virtual bool CanAssignExprTo(const Expr &expression, const TypeRef &expressionType,
+                                               const TypeRef &targetType) = 0;
+    [[nodiscard]] virtual std::string AssignmentErrorMessage(const Expr &expression, const TypeRef &targetType,
+                                                             std::string fallback) = 0;
+    [[nodiscard]] virtual std::optional<TypeRef> IndexElementType(const TypeRef &type) = 0;
+    [[nodiscard]] virtual std::string BaseTypeName(const std::string &name) const = 0;
+    [[nodiscard]] virtual std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const = 0;
     virtual void ApplyModuleImports(const Module &module) = 0;
     virtual void ApplyModuleImportsInScope(const Module &module, Scope &scope) = 0;
     virtual void ResolveModuleSignatures(const Module &module) = 0;
