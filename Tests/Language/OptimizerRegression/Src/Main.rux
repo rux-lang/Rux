@@ -1,0 +1,59 @@
+import Core::Assert;
+import OptimizerRegression::Support::CrossModule;
+
+interface ValueSource {
+    func Value() -> int;
+}
+
+struct StoredValue {
+    value: int;
+}
+
+extend StoredValue : ValueSource {
+    func Value(self) -> int {
+        return self.value;
+    }
+}
+
+func Increment(value: int) -> int {
+    return value + 1;
+}
+
+func Apply(operation: func(int) -> int, value: int) -> int {
+    return operation(value);
+}
+
+func Observe(counter: *var int) -> int {
+    *counter += 1;
+    return 7;
+}
+
+func UnusedPrivateCode(value: int) -> int {
+    return value * 101;
+}
+
+func Main() -> int {
+    let outer = 1;
+    if true {
+        let inner = 2;
+        Assert(inner == 2, "inner lexical scope");
+    }
+    Assert(outer == 1, "outer lexical scope");
+
+    var observations = 0;
+    let ignored = Observe(@observations);
+    Assert(observations == 1 && ignored == 7, "observable call is preserved");
+
+    let maximum: int8 = 127i8;
+    let wrapped: int8 = maximum + 1i8;
+    Assert(wrapped == -128i8, "signed overflow wraps at its declared width");
+
+    let operation: func(int) -> int = Increment;
+    Assert(Apply(operation, 40) == 41, "indirect call remains reachable");
+
+    let stored = StoredValue { value: 42 };
+    let source: ValueSource = stored;
+    Assert(source.Value() == 42, "interface vtable dispatch remains reachable");
+    Assert(CrossModule(41) == 42, "cross-module private dependency remains reachable");
+    return 0;
+}

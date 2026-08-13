@@ -1,0 +1,13 @@
+module OptimizerRegression::Support {
+    pub func CrossModule(value: int) -> int {
+        return PrivateIncrement(value);
+    }
+
+    func PrivateIncrement(value: int) -> int {
+        return value + 1;
+    }
+
+    func UnusedDependencyCode(value: int) -> int {
+        return value * 99;
+    }
+}
