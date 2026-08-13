@@ -5,6 +5,7 @@
 #include "Optimization/LirCfgPasses.h"
 #include "Optimization/LirConstantPropagation.h"
 #include "Optimization/LirDeadCodeElimination.h"
+#include "Optimization/LirReachability.h"
 #include "Optimization/Pipeline.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
@@ -605,6 +606,133 @@ TEST_CASE("LIR dead code elimination preserves escaped addresses and observable 
     const Optimization::PassContext context{BuildProfile::Release};
     CHECK(pass.Run(package, context) == Optimization::PassChange::None);
     CHECK(package.modules[0].funcs[0].blocks[0].instrs.size() == 7);
+}
+
+TEST_CASE("executable LIR reachability follows package-wide code and data edges from Main") {
+    LirModule entry;
+    entry.name = "Entry";
+    entry.funcs.resize(4);
+    entry.funcs[0].name = "Main";
+    entry.funcs[0].blocks.resize(1);
+    entry.funcs[1].name = "DeadPublic";
+    entry.funcs[1].isPublic = true;
+    entry.funcs[2].name = "ExternLeaf";
+    entry.funcs[2].isExtern = true;
+    entry.funcs[2].blocks.resize(1);
+    entry.funcs[3].name = "HiddenBehindExtern";
+
+    const auto append = [&](const LirOpcode opcode, std::string symbol) {
+        LirInstr instruction;
+        instruction.op = opcode;
+        instruction.strArg = std::move(symbol);
+        entry.funcs[0].blocks[0].instrs.push_back(std::move(instruction));
+    };
+    append(LirOpcode::Call, "Support::CrossModule");
+    append(LirOpcode::GlobalAddr, "AddressTaken");
+    append(LirOpcode::GlobalAddr, "__vtable__Widget__Display");
+    append(LirOpcode::Load, "&Support::PrivateData");
+    append(LirOpcode::Call, "ExternLeaf");
+
+    // Even a malformed extern carrying blocks must remain a leaf: its body is
+    // not a package-owned definition and cannot introduce reachability.
+    LirInstr hiddenCall;
+    hiddenCall.op = LirOpcode::Call;
+    hiddenCall.strArg = "HiddenBehindExtern";
+    entry.funcs[2].blocks[0].instrs.push_back(std::move(hiddenCall));
+
+    LirModule support;
+    support.name = "Support";
+    support.funcs.resize(4);
+    support.funcs[0].name = "CrossModule";
+    support.funcs[1].name = "AddressTaken";
+    support.funcs[2].name = "Widget::Display";
+    support.funcs[3].name = "DeadSupport";
+    support.consts.resize(1);
+    support.consts[0].name = "PrivateData";
+    support.vtables.push_back({"__vtable__Widget__Display", {"Widget::Display"}});
+
+    LirPackage package;
+    package.modules.push_back(std::move(entry));
+    package.modules.push_back(std::move(support));
+
+    const auto result = Optimization::LirReachabilityAnalysis::Run(package, ArtifactKind::Executable);
+    using Kind = Optimization::LirDeclarationKind;
+    using Id = Optimization::LirDeclarationId;
+
+    CHECK(result.IsReachable(Id{Kind::Function, 0, 0}));
+    CHECK_FALSE(result.IsReachable(Id{Kind::Function, 0, 1}));
+    CHECK(result.IsReachable(Id{Kind::Function, 0, 2}));
+    CHECK_FALSE(result.IsReachable(Id{Kind::Function, 0, 3}));
+    CHECK(result.IsReachable(Id{Kind::Function, 1, 0}));
+    CHECK(result.IsReachable(Id{Kind::Function, 1, 1}));
+    CHECK(result.IsReachable(Id{Kind::Function, 1, 2}));
+    CHECK_FALSE(result.IsReachable(Id{Kind::Function, 1, 3}));
+    CHECK(result.IsReachable(Id{Kind::Constant, 1, 0}));
+    CHECK(result.IsReachable(Id{Kind::Vtable, 1, 0}));
+    CHECK(result.ReachableDeclarations().size() == 7);
+}
+
+TEST_CASE("library LIR reachability roots public code and data for both artifact kinds") {
+    LirModule module;
+    module.name = "Library";
+    module.funcs.resize(5);
+    module.funcs[0].name = "PublicApi";
+    module.funcs[0].isPublic = true;
+    module.funcs[0].blocks.resize(1);
+    module.funcs[1].name = "PrivateHelper";
+    module.funcs[2].name = "DeadFunction";
+    module.funcs[3].name = "PublicExtern";
+    module.funcs[3].isPublic = true;
+    module.funcs[3].isExtern = true;
+    module.funcs[3].blocks.resize(1);
+    module.funcs[4].name = "Widget::Render";
+
+    LirInstr helperCall;
+    helperCall.op = LirOpcode::Call;
+    helperCall.strArg = "PrivateHelper";
+    module.funcs[0].blocks[0].instrs.push_back(std::move(helperCall));
+    LirInstr privateDataLoad;
+    privateDataLoad.op = LirOpcode::Load;
+    privateDataLoad.strArg = "PrivateVariable";
+    module.funcs[0].blocks[0].instrs.push_back(std::move(privateDataLoad));
+
+    LirInstr deadExternBodyCall;
+    deadExternBodyCall.op = LirOpcode::Call;
+    deadExternBodyCall.strArg = "DeadFunction";
+    module.funcs[3].blocks[0].instrs.push_back(std::move(deadExternBodyCall));
+
+    module.consts.resize(3);
+    module.consts[0].name = "PublicData";
+    module.consts[0].isPublic = true;
+    module.consts[0].value = "PrivateData";
+    module.consts[1].name = "PrivateData";
+    module.consts[2].name = "DeadData";
+    module.vtables.push_back({"__vtable__Widget__Render", {"Widget::Render"}});
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
+                         {"PrivateVariable", false, TypeRef::MakeInt32()},
+                         {"UnusedVariable", false, TypeRef::MakeInt32()}};
+
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+    const auto shared = Optimization::LirReachabilityAnalysis::Run(package, ArtifactKind::SharedLibrary);
+    const auto archive = Optimization::LirReachabilityAnalysis::Run(package, ArtifactKind::StaticLibrary);
+    using Kind = Optimization::LirDeclarationKind;
+    using Id = Optimization::LirDeclarationId;
+
+    CHECK(shared.ReachableDeclarations() == archive.ReachableDeclarations());
+    CHECK(shared.IsReachable(Id{Kind::Function, 0, 0}));
+    CHECK(shared.IsReachable(Id{Kind::Function, 0, 1}));
+    CHECK_FALSE(shared.IsReachable(Id{Kind::Function, 0, 2}));
+    CHECK(shared.IsReachable(Id{Kind::Function, 0, 3}));
+    CHECK(shared.IsReachable(Id{Kind::Function, 0, 4}));
+    CHECK(shared.IsReachable(Id{Kind::Constant, 0, 0}));
+    CHECK(shared.IsReachable(Id{Kind::Constant, 0, 1}));
+    CHECK_FALSE(shared.IsReachable(Id{Kind::Constant, 0, 2}));
+    CHECK(shared.IsReachable(Id{Kind::Vtable, 0, 0}));
+    CHECK(shared.IsReachable(Id{Kind::ExternVariable, 0, 0}));
+    CHECK(shared.IsReachable(Id{Kind::ExternVariable, 0, 1}));
+    CHECK_FALSE(shared.IsReachable(Id{Kind::ExternVariable, 0, 2}));
+    CHECK(shared.ReachableDeclarations().size() == 9);
 }
 
 TEST_CASE("pass pipeline reports changes and preserves explicit order") {
