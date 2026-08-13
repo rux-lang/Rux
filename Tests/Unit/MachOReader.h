@@ -35,6 +35,7 @@ struct MachOSegment {
     std::uint64_t fileSize = 0;
     std::uint32_t maxProtection = 0;
     std::uint32_t initialProtection = 0;
+    std::uint32_t flags = 0;
     std::vector<MachOSection> sections;
 };
 
@@ -337,6 +338,7 @@ inline bool ReadUleb128(const std::span<const std::uint8_t> bytes, std::size_t &
             segment.fileSize = U64(bytes, cursor + 48);
             segment.maxProtection = U32(bytes, cursor + 56);
             segment.initialProtection = U32(bytes, cursor + 60);
+            segment.flags = U32(bytes, cursor + 68);
             if (segment.fileSize > 0 &&
                 (segment.fileOffset > bytes.size() || segment.fileSize > bytes.size() - segment.fileOffset)) {
                 error = "Mach-O segment file range extends beyond the image";

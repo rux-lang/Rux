@@ -1239,7 +1239,10 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         WriteU32(loadCommands, 0x03);
         WriteU32(loadCommands, 0x03);
         WriteU32(loadCommands, 1);
-        WriteU32(loadCommands, 0);
+        // SG_READ_ONLY: dyld maps the segment writable, applies its rebases,
+        // and re-protects it read-only afterwards. dyld refuses to load a
+        // __DATA_CONST segment that does not carry the flag.
+        WriteU32(loadCommands, 0x10);
     }
 
     WriteMachName(loadCommands, "__const");

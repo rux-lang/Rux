@@ -74,6 +74,26 @@ std::vector<uint8_t> ReadFile(const std::filesystem::path &path) {
     return {(std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>()};
 }
 
+// Collects the RVA of every IMAGE_REL_BASED_DIR64 entry in the .reloc
+// section, in file order.
+std::vector<uint32_t> ReadDir64Fixups(const std::vector<uint8_t> &image, const PeSection &relocSection,
+                                      const uint32_t directorySize) {
+    std::vector<uint32_t> fixups;
+    for (uint32_t cursor = 0; cursor < directorySize;) {
+        const size_t block = relocSection.rawOffset + cursor;
+        const uint32_t pageRva = Read32(image, block);
+        const uint32_t blockSize = Read32(image, block + 4);
+        for (uint32_t entry = 8; entry < blockSize; entry += 2) {
+            const uint16_t value = Read16(image, block + entry);
+            if (value >> 12U == 10U) {
+                fixups.push_back(pageRva + (value & 0xFFFU));
+            }
+        }
+        cursor += blockSize;
+    }
+    return fixups;
+}
+
 struct ArchiveMember {
     size_t header = 0;
     size_t data = 0;
@@ -171,9 +191,9 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     REQUIRE(peOffset + 24 <= image.size());
     CHECK(Read32(image, peOffset) == 0x0000'4550);       // PE\0\0
     CHECK(Read16(image, peOffset + 4) == 0x8664);        // IMAGE_FILE_MACHINE_AMD64
-    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
+    CHECK((Read16(image, peOffset + 22) & 0x0001) == 0); // relocations kept for ASLR
     const uint16_t sectionCount = Read16(image, peOffset + 6);
-    REQUIRE(sectionCount == 3);
+    REQUIRE(sectionCount == 4);
     CHECK(Read16(image, peOffset + 20) == 240);
 
     const size_t optional = peOffset + 24;
@@ -192,6 +212,8 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     // x86-64 keeps the Vista baseline; only ARM64 needs Windows 10.
     CHECK(Read16(image, optional + 40) == 6); // MajorOperatingSystemVersion
     CHECK(Read16(image, optional + 48) == 6); // MajorSubsystemVersion
+    // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
+    CHECK(Read16(image, optional + 70) == 0x8160);
 
     const uint32_t importRva = Read32(image, optional + 112 + 8);
     const uint32_t importSize = Read32(image, optional + 112 + 12);
@@ -306,6 +328,16 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     CHECK(Read64(image, rdataSection.rawOffset) == imageBase + mainRva + 21);
     CHECK(dataSection.rva % 32 == 0);
     CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
+
+    // Both absolute slots appear as DIR64 base relocations so the loader can
+    // slide the image away from its preferred base.
+    const uint32_t relocDirRva = Read32(image, optional + 112 + 5 * 8);
+    const uint32_t relocDirSize = Read32(image, optional + 112 + 5 * 8 + 4);
+    const auto &relocSection = findSection(".reloc");
+    CHECK(relocDirRva == relocSection.rva);
+    CHECK(relocDirSize == relocSection.virtualSize);
+    CHECK(ReadDir64Fixups(image, relocSection, relocDirSize) ==
+          std::vector<uint32_t>{rdataSection.rva, dataSection.rva});
 }
 
 TEST_CASE("PE linker preserves both x86-64 DLL entry stub forms") {
@@ -350,10 +382,14 @@ TEST_CASE("PE linker preserves both x86-64 DLL entry stub forms") {
 
     const size_t peOffset = Read32(image, 0x3C);
     REQUIRE(Read16(image, peOffset + 4) == 0x8664);      // IMAGE_FILE_MACHINE_AMD64
-    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
+    CHECK((Read16(image, peOffset + 22) & 0x0001) == 0); // relocations kept for ASLR
     const size_t optional = peOffset + 24;
     REQUIRE(Read16(image, optional) == 0x020B); // PE32+
     REQUIRE(Read16(image, optional + 68) == 2); // IMAGE_SUBSYSTEM_WINDOWS_GUI
+    // A DLL without absolute slots needs no fixups, so it carries no .reloc
+    // section, but stays relocatable and ASLR-capable.
+    CHECK(Read32(image, optional + 112 + 5 * 8) == 0);
+    CHECK((Read16(image, optional + 70) & 0x40) != 0); // DYNAMIC_BASE
     const uint32_t entryRva = Read32(image, optional + 16);
     const size_t sectionTable = optional + Read16(image, peOffset + 20);
     const uint32_t textRva = Read32(image, sectionTable + 12);
@@ -503,7 +539,7 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     const size_t peOffset = Read32(image, 0x3C);
     REQUIRE(Read32(image, peOffset) == 0x0000'4550);
     CHECK(Read16(image, peOffset + 4) == 0xAA64);        // IMAGE_FILE_MACHINE_ARM64
-    CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
+    CHECK((Read16(image, peOffset + 22) & 0x0001) == 0); // relocations kept for ASLR
     REQUIRE(Read16(image, peOffset + 20) == 240);
     const size_t optional = peOffset + 24;
     CHECK(Read16(image, optional) == 0x020B); // PE32+
@@ -514,19 +550,20 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(Read32(image, optional + 36) == 0x200);  // file alignment
     // ARM64 arrived in Windows 10, and its loader rejects an image claiming an
     // older Windows with "%1 is not a valid Win32 application".
-    CHECK(Read16(image, optional + 40) == 10);         // MajorOperatingSystemVersion
-    CHECK(Read16(image, optional + 42) == 0);          // MinorOperatingSystemVersion
-    CHECK(Read16(image, optional + 48) == 10);         // MajorSubsystemVersion
-    CHECK(Read16(image, optional + 50) == 0);          // MinorSubsystemVersion
-    CHECK(Read16(image, optional + 68) == 3);          // console subsystem
-    CHECK((Read16(image, optional + 70) & 0x40) == 0); // no DYNAMIC_BASE / ASLR
+    CHECK(Read16(image, optional + 40) == 10); // MajorOperatingSystemVersion
+    CHECK(Read16(image, optional + 42) == 0);  // MinorOperatingSystemVersion
+    CHECK(Read16(image, optional + 48) == 10); // MajorSubsystemVersion
+    CHECK(Read16(image, optional + 50) == 0);  // MinorSubsystemVersion
+    CHECK(Read16(image, optional + 68) == 3);  // console subsystem
+    // Windows on ARM64 only loads relocatable, ASLR-capable images.
+    CHECK((Read16(image, optional + 70) & 0x40) != 0); // DYNAMIC_BASE
     CHECK(Read64(image, optional + 72) == 0x100000);   // stack reserve
     CHECK(Read64(image, optional + 80) == 0x1000);     // stack commit
     CHECK(Read64(image, optional + 88) == 0x100000);   // heap reserve
     CHECK(Read64(image, optional + 96) == 0x1000);     // heap commit
 
     const uint16_t sectionCount = Read16(image, peOffset + 6);
-    REQUIRE(sectionCount == 3);
+    REQUIRE(sectionCount == 4);
     std::vector<PeSection> sections;
     const size_t sectionTable = optional + 240;
     for (uint16_t i = 0; i < sectionCount; ++i) {
@@ -606,6 +643,16 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(Read32(image, mainOffset + 28) == 0x52800920); // distinctive exit code 73
     CHECK(Read64(image, rdataSection.rawOffset + 8) == imageBase + helperRva);
     CHECK(Read64(image, dataSection.rawOffset) == imageBase + secondRva);
+
+    // Both absolute slots appear as DIR64 base relocations; the ARM64 loader
+    // refuses an image without them.
+    const uint32_t relocDirRva = Read32(image, optional + 112 + 5 * 8);
+    const uint32_t relocDirSize = Read32(image, optional + 112 + 5 * 8 + 4);
+    const auto &relocSection = findSection(".reloc");
+    CHECK(relocDirRva == relocSection.rva);
+    CHECK(relocDirSize == relocSection.virtualSize);
+    CHECK(ReadDir64Fixups(image, relocSection, relocDirSize) ==
+          std::vector<uint32_t>{rdataSection.rva + 8, dataSection.rva});
 }
 
 TEST_CASE("PE linker eight-byte aligns Windows AArch64 thunk tables across DLL groups") {
@@ -729,11 +776,11 @@ TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import librar
         const size_t peOffset = Read32(image, 0x3C);
         REQUIRE(Read16(image, peOffset + 4) == 0xAA64);      // IMAGE_FILE_MACHINE_ARM64
         CHECK((Read16(image, peOffset + 22) & 0x2000) != 0); // IMAGE_FILE_DLL
-        CHECK((Read16(image, peOffset + 22) & 0x0001) != 0); // IMAGE_FILE_RELOCS_STRIPPED
+        CHECK((Read16(image, peOffset + 22) & 0x0001) == 0); // relocations kept for ASLR
         const size_t optional = peOffset + 24;
         CHECK(Read64(image, optional + 24) == 0x1'8000'0000ULL);
         CHECK(Read16(image, optional + 68) == 2);          // GUI subsystem
-        CHECK((Read16(image, optional + 70) & 0x40) == 0); // fixed base, no ASLR
+        CHECK((Read16(image, optional + 70) & 0x40) != 0); // DYNAMIC_BASE
         const uint32_t entryRva = Read32(image, optional + 16);
         const uint32_t exportRva = Read32(image, optional + 112);
         REQUIRE(exportRva != 0);

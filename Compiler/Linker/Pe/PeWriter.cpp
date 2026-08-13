@@ -26,25 +26,26 @@ namespace Rux {
 
 // DLL-specific
 [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
-// These images have no base-relocation table, so IMAGE_FILE_RELOCS_STRIPPED
-// must describe the fixed-base contract in the COFF header as well as through
-// the absence of DYNAMIC_BASE below.
-// IMAGE_FILE_RELOCS_STRIPPED | IMAGE_FILE_EXECUTABLE_IMAGE |
-// IMAGE_FILE_LARGE_ADDRESS_AWARE
-[[maybe_unused]] static constexpr uint16_t kCharacteristicsExecutable = 0x0023u;
+// IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE. The .reloc
+// table below describes every absolute fixup, so IMAGE_FILE_RELOCS_STRIPPED
+// must stay clear: the ARM64 loader refuses an image it cannot relocate with
+// "%1 is not a valid Win32 application".
+[[maybe_unused]] static constexpr uint16_t kCharacteristicsExecutable = 0x0022u;
 // The same flags plus IMAGE_FILE_DLL.
-[[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2023u;
+[[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
 
 // IMAGE_SCN_ characteristics
 [[maybe_unused]] static constexpr uint32_t kScnText = 0x6000'0020u;  // CNT_CODE | MEM_EXECUTE | MEM_READ
 [[maybe_unused]] static constexpr uint32_t kScnRData = 0x4000'0040u; // CNT_INITIALIZED_DATA | MEM_READ
 [[maybe_unused]] static constexpr uint32_t kScnData = 0xC000'0040u;  // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+// CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ — the loader reads .reloc
+// once while mapping and never needs it again.
+[[maybe_unused]] static constexpr uint32_t kScnReloc = 0x4200'0040u;
 
-// DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE.
-// The linker currently does not emit a .reloc table, so do not opt into
-// ASLR. Absolute relocations such as vtable function pointers must remain
-// valid at the preferred image base.
-[[maybe_unused]] static constexpr uint16_t kDllChars = 0x8100u;
+// DllCharacteristics: HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
+// TERMINAL_SERVER_AWARE. The .reloc table lets the loader place the image
+// anywhere, and Windows on ARM64 only loads images that opt into ASLR.
+[[maybe_unused]] static constexpr uint16_t kDllChars = 0x8160u;
 
 struct PeStubPatch {
     size_t stubOffset = 0;
@@ -524,9 +525,9 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         return false;
     }
     const bool isDll = artifactKind == ArtifactKind::SharedLibrary;
-    // Executables conventionally occupy 0x140000000. A fixed-base DLL must
-    // not request the same address as its importing executable because this
-    // writer intentionally emits no base-relocation table yet.
+    // Preferred bases follow x86-64 linker convention — 0x140000000 for
+    // executables, 0x180000000 for DLLs — but the .reloc table lets the
+    // loader place either anywhere.
     const uint64_t imageBase = isDll ? 0x1'8000'0000ULL : kImageBase;
     // 1. Collect imported external function names
 
@@ -813,7 +814,17 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     }
 
     // 5. Compute section layout (RVAs and file offsets)
-    const uint32_t numSections = mergedData.empty() ? 2u : 3u;
+    // Every Abs64 fixup becomes an IMAGE_REL_BASED_DIR64 entry, so the .reloc
+    // section exists exactly when the merged objects contain one.
+    const bool hasAbsoluteFixups = std::ranges::any_of(objects, [](const auto &obj) {
+        return std::ranges::any_of(obj.sections, [](const auto &sec) {
+            if (sec.type != RcuSecType::Text && sec.type != RcuSecType::RoData && sec.type != RcuSecType::Data) {
+                return false;
+            }
+            return std::ranges::any_of(sec.relocs, [](const auto &reloc) { return reloc.type == RcuRelType::Abs64; });
+        });
+    });
+    const uint32_t numSections = (mergedData.empty() ? 2u : 3u) + (hasAbsoluteFixups ? 1u : 0u);
     const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
     const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
     const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
@@ -935,6 +946,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     // 9. Patch user code relocations
 
+    std::vector<uint32_t> baseRelocationRvas;
     for (size_t i = 0; i < objects.size(); ++i) {
         const auto &obj = objects[i];
         const auto &lay = layouts[i];
@@ -971,6 +983,12 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
                     continue;
                 }
                 const auto &sym = obj.symbols[reloc.symbolIndex];
+
+                // A 64-bit absolute slot moves with the image; record it for
+                // the base-relocation table before resolving its target.
+                if (reloc.type == RcuRelType::Abs64) {
+                    baseRelocationRvas.push_back(static_cast<uint32_t>(secBaseVA + reloc.sectionOffset - imageBase));
+                }
 
                 // Resolve target VA
                 uint64_t targetVA = 0;
@@ -1018,7 +1036,36 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    // 10. Emit PE32+ file
+    // 10. Build the base-relocation table: one block per 4 KB page holding an
+    // IMAGE_REL_BASED_DIR64 entry per fixup, padded to a four-byte block size
+    // with an IMAGE_REL_BASED_ABSOLUTE no-op.
+    std::ranges::sort(baseRelocationRvas);
+    Buf relocBuf;
+    for (size_t first = 0; first < baseRelocationRvas.size();) {
+        const uint32_t page = baseRelocationRvas[first] & ~0xFFFu;
+        size_t last = first;
+        while (last < baseRelocationRvas.size() && (baseRelocationRvas[last] & ~0xFFFu) == page) {
+            ++last;
+        }
+        const size_t entryCount = last - first;
+        WriteU32(relocBuf, page);
+        WriteU32(relocBuf, static_cast<uint32_t>(8 + (entryCount + entryCount % 2) * 2));
+        for (; first < last; ++first) {
+            WriteU16(relocBuf, static_cast<uint16_t>(0xA000u | (baseRelocationRvas[first] & 0xFFFu)));
+        }
+        if (entryCount % 2 != 0) {
+            WriteU16(relocBuf, 0);
+        }
+    }
+    // .reloc follows the last mapped section; numSections and sizeOfHeaders
+    // already account for it whenever the objects contain an Abs64 fixup.
+    const auto relocVirtSize = static_cast<uint32_t>(relocBuf.size());
+    const uint32_t relocRva = sizeOfImage;
+    const uint32_t relocFileSize = AlignUp(relocVirtSize, kFileAlign);
+    const uint32_t relocFileOff = mergedData.empty() ? rdataFileOff + rdataFileSize : dataFileOff + dataFileSize;
+    const uint32_t finalSizeOfImage = relocBuf.empty() ? sizeOfImage : relocRva + AlignUp(relocVirtSize, kSecAlign);
+
+    // 11. Emit PE32+ file
     std::filesystem::create_directories(outputPath.parent_path());
     std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
     if (!out) {
@@ -1068,12 +1115,12 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // Optional Header PE32+ (240 bytes)
     wU16(kMagicPE32P);
     wU8(14);
-    wU8(0);                             // Linker version 14.0
-    wU32(textFileSize);                 // SizeOfCode
-    wU32(rdataFileSize + dataFileSize); // SizeOfInitializedData
-    wU32(0);                            // SizeOfUninitializedData
-    wU32(textRva);                      // AddressOfEntryPoint (__rux_start at start of .text)
-    wU32(textRva);                      // BaseOfCode
+    wU8(0);                                             // Linker version 14.0
+    wU32(textFileSize);                                 // SizeOfCode
+    wU32(rdataFileSize + dataFileSize + relocFileSize); // SizeOfInitializedData
+    wU32(0);                                            // SizeOfUninitializedData
+    wU32(textRva);                                      // AddressOfEntryPoint (__rux_start at start of .text)
+    wU32(textRva);                                      // BaseOfCode
     wU64(imageBase);
     wU32(kSecAlign);
     wU32(kFileAlign);
@@ -1084,7 +1131,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU16(architecture->minimumOsVersionMajor);
     wU16(architecture->minimumOsVersionMinor); // MajorSubsystemVersion / MinorSubsystemVersion
     wU32(0);                                   // Win32VersionValue
-    wU32(sizeOfImage);
+    wU32(finalSizeOfImage);
     wU32(sizeOfHeaders);
     wU32(0); // CheckSum
     wU16(isDll ? kSubsystemGUI : kSubsystemCUI);
@@ -1102,10 +1149,10 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
          importDllNames.empty() ? 0 : static_cast<uint32_t>((importDllNames.size() + 1) * 20)); // [1] Import
     wDir(0, 0);
     wDir(0, 0);
+    wDir(0, 0);                                           // [2..4]
+    wDir(relocBuf.empty() ? 0 : relocRva, relocVirtSize); // [5] Base relocation
     wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0);
-    wDir(0, 0); // [2..7]
+    wDir(0, 0); // [6..7]
     wDir(0, 0);
     wDir(0, 0);
     wDir(0, 0);
@@ -1147,6 +1194,18 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         wU16(0);
         wU32(kScnData);
     }
+    if (!relocBuf.empty()) {
+        wSec8(".reloc");
+        wU32(relocVirtSize);
+        wU32(relocRva);
+        wU32(relocFileSize);
+        wU32(relocFileOff);
+        wU32(0);
+        wU32(0);
+        wU16(0);
+        wU16(0);
+        wU32(kScnReloc);
+    }
     padTo(kFileAlign);
     // Section data
     wBuf(textBuf);
@@ -1155,6 +1214,10 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     padTo(kFileAlign);
     if (!mergedData.empty()) {
         wBuf(mergedData);
+        padTo(kFileAlign);
+    }
+    if (!relocBuf.empty()) {
+        wBuf(relocBuf);
         padTo(kFileAlign);
     }
     return errors.empty();

@@ -98,7 +98,7 @@ GitHub's `windows-11-arm` runner is the default native and cross-target test env
 
 An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` plus the `Name.lib` import library, and a `StaticLibrary` writes `Name.lib`. Shared and static libraries can be built but not passed to `rux run`. `SourceLibrary` has no standalone native artifact.
 
-The x86-64 and AArch64 backends write PE/COFF objects and libraries directly, without an external toolchain. Both PE architectures currently use fixed image bases: executables use `0x140000000` and DLLs use `0x180000000`. The linker does not emit a `.reloc` table and does not enable ASLR; DLLs therefore must load successfully at their preferred base. ARM64 unwind metadata (`.pdata` / `.xdata`), base relocations, ASLR, and broader PE hardening remain follow-up work.
+The x86-64 and AArch64 backends write PE/COFF objects and libraries directly, without an external toolchain. Executables prefer image base `0x140000000` and DLLs `0x180000000`, and every 64-bit absolute fixup is listed as an `IMAGE_REL_BASED_DIR64` entry in the `.reloc` table, so both PE architectures are relocatable and opt into ASLR with high-entropy addresses. That table is what lets AArch64 images launch at all: Windows on ARM64 refuses an executable or DLL it cannot relocate. ARM64 unwind metadata (`.pdata` / `.xdata`) and broader PE hardening remain follow-up work.
 
 For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
 

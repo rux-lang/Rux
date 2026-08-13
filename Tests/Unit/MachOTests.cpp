@@ -412,6 +412,7 @@ TEST_CASE("Mach-O links deterministic signed position-independent AArch64 execut
     REQUIRE(imageData != nullptr);
     CHECK(image.Section("__TEXT", "__const") == nullptr);
     CHECK(image.Segment("__DATA_CONST")->initialProtection == 3); // readable and writable
+    CHECK(image.Segment("__DATA_CONST")->flags == 0x10);          // SG_READ_ONLY, re-protected after rebase
     CHECK(*image.mainEntryOffset == imageText->offset);
     CHECK(image.Segment("__TEXT")->vmSize % 0x4000 == 0);
     CHECK(image.Segment("__DATA_CONST")->fileOffset % 0x4000 == 0);
@@ -767,6 +768,8 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     // A dylib has no __PAGEZERO, so __TEXT, __DATA_CONST and __DATA are 0, 1, 2.
     CHECK(image.binds[0].segmentIndex == 2);
     CHECK(image.binds[0].segmentOffset == 0);
+    REQUIRE(image.Segment("__DATA_CONST") != nullptr);
+    CHECK(image.Segment("__DATA_CONST")->flags == 0x10); // SG_READ_ONLY, re-protected after rebase
     REQUIRE(image.rebases.size() == 1);
     CHECK(image.rebases[0].segmentIndex == 2);
     CHECK(image.rebases[0].segmentOffset == imageData->address - dataSegment->vmAddress);
