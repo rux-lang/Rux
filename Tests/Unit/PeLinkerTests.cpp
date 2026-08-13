@@ -209,7 +209,7 @@ TEST_CASE("PE linker preserves the x86-64 executable layout and patched targets"
     CHECK(sectionAlignment == 0x1000);
     CHECK(fileAlignment == 0x200);
     CHECK(sizeOfHeaders % fileAlignment == 0);
-    // x86-64 keeps the Vista baseline; only ARM64 needs Windows 10.
+    // x86-64 keeps the Vista baseline; ARM64 stamps the 6.2 baseline below.
     CHECK(Read16(image, optional + 40) == 6); // MajorOperatingSystemVersion
     CHECK(Read16(image, optional + 48) == 6); // MajorSubsystemVersion
     // HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
@@ -548,13 +548,14 @@ TEST_CASE("PE linker emits and resolves a Windows AArch64 executable") {
     CHECK(imageBase == 0x1'4000'0000ULL);
     CHECK(Read32(image, optional + 32) == 0x1000); // section alignment
     CHECK(Read32(image, optional + 36) == 0x200);  // file alignment
-    // ARM64 arrived in Windows 10, and its loader rejects an image claiming an
-    // older Windows with "%1 is not a valid Win32 application".
-    CHECK(Read16(image, optional + 40) == 10); // MajorOperatingSystemVersion
-    CHECK(Read16(image, optional + 42) == 0);  // MinorOperatingSystemVersion
-    CHECK(Read16(image, optional + 48) == 10); // MajorSubsystemVersion
-    CHECK(Read16(image, optional + 50) == 0);  // MinorSubsystemVersion
-    CHECK(Read16(image, optional + 68) == 3);  // console subsystem
+    // The ARM64 loader accepts exactly the 6.2 version baseline MSVC stamps:
+    // 10.0 kills the process during initialization with
+    // STATUS_INVALID_IMAGE_FORMAT, and lower values are rejected outright.
+    CHECK(Read16(image, optional + 40) == 6); // MajorOperatingSystemVersion
+    CHECK(Read16(image, optional + 42) == 2); // MinorOperatingSystemVersion
+    CHECK(Read16(image, optional + 48) == 6); // MajorSubsystemVersion
+    CHECK(Read16(image, optional + 50) == 2); // MinorSubsystemVersion
+    CHECK(Read16(image, optional + 68) == 3); // console subsystem
     // Windows on ARM64 only loads relocatable, ASLR-capable images.
     CHECK((Read16(image, optional + 70) & 0x40) != 0); // DYNAMIC_BASE
     CHECK(Read64(image, optional + 72) == 0x100000);   // stack reserve

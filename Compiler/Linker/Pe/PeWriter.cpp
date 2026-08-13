@@ -79,9 +79,12 @@ using ApplyPeRelocation = bool (*)(Buf &, size_t, uint64_t, uint64_t, int64_t, u
 struct PeArchitectureConfig {
     uint16_t machine = 0;
     uint8_t codePadding = 0;
-    // Oldest Windows release whose loader accepts an image for this machine.
-    // ARM64 was introduced in Windows 10, and its loader rejects an image that
-    // claims an earlier subsystem with "%1 is not a valid Win32 application".
+    // Operating-system and subsystem version stamped into the image, matching
+    // the platform linker's default for the machine. The values are load
+    // gates, not documentation: the ARM64 loader terminates a process whose
+    // image claims a version other than 6.2 (verified on Windows 11 ARM64 —
+    // 10.0 dies during initialization with STATUS_INVALID_IMAGE_FORMAT, and
+    // anything below 6.2 is rejected outright).
     uint16_t minimumOsVersionMajor = 0;
     uint16_t minimumOsVersionMinor = 0;
     BuildPeEntryStub buildEntryStub = nullptr;
@@ -213,8 +216,8 @@ static const PeArchitectureConfig *PeArchitectureFor(const Target::Arch arch) {
     static constexpr PeArchitectureConfig aarch64{
         .machine = 0xAA64, // IMAGE_FILE_MACHINE_ARM64
         .codePadding = 0,
-        .minimumOsVersionMajor = 10, // Windows 10, the first ARM64 release
-        .minimumOsVersionMinor = 0,
+        .minimumOsVersionMajor = 6, // 6.2, the ARM64 baseline MSVC stamps
+        .minimumOsVersionMinor = 2,
         .buildEntryStub = BuildAArch64EntryStub,
         .appendImportThunk = AppendAArch64ImportThunk,
         .applyRelocation = ApplyAArch64PeRelocation,
