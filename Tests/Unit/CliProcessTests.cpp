@@ -82,6 +82,43 @@ TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     CHECK(Run(std::array<std::string_view, 2>{"fmt", "extra"}).exitCode == 2);
 }
 
+TEST_CASE("build --all conflicts are usage errors before manifest loading") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto missing =
+        (System::TempDirectory() / ("rux-build-matrix-missing-" + std::to_string(nonce)) / "Rux.toml").string();
+
+    const auto target =
+        Run(std::array<std::string_view, 6>{"--manifest", missing, "build", "--all", "--target", "linux-aarch64"});
+    CHECK(target.exitCode == 2);
+    CHECK(target.output.contains("options '--all' and '--target' cannot be used together"));
+    CHECK_FALSE(target.output.contains("specified manifest"));
+
+    const auto debug = Run(std::array<std::string_view, 5>{"--manifest", missing, "build", "--all", "--debug"});
+    CHECK(debug.exitCode == 2);
+    CHECK(debug.output.contains("options '--all' and '--debug' cannot be used together"));
+    CHECK_FALSE(debug.output.contains("specified manifest"));
+
+    const auto release = Run(std::array<std::string_view, 5>{"--manifest", missing, "build", "--all", "--release"});
+    CHECK(release.exitCode == 2);
+    CHECK(release.output.contains("options '--all' and '--release' cannot be used together"));
+    CHECK_FALSE(release.output.contains("specified manifest"));
+
+    const auto emit = Run(std::array<std::string_view, 6>{"--manifest", missing, "build", "--all", "--emit", "lir"});
+    CHECK(emit.exitCode == 2);
+    CHECK(emit.output.contains("options '--all' and '--emit' cannot be used together"));
+    CHECK_FALSE(emit.output.contains("specified manifest"));
+}
+
+TEST_CASE("build help publishes the all-target matrix option") {
+    const auto textHelp = Run(std::array<std::string_view, 2>{"help", "build"});
+    const auto jsonHelp = Run(std::array<std::string_view, 3>{"help", "build", "--json"});
+
+    CHECK(textHelp.exitCode == 0);
+    CHECK(textHelp.output.contains("--all"));
+    CHECK(jsonHelp.exitCode == 0);
+    CHECK(jsonHelp.output.contains("\"flags\":\"--all\""));
+}
+
 TEST_CASE("clean removes only the configured output root and Temp tree") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto root = System::TempDirectory() / ("rux-clean-test-" + std::to_string(nonce));

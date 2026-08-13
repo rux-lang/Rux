@@ -198,6 +198,7 @@ constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../J
 // Build
 constexpr std::array build_usage = {"[options]"sv};
 constexpr std::array build_opts = {
+    OptionDoc{.flags = "--all"sv, .desc = "Build all supported targets in Debug and Release"sv},
     OptionDoc{.flags = "--debug"sv, .desc = "Build with debug symbols (unoptimized output)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
@@ -209,7 +210,7 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Suppress non-essential output (only errors are shown)"sv},
     OptionDoc{.flags = "-v, --verbose"sv, .desc = "Enable verbose output for detailed build information"sv}};
 constexpr std::array build_exs = {
-    ""sv, "--debug"sv, "--release"sv, "--stats"sv, "--verbose --release"sv, "--emit ast,sema"sv};
+    ""sv, "--all"sv, "--debug"sv, "--release"sv, "--stats"sv, "--verbose --release"sv, "--emit ast,sema"sv};
 
 // Check
 constexpr std::array check_usage = {"[options]"sv};

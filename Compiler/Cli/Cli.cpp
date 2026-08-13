@@ -282,6 +282,14 @@ int Cli::Run() const {
         }
         return std::nullopt;
     };
+    if (const auto error = conflicts("--all", "--target"))
+        return *error;
+    if (const auto error = conflicts("--all", "--debug"))
+        return *error;
+    if (const auto error = conflicts("--all", "--release"))
+        return *error;
+    if (const auto error = conflicts("--all", "--emit"))
+        return *error;
     if (const auto error = conflicts("--debug", "--release"))
         return *error;
     if (const auto error = conflicts("--source-only", "--manifest-only"))

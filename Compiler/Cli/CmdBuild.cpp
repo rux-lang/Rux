@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
 #include "Cli/TerminalStyle.h"
+#include "Driver/BuildPlan.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -22,6 +23,7 @@ using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    bool buildAll = false;
     bool isRelease = false;
     bool isDebug = false;
     std::string_view target;
@@ -36,6 +38,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
+        if (arg == "--all") {
+            buildAll = true;
+            continue;
+        }
         if (arg == "--release") {
             isRelease = true;
             continue;
@@ -127,6 +133,13 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     }
     auto manifest = LoadManifest(*manifestPath);
     if (!manifest) {
+        return 1;
+    }
+    if (buildAll) {
+        // RUX-006 makes the complete, validated plan available to the CLI.
+        // Execution and aggregate reporting are introduced by RUX-007.
+        const auto matrix = GenerateBuildMatrix(manifestPath->parent_path(), *manifest);
+        std::println(stderr, "error: execution of the {}-cell build matrix is not available yet", matrix.size());
         return 1;
     }
     const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;

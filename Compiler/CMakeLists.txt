@@ -165,6 +165,7 @@ target_link_libraries(RuxLinker PUBLIC RuxObjectRcu RuxSystem RuxArchive RuxCryp
 
 rux_add_component(RuxDriver
     Driver/CompilerDriver.cpp
+    Driver/BuildPlan.cpp
     Driver/BuildReport.cpp
     Driver/BuildTarget.cpp
     Driver/Credentials.cpp

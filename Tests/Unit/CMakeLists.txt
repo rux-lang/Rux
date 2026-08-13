@@ -13,6 +13,7 @@ set(RUX_TEST_SOURCES
     AsmParserTests.cpp
     BuiltinAssertTests.cpp
     BuiltinPanicTests.cpp
+    BuildPlanTests.cpp
     BuildReportTests.cpp
     CodegenTests.cpp
     ChecksumTests.cpp

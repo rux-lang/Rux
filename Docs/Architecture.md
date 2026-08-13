@@ -124,6 +124,8 @@ Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` con
 
 `Driver/BuildTarget` owns output layout as distinct APIs rather than boolean path switches. The raw output root resolves `[Build].Output`; ordinary machine artifacts always append their typed `BuildProfile` and canonical `TargetTriple`. Tests, generated documentation, source archives, and `clean` opt into the raw-root contract explicitly.
 
+`Driver/BuildPlan` owns the build-matrix model. A `BuildCell` fixes one typed profile, one typed target, and its resolved artifact directory. Matrix generation is deterministic: it walks the target catalog once for Debug and then once for Release, producing sixteen collision-free cells without consulting host properties.
+
 The Mach-O image writer builds ad-hoc signatures entirely inside `RuxLinker`. It reserves `LC_CODE_SIGNATURE` during layout, hashes the final signed prefix in 4 KiB pages with `RuxCrypto` SHA-256, emits a version 0x20400 CodeDirectory and embedded-signature superblob in big-endian form, and includes the result in `__LINKEDIT`. The same target bytes are therefore produced on every compiler host without invoking an Apple signing tool.
 
 Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:
