@@ -36,13 +36,6 @@ bool IsUnimplementedPrimitiveType(const std::string_view name) {
 }
 } // namespace
 
-// SemanticModel
-
-bool SemanticModel::HasErrors() const noexcept {
-    return std::ranges::any_of(
-        diagnostics, [](const SemanticDiagnostic &d) { return d.severity == SemanticDiagnostic::Severity::Error; });
-}
-
 // Internal: Symbol & Scope
 class Scope; // forward declaration — Scope is defined below
 
@@ -131,13 +124,19 @@ class Analyzer {
 public:
     Analyzer(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDeps,
              const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiags,
-             std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext)
+             std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
+             std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
+             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
+             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes)
         : modules(inputModules)
         , deps(inputDeps)
         , packageName(inputPackageName)
         , diags(inputDiags)
         , symbols(inputSymbols)
         , context(inputContext)
+        , expressionTypes(inputExpressionTypes)
+        , typeNodeTypes(inputTypeNodeTypes)
+        , patternTypes(inputPatternTypes)
         , currentScope(&globalScope) {
     }
 
@@ -202,6 +201,9 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     std::vector<SemanticSymbol> &symbols;
     const CompileTimeContext &context;
+    std::unordered_map<const Expr *, TypeRef> &expressionTypes;
+    std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
+    std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     Scope globalScope{nullptr};
     Scope *currentScope;
     // packageModuleScopes[pkgName][modulePath] = logical module scope.
@@ -1752,6 +1754,14 @@ private:
     }
 
     TypeRef ResolveType(const TypeExpr &expr) {
+        TypeRef type = ResolveTypeImpl(expr);
+        if (!type.IsUnknown()) {
+            typeNodeTypes.insert_or_assign(&expr, type);
+        }
+        return type;
+    }
+
+    TypeRef ResolveTypeImpl(const TypeExpr &expr) {
         if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
             if (IsUnimplementedPrimitiveType(t->name)) {
                 EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
@@ -3634,6 +3644,9 @@ private:
     }
 
     void CheckLetPattern(const Pattern &pat, const TypeRef &type, bool isMut) {
+        if (!type.IsUnknown()) {
+            patternTypes.insert_or_assign(&pat, type);
+        }
         if (auto *identPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
@@ -3678,6 +3691,9 @@ private:
     }
 
     void CheckPattern(const Pattern &pat, const TypeRef &subjectType = TypeRef::MakeUnknown()) {
+        if (!subjectType.IsUnknown()) {
+            patternTypes.insert_or_assign(&pat, subjectType);
+        }
         if (auto *identPat = dynamic_cast<const IdentPattern *>(&pat)) {
             Symbol sym;
             sym.kind = Symbol::Kind::Var;
@@ -3841,6 +3857,14 @@ private:
 
     // Expressions
     TypeRef CheckExpr(const Expr &expr) {
+        TypeRef type = CheckExprImpl(expr);
+        if (!type.IsUnknown()) {
+            expressionTypes.insert_or_assign(&expr, type);
+        }
+        return type;
+    }
+
+    TypeRef CheckExprImpl(const Expr &expr) {
         if (auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
             return LiteralType(e->token);
         }
@@ -5164,7 +5188,11 @@ SemanticModel SemanticAnalyzer::Analyze() {
     ResolveConditionalCompilation(modules, compileTimeContext, diags);
 
     std::vector<const Module *> constModules(modules.begin(), modules.end());
-    Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext);
+    std::unordered_map<const Expr *, TypeRef> expressionTypes;
+    std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
+    std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    Analyzer analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes,
+                      typeNodeTypes, patternTypes);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -5173,7 +5201,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
         }
     }
     orderedModules.insert(orderedModules.end(), modules.begin(), modules.end());
-    return SemanticModel{std::move(diags), std::move(symbols), std::move(orderedModules),
-                         std::move(compileTimeContext)};
+    return SemanticModel{
+        std::move(diags),           std::move(symbols),       std::move(orderedModules), std::move(compileTimeContext),
+        std::move(expressionTypes), std::move(typeNodeTypes), std::move(patternTypes)};
 }
 } // namespace Rux

@@ -52,7 +52,147 @@ std::vector<SemanticDiagnostic> AnalyzeWithDep(const std::string &userSource, co
     return analyzer.Analyze().diagnostics;
 }
 
+template <typename Node>
+const TypeRef &ResolvedType(const SemanticModel &model, const Node &node) {
+    const TypeRef *type = model.TryGetType(node);
+    REQUIRE(type != nullptr);
+    return *type;
+}
+
 } // namespace
+
+TEST_CASE("semantic model retains resolved AST type facts") {
+    Lexer lexer(R"(
+        struct Box {
+            value: int32;
+        }
+
+        func Identity<T>(value: T) -> T {
+            return value;
+        }
+
+        func Main() -> int64 {
+            let literal: int32 = 7i32;
+            let aggregate = Box { value: literal };
+            let field = aggregate.value;
+            let casted = field as int64;
+            let called = Identity<int64>(casted);
+            return match (called, true) {
+                (number, _) => number
+            };
+        }
+    )",
+                "facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "facts", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    REQUIRE_EQ(main->body->stmts.size(), 6);
+
+    const auto *literal = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
+    const auto *aggregate = dynamic_cast<const LetStmt *>(main->body->stmts[1].get());
+    const auto *field = dynamic_cast<const LetStmt *>(main->body->stmts[2].get());
+    const auto *casted = dynamic_cast<const LetStmt *>(main->body->stmts[3].get());
+    const auto *called = dynamic_cast<const LetStmt *>(main->body->stmts[4].get());
+    const auto *returned = dynamic_cast<const ReturnStmt *>(main->body->stmts[5].get());
+    REQUIRE(literal != nullptr);
+    REQUIRE(aggregate != nullptr);
+    REQUIRE(field != nullptr);
+    REQUIRE(casted != nullptr);
+    REQUIRE(called != nullptr);
+    REQUIRE(returned != nullptr);
+    REQUIRE(literal->type.has_value());
+    REQUIRE(returned->value.has_value());
+
+    CHECK_EQ(ResolvedType(model, *literal->init).ToString(), "int32");
+    CHECK_EQ(ResolvedType(model, **literal->type).ToString(), "int32");
+    CHECK_EQ(ResolvedType(model, *aggregate->init).ToString(), "Box");
+    CHECK_EQ(ResolvedType(model, *field->init).ToString(), "int32");
+    CHECK_EQ(ResolvedType(model, *casted->init).ToString(), "int64");
+    CHECK_EQ(ResolvedType(model, *called->init).ToString(), "int64");
+
+    const auto *genericCall = dynamic_cast<const CallExpr *>(called->init.get());
+    const auto *match = dynamic_cast<const MatchExpr *>((*returned->value).get());
+    REQUIRE(genericCall != nullptr);
+    REQUIRE_EQ(genericCall->typeArgs.size(), 1);
+    REQUIRE(match != nullptr);
+    REQUIRE_EQ(match->arms.size(), 1);
+    const auto *tuplePattern = dynamic_cast<const TuplePattern *>(match->arms[0].pattern.get());
+    REQUIRE(tuplePattern != nullptr);
+    REQUIRE_EQ(tuplePattern->elements.size(), 2);
+
+    CHECK_EQ(ResolvedType(model, *genericCall->typeArgs[0]).ToString(), "int64");
+    CHECK_EQ(ResolvedType(model, *match->arms[0].pattern).ToString(), "(int64, bool8)");
+    CHECK_EQ(ResolvedType(model, *tuplePattern->elements[0]).ToString(), "int64");
+
+    LiteralExpr nodeOutsideAnalyzedModules;
+    CHECK(model.TryGetType(nodeOutsideAnalyzedModules) == nullptr);
+}
+
+TEST_CASE("semantic model omits unresolved type facts") {
+    Lexer lexer("func Main() { let value: Missing = absent; }", "unresolved.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "unresolved.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "unresolved", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE(model.HasErrors());
+
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
+    REQUIRE(binding != nullptr);
+    REQUIRE(binding->type.has_value());
+    CHECK(model.TryGetType(**binding->type) == nullptr);
+    CHECK(model.TryGetType(*binding->init) == nullptr);
+}
+
+TEST_CASE("semantic model retains facts for dependency modules") {
+    Lexer depLexer("func DependencyValue() -> int32 { return 7i32; }", "dependency.rux");
+    auto depLexed = depLexer.Tokenize();
+    REQUIRE_FALSE(depLexed.HasErrors());
+    Parser depParser(std::move(depLexed.tokens), "dependency.rux");
+    auto depParsed = depParser.Parse();
+    REQUIRE_FALSE(depParsed.HasErrors());
+
+    Lexer userLexer("func Main() {}", "main.rux");
+    auto userLexed = userLexer.Tokenize();
+    REQUIRE_FALSE(userLexed.HasErrors());
+    Parser userParser(std::move(userLexed.tokens), "main.rux");
+    auto userParsed = userParser.Parse();
+    REQUIRE_FALSE(userParsed.HasErrors());
+
+    DepPackage dependency;
+    dependency.name = "Dependency";
+    dependency.modules.push_back({"Dependency", &depParsed.module});
+    SemanticAnalyzer analyzer({&userParsed.module}, {std::move(dependency)}, "main", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    REQUIRE_EQ(model.modules.size(), 2);
+    CHECK(model.modules[0] == &depParsed.module);
+
+    const auto *function = dynamic_cast<const FuncDecl *>(depParsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *returned = dynamic_cast<const ReturnStmt *>(function->body->stmts[0].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    CHECK_EQ(ResolvedType(model, **returned->value).ToString(), "int32");
+}
 
 TEST_CASE("let and var independently control binding and pointee mutability") {
     const auto diagnostics = AnalyzeSource(R"(
