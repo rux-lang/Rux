@@ -84,6 +84,50 @@ TEST_CASE("RCU backends preserve injected build metadata") {
     }
 }
 
+TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
+    const auto package = CompileToLir(R"(
+        func Sink(text: Slice<char8>, value: float32) {}
+
+        func Power(base: int, exponent: int) -> int {
+            Sink("shared", 1.25f32);
+            Sink("shared", 1.25f32);
+            return base ** exponent;
+        }
+
+        func Main() -> int {
+            return Power(2, 3);
+        }
+    )");
+    RcuEmitter emitter(package, "test", Target::OS::Linux);
+    const auto objects = emitter.Generate();
+    REQUIRE(emitter.Diagnostics().empty());
+    REQUIRE(objects.size() == 1);
+    const auto &object = objects.front();
+    REQUIRE(object.sections.size() == 3);
+    CHECK(object.sections[RCU_TEXT_IDX].name == ".text");
+    CHECK(object.sections[RCU_RODATA_IDX].name == ".rodata");
+    CHECK(object.sections[RCU_DATA_IDX].name == ".data");
+
+    const auto countSymbols = [&](const std::string_view prefix) {
+        return std::ranges::count_if(object.symbols,
+                                     [prefix](const RcuSymbol &symbol) { return symbol.name.starts_with(prefix); });
+    };
+    CHECK(countSymbols("__str") == 1);
+    CHECK(countSymbols("__f32_") == 1);
+    const auto helper = std::ranges::find(object.symbols, "__rux_ipow", &RcuSymbol::name);
+    REQUIRE(helper != object.symbols.end());
+    CHECK(helper->sectionIdx == RCU_TEXT_IDX);
+    CHECK(helper->size > 0);
+    const auto sink = std::ranges::find(object.symbols, "Sink", &RcuSymbol::name);
+    REQUIRE(sink != object.symbols.end());
+    CHECK(sink->sectionIdx == RCU_TEXT_IDX);
+
+    std::unordered_set<std::string> names;
+    for (const auto &symbol : object.symbols) {
+        CHECK(names.insert(symbol.name).second);
+    }
+}
+
 TEST_CASE("RCU System V calls preserve register-allocated arguments") {
     const auto package = CompileToLir(R"(
         func Consume(value: uint) {}

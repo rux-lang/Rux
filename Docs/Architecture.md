@@ -27,7 +27,7 @@ Source loading -> SourceModel -> Lexer -> Syntax -> SemanticModel
                                         Linker -> ELF / Mach-O / PE
 ```
 
-The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
+The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. The x86-64 emitter supplies target-encoded instruction and literal bytes plus relocation kinds through that boundary; it no longer assembles an `RcuFile` or mutates its symbol table directly. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
@@ -51,7 +51,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                               | Semantic                              |
 | `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability | BuildInfo, Diagnostics, HIR, and LIR  |
 | `Lowering`             | AST/semantic model → HIR → LIR; private AST-to-HIR orchestration and lowering contexts | Frontend and IR components       |
-| `CodeGen`              | Layout rules, literal decoding, register allocation, and the assembly result     | LIR                                   |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics |
 | `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction               | BuildInfo, LIR, Object, Diagnostics   |
 | `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction              | BuildInfo, LIR, Object, Diagnostics   |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                   | BuildInfo and Target                  |

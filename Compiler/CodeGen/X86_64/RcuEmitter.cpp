@@ -7,13 +7,15 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/LinearScan.h"
 #include "CodeGen/PhiMoveResolver.h"
+#include "CodeGen/RcuModuleBuilder.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "Object/Rcu/RcuMetadata.h"
-#include "Object/Rcu/RcuStringTable.h"
 
+#include <array>
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -45,7 +47,12 @@ public:
         , targetOs(inputTargetOs)
         , buildInfo(inputBuildInfo)
         , diagnostics(inputDiagnostics)
-        , enc(textData) {
+        , moduleBuilder({.arch = RcuArch::X86_64,
+                         .sourcePath = module.name,
+                         .packageName = pkgName,
+                         .buildTimestamp = RcuBuildTimestamp(buildInfo),
+                         .ruxVersion = RcuCompilerVersion(buildInfo)})
+        , enc(moduleBuilder.SectionData(RcuModuleSection::Text)) {
     }
 
     RcuFile Generate();
@@ -69,29 +76,12 @@ private:
         return ResolveCConvention(c, targetOs, Target::Arch::X86_64);
     }
 
-    // Section data buffers
-    std::vector<uint8_t> textData;
-    std::vector<uint8_t> rodataData;
-    std::vector<uint8_t> dataData;
+    RcuModuleBuilder moduleBuilder;
 
-    // Per-section relocations
-    std::vector<RcuReloc> textRelocs;
-    std::vector<RcuReloc> rodataRelocs;
-
-    // Symbol table and string table
-    std::vector<RcuSymbol> symbols;
-    RcuStringTable strings;
-
-    // Encoder writing into textData
+    // Encoder writes target instructions into the builder-owned text section.
     X64Enc enc;
 
-    // Interned rodata constants: key → symbol index
-    std::unordered_map<std::string, uint32_t> strSyms;
-    std::unordered_map<std::string, uint32_t> f32Syms;
-    std::unordered_map<std::string, uint32_t> f64Syms;
     int constIdx = 0;
-    uint32_t f32SignMaskSym = ~0u;
-    uint32_t f64SignMaskSym = ~0u;
 
     // Declared extern symbols (by name → symbol index)
     std::unordered_map<std::string, uint32_t> externSyms;
@@ -119,6 +109,37 @@ private:
     int32_t frameSize = 0;
     int32_t hiddenReturnOff = 0;
     std::unordered_map<LirReg, int> physRegMap;
+
+    [[nodiscard]] std::vector<std::uint8_t> &TextData() {
+        return moduleBuilder.SectionData(RcuModuleSection::Text);
+    }
+
+    [[nodiscard]] std::vector<std::uint8_t> &RodataData() {
+        return moduleBuilder.SectionData(RcuModuleSection::RoData);
+    }
+
+    [[nodiscard]] std::vector<std::uint8_t> &DataData() {
+        return moduleBuilder.SectionData(RcuModuleSection::Data);
+    }
+
+    [[nodiscard]] uint32_t DeclareSymbol(std::string name, std::string typeName, const std::uint8_t kind,
+                                         const std::uint8_t visibility) {
+        return moduleBuilder
+            .DeclareSymbol(
+                {.name = std::move(name), .typeName = std::move(typeName), .kind = kind, .visibility = visibility})
+            .value_or(~0u);
+    }
+
+    [[nodiscard]] uint32_t DefineDataSymbol(std::string name, std::string typeName, const std::uint8_t kind,
+                                            const std::uint8_t visibility, const RcuModuleSection section,
+                                            const std::uint32_t offset, const std::uint32_t size) {
+        return moduleBuilder
+            .AddDefinition(
+                {.name = std::move(name), .typeName = std::move(typeName), .kind = kind, .visibility = visibility},
+                section, offset, size)
+            .value_or(~0u);
+    }
+
     std::vector<int> usedPhysRegs;
 
     std::vector<uint32_t> blockOffsets;
@@ -292,24 +313,12 @@ private:
         }
     }
 
-    uint32_t AddSymbol(RcuSymbol s) {
-        auto idx = static_cast<uint32_t>(symbols.size());
-        symbols.push_back(std::move(s));
-        return idx;
-    }
-
     uint32_t GetOrAddExtern(const std::string &name, uint8_t kind, const std::string &dll = {}) {
         auto it = externSyms.find(name);
         if (it != externSyms.end()) {
             return it->second;
         }
-        RcuSymbol s;
-        s.name = name;
-        s.typeName = dll;
-        s.kind = kind;
-        s.visibility = RcuSymVis::Global;
-        s.sectionIdx = RCU_SEC_EXTERNAL;
-        uint32_t idx = AddSymbol(s);
+        const uint32_t idx = moduleBuilder.DeclareExternal(name, kind, dll).value_or(~0u);
         externSyms[name] = idx;
         return idx;
     }
@@ -320,13 +329,7 @@ private:
     // it resolve like any other local text symbol.
     uint32_t EnsureIntPowHelper() {
         if (ipowSym == ~0u) {
-            RcuSymbol s;
-            s.name = "__rux_ipow";
-            s.sectionIdx = RCU_TEXT_IDX;
-            s.value = 0; // patched to the real offset in EmitIntPowHelper
-            s.kind = RcuSymKind::Func;
-            s.visibility = RcuSymVis::Local;
-            ipowSym = AddSymbol(s);
+            ipowSym = DeclareSymbol("__rux_ipow", {}, RcuSymKind::Func, RcuSymVis::Local);
         }
         return ipowSym;
     }
@@ -341,7 +344,9 @@ private:
         if (ipowSym == ~0u) {
             return;
         }
-        symbols[ipowSym].value = enc.Size();
+        if (!moduleBuilder.BeginFunction(ipowSym)) {
+            return;
+        }
         if (EffectiveConv(CallingConvention::Default) == CallingConvention::SysV) {
             // Keep the compact helper body below in its historical rcx/rdx
             // form after accepting native SysV rdi/rsi arguments.
@@ -376,6 +381,7 @@ private:
         for (const std::uint8_t b : kBody) {
             enc.Byte(b);
         }
+        (void)moduleBuilder.EndFunction(ipowSym);
     }
 
     // Lazily declares the synthesized double-precision pow helper and
@@ -383,13 +389,7 @@ private:
     // EmitFloatPowHelper(), alongside the other runtime helpers.
     uint32_t EnsureFloatPowHelper() {
         if (fpowSym == ~0u) {
-            RcuSymbol s;
-            s.name = "__rux_powf64";
-            s.sectionIdx = RCU_TEXT_IDX;
-            s.value = 0; // patched to the real offset in EmitFloatPowHelper
-            s.kind = RcuSymKind::Func;
-            s.visibility = RcuSymVis::Local;
-            fpowSym = AddSymbol(s);
+            fpowSym = DeclareSymbol("__rux_powf64", {}, RcuSymKind::Func, RcuSymVis::Local);
         }
         return fpowSym;
     }
@@ -399,13 +399,7 @@ private:
     uint32_t EnsureFloatPowF32Helper() {
         EnsureFloatPowHelper();
         if (fpowf32Sym == ~0u) {
-            RcuSymbol s;
-            s.name = "__rux_powf32";
-            s.sectionIdx = RCU_TEXT_IDX;
-            s.value = 0; // patched to the real offset in EmitFloatPowF32Helper
-            s.kind = RcuSymKind::Func;
-            s.visibility = RcuSymVis::Local;
-            fpowf32Sym = AddSymbol(s);
+            fpowf32Sym = DeclareSymbol("__rux_powf32", {}, RcuSymKind::Func, RcuSymVis::Local);
         }
         return fpowf32Sym;
     }
@@ -425,7 +419,9 @@ private:
         if (fpowSym == ~0u) {
             return;
         }
-        symbols[fpowSym].value = enc.Size();
+        if (!moduleBuilder.BeginFunction(fpowSym)) {
+            return;
+        }
 
         auto b = [&](std::initializer_list<uint8_t> bytes) {
             for (uint8_t x : bytes) {
@@ -536,6 +532,7 @@ private:
         b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
         b({0xC3});                               // ret
                    // clang-format on
+        (void)moduleBuilder.EndFunction(fpowSym);
     }
 
     // Emits the single-precision pow helper into .text:
@@ -548,7 +545,9 @@ private:
         if (fpowf32Sym == ~0u) {
             return;
         }
-        symbols[fpowf32Sym].value = enc.Size();
+        if (!moduleBuilder.BeginFunction(fpowf32Sym)) {
+            return;
+        }
 
         auto b = [&](std::initializer_list<uint8_t> bytes) {
             for (uint8_t x : bytes) {
@@ -566,6 +565,7 @@ private:
         b({0xF2, 0x0F, 0x5A, 0xC0}); // cvtsd2ss xmm0, xmm0
         b({0xC3});                   // ret
                    // clang-format on
+        (void)moduleBuilder.EndFunction(fpowf32Sym);
     }
 
     void PredeclareFunctions() {
@@ -573,149 +573,108 @@ private:
             if (func.isExtern || funcSyms.contains(func.name)) {
                 continue;
             }
-            RcuSymbol sym;
-            sym.name = func.name;
-            sym.sectionIdx = RCU_TEXT_IDX;
-            sym.value = 0;
-            sym.kind = RcuSymKind::Func;
-            sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-            sym.typeName = func.returnType.ToString();
-            funcSyms[func.name] = AddSymbol(sym);
+            funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                                func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
         }
     }
 
-    // Align rodataData_ to `align` bytes (zero-fill), return current
-    // offset.
+    // Align read-only data to `align` bytes (zero-fill), return current offset.
     uint32_t AlignRodata(int align) {
-        while (rodataData.size() % align) {
-            rodataData.push_back(0);
-        }
-        return static_cast<uint32_t>(rodataData.size());
+        return moduleBuilder.AlignSection(RcuModuleSection::RoData, static_cast<std::uint16_t>(align));
     }
 
     uint32_t InternStr(const std::string &val) {
-        auto it = strSyms.find(val);
-        if (it != strSyms.end()) {
-            return it->second;
+        if (const auto symbol = moduleBuilder.InternedLiteral("string", val)) {
+            return *symbol;
         }
-        auto off = static_cast<uint32_t>(rodataData.size());
+        auto &data = RodataData();
+        const auto off = static_cast<uint32_t>(data.size());
         for (unsigned char c : val) {
-            rodataData.push_back(c);
+            data.push_back(c);
         }
-        rodataData.push_back(0);
+        data.push_back(0);
         std::string lbl = std::format("__str{}", constIdx++);
-        RcuSymbol s;
-        s.name = lbl;
-        s.sectionIdx = RCU_RODATA_IDX;
-        s.value = off;
-        s.size = static_cast<uint32_t>(val.size() + 1);
-        s.kind = RcuSymKind::Const;
-        s.visibility = RcuSymVis::Local;
-        uint32_t idx = AddSymbol(s);
-        strSyms[val] = idx;
+        const uint32_t idx = DefineDataSymbol(std::move(lbl), {}, RcuSymKind::Const, RcuSymVis::Local,
+                                              RcuModuleSection::RoData, off, static_cast<uint32_t>(val.size() + 1));
+        (void)moduleBuilder.RecordInternedLiteral("string", val, idx);
         return idx;
     }
 
     uint32_t InternF32(const std::string &val) {
-        auto it = f32Syms.find(val);
-        if (it != f32Syms.end()) {
-            return it->second;
+        if (const auto symbol = moduleBuilder.InternedLiteral("f32", val)) {
+            return *symbol;
         }
-        uint32_t off = AlignRodata(4);
+        const uint32_t off = AlignRodata(4);
         const float fv = ParseFloatLiteral<float>(val);
         uint32_t bits;
         std::memcpy(&bits, &fv, 4);
         for (int i = 0; i < 4; ++i) {
-            rodataData.push_back(bits & 0xFF);
+            RodataData().push_back(bits & 0xFF);
             bits >>= 8;
         }
         std::string lbl = std::format("__f32_{}", constIdx++);
-        RcuSymbol s;
-        s.name = lbl;
-        s.sectionIdx = RCU_RODATA_IDX;
-        s.value = off;
-        s.size = 4;
-        s.kind = RcuSymKind::Const;
-        s.visibility = RcuSymVis::Local;
-        uint32_t idx = AddSymbol(s);
-        f32Syms[val] = idx;
+        const uint32_t idx =
+            DefineDataSymbol(std::move(lbl), {}, RcuSymKind::Const, RcuSymVis::Local, RcuModuleSection::RoData, off, 4);
+        (void)moduleBuilder.RecordInternedLiteral("f32", val, idx);
         return idx;
     }
 
     uint32_t InternF64(const std::string &val) {
-        auto it = f64Syms.find(val);
-        if (it != f64Syms.end()) {
-            return it->second;
+        if (const auto symbol = moduleBuilder.InternedLiteral("f64", val)) {
+            return *symbol;
         }
-        uint32_t off = AlignRodata(8);
+        const uint32_t off = AlignRodata(8);
         const double dv = ParseFloatLiteral<double>(val);
         uint64_t bits;
         std::memcpy(&bits, &dv, 8);
         for (int i = 0; i < 8; ++i) {
-            rodataData.push_back(bits & 0xFF);
+            RodataData().push_back(bits & 0xFF);
             bits >>= 8;
         }
         std::string lbl = std::format("__f64_{}", constIdx++);
-        RcuSymbol s;
-        s.name = lbl;
-        s.sectionIdx = RCU_RODATA_IDX;
-        s.value = off;
-        s.size = 8;
-        s.kind = RcuSymKind::Const;
-        s.visibility = RcuSymVis::Local;
-        uint32_t idx = AddSymbol(s);
-        f64Syms[val] = idx;
+        const uint32_t idx =
+            DefineDataSymbol(std::move(lbl), {}, RcuSymKind::Const, RcuSymVis::Local, RcuModuleSection::RoData, off, 8);
+        (void)moduleBuilder.RecordInternedLiteral("f64", val, idx);
         return idx;
     }
 
     uint32_t InternF32SignMask() {
-        if (f32SignMaskSym != ~0u) {
-            return f32SignMaskSym;
+        if (const auto symbol = moduleBuilder.InternedLiteral("f32", "sign-mask")) {
+            return *symbol;
         }
-        uint32_t off = AlignRodata(4);
+        const uint32_t off = AlignRodata(4);
         // 0x80000000 — sign bit of f32
-        rodataData.push_back(0x00);
-        rodataData.push_back(0x00);
-        rodataData.push_back(0x00);
-        rodataData.push_back(0x80);
-        RcuSymbol s;
-        s.name = "__f32_sign_mask";
-        s.sectionIdx = RCU_RODATA_IDX;
-        s.value = off;
-        s.size = 4;
-        s.kind = RcuSymKind::Const;
-        s.visibility = RcuSymVis::Local;
-        f32SignMaskSym = AddSymbol(s);
-        return f32SignMaskSym;
+        constexpr std::array mask = {std::uint8_t{0}, std::uint8_t{0}, std::uint8_t{0}, std::uint8_t{0x80}};
+        (void)moduleBuilder.Append(RcuModuleSection::RoData, mask);
+        const uint32_t symbol = DefineDataSymbol("__f32_sign_mask", {}, RcuSymKind::Const, RcuSymVis::Local,
+                                                 RcuModuleSection::RoData, off, mask.size());
+        (void)moduleBuilder.RecordInternedLiteral("f32", "sign-mask", symbol);
+        return symbol;
     }
 
     uint32_t InternF64SignMask() {
-        if (f64SignMaskSym != ~0u) {
-            return f64SignMaskSym;
+        if (const auto symbol = moduleBuilder.InternedLiteral("f64", "sign-mask")) {
+            return *symbol;
         }
-        uint32_t off = AlignRodata(8);
+        const uint32_t off = AlignRodata(8);
         // 0x8000000000000000 — sign bit of f64
+        auto &data = RodataData();
         for (int i = 0; i < 7; ++i) {
-            rodataData.push_back(0x00);
+            data.push_back(0x00);
         }
-        rodataData.push_back(0x80);
-        RcuSymbol s;
-        s.name = "__f64_sign_mask";
-        s.sectionIdx = RCU_RODATA_IDX;
-        s.value = off;
-        s.size = 8;
-        s.kind = RcuSymKind::Const;
-        s.visibility = RcuSymVis::Local;
-        f64SignMaskSym = AddSymbol(s);
-        return f64SignMaskSym;
+        data.push_back(0x80);
+        const uint32_t symbol = DefineDataSymbol("__f64_sign_mask", {}, RcuSymKind::Const, RcuSymVis::Local,
+                                                 RcuModuleSection::RoData, off, 8);
+        (void)moduleBuilder.RecordInternedLiteral("f64", "sign-mask", symbol);
+        return symbol;
     }
 
     void AddTextReloc(uint32_t sectionOff, uint32_t symIdx, int32_t addend = 0) {
-        textRelocs.push_back({sectionOff, symIdx, RcuRelType::Rel32, addend});
+        (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOff, symIdx, RcuRelType::Rel32, addend);
     }
 
     void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type, int32_t addend = 0) {
-        rodataRelocs.push_back({sectionOff, symIdx, type, addend});
+        (void)moduleBuilder.AddRelocation(RcuModuleSection::RoData, sectionOff, symIdx, type, addend);
     }
 
     void PatchJumps() {
@@ -2437,32 +2396,24 @@ private:
     // Its instructions are encoded directly and any symbol references become
     // ordinary text relocations.
     void GenAsmFunc(const LirFunc &func) {
-        const uint32_t funcStart = enc.Size();
-        RcuSymbol sym;
-        sym.name = func.name;
-        sym.sectionIdx = RCU_TEXT_IDX;
-        sym.value = funcStart;
-        sym.kind = RcuSymKind::Func;
-        sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-        sym.typeName = func.returnType.ToString();
-        uint32_t symIdx;
-        if (const auto it = funcSyms.find(func.name); it != funcSyms.end()) {
-            symbols[it->second] = std::move(sym);
-            symIdx = it->second;
-        }
-        else {
-            symIdx = AddSymbol(std::move(sym));
-            funcSyms[func.name] = symIdx;
+        const uint32_t symIdx = funcSyms.contains(func.name)
+                                  ? funcSyms.at(func.name)
+                                  : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                                  func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+        funcSyms[func.name] = symIdx;
+        if (!moduleBuilder.BeginFunction(symIdx)) {
+            return;
         }
 
-        AsmAssembly asmResult = AssembleAsmFunc(func.asmBody, mod.name, textData);
+        AsmAssembly asmResult = AssembleAsmFunc(func.asmBody, mod.name, TextData());
         for (const auto &fixup : asmResult.fixups) {
-            textRelocs.push_back({fixup.offset, ResolveAsmSymbol(fixup.symbol), fixup.relType, fixup.addend});
+            (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, fixup.offset, ResolveAsmSymbol(fixup.symbol),
+                                              fixup.relType, fixup.addend);
         }
         for (auto &diag : asmResult.diagnostics) {
             diagnostics.push_back(std::move(diag));
         }
-        symbols[symIdx].size = enc.Size() - funcStart;
+        (void)moduleBuilder.EndFunction(symIdx);
     }
 
     // Function generation
@@ -2477,20 +2428,13 @@ private:
         }
         PrepassFunc(func);
         jumpPatches.clear();
-        uint32_t funcStart = enc.Size();
-        // Function symbol
-        RcuSymbol sym;
-        sym.name = func.name;
-        sym.sectionIdx = RCU_TEXT_IDX;
-        sym.value = funcStart;
-        sym.kind = RcuSymKind::Func;
-        sym.visibility = func.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-        sym.typeName = func.returnType.ToString();
-        if (const auto it = funcSyms.find(func.name); it != funcSyms.end()) {
-            symbols[it->second] = std::move(sym);
-        }
-        else {
-            funcSyms[func.name] = AddSymbol(std::move(sym));
+        const uint32_t symIdx = funcSyms.contains(func.name)
+                                  ? funcSyms.at(func.name)
+                                  : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
+                                                  func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+        funcSyms[func.name] = symIdx;
+        if (!moduleBuilder.BeginFunction(symIdx)) {
+            return;
         }
         // Prologue
         enc.PushRbp();
@@ -2665,34 +2609,20 @@ private:
             }
         }
         PatchJumps();
-        // Update symbol size
-        for (auto &s : symbols) {
-            if (s.name == func.name && s.sectionIdx == RCU_TEXT_IDX && s.value == funcStart) {
-                s.size = enc.Size() - funcStart;
-                break;
-            }
-        }
+        (void)moduleBuilder.EndFunction(symIdx);
     }
 
     // Module generation
     void EmitVtables() {
         for (const auto &vt : mod.vtables) {
-            AlignRodata(8);
-
-            RcuSymbol sym;
-            sym.name = vt.label;
-            sym.sectionIdx = RCU_RODATA_IDX;
-            sym.value = static_cast<uint32_t>(rodataData.size());
-            sym.size = static_cast<uint32_t>(vt.methods.size() * 8);
-            sym.kind = RcuSymKind::Const;
-            sym.visibility = RcuSymVis::Global;
-            const uint32_t vtSym = AddSymbol(std::move(sym));
+            const uint32_t vtableOff = AlignRodata(8);
+            const uint32_t vtSym = DeclareSymbol(vt.label, {}, RcuSymKind::Const, RcuSymVis::Global);
             dataSyms[vt.label] = vtSym;
 
             for (const auto &method : vt.methods) {
-                const uint32_t slotOff = static_cast<uint32_t>(rodataData.size());
+                const uint32_t slotOff = static_cast<uint32_t>(RodataData().size());
                 for (int i = 0; i < 8; ++i) {
-                    rodataData.push_back(0);
+                    RodataData().push_back(0);
                 }
 
                 uint32_t methodSym;
@@ -2704,6 +2634,8 @@ private:
                 }
                 AddRodataReloc(slotOff, methodSym, RcuRelType::Abs64);
             }
+            (void)moduleBuilder.DefineSymbol(vtSym, RcuModuleSection::RoData, vtableOff,
+                                             static_cast<uint32_t>(vt.methods.size() * 8));
         }
     }
 
@@ -2732,7 +2664,7 @@ private:
             bits = ParseIntegerLiteralBits(literal).value_or(0);
         }
         for (int i = 0; i < size; ++i) {
-            rodataData.push_back(bits & 0xFF);
+            RodataData().push_back(bits & 0xFF);
             bits >>= 8;
         }
     }
@@ -2747,9 +2679,9 @@ private:
         std::uint64_t length = 0;
         if (c.isTextSlice) {
             for (const unsigned char byte : c.text) {
-                rodataData.push_back(byte);
+                RodataData().push_back(byte);
             }
-            rodataData.push_back(0); // keep C interop's terminator
+            RodataData().push_back(0); // keep C interop's terminator
             length = c.text.size();
         }
         else {
@@ -2759,33 +2691,22 @@ private:
             length = c.elements.size();
         }
 
-        RcuSymbol elems;
-        elems.name = c.name + "$elements";
-        elems.sectionIdx = RCU_RODATA_IDX;
-        elems.value = elemsOff;
-        elems.size = static_cast<uint32_t>(rodataData.size() - elemsOff);
-        elems.kind = RcuSymKind::Const;
-        elems.visibility = RcuSymVis::Local;
-        const uint32_t elemsSym = AddSymbol(std::move(elems));
+        const uint32_t elemsSym =
+            DefineDataSymbol(c.name + "$elements", {}, RcuSymKind::Const, RcuSymVis::Local, RcuModuleSection::RoData,
+                             elemsOff, static_cast<uint32_t>(RodataData().size() - elemsOff));
 
         const uint32_t headerOff = AlignRodata(8);
         for (int i = 0; i < 16; ++i) {
-            rodataData.push_back(0);
+            RodataData().push_back(0);
         }
         AddRodataReloc(headerOff, elemsSym, RcuRelType::Abs64);
         for (int i = 0; i < 8; ++i) {
-            rodataData[headerOff + 8 + i] = static_cast<std::uint8_t>((length >> (8 * i)) & 0xFF);
+            RodataData()[headerOff + 8 + i] = static_cast<std::uint8_t>((length >> (8 * i)) & 0xFF);
         }
 
-        RcuSymbol header;
-        header.name = c.name;
-        header.sectionIdx = RCU_RODATA_IDX;
-        header.value = headerOff;
-        header.size = 16;
-        header.kind = RcuSymKind::Const;
-        header.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-        header.typeName = c.type.ToString();
-        dataSyms[c.name] = AddSymbol(std::move(header));
+        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
+                                            c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData,
+                                            headerOff, 16);
     }
 
     void EmitConstArray(const LirConstDecl &c) {
@@ -2795,15 +2716,10 @@ private:
             AppendConstElement(element, c.elementType);
         }
 
-        RcuSymbol array;
-        array.name = c.name;
-        array.sectionIdx = RCU_RODATA_IDX;
-        array.value = arrayOff;
-        array.size = static_cast<uint32_t>(c.elements.size() * static_cast<std::size_t>(elemSize));
-        array.kind = RcuSymKind::Const;
-        array.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-        array.typeName = c.type.ToString();
-        dataSyms[c.name] = AddSymbol(std::move(array));
+        dataSyms[c.name] =
+            DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
+                             c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData, arrayOff,
+                             static_cast<uint32_t>(c.elements.size() * static_cast<std::size_t>(elemSize)));
     }
 
     void GenModule() {
@@ -2826,19 +2742,14 @@ private:
                 }
                 continue;
             }
-            RcuSymbol s;
-            s.name = c.name;
-            s.sectionIdx = RCU_DATA_IDX;
-            s.value = static_cast<uint32_t>(dataData.size());
-            s.kind = RcuSymKind::Const;
-            s.visibility = c.isPublic ? RcuSymVis::Global : RcuSymVis::Local;
-            s.typeName = c.type.ToString();
+            const uint32_t offset = static_cast<uint32_t>(DataData().size());
             // Emit 8 placeholder bytes in .data
             for (int i = 0; i < 8; ++i) {
-                dataData.push_back(0);
+                DataData().push_back(0);
             }
-            s.size = 8;
-            dataSyms[c.name] = AddSymbol(s);
+            dataSyms[c.name] =
+                DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
+                                 c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::Data, offset, 8);
         }
         EmitVtables();
         // Functions
@@ -2856,49 +2767,10 @@ private:
 // RcuCodeGen::Generate
 RcuFile RcuCodeGen::Generate() {
     GenModule();
-    RcuFile file;
-    file.sourcePath = mod.name;
-    file.packageName = pkgName;
-    file.buildTimestamp = RcuBuildTimestamp(buildInfo);
-    file.ruxVersion = RcuCompilerVersion(buildInfo);
-
-    // Build sections (always 3: .text, .rodata, .data)
-    {
-        RcuSection text;
-        text.name = ".text";
-        text.type = RcuSecType::Text;
-        text.flags = RcuSecFlag::Alloc | RcuSecFlag::Exec | RcuSecFlag::Read;
-        text.alignment = 16;
-        text.data = std::move(textData);
-        text.relocs = std::move(textRelocs);
-        file.sections.push_back(std::move(text));
-    }
-    {
-        RcuSection rodata;
-        rodata.name = ".rodata";
-        rodata.type = RcuSecType::RoData;
-        rodata.flags = RcuSecFlag::Alloc | RcuSecFlag::Read;
-        rodata.alignment = 8;
-        rodata.data = std::move(rodataData);
-        rodata.relocs = std::move(rodataRelocs);
-        file.sections.push_back(std::move(rodata));
-    }
-    {
-        RcuSection data;
-        data.name = ".data";
-        data.type = RcuSecType::Data;
-        data.flags = RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write;
-        data.alignment = 8;
-        data.data = std::move(dataData);
-        file.sections.push_back(std::move(data));
-    }
-
-    file.symbols = std::move(symbols);
-    // Build string table offsets (intern all names into the file's
-    // string table) (done during Emit/Dump)
-    file.flags = RcuFileFlag::HasMetadata;
-    file.hasMetadata = true;
-    return file;
+    auto built = moduleBuilder.Finalize();
+    diagnostics.insert(diagnostics.end(), std::make_move_iterator(built.diagnostics.begin()),
+                       std::make_move_iterator(built.diagnostics.end()));
+    return built.file ? std::move(*built.file) : RcuFile{};
 }
 } // namespace
 
