@@ -180,27 +180,24 @@ CompileResult CompilerDriver::Compile() {
 
 bool CompilerDriver::LexAndParseSources() {
     auto loadResult = SourceLoader::Load(root);
-    if (!loadResult) {
-        return false;
-    }
-    stats.localFiles = loadResult->files.size();
-    for (const auto &file : loadResult->files) {
+    stats.localFiles = loadResult.files.size();
+    for (const auto &file : loadResult.files) {
         stats.localLines += CountLines(file.source);
         stats.localSourceSize += file.source.size();
     }
-    for (const auto &err : loadResult->errors) {
-        EmitErrorLine(err);
-    }
-    if (!loadResult->errors.empty() && opts.checkOnly) {
+    if (EmitAll(loadResult.diagnostics)) {
         hadErrors = true;
+        if (!opts.checkOnly) {
+            return false;
+        }
     }
 
     // Lex
     bool lexErrors = false;
     std::vector<LexerResult> lexResults;
-    lexResults.reserve(loadResult->files.size());
+    lexResults.reserve(loadResult.files.size());
     const auto lexingStart = std::chrono::steady_clock::now();
-    for (const auto &file : loadResult->files) {
+    for (const auto &file : loadResult.files) {
         if (opts.verbose) {
             std::print("Lexing {}\n", file.path.string());
         }
@@ -230,10 +227,10 @@ bool CompilerDriver::LexAndParseSources() {
 
     // Parse
     bool parseErrors = false;
-    parseResults.reserve(loadResult->files.size());
+    parseResults.reserve(loadResult.files.size());
     const auto parsingStart = std::chrono::steady_clock::now();
-    for (std::size_t fileIndex = 0; fileIndex < loadResult->files.size(); ++fileIndex) {
-        const auto &file = loadResult->files[fileIndex];
+    for (std::size_t fileIndex = 0; fileIndex < loadResult.files.size(); ++fileIndex) {
+        const auto &file = loadResult.files[fileIndex];
         if (opts.verbose) {
             std::print("Parsing {}\n", file.path.string());
         }
@@ -402,23 +399,17 @@ bool CompilerDriver::LoadDependencies() {
             std::print("Loading package {} from {}\n", packageName, pendingRoot.string());
         }
         auto depLoadResult = SourceLoader::Load(pendingRoot);
-        if (!depLoadResult) {
-            return false;
-        }
-        stats.dependencyFiles += depLoadResult->files.size();
-        for (const auto &depFile : depLoadResult->files) {
+        stats.dependencyFiles += depLoadResult.files.size();
+        for (const auto &depFile : depLoadResult.files) {
             stats.dependencyLines += CountLines(depFile.source);
             stats.dependencySourceSize += depFile.source.size();
         }
-        for (const auto &error : depLoadResult->errors) {
-            EmitErrorLine(error);
-        }
-        if (!depLoadResult->errors.empty()) {
+        if (EmitAll(depLoadResult.diagnostics)) {
             return false;
         }
         std::vector<ParseResult> packageParseResults;
-        packageParseResults.reserve(depLoadResult->files.size());
-        for (const auto &depFile : depLoadResult->files) {
+        packageParseResults.reserve(depLoadResult.files.size());
+        for (const auto &depFile : depLoadResult.files) {
             const auto depLexingStart = std::chrono::steady_clock::now();
             Lexer depLexer(depFile.source, depFile.path.string());
             auto depLex = depLexer.Tokenize();

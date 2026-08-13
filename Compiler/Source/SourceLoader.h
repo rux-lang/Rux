@@ -1,30 +1,26 @@
 #pragma once
 
+#include "Diagnostics/Diagnostics.h"
+#include "SourceModel/SourceFile.h"
+
 #include <filesystem>
 #include <optional>
-#include <string>
 #include <vector>
 
 namespace Rux {
-// Represents a single loaded source file.
-struct SourceFile {
-    std::filesystem::path path; // Absolute path to the file
-    std::string source;         // Full file contents
-};
-
 // Result of a load operation.
 struct SourceLoadResult {
     std::vector<SourceFile> files;
-    std::vector<std::string> errors; // Non-fatal per-file errors, if any
+    std::vector<Diagnostic> diagnostics;
+
+    [[nodiscard]] bool HasErrors() const noexcept;
 };
 
 class SourceLoader {
 public:
     // Load all *.rux files from the Src/ directory of a package.
     // manifestDir  - the directory that contains Rux.toml
-    // Returns nullopt if the Src/ directory does not exist or cannot be
-    // opened.
-    [[nodiscard]] static std::optional<SourceLoadResult> Load(const std::filesystem::path &manifestDir);
+    [[nodiscard]] static SourceLoadResult Load(const std::filesystem::path &manifestDir);
 
     // Load a single *.rux file by explicit path.
     // Returns nullopt if the file cannot be opened.

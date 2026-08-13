@@ -5,7 +5,7 @@
 // envelope on stdout. Stages accumulate diagnostics in their result structs;
 // only the CLI/driver layer prints them.
 
-#include "Source/SourceLocation.h"
+#include "SourceModel/SourceLocation.h"
 
 #include <span>
 #include <string>

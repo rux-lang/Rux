@@ -30,8 +30,22 @@ function(rux_add_component target)
     target_link_libraries(${target} PUBLIC RuxWarnings)
 endfunction()
 
+function(rux_add_interface_component target)
+    add_library(${target} INTERFACE)
+    target_include_directories(${target} INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    target_link_libraries(${target} INTERFACE RuxWarnings)
+endfunction()
+
+rux_add_interface_component(RuxSourceModel)
+
+rux_add_interface_component(RuxTarget)
+target_link_libraries(RuxTarget INTERFACE RuxSourceModel)
+
 rux_add_component(RuxDiagnostics
     Diagnostics/Diagnostics.cpp)
+target_link_libraries(RuxDiagnostics PUBLIC RuxSourceModel)
 
 rux_add_component(RuxSource
     Source/SourceLoader.cpp)
@@ -42,6 +56,7 @@ rux_add_component(RuxSystem
     System/Json.cpp
     System/Os.cpp
     System/Process.cpp)
+target_link_libraries(RuxSystem PUBLIC RuxTarget)
 if (WIN32)
     target_link_libraries(RuxSystem PRIVATE winhttp)
 endif ()
@@ -56,12 +71,12 @@ rux_add_component(RuxPackage
     Package/Manifest.cpp
     Package/Package.cpp
     Package/Version.cpp)
-target_link_libraries(RuxPackage PUBLIC RuxCrypto)
+target_link_libraries(RuxPackage PUBLIC RuxCrypto RuxTarget)
 
 rux_add_component(RuxLexer
     Lexer/Token.cpp
     Lexer/Lexer.cpp)
-target_link_libraries(RuxLexer PUBLIC RuxDiagnostics)
+target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxSourceModel)
 
 rux_add_component(RuxSyntax
     Syntax/Parser/Parser.cpp
@@ -70,7 +85,7 @@ rux_add_component(RuxSyntax
     Syntax/Parser/ParserStmt.cpp
     Syntax/Parser/ParserExpr.cpp
     Syntax/Parser/ParserDump.cpp)
-target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics)
+target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics RuxTarget)
 
 rux_add_component(RuxSemantic
     Semantic/ConditionalCompilation.cpp
@@ -94,7 +109,7 @@ target_link_libraries(RuxLinter PUBLIC RuxSyntax RuxSemantic)
 
 rux_add_component(RuxHir
     Ir/Hir/HirDump.cpp)
-target_link_libraries(RuxHir PUBLIC RuxSemantic RuxLexer)
+target_link_libraries(RuxHir PUBLIC RuxSemantic RuxLexer RuxSourceModel RuxTarget)
 
 rux_add_component(RuxHirPasses
     Ir/Hir/Passes/PassManager.cpp)
@@ -113,6 +128,7 @@ target_link_libraries(RuxLowering PUBLIC
 rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
     Object/Rcu/RcuWriter.cpp)
+target_link_libraries(RuxObjectRcu PUBLIC RuxTarget)
 
 rux_add_component(RuxCodeGenCommon
     CodeGen/Layout.cpp)

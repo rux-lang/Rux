@@ -12,7 +12,7 @@
 // Fields belonging to one architecture are simply left at their defaults by the
 // other.
 
-#include "Source/SourceLocation.h"
+#include "SourceModel/SourceLocation.h"
 #include "Target/AsmRegisters.h"
 #include "Target/Target.h"
 

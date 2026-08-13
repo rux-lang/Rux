@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Source/SourceLocation.h"
+#include "SourceModel/SourceLocation.h"
 
 #include <cstdint>
 #include <string>

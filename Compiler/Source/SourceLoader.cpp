@@ -3,29 +3,36 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
-#include <print>
 #include <sstream>
 
 namespace Rux {
-std::optional<SourceLoadResult> SourceLoader::Load(const std::filesystem::path &manifestDir) {
+bool SourceLoadResult::HasErrors() const noexcept {
+    return std::ranges::any_of(diagnostics, &Diagnostic::IsError);
+}
+
+SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
+    SourceLoadResult result;
     const auto srcDir = manifestDir / "Src";
     if (!std::filesystem::exists(srcDir)) {
-        std::print(stderr, "error: source directory '{}' does not exist\n", srcDir.string());
-        return std::nullopt;
+        result.diagnostics.push_back(
+            ErrorDiagnostic(std::format("source directory '{}' does not exist", srcDir.string())));
+        return result;
     }
     if (!std::filesystem::is_directory(srcDir)) {
-        std::print(stderr, "error: '{}' is not a directory\n", srcDir.string());
-        return std::nullopt;
+        result.diagnostics.push_back(ErrorDiagnostic(std::format("'{}' is not a directory", srcDir.string())));
+        return result;
     }
     const auto paths = CollectSourcePaths(srcDir);
     if (paths.empty()) {
-        std::print(stderr, "warning: no *.rux files found under '{}'\n", srcDir.string());
+        result.diagnostics.push_back({Diagnostic::Severity::Warning,
+                                      {},
+                                      {.line = 0, .column = 0, .offset = 0},
+                                      std::format("no *.rux files found under '{}'", srcDir.string())});
     }
-    SourceLoadResult result;
     for (const auto &path : paths) {
         auto file = LoadFile(path);
         if (!file) {
-            result.errors.push_back(std::format("error: cannot read source file '{}'\n", path.string()));
+            result.diagnostics.push_back(ErrorDiagnostic(std::format("cannot read source file '{}'", path.string())));
             continue;
         }
         result.files.push_back(std::move(*file));

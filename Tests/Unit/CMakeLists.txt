@@ -42,6 +42,8 @@ set(RUX_TEST_SOURCES
     RcuTests.cpp
     RegistryTests.cpp
     SemanticTests.cpp
+    SourceLoaderTests.cpp
+    SourceModelTests.cpp
 )
 
 if (TARGET RuxFormatter)

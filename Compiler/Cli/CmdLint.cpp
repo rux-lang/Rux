@@ -65,17 +65,17 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
             return outcome;
         }
         const auto sources = SourceLoader::Load(packageManifestPath.parent_path());
-        if (!sources) {
-            outcome.errors = 1;
-            return outcome;
+        outcome.files = sources.files.size();
+        for (const auto &diagnostic : sources.diagnostics) {
+            PrintDiagnostic(diagnostic);
+            if (diagnostic.IsError()) {
+                ++outcome.errors;
+            }
+            else {
+                ++outcome.warnings;
+            }
         }
-
-        outcome.files = sources->files.size();
-        for (const auto &error : sources->errors) {
-            std::print(stderr, "{}", error);
-            ++outcome.errors;
-        }
-        for (const auto &file : sources->files) {
+        for (const auto &file : sources.files) {
             if (opts.verbose) {
                 std::println("  Linting {}", file.path.string());
             }

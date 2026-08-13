@@ -68,7 +68,8 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Compiler/Cli/`         | Command-line interface and terminal presentation                                |
 | `Compiler/Diagnostics/` | Diagnostic values, severities, and rendering primitives                         |
 | `Compiler/Driver/`      | Compilation orchestration, targets, and build reports                           |
-| `Compiler/Source/`      | Source discovery, loading, and locations                                        |
+| `Compiler/SourceModel/` | Source locations and loaded-file identity values                                |
+| `Compiler/Source/`      | Source discovery and loading                                                     |
 | `Compiler/Lexer/`       | Tokens and lexical analysis                                                     |
 | `Compiler/Syntax/`      | AST and parser                                                                  |
 | `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model                     |

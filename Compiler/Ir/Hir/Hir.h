@@ -2,7 +2,7 @@
 
 #include "Lexer/Token.h"
 #include "Semantic/Type.h"
-#include "Source/SourceLocation.h"
+#include "SourceModel/SourceLocation.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 
