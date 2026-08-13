@@ -239,42 +239,6 @@ private:
         return name;
     }
 
-    std::string GenericStructInitName(const StructInitExpr &expr) {
-        std::string name = expr.typeName;
-        if (!expr.typeArgs.empty()) {
-            name += "<";
-            for (std::size_t i = 0; i < expr.typeArgs.size(); ++i) {
-                if (i) {
-                    name += ", ";
-                }
-                name += ResolveType(*expr.typeArgs[i]).ToString();
-            }
-            name += ">";
-        }
-        return name;
-    }
-
-    std::pair<const EnumDecl *, const EnumDecl::Variant *>
-    LookupEnumVariantInitializer(const std::string &typeName) const {
-        const std::size_t sep = typeName.find("::");
-        if (sep == std::string::npos || typeName.find("::", sep + 2) != std::string::npos) {
-            return {nullptr, nullptr};
-        }
-
-        const std::string enumName = typeName.substr(0, sep);
-        const std::string variantName = typeName.substr(sep + 2);
-        const auto enumIt = enumDecls.find(enumName);
-        if (enumIt == enumDecls.end()) {
-            return {nullptr, nullptr};
-        }
-        for (const auto &variant : enumIt->second->variants) {
-            if (variant.name == variantName) {
-                return {enumIt->second, &variant};
-            }
-        }
-        return {enumIt->second, nullptr};
-    }
-
     std::string BaseTypeName(const std::string &name) const override {
         const std::size_t pos = name.find('<');
         return pos == std::string::npos ? name : name.substr(0, pos);
@@ -302,7 +266,7 @@ private:
         return params;
     }
 
-    static TypeRef ParseTypeRefFromString(std::string str) {
+    TypeRef ParseTypeRefFromString(std::string str) const override {
         auto trim = [](std::string &s) {
             s.erase(0, s.find_first_not_of(" \t\r\n"));
             s.erase(s.find_last_not_of(" \t\r\n") + 1);
@@ -1103,149 +1067,6 @@ private:
                UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
     }
 
-    std::string NamedBaseTypeName(const TypeRef &type) const {
-        const TypeRef *named = &type;
-        if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
-            named = &type.inner[0];
-        }
-        if (named->kind == TypeRef::Kind::Named) {
-            // Slice extension methods are keyed on the full element-specific
-            // name (e.g. `Slice<int>`) so `extend int[]` stays distinct from
-            // `extend str[]`; other named types collapse to their base name so
-            // generic instantiations share one method set.
-            if (named->name.starts_with("Slice<")) {
-                return named->name;
-            }
-            return BaseTypeName(named->name);
-        }
-        switch (named->kind) {
-        case TypeRef::Kind::Bool8:
-        case TypeRef::Kind::Bool16:
-        case TypeRef::Kind::Bool32:
-        case TypeRef::Kind::Char8:
-        case TypeRef::Kind::Char16:
-        case TypeRef::Kind::Char32:
-        case TypeRef::Kind::Int8:
-        case TypeRef::Kind::Int16:
-        case TypeRef::Kind::Int32:
-        case TypeRef::Kind::Int64:
-        case TypeRef::Kind::UInt8:
-        case TypeRef::Kind::UInt16:
-        case TypeRef::Kind::UInt32:
-        case TypeRef::Kind::UInt64:
-        case TypeRef::Kind::Int:
-        case TypeRef::Kind::UInt:
-        case TypeRef::Kind::Float32:
-        case TypeRef::Kind::Float64:
-        case TypeRef::Kind::Str:
-            return named->ToString();
-        default:
-            return {};
-        }
-    }
-
-    std::unordered_map<std::string, TypeRef> StructTypeSubstitutions(const StructDecl &decl,
-                                                                     const std::vector<TypeExprPtr> &typeArgs) {
-        std::unordered_map<std::string, TypeRef> substitutions;
-        const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
-        for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(decl.typeParams[i], ResolveType(*typeArgs[i]));
-        }
-        return substitutions;
-    }
-
-    static std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
-        if (name == "opaque") {
-            return TypeRef::MakeOpaque();
-        }
-        if (name == "bool" || name == "bool8") {
-            return TypeRef::MakeBool8();
-        }
-        if (name == "bool16") {
-            return TypeRef::MakeBool16();
-        }
-        if (name == "bool32") {
-            return TypeRef::MakeBool32();
-        }
-        if (name == "char" || name == "char32") {
-            return TypeRef::MakeChar32();
-        }
-        if (name == "char8") {
-            return TypeRef::MakeChar8();
-        }
-        if (name == "char16") {
-            return TypeRef::MakeChar16();
-        }
-        if (name == "int8") {
-            return TypeRef::MakeInt8();
-        }
-        if (name == "int16") {
-            return TypeRef::MakeInt16();
-        }
-        if (name == "int32") {
-            return TypeRef::MakeInt32();
-        }
-        if (name == "int64") {
-            return TypeRef::MakeInt64();
-        }
-        if (name == "int") {
-            return TypeRef::MakeInt();
-        }
-        if (name == "byte" || name == "uint8") {
-            return TypeRef::MakeUInt8();
-        }
-        if (name == "uint16") {
-            return TypeRef::MakeUInt16();
-        }
-        if (name == "uint32") {
-            return TypeRef::MakeUInt32();
-        }
-        if (name == "uint64") {
-            return TypeRef::MakeUInt64();
-        }
-        if (name == "uint") {
-            return TypeRef::MakeUInt();
-        }
-        if (name == "float32") {
-            return TypeRef::MakeFloat32();
-        }
-        if (name == "float64") {
-            return TypeRef::MakeFloat64();
-        }
-        if (name == "float") {
-            return TypeRef::MakeFloat();
-        }
-        return std::nullopt;
-    }
-
-    static std::optional<TypeRef> SliceElementType(const TypeRef &type) {
-        if (type.kind != TypeRef::Kind::Named) {
-            return std::nullopt;
-        }
-        constexpr std::string_view prefix = "Slice<";
-        if (!type.name.starts_with(prefix) || type.name.back() != '>') {
-            return std::nullopt;
-        }
-        std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-        if (auto builtin = BuiltinTypeFromName(elemName)) {
-            return *builtin;
-        }
-        return TypeRef::MakeNamed(elemName);
-    }
-
-    std::optional<TypeRef> IndexElementType(const TypeRef &type) override {
-        if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-            return type.inner[0];
-        }
-        if (auto elemType = SliceElementType(type)) {
-            return elemType;
-        }
-        if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
-            return type.inner[0];
-        }
-        return std::nullopt;
-    }
-
     std::optional<std::uint64_t> EvalArrayLength(const Expr &expr) const {
         const auto value = EvalConstInt(expr);
         if (!value || *value < 0) {
@@ -1546,35 +1367,6 @@ private:
             return TypeRef::MakeTuple(std::move(elems));
         }
         return ResolveType(expr);
-    }
-
-    TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName) {
-        const std::string typeName = NamedBaseTypeName(objectType);
-        if (typeName.empty()) {
-            return TypeRef::MakeUnknown();
-        }
-        const auto structIt = structDecls.find(typeName);
-        if (structIt == structDecls.end()) {
-            return TypeRef::MakeUnknown();
-        }
-
-        std::unordered_map<std::string, TypeRef> substitutions;
-        std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(objectType.name);
-        const auto &params = structIt->second->typeParams;
-        const std::size_t count = std::min(params.size(), typeArgs.size());
-        for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(params[i], typeArgs[i]);
-        }
-
-        for (const auto &field : structIt->second->fields) {
-            if (field.name == fieldName) {
-                if (!substitutions.empty()) {
-                    return ResolveTypeWithSubstitution(*field.type, substitutions);
-                }
-                return ResolveType(*field.type);
-            }
-        }
-        return TypeRef::MakeUnknown();
     }
 
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
@@ -2074,7 +1866,7 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) {
+    TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) override {
         std::string name = decl.name;
         if (!typeArgs.empty()) {
             name += '<';
@@ -2480,119 +2272,6 @@ private:
 
         PopScope();
         currentTypeParams = savedTypeParams;
-    }
-
-    void CheckStructInitExpr(const StructInitExpr &e) {
-        auto structIt = structDecls.find(e.typeName);
-        if (structIt == structDecls.end()) {
-            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e.typeName); enumDecl) {
-                if (!variant) {
-                    EmitError(e.location, std::format("unknown enum variant '{}' in initializer", e.typeName));
-                    for (const auto &f : e.fields) {
-                        CheckExpr(*f.value);
-                    }
-                    return;
-                }
-                if (variant->namedFields.empty()) {
-                    EmitError(e.location, std::format("enum variant '{}' has no named fields", e.typeName));
-                    for (const auto &f : e.fields) {
-                        CheckExpr(*f.value);
-                    }
-                    return;
-                }
-
-                std::unordered_map<std::string, const EnumDecl::Variant::NamedField *> fieldMap;
-                for (const auto &field : variant->namedFields) {
-                    fieldMap.emplace(field.name, &field);
-                }
-
-                std::unordered_set<std::string> initialized;
-                for (const auto &f : e.fields) {
-                    TypeRef valueType = CheckExpr(*f.value);
-                    if (!initialized.insert(f.name).second) {
-                        EmitError(f.location, std::format("duplicate field '{}' in "
-                                                          "initializer for '{}'",
-                                                          f.name, e.typeName));
-                        continue;
-                    }
-
-                    auto fieldIt = fieldMap.find(f.name);
-                    if (fieldIt == fieldMap.end()) {
-                        EmitError(f.location, std::format("unknown field '{}' in "
-                                                          "initializer for '{}'",
-                                                          f.name, e.typeName));
-                        continue;
-                    }
-
-                    TypeRef fieldType = ResolveType(*fieldIt->second->type);
-                    if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
-                        !CanAssignExprTo(*f.value, valueType, fieldType)) {
-                        EmitError(f.location, AssignmentErrorMessage(*f.value, fieldType,
-                                                                     std::format("cannot assign '{}' to "
-                                                                                 "field '{}' of type '{}'",
-                                                                                 valueType.ToString(), f.name,
-                                                                                 fieldType.ToString())));
-                    }
-                }
-
-                for (const auto &field : variant->namedFields) {
-                    if (!initialized.contains(field.name)) {
-                        EmitError(e.location, std::format("missing field '{}' in "
-                                                          "initializer for '{}'",
-                                                          field.name, e.typeName));
-                    }
-                }
-                return;
-            }
-
-            EmitError(e.location, std::format("unknown type '{}' in struct initializer", e.typeName));
-            for (const auto &f : e.fields) {
-                CheckExpr(*f.value);
-            }
-            return;
-        }
-
-        const StructDecl &decl = *structIt->second;
-        if (e.typeArgs.size() != decl.typeParams.size()) {
-            EmitError(e.location, std::format("struct '{}' expects {} type argument(s), got {}", e.typeName,
-                                              decl.typeParams.size(), e.typeArgs.size()));
-        }
-
-        const auto substitutions = StructTypeSubstitutions(decl, e.typeArgs);
-        std::unordered_map<std::string, const StructDecl::Field *> fieldMap;
-        for (const auto &field : decl.fields) {
-            fieldMap.emplace(field.name, &field);
-        }
-
-        std::unordered_set<std::string> initialized;
-        for (const auto &f : e.fields) {
-            TypeRef valueType = CheckExpr(*f.value);
-            if (!initialized.insert(f.name).second) {
-                EmitError(f.location, std::format("duplicate field '{}' in initializer for '{}'", f.name, e.typeName));
-                continue;
-            }
-
-            auto fieldIt = fieldMap.find(f.name);
-            if (fieldIt == fieldMap.end()) {
-                EmitError(f.location, std::format("unknown field '{}' in initializer for '{}'", f.name, e.typeName));
-                continue;
-            }
-
-            TypeRef fieldType = ResolveTypeWithSubstitution(*fieldIt->second->type, substitutions);
-            if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*f.value, valueType, fieldType)) {
-                EmitError(f.location,
-                          AssignmentErrorMessage(*f.value, fieldType,
-                                                 std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                             valueType.ToString(), f.name, fieldType.ToString())));
-            }
-        }
-
-        for (const auto &field : decl.fields) {
-            if (!initialized.contains(field.name)) {
-                EmitError(e.location,
-                          std::format("missing field '{}' in initializer for '{}'", field.name, e.typeName));
-            }
-        }
     }
 
     void CheckEnumDecl(const EnumDecl &d) {
@@ -3523,129 +3202,8 @@ private:
             return CheckCallExpression(*e);
         }
 
-        if (auto *e = dynamic_cast<const IndexExpr *>(&expr)) {
-            TypeRef obj = CheckExpr(*e->object);
-            TypeRef index = CheckExpr(*e->index);
-            if (index.IsRange()) {
-                std::optional<TypeRef> elemType;
-                if (obj.kind == TypeRef::Kind::Array && !obj.inner.empty()) {
-                    elemType = obj.inner[0];
-                }
-                else {
-                    elemType = SliceElementType(obj);
-                }
-                if (elemType) {
-                    return TypeRef::MakeNamed(SliceTypeName(*elemType));
-                }
-                EmitError(e->location, std::format("cannot slice value of type '{}'", obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-            if (auto elemType = IndexElementType(obj)) {
-                return *elemType;
-            }
-            return TypeRef::MakeUnknown();
-        }
-
-        if (auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
-            TypeRef obj = CheckExpr(*e->object);
-            if (obj.kind == TypeRef::Kind::Array && obj.arrayLength && e->field == "length") {
-                return TypeRef::MakeUInt();
-            }
-            if (auto elemType = SliceElementType(obj)) {
-                if (e->field == "data") {
-                    return TypeRef::MakePointer(*elemType);
-                }
-                if (e->field == "length") {
-                    return TypeRef::MakeUInt64();
-                }
-                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-            if (obj.IsRange()) {
-                TypeRef elemType = obj.inner.empty() ? TypeRef::MakeInt64() : obj.inner[0];
-                if (e->field == "start" && obj.RangeHasStart()) {
-                    return elemType;
-                }
-                if (e->field == "end" && obj.RangeHasEnd()) {
-                    return elemType;
-                }
-                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-            if (obj.kind == TypeRef::Kind::Tuple) {
-                try {
-                    const std::size_t idx = std::stoul(e->field);
-                    if (idx < obj.inner.size()) {
-                        return obj.inner[idx];
-                    }
-                }
-                catch (...) {
-                }
-                EmitError(e->location,
-                          std::format("tuple index '{}' out of range for type '{}'", e->field, obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-
-            // Interface fat-pointer fields: data → *opaque, vtable →
-            // *opaque
-            if (const std::string ifaceName = NamedBaseTypeName(obj);
-                !ifaceName.empty() && currentScope->Lookup(ifaceName) &&
-                currentScope->Lookup(ifaceName)->kind == Symbol::Kind::Interface) {
-                const TypeRef ptrOpaque = TypeRef::MakePointer(TypeRef::MakeOpaque());
-                if (e->field == "data" || e->field == "vtable") {
-                    return ptrOpaque;
-                }
-                EmitError(e->location,
-                          std::format("unknown field '{}' on interface type '{}'", e->field, obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-
-            const std::string structName = NamedBaseTypeName(obj);
-            if (!structName.empty() && structDecls.contains(structName)) {
-                if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown()) {
-                    return fieldType;
-                }
-                EmitError(e->location, std::format("unknown field '{}' on type '{}'", e->field, obj.ToString()));
-                return TypeRef::MakeUnknown();
-            }
-
-            if (TypeRef fieldType = StructFieldType(obj, e->field); !fieldType.IsUnknown()) {
-                return fieldType;
-            }
-            if (!obj.IsUnknown()) {
-                EmitError(e->location, std::format("type '{}' has no field '{}'", obj.ToString(), e->field));
-            }
-            return TypeRef::MakeUnknown(); // field type lookup needs full
-            // type info
-        }
-
-        if (auto *e = dynamic_cast<const StructInitExpr *>(&expr)) {
-            CheckStructInitExpr(*e);
-            if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(e->typeName); enumDecl && variant) {
-                return EnumType(*enumDecl);
-            }
-            const std::string typeName = GenericStructInitName(*e);
-            TypeRef type = ParseTypeRefFromString(typeName);
-            return type.IsRange() ? type : TypeRef::MakeNamed(typeName);
-        }
-
-        if (auto *e = dynamic_cast<const ArrayExpr *>(&expr)) {
-            TypeRef elemType = TypeRef::MakeUnknown();
-            for (const auto &el : e->elements) {
-                TypeRef t = CheckExpr(*el);
-                if (elemType.IsUnknown()) {
-                    elemType = t;
-                }
-            }
-            return TypeRef::MakeArray(elemType, e->elements.size());
-        }
-
-        if (auto *e = dynamic_cast<const TupleExpr *>(&expr)) {
-            std::vector<TypeRef> elemTypes;
-            for (const auto &el : e->elements) {
-                elemTypes.push_back(CheckExpr(*el));
-            }
-            return TypeRef::MakeTuple(std::move(elemTypes));
+        if (const std::optional<TypeRef> aggregateType = CheckAggregateExpression(expr)) {
+            return *aggregateType;
         }
 
         if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {

@@ -96,6 +96,7 @@ rux_add_component(RuxSemantic
     Semantic/Type.cpp
     Semantic/SemanticAnalyzer.cpp
     Semantic/SemanticAnalyzerContext.cpp
+    Semantic/SemanticAggregateExpressions.cpp
     Semantic/SemanticBasicExpressions.cpp
     Semantic/SemanticCallExpressions.cpp
     Semantic/SemanticStatements.cpp

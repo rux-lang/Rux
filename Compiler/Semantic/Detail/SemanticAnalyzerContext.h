@@ -44,12 +44,16 @@ protected:
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
     [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
+    [[nodiscard]] std::optional<TypeRef> CheckAggregateExpression(const Expr &expression);
     void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,
                                                const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool PlaceIsImmutable(const Expr &place);
     [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
                                                              const std::string &variantName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
+    [[nodiscard]] std::string NamedBaseTypeName(const TypeRef &type) const;
+    [[nodiscard]] static std::optional<TypeRef> SliceElementType(const TypeRef &type);
+    [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type);
 
     std::vector<const Module *> &modules;
     std::vector<DepPackage> &deps;
@@ -151,6 +155,8 @@ private:
     [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &declaration,
                                                              const EnumDecl::Variant &variant,
                                                              const std::vector<TypeRef> &typeArguments) = 0;
+    [[nodiscard]] virtual TypeRef EnumType(const EnumDecl &declaration,
+                                           const std::vector<TypeRef> &typeArguments = {}) = 0;
     [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;
     virtual void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                                       const TypeRef &targetType) const = 0;
@@ -166,8 +172,8 @@ private:
                                                const TypeRef &targetType) = 0;
     [[nodiscard]] virtual std::string AssignmentErrorMessage(const Expr &expression, const TypeRef &targetType,
                                                              std::string fallback) = 0;
-    [[nodiscard]] virtual std::optional<TypeRef> IndexElementType(const TypeRef &type) = 0;
     [[nodiscard]] virtual std::string BaseTypeName(const std::string &name) const = 0;
+    [[nodiscard]] virtual TypeRef ParseTypeRefFromString(std::string typeName) const = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const = 0;
     virtual void ApplyModuleImports(const Module &module) = 0;
     virtual void ApplyModuleImportsInScope(const Module &module, Scope &scope) = 0;
@@ -189,6 +195,13 @@ private:
                                std::unordered_map<std::string, TypeRef> substitutions = {},
                                std::optional<TypeRef> receiverType = std::nullopt);
     void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration);
+    [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
+    [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
+    LookupEnumVariantInitializer(const std::string &typeName) const;
+    [[nodiscard]] std::unordered_map<std::string, TypeRef>
+    StructTypeSubstitutions(const StructDecl &declaration, const std::vector<TypeExprPtr> &typeArguments);
+    [[nodiscard]] TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName);
+    void CheckStructInitExpression(const StructInitExpr &expression);
     [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
     void CheckMutability(const Expr &target);
 };
