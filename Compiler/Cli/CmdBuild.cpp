@@ -8,6 +8,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <optional>
@@ -17,6 +18,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 using namespace Rux;
 using namespace CliSupport;
@@ -136,11 +138,49 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (buildAll) {
-        // RUX-006 makes the complete, validated plan available to the CLI.
-        // Execution and aggregate reporting are introduced by RUX-007.
         const auto matrix = GenerateBuildMatrix(manifestPath->parent_path(), *manifest);
-        std::println(stderr, "error: execution of the {}-cell build matrix is not available yet", matrix.size());
-        return 1;
+        if (!opts.quiet && !showStats) {
+            const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
+            std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}] across {} build cells\n", style.Cyan(),
+                       style.Bold(), style.Reset(), style.Bold(), manifest->package.name.Text(), style.Reset(),
+                       manifest->package.version.Text(), style.Cyan(), manifestPath->parent_path().string(),
+                       style.Reset(), matrix.size());
+        }
+
+        std::vector<BuildCellReport> reports;
+        reports.reserve(matrix.size());
+        bool allSucceeded = true;
+        for (const auto &cell : matrix) {
+            if (opts.verbose) {
+                std::println("Building {} for {}", ToString(cell.profile), cell.target.CanonicalName());
+            }
+            CompileOptions copts;
+            copts.manifestPath = *manifestPath;
+            copts.manifest = *manifest;
+            copts.target = cell.target;
+            copts.profile = cell.profile;
+            copts.defines = defines;
+            copts.quiet = opts.quiet;
+            copts.verbose = opts.verbose;
+
+            const auto started = std::chrono::steady_clock::now();
+            CompilerDriver driver(std::move(copts));
+            const CompileResult result = driver.Compile();
+            const auto elapsed = ElapsedMs(started);
+            reports.push_back(BuildCellReport{.profile = cell.profile,
+                                              .target = cell.target,
+                                              .outputDirectory = cell.outputDirectory,
+                                              .succeeded = result.ok,
+                                              .artifactPath = result.primaryArtifactPath,
+                                              .stats = result.stats,
+                                              .elapsed = elapsed});
+            allSucceeded &= result.ok;
+        }
+
+        if (!opts.quiet) {
+            PrintBuildMatrixReport(reports, showStats, ColorEnabled(opts.color, OutputStream::Stdout));
+        }
+        return allSucceeded ? 0 : 1;
     }
     const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
     const std::string_view profileName = ToString(profile);

@@ -3,12 +3,15 @@
 // Build statistics aggregation, human-readable number formatting, and the
 // build-report printers used by the `build` command.
 
+#include "BuildInfo/BuildProfile.h"
 #include "Lexer/Lexer.h"
+#include "Target/TargetTriple.h"
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -33,6 +36,16 @@ struct BuildStats {
     std::uintmax_t dependencySourceSize = 0;
     std::uintmax_t executableSize = 0;
     std::uintmax_t peakMemoryBytes = 0;
+};
+
+struct BuildCellReport {
+    BuildProfile profile;
+    Target::TargetTriple target;
+    std::filesystem::path outputDirectory;
+    bool succeeded = false;
+    std::filesystem::path artifactPath;
+    BuildStats stats;
+    std::chrono::milliseconds elapsed{0};
 };
 
 inline std::chrono::milliseconds
@@ -69,8 +82,11 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
                                            std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
 [[nodiscard]] std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
                                              std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
+[[nodiscard]] std::string FormatBuildMatrixReport(std::span<const BuildCellReport> cells, bool includeStats,
+                                                  bool colorEnabled);
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName, std::string_view targetTriple,
                      const BuildStats &stats, bool colorEnabled);
 void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
                        std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
+void PrintBuildMatrixReport(std::span<const BuildCellReport> cells, bool includeStats, bool colorEnabled);
 } // namespace Rux::Driver

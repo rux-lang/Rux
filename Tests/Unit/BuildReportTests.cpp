@@ -108,3 +108,69 @@ TEST_CASE("Detailed build report names the target it built for") {
 
     CHECK(report.contains("Target: Windows AArch64 (windows-aarch64)\n"));
 }
+
+TEST_CASE("Build matrix report retains ordered cell outcomes and aggregate status") {
+    const auto freeBsd = Rux::Target::TargetTriple::Parse("freebsd-x86_64");
+    const auto linux = Rux::Target::TargetTriple::Parse("linux-aarch64");
+    REQUIRE(freeBsd);
+    REQUIRE(linux);
+    std::vector<BuildCellReport> cells{
+        {.profile = Rux::BuildProfile::Debug,
+         .target = *freeBsd,
+         .outputDirectory = "Bin/Debug/freebsd-x86_64",
+         .succeeded = true,
+         .artifactPath = "Bin/Debug/freebsd-x86_64/App",
+         .stats = {},
+         .elapsed = std::chrono::milliseconds(12)},
+        {.profile = Rux::BuildProfile::Debug,
+         .target = *linux,
+         .outputDirectory = "Bin/Debug/linux-aarch64",
+         .succeeded = false,
+         .artifactPath = {},
+         .stats = {},
+         .elapsed = std::chrono::milliseconds(8)},
+    };
+
+    const auto report = FormatBuildMatrixReport(cells, false, false);
+
+    CHECK_FALSE(report.contains("\033["));
+    CHECK(report.find("freebsd-x86_64") < report.find("linux-aarch64"));
+    CHECK(report.contains("Built   Debug    freebsd-x86_64"));
+    CHECK(report.contains("Failed  Debug    linux-aarch64"));
+    CHECK(report.contains("Bin/Debug/freebsd-x86_64/App"));
+    CHECK(report.contains("Bin/Debug/linux-aarch64"));
+    CHECK(report.contains("2 cells: 1 succeeded, 1 failed in 20 ms"));
+}
+
+TEST_CASE("Build matrix stats report includes per-cell and aggregate values with semantic color") {
+    const auto target = Rux::Target::TargetTriple::Parse("windows-aarch64");
+    REQUIRE(target);
+    BuildStats stats;
+    stats.localFiles = 2;
+    stats.dependencyFiles = 1;
+    stats.localLines = 120;
+    stats.dependencyLines = 30;
+    stats.localTokens = 800;
+    stats.dependencyTokens = 200;
+    stats.localSourceSize = 6 * 1024;
+    stats.dependencySourceSize = 2 * 1024;
+    stats.executableSize = 16 * 1024;
+    stats.peakMemoryBytes = 32 * 1024;
+    const std::vector<BuildCellReport> cells{{.profile = Rux::BuildProfile::Release,
+                                              .target = *target,
+                                              .outputDirectory = "Bin/Release/windows-aarch64",
+                                              .succeeded = true,
+                                              .artifactPath = "Bin/Release/windows-aarch64/App.exe",
+                                              .stats = stats,
+                                              .elapsed = std::chrono::milliseconds(25)}};
+
+    const auto report = FormatBuildMatrixReport(cells, true, true);
+
+    CHECK(report.contains("Files"));
+    CHECK(report.contains("LOC"));
+    CHECK(report.contains("Tokens"));
+    CHECK(report.contains("Aggregate statistics: 3 files | 150 LOC | 1,000 tokens | 8 KB source | 16 KB artifacts | "
+                          "32 KB peak memory"));
+    CHECK(report.contains("\033[32m\033[1mBuilt"));
+    CHECK_FALSE(report.contains("\033[31m"));
+}

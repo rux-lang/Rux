@@ -114,8 +114,16 @@ std::string CompilerDriver::TargetSystemName() const {
 CompileResult CompilerDriver::Compile() {
     CompileResult result;
     const auto t0 = std::chrono::steady_clock::now();
+    auto finish = [&]() {
+        const auto buildEnd = std::chrono::steady_clock::now();
+        stats.total = ElapsedMs(t0, buildEnd);
+        stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
+        stats.peakMemoryBytes = PeakMemoryBytes();
+        result.stats = stats;
+    };
     if (invalidSourceDateEpoch) {
         Emit(ErrorDiagnostic("SOURCE_DATE_EPOCH must be a non-negative integer number of seconds"));
+        finish();
         return result;
     }
     // A SourceLibrary package has no artifact of its own: it is compiled into whichever
@@ -126,50 +134,51 @@ CompileResult CompilerDriver::Compile() {
             "package '" + opts.manifest.package.name.Text() +
             "' has Type = \"SourceLibrary\" and is compiled into dependent packages; it cannot be built or "
             "run as a top-level target"));
+        finish();
         return result;
     }
 
     if (!LexAndParseSources()) {
+        finish();
         return result;
     }
     if (!LoadDependencies()) {
+        finish();
         return result;
     }
     // In checkOnly mode frontend errors are accumulated instead of aborting;
     // semantic analysis only runs on a package whose frontend is clean.
     if (hadErrors) {
+        finish();
         return result;
     }
     if (!Analyze()) {
+        finish();
         return result;
     }
     if (opts.checkOnly) {
-        result.stats = stats;
         if (opts.captureFrontend) {
             result.modules = std::move(parseResults);
         }
         result.ok = true;
+        finish();
         return result;
     }
 
     std::filesystem::path artifactPath;
     if (!GenerateArtifact(artifactPath, result.secondaryArtifactPaths)) {
+        finish();
         return result;
     }
 
-    const auto buildEnd = std::chrono::steady_clock::now();
-    stats.total = ElapsedMs(t0, buildEnd);
-    stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
     std::error_code sizeError;
     stats.executableSize = std::filesystem::file_size(artifactPath, sizeError);
     if (sizeError) {
         stats.executableSize = 0;
     }
-    stats.peakMemoryBytes = PeakMemoryBytes();
-
-    result.stats = stats;
     result.primaryArtifactPath = std::move(artifactPath);
     result.ok = true;
+    finish();
     return result;
 }
 

@@ -3,6 +3,7 @@
 #include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iomanip>
@@ -13,6 +14,7 @@ namespace Rux::Driver {
 namespace {
 struct ReportStyle {
     std::string_view green;
+    std::string_view red;
     std::string_view cyan;
     std::string_view bold;
     std::string_view dim;
@@ -23,7 +25,12 @@ ReportStyle Style(const bool enabled) {
     if (!enabled) {
         return {};
     }
-    return {.green = "\033[32m", .cyan = "\033[36m", .bold = "\033[1m", .dim = "\033[2m", .reset = "\033[0m"};
+    return {.green = "\033[32m",
+            .red = "\033[31m",
+            .cyan = "\033[36m",
+            .bold = "\033[1m",
+            .dim = "\033[2m",
+            .reset = "\033[0m"};
 }
 
 // The triple a report names. An embedder that leaves it unset built for the
@@ -204,6 +211,75 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string
     return output.str();
 }
 
+std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells, const bool includeStats,
+                                    const bool colorEnabled) {
+    const auto style = Style(colorEnabled);
+    std::size_t succeeded = 0;
+    std::chrono::milliseconds totalElapsed{0};
+    BuildStats aggregate;
+    for (const auto &cell : cells) {
+        succeeded += cell.succeeded ? 1U : 0U;
+        totalElapsed += cell.elapsed;
+        aggregate.lexing += cell.stats.lexing;
+        aggregate.parsing += cell.stats.parsing;
+        aggregate.semantic += cell.stats.semantic;
+        aggregate.hir += cell.stats.hir;
+        aggregate.lir += cell.stats.lir;
+        aggregate.codegen += cell.stats.codegen;
+        aggregate.linking += cell.stats.linking;
+        aggregate.localFiles += cell.stats.localFiles;
+        aggregate.dependencyFiles += cell.stats.dependencyFiles;
+        aggregate.localLines += cell.stats.localLines;
+        aggregate.dependencyLines += cell.stats.dependencyLines;
+        aggregate.localTokens += cell.stats.localTokens;
+        aggregate.dependencyTokens += cell.stats.dependencyTokens;
+        aggregate.localSourceSize += cell.stats.localSourceSize;
+        aggregate.dependencySourceSize += cell.stats.dependencySourceSize;
+        aggregate.executableSize += cell.stats.executableSize;
+        aggregate.peakMemoryBytes = std::max(aggregate.peakMemoryBytes, cell.stats.peakMemoryBytes);
+    }
+
+    std::ostringstream output;
+    output << style.bold << "Build matrix" << style.reset << '\n';
+    output << style.cyan << style.bold << std::left << std::setw(8) << "Status" << std::setw(9) << "Profile"
+           << std::setw(19) << "Target" << std::setw(10) << "Time";
+    if (includeStats) {
+        output << std::right << std::setw(8) << "Files" << std::setw(10) << "LOC" << std::setw(11) << "Tokens"
+               << std::setw(10) << "Size" << "  ";
+    }
+    output << std::left << "Output" << style.reset << '\n';
+
+    for (const auto &cell : cells) {
+        const auto statusColor = cell.succeeded ? style.green : style.red;
+        const auto outputPath = cell.succeeded ? cell.artifactPath : cell.outputDirectory;
+        output << statusColor << style.bold << std::left << std::setw(8) << (cell.succeeded ? "Built" : "Failed")
+               << style.reset << std::setw(9) << ToString(cell.profile) << std::setw(19) << cell.target.CanonicalName()
+               << std::setw(10) << FormatDuration(cell.elapsed);
+        if (includeStats) {
+            output << std::right << std::setw(8) << FormatNumber(cell.stats.localFiles + cell.stats.dependencyFiles)
+                   << std::setw(10) << FormatNumber(cell.stats.localLines + cell.stats.dependencyLines) << std::setw(11)
+                   << FormatNumber(cell.stats.localTokens + cell.stats.dependencyTokens) << std::setw(10)
+                   << FormatSize(cell.stats.executableSize) << "  ";
+        }
+        output << std::left << outputPath.string() << '\n';
+    }
+
+    const std::size_t failed = cells.size() - succeeded;
+    output << '\n'
+           << style.bold << cells.size() << " cells: " << style.green << succeeded << " succeeded" << style.reset
+           << ", " << (failed == 0 ? style.dim : style.red) << failed << " failed" << style.reset << " in "
+           << FormatDuration(totalElapsed) << style.reset << '\n';
+    if (includeStats) {
+        output << "Aggregate statistics: " << FormatNumber(aggregate.localFiles + aggregate.dependencyFiles)
+               << " files | " << FormatNumber(aggregate.localLines + aggregate.dependencyLines) << " LOC | "
+               << FormatNumber(aggregate.localTokens + aggregate.dependencyTokens) << " tokens | "
+               << FormatSize(aggregate.localSourceSize + aggregate.dependencySourceSize) << " source | "
+               << FormatSize(aggregate.executableSize) << " artifacts | " << FormatSize(aggregate.peakMemoryBytes)
+               << " peak memory\n";
+    }
+    return output.str();
+}
+
 void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
                      const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
     const auto report = FormatBuildStats(exePath, profileName, targetTriple, stats, colorEnabled);
@@ -213,6 +289,12 @@ void PrintBuildStats(const std::filesystem::path &exePath, std::string_view prof
 void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
                        const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
     const auto report = FormatBuildSummary(exePath, profileName, targetTriple, stats, colorEnabled);
+    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
+}
+
+void PrintBuildMatrixReport(const std::span<const BuildCellReport> cells, const bool includeStats,
+                            const bool colorEnabled) {
+    const auto report = FormatBuildMatrixReport(cells, includeStats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 } // namespace Rux::Driver

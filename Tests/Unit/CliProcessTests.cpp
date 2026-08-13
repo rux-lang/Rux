@@ -51,6 +51,16 @@ uint32_t Read32(const std::vector<unsigned char> &bytes, const std::size_t offse
     }
     return value;
 }
+
+std::size_t CountOccurrences(const std::string_view text, const std::string_view needle) {
+    std::size_t count = 0;
+    std::size_t offset = 0;
+    while ((offset = text.find(needle, offset)) != std::string_view::npos) {
+        ++count;
+        offset += needle.size();
+    }
+    return count;
+}
 } // namespace
 
 TEST_CASE("help JSON publishes the stable 0.4 command contract") {
@@ -117,6 +127,77 @@ TEST_CASE("build help publishes the all-target matrix option") {
     CHECK(textHelp.output.contains("--all"));
     CHECK(jsonHelp.exitCode == 0);
     CHECK(jsonHelp.output.contains("\"flags\":\"--all\""));
+}
+
+TEST_CASE("build --all reports every cell, continues after failures, and honors quiet") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-build-matrix-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    const auto sourcePath = root / "Src" / "Main.rux";
+    std::filesystem::create_directories(sourcePath.parent_path());
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+
+[Package]
+Name = "MatrixFixture"
+Version = "0.1.0"
+Type = "Executable"
+
+[Build]
+Output = "Artifacts"
+)";
+    manifestFile.close();
+    std::ofstream source(sourcePath, std::ios::binary);
+    source << R"(asm func Triple(x: int64) -> int64 {
+    mov rax, rdi
+    imul rax, 3
+    ret
+}
+
+func Main() -> int {
+    return 0;
+}
+)";
+    source.close();
+    REQUIRE(manifestFile);
+    REQUIRE(source);
+
+    const auto manifest = manifestPath.string();
+    const auto reported = Run(std::array<std::string_view, 8>{"--manifest", manifest, "--color=never", "build", "--all",
+                                                              "--stats", "--define", "Matrix=enabled"});
+
+    CHECK(reported.exitCode == 1);
+    CHECK(CountOccurrences(reported.output, "'imul' is an x86-64 instruction") == 8);
+    CHECK(reported.output.contains("Build matrix"));
+    CHECK(reported.output.contains("Built   Debug    freebsd-x86_64"));
+    CHECK(reported.output.contains("Failed  Debug    freebsd-aarch64"));
+    CHECK(reported.output.contains("Built   Release  windows-x86_64"));
+    CHECK(reported.output.contains("Failed  Release  windows-aarch64"));
+    CHECK(reported.output.contains("16 cells: 8 succeeded, 8 failed"));
+    CHECK(reported.output.contains("Aggregate statistics:"));
+    CHECK_FALSE(reported.output.contains("\033["));
+
+    for (const std::string_view profile : {"Debug", "Release"}) {
+        for (const std::string_view target : {"freebsd-x86_64", "linux-x86_64", "macos-x86_64", "windows-x86_64"}) {
+            const auto fileName = target.starts_with("windows-") ? "MatrixFixture.exe" : "MatrixFixture";
+            CHECK(std::filesystem::is_regular_file(root / "Artifacts" / profile / target / fileName));
+        }
+    }
+
+    std::ofstream invalidSource(sourcePath, std::ios::binary | std::ios::trunc);
+    invalidSource << "func Main() -> int { return Missing; }\n";
+    invalidSource.close();
+    REQUIRE(invalidSource);
+    const auto quiet = Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--all", "--quiet"});
+    CHECK(quiet.exitCode == 1);
+    CHECK(CountOccurrences(quiet.output, "undefined name 'Missing'") == 16);
+    CHECK_FALSE(quiet.output.contains("Build matrix"));
+    CHECK_FALSE(quiet.output.contains("Aggregate statistics:"));
+    CHECK_FALSE(quiet.output.contains("Compiling"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
 }
 
 TEST_CASE("clean removes only the configured output root and Temp tree") {
