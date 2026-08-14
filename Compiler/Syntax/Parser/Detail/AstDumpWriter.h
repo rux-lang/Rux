@@ -8,6 +8,7 @@
 
 namespace Rux::ParserDumpDetail {
 class DeclarationPrinter;
+class ExpressionPrinter;
 class StatementPrinter;
 
 // Private output and indentation state shared by the focused AST printers.
@@ -24,7 +25,28 @@ protected:
 
 private:
     friend class DeclarationPrinter;
+    friend class ExpressionPrinter;
     friend class StatementPrinter;
+};
+
+class ExpressionPrinter {
+public:
+    using BlockCallback = std::function<void(const Block &)>;
+    using PatternCallback = std::function<void(const Pattern &)>;
+
+    ExpressionPrinter(AstDumpWriter &writer, BlockCallback blockCallback, PatternCallback patternCallback);
+
+    void Print(const Expr &expression);
+
+private:
+    AstDumpWriter &writer;
+    std::ostream &out;
+    int &indent;
+    BlockCallback printBlock;
+    PatternCallback printPattern;
+
+    void Pad() const;
+    void PrintLiteralExpr(const LiteralExpr &expression) const;
 };
 
 class DeclarationPrinter {
