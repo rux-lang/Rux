@@ -132,6 +132,8 @@ Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` con
 
 The Mach-O image writer builds ad-hoc signatures entirely inside `RuxLinker`. It reserves `LC_CODE_SIGNATURE` during layout, hashes the final signed prefix in 4 KiB pages with `RuxCrypto` SHA-256, emits a version 0x20400 CodeDirectory and embedded-signature superblob in big-endian form, and includes the result in `__LINKEDIT`. The same target bytes are therefore produced on every compiler host without invoking an Apple signing tool.
 
+`RuxLinker` centralizes RCU object relationships in `RcuLinkGraph` and input-section placement in `RcuObjectLayout`. The layout accepts each format writer's generated text/read-only/data prefixes explicitly, aligns every object's contribution against those real preceding bytes, and produces the merged text, read-only-data, data and BSS placements once. Typed symbol and relocation placements are section-relative; PE, ELF and Mach-O remain responsible for choosing final image section bases and format-specific generated suffixes.
+
 Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:
 
 - Windows: `%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>`, for example `%LocalAppData%\Rux\Packages\Rux\Io\0.1.0`

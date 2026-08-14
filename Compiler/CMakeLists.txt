@@ -192,6 +192,7 @@ rux_add_component(RuxLinker
     Linker/AArch64Relocation.cpp
     Linker/Linker.cpp
     Linker/RcuLinkGraph.cpp
+    Linker/RcuObjectLayout.cpp
     Linker/MachO/CodeSignature.cpp
     Linker/NativeObjectWriter.cpp
     Linker/Pe/PeWriter.cpp

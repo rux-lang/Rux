@@ -142,7 +142,7 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
                         graph.diagnostics.push_back(Diagnostic(RcuLinkDiagnosticKind::UndefinedSymbol, symbol.name));
                     }
                 }
-                graph.references.push_back(std::move(reference));
+                graph.references.push_back(reference);
             }
         }
     }
