@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Linker/ArtifactKind.h"
+#include "Linker/RcuLinkGraph.h"
 #include "Object/Rcu/Rcu.h"
 #include "Target/Target.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -44,12 +46,11 @@ private:
     ArtifactKind artifactKind = ArtifactKind::Executable;
     Target::OS targetOs = Target::HostOS;
     Target::Arch targetArch = Target::HostArch;
+    std::optional<RcuLinkGraph> graph;
 
     void Error(std::string msg);
 
-    // Rejects an input compiled for another architecture, and an architecture
-    // no object writer supports, before any bytes are laid out.
-    [[nodiscard]] bool CheckArchitecture();
+    [[nodiscard]] bool BuildGraph();
 
     // Object-format writers, one per target family. Each is always compiled;
     // Link() selects the one matching `targetOs`.

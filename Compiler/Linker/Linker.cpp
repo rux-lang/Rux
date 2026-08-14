@@ -26,28 +26,43 @@ void Linker::Error(std::string msg) {
     errors.push_back({std::move(msg)});
 }
 
-bool Linker::CheckArchitecture() {
-    const uint8_t expected = RcuArchFor(targetArch);
-    if (expected == RcuArch::Unknown) {
-        Error(std::format("cannot link for {}: no object writer exists for this architecture",
-                          Target::ToDisplayString(targetArch)));
-        return false;
-    }
-    for (const auto &object : objects) {
-        if (object.arch != expected) {
-            Error(std::format("object {} was compiled for {}, but the link target is {}",
-                              object.sourcePath.empty() ? packageName : object.sourcePath, RcuArchName(object.arch),
-                              RcuArchName(expected)));
-            return false;
+bool Linker::BuildGraph() {
+    graph = RcuLinkGraph::Build(objects, packageName, artifactKind, targetArch);
+    for (const RcuLinkDiagnostic &diagnostic : graph->Diagnostics()) {
+        switch (diagnostic.kind) {
+        case RcuLinkDiagnosticKind::UnsupportedArchitecture:
+            Error(std::format("cannot link for {}: no object writer exists for this architecture",
+                              Target::ToDisplayString(targetArch)));
+            break;
+        case RcuLinkDiagnosticKind::ArchitectureMismatch:
+            Error(std::format("object {} was compiled for {}, but the link target is {}", diagnostic.objectName,
+                              RcuArchName(diagnostic.actualArchitecture),
+                              RcuArchName(diagnostic.expectedArchitecture)));
+            break;
+        case RcuLinkDiagnosticKind::DuplicateDefinition:
+            Error(targetOs == Target::OS::MacOS ? "duplicate definition of symbol '" + diagnostic.symbol + "'"
+                                                : "duplicate symbol '" + diagnostic.symbol + "'");
+            break;
+        case RcuLinkDiagnosticKind::UndefinedSymbol:
+            Error(targetOs == Target::OS::MacOS
+                      ? "undefined symbol '" + diagnostic.symbol + "'"
+                      : "undefined symbol '" + diagnostic.symbol + "' — no definition or external import was found");
+            break;
+        case RcuLinkDiagnosticKind::MissingEntryPoint:
+            Error("undefined symbol 'Main' — no entry point found");
+            break;
         }
     }
-    // ELF, PE, and Mach-O all lay out both supported architectures, so every
-    // target that reaches here has a writer.
-    return true;
+    return !graph->HasErrors();
 }
 
 bool Linker::Link(const std::filesystem::path &outputPath) {
-    if (!CheckArchitecture()) {
+    // Preserve the target-profile diagnostic before graph policy (such as a
+    // missing executable entry) for an OS that has no complete image writer.
+    if (targetOs == Target::OS::Unknown) {
+        return LinkElf64(outputPath);
+    }
+    if (!BuildGraph()) {
         return false;
     }
     if (artifactKind == ArtifactKind::StaticLibrary) {

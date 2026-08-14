@@ -32,6 +32,7 @@ set(RUX_TEST_SOURCES
     LexerTests.cpp
     LinearScanTests.cpp
     LinkerTests.cpp
+    RcuLinkGraphTests.cpp
     FreeBSDAArch64LinkerTests.cpp
     MachOTests.cpp
     ManifestTests.cpp
