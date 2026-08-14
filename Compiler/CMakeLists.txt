@@ -180,7 +180,8 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/CallLayout.cpp
     CodeGen/AArch64/Encoder.cpp
     CodeGen/AArch64/FramePlan.cpp
-    CodeGen/AArch64/RcuEmitter.cpp)
+    CodeGen/AArch64/RcuEmitter.cpp
+    CodeGen/AArch64/RuntimeHelpers.cpp)
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxLinker
