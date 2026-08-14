@@ -50,6 +50,7 @@ set(RUX_TEST_SOURCES
     SemanticTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
+    X86_64FramePlanTests.cpp
 )
 
 if (TARGET RuxFormatter)

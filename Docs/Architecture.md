@@ -27,7 +27,7 @@ Source loading -> SourceModel -> Lexer -> Syntax -> SemanticModel
                                         Linker -> ELF / Mach-O / PE
 ```
 
-The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. Both emitters supply target-encoded instruction and literal bytes plus relocation kinds through that boundary; neither assembles an `RcuFile` or mutates its symbol table directly. Its narrow section-truncation operation lets AArch64 retry branch layout while keeping speculative instruction bytes and their relocations together. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
+The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. Both emitters supply target-encoded instruction and literal bytes plus relocation kinds through that boundary; neither assembles an `RcuFile` or mutates its symbol table directly. Its narrow section-truncation operation lets AArch64 retry branch layout while keeping speculative instruction bytes and their relocations together. Before x86-64 binary emission starts a function, `X86_64FramePlan` fixes its register homes, callee saves, hidden return, scalar and aggregate regions, phi-cycle scratch, and aligned frame size; instruction emission only reads that plan. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
 
 The driver loads the root manifest and dependencies before entering this pipeline. Diagnostics can stop the process after any frontend stage; object emission and linking only run when analysis and lowering succeed.
 
@@ -52,7 +52,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability | BuildInfo, Diagnostics, HIR, and LIR  |
 | `Lowering`             | AST/semantic model → HIR → LIR; private AST-to-HIR orchestration and lowering contexts | Frontend and IR components       |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics |
-| `CodeGen/X86_64`       | x86-64 instruction encoding, inline assembly, and RCU construction               | BuildInfo, LIR, Object, Diagnostics   |
+| `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction | BuildInfo, LIR, Object, Diagnostics |
 | `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, and RCU construction              | BuildInfo, LIR, Object, Diagnostics   |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                   | BuildInfo and Target                  |
 | `Archive`              | Deterministic native archive containers and symbol indexes                       | Object                                |

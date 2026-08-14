@@ -5,11 +5,11 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
-#include "CodeGen/LinearScan.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/RcuModuleBuilder.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
+#include "CodeGen/X86_64/FramePlan.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <array>
@@ -24,10 +24,6 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-// How many registers the linear scan hands out here: RBX and R12 through R15,
-// the callee-saved five, which is what lets a value stay in one across a call.
-constexpr int kCalleeSavedRegs = 5;
-
 // RCU Code Generator: LirModule → RcuFile
 struct JumpPatch {
     uint32_t patchOff;
@@ -101,14 +97,7 @@ private:
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
 
-    std::unordered_map<LirReg, int32_t> slotMap;
-    std::unordered_map<LirReg, int32_t> allocaData;
-    std::unordered_map<LirReg, TypeRef> regTypes;
-    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::vector<PhiMove>>> phiMoves;
-    int32_t nextOff = 0;
-    int32_t frameSize = 0;
-    int32_t hiddenReturnOff = 0;
-    std::unordered_map<LirReg, int> physRegMap;
+    const X86_64FramePlan *activeFramePlan = nullptr;
 
     [[nodiscard]] std::vector<std::uint8_t> &TextData() {
         return moduleBuilder.SectionData(RcuModuleSection::Text);
@@ -140,22 +129,20 @@ private:
             .value_or(~0u);
     }
 
-    std::vector<int> usedPhysRegs;
-
     std::vector<uint32_t> blockOffsets;
     std::vector<JumpPatch> jumpPatches;
 
     // Helpers
+    [[nodiscard]] const X86_64FramePlan &FramePlan() const {
+        return *activeFramePlan;
+    }
+
     [[nodiscard]] int32_t Disp(const LirReg r) const {
-        return -static_cast<int32_t>(slotMap.at(r));
+        return -FramePlan().SlotOffsets().at(r);
     }
 
     [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
         return RuntimeSizeOf(t, layouts, interfaceNames);
-    }
-
-    [[nodiscard]] int StackValueSize(const TypeRef &t) const {
-        return SizeOfRuntime(t);
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
@@ -201,8 +188,9 @@ private:
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
-        const auto it = regTypes.find(reg);
-        return it != regTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto it = registerTypes.find(reg);
+        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
                it->second.inner[0] == pointee;
     }
 
@@ -216,7 +204,8 @@ private:
         int fltIdx = 0;
         std::size_t stackArgs = 0;
         for (const LirReg arg : args) {
-            const TypeRef type = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const TypeRef type = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
             if (IsFloat(type)) {
                 if (fltIdx < 8) {
                     ++fltIdx;
@@ -255,7 +244,8 @@ private:
         int fltIdx = 0;
         int stackIdx = 0;
         for (const LirReg arg : args) {
-            const TypeRef type = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const TypeRef type = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
             if (IsSysVMemoryAggregate(type)) {
                 const int size = AlignUp(SizeOfRuntime(type), 8);
                 for (int offset = 0; offset < size; offset += 8) {
@@ -688,8 +678,9 @@ private:
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
     void LoadA(const LirReg reg, const TypeRef &t) const {
-        auto it = physRegMap.find(reg);
-        if (it != physRegMap.end()) {
+        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+        auto it = physicalRegisters.find(reg);
+        if (it != physicalRegisters.end()) {
             enc.MovRaxPhysReg(it->second);
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
@@ -758,8 +749,9 @@ private:
     }
 
     void LoadB(LirReg reg, const TypeRef &t) const {
-        auto it = physRegMap.find(reg);
-        if (it != physRegMap.end()) {
+        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+        auto it = physicalRegisters.find(reg);
+        if (it != physicalRegisters.end()) {
             enc.MovR10PhysReg(it->second);
             int sz = SizeOfRuntime(t);
             if (sz > 0 && sz < 8) {
@@ -856,8 +848,9 @@ private:
     }
 
     void StoreA(LirReg dst, const TypeRef &t) const {
-        auto it = physRegMap.find(dst);
-        if (it != physRegMap.end()) {
+        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+        auto it = physicalRegisters.find(dst);
+        if (it != physicalRegisters.end()) {
             enc.MovPhysRegRax(it->second);
             return;
         }
@@ -868,8 +861,9 @@ private:
         const int size = SizeOfRuntime(t);
         if (IsRegPointerTo(reg, t)) {
             if (size == 16) {
-                auto it = physRegMap.find(reg);
-                if (it != physRegMap.end()) {
+                const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+                auto it = physicalRegisters.find(reg);
+                if (it != physicalRegisters.end()) {
                     enc.MovR10PhysReg(it->second);
                 }
                 else {
@@ -886,8 +880,9 @@ private:
             }
 
             if (size == 1 || size == 2 || size == 4 || size == 8) {
-                auto it = physRegMap.find(reg);
-                if (it != physRegMap.end()) {
+                const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+                auto it = physicalRegisters.find(reg);
+                if (it != physicalRegisters.end()) {
                     enc.MovR10PhysReg(it->second);
                 }
                 else {
@@ -1002,14 +997,15 @@ private:
     }
 
     void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const {
-        if (hiddenReturnOff == 0) {
+        if (FramePlan().HiddenReturnOffset() == 0) {
             LoadReturnValue(src, t);
             return;
         }
-        enc.MovR11Load(-hiddenReturnOff);
+        enc.MovR11Load(-FramePlan().HiddenReturnOffset());
         if (IsRegPointerTo(src, t)) {
-            auto it = physRegMap.find(src);
-            if (it != physRegMap.end()) {
+            const auto &physicalRegisters = FramePlan().PhysicalRegisters();
+            auto it = physicalRegisters.find(src);
+            if (it != physicalRegisters.end()) {
                 enc.MovR10PhysReg(it->second);
             }
             else {
@@ -1032,122 +1028,12 @@ private:
     // Struct field lookup. The rule itself is Layout's, so both back ends and
     // the assembly printer agree on where a field sits by construction.
     [[nodiscard]] int FieldOffset(const LirReg base, const std::string &fieldName) const {
-        const auto typeIt = regTypes.find(base);
-        if (typeIt == regTypes.end()) {
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto typeIt = registerTypes.find(base);
+        if (typeIt == registerTypes.end()) {
             return 0;
         }
         return FieldOffsetOf(typeIt->second, fieldName, layouts, interfaceNames);
-    }
-
-    // Pre-pass: allocate stack slots
-    int32_t AllocSlot(LirReg reg, int bytes) {
-        if (auto it = slotMap.find(reg); it != slotMap.end()) {
-            return it->second;
-        }
-        int al = (bytes > 0) ? std::min(bytes, 8) : 1;
-        nextOff = AlignUp(nextOff, al);
-        nextOff += (bytes > 0 ? bytes : 8);
-        slotMap[reg] = nextOff;
-        return nextOff;
-    }
-
-    int32_t AllocRegion(int bytes) {
-        int al = (bytes > 0) ? std::min(bytes, 8) : 1;
-        nextOff = AlignUp(nextOff, al);
-        nextOff += (bytes > 0 ? bytes : 8);
-        return nextOff;
-    }
-
-    void PrepassFunc(const LirFunc &func) {
-        slotMap.clear();
-        allocaData.clear();
-        regTypes.clear();
-        phiMoves.clear();
-        physRegMap.clear();
-        usedPhysRegs.clear();
-
-        // The registers this function keeps in the callee-saved five, which is
-        // the shared linear scan run over a candidate list this back end
-        // chooses: a single-block function only, since nothing here keeps a
-        // value in a register across an edge, and a scalar that fits one
-        // register, since nothing here holds a float or an aggregate in the
-        // general-purpose file.
-        ParamTypeMap paramTypes;
-        for (const auto &p : func.params) {
-            paramTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
-        }
-        std::vector<LiveInterval> candidates;
-        if (func.blocks.size() == 1) {
-            for (const auto &iv : ComputeLiveIntervals(func, paramTypes)) {
-                if (IsFloat(iv.type) || IsAggregate(iv.type) || SizeOfRuntime(iv.type) > 8) {
-                    continue;
-                }
-                candidates.push_back(iv);
-            }
-        }
-        const RegisterAssignment assignment = AllocateRegisters(candidates, kCalleeSavedRegs);
-        physRegMap = assignment.physRegs;
-        usedPhysRegs = assignment.usedPhysRegs;
-
-        // The frame itself. What the allocation handed out is pushed by the
-        // prologue and sits below every slot, so the slots start above it.
-        nextOff = static_cast<int32_t>(usedPhysRegs.size() * 8);
-        hiddenReturnOff = 0;
-
-        const CallingConvention conv = EffectiveConv(func.callConv);
-        if ((conv == CallingConvention::Win64 && IsWin64ByRefAggregate(func.returnType)) ||
-            (conv == CallingConvention::SysV && IsSysVMemoryAggregate(func.returnType))) {
-            hiddenReturnOff = AllocRegion(8);
-        }
-
-        for (const auto &p : func.params) {
-            regTypes[p.reg] = IsWin64AddressParam(p.type) ? TypeRef::MakePointer(p.type) : p.type;
-            AllocSlot(p.reg, std::max(8, SizeOfRuntime(regTypes[p.reg])));
-        }
-
-        for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            for (const auto &instr : func.blocks[bi].instrs) {
-                if (instr.op == LirOpcode::Phi) {
-                    for (const auto &[src, pred] : instr.phiPreds) {
-                        phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
-                    }
-                }
-                if (instr.dst == LirNoReg) {
-                    continue;
-                }
-
-                if (instr.op == LirOpcode::Alloca) {
-                    int dsz;
-                    if (!instr.strArg.empty()) {
-                        int count = 0;
-                        try {
-                            count = std::stoi(instr.strArg);
-                        }
-                        catch (...) {
-                        }
-                        const TypeRef &elemType = instr.type.inner.empty() ? instr.type : instr.type.inner[0];
-                        int elemSize = SizeOfRuntime(elemType);
-                        dsz = count * (elemSize > 0 ? elemSize : 8);
-                    }
-                    else {
-                        dsz = StackValueSize(instr.type);
-                    }
-
-                    AllocSlot(instr.dst, 8);
-                    allocaData[instr.dst] = AllocRegion(dsz > 0 ? dsz : 8);
-                    regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                }
-                else {
-                    regTypes[instr.dst] = instr.type;
-                    int sz = StackValueSize(instr.type);
-                    AllocSlot(instr.dst, sz > 0 ? sz : 8);
-                }
-            }
-        }
-        frameSize = AlignUp(nextOff, 16);
-        if (frameSize == 0) {
-            frameSize = 16;
-        }
     }
 
     // Build struct layouts
@@ -1162,6 +1048,7 @@ private:
 
     // Phi move emission
     bool HasPhiMoves(const uint32_t from, uint32_t to) const {
+        const auto &phiMoves = FramePlan().PhiMoves();
         auto it = phiMoves.find(from);
         if (it == phiMoves.end()) {
             return false;
@@ -1170,6 +1057,7 @@ private:
     }
 
     void EmitPhiMoves(const uint32_t from, uint32_t to) {
+        const auto &phiMoves = FramePlan().PhiMoves();
         auto it1 = phiMoves.find(from);
         if (it1 == phiMoves.end()) {
             return;
@@ -1186,7 +1074,7 @@ private:
         }
 
         std::vector<PhiMoveStep> steps = ResolvePhiMoves(std::move(rawMoves));
-        int32_t tempDisp = -static_cast<int32_t>(frameSize + 8);
+        const int32_t tempDisp = -FramePlan().PhiTemporaryOffset();
 
         for (const auto &step : steps) {
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
@@ -1301,12 +1189,14 @@ private:
     // Call argument setup
     void EmitCallArgs(const std::vector<LirReg> &args, CallingConvention conv = CallingConvention::Default,
                       int startIdx = 0) const {
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         if (EffectiveConv(conv) == CallingConvention::Win64) {
             // Unified index: rcx/xmm0=0, rdx/xmm1=1, r8/xmm2=2,
             // r9/xmm3=3
             int idx = startIdx;
             for (LirReg arg : args) {
-                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
                 int32_t d = Disp(arg);
                 if (idx >= 4) {
                     const int32_t stackArgOff = 32 + (idx - 4) * 8;
@@ -1344,8 +1234,8 @@ private:
                     enc.LeaArgStackWin64(idx, d);
                 }
                 else if (IsPointerToWin64ByRefAggregate(at)) {
-                    auto it = physRegMap.find(arg);
-                    if (it != physRegMap.end()) {
+                    auto it = physicalRegisters.find(arg);
+                    if (it != physicalRegisters.end()) {
                         LoadA(arg, at);
                         enc.MovArgWin64Rax(idx);
                     }
@@ -1363,7 +1253,7 @@ private:
         else {
             int intIdx = startIdx, fltIdx = 0;
             for (LirReg arg : args) {
-                TypeRef at = regTypes.contains(arg) ? regTypes.at(arg) : TypeRef::MakeInt64();
+                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
                 int32_t d = Disp(arg);
                 if (IsFloat(at)) {
                     if (fltIdx < 8) {
@@ -1404,6 +1294,8 @@ private:
 
     // Instruction code generation
     void GenInstr(const LirInstr &instr) {
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         switch (instr.op) {
         case LirOpcode::Const: {
             if (instr.dst == LirNoReg) {
@@ -1450,7 +1342,7 @@ private:
             break;
         }
         case LirOpcode::Alloca: {
-            int32_t dataOff = allocaData.at(instr.dst);
+            int32_t dataOff = FramePlan().AllocaDataOffsets().at(instr.dst);
             enc.LeaRaxStack(-dataOff);
             StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
@@ -1567,8 +1459,8 @@ private:
             }
             else {
                 LirReg ptr = instr.srcs[0];
-                auto it = physRegMap.find(ptr);
-                if (it != physRegMap.end()) {
+                auto it = physicalRegisters.find(ptr);
+                if (it != physicalRegisters.end()) {
                     enc.MovR10PhysReg(it->second);
                 }
                 else {
@@ -1653,8 +1545,8 @@ private:
             const TypeRef &t = instr.type;
             int sz = SizeOfRuntime(t);
             int runtimeSz = SizeOfRuntime(t);
-            auto itPtr = physRegMap.find(ptr);
-            if (itPtr != physRegMap.end()) {
+            auto itPtr = physicalRegisters.find(ptr);
+            if (itPtr != physicalRegisters.end()) {
                 enc.MovR11PhysReg(itPtr->second);
             }
             else {
@@ -1662,8 +1554,8 @@ private:
             }
             if (IsAggregate(t) && runtimeSz > 8) {
                 if (IsRegPointerTo(val, t)) {
-                    auto it = physRegMap.find(val);
-                    if (it != physRegMap.end()) {
+                    auto it = physicalRegisters.find(val);
+                    if (it != physicalRegisters.end()) {
                         enc.MovR10PhysReg(it->second);
                     }
                     else {
@@ -1880,8 +1772,8 @@ private:
         case LirOpcode::Lshr: {
             const TypeRef &t = instr.type;
             LoadA(instr.srcs[0], instr.op == LirOpcode::Lshr ? UnsignedIntegerType(t) : t);
-            auto it = physRegMap.find(instr.srcs[1]);
-            if (it != physRegMap.end()) {
+            auto it = physicalRegisters.find(instr.srcs[1]);
+            if (it != physicalRegisters.end()) {
                 enc.MovR11PhysReg(it->second);
             }
             else {
@@ -1963,7 +1855,7 @@ private:
         case LirOpcode::CmpLe:
         case LirOpcode::CmpGt:
         case LirOpcode::CmpGe: {
-            const TypeRef &lhsT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : instr.type;
+            const TypeRef &lhsT = registerTypes.contains(instr.srcs[0]) ? registerTypes.at(instr.srcs[0]) : instr.type;
             LoadA(instr.srcs[0], lhsT);
             LoadB(instr.srcs[1], lhsT);
             if (IsFloat(lhsT)) {
@@ -2051,7 +1943,7 @@ private:
         }
         case LirOpcode::Cast: {
             const TypeRef &dstT = instr.type;
-            TypeRef srcT = regTypes.contains(instr.srcs[0]) ? regTypes.at(instr.srcs[0]) : dstT;
+            TypeRef srcT = registerTypes.contains(instr.srcs[0]) ? registerTypes.at(instr.srcs[0]) : dstT;
             LoadA(instr.srcs[0], srcT);
             bool srcFl = IsFloat(srcT), dstFl = IsFloat(dstT);
             if (srcFl && !dstFl) {
@@ -2209,8 +2101,8 @@ private:
                 }
                 EmitCallArgs(args, instr.callConv);
             }
-            auto it = physRegMap.find(callee);
-            if (it != physRegMap.end()) {
+            auto it = physicalRegisters.find(callee);
+            if (it != physicalRegisters.end()) {
                 enc.MovR10PhysReg(it->second);
             }
             else {
@@ -2253,7 +2145,7 @@ private:
         }
         case LirOpcode::FieldPtr: {
             LirReg base = instr.srcs[0];
-            LoadA(base, regTypes.at(base));
+            LoadA(base, registerTypes.at(base));
             int off = FieldOffset(base, instr.strArg);
             if (off != 0) {
                 enc.LeaRaxRaxDisp(off);
@@ -2270,8 +2162,8 @@ private:
             if (elemSz < 1) {
                 elemSz = 1;
             }
-            LoadA(base, regTypes.at(base));
-            LoadB(idx, regTypes.at(idx));
+            LoadA(base, registerTypes.at(base));
+            LoadB(idx, registerTypes.at(idx));
             enc.ImulR11R10Imm32(elemSz);
             enc.AddRaxR11();
             StoreA(instr.dst, TypeRef::MakePointer(instr.type));
@@ -2287,6 +2179,8 @@ private:
     // Terminator
     void GenTerm(uint32_t blockIdx, const LirTerminator &term, const LirFunc &func) {
         (void)func;
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto &usedPhysicalRegisters = FramePlan().UsedPhysicalRegisters();
         switch (term.kind) {
         case LirTermKind::Jump: {
             EmitPhiMoves(blockIdx, term.trueTarget);
@@ -2299,7 +2193,8 @@ private:
             // Load condition with correct width to avoid reading stack
             // garbage
             {
-                const TypeRef condT = regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeBool();
+                const TypeRef condT =
+                    registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeBool();
                 LoadA(term.cond, condT);
             }
             enc.TestRaxRax();
@@ -2332,19 +2227,20 @@ private:
         }
         case LirTermKind::Return: {
             if (term.retVal && *term.retVal != LirNoReg) {
-                if (hiddenReturnOff != 0) {
+                if (FramePlan().HiddenReturnOffset() != 0) {
                     StoreHiddenReturnValue(*term.retVal, term.retType);
                 }
                 else {
                     LoadReturnValue(*term.retVal, term.retType);
                 }
             }
-            if (!usedPhysRegs.empty()) {
-                int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+            if (!usedPhysicalRegisters.empty()) {
+                const int32_t remainingFrame =
+                    FramePlan().FrameSize() - static_cast<int32_t>(usedPhysicalRegisters.size() * 8);
                 if (remainingFrame > 0) {
                     enc.AddRspImm32(remainingFrame);
                 }
-                for (auto it = usedPhysRegs.rbegin(); it != usedPhysRegs.rend(); ++it) {
+                for (auto it = usedPhysicalRegisters.rbegin(); it != usedPhysicalRegisters.rend(); ++it) {
                     enc.PopReg(*it);
                 }
                 enc.PopRbp();
@@ -2356,7 +2252,7 @@ private:
             break;
         }
         case LirTermKind::Switch: {
-            LoadA(term.cond, regTypes.contains(term.cond) ? regTypes.at(term.cond) : TypeRef::MakeInt64());
+            LoadA(term.cond, registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeInt64());
             for (const auto &c : term.cases) {
                 const std::uint64_t bits = ParseIntegerLiteralBits(c.value).value_or(0);
                 enc.CmpRaxImm32(static_cast<int32_t>(bits));
@@ -2426,7 +2322,10 @@ private:
             GenAsmFunc(func);
             return;
         }
-        PrepassFunc(func);
+        const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
+        activeFramePlan = &framePlan;
+        const auto &usedPhysicalRegisters = framePlan.UsedPhysicalRegisters();
+        const auto &physicalRegisters = framePlan.PhysicalRegisters();
         jumpPatches.clear();
         const uint32_t symIdx = funcSyms.contains(func.name)
                                   ? funcSyms.at(func.name)
@@ -2434,26 +2333,27 @@ private:
                                                   func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
         funcSyms[func.name] = symIdx;
         if (!moduleBuilder.BeginFunction(symIdx)) {
+            activeFramePlan = nullptr;
             return;
         }
         // Prologue
         enc.PushRbp();
         enc.MovRbpRsp();
-        for (int rIdx : usedPhysRegs) {
+        for (int rIdx : usedPhysicalRegisters) {
             enc.PushReg(rIdx);
         }
-        int32_t remainingFrame = frameSize - static_cast<int32_t>(usedPhysRegs.size() * 8);
+        const int32_t remainingFrame = framePlan.FrameSize() - static_cast<int32_t>(usedPhysicalRegisters.size() * 8);
         EmitStackAlloc(remainingFrame);
         // Spill ABI param registers to stack slots
         bool win64Func = EffectiveConv(func.callConv) == CallingConvention::Win64;
         int intIdx = 0, fltIdx = 0, sysvStackIdx = 0, win64Idx = 0;
-        if (hiddenReturnOff != 0) {
+        if (framePlan.HiddenReturnOffset() != 0) {
             if (win64Func) {
-                enc.MovArgStoreWin64(0, -hiddenReturnOff);
+                enc.MovArgStoreWin64(0, -framePlan.HiddenReturnOffset());
                 win64Idx = 1;
             }
             else {
-                enc.MovArgStore(0, -hiddenReturnOff);
+                enc.MovArgStore(0, -framePlan.HiddenReturnOffset());
                 intIdx = 1;
             }
         }
@@ -2570,8 +2470,8 @@ private:
         }
         // Load params into their allocated physical registers
         for (const auto &p : func.params) {
-            auto it = physRegMap.find(p.reg);
-            if (it != physRegMap.end()) {
+            auto it = physicalRegisters.find(p.reg);
+            if (it != physicalRegisters.end()) {
                 int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
                 int32_t d = Disp(p.reg);
                 if (sz == 8 || sz == 0) {
@@ -2610,6 +2510,7 @@ private:
         }
         PatchJumps();
         (void)moduleBuilder.EndFunction(symIdx);
+        activeFramePlan = nullptr;
     }
 
     // Module generation
