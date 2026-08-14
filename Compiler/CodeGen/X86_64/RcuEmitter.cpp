@@ -5,9 +5,9 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
-#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/RcuModuleBuilder.h"
 #include "CodeGen/X86_64/Assembler.h"
+#include "CodeGen/X86_64/CallAndTerminatorEmitter.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/FunctionEmitter.h"
@@ -26,13 +26,7 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-// RCU Code Generator: LirModule → RcuFile
-struct JumpPatch {
-    uint32_t patchOff;
-    uint32_t targetBlock;
-};
-
-class RcuCodeGen final : private X86_64FunctionEmitterHooks {
+class RcuCodeGen final : private X86_64FunctionEmitterHooks, private X86_64CallAndTerminatorHooks {
 public:
     explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                         const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
@@ -77,7 +71,6 @@ private:
 
     RcuModuleBuilder moduleBuilder;
 
-    // Encoder writes target instructions into the builder-owned text section.
     X64Enc enc;
 
     X86_64RuntimeHelperEmitter runtimeHelpers;
@@ -94,6 +87,7 @@ private:
     std::unordered_set<std::string> interfaceNames;
 
     const X86_64FramePlan *activeFramePlan = nullptr;
+    X86_64CallEmitter *activeCallEmitter = nullptr;
 
     [[nodiscard]] std::vector<std::uint8_t> &TextData() {
         return moduleBuilder.SectionData(RcuModuleSection::Text);
@@ -125,10 +119,6 @@ private:
             .value_or(~0u);
     }
 
-    std::vector<uint32_t> blockOffsets;
-    std::vector<JumpPatch> jumpPatches;
-
-    // Helpers
     [[nodiscard]] const X86_64FramePlan &FramePlan() const {
         return *activeFramePlan;
     }
@@ -137,11 +127,11 @@ private:
         return -FramePlan().SlotOffsets().at(r);
     }
 
-    [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
+    [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const override {
         return RuntimeSizeOf(t, layouts, interfaceNames);
     }
 
-    [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+    [[nodiscard]] bool IsAggregate(const TypeRef &t) const override {
         if (t.IsRange()) {
             return true;
         }
@@ -179,124 +169,11 @@ private:
         return base == "Slice" || interfaceNames.count(base) > 0;
     }
 
-    [[nodiscard]] bool IsPointerToWin64ByRefAggregate(const TypeRef &t) const {
-        return t.kind == TypeRef::Kind::Pointer && !t.inner.empty() && IsWin64ByRefAggregate(t.inner[0]);
-    }
-
-    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
+    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const override {
         const auto &registerTypes = FramePlan().RegisterTypes();
         const auto it = registerTypes.find(reg);
         return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
                it->second.inner[0] == pointee;
-    }
-
-    static int Win64CallFrameSize(const std::size_t argCount) {
-        const std::size_t stackArgs = argCount > 4 ? argCount - 4 : 0;
-        return AlignUp(static_cast<int>(32 + stackArgs * 8), 16);
-    }
-
-    [[nodiscard]] std::size_t SysVStackArgCount(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
-        int intIdx = startIntIdx;
-        int fltIdx = 0;
-        std::size_t stackArgs = 0;
-        for (const LirReg arg : args) {
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const TypeRef type = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-            if (IsFloat(type)) {
-                if (fltIdx < 8) {
-                    ++fltIdx;
-                }
-                else {
-                    ++stackArgs;
-                }
-            }
-            else if (IsSysVMemoryAggregate(type)) {
-                stackArgs += static_cast<std::size_t>(AlignUp(SizeOfRuntime(type), 8) / 8);
-            }
-            else if (IsAggregate(type) && SizeOfRuntime(type) == 16) {
-                if (intIdx <= 4) {
-                    intIdx += 2;
-                }
-                else {
-                    stackArgs += 2;
-                }
-            }
-            else if (intIdx < 6) {
-                ++intIdx;
-            }
-            else {
-                ++stackArgs;
-            }
-        }
-        return stackArgs;
-    }
-
-    [[nodiscard]] int SysVCallFrameSize(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
-        return AlignUp(static_cast<int>(SysVStackArgCount(args, startIntIdx) * 8), 16);
-    }
-
-    void StoreSysVStackArgs(const std::vector<LirReg> &args, const int startIntIdx = 0) const {
-        int intIdx = startIntIdx;
-        int fltIdx = 0;
-        int stackIdx = 0;
-        for (const LirReg arg : args) {
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const TypeRef type = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-            if (IsSysVMemoryAggregate(type)) {
-                const int size = AlignUp(SizeOfRuntime(type), 8);
-                for (int offset = 0; offset < size; offset += 8) {
-                    enc.MovRaxLoad(Disp(arg) + offset);
-                    enc.MovRaxStoreRsp(stackIdx++ * 8);
-                }
-                continue;
-            }
-            const bool twoWordAggregate = IsAggregate(type) && SizeOfRuntime(type) == 16;
-            if (twoWordAggregate) {
-                if (intIdx <= 4) {
-                    intIdx += 2;
-                }
-                else {
-                    enc.MovRaxLoad(Disp(arg));
-                    enc.MovRaxStoreRsp(stackIdx++ * 8);
-                    enc.MovRaxLoad(Disp(arg) + 8);
-                    enc.MovRaxStoreRsp(stackIdx++ * 8);
-                }
-                continue;
-            }
-
-            bool onStack = false;
-            if (IsFloat(type)) {
-                if (fltIdx < 8) {
-                    ++fltIdx;
-                }
-                else {
-                    onStack = true;
-                }
-            }
-            else if (intIdx < 6) {
-                ++intIdx;
-            }
-            else {
-                onStack = true;
-            }
-            if (!onStack) {
-                continue;
-            }
-
-            LoadA(arg, type);
-            const int32_t offset = stackIdx++ * 8;
-            if (IsFloat(type)) {
-                if (SizeOf(type) == 4) {
-                    enc.MovssXmm0StoreRsp(offset);
-                }
-                else {
-                    enc.MovsdXmm0StoreRsp(offset);
-                }
-            }
-            else {
-                enc.MovRaxStoreRsp(offset);
-            }
-        }
     }
 
     uint32_t GetOrAddExtern(const std::string &name, uint8_t kind, const std::string &dll = {}) {
@@ -449,20 +326,18 @@ private:
     }
 
     void EmitCallArguments(const std::vector<LirReg> &arguments) override {
-        EmitCallArgs(arguments);
+        activeCallEmitter->EmitArguments(arguments);
+    }
+
+    [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
+        if (const auto function = funcSyms.find(name); function != funcSyms.end()) {
+            return function->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
     }
 
     void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type, int32_t addend = 0) {
         (void)moduleBuilder.AddRelocation(RcuModuleSection::RoData, sectionOff, symIdx, type, addend);
-    }
-
-    void PatchJumps() {
-        for (const auto &p : jumpPatches) {
-            auto target = static_cast<int32_t>(blockOffsets[p.targetBlock]);
-            int32_t rel32 = target - static_cast<int32_t>(p.patchOff + 4);
-            enc.Patch32(p.patchOff, rel32);
-        }
-        jumpPatches.clear();
     }
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
@@ -646,65 +521,6 @@ private:
         StoreStack(dst, t);
     }
 
-    void LoadReturnValue(const LirReg reg, const TypeRef &t) const {
-        const int size = SizeOfRuntime(t);
-        if (IsRegPointerTo(reg, t)) {
-            if (size == 16) {
-                const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-                auto it = physicalRegisters.find(reg);
-                if (it != physicalRegisters.end()) {
-                    enc.MovR10PhysReg(it->second);
-                }
-                else {
-                    enc.MovR10Load(Disp(reg));
-                }
-                enc.Byte(0x49);
-                enc.Byte(0x8B);
-                enc.Byte(0x02); // mov rax, [r10]
-                enc.Byte(0x49);
-                enc.Byte(0x8B);
-                enc.Byte(0x52);
-                enc.Byte(0x08); // mov rdx, [r10 + 8]
-                return;
-            }
-
-            if (size == 1 || size == 2 || size == 4 || size == 8) {
-                const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-                auto it = physicalRegisters.find(reg);
-                if (it != physicalRegisters.end()) {
-                    enc.MovR10PhysReg(it->second);
-                }
-                else {
-                    enc.MovR10Load(Disp(reg));
-                }
-                LoadChunkFromR10(0, size);
-                return;
-            }
-        }
-
-        if (size == 16) {
-            enc.MovRaxLoad(Disp(reg));
-            enc.MovR10Load(Disp(reg) + 8);
-            enc.Byte(0x4C);
-            enc.Byte(0x89);
-            enc.Byte(0xD2); // mov rdx, r10
-            return;
-        }
-        LoadA(reg, t);
-    }
-
-    void StoreReturnValue(const LirReg dst, const TypeRef &t) const {
-        if (SizeOfRuntime(t) == 16) {
-            enc.MovRaxStore(Disp(dst));
-            enc.Byte(0x48);
-            enc.Byte(0x89);
-            enc.Byte(0x95);
-            enc.Dword(static_cast<uint32_t>(Disp(dst) + 8)); // mov [rbp+disp], rdx
-            return;
-        }
-        StoreA(dst, t);
-    }
-
     void LoadChunkFromR10(const int32_t offset, const int size) const {
         if (size == 8) {
             enc.Byte(0x49);
@@ -785,11 +601,7 @@ private:
         });
     }
 
-    void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const {
-        if (FramePlan().HiddenReturnOffset() == 0) {
-            LoadReturnValue(src, t);
-            return;
-        }
+    void StoreHiddenReturnValue(const LirReg src, const TypeRef &t) const override {
         enc.MovR11Load(-FramePlan().HiddenReturnOffset());
         if (IsRegPointerTo(src, t)) {
             const auto &physicalRegisters = FramePlan().PhysicalRegisters();
@@ -824,131 +636,6 @@ private:
         }
     }
 
-    // Phi move emission
-    bool HasPhiMoves(const uint32_t from, uint32_t to) const {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        auto it = phiMoves.find(from);
-        if (it == phiMoves.end()) {
-            return false;
-        }
-        return it->second.contains(to);
-    }
-
-    void EmitPhiMoves(const uint32_t from, uint32_t to) {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        auto it1 = phiMoves.find(from);
-        if (it1 == phiMoves.end()) {
-            return;
-        }
-        auto it2 = it1->second.find(to);
-        if (it2 == it1->second.end()) {
-            return;
-        }
-
-        std::vector<Rux::PhiMove> rawMoves;
-        rawMoves.reserve(it2->second.size());
-        for (const auto &m : it2->second) {
-            rawMoves.push_back({m.dst, m.src, m.type});
-        }
-
-        std::vector<PhiMoveStep> steps = ResolvePhiMoves(std::move(rawMoves));
-        const int32_t tempDisp = -FramePlan().PhiTemporaryOffset();
-
-        for (const auto &step : steps) {
-            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                int sz = SizeOfRuntime(step.type);
-                if (sz == 16) {
-                    LoadA(step.dst, step.type);
-                    enc.MovRaxStore(tempDisp);
-                    enc.Byte(0x48);
-                    enc.Byte(0x89);
-                    enc.Byte(0x95);
-                    enc.Dword(static_cast<uint32_t>(tempDisp + 8));
-                }
-                else if (IsFloat(step.type)) {
-                    LoadA(step.dst, step.type);
-                    if (step.type.kind == TypeRef::Kind::Float32) {
-                        enc.MovssXmm0Store(tempDisp);
-                    }
-                    else {
-                        enc.MovsdXmm0Store(tempDisp);
-                    }
-                }
-                else {
-                    LoadA(step.dst, step.type);
-                    int ss = (sz > 0) ? sz : 8;
-                    if (ss == 8) {
-                        enc.MovRaxStore(tempDisp);
-                    }
-                    else if (ss == 4) {
-                        enc.MovEaxStore(tempDisp);
-                    }
-                    else if (ss == 2) {
-                        enc.MovAxStore(tempDisp);
-                    }
-                    else {
-                        enc.MovAlStore(tempDisp);
-                    }
-                }
-            }
-            else {
-                if (step.sourceIsTemporary) {
-                    int sz = SizeOfRuntime(step.type);
-                    if (sz == 16) {
-                        enc.MovRaxLoad(tempDisp);
-                        enc.MovR10Load(tempDisp + 8);
-                        enc.Byte(0x4C);
-                        enc.Byte(0x89);
-                        enc.Byte(0xD2);
-                        StoreA(step.dst, step.type);
-                    }
-                    else if (IsFloat(step.type)) {
-                        if (step.type.kind == TypeRef::Kind::Float32) {
-                            enc.MovssXmm0Load(tempDisp);
-                        }
-                        else {
-                            enc.MovsdXmm0Load(tempDisp);
-                        }
-                        StoreA(step.dst, step.type);
-                    }
-                    else {
-                        int ss = (sz > 0) ? sz : 8;
-                        if (ss == 8) {
-                            enc.MovRaxLoad(tempDisp);
-                        }
-                        else if (step.type.IsSigned()) {
-                            if (ss == 4) {
-                                enc.MovsxdRaxDword(tempDisp);
-                            }
-                            else if (ss == 2) {
-                                enc.MovsxRaxWord(tempDisp);
-                            }
-                            else {
-                                enc.MovsxRaxByte(tempDisp);
-                            }
-                        }
-                        else {
-                            if (ss == 4) {
-                                enc.MovEaxLoad(tempDisp);
-                            }
-                            else if (ss == 2) {
-                                enc.MovzxRaxWord(tempDisp);
-                            }
-                            else {
-                                enc.MovzxRaxByte(tempDisp);
-                            }
-                        }
-                        StoreA(step.dst, step.type);
-                    }
-                }
-                else {
-                    LoadA(step.src, step.type);
-                    StoreA(step.dst, step.type);
-                }
-            }
-        }
-    }
-
     void EmitStackAlloc(int32_t bytes) const {
         constexpr int32_t kPageSize = 4096;
         while (bytes > kPageSize) {
@@ -964,118 +651,11 @@ private:
         }
     }
 
-    // Call argument setup
-    void EmitCallArgs(const std::vector<LirReg> &args, CallingConvention conv = CallingConvention::Default,
-                      int startIdx = 0) const {
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-        if (EffectiveConv(conv) == CallingConvention::Win64) {
-            // Unified index: rcx/xmm0=0, rdx/xmm1=1, r8/xmm2=2,
-            // r9/xmm3=3
-            int idx = startIdx;
-            for (LirReg arg : args) {
-                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                int32_t d = Disp(arg);
-                if (idx >= 4) {
-                    const int32_t stackArgOff = 32 + (idx - 4) * 8;
-                    if (IsFloat(at)) {
-                        LoadA(arg, at);
-                        if (SizeOf(at) == 4) {
-                            enc.MovssXmm0StoreRsp(stackArgOff);
-                        }
-                        else {
-                            enc.MovsdXmm0StoreRsp(stackArgOff);
-                        }
-                    }
-                    else if (IsWin64ByRefAggregate(at)) {
-                        enc.LeaRaxStack(d);
-                        enc.MovRaxStoreRsp(stackArgOff);
-                    }
-                    else {
-                        LoadA(arg, at);
-                        enc.MovRaxStoreRsp(stackArgOff);
-                    }
-                    ++idx;
-                    continue;
-                }
-
-                if (IsFloat(at)) {
-                    int sz = SizeOf(at);
-                    if (sz == 4) {
-                        enc.MovssXmmNLoad(idx, d);
-                    }
-                    else {
-                        enc.MovsdXmmNLoad(idx, d);
-                    }
-                }
-                else if (IsWin64ByRefAggregate(at)) {
-                    enc.LeaArgStackWin64(idx, d);
-                }
-                else if (IsPointerToWin64ByRefAggregate(at)) {
-                    auto it = physicalRegisters.find(arg);
-                    if (it != physicalRegisters.end()) {
-                        LoadA(arg, at);
-                        enc.MovArgWin64Rax(idx);
-                    }
-                    else {
-                        enc.MovArgLoadWin64(idx, d);
-                    }
-                }
-                else {
-                    LoadA(arg, at);
-                    enc.MovArgWin64Rax(idx);
-                }
-                ++idx;
-            }
-        }
-        else {
-            int intIdx = startIdx, fltIdx = 0;
-            for (LirReg arg : args) {
-                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                int32_t d = Disp(arg);
-                if (IsFloat(at)) {
-                    if (fltIdx < 8) {
-                        int sz = SizeOf(at);
-                        if (sz == 4) {
-                            enc.MovssXmmNLoad(fltIdx, d);
-                        }
-                        else {
-                            enc.MovsdXmmNLoad(fltIdx, d);
-                        }
-                        ++fltIdx;
-                    }
-                }
-                else if (IsAggregate(at) && SizeOfRuntime(at) == 16) {
-                    if (intIdx <= 4) {
-                        enc.MovRaxLoad(d);
-                        enc.MovArgRax(intIdx++);
-                        enc.MovRaxLoad(d + 8);
-                        enc.MovArgRax(intIdx++);
-                    }
-                }
-                else {
-                    if (intIdx < 6) {
-                        LoadA(arg, at);
-                        enc.MovArgRax(intIdx);
-                        ++intIdx;
-                    }
-                }
-            }
-            // System V AMD64 requires AL to hold the number of vector
-            // registers used when calling a variadic function; it is an
-            // ignored scratch register for non-variadic callees, so setting
-            // it unconditionally is always safe and lets printf-style
-            // functions decide whether to spill XMM registers.
-            enc.MovEaxImm32(fltIdx);
-        }
-    }
-
     // Instruction code generation
-    void GenInstr(X86_64FunctionEmitter &functionEmitter, const LirInstr &instr) {
-        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr)) {
+    void GenInstr(X86_64FunctionEmitter &functionEmitter, X86_64CallEmitter &callEmitter, const LirInstr &instr) {
+        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) || callEmitter.Emit(instr)) {
             return;
         }
-        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         switch (instr.op) {
         case LirOpcode::Assert:
         case LirOpcode::Panic: {
@@ -1176,249 +756,7 @@ private:
             }
             break;
         }
-        case LirOpcode::Call: {
-            // Built-in: FloatBits64 — reinterpret float64 bits as uint64
-            if (instr.strArg == "FloatBits64" && instr.srcs.size() == 1) {
-                enc.MovsdXmm0Load(Disp(instr.srcs[0]));
-                enc.Byte(0x66);
-                enc.Byte(0x48);
-                enc.Byte(0x0F);
-                enc.Byte(0x7E);
-                enc.Byte(0xC0); // movq rax, xmm0
-                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                    StoreReturnValue(instr.dst, instr.type);
-                }
-                break;
-            }
-            // Built-in: FloatFromBits64 — reinterpret uint64 bits as float64
-            if (instr.strArg == "FloatFromBits64" && instr.srcs.size() == 1) {
-                LoadA(instr.srcs[0], TypeRef::MakeInt64());
-                enc.Byte(0x66);
-                enc.Byte(0x48);
-                enc.Byte(0x0F);
-                enc.Byte(0x6E);
-                enc.Byte(0xC0); // movq xmm0, rax
-                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                    StoreReturnValue(instr.dst, instr.type);
-                }
-                break;
-            }
-            // Built-in: FloatBits32 — reinterpret float32 bits as uint32
-            if (instr.strArg == "FloatBits32" && instr.srcs.size() == 1) {
-                enc.MovssXmm0Load(Disp(instr.srcs[0]));
-                enc.Byte(0x66);
-                enc.Byte(0x0F);
-                enc.Byte(0x7E);
-                enc.Byte(0xC0); // movd eax, xmm0
-                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                    StoreReturnValue(instr.dst, instr.type);
-                }
-                break;
-            }
-            // Built-in: FloatFromBits32 — reinterpret uint32 bits as float32
-            if (instr.strArg == "FloatFromBits32" && instr.srcs.size() == 1) {
-                LoadA(instr.srcs[0], TypeRef::MakeInt32());
-                enc.Byte(0x66);
-                enc.Byte(0x0F);
-                enc.Byte(0x6E);
-                enc.Byte(0xC0); // movd xmm0, eax
-                if (instr.dst != LirNoReg && !instr.type.IsOpaque()) {
-                    StoreReturnValue(instr.dst, instr.type);
-                }
-                break;
-            }
-            bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            const bool hiddenReturn = instr.dst != LirNoReg && (win64Call ? IsWin64ByRefAggregate(instr.type)
-                                                                          : IsSysVMemoryAggregate(instr.type));
-            // Win64 reserves 32-byte shadow space. SysV reserves only enough
-            // space for overflow arguments; both frame sizes preserve the
-            // required 16-byte alignment at the call instruction.
-            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size() + (hiddenReturn ? 1 : 0))
-                                                : SysVCallFrameSize(instr.srcs, hiddenReturn ? 1 : 0);
-            if (callFrameSize > 0) {
-                enc.SubRspImm32(callFrameSize);
-            }
-            if (hiddenReturn) {
-                if (win64Call) {
-                    enc.LeaArgStackWin64(0, Disp(instr.dst));
-                }
-                else {
-                    enc.LeaRaxStack(Disp(instr.dst));
-                    enc.MovArgRax(0);
-                    StoreSysVStackArgs(instr.srcs, 1);
-                }
-                EmitCallArgs(instr.srcs, instr.callConv, 1);
-            }
-            else {
-                if (!win64Call) {
-                    StoreSysVStackArgs(instr.srcs);
-                }
-                EmitCallArgs(instr.srcs, instr.callConv);
-            }
-            uint32_t symIdx;
-            if (const auto it = funcSyms.find(instr.strArg); it != funcSyms.end()) {
-                symIdx = it->second;
-            }
-            else {
-                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternFunc);
-            }
-            uint32_t ro;
-            enc.Call(ro);
-            AddTextReloc(ro, symIdx);
-            if (callFrameSize > 0) {
-                enc.AddRspImm32(callFrameSize);
-            }
-            if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
-                StoreReturnValue(instr.dst, instr.type);
-            }
-            break;
-        }
-        case LirOpcode::CallIndirect: {
-            if (instr.srcs.empty()) {
-                break;
-            }
-            LirReg callee = instr.srcs[0];
-            std::vector<LirReg> args(instr.srcs.begin() + 1, instr.srcs.end());
-            bool win64Call = EffectiveConv(instr.callConv) == CallingConvention::Win64;
-            const bool hiddenReturn = instr.dst != LirNoReg && (win64Call ? IsWin64ByRefAggregate(instr.type)
-                                                                          : IsSysVMemoryAggregate(instr.type));
-            const int callFrameSize = win64Call ? Win64CallFrameSize(args.size() + (hiddenReturn ? 1 : 0))
-                                                : SysVCallFrameSize(args, hiddenReturn ? 1 : 0);
-            if (callFrameSize > 0) {
-                enc.SubRspImm32(callFrameSize);
-            }
-            if (hiddenReturn) {
-                if (win64Call) {
-                    enc.LeaArgStackWin64(0, Disp(instr.dst));
-                }
-                else {
-                    enc.LeaRaxStack(Disp(instr.dst));
-                    enc.MovArgRax(0);
-                    StoreSysVStackArgs(args, 1);
-                }
-                EmitCallArgs(args, instr.callConv, 1);
-            }
-            else {
-                if (!win64Call) {
-                    StoreSysVStackArgs(args);
-                }
-                EmitCallArgs(args, instr.callConv);
-            }
-            auto it = physicalRegisters.find(callee);
-            if (it != physicalRegisters.end()) {
-                enc.MovR10PhysReg(it->second);
-            }
-            else {
-                enc.MovR10Load(Disp(callee));
-            }
-            enc.CallR10();
-            if (callFrameSize > 0) {
-                enc.AddRspImm32(callFrameSize);
-            }
-            if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
-                StoreReturnValue(instr.dst, instr.type);
-            }
-            break;
-        }
-        case LirOpcode::Phi:
-            break; // handled by phi-move pre-emission
         default:
-            break;
-        }
-    }
-
-    // Terminator
-    void GenTerm(uint32_t blockIdx, const LirTerminator &term, const LirFunc &func) {
-        (void)func;
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto &usedPhysicalRegisters = FramePlan().UsedPhysicalRegisters();
-        switch (term.kind) {
-        case LirTermKind::Jump: {
-            EmitPhiMoves(blockIdx, term.trueTarget);
-            uint32_t po;
-            enc.Jmp(po);
-            jumpPatches.push_back({po, term.trueTarget});
-            break;
-        }
-        case LirTermKind::Branch: {
-            // Load condition with correct width to avoid reading stack
-            // garbage
-            {
-                const TypeRef condT =
-                    registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeBool();
-                LoadA(term.cond, condT);
-            }
-            enc.TestRaxRax();
-            const bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
-            if (const bool falsePhi = HasPhiMoves(blockIdx, term.falseTarget); !truePhi && !falsePhi) {
-                uint32_t po;
-                enc.Jz(po);
-                jumpPatches.push_back({po, term.falseTarget});
-                uint32_t po2;
-                enc.Jmp(po2);
-                jumpPatches.push_back({po2, term.trueTarget});
-            }
-            else {
-                uint32_t jzOff;
-                enc.Jz(jzOff);
-                // true trampoline
-                EmitPhiMoves(blockIdx, term.trueTarget);
-                uint32_t jmpTrue;
-                enc.Jmp(jmpTrue);
-                jumpPatches.push_back({jmpTrue, term.trueTarget});
-                // patch jz to here (false trampoline)
-                auto here = static_cast<int32_t>(enc.Size());
-                enc.Patch32(jzOff, here - static_cast<int32_t>(jzOff + 4));
-                EmitPhiMoves(blockIdx, term.falseTarget);
-                uint32_t jmpFalse;
-                enc.Jmp(jmpFalse);
-                jumpPatches.push_back({jmpFalse, term.falseTarget});
-            }
-            break;
-        }
-        case LirTermKind::Return: {
-            if (term.retVal && *term.retVal != LirNoReg) {
-                if (FramePlan().HiddenReturnOffset() != 0) {
-                    StoreHiddenReturnValue(*term.retVal, term.retType);
-                }
-                else {
-                    LoadReturnValue(*term.retVal, term.retType);
-                }
-            }
-            if (!usedPhysicalRegisters.empty()) {
-                const int32_t remainingFrame =
-                    FramePlan().FrameSize() - static_cast<int32_t>(usedPhysicalRegisters.size() * 8);
-                if (remainingFrame > 0) {
-                    enc.AddRspImm32(remainingFrame);
-                }
-                for (auto it = usedPhysicalRegisters.rbegin(); it != usedPhysicalRegisters.rend(); ++it) {
-                    enc.PopReg(*it);
-                }
-                enc.PopRbp();
-            }
-            else {
-                enc.Leave();
-            }
-            enc.Ret();
-            break;
-        }
-        case LirTermKind::Switch: {
-            LoadA(term.cond, registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeInt64());
-            for (const auto &c : term.cases) {
-                const std::uint64_t bits = ParseIntegerLiteralBits(c.value).value_or(0);
-                enc.CmpRaxImm32(static_cast<int32_t>(bits));
-                uint32_t po;
-                enc.Je(po);
-                jumpPatches.push_back({po, c.target});
-            }
-            EmitPhiMoves(blockIdx, term.defaultTarget);
-            uint32_t po;
-            enc.Jmp(po);
-            jumpPatches.push_back({po, term.defaultTarget});
-            break;
-        }
-        case LirTermKind::Unreachable:
-            enc.Ud2();
             break;
         }
     }
@@ -1475,17 +813,20 @@ private:
         }
         const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
         activeFramePlan = &framePlan;
+        X86_64CallEmitter callEmitter(enc, framePlan, targetOs, *this);
+        X86_64TerminatorEmitter terminatorEmitter(enc, framePlan, *this);
+        activeCallEmitter = &callEmitter;
         X86_64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, EffectiveConv(CallingConvention::Default),
                                               layouts, interfaceNames, *this);
         const auto &usedPhysicalRegisters = framePlan.UsedPhysicalRegisters();
         const auto &physicalRegisters = framePlan.PhysicalRegisters();
-        jumpPatches.clear();
         const uint32_t symIdx = funcSyms.contains(func.name)
                                   ? funcSyms.at(func.name)
                                   : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
                                                   func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
         funcSyms[func.name] = symIdx;
         if (!moduleBuilder.BeginFunction(symIdx)) {
+            activeCallEmitter = nullptr;
             activeFramePlan = nullptr;
             return;
         }
@@ -1650,19 +991,20 @@ private:
             }
         }
         // Basic blocks
-        blockOffsets.assign(func.blocks.size(), 0);
+        terminatorEmitter.Begin(func.blocks.size());
         for (uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            blockOffsets[bi] = enc.Size();
+            terminatorEmitter.MarkBlock(bi);
             const auto &block = func.blocks[bi];
             for (const auto &instr : block.instrs) {
-                GenInstr(functionEmitter, instr);
+                GenInstr(functionEmitter, callEmitter, instr);
             }
             if (block.term) {
-                GenTerm(bi, *block.term, func);
+                terminatorEmitter.Emit(bi, *block.term);
             }
         }
-        PatchJumps();
+        terminatorEmitter.PatchJumps();
         (void)moduleBuilder.EndFunction(symIdx);
+        activeCallEmitter = nullptr;
         activeFramePlan = nullptr;
     }
 
