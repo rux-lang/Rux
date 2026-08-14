@@ -198,6 +198,7 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/CallAndTerminatorEmitter.cpp
     CodeGen/AArch64/CallLayout.cpp
     CodeGen/AArch64/Encoder.cpp
+    CodeGen/AArch64/EncoderInteger.cpp
     CodeGen/AArch64/FramePlan.cpp
     CodeGen/AArch64/FunctionEmitter.cpp
     CodeGen/AArch64/RcuEmitter.cpp
