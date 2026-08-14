@@ -1,192 +1,61 @@
-// `when` conditional compilation: the taken branch is spliced into its parent
-// and the others are dropped before anything type-checks them.
+// `when` folding splices the selected branch into its parent before semantic analysis.
 
-#include "Lexer/Lexer.h"
+#include "ConditionalCompilationTestSupport.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
-#include "Syntax/Ast/Ast.h"
-#include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
 #include <doctest.h>
 #include <string>
-#include <string_view>
-#include <unordered_map>
 #include <vector>
 
 using namespace Rux;
+using namespace Rux::Testing;
 
 namespace {
-
-ParseResult ParseSource(const std::string &source) {
-    Lexer lexer(source, "test.rux");
-    auto lexed = lexer.Tokenize();
-    REQUIRE_FALSE(lexed.HasErrors());
-
-    Parser parser(std::move(lexed.tokens), "test.rux");
-    auto parsed = parser.Parse();
-    REQUIRE_FALSE(parsed.HasErrors());
-    return parsed;
-}
-
-// A stand-in intrinsics package so `import Core::{...}` resolves in these tests. The
-// fold uses its own built-in variant tables, so the enum bodies here only need
-// to exist, not to be complete.
-constexpr std::string_view kCorePackageSource = R"(
-struct Slice<T> { data: *T; length: uint; }
-struct Target {}
-struct Build {}
-struct Compiler {}
-struct SemanticVersion {
-    major: uint;
-    minor: uint;
-    patch: uint;
-}
-extend SemanticVersion {
-    func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
-        return SemanticVersion { major: major, minor: minor, patch: patch };
-    }
-}
-struct Source {}
-struct Config {}
-intrinsic #target: Target;
-intrinsic #build: Build;
-intrinsic #compiler: Compiler;
-intrinsic #source: Source;
-intrinsic #config: Config;
-intrinsic func #Error(message: Slice<char8>);
-intrinsic func #Warn(message: Slice<char8>);
-enum OperatingSystem { Windows }
-enum Architecture { X86_64 }
-enum ApplicationBinaryInterface { WindowsX64 }
-enum Endianness { Little }
-enum DataModel { LLP64 }
-enum ObjectFormat { COFF }
-enum BuildMode { Debug }
-enum OptimizationMode { Speed }
-enum OutputKind { SharedLibrary }
-)";
-
-DepPackage RuxDep(ParseResult &storage) {
-    storage = ParseSource(std::string(kCorePackageSource));
-    DepPackage dep;
-    dep.name = "Core";
-    dep.modules.push_back({"Core", &storage.module});
-    return dep;
-}
-
-// Runs the front end the way the driver does, which folds `when` in `module`,
-// with the stand-in intrinsics package available so `import Core::{...}` resolves.
-SemanticModel Analyze(Module &module, const std::string &targetSystem = "Windows") {
-    ParseResult rux;
-    std::vector<Module *> modules = {&module};
-    SemanticAnalyzer analyzer(modules, {RuxDep(rux)}, "test", targetSystem);
-    return analyzer.Analyze();
-}
-
-SemanticModel Analyze(Module &module, CompileTimeContext context) {
-    ParseResult rux;
-    std::vector<Module *> modules = {&module};
-    SemanticAnalyzer analyzer(modules, {RuxDep(rux)}, "test", std::move(context));
-    return analyzer.Analyze();
-}
-
-// For tests that lower the result: no dependency, so the lowered package holds
-// only the module under test.
-SemanticModel AnalyzeNoDeps(Module &module, CompileTimeContext context) {
-    std::vector<Module *> modules = {&module};
-    SemanticAnalyzer analyzer(modules, {}, "test", std::move(context));
-    return analyzer.Analyze();
-}
-
-const FuncDecl *FindFunc(const Module &module, const std::string_view name) {
-    for (const auto &item : module.items) {
-        const auto *func = dynamic_cast<const FuncDecl *>(item.get());
-        if (func && func->name == name) {
-            return func;
-        }
-    }
-    return nullptr;
-}
-
-const ExternBlockDecl *FindExternBlock(const Module &module) {
-    for (const auto &item : module.items) {
-        if (const auto *block = dynamic_cast<const ExternBlockDecl *>(item.get())) {
-            return block;
-        }
-    }
-    return nullptr;
-}
-
-// The integer literal a single-statement `return <int>;` body returns.
-std::string ReturnedLiteral(const FuncDecl &func) {
-    REQUIRE(func.body != nullptr);
-    REQUIRE(func.body->stmts.size() == 1);
-    const auto *ret = dynamic_cast<const ReturnStmt *>(func.body->stmts[0].get());
-    REQUIRE(ret != nullptr);
-    REQUIRE(ret->value.has_value());
-    const auto *literal = dynamic_cast<const LiteralExpr *>(ret->value->get());
-    REQUIRE(literal != nullptr);
-    return literal->token.text;
-}
-
+constexpr auto ParseSource = ParseConditionalSource;
+constexpr auto Analyze = [](Module &module, const std::string &targetSystem = "Windows") {
+    return AnalyzeConditionalModule(module, targetSystem);
+};
+constexpr auto AnalyzeWithContext =
+    static_cast<SemanticModel (*)(Module &, CompileTimeContext)>(AnalyzeConditionalModule);
+constexpr auto AnalyzeNoDeps = AnalyzeConditionalModuleWithoutDependencies;
+constexpr auto FindFunc = FindConditionalFunc;
+constexpr auto FindExternBlock = FindConditionalExternBlock;
+constexpr auto ReturnedLiteral = ConditionalReturnedLiteral;
 } // namespace
 
-TEST_CASE("the conditional evaluator returns typed results without mutating the module") {
+TEST_CASE("the conditional folder directly splices selected declarations and statements") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #build, #compiler, #source, #config };
+const Enabled = true;
 
-when #target.os == .Windows &&
-    #build.profile == "Release" &&
-    #config.Has("sqlite") &&
-    #compiler.HasFeature("conditional-compilation") &&
-    #source.fileName == "test.rux" {
+when Enabled {
     func Selected() -> int { return 1; }
-} else {
-    func Selected() -> int { return 0; }
 }
 
-when false && #target.HasFeature(.Imaginary) {
-    func Unreachable() {}
+func Run() -> int {
+    when Enabled {
+        return 2;
+    } else {
+        return 3;
+    }
 }
 )");
 
-    CompileTimeContext context;
-    context.target.os = Target::OS::Windows;
-    context.profile = BuildProfile::Release;
-    context.config.emplace("sqlite", "enabled");
+    std::vector<Module *> modules = {&parsed.module};
+    std::vector<Diagnostic> diagnostics;
+    ResolveConditionalCompilation(modules, CompileTimeContext{}, diagnostics);
 
-    const std::vector<Module *> modules = {&parsed.module};
-    ConditionalEvaluator evaluator(context, modules);
-    evaluator.SetSourceContext(parsed.module.name, "test", "");
-    evaluator.SetImports(parsed.module);
-
-    REQUIRE(parsed.module.items.size() == 3);
-    auto *selected = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
-    auto *shortCircuited = dynamic_cast<WhenDecl *>(parsed.module.items[2].get());
+    CHECK(diagnostics.empty());
+    const auto *selected = FindFunc(parsed.module, "Selected");
+    const auto *run = FindFunc(parsed.module, "Run");
     REQUIRE(selected != nullptr);
-    REQUIRE(shortCircuited != nullptr);
-    REQUIRE(selected->branches.size() == 2);
-    REQUIRE(shortCircuited->branches.size() == 1);
-
-    const auto selectedResult = evaluator.Evaluate(*selected->branches[0].condition);
-    REQUIRE(selectedResult.value.has_value());
-    CHECK(std::get<bool>(*selectedResult.value));
-    CHECK(selectedResult.diagnostics.empty());
-
-    const auto shortCircuitResult = evaluator.Evaluate(*shortCircuited->branches[0].condition);
-    REQUIRE(shortCircuitResult.value.has_value());
-    CHECK_FALSE(std::get<bool>(*shortCircuitResult.value));
-    CHECK(shortCircuitResult.diagnostics.empty());
-
-    // Evaluation is read-only: neither conditional has been selected or
-    // spliced, and both still occupy their original declaration slots.
-    CHECK(parsed.module.items.size() == 3);
-    CHECK(parsed.module.items[1].get() == selected);
-    CHECK(parsed.module.items[2].get() == shortCircuited);
-    CHECK(selected->branches.size() == 2);
-    CHECK(shortCircuited->branches.size() == 1);
+    REQUIRE(run != nullptr);
+    CHECK(ReturnedLiteral(*selected) == "1");
+    CHECK(ReturnedLiteral(*run) == "2");
+    CHECK(std::ranges::none_of(parsed.module.items,
+                               [](const auto &item) { return dynamic_cast<const WhenDecl *>(item.get()) != nullptr; }));
 }
 
 TEST_CASE("a when statement keeps only the taken branch") {
@@ -888,48 +757,6 @@ func Do() -> int {
                                           ".FreeBSD, .Linux, .MacOS, .Windows");
 }
 
-TEST_CASE("compiler-initialized constants are ordinary expressions outside a when condition") {
-    auto parsed = ParseSource(R"(
-struct Target {
-    pointerBits: uint;
-}
-
-intrinsic #target: Target;
-
-func Do() -> int {
-    let bits = #target.pointerBits;
-    return 0;
-}
-)");
-    CompileTimeContext context;
-    context.target.pointer_size = 8;
-    const auto model = AnalyzeNoDeps(parsed.module, std::move(context));
-    REQUIRE_FALSE(model.HasErrors());
-
-    AstToHirLowering lowering(model);
-    const HirPackage package = lowering.Generate();
-    REQUIRE(package.modules.size() == 1);
-    REQUIRE(package.modules[0].funcs.size() == 1);
-    const auto *let = dynamic_cast<const HirLetStmt *>(package.modules[0].funcs[0].body->stmts[0].get());
-    REQUIRE(let != nullptr);
-    const auto *literal = dynamic_cast<const HirLiteralExpr *>(let->init.get());
-    REQUIRE(literal != nullptr);
-    CHECK(literal->value == "64");
-}
-
-TEST_CASE("an enum shorthand is an error; the variant must be written in full") {
-    auto parsed = ParseSource(R"(
-enum Mode { Fast, Small }
-
-func Do() -> Mode {
-    return .Fast;
-}
-)");
-    const auto model = Analyze(parsed.module);
-    REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Enum::Fast'");
-}
-
 TEST_CASE("a when condition that is not a compile-time constant is an error") {
     auto parsed = ParseSource(R"(
 func Do() -> int {
@@ -1005,25 +832,9 @@ func Selected() -> int {
     context.isTest = true;
     context.outputKind = OutputKind::SharedLibrary;
 
-    const auto model = Analyze(parsed.module, std::move(context));
+    const auto model = AnalyzeWithContext(parsed.module, std::move(context));
     CHECK_FALSE(model.HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
-}
-
-TEST_CASE("build profiles derive coherent compile-time metadata") {
-    CompileTimeContext context;
-    CHECK(context.ProfileName() == "Debug");
-    CHECK(context.BuildMode() == Target::BuildMode::Debug);
-    CHECK(context.Optimization() == OptimizationMode::None);
-    CHECK(context.DebugAssertions());
-    CHECK(context.DebugInfo());
-
-    context.profile = BuildProfile::Release;
-    CHECK(context.ProfileName() == "Release");
-    CHECK(context.BuildMode() == Target::BuildMode::Release);
-    CHECK(context.Optimization() == OptimizationMode::Speed);
-    CHECK_FALSE(context.DebugAssertions());
-    CHECK_FALSE(context.DebugInfo());
 }
 
 TEST_CASE("configuration and compiler feature intrinsics are queryable") {
@@ -1059,187 +870,9 @@ func Selected() -> int {
     context.config["allocator"] = "mimalloc";
     context.buildInfo = BuildInfo("1.2.3-rc.1+build.7", 0);
 
-    const auto model = Analyze(parsed.module, std::move(context));
+    const auto model = AnalyzeWithContext(parsed.module, std::move(context));
     CHECK_FALSE(model.HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(parsed.module, "Selected")) == "1");
-}
-
-TEST_CASE("an undeclared intrinsic name is rejected") {
-    // `#line` parses as a `#`-prefixed intrinsic value, but no such intrinsic
-    // exists (source facts live under `#source`), so it is caught in analysis.
-    auto parsed = ParseSource(R"(
-func Selected() -> int {
-    return #line;
-}
-)");
-    const auto model = Analyze(parsed.module);
-    REQUIRE(model.HasErrors());
-    CHECK(std::ranges::any_of(model.diagnostics,
-                              [](const auto &diagnostic) { return diagnostic.message == "undefined name '#line'"; }));
-}
-
-TEST_CASE("intrinsic declares a compiler-initialized ordinary constant") {
-    auto parsed = ParseSource(R"(
-struct Target { pointerBits: uint; }
-
-intrinsic #target: Target;
-)");
-    REQUIRE(parsed.module.items.size() == 2);
-    const auto *decl = dynamic_cast<const ConstDecl *>(parsed.module.items[1].get());
-    REQUIRE(decl != nullptr);
-    CHECK(decl->name == "#target");
-    // The type names the intrinsic, so the constant can be renamed freely.
-    CHECK(decl->intrinsicName == "Target");
-    CHECK(decl->value == nullptr);
-}
-
-TEST_CASE("ordinary intrinsic expressions lower to context literals") {
-    auto parsed = ParseSource(R"(
-struct Slice<T> { data: *T; length: uint; }
-
-enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, SVE, RVV }
-
-struct Target {
-    pointerBits: uint;
-    triple: Slice<char8>;
-}
-
-extend Target {
-    intrinsic func HasFeature(self, feature: TargetFeature) -> bool;
-}
-
-struct Build {
-    profile: Slice<char8>;
-    debugAssertions: bool;
-    debugInfo: bool;
-    isTest: bool;
-    timestamp: uint64;
-    date: Slice<char8>;
-    time: Slice<char8>;
-}
-
-struct SemanticVersion {
-    major: uint;
-    minor: uint;
-    patch: uint;
-}
-struct Compiler { version: SemanticVersion; }
-extend Compiler {
-    intrinsic func HasFeature(self, feature: Slice<char8>) -> bool;
-}
-
-struct Source {
-    line: uint;
-    column: uint;
-    fileName: Slice<char8>;
-    filePath: Slice<char8>;
-    function: Slice<char8>;
-    module: Slice<char8>;
-}
-
-struct Config {}
-extend Config {
-    intrinsic func Get(self, name: Slice<char8>) -> Slice<char8>;
-    intrinsic func Has(self, name: Slice<char8>) -> bool;
-}
-
-intrinsic #target: Target;
-intrinsic #build: Build;
-intrinsic #compiler: Compiler;
-intrinsic #source: Source;
-intrinsic #config: Config;
-
-module Demo {
-    func Values() {
-        let line = #source.line;
-        let column = #source.column;
-        let fileName = #source.fileName;
-        let filePath = #source.filePath;
-        let function = #source.function;
-        let moduleName = #source.module;
-        let date = #build.date;
-        let time = #build.time;
-        let timestamp = #build.timestamp;
-        let pointerBits = #target.pointerBits;
-        let targetTriple = #target.triple;
-        let feature = #target.HasFeature(TargetFeature::AVX2);
-        let profile = #build.profile;
-        let debugAssertions = #build.debugAssertions;
-        let debugInfo = #build.debugInfo;
-        let isTest = #build.isTest;
-        let configValue = #config.Get("allocator");
-        let hasConfig = #config.Has("allocator");
-        let version = #compiler.version;
-        let compilerFeature = #compiler.HasFeature("namespaced-intrinsics");
-        let currentTarget = #target;
-    }
-}
-)");
-    CompileTimeContext context;
-    context.target.pointer_size = 8;
-    context.target.cpu_features = Target::CpuFeature::AVX2;
-    context.targetTriple = "windows-x86_64";
-    context.profile = BuildProfile::Release;
-    context.isTest = true;
-    context.config["allocator"] = "mimalloc";
-    context.buildInfo = BuildInfo("1.2.3-rc.1+build.7", 0);
-
-    const SemanticModel model = AnalyzeNoDeps(parsed.module, std::move(context));
-    std::string diagnosticMessages;
-    for (const Diagnostic &diagnostic : model.diagnostics) {
-        diagnosticMessages += diagnostic.message + "\n";
-    }
-    INFO(diagnosticMessages);
-    REQUIRE_FALSE(model.HasErrors());
-    AstToHirLowering lowering(model);
-    const HirPackage package = lowering.Generate();
-    REQUIRE(package.modules.size() == 1);
-    REQUIRE(package.modules[0].funcs.size() == 1);
-    REQUIRE(package.modules[0].funcs[0].body.has_value());
-
-    std::unordered_map<std::string, std::string> values;
-    for (const auto &stmt : package.modules[0].funcs[0].body->stmts) {
-        const auto *let = dynamic_cast<const HirLetStmt *>(stmt.get());
-        REQUIRE(let != nullptr);
-        if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(let->init.get())) {
-            values[let->name] = literal->value;
-        }
-        else {
-            const auto *object = dynamic_cast<const HirStructInitExpr *>(let->init.get());
-            REQUIRE(object != nullptr);
-            if (let->name == "version") {
-                CHECK(object->typeName == "SemanticVersion");
-                REQUIRE(object->fields.size() == 3);
-                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[0].value.get())->value == "1");
-                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[1].value.get())->value == "2");
-                CHECK(dynamic_cast<const HirLiteralExpr *>(object->fields[2].value.get())->value == "3");
-            }
-            else {
-                CHECK(let->name == "currentTarget");
-                CHECK(object->typeName == "Target");
-                CHECK(object->fields.size() == 2);
-            }
-        }
-    }
-    CHECK(values["line"] != "0");
-    CHECK(values["column"] != "0");
-    CHECK(values["fileName"] == "test.rux");
-    CHECK(values["filePath"] == "test.rux");
-    CHECK(values["function"] == "Demo::Values");
-    CHECK(values["moduleName"] == "test::Demo");
-    CHECK(values["date"] == "1970-01-01");
-    CHECK(values["time"] == "00:00:00");
-    CHECK(values["timestamp"] == "0");
-    CHECK(values["pointerBits"] == "64");
-    CHECK(values["targetTriple"] == "windows-x86_64");
-    CHECK(values["feature"] == "true");
-    CHECK(values["profile"] == "Release");
-    CHECK(values["debugAssertions"] == "false");
-    CHECK(values["debugInfo"] == "false");
-    CHECK(values["isTest"] == "true");
-    CHECK(values["configValue"] == "mimalloc");
-    CHECK(values["hasConfig"] == "true");
-    CHECK(values["compilerFeature"] == "true");
 }
 
 TEST_CASE("when includes true declarations and removes false declarations and imports") {
@@ -1343,7 +976,7 @@ func Which() -> int {
 
     ParseResult core;
     std::vector<Module *> modules = {&parsed.module};
-    DepPackage dep = RuxDep(core);
+    DepPackage dep = ConditionalCoreDependency(core);
     dep.name = "Lang";
     dep.modules[0].moduleName = "Lang";
     SemanticAnalyzer analyzer(modules, {dep}, "test", std::move(context));
@@ -1366,7 +999,7 @@ func Which() -> int {
 
     ParseResult core;
     std::vector<Module *> modules = {&parsed.module};
-    DepPackage dep = RuxDep(core);
+    DepPackage dep = ConditionalCoreDependency(core);
     dep.name = "Other";
     dep.modules[0].moduleName = "Other";
     SemanticAnalyzer analyzer(modules, {dep}, "test", std::move(context));

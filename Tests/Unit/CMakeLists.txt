@@ -35,7 +35,9 @@ set(RUX_TEST_SOURCES
     CliProcessTests.cpp
     CompilerDriverTests.cpp
     ConstantEvaluatorTests.cpp
-    ConditionalCompilationTests.cpp
+    ConditionalCompilationTestSupport.cpp
+    ConditionalEvaluationTests.cpp
+    ConditionalFoldingTests.cpp
     CredentialsTests.cpp
     DocumentationTests.cpp
     GoldenDiagnosticsTests.cpp
