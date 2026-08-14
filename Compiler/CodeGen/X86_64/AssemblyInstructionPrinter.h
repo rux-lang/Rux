@@ -12,8 +12,8 @@ namespace Rux {
 class AssemblyModulePrinter;
 
 // Owns function setup, function-local operand spelling, and scalar and memory
-// LIR instruction text for one planned x86-64 function. Calls and control flow
-// remain with the assembly facade until their dedicated printer is extracted.
+// LIR instruction text for one planned x86-64 function. The control-flow
+// printer delegates exactly these opcode families through this boundary.
 class AssemblyInstructionPrinter {
 public:
     AssemblyInstructionPrinter(AssemblyModulePrinter &modulePrinter, const X86_64FramePlan &framePlan,
