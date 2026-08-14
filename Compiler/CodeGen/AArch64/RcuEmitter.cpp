@@ -16,7 +16,6 @@
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <algorithm>
-#include <bit>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -407,7 +406,7 @@ private:
     // `bytes` is already encoded at its element width; the terminator is one
     // more element of zeroes, which AlignRodata's zero fill cannot be relied on
     // to supply.
-    std::uint32_t InternStr(const std::string &bytes) {
+    std::uint32_t InternStringLiteral(const std::string &bytes) override {
         if (const auto symbol = moduleBuilder.InternedLiteral("string", bytes)) {
             return *symbol;
         }
@@ -470,11 +469,29 @@ private:
     // page. Both immediates are emitted as zero and belong to the two
     // relocations hung on them, so the sequence is the same two instructions
     // whatever the symbol turns out to be and wherever the linker puts it.
-    void LoadSymbolAddress(const A64Reg rd, const std::uint32_t symIdx) {
+    void LoadSymbolAddress(const A64Reg rd, const std::uint32_t symIdx) override {
         A64SymbolRef ref{};
         Must(enc.LoadAddress(rd, ref), "the address of a symbol");
         AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
         AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64AddAbsLo12Nc);
+    }
+
+    [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {
+        if (const auto data = dataSyms.find(name); data != dataSyms.end()) {
+            return data->second;
+        }
+        if (const auto func = funcSyms.find(name); func != funcSyms.end()) {
+            return func->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternData);
+    }
+
+    void LoadNamedDataSymbol(const A64Reg destination, const std::string &name) override {
+        A64SymbolRef ref{};
+        Must(enc.LoadFromSymbol(destination, ref), "a load from a symbol");
+        const std::uint32_t symbol = GetOrAddExtern(name, RcuSymKind::ExternData);
+        AddTextReloc(ref.adrp, symbol, RcuRelType::AArch64AdrPrelPgHi21);
+        AddTextReloc(ref.lo12, symbol, RcuRelType::AArch64LdstAbsLo12Nc);
     }
 
     // Branches
@@ -796,7 +813,7 @@ private:
     // to be written here, because only here is the width and the signedness of
     // the value known.
 
-    void StoreScalar(const A64Reg value, const A64Reg base, const std::int64_t offset, const unsigned width) {
+    void StoreScalar(const A64Reg value, const A64Reg base, const std::int64_t offset, const unsigned width) override {
         A64MemOperand mem{};
         Must(enc.ResolveMemOperand(base, offset, width, mem), "a memory address");
         const auto scaled = static_cast<std::uint64_t>(mem.offset);
@@ -828,7 +845,7 @@ private:
     // says: a signed value sign-extends, and an unsigned one is loaded into the
     // W view, which zeroes the half of the register above it.
     void LoadScalar(const A64Reg dst, const A64Reg base, const std::int64_t offset, const unsigned width,
-                    const bool sign) {
+                    const bool sign) override {
         A64MemOperand mem{};
         Must(enc.ResolveMemOperand(base, offset, width, mem), "a memory address");
         const auto scaled = static_cast<std::uint64_t>(mem.offset);
@@ -1005,7 +1022,7 @@ private:
 
     // The same for an address, which is a doubleword whatever it points at and
     // so is never the narrow case.
-    [[nodiscard]] A64Reg ReadPointerOperand(const LirReg reg, const A64Reg scratch) {
+    [[nodiscard]] A64Reg ReadPointerOperand(const LirReg reg, const A64Reg scratch) override {
         return ReadWidthOperand(reg, 8, false, scratch);
     }
 
@@ -1042,7 +1059,7 @@ private:
 
     // The address of a value's own slot, for the cases where an aggregate is
     // held in the frame rather than behind a pointer.
-    void SlotAddress(const A64Reg dst, const LirReg reg) {
+    void SlotAddress(const A64Reg dst, const LirReg reg) override {
         Must(enc.AddSubLargeImm(dst, A64::Fp, Disp(reg)), "the address of a stack slot");
     }
 
@@ -1055,7 +1072,7 @@ private:
     // left over goes a doubleword, a word, a halfword and a byte at a time,
     // which is the same descent the x86-64 emitter makes.
     void CopyBlock(const A64Reg dst, const std::int64_t dstOff, const A64Reg src, const std::int64_t srcOff,
-                   const int size, const bool paired) {
+                   const int size, const bool paired) override {
         const A64Reg first = A64::Xn(kTemp);
         const A64Reg second = A64::Xn(kTemp2);
         std::int64_t offset = 0;
@@ -1517,23 +1534,13 @@ private:
 
     // Instruction selection
 
-    // The bits a constant denotes. A boolean is written as a word rather than a
-    // number, and an unreadable literal is zero, which is what the x86-64 back
-    // end also does with one.
-    [[nodiscard]] static std::uint64_t ConstantBits(const LirInstr &instr) {
-        if (instr.type.IsBool()) {
-            return instr.strArg == "true" || instr.strArg == "1" ? 1 : 0;
-        }
-        return ParseIntegerLiteralBits(instr.strArg.empty() ? "0" : instr.strArg).value_or(0);
-    }
-
     // Bring a floating-point constant into `dst`. FMOV names 256 values
     // outright, which covers most of what a program writes down; anything else
     // — an exact fraction the encoding misses, or a value with more precision
     // than it carries — is a word or a doubleword in the read-only pool,
     // reached in two instructions rather than the four or five a MOVZ chain
     // through a general-purpose register would take.
-    void LoadFloatConstant(const A64Reg dst, const TypeRef &type, const std::string &literal) {
+    void LoadFloatConstant(const A64Reg dst, const TypeRef &type, const std::string &literal) override {
         const bool single = type.kind == TypeRef::Kind::Float32;
         const double value = single ? ParseFloatLiteral<float>(literal) : ParseFloatLiteral<double>(literal);
         if (TryEncodeFpImm8(value)) {
@@ -1575,7 +1582,7 @@ private:
     // Write a run of bytes this object holds: its address is a page and an
     // offset, and its length is known here rather than at run time.
     void EmitWriteStatic(const WriteSyscall &call, const std::string &text) {
-        LoadSymbolAddress(A64::Xn(1), InternStr(text));
+        LoadSymbolAddress(A64::Xn(1), InternStringLiteral(text));
         Must(enc.LoadImm64(A64::Xn(2), text.size()), "the length of an assertion message");
         Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
         EmitWriteSyscall(call);
@@ -1604,7 +1611,7 @@ private:
     void EmitWindowsWriteStatic(const std::uint32_t getStdHandle, const std::uint32_t writeFile,
                                 const std::string &text) {
         PrepareWindowsWrite(getStdHandle);
-        LoadSymbolAddress(A64::Xn(1), InternStr(text));
+        LoadSymbolAddress(A64::Xn(1), InternStringLiteral(text));
         Must(enc.LoadImm64(A64::Xn(2), text.size()), "the length of an assertion message");
         EmitWindowsCall(writeFile, "a call to WriteFile");
     }
@@ -1679,200 +1686,14 @@ private:
     }
 
     void GenInstr(AArch64FunctionEmitter &functionEmitter, const LirInstr &instr) {
-        if (functionEmitter.EmitArithmetic(instr)) {
+        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr)) {
             return;
         }
         switch (instr.op) {
-        case LirOpcode::Const: {
-            if (instr.dst == LirNoReg) {
-                break;
-            }
-            // A `str` is the address of its bytes rather than the bytes
-            // themselves, so it is interned and its address materialized, and
-            // the slot holds a pointer.
-            if (instr.type.kind == TypeRef::Kind::Str) {
-                const A64Reg text = ResultRegister(instr.dst, A64::Xn(kTemp));
-                LoadSymbolAddress(text, InternStr(instr.strArg));
-                StoreToSlot(text, instr.dst, instr.type);
-                break;
-            }
-            if (IsFloat(instr.type)) {
-                const A64Reg value = FloatResultRegister(instr.dst, FpReg(instr.type, kFpTemp));
-                LoadFloatConstant(value, instr.type, instr.strArg);
-                StoreFpToSlot(value, instr.dst);
-                break;
-            }
-            if (!IsRegisterValue(instr.type)) {
-                NotImplemented(std::format("a constant of type '{}'", instr.type.ToString()));
-                break;
-            }
-            // Everything else — an integer of any width, a boolean, a
-            // character, an enum's discriminant and the null pointer alike — is
-            // a bit pattern a general-purpose register holds. It is
-            // materialized at full width whatever the type, and the store
-            // writes only the bytes the type occupies, so the shortest sequence
-            // for the value is the one that gets emitted.
-            const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
-            Must(enc.LoadImm64(value, ConstantBits(instr)), "a constant");
-            StoreToSlot(value, instr.dst, instr.type);
-            break;
-        }
-        case LirOpcode::Alloca: {
-            const auto &allocaData = FramePlan().AllocaDataOffsets();
-            const auto it = allocaData.find(instr.dst);
-            if (it == allocaData.end()) {
-                Report(std::format("AArch64 code generation reached an alloca with no storage in '{}'", currentFunc));
-                break;
-            }
-            // The storage was reserved by the prepass and sits above the frame
-            // record, so its address is the frame pointer plus a displacement
-            // rather than minus one as it is on x86-64.
-            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
-            Must(enc.AddSubLargeImm(addr, A64::Fp, it->second), "the address of a local");
-            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
         case LirOpcode::Assert:
         case LirOpcode::Panic:
             GenAssert(instr);
             break;
-        case LirOpcode::GlobalAddr: {
-            std::uint32_t symIdx = 0;
-            if (const auto data = dataSyms.find(instr.strArg); data != dataSyms.end()) {
-                symIdx = data->second;
-            }
-            else if (const auto func = funcSyms.find(instr.strArg); func != funcSyms.end()) {
-                symIdx = func->second;
-            }
-            else {
-                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
-            }
-            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
-            LoadSymbolAddress(addr, symIdx);
-            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-        case LirOpcode::StringAddr: {
-            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
-            const std::uint32_t symIdx = InternStr(EncodeStringLiteral(instr.strArg, RuntimeSize(elemType)));
-            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
-            LoadSymbolAddress(addr, symIdx);
-            StoreToSlot(addr, instr.dst, instr.type);
-            break;
-        }
-        case LirOpcode::Load: {
-            if (instr.dst == LirNoReg) {
-                break;
-            }
-            const TypeRef &type = instr.type;
-            const int size = RuntimeSize(type);
-            // A named load reads what a symbol holds rather than following a
-            // pointer the program computed, which is an ADRP and a load rather
-            // than an ADRP, an ADD and then a load.
-            if (!instr.strArg.empty()) {
-                const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
-                A64SymbolRef ref{};
-                Must(enc.LoadFromSymbol(value, ref), "a load from a symbol");
-                const std::uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
-                AddTextReloc(ref.adrp, symIdx, RcuRelType::AArch64AdrPrelPgHi21);
-                AddTextReloc(ref.lo12, symIdx, RcuRelType::AArch64LdstAbsLo12Nc);
-                StoreToSlot(value, instr.dst, type);
-                break;
-            }
-            const A64Reg addr = ReadPointerOperand(instr.srcs[0], A64::Xn(kAddr));
-            // An aggregate is copied into the destination's slot rather than
-            // brought into a register, since no register holds one.
-            if (IsAggregate(type) && size > 8) {
-                CopyBlock(A64::Fp, Disp(instr.dst), addr, 0, size, RuntimeAlign(type) >= 8);
-                break;
-            }
-            if (IsFloat(type)) {
-                const A64Reg value = FloatResultRegister(instr.dst, FpReg(type, kFpTemp));
-                LoadScalar(value, addr, 0, value.bits / 8U, false);
-                StoreFpToSlot(value, instr.dst);
-                break;
-            }
-            const A64Reg value = ResultRegister(instr.dst, A64::Xn(kTemp));
-            LoadScalar(value, addr, 0, AccessWidth(size), type.IsSigned());
-            StoreToSlot(value, instr.dst, type);
-            break;
-        }
-        case LirOpcode::Store: {
-            if (instr.srcs.size() < 2) {
-                Report(std::format("AArch64 code generation reached a store with no pointer in '{}'", currentFunc));
-                break;
-            }
-            const LirReg valReg = instr.srcs[0];
-            const TypeRef &type = instr.type;
-            const int size = RuntimeSize(type);
-            const A64Reg addr = ReadPointerOperand(instr.srcs[1], A64::Xn(kAddr));
-            if (IsAggregate(type) && size > 8) {
-                A64Reg source = A64::Xn(kSrcAddr);
-                if (IsRegPointerTo(valReg, type)) {
-                    source = ReadPointerOperand(valReg, source);
-                }
-                else {
-                    SlotAddress(source, valReg);
-                }
-                CopyBlock(addr, 0, source, 0, size, RuntimeAlign(type) >= 8);
-                break;
-            }
-            if (IsFloat(type)) {
-                const A64Reg value = ReadFloatOperand(valReg, FpReg(type, kFpTemp));
-                StoreScalar(value, addr, 0, value.bits / 8U);
-                break;
-            }
-            const A64Reg value = ReadRawOperand(valReg, AccessWidth(size), A64::Xn(kTemp));
-            StoreScalar(value, addr, 0, AccessWidth(size));
-            break;
-        }
-        case LirOpcode::FieldPtr: {
-            const LirReg base = instr.srcs[0];
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const auto baseType = registerTypes.find(base);
-            const int offset = baseType == registerTypes.end()
-                                 ? 0
-                                 : FieldOffsetOf(baseType->second, instr.strArg, layouts, interfaceNames);
-            const A64Reg source = ReadPointerOperand(base, A64::Xn(kTemp));
-            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
-            if (offset != 0) {
-                Must(enc.AddSubLargeImm(addr, source, offset), "the address of a field");
-            }
-            else if (addr.code != source.code) {
-                Must(enc.Mov(addr, source), "the address of a field");
-            }
-            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-        case LirOpcode::IndexPtr: {
-            if (instr.srcs.size() < 2) {
-                Report(std::format("AArch64 code generation reached an index with no subscript in '{}'", currentFunc));
-                break;
-            }
-            // The element width is what the result points at, which is the
-            // shared layout rule rather than anything the index carries.
-            const bool known = instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty();
-            const int elemSize = std::max(known ? RuntimeSize(instr.type.inner[0]) : 8, 1);
-
-            const A64Reg source = ReadPointerOperand(instr.srcs[0], A64::Xn(kTemp));
-            const A64Reg index = ReadOperand(instr.srcs[1], TypeOfReg(instr.srcs[1]), A64::Xn(kAddr));
-            const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
-
-            // A power-of-two element scales inside the addition itself;
-            // anything else is a multiply, which MADD folds into the same
-            // instruction as the addition.
-            const auto shift = static_cast<unsigned>(std::countr_zero(static_cast<unsigned>(elemSize)));
-            if (std::has_single_bit(static_cast<unsigned>(elemSize)) && shift < 64) {
-                Must(enc.Add(addr, source, index, A64ShiftKind::Lsl, shift), "an element address");
-            }
-            else {
-                const A64Reg width = A64::Xn(kTemp2);
-                Must(enc.LoadImm64(width, static_cast<std::uint64_t>(elemSize)), "an element width");
-                Must(enc.Madd(addr, index, width, source), "an element address");
-            }
-            StoreToSlot(addr, instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
         case LirOpcode::Call: {
             GenCall(instr, instr.srcs, false);
             break;

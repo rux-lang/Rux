@@ -1,7 +1,10 @@
 #include "CodeGen/AArch64/FunctionEmitter.h"
 
+#include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 
+#include <algorithm>
+#include <bit>
 #include <format>
 #include <optional>
 #include <utility>
@@ -12,11 +15,29 @@ using namespace Layout;
 namespace {
 constexpr unsigned kTemp = 9;
 constexpr unsigned kAddr = 10;
+constexpr unsigned kSrcAddr = 11;
 constexpr unsigned kTemp2 = 12;
 constexpr unsigned kReturn = 0;
 constexpr unsigned kFpTemp = 16;
 constexpr unsigned kFpTemp2 = 17;
 constexpr unsigned kFpTemp3 = 18;
+constexpr std::int32_t kFrameRecordSize = 16;
+
+[[nodiscard]] unsigned AccessWidth(const int size) {
+    if (size <= 0) {
+        return 8;
+    }
+    if (size <= 1) {
+        return 1;
+    }
+    if (size <= 2) {
+        return 2;
+    }
+    if (size <= 4) {
+        return 4;
+    }
+    return 8;
+}
 
 [[nodiscard]] A64Condition IntegerCondition(const LirOpcode op, const bool isSigned) {
     switch (op) {
@@ -76,6 +97,31 @@ TypeRef AArch64FunctionEmitter::TypeOfReg(const LirReg reg) const {
     return it == registerTypes.end() ? TypeRef::MakeInt64() : it->second;
 }
 
+std::int32_t AArch64FunctionEmitter::Disp(const LirReg reg) {
+    if (const auto it = framePlan.SlotOffsets().find(reg); it != framePlan.SlotOffsets().end()) {
+        return it->second;
+    }
+    Report(std::format("AArch64 code generation reached register %{} with no stack slot in '{}'", reg, functionName));
+    return kFrameRecordSize;
+}
+
+int AArch64FunctionEmitter::RuntimeSize(const TypeRef &type) const {
+    return RuntimeSizeOf(type, layouts, interfaceNames);
+}
+
+int AArch64FunctionEmitter::RuntimeAlign(const TypeRef &type) const {
+    if (!type.IsRange() && type.kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type.name);
+        if (interfaceNames.contains(base)) {
+            return 8;
+        }
+        if (const auto it = layouts.find(base); it != layouts.end()) {
+            return it->second.alignment;
+        }
+    }
+    return AlignOf(type);
+}
+
 bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsRange()) {
         return true;
@@ -98,8 +144,22 @@ bool AArch64FunctionEmitter::IsRegisterValue(const TypeRef &type) const {
     return !IsFloat(type) && !IsAggregate(type) && type.kind != TypeRef::Kind::Str;
 }
 
+bool AArch64FunctionEmitter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
+    const auto &registerTypes = framePlan.RegisterTypes();
+    const auto it = registerTypes.find(reg);
+    return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
+           it->second.inner[0] == pointee;
+}
+
 A64Reg AArch64FunctionEmitter::FpReg(const TypeRef &type, const unsigned index) {
     return type.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
+}
+
+std::uint64_t AArch64FunctionEmitter::ConstantBits(const LirInstr &instruction) {
+    if (instruction.type.IsBool()) {
+        return instruction.strArg == "true" || instruction.strArg == "1" ? 1 : 0;
+    }
+    return ParseIntegerLiteralBits(instruction.strArg.empty() ? "0" : instruction.strArg).value_or(0);
 }
 
 std::optional<AArch64FunctionEmitter::BinaryOperands>
@@ -481,6 +541,163 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             return true;
         }
         return false;
+    default:
+        return false;
+    }
+}
+
+bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
+    switch (instruction.op) {
+    case LirOpcode::Const: {
+        if (instruction.dst == LirNoReg) {
+            return true;
+        }
+        if (instruction.type.kind == TypeRef::Kind::Str) {
+            const A64Reg text = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+            hooks.LoadSymbolAddress(text, hooks.InternStringLiteral(instruction.strArg));
+            hooks.StoreToSlot(text, instruction.dst, instruction.type);
+            return true;
+        }
+        if (IsFloat(instruction.type)) {
+            const A64Reg value = hooks.FloatResultRegister(instruction.dst, FpReg(instruction.type, kFpTemp));
+            hooks.LoadFloatConstant(value, instruction.type, instruction.strArg);
+            hooks.StoreFpToSlot(value, instruction.dst);
+            return true;
+        }
+        if (!IsRegisterValue(instruction.type)) {
+            NotImplemented(std::format("a constant of type '{}'", instruction.type.ToString()));
+            return true;
+        }
+        const A64Reg value = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        Must(encoder.LoadImm64(value, ConstantBits(instruction)), "a constant");
+        hooks.StoreToSlot(value, instruction.dst, instruction.type);
+        return true;
+    }
+    case LirOpcode::Alloca: {
+        const auto &allocaData = framePlan.AllocaDataOffsets();
+        const auto it = allocaData.find(instruction.dst);
+        if (it == allocaData.end()) {
+            Report(std::format("AArch64 code generation reached an alloca with no storage in '{}'", functionName));
+            return true;
+        }
+        const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        Must(encoder.AddSubLargeImm(address, A64::Fp, it->second), "the address of a local");
+        hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
+        return true;
+    }
+    case LirOpcode::GlobalAddr: {
+        const std::uint32_t symbol = hooks.ResolveGlobalSymbol(instruction.strArg);
+        const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        hooks.LoadSymbolAddress(address, symbol);
+        hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
+        return true;
+    }
+    case LirOpcode::StringAddr: {
+        const TypeRef elementType = instruction.type.inner.empty() ? TypeRef::MakeChar8() : instruction.type.inner[0];
+        const std::uint32_t symbol =
+            hooks.InternStringLiteral(EncodeStringLiteral(instruction.strArg, RuntimeSize(elementType)));
+        const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        hooks.LoadSymbolAddress(address, symbol);
+        hooks.StoreToSlot(address, instruction.dst, instruction.type);
+        return true;
+    }
+    case LirOpcode::Load: {
+        if (instruction.dst == LirNoReg) {
+            return true;
+        }
+        const TypeRef &type = instruction.type;
+        const int size = RuntimeSize(type);
+        if (!instruction.strArg.empty()) {
+            const A64Reg value = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+            hooks.LoadNamedDataSymbol(value, instruction.strArg);
+            hooks.StoreToSlot(value, instruction.dst, type);
+            return true;
+        }
+        const A64Reg address = hooks.ReadPointerOperand(instruction.srcs[0], A64::Xn(kAddr));
+        if (IsAggregate(type) && size > 8) {
+            hooks.CopyBlock(A64::Fp, Disp(instruction.dst), address, 0, size, RuntimeAlign(type) >= 8);
+            return true;
+        }
+        if (IsFloat(type)) {
+            const A64Reg value = hooks.FloatResultRegister(instruction.dst, FpReg(type, kFpTemp));
+            hooks.LoadScalar(value, address, 0, value.bits / 8U, false);
+            hooks.StoreFpToSlot(value, instruction.dst);
+            return true;
+        }
+        const A64Reg value = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        hooks.LoadScalar(value, address, 0, AccessWidth(size), type.IsSigned());
+        hooks.StoreToSlot(value, instruction.dst, type);
+        return true;
+    }
+    case LirOpcode::Store: {
+        if (instruction.srcs.size() < 2) {
+            Report(std::format("AArch64 code generation reached a store with no pointer in '{}'", functionName));
+            return true;
+        }
+        const LirReg valueReg = instruction.srcs[0];
+        const TypeRef &type = instruction.type;
+        const int size = RuntimeSize(type);
+        const A64Reg address = hooks.ReadPointerOperand(instruction.srcs[1], A64::Xn(kAddr));
+        if (IsAggregate(type) && size > 8) {
+            A64Reg source = A64::Xn(kSrcAddr);
+            if (IsRegPointerTo(valueReg, type)) {
+                source = hooks.ReadPointerOperand(valueReg, source);
+            }
+            else {
+                hooks.SlotAddress(source, valueReg);
+            }
+            hooks.CopyBlock(address, 0, source, 0, size, RuntimeAlign(type) >= 8);
+            return true;
+        }
+        if (IsFloat(type)) {
+            const A64Reg value = hooks.ReadFloatOperand(valueReg, FpReg(type, kFpTemp));
+            hooks.StoreScalar(value, address, 0, value.bits / 8U);
+            return true;
+        }
+        const A64Reg value = hooks.ReadRawOperand(valueReg, AccessWidth(size), A64::Xn(kTemp));
+        hooks.StoreScalar(value, address, 0, AccessWidth(size));
+        return true;
+    }
+    case LirOpcode::FieldPtr: {
+        const LirReg base = instruction.srcs[0];
+        const auto &registerTypes = framePlan.RegisterTypes();
+        const auto baseType = registerTypes.find(base);
+        const int offset = baseType == registerTypes.end()
+                             ? 0
+                             : FieldOffsetOf(baseType->second, instruction.strArg, layouts, interfaceNames);
+        const A64Reg source = hooks.ReadPointerOperand(base, A64::Xn(kTemp));
+        const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        if (offset != 0) {
+            Must(encoder.AddSubLargeImm(address, source, offset), "the address of a field");
+        }
+        else if (address.code != source.code) {
+            Must(encoder.Mov(address, source), "the address of a field");
+        }
+        hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
+        return true;
+    }
+    case LirOpcode::IndexPtr: {
+        if (instruction.srcs.size() < 2) {
+            Report(std::format("AArch64 code generation reached an index with no subscript in '{}'", functionName));
+            return true;
+        }
+        const bool known = instruction.type.kind == TypeRef::Kind::Pointer && !instruction.type.inner.empty();
+        const int elementSize = std::max(known ? RuntimeSize(instruction.type.inner[0]) : 8, 1);
+        const A64Reg source = hooks.ReadPointerOperand(instruction.srcs[0], A64::Xn(kTemp));
+        const A64Reg index = hooks.ReadOperand(instruction.srcs[1], TypeOfReg(instruction.srcs[1]), A64::Xn(kAddr));
+        const A64Reg address = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
+        const auto shift = static_cast<unsigned>(std::countr_zero(static_cast<unsigned>(elementSize)));
+        if (std::has_single_bit(static_cast<unsigned>(elementSize)) && shift < 64) {
+            Must(encoder.Add(address, source, index, A64ShiftKind::Lsl, shift), "an element address");
+        }
+        else {
+            const A64Reg width = A64::Xn(kTemp2);
+            Must(encoder.LoadImm64(width, static_cast<std::uint64_t>(elementSize)), "an element width");
+            Must(encoder.Madd(address, index, width, source), "an element address");
+        }
+        hooks.StoreToSlot(address, instruction.dst, TypeRef::MakePointer(instruction.type));
+        return true;
+    }
     default:
         return false;
     }

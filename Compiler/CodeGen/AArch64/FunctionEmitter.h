@@ -6,15 +6,16 @@
 #include "CodeGen/Layout.h"
 #include "Ir/Lir/Lir.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
 
 namespace Rux {
-// Narrow access to register homes, stack slots and diagnostics owned by the
-// surrounding module emitter. Instruction-family ownership stays here without
-// exposing symbols, literal pools or the rest of function emission.
+// Narrow access to register homes, stack slots, diagnostics, and symbol/literal
+// operations owned by the surrounding module emitter. Instruction-family
+// ownership stays here without exposing the rest of function emission.
 class AArch64FunctionEmitterHooks {
 public:
     virtual ~AArch64FunctionEmitterHooks() = default;
@@ -29,11 +30,22 @@ public:
     virtual void StoreFpToSlot(A64Reg value, LirReg reg) = 0;
     virtual void LoadFromSlot(A64Reg destination, LirReg reg, const TypeRef &type) = 0;
     virtual void LoadFpFromSlot(A64Reg destination, LirReg reg) = 0;
+    [[nodiscard]] virtual A64Reg ReadPointerOperand(LirReg reg, A64Reg scratch) = 0;
+    virtual void LoadScalar(A64Reg destination, A64Reg base, std::int64_t offset, unsigned width, bool sign) = 0;
+    virtual void StoreScalar(A64Reg value, A64Reg base, std::int64_t offset, unsigned width) = 0;
+    virtual void SlotAddress(A64Reg destination, LirReg reg) = 0;
+    virtual void CopyBlock(A64Reg destination, std::int64_t destinationOffset, A64Reg source, std::int64_t sourceOffset,
+                           int size, bool paired) = 0;
+    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value) = 0;
+    [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
+    virtual void LoadSymbolAddress(A64Reg destination, std::uint32_t symbol) = 0;
+    virtual void LoadNamedDataSymbol(A64Reg destination, const std::string &name) = 0;
+    virtual void LoadFloatConstant(A64Reg destination, const TypeRef &type, const std::string &literal) = 0;
     virtual void ReportFunctionDiagnostic(std::string message) = 0;
 };
 
-// Selects the arithmetic side of one planned AArch64 function. Returns false
-// for instruction families owned by the surrounding emitter.
+// Selects instruction families for one planned AArch64 function. Each family
+// returns false for instructions owned by another emitter.
 class AArch64FunctionEmitter {
 public:
     AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
@@ -44,6 +56,10 @@ public:
     // Includes integer and floating arithmetic, comparisons, shifts, unary and
     // bit operations, casts, power operations and float-bit reinterpretations.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
+
+    // Includes constants, local and symbol addresses, scalar and aggregate
+    // loads/stores, and field/index address computation.
+    [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
 private:
     struct BinaryOperands {
@@ -60,9 +76,14 @@ private:
     AArch64FunctionEmitterHooks &hooks;
 
     [[nodiscard]] TypeRef TypeOfReg(LirReg reg) const;
+    [[nodiscard]] std::int32_t Disp(LirReg reg);
+    [[nodiscard]] int RuntimeSize(const TypeRef &type) const;
+    [[nodiscard]] int RuntimeAlign(const TypeRef &type) const;
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const;
     [[nodiscard]] bool IsRegisterValue(const TypeRef &type) const;
+    [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
     [[nodiscard]] static A64Reg FpReg(const TypeRef &type, unsigned index);
+    [[nodiscard]] static std::uint64_t ConstantBits(const LirInstr &instruction);
     [[nodiscard]] std::optional<BinaryOperands> LoadBinaryOperands(const LirInstr &instruction, const TypeRef &lhsType,
                                                                    const TypeRef &rhsType);
     [[nodiscard]] std::optional<A64Reg> LoadUnaryOperand(const LirInstr &instruction, const TypeRef &type);
