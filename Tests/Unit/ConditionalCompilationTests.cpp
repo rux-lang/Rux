@@ -334,6 +334,68 @@ when Debug {
     }
 }
 
+TEST_CASE("conditional folding preserves taken item order and source locations") {
+    auto parsed = ParseSource(R"(
+const Enabled = true;
+
+when Enabled {
+    func First() {}
+    func Second() {}
+}
+
+func Run() {
+    let before = 0;
+    when Enabled {
+        let first = 1;
+        let second = 2;
+    }
+    let after = 3;
+}
+)");
+
+    auto *declarationWhen = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
+    REQUIRE(declarationWhen != nullptr);
+    REQUIRE(declarationWhen->branches.size() == 1);
+    REQUIRE(declarationWhen->branches[0].items.size() == 2);
+    Decl *firstDeclaration = declarationWhen->branches[0].items[0].get();
+    Decl *secondDeclaration = declarationWhen->branches[0].items[1].get();
+    const SourceLocation firstDeclarationLocation = firstDeclaration->location;
+    const SourceLocation secondDeclarationLocation = secondDeclaration->location;
+
+    auto *run = dynamic_cast<FuncDecl *>(parsed.module.items[2].get());
+    REQUIRE(run != nullptr);
+    REQUIRE(run->body != nullptr);
+    REQUIRE(run->body->stmts.size() == 3);
+    auto *statementWhen = dynamic_cast<IfStmt *>(run->body->stmts[1].get());
+    REQUIRE(statementWhen != nullptr);
+    REQUIRE(statementWhen->thenBlock != nullptr);
+    REQUIRE(statementWhen->thenBlock->stmts.size() == 2);
+    Stmt *firstStatement = statementWhen->thenBlock->stmts[0].get();
+    Stmt *secondStatement = statementWhen->thenBlock->stmts[1].get();
+    const SourceLocation firstStatementLocation = firstStatement->location;
+    const SourceLocation secondStatementLocation = secondStatement->location;
+    const auto sameLocation = [](const SourceLocation left, const SourceLocation right) {
+        return left.line == right.line && left.column == right.column && left.offset == right.offset;
+    };
+
+    const auto model = Analyze(parsed.module);
+    REQUIRE_FALSE(model.HasErrors());
+    REQUIRE(parsed.module.items.size() == 4);
+    CHECK(parsed.module.items[1].get() == firstDeclaration);
+    CHECK(parsed.module.items[2].get() == secondDeclaration);
+    CHECK(sameLocation(parsed.module.items[1]->location, firstDeclarationLocation));
+    CHECK(sameLocation(parsed.module.items[2]->location, secondDeclarationLocation));
+
+    run = dynamic_cast<FuncDecl *>(parsed.module.items[3].get());
+    REQUIRE(run != nullptr);
+    REQUIRE(run->body != nullptr);
+    REQUIRE(run->body->stmts.size() == 4);
+    CHECK(run->body->stmts[1].get() == firstStatement);
+    CHECK(run->body->stmts[2].get() == secondStatement);
+    CHECK(sameLocation(run->body->stmts[1]->location, firstStatementLocation));
+    CHECK(sameLocation(run->body->stmts[2]->location, secondStatementLocation));
+}
+
 TEST_CASE("when selects methods inside an extend block") {
     auto parsed = ParseSource(R"(
 import Core::{ #target, OperatingSystem };

@@ -108,7 +108,10 @@ target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics RuxTarget)
 
 rux_add_component(RuxSemantic
     Semantic/ConditionalCompilation.cpp
+    Semantic/ConditionalDeclarationFolding.cpp
     Semantic/ConditionalEvaluator.cpp
+    Semantic/ConditionalValueEvaluation.cpp
+    Semantic/ConditionalStatementFolding.cpp
     Semantic/PrimitiveConstants.cpp
     Semantic/Type.cpp
     Semantic/SemanticAnalyzer.cpp
