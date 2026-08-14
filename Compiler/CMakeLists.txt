@@ -233,6 +233,7 @@ add_executable(rux
     Cli/CmdAuth.cpp
     Cli/CmdBuild.cpp
     Cli/CmdCheck.cpp
+    Cli/CmdInstall.cpp
     Cli/CmdLint.cpp
     Cli/CmdMisc.cpp
     Cli/CmdNew.cpp
