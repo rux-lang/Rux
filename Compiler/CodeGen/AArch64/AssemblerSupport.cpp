@@ -1,44 +1,11 @@
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "CodeGen/AArch64/Registers.h"
-#include "Object/Rcu/Rcu.h"
 
 #include <cctype>
 #include <format>
 
 namespace Rux::AArch64AssemblerPrivate {
 namespace {
-struct FieldLayout {
-    unsigned lsb;
-    unsigned width;
-};
-
-[[nodiscard]] constexpr FieldLayout LayoutOf(const TargetField field) noexcept {
-    switch (field) {
-    case TargetField::Imm26:
-        return {0, 26};
-    case TargetField::Imm14:
-        return {5, 14};
-    case TargetField::Adr:
-        return {5, 21};
-    case TargetField::Imm19:
-        break;
-    }
-    return {5, 19};
-}
-
-[[nodiscard]] constexpr std::int64_t ReachOf(const TargetField field) noexcept {
-    const std::int64_t half = std::int64_t{1} << (LayoutOf(field).width - 1U);
-    return field == TargetField::Adr ? half : half * A64Enc::InstrSize;
-}
-
-[[nodiscard]] std::string ReachText(const TargetField field) {
-    const std::int64_t reach = ReachOf(field);
-    if (reach >= 1024 * 1024) {
-        return std::format("+/-{} MiB", reach / (1024 * 1024));
-    }
-    return std::format("+/-{} KiB", reach / 1024);
-}
-
 [[nodiscard]] A64Reg ToA64Reg(const AsmRegInfo &info) noexcept {
     const auto bits = static_cast<unsigned>(info.size) * 8U;
     if (info.file == AsmRegFile::Vector) {
@@ -59,20 +26,6 @@ struct FieldLayout {
 }
 
 } // namespace
-
-std::optional<A64Condition> ConditionFromName(const std::string_view name) {
-    static const std::unordered_map<std::string_view, A64Condition> table = {
-        {"eq", A64Condition::Eq}, {"ne", A64Condition::Ne}, {"cs", A64Condition::Cs}, {"hs", A64Condition::Cs},
-        {"cc", A64Condition::Cc}, {"lo", A64Condition::Cc}, {"mi", A64Condition::Mi}, {"pl", A64Condition::Pl},
-        {"vs", A64Condition::Vs}, {"vc", A64Condition::Vc}, {"hi", A64Condition::Hi}, {"ls", A64Condition::Ls},
-        {"ge", A64Condition::Ge}, {"lt", A64Condition::Lt}, {"gt", A64Condition::Gt}, {"le", A64Condition::Le},
-        {"al", A64Condition::Al}, {"nv", A64Condition::Nv},
-    };
-    if (const auto it = table.find(name); it != table.end()) {
-        return it->second;
-    }
-    return std::nullopt;
-}
 
 A64Reg ZeroLike(const A64Reg reg) noexcept {
     return A64::Gpr(31, reg.bits);
@@ -195,33 +148,6 @@ std::string FoundText(const AsmOperand &op) {
     return "nothing";
 }
 
-std::optional<A64Barrier> BarrierFromName(const std::string_view name) {
-    static const std::unordered_map<std::string_view, A64Barrier> table = {
-        {"oshld", A64Barrier::Oshld}, {"oshst", A64Barrier::Oshst}, {"osh", A64Barrier::Osh},
-        {"nshld", A64Barrier::Nshld}, {"nshst", A64Barrier::Nshst}, {"nsh", A64Barrier::Nsh},
-        {"ishld", A64Barrier::Ishld}, {"ishst", A64Barrier::Ishst}, {"ish", A64Barrier::Ish},
-        {"ld", A64Barrier::Ld},       {"st", A64Barrier::St},       {"sy", A64Barrier::Sy},
-    };
-    if (const auto it = table.find(name); it != table.end()) {
-        return it->second;
-    }
-    return std::nullopt;
-}
-
-std::optional<std::uint16_t> SysRegFromName(const std::string_view name) {
-    static const std::unordered_map<std::string_view, std::uint16_t> table = {
-        {"nzcv", A64::Nzcv},
-        {"daif", A64::SysReg(3, 3, 4, 2, 1)},
-        {"fpcr", A64::SysReg(3, 3, 4, 4, 0)},
-        {"fpsr", A64::SysReg(3, 3, 4, 4, 1)},
-        {"tpidr_el0", A64::TpidrEl0},
-    };
-    if (const auto it = table.find(name); it != table.end()) {
-        return it->second;
-    }
-    return std::nullopt;
-}
-
 AssemblerContext::AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out)
     : instrs_(instrs)
     , sourceName_(std::move(sourceName))
@@ -276,14 +202,6 @@ std::size_t AssemblerContext::IndexOf(const AsmOperand &op) const {
 
 std::uint32_t AssemblerContext::Here() const {
     return static_cast<std::uint32_t>(out_.size());
-}
-
-void AssemblerContext::CollectLabels() {
-    for (const auto &instr : instrs_) {
-        if (!instr.labelDef.empty()) {
-            labels_.emplace(instr.labelDef, 0);
-        }
-    }
 }
 
 bool AssemblerContext::Operands(const std::size_t count) {
@@ -460,46 +378,4 @@ void AssemblerContext::AddFixup(const std::uint32_t at, const std::string &symbo
     result_.fixups.push_back({at, symbol, relType, 0});
 }
 
-void AssemblerContext::RecordTarget(const AsmInstr &in, const AsmOperand &target, const std::uint32_t at,
-                                    const TargetField field, const std::uint16_t relType) {
-    if (target.kind != AsmOperand::Kind::Sym) {
-        FormError(target.location, std::format("'{}' takes a label or a symbol as operand {}, found {}", in.mnemonic,
-                                               IndexOf(target), FoundText(target)));
-        return;
-    }
-    if (labels_.contains(target.name)) {
-        targets_.push_back({at, target.name, target.location, in.mnemonic, field});
-        return;
-    }
-    if (relType == RcuRelType::None) {
-        Error(target.location, std::format("'{}' cannot reference '{}': no label of that name is defined in this body",
-                                           in.mnemonic, target.name));
-        return;
-    }
-    AddFixup(at, target.name, relType);
-}
-
-void AssemblerContext::ResolveLocalTargets() {
-    for (const auto &target : targets_) {
-        const auto it = labels_.find(target.label);
-        if (it == labels_.end()) {
-            Error(target.loc, std::format("undefined label '{}'", target.label));
-            continue;
-        }
-        const auto delta = static_cast<std::int64_t>(it->second) - static_cast<std::int64_t>(target.instrOffset);
-        const std::int64_t reach = ReachOf(target.field);
-        if (delta < -reach || delta >= reach) {
-            Error(target.loc, std::format("'{}' is {} bytes from '{}', past the {} its offset field reaches",
-                                          target.mnemonic, delta, target.label, ReachText(target.field)));
-            continue;
-        }
-        const auto [lsb, width] = LayoutOf(target.field);
-        if (target.field == TargetField::Adr) {
-            enc_.PatchField(target.instrOffset, 29, 2, static_cast<std::uint32_t>(delta) & 3U);
-            enc_.PatchField(target.instrOffset, lsb, width - 2U, static_cast<std::uint32_t>(delta >> 2));
-            continue;
-        }
-        enc_.PatchField(target.instrOffset, lsb, width, static_cast<std::uint32_t>(delta / A64Enc::InstrSize));
-    }
-}
 } // namespace Rux::AArch64AssemblerPrivate

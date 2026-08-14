@@ -227,4 +227,26 @@ private:
     void EncodeFcmp(const AsmInstr &in, bool signalling);
     void EncodeFccmp(const AsmInstr &in);
 };
+
+// Branch and symbol-address forms, local-label resolution, system forms and
+// the final mnemonic dispatch live behind this last private context. The
+// public assembler facade only constructs this implementation and runs it.
+class BranchSystemAssemblerContext final : public MemoryFloatingAssemblerContext {
+public:
+    using MemoryFloatingAssemblerContext::MemoryFloatingAssemblerContext;
+
+private:
+    void EncodeAdr(const AsmInstr &in, bool page);
+    void EncodeBranch(const AsmInstr &in, bool link);
+    void EncodeCondBranch(const AsmInstr &in, std::string_view suffix);
+    void EncodeCompareBranch(const AsmInstr &in, CompareBranchFn fn);
+    void EncodeTestBranch(const AsmInstr &in, TestBranchFn fn);
+    void EncodeBranchReg(const AsmInstr &in, Reg1Fn fn, bool optional);
+    void EncodeException(const AsmInstr &in, Imm16Fn fn);
+    void EncodeBarrier(const AsmInstr &in, BarrierFn fn);
+    [[nodiscard]] std::optional<std::uint16_t> SysRegOf(const AsmOperand &op);
+    void EncodeSysMove(const AsmInstr &in, bool read);
+    void Unsupported(const AsmInstr &in);
+    void Dispatch(const AsmInstr &in) override;
+};
 } // namespace Rux::AArch64AssemblerPrivate
