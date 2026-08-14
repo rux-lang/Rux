@@ -414,6 +414,32 @@ private:
         return float32 ? InternF32SignMask() : InternF64SignMask();
     }
 
+    [[nodiscard]] std::uint32_t InternStringLiteral(const std::string &value) override {
+        return InternStr(value);
+    }
+
+    [[nodiscard]] std::uint32_t InternFloat32Literal(const std::string &value) override {
+        return InternF32(value);
+    }
+
+    [[nodiscard]] std::uint32_t InternFloat64Literal(const std::string &value) override {
+        return InternF64(value);
+    }
+
+    [[nodiscard]] std::uint32_t ResolveNamedDataSymbol(const std::string &name) override {
+        return GetOrAddExtern(name, RcuSymKind::ExternData);
+    }
+
+    [[nodiscard]] std::uint32_t ResolveGlobalSymbol(const std::string &name) override {
+        if (const auto data = dataSyms.find(name); data != dataSyms.end()) {
+            return data->second;
+        }
+        if (const auto function = funcSyms.find(name); function != funcSyms.end()) {
+            return function->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternData);
+    }
+
     void AddTextReloc(uint32_t sectionOff, uint32_t symIdx, int32_t addend = 0) {
         (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOff, symIdx, RcuRelType::Rel32, addend);
     }
@@ -788,17 +814,6 @@ private:
         enc.Byte(0xD8); // mov rax, r11
     }
 
-    // Struct field lookup. The rule itself is Layout's, so both back ends and
-    // the assembly printer agree on where a field sits by construction.
-    [[nodiscard]] int FieldOffset(const LirReg base, const std::string &fieldName) const {
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto typeIt = registerTypes.find(base);
-        if (typeIt == registerTypes.end()) {
-            return 0;
-        }
-        return FieldOffsetOf(typeIt->second, fieldName, layouts, interfaceNames);
-    }
-
     // Build struct layouts
     void BuildLayouts() {
         for (const auto &name : packageInterfaceNames) {
@@ -1057,62 +1072,11 @@ private:
 
     // Instruction code generation
     void GenInstr(X86_64FunctionEmitter &functionEmitter, const LirInstr &instr) {
-        if (functionEmitter.EmitArithmetic(instr)) {
+        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr)) {
             return;
         }
-        const auto &registerTypes = FramePlan().RegisterTypes();
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         switch (instr.op) {
-        case LirOpcode::Const: {
-            if (instr.dst == LirNoReg) {
-                break;
-            }
-            const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
-            if (t.kind == TypeRef::Kind::Str) {
-                uint32_t symIdx = InternStr(instr.strArg);
-                uint32_t relocOff;
-                enc.LeaRaxRip(relocOff);
-                AddTextReloc(relocOff, symIdx);
-                StoreA(instr.dst, t);
-            }
-            else if (t.kind == TypeRef::Kind::Float32) {
-                uint32_t symIdx = InternF32(instr.strArg);
-                uint32_t relocOff;
-                enc.MovssXmm0Rip(relocOff);
-                AddTextReloc(relocOff, symIdx);
-                enc.MovssXmm0Store(Disp(instr.dst));
-            }
-            else if (t.kind == TypeRef::Kind::Float64) {
-                uint32_t symIdx = InternF64(instr.strArg);
-                uint32_t relocOff;
-                enc.MovsdXmm0Rip(relocOff);
-                AddTextReloc(relocOff, symIdx);
-                enc.MovsdXmm0Store(Disp(instr.dst));
-            }
-            else if (t.IsBool()) {
-                enc.MovEaxImm32((instr.strArg == "true" || instr.strArg == "1") ? 1 : 0);
-                StoreA(instr.dst, t);
-            }
-            else {
-                const std::string &sv = instr.strArg.empty() ? "0" : instr.strArg;
-                const std::uint64_t bits = ParseIntegerLiteralBits(sv).value_or(0);
-                if (bits <= 0x7FFF'FFFF) {
-                    enc.MovEaxImm32(static_cast<int32_t>(bits));
-                }
-                else {
-                    enc.MovRaxImm64(static_cast<std::int64_t>(bits));
-                }
-                StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
-            }
-            break;
-        }
-        case LirOpcode::Alloca: {
-            int32_t dataOff = FramePlan().AllocaDataOffsets().at(instr.dst);
-            enc.LeaRaxStack(-dataOff);
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
         case LirOpcode::Assert:
         case LirOpcode::Panic: {
             const bool isAssertion = instr.op == LirOpcode::Assert;
@@ -1209,178 +1173,6 @@ private:
             if (isAssertion) {
                 const auto here = static_cast<int32_t>(enc.Size());
                 enc.Patch32(okPatch, here - static_cast<int32_t>(okPatch + 4));
-            }
-            break;
-        }
-        case LirOpcode::Load: {
-            const TypeRef &t = instr.type;
-            int sz = SizeOfRuntime(t);
-            int runtimeSz = SizeOfRuntime(t);
-            if (!instr.strArg.empty()) {
-                // Named global — load via RIP-relative
-                uint32_t symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
-                uint32_t relocOff;
-                enc.MovRaxRip(relocOff);
-                AddTextReloc(relocOff, symIdx);
-            }
-            else {
-                LirReg ptr = instr.srcs[0];
-                auto it = physicalRegisters.find(ptr);
-                if (it != physicalRegisters.end()) {
-                    enc.MovR10PhysReg(it->second);
-                }
-                else {
-                    enc.MovR10Load(Disp(ptr));
-                }
-                if (IsAggregate(t) && runtimeSz > 8) {
-                    CopyAggregateFromR10ToStack(Disp(instr.dst), runtimeSz);
-                    break;
-                }
-                // Load through pointer: use r10 as base
-                // Emit: mov rax, [r10]  (49 8B 02)
-                if (IsFloat(t)) {
-                    // movss/movsd xmm0, [r10]
-                    if (sz == 4) {
-                        enc.Byte(0xF3);
-                        enc.Byte(0x41);
-                        enc.Byte(0x0F);
-                        enc.Byte(0x10);
-                        enc.Byte(0x02);
-                    }
-                    else {
-                        enc.Byte(0xF2);
-                        enc.Byte(0x41);
-                        enc.Byte(0x0F);
-                        enc.Byte(0x10);
-                        enc.Byte(0x02);
-                    }
-                    StoreA(instr.dst, t);
-                    break;
-                }
-                else if (sz == 8 || sz == 0) {
-                    enc.Byte(0x49);
-                    enc.Byte(0x8B);
-                    enc.Byte(0x02); // mov rax, [r10]
-                }
-                else if (t.IsSigned()) {
-                    if (sz == 4) {
-                        enc.Byte(0x49);
-                        enc.Byte(0x63);
-                        enc.Byte(0x02); // movsxd rax,[r10]
-                    }
-                    else if (sz == 2) {
-                        enc.Byte(0x49);
-                        enc.Byte(0x0F);
-                        enc.Byte(0xBF);
-                        enc.Byte(0x02);
-                    }
-                    else {
-                        enc.Byte(0x49);
-                        enc.Byte(0x0F);
-                        enc.Byte(0xBE);
-                        enc.Byte(0x02);
-                    }
-                }
-                else {
-                    if (sz == 4) {
-                        enc.Byte(0x41);
-                        enc.Byte(0x8B);
-                        enc.Byte(0x02); // mov eax, [r10]  (zero-extends
-                        // to rax)
-                    }
-                    else if (sz == 2) {
-                        enc.Byte(0x49);
-                        enc.Byte(0x0F);
-                        enc.Byte(0xB7);
-                        enc.Byte(0x02); // movzx rax, word [r10]
-                    }
-                    else {
-                        enc.Byte(0x49);
-                        enc.Byte(0x0F);
-                        enc.Byte(0xB6);
-                        enc.Byte(0x02); // movzx rax, byte [r10]
-                    }
-                }
-            }
-            StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
-            break;
-        }
-        case LirOpcode::Store: {
-            LirReg val = instr.srcs[0];
-            LirReg ptr = instr.srcs[1];
-            const TypeRef &t = instr.type;
-            int sz = SizeOfRuntime(t);
-            int runtimeSz = SizeOfRuntime(t);
-            auto itPtr = physicalRegisters.find(ptr);
-            if (itPtr != physicalRegisters.end()) {
-                enc.MovR11PhysReg(itPtr->second);
-            }
-            else {
-                enc.MovR11Load(Disp(ptr));
-            }
-            if (IsAggregate(t) && runtimeSz > 8) {
-                if (IsRegPointerTo(val, t)) {
-                    auto it = physicalRegisters.find(val);
-                    if (it != physicalRegisters.end()) {
-                        enc.MovR10PhysReg(it->second);
-                    }
-                    else {
-                        enc.MovR10Load(Disp(val));
-                    }
-                }
-                else {
-                    enc.Byte(0x4C);
-                    enc.Byte(0x8D);
-                    enc.Byte(0x95);
-                    enc.Dword(static_cast<uint32_t>(Disp(val))); // lea r10, [rbp + disp32]
-                }
-                CopyAggregateFromR10(runtimeSz,
-                                     [&](const int32_t offset, const int size) { StoreChunkToR11(offset, size); });
-                break;
-            }
-            if (IsFloat(t)) {
-                LoadA(val, t);
-                // movss/movsd [r11], xmm0
-                if (sz == 4) {
-                    enc.Byte(0xF3);
-                    enc.Byte(0x41);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x11);
-                    enc.Byte(0x03);
-                }
-                else {
-                    enc.Byte(0xF2);
-                    enc.Byte(0x41);
-                    enc.Byte(0x0F);
-                    enc.Byte(0x11);
-                    enc.Byte(0x03);
-                }
-            }
-            else {
-                const int ss = (sz > 0) ? sz : 8;
-                LoadA(val, t);
-                // mov [r11], rax/eax/ax/al
-                if (ss == 8) {
-                    enc.Byte(0x49);
-                    enc.Byte(0x89);
-                    enc.Byte(0x03);
-                }
-                else if (ss == 4) {
-                    enc.Byte(0x41);
-                    enc.Byte(0x89);
-                    enc.Byte(0x03);
-                }
-                else if (ss == 2) {
-                    enc.Byte(0x66);
-                    enc.Byte(0x41);
-                    enc.Byte(0x89);
-                    enc.Byte(0x03);
-                }
-                else {
-                    enc.Byte(0x41);
-                    enc.Byte(0x88);
-                    enc.Byte(0x03);
-                }
             }
             break;
         }
@@ -1526,58 +1318,6 @@ private:
             if (instr.dst != LirNoReg && !instr.type.IsOpaque() && !hiddenReturn) {
                 StoreReturnValue(instr.dst, instr.type);
             }
-            break;
-        }
-        case LirOpcode::GlobalAddr: {
-            uint32_t symIdx;
-            if (const auto dataIt = dataSyms.find(instr.strArg); dataIt != dataSyms.end()) {
-                symIdx = dataIt->second;
-            }
-            else if (const auto funcIt = funcSyms.find(instr.strArg); funcIt != funcSyms.end()) {
-                symIdx = funcIt->second;
-            }
-            else {
-                symIdx = GetOrAddExtern(instr.strArg, RcuSymKind::ExternData);
-            }
-            uint32_t relocOff;
-            enc.LeaRaxRip(relocOff);
-            AddTextReloc(relocOff, symIdx);
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-        case LirOpcode::StringAddr: {
-            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
-            const uint32_t symIdx = InternStr(EncodeStringLiteral(instr.strArg, SizeOfRuntime(elemType)));
-            uint32_t relocOff;
-            enc.LeaRaxRip(relocOff);
-            AddTextReloc(relocOff, symIdx);
-            StoreA(instr.dst, instr.type);
-            break;
-        }
-        case LirOpcode::FieldPtr: {
-            LirReg base = instr.srcs[0];
-            LoadA(base, registerTypes.at(base));
-            int off = FieldOffset(base, instr.strArg);
-            if (off != 0) {
-                enc.LeaRaxRaxDisp(off);
-            }
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-        case LirOpcode::IndexPtr: {
-            LirReg base = instr.srcs[0];
-            LirReg idx = instr.srcs[1];
-            int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                           ? SizeOfRuntime(instr.type.inner[0])
-                           : 8;
-            if (elemSz < 1) {
-                elemSz = 1;
-            }
-            LoadA(base, registerTypes.at(base));
-            LoadB(idx, registerTypes.at(idx));
-            enc.ImulR11R10Imm32(elemSz);
-            enc.AddRaxR11();
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
             break;
         }
         case LirOpcode::Phi:
@@ -1736,7 +1476,7 @@ private:
         const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
         activeFramePlan = &framePlan;
         X86_64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, EffectiveConv(CallingConvention::Default),
-                                              *this);
+                                              layouts, interfaceNames, *this);
         const auto &usedPhysicalRegisters = framePlan.UsedPhysicalRegisters();
         const auto &physicalRegisters = framePlan.PhysicalRegisters();
         jumpPatches.clear();

@@ -1,10 +1,13 @@
 #pragma once
 
+#include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Ir/Lir/Lir.h"
 
 #include <cstdint>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace Rux {
@@ -21,7 +24,12 @@ public:
     virtual void LoadA(LirReg reg, const TypeRef &type) const = 0;
     virtual void LoadB(LirReg reg, const TypeRef &type) const = 0;
     virtual void StoreA(LirReg reg, const TypeRef &type) const = 0;
+    [[nodiscard]] virtual std::uint32_t InternStringLiteral(const std::string &value) = 0;
+    [[nodiscard]] virtual std::uint32_t InternFloat32Literal(const std::string &value) = 0;
+    [[nodiscard]] virtual std::uint32_t InternFloat64Literal(const std::string &value) = 0;
     [[nodiscard]] virtual std::uint32_t InternFloatSignMask(bool float32) = 0;
+    [[nodiscard]] virtual std::uint32_t ResolveNamedDataSymbol(const std::string &name) = 0;
+    [[nodiscard]] virtual std::uint32_t ResolveGlobalSymbol(const std::string &name) = 0;
     virtual void AddTextRelocation(std::uint32_t sectionOffset, std::uint32_t symbol) = 0;
     virtual void EmitCallArguments(const std::vector<LirReg> &arguments) = 0;
 };
@@ -32,19 +40,34 @@ public:
 class X86_64FunctionEmitter {
 public:
     X86_64FunctionEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan, X86_64RuntimeHelperEmitter &runtimeHelpers,
-                          CallingConvention defaultConvention, X86_64FunctionEmitterHooks &hooks);
+                          CallingConvention defaultConvention, const Layout::LayoutMap &layouts,
+                          const std::unordered_set<std::string> &interfaceNames, X86_64FunctionEmitterHooks &hooks);
 
     // Returns true exactly when the instruction belongs to the arithmetic,
     // comparison, shift, cast, or unary family and was emitted here.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
+
+    // Returns true exactly when the instruction materializes a constant,
+    // accesses memory, or computes an aggregate address and was emitted here.
+    [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
 private:
     X64Enc &encoder;
     const X86_64FramePlan &framePlan;
     X86_64RuntimeHelperEmitter &runtimeHelpers;
     CallingConvention defaultConvention;
+    const Layout::LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
     X86_64FunctionEmitterHooks &hooks;
 
     [[nodiscard]] std::int32_t Disp(LirReg reg) const;
+    [[nodiscard]] int SizeOfRuntime(const TypeRef &type) const;
+    [[nodiscard]] bool IsAggregate(const TypeRef &type) const;
+    [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
+    [[nodiscard]] int FieldOffset(LirReg base, const std::string &fieldName) const;
+    void LoadChunkFromR10(std::int32_t offset, int size) const;
+    void StoreChunkToR11(std::int32_t offset, int size) const;
+    void CopyAggregateFromR10ToStack(std::int32_t destinationDisp, int size) const;
+    void CopyAggregateFromR10ToR11(int size) const;
 };
 } // namespace Rux
