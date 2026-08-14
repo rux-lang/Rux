@@ -88,7 +88,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Tests/Language/`       | Executable Rux language and compiler-behavior tests (`rux test`)                |
 | `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`) |
 | `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)        |
-| `Tests/Policy/`         | Repository-policy checks: platform isolation and external-toolchain use         |
+| `Tests/Policy/`         | Repository-policy checks: platform isolation, toolchain use, and file ownership |
 | `Tests/Native/`         | Target-specific end-to-end fixtures driven by platform scripts                  |
 | `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                |
 | `Bin/`                  | Compiler and centralized test executables; **git-ignored**                      |
@@ -121,10 +121,13 @@ Supporting layers around the pipeline:
   API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tests/Policy/PlatformIsolation/Check.sh`.
 - **No external toolchain** — the compiler assembles, links, and signs its own artifacts, so nothing under `Compiler/` may name or launch an assembler, C compiler,
   linker, archiver, or signing tool. `Tests/Policy/NoExternalToolchain/Check.sh` enforces that, with the remaining exceptions listed at the top of the script.
+- **Bounded implementation files** — C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` have a 1,200-line architecture guideline. `Tests/Policy/OversizedFiles/Check.sh` reports every larger file and rejects unreviewed paths or growth beyond a reviewed path-specific ceiling. A cohesive owner, dense vector table, generated source, or vendored dependency may keep its locality when the exception records why a split would make the ownership or data harder to audit.
 
 ## 5. Testing
 
 There are two broad suites: Rux-language/package tests (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`). Target-specific native fixtures supplement them where a complete OS interaction needs a dedicated driver script.
+
+`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree.
 
 ### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 

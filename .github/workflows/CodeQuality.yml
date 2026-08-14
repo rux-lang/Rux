@@ -49,6 +49,24 @@ jobs:
       - name: Check for external toolchain use
         run: sh Tests/Policy/NoExternalToolchain/Check.sh
 
+  oversized-files:
+    name: Oversized files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Keep compiler and unit-test implementation files below the ordinary
+      # architecture limit unless a path and growth ceiling were reviewed.
+      - name: Test oversized-file policy
+        run: sh Tests/Policy/OversizedFiles/Test.sh
+
+      - name: Check oversized files
+        run: sh Tests/Policy/OversizedFiles/Check.sh
+
   format:
     name: clang-format
     runs-on: ubuntu-24.04

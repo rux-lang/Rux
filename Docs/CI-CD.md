@@ -19,7 +19,7 @@ Their status is shown by the badges at the top of the [README](../README.md).
 
 Two repository-policy workflows run alongside the per-OS matrix:
 
-- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
+- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), the oversized-file architecture guard (`Tests/Policy/OversizedFiles/Check.sh`), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
 - **`PullRequestPolicy.yml`** — rejects pull requests targeting `main` and directs contributors to the `dev` integration branch.
 
 ### The External-Toolchain Guard
@@ -32,6 +32,14 @@ Two repository-policy workflows run alongside the per-OS matrix:
 No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
 
 The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
+
+### The Oversized-File Architecture Guard
+
+`Tests/Policy/OversizedFiles/Check.sh` counts C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` in bytewise path order. Files above 1,200 physical lines fail with their path and measured line count unless that exact path has a reviewed exception in the script. The same check runs through `sh` from both `Test.sh` and `Test.ps1`, so POSIX and Windows workflows use one implementation and produce the same ordering and counts.
+
+An exception records a reason and a ceiling equal to the reviewed size. It is not a wildcard exclusion: further growth fails, another file in the same directory is checked normally, and an exception becomes an error once its file is reduced to the ordinary limit so the stale entry is removed. This lets cohesive module owners and test fixtures keep a useful boundary, preserves the locality of dense instruction vectors, and leaves vendored single-file sources intact without turning those categories into blanket exemptions. `Tests/Policy/OversizedFiles/Test.sh` verifies those pass and failure modes in a temporary fixture, and the `oversized-files` job runs the contract tests before checking the repository.
+
+The policy is architectural rather than a request for mechanical splitting. A useful reduction gives extracted behavior a named owner and narrow interface; merely dividing one stateful implementation or table across files does not satisfy that goal.
 
 Every platform build configures with `-DRUX_BUILD_TESTS=ON` and runs the C++ unit tests (doctest via `ctest`) before uploading the binary artifact; see [Development Workflow](Workflow.md) for the test layout. The Linux test job additionally checks every maintained Rux source with `rux fmt --check`, complementing the C++ formatting job without compiling the compiler a second time in `CodeQuality.yml`.
 

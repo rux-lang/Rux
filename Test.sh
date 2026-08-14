@@ -157,6 +157,8 @@ cd "$repository_root"
 step "Checking source-tree policy"
 sh Tests/Policy/PlatformIsolation/Check.sh
 sh Tests/Policy/NoExternalToolchain/Check.sh
+sh Tests/Policy/OversizedFiles/Test.sh
+sh Tests/Policy/OversizedFiles/Check.sh
 
 if [ "$skip_build" = false ]; then
     if [ -n "$compiler" ]; then

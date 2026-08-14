@@ -215,6 +215,8 @@ try {
     # A login shell ensures Git for Windows adds dirname and grep to PATH.
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/PlatformIsolation/Check.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/NoExternalToolchain/Check.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Test.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Check.sh")
 
     if (-not $SkipBuild) {
         & (Join-Path $repositoryRoot "Build.ps1") `
