@@ -3,6 +3,7 @@
 
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Semantic/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Ast/Ast.h"
 #include "Syntax/Parser/Parser.h"
@@ -131,6 +132,62 @@ std::string ReturnedLiteral(const FuncDecl &func) {
 }
 
 } // namespace
+
+TEST_CASE("the conditional evaluator returns typed results without mutating the module") {
+    auto parsed = ParseSource(R"(
+import Core::{ #target, #build, #compiler, #source, #config };
+
+when #target.os == .Windows &&
+    #build.profile == "Release" &&
+    #config.Has("sqlite") &&
+    #compiler.HasFeature("conditional-compilation") &&
+    #source.fileName == "test.rux" {
+    func Selected() -> int { return 1; }
+} else {
+    func Selected() -> int { return 0; }
+}
+
+when false && #target.HasFeature(.Imaginary) {
+    func Unreachable() {}
+}
+)");
+
+    CompileTimeContext context;
+    context.target.os = Target::OS::Windows;
+    context.profile = BuildProfile::Release;
+    context.config.emplace("sqlite", "enabled");
+
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(context, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    evaluator.SetImports(parsed.module);
+
+    REQUIRE(parsed.module.items.size() == 3);
+    auto *selected = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
+    auto *shortCircuited = dynamic_cast<WhenDecl *>(parsed.module.items[2].get());
+    REQUIRE(selected != nullptr);
+    REQUIRE(shortCircuited != nullptr);
+    REQUIRE(selected->branches.size() == 2);
+    REQUIRE(shortCircuited->branches.size() == 1);
+
+    const auto selectedResult = evaluator.Evaluate(*selected->branches[0].condition);
+    REQUIRE(selectedResult.value.has_value());
+    CHECK(std::get<bool>(*selectedResult.value));
+    CHECK(selectedResult.diagnostics.empty());
+
+    const auto shortCircuitResult = evaluator.Evaluate(*shortCircuited->branches[0].condition);
+    REQUIRE(shortCircuitResult.value.has_value());
+    CHECK_FALSE(std::get<bool>(*shortCircuitResult.value));
+    CHECK(shortCircuitResult.diagnostics.empty());
+
+    // Evaluation is read-only: neither conditional has been selected or
+    // spliced, and both still occupy their original declaration slots.
+    CHECK(parsed.module.items.size() == 3);
+    CHECK(parsed.module.items[1].get() == selected);
+    CHECK(parsed.module.items[2].get() == shortCircuited);
+    CHECK(selected->branches.size() == 2);
+    CHECK(shortCircuited->branches.size() == 1);
+}
 
 TEST_CASE("a when statement keeps only the taken branch") {
     auto parsed = ParseSource(R"(

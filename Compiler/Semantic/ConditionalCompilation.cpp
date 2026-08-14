@@ -12,12 +12,14 @@
 #include <ctime>
 #include <filesystem>
 #include <format>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -35,20 +37,8 @@ constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
     {"darwin", "MacOS"},
 };
 
-// An enum value. `variant` is the name after the dot; `type` is the enum it
-// belongs to, and is empty for a shorthand such as `.Windows` until the other
-// side of a comparison says which enum was meant.
-struct EnumValue {
-    std::string type;
-    std::string variant;
-
-    bool operator==(const EnumValue &) const = default;
-};
-
-// A compile-time value. `when` conditions must evaluate to a bool; the other
-// alternatives exist so that comparisons such as `Version >= 2`, `Name == "x"`
-// and `#target.os == .Windows` can produce one.
-using Value = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, EnumValue>;
+using EnumValue = CompileTimeEnumValue;
+using Value = CompileTimeValue;
 
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
     return std::ranges::equal(a, b, [](const char x, const char y) {
@@ -365,11 +355,12 @@ std::optional<std::string> ParseStringLiteral(std::string_view text) {
     return value;
 }
 
-class Resolver {
+} // namespace
+
+class ConditionalEvaluator::Impl {
 public:
-    Resolver(const CompileTimeContext &inputContext, std::vector<Diagnostic> &inputDiags)
-        : context(inputContext)
-        , diags(inputDiags) {
+    Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules)
+        : context(inputContext) {
         // `OperatingSystem` is built in; the program's own enums are collected
         // from its declarations, so a `when` can compare against those too.
         auto &operatingSystem = enumVariants["OperatingSystem"];
@@ -394,40 +385,60 @@ public:
         for (const auto &[name, _] : enumVariants) {
             builtinEnumNames.insert(name);
         }
-    }
-
-    void Run(const std::vector<Module *> &modules) {
         for (const auto *module : modules) {
             CollectCompileTimeDecls(module->items);
         }
-        // Declarations first: a `when` branch can define constants that a
-        // condition inside a function body then tests.
-        for (auto *module : modules) {
-            currentFile = module->name;
-            currentModulePath = FilePathToModulePath(module->name);
-            currentDeclModulePath.clear();
-            SetRuxImportsForModule(*module);
-            ResolveDecls(module->items);
-            ResolveLinkConstants(module->items);
-        }
-        for (auto *module : modules) {
-            currentFile = module->name;
-            currentModulePath = FilePathToModulePath(module->name);
-            currentDeclModulePath.clear();
-            SetRuxImportsForModule(*module);
-            for (const auto &decl : module->items) {
-                ResolveDeclBodies(*decl);
-            }
-        }
+    }
+
+    void SetSourceContext(const std::string_view file, const std::string_view modulePath,
+                          const std::string_view function) {
+        currentFile = file;
+        currentModulePath = modulePath;
+        currentFunction = function;
+    }
+
+    void SetImports(const Module &module) {
+        SetRuxImportsForModule(module);
+    }
+
+    void RegisterDeclarations(const std::vector<DeclPtr> &decls) {
+        CollectCompileTimeDecls(decls);
+    }
+
+    CompileTimeEvaluation Evaluate(const Expr &expr) {
+        BeginEvaluation();
+        return {Eval(expr), TakeDiagnostics()};
+    }
+
+    CompileTimeEvaluation EvaluateConstant(const std::string_view name) {
+        BeginEvaluation();
+        const auto found = constExprs.find(std::string(name));
+        return {found == constExprs.end() ? std::nullopt : Eval(*found->second), TakeDiagnostics()};
+    }
+
+    CompileTimeConditionEvaluation EvaluateCondition(const Expr *condition, const SourceLocation location) {
+        BeginEvaluation();
+        const bool value = EvalCondition(condition, location);
+        return {value, TakeDiagnostics()};
+    }
+
+    CompileTimeMatchEvaluation SelectMatchArm(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
+                                              const SourceLocation location) {
+        BeginEvaluation();
+        const int arm = SelectMatchArmImpl(subject, arms, location);
+        return {arm, TakeDiagnostics()};
+    }
+
+    void RegisterConstant(const ConstDecl &decl) {
+        RegisterConstantImpl(decl);
     }
 
 private:
     const CompileTimeContext &context;
-    std::vector<Diagnostic> &diags;
+    std::vector<Diagnostic> diags;
     std::string currentFile;
     std::string currentFunction;
     std::string currentModulePath;
-    std::string currentDeclModulePath;
     std::unordered_map<std::string, const Expr *> constExprs;
     std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
@@ -446,6 +457,16 @@ private:
     // generic "not a compile-time constant" is not piled on top of it.
     bool reportedError = false;
 
+    void BeginEvaluation() {
+        diags.clear();
+        constsInProgress.clear();
+        reportedError = false;
+    }
+
+    std::vector<Diagnostic> TakeDiagnostics() {
+        return std::exchange(diags, {});
+    }
+
     void EmitError(const SourceLocation location, std::string message) {
         diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message)});
     }
@@ -456,7 +477,7 @@ private:
 
     // What a condition can name: constants and enums
 
-    void RegisterConstant(const ConstDecl &decl) {
+    void RegisterConstantImpl(const ConstDecl &decl) {
         if (decl.value) {
             constExprs.emplace(decl.name, decl.value.get());
         }
@@ -488,7 +509,7 @@ private:
                 if (!constDecl->intrinsicName.empty()) {
                     localIntrinsics.insert(constDecl->name);
                 }
-                RegisterConstant(*constDecl);
+                RegisterConstantImpl(*constDecl);
             }
             else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(decl.get())) {
                 programEnumNames.insert(enumDecl->name);
@@ -1539,8 +1560,8 @@ private:
     // Index of the first arm one of whose patterns matches the subject; an arm
     // with no patterns is the `else`. Returns -1 (reporting an error) when
     // nothing matches and there is no `else`.
-    int SelectMatchArm(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
-                       const SourceLocation location) {
+    int SelectMatchArmImpl(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
+                           const SourceLocation location) {
         reportedError = false;
         const auto subjectValue = Eval(subject);
         if (!subjectValue) {
@@ -1570,6 +1591,124 @@ private:
         }
         return -1;
     }
+};
+
+ConditionalEvaluator::ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules)
+    : impl(std::make_unique<Impl>(context, modules)) {
+}
+
+ConditionalEvaluator::~ConditionalEvaluator() = default;
+ConditionalEvaluator::ConditionalEvaluator(ConditionalEvaluator &&) noexcept = default;
+ConditionalEvaluator &ConditionalEvaluator::operator=(ConditionalEvaluator &&) noexcept = default;
+
+void ConditionalEvaluator::SetSourceContext(const std::string_view file, const std::string_view modulePath,
+                                            const std::string_view function) {
+    impl->SetSourceContext(file, modulePath, function);
+}
+
+void ConditionalEvaluator::SetImports(const Module &module) {
+    impl->SetImports(module);
+}
+
+void ConditionalEvaluator::RegisterDeclarations(const std::vector<DeclPtr> &decls) {
+    impl->RegisterDeclarations(decls);
+}
+
+void ConditionalEvaluator::RegisterConstant(const ConstDecl &decl) {
+    impl->RegisterConstant(decl);
+}
+
+CompileTimeEvaluation ConditionalEvaluator::Evaluate(const Expr &expr) {
+    return impl->Evaluate(expr);
+}
+
+CompileTimeEvaluation ConditionalEvaluator::EvaluateConstant(const std::string_view name) {
+    return impl->EvaluateConstant(name);
+}
+
+CompileTimeConditionEvaluation ConditionalEvaluator::EvaluateCondition(const Expr *condition,
+                                                                       const SourceLocation location) {
+    return impl->EvaluateCondition(condition, location);
+}
+
+CompileTimeMatchEvaluation ConditionalEvaluator::SelectMatchArm(const Expr &subject,
+                                                                const std::vector<std::vector<const Expr *>> &arms,
+                                                                const SourceLocation location) {
+    return impl->SelectMatchArm(subject, arms, location);
+}
+
+namespace {
+class ConditionalFolder {
+public:
+    ConditionalFolder(const CompileTimeContext &context, const std::vector<Module *> &modules,
+                      std::vector<Diagnostic> &inputDiags)
+        : evaluator(context, modules)
+        , diags(inputDiags) {
+    }
+
+    void Run(const std::vector<Module *> &modules) {
+        // Declarations first: a `when` branch can define constants that a
+        // condition inside a function body then tests.
+        for (auto *module : modules) {
+            currentFile = module->name;
+            currentModulePath = FilePathToModulePath(module->name);
+            currentDeclModulePath.clear();
+            currentFunction.clear();
+            SyncEvaluatorContext();
+            evaluator.SetImports(*module);
+            ResolveDecls(module->items);
+            ResolveLinkConstants(module->items);
+        }
+        for (auto *module : modules) {
+            currentFile = module->name;
+            currentModulePath = FilePathToModulePath(module->name);
+            currentDeclModulePath.clear();
+            currentFunction.clear();
+            SyncEvaluatorContext();
+            evaluator.SetImports(*module);
+            for (const auto &decl : module->items) {
+                ResolveDeclBodies(*decl);
+            }
+        }
+    }
+
+private:
+    ConditionalEvaluator evaluator;
+    std::vector<Diagnostic> &diags;
+    std::string currentFile;
+    std::string currentFunction;
+    std::string currentModulePath;
+    std::string currentDeclModulePath;
+
+    void SyncEvaluatorContext() {
+        evaluator.SetSourceContext(currentFile, currentModulePath, currentFunction);
+    }
+
+    void AppendDiagnostics(std::vector<Diagnostic> diagnostics) {
+        diags.insert(diags.end(), std::make_move_iterator(diagnostics.begin()),
+                     std::make_move_iterator(diagnostics.end()));
+    }
+
+    void EmitError(const SourceLocation location, std::string message) {
+        diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message)});
+    }
+
+    void EmitWarning(const SourceLocation location, std::string message) {
+        diags.push_back({Diagnostic::Severity::Warning, currentFile, location, std::move(message)});
+    }
+
+    bool EvalCondition(const Expr *condition, const SourceLocation location) {
+        auto result = evaluator.EvaluateCondition(condition, location);
+        AppendDiagnostics(std::move(result.diagnostics));
+        return result.value;
+    }
+
+    int SelectMatchArm(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
+                       const SourceLocation location) {
+        auto result = evaluator.SelectMatchArm(subject, arms, location);
+        AppendDiagnostics(std::move(result.diagnostics));
+        return result.arm;
+    }
 
     // Borrows each branch/arm's pattern expressions into the shape SelectMatchArm
     // expects (an empty inner list marks the `else` arm).
@@ -1594,20 +1733,14 @@ private:
             return;
         }
 
-        const auto it = constExprs.find(constantName);
-        if (it == constExprs.end()) {
+        auto evaluation = evaluator.EvaluateConstant(constantName);
+        AppendDiagnostics(std::move(evaluation.diagnostics));
+        if (!evaluation.value) {
             EmitError(location,
                       std::format("'#Link' {} '{}' is not a compile-time constant", argumentName, constantName));
             return;
         }
-
-        const auto value = Eval(*it->second);
-        if (!value) {
-            EmitError(location,
-                      std::format("'#Link' {} '{}' is not a compile-time constant", argumentName, constantName));
-            return;
-        }
-        if (const auto *text = std::get_if<std::string>(&*value)) {
+        if (const auto *text = std::get_if<std::string>(&*evaluation.value)) {
             result = *text;
             constantName.clear();
             return;
@@ -1657,7 +1790,7 @@ private:
                     }
                     else {
                         ResolveDecls(branch.items);
-                        CollectCompileTimeDecls(branch.items);
+                        evaluator.RegisterDeclarations(branch.items);
                         for (auto &item : branch.items) {
                             resolved.push_back(std::move(item));
                         }
@@ -1673,9 +1806,11 @@ private:
                         currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
                     currentDeclModulePath =
                         currentDeclModulePath.empty() ? module->name : currentDeclModulePath + "::" + module->name;
+                    SyncEvaluatorContext();
                     ResolveDecls(module->items);
                     currentModulePath = savedModule;
                     currentDeclModulePath = savedDeclModule;
+                    SyncEvaluatorContext();
                 }
                 else if (auto *impl = dynamic_cast<ImplDecl *>(decl.get())) {
                     ResolveImplConditionals(*impl);
@@ -1690,7 +1825,7 @@ private:
                     continue;
                 }
                 ResolveDecls(branch.items);
-                CollectCompileTimeDecls(branch.items);
+                evaluator.RegisterDeclarations(branch.items);
                 for (auto &item : branch.items) {
                     resolved.push_back(std::move(item));
                 }
@@ -1738,18 +1873,22 @@ private:
         if (auto *func = dynamic_cast<FuncDecl *>(&decl)) {
             const std::string savedFunction = currentFunction;
             currentFunction = currentDeclModulePath.empty() ? func->name : currentDeclModulePath + "::" + func->name;
+            SyncEvaluatorContext();
             if (func->body) {
                 ResolveBlock(*func->body);
             }
             currentFunction = savedFunction;
+            SyncEvaluatorContext();
         }
         else if (auto *impl = dynamic_cast<ImplDecl *>(&decl)) {
             for (const auto &method : impl->methods) {
                 if (method && method->body) {
                     const std::string savedFunction = currentFunction;
                     currentFunction = impl->typeName + "::" + method->name;
+                    SyncEvaluatorContext();
                     ResolveBlock(*method->body);
                     currentFunction = savedFunction;
+                    SyncEvaluatorContext();
                 }
             }
         }
@@ -1759,6 +1898,7 @@ private:
             currentModulePath = currentModulePath.empty() ? module->name : currentModulePath + "::" + module->name;
             currentDeclModulePath =
                 currentDeclModulePath.empty() ? module->name : currentDeclModulePath + "::" + module->name;
+            SyncEvaluatorContext();
             for (const auto &item : module->items) {
                 if (item) {
                     ResolveDeclBodies(*item);
@@ -1766,6 +1906,7 @@ private:
             }
             currentModulePath = savedModule;
             currentDeclModulePath = savedDeclModule;
+            SyncEvaluatorContext();
         }
     }
 
@@ -1881,7 +2022,7 @@ private:
         else if (auto *declStmt = dynamic_cast<DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
                 if (const auto *constDecl = dynamic_cast<const ConstDecl *>(declStmt->decl.get())) {
-                    RegisterConstant(*constDecl);
+                    evaluator.RegisterConstant(*constDecl);
                 }
                 ResolveDeclBodies(*declStmt->decl);
             }
@@ -1948,8 +2089,8 @@ private:
 
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
                                    std::vector<Diagnostic> &diags) {
-    Resolver resolver(context, diags);
-    resolver.Run(modules);
+    ConditionalFolder folder(context, modules, diags);
+    folder.Run(modules);
 }
 
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const std::string_view targetSystem,
@@ -1966,7 +2107,7 @@ void ResolveConditionalCompilation(const std::vector<Module *> &modules, const s
             }
         }
     }
-    Resolver resolver(context, diags);
-    resolver.Run(modules);
+    ConditionalFolder folder(context, modules, diags);
+    folder.Run(modules);
 }
 } // namespace Rux
