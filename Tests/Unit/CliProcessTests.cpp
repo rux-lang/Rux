@@ -40,6 +40,11 @@ std::vector<unsigned char> ReadBinaryFile(const std::filesystem::path &path) {
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+std::string ReadTextFile(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
 uint16_t Read16(const std::vector<unsigned char> &bytes, const std::size_t offset) {
     return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1] << 8U);
 }
@@ -117,6 +122,115 @@ TEST_CASE("build --all conflicts are usage errors before manifest loading") {
     CHECK(emit.exitCode == 2);
     CHECK(emit.output.contains("options '--all' and '--emit' cannot be used together"));
     CHECK_FALSE(emit.output.contains("specified manifest"));
+}
+
+TEST_CASE("add and remove preserve dependency mutation contracts") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-dependency-command-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    std::filesystem::create_directories(root);
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+
+[Package]
+Name = "DependencyCommandTest"
+Version = "0.1.0"
+Type = "SourceLibrary"
+
+[Dependencies]
+Alias = { Namespace = "Rux", Package = "Io", Version = "*" }
+
+[Build]
+Output = "Artifacts"
+)";
+    manifestFile.close();
+    REQUIRE(manifestFile);
+
+    const auto manifest = manifestPath.string();
+    const auto added = Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Json", "--path", "../Json"});
+    REQUIRE(added.exitCode == 0);
+    CHECK(added.output.contains("Added Json @ path '../Json'"));
+
+    const std::string afterAdd = ReadTextFile(manifestPath);
+    CHECK(afterAdd == R"([Manifest]
+Version = 1
+
+[Package]
+Name = "DependencyCommandTest"
+Version = "0.1.0"
+Type = "SourceLibrary"
+
+[Dependencies]
+Alias = { Namespace = "Rux", Package = "Io", Version = "*" }
+Json = { Path = "../Json" }
+
+[Build]
+Output = "Artifacts"
+)");
+
+    const auto duplicate =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Json", "--path", "../Json"});
+    REQUIRE(duplicate.exitCode == 0);
+    CHECK(duplicate.output.contains("Up-to-date Json @ path '../Json'"));
+    CHECK(ReadTextFile(manifestPath) == afterAdd);
+
+    // Import-name matching is normalized, including when the manifest entry
+    // aliases a differently named registry package.
+    const auto removed = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "alias"});
+    REQUIRE(removed.exitCode == 0);
+    CHECK(removed.output.contains("Removed alias"));
+    const std::string afterRemove = ReadTextFile(manifestPath);
+    CHECK_FALSE(afterRemove.contains("Alias ="));
+    CHECK(afterRemove.contains("Json = { Path = \"../Json\" }"));
+
+    const auto missing = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "Alias"});
+    CHECK(missing.exitCode == 1);
+    CHECK(missing.output.contains("package 'Alias' is not a dependency"));
+    CHECK(ReadTextFile(manifestPath) == afterRemove);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("add and remove diagnostics do not mutate the manifest") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-dependency-diagnostic-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    std::filesystem::create_directories(root);
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+
+[Package]
+Name = "DependencyDiagnosticTest"
+Version = "0.1.0"
+Type = "SourceLibrary"
+)";
+    manifestFile.close();
+    REQUIRE(manifestFile);
+
+    const auto manifest = manifestPath.string();
+    const std::string original = ReadTextFile(manifestPath);
+
+    const auto unqualified = Run(std::array<std::string_view, 4>{"--manifest", manifest, "add", "Json"});
+    CHECK(unqualified.exitCode == 1);
+    CHECK(unqualified.output.contains("a registry dependency needs a namespace"));
+    CHECK(ReadTextFile(manifestPath) == original);
+
+    const auto qualifiedPath =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Rux/Json", "--path", "../Json"});
+    CHECK(qualifiedPath.exitCode == 1);
+    CHECK(qualifiedPath.output.contains("a path dependency cannot name a registry namespace"));
+    CHECK(ReadTextFile(manifestPath) == original);
+
+    const auto invalidName = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "Rux/Json"});
+    CHECK(invalidName.exitCode == 1);
+    CHECK(invalidName.output.contains("is not a valid import name"));
+    CHECK(ReadTextFile(manifestPath) == original);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
 }
 
 TEST_CASE("build help publishes the all-target matrix option") {
