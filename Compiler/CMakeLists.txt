@@ -195,6 +195,7 @@ target_link_libraries(RuxArchive PUBLIC RuxObjectRcu)
 
 rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/Assembler.cpp
+    CodeGen/AArch64/AssemblerInteger.cpp
     CodeGen/AArch64/AssemblerSupport.cpp
     CodeGen/AArch64/CallAndTerminatorEmitter.cpp
     CodeGen/AArch64/CallLayout.cpp

@@ -178,4 +178,32 @@ private:
     void ResolveLocalTargets();
     virtual void Dispatch(const AsmInstr &in) = 0;
 };
+
+// Integer data-processing forms live in their own implementation while sharing
+// the label, diagnostic and encoder state owned by AssemblerContext. The final
+// facade derives from this private intermediate context and falls through to
+// the remaining instruction families when DispatchInteger returns false.
+class IntegerAssemblerContext : public AssemblerContext {
+public:
+    using AssemblerContext::AssemblerContext;
+
+protected:
+    [[nodiscard]] bool DispatchInteger(const AsmInstr &in);
+    void EncodeReg2(const AsmInstr &in, const Form<Reg2Fn> &form);
+    void EncodeReg3(const AsmInstr &in, const Form<Reg3Fn> &form);
+    void EncodeReg4(const AsmInstr &in, const Form<Reg4Fn> &form);
+    void EncodeCondSel(const AsmInstr &in, const Form<CondSelFn> &form);
+
+private:
+    void EncodeArith(const AsmInstr &in, const ArithForms &forms);
+    void EncodeLogic(const AsmInstr &in, const LogicForms &forms);
+    void EncodeMov(const AsmInstr &in);
+    void EncodeMovw(const AsmInstr &in, MovwFn fn);
+    void EncodeBitfield(const AsmInstr &in, const BitfieldForms &form);
+    void EncodeShift(const AsmInstr &in, const ShiftForms &forms);
+    void EncodeExtr(const AsmInstr &in);
+    void EncodeReg2Shift(const AsmInstr &in, Reg2ShiftFn fn);
+    void EncodeCondAlias(const AsmInstr &in, CondAliasFn fn);
+    void EncodeCondSet(const AsmInstr &in, CondSetFn fn);
+};
 } // namespace Rux::AArch64AssemblerPrivate
