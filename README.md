@@ -16,6 +16,8 @@
 
 Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline. Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64.
 
+Debug builds preserve the unoptimized program structure, while Release builds use explicit, bounded HIR and LIR passes and remove unreachable private declarations before either native back end runs. Shared RCU module construction and a format-neutral link graph keep object and image behavior consistent across all eight targets.
+
 The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
 
 > [!IMPORTANT]
@@ -32,7 +34,7 @@ Language and tool documentation lives on the website:
 
 Working on the compiler itself is covered by the guides in [`Docs/`](Docs/), indexed in [CONTRIBUTING.md](CONTRIBUTING.md#process-documentation). Installer implementation notes live beside their source, in [Packaging/Linux](Packaging/Linux/README.md) and [Packaging/Windows](Packaging/Windows/README.md).
 
-The [package build guide](Docs/Builds.md) covers target names, artifact paths, cross-compilation, and the 16-cell `rux build --all` matrix.
+The [compiler architecture guide](Docs/Architecture.md) documents component ownership, semantic and lowering boundaries, optimization, code generation, and linking. The [package build guide](Docs/Builds.md) covers target names, artifact paths, cross-compilation, and the 16-cell `rux build --all` matrix.
 
 Commands in this repository use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
 

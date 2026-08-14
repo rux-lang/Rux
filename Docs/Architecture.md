@@ -8,10 +8,11 @@ Rux is split into focused CMake component targets whose dependencies follow the 
 Source loading -> SourceModel -> Lexer -> Syntax -> SemanticModel
                                             |
                                             v
-                                      AST-to-HIR -> HIR passes
-                                            |
-                                            v
-                                      HIR-to-LIR -> LIR
+                           AST-to-HIR -> HIR passes -> HIR-to-LIR
+                                                            |
+                                                            v
+                          LIR verification and optimization passes
+                          (Release also prunes unreachable declarations)
                                             |
                                 +-----------+-----------+
                                 |                       |
@@ -21,10 +22,13 @@ Source loading -> SourceModel -> Lexer -> Syntax -> SemanticModel
                                 +----------+------------+
                                            |
                                            v
-                                      RCU Object
+                                      RCU Objects
                                            |
                                            v
-                                        Linker -> ELF / Mach-O / PE
+                                    RCU Link Graph
+                                           |
+                                           v
+                                    ELF / Mach-O / PE
 ```
 
 The two back ends are symmetric: each encodes instruction bytes itself, each builds an RCU object, and both hand that object to the same linker. The target-neutral `RcuModuleBuilder` owns fixed section buffers, symbol declarations and definitions, relocations, literal identities, function sizes, metadata, and deterministic finalization. Both emitters supply target-encoded instruction and literal bytes plus relocation kinds through that boundary; neither assembles an `RcuFile` or mutates its symbol table directly. Its narrow section-truncation operation lets AArch64 retry branch layout while keeping speculative instruction bytes and their relocations together. Before x86-64 binary or textual assembly emission starts a function, `X86_64FramePlan` fixes its register homes, callee saves, hidden return, scalar and aggregate regions, phi-cycle scratch, and aligned frame size; both consumers only read that plan. The assembly printer also receives the selected target OS from the driver, so its parameter homes, default calling convention, shadow space, and stack alignment describe the same target ABI as the RCU object rather than the compiler host. `AssemblyModulePrinter` owns textual section ordering, declarations, deterministic literal identities, and reachable helper bodies, while function printing writes text and requests module resources only through that boundary. For one planned function, `AssemblyInstructionPrinter` owns textual prologue and parameter setup, virtual-register operand spelling, scalar arithmetic, comparisons, shifts, casts, constants, loads and stores, and field/index address computation. `AssemblyControlFlowPrinter` owns function and block traversal, direct and indirect calls, ABI argument and return rendering, runtime-failure paths, phi-edge copies, branches, switches, returns, and epilogues; it delegates scalar and memory opcodes to the instruction printer and emits an explicit comment for an unsupported opcode. The public `AssemblyPrinter` facade only collects package layout context, iterates modules and functions, finalizes text, and writes the requested file. `X86_64FunctionEmitter` owns the corresponding binary scalar arithmetic, comparisons, shifts, casts, unary operations, constants, loads and stores, aggregate copies, and field/index address computation for the planned function. `X86_64CallEmitter` owns direct and indirect calls, ABI argument placement, call frames, relocations, and returned values, while `X86_64TerminatorEmitter` owns phi copies, branches, returns, block offsets, and jump patching. `AArch64FunctionEmitter` owns integer and floating-point arithmetic, comparisons, shifts, casts, unary and bit operations, power-helper calls, float-bit reinterpretations, constants, loads and stores, aggregate-copy decisions, and field/index address computation for one planned function. `AArch64CallEmitter` owns direct and indirect calls, AAPCS64 argument placement, call frames, parameter spills, and returned values, while `AArch64TerminatorEmitter` owns phi copies, branches, returns, block offsets, jump patching, and the bounded set of sites widened across re-emission passes. Their hooks keep literal interning, symbol resolution, relocation construction, and shared register, stack, and block-movement primitives at the module boundary. These per-function emitters reach module-owned storage, diagnostics, literals, symbols, relocations, arguments, and runtime helpers only through narrow hook or helper interfaces. The remaining AArch64 module emitter is a cohesive exception to the 1,200-line guideline: it owns RCU sections and symbols, platform-specific failure paths, function retry orchestration, inline assembly fixups, and constant/vtable definitions, plus the shared value-movement hooks required by all three per-function emitters. The module-level `X86_64RuntimeHelperEmitter` and `AArch64RuntimeHelperEmitter` lazily declare synthesized integer and floating-point power helpers, own their call relocations and dependency order, and emit only requested bodies after user functions. The AArch64 helper boundary also owns its internal branch patches and read-only floating constants while sharing the module's literal identity sequence. No stage invokes an external assembler, compiler, linker, archiver, or signing tool.
@@ -33,40 +37,48 @@ The driver loads the root manifest and dependencies before entering this pipelin
 
 Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64. Which triples a back end reaches is decided by the object and image writer, not by the host, and both back ends reach all eight: `freebsd-*` and `linux-*` through ELF, `windows-*` through PE/COFF, and `macos-*` through Mach-O. The FreeBSD and Linux paths produce executables, shared libraries, relocatable objects, and deterministic static archives entirely in-process. The Windows writer produces executables, DLLs with import libraries, and static libraries, while the Mach-O path produces AArch64 objects and BSD archives plus signed executables — fixed-address on x86-64, position-independent on AArch64 — imported executables, and shared libraries. The public driver exposes all three native artifact kinds for each of those targets.
 
+## Architectural Guarantees
+
+The current architecture is protected by focused unit and regression tests plus repository policy checks:
+
+- Source identity, compiler build identity, profiles, artifact kinds, and target triples are typed neutral models. Unknown targets cannot fall back to the host, and frontend or object components do not depend on driver-owned version data.
+- Semantic analysis records accepted types, callable bindings, symbol identities, and layout facts. AST-to-HIR lowering consumes those facts rather than repeating semantic lookup or ABI-visible naming decisions.
+- Checked LIR construction and verification stop malformed control flow before code generation. Release optimization uses overflow-safe constants, conservative effect analysis, bounded fixed points, and artifact-aware whole-program reachability; Debug remains transformation-free apart from verification.
+- Both native back ends use the shared RCU module builder. All image writers consume one deterministic link graph and common aligned-section layout before applying PE, ELF, or Mach-O container rules.
+- Parser, semantic, lowering, code-generation, assembler, object-writer, linker, manifest, package-command, and test implementations have named owners and narrow private interfaces. The oversized-file policy rejects unreviewed implementation files above 1,200 lines and growth beyond each reviewed exception.
+
+These are maintained contracts, not a one-time migration record. Changes to them belong in this guide and in the tests or policy checks that enforce the affected boundary.
+
 ## Component Ownership
 
-| Component              | Owns                                                                             | May depend on                         |
-| ---------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| `SourceModel`          | Source locations and loaded-file identity values                                 | Standard library only                 |
-| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind  | Standard library only                 |
-| `CliContract`          | Immutable command, option, argument, example, and conflict data                   | Standard library only                 |
-| `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                             | CliContract and Diagnostics           |
-| `Diagnostics`          | Diagnostic values and rendering primitives                                       | SourceModel                           |
-| `Source`               | Source discovery and loading                                                     | SourceModel and Diagnostics           |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON                  | Target, standard library, host APIs   |
-| `Target`               | Validated target triples, ABI, layout, and instruction models                    | SourceModel                           |
-| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                         | Crypto and Target                     |
-| `Lexer`                | Tokens and lexical analysis                                                      | SourceModel and Diagnostics           |
-| `Syntax`               | AST, parser, and focused human-readable AST printers                            | Lexer, Diagnostics, and Target        |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model            | BuildInfo, Syntax, and Diagnostics    |
-| `Ir/Hir`               | High-level IR and its transformations                                            | Semantic, Lexer, SourceModel, Target  |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                               | Semantic                              |
-| `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability | BuildInfo, Diagnostics, HIR, and LIR  |
-| `Lowering`             | AST/semantic model → HIR → LIR; private AST-to-HIR orchestration and lowering contexts | Frontend and IR components       |
-| `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics |
-| `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction | BuildInfo, LIR, Object, Diagnostics |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction | BuildInfo, LIR, Object, Diagnostics |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                   | BuildInfo and Target                  |
-| `Archive`              | Deterministic native archive containers and symbol indexes                       | Object                                |
-| `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output | Object, Archive, and System      |
-| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution | All compiler stages                  |
-| `Formatter` / `Linter` | Source formatting and lint diagnostics                                           | Syntax; the linter also uses Semantic |
+| Component              | Owns                                                                                                      | May depend on                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `SourceModel`          | Source locations and loaded-file identity values                                                          | Standard library only                 |
+| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                 |
+| `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                 |
+| `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics           |
+| `Diagnostics`          | Diagnostic values and rendering primitives                                                                | SourceModel                           |
+| `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics           |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs   |
+| `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                           |
+| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                                  | Crypto and Target                     |
+| `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel and Diagnostics           |
+| `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target        |
+| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model                                     | BuildInfo, Syntax, and Diagnostics    |
+| `Ir/Hir`               | High-level IR and its transformations                                                                     | Semantic, Lexer, SourceModel, Target  |
+| `Ir/Lir`               | Control-flow-explicit low-level IR                                                                        | Semantic                              |
+| `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability                          | BuildInfo, Diagnostics, HIR, and LIR  |
+| `Lowering`             | AST/semantic model → HIR → LIR; private AST-to-HIR orchestration and lowering contexts                    | Frontend and IR components            |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics          |
+| `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction                        | BuildInfo, LIR, Object, Diagnostics   |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction                      | BuildInfo, LIR, Object, Diagnostics   |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                                            | BuildInfo and Target                  |
+| `Archive`              | Deterministic native archive containers and symbol indexes                                                | Object                                |
+| `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output                  | Object, Archive, and System           |
+| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution                         | All compiler stages                   |
+| `Formatter` / `Linter` | Source formatting and lint diagnostics                                                                    | Syntax; the linter also uses Semantic |
 
-`Parser::DumpAst` is the public AST-dump facade. Its implementation shares private stream and indentation state
-through `ParserDumpDetail::AstDumpWriter`; the declaration printer is the single owner of declaration dispatch and
-type-expression text, while the statement printer owns blocks, statement dispatch, and pattern formatting. The two
-focused printers call back into the facade for nested expressions and into each other at declaration/block boundaries,
-keeping dump text stable while expression printers are split into their own owner incrementally.
+`Parser::DumpAst` is the public AST-dump facade. Its implementation shares private stream and indentation state through `ParserDumpDetail::AstDumpWriter`; the declaration printer is the single owner of declaration dispatch and type-expression text, while the statement printer owns blocks, statement dispatch, and pattern formatting. The two focused printers call back into the facade for nested expressions and into each other at declaration/block boundaries, keeping dump text stable while expression printers are split into their own owner incrementally.
 
 The driver's artifact-aware Release composition adds `lir-declaration-pruner` after the profile-only local LIR pipeline. It consumes whole-package reachability before backend selection, retains declarations in module order, and removes unreachable private definitions and unused externs. Debug never schedules the pass, and public library roots remain intact. The pass reports function, constant, vtable, and extern counts plus a deterministic eliminated-IR estimate based on declaration, parameter, block, instruction, terminator, assembly-instruction, constant-element, and vtable-entry nodes.
 
@@ -140,11 +152,7 @@ rux lint -> RuxLinter    -> RuxSyntax + RuxSemantic
 rux      -> RuxDriver
 ```
 
-`RuxCliContract` is the single source of truth shared by command-line validation, human help, and versioned JSON
-help. It owns command options, positional limits, passthrough support, examples, and option conflicts such as the
-four flags incompatible with `build --all`. `RuxCliHelp` consumes that immutable data and returns rendered strings;
-terminal width and color capability are supplied by the CLI composition layer. This keeps wrapping, ANSI styling,
-examples, and JSON projection testable without launching a process or consulting host terminal state.
+`RuxCliContract` is the single source of truth shared by command-line validation, human help, and versioned JSON help. It owns command options, positional limits, passthrough support, examples, and option conflicts such as the four flags incompatible with `build --all`. `RuxCliHelp` consumes that immutable data and returns rendered strings; terminal width and color capability are supplied by the CLI composition layer. This keeps wrapping, ANSI styling, examples, and JSON projection testable without launching a process or consulting host terminal state.
 
 Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Driver/PackageResolution` collects manifest requirements through a typed `TargetTriple`, caches each normalized package index once, selects candidates, and walks dependency graphs in deterministic breadth-first order. It returns the selected graph or a structured failure without printing; CLI handlers retain project discovery, network-boundary messages, failure rendering, and installation reports. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
