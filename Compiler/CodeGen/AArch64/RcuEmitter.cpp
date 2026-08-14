@@ -31,6 +31,9 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
+using ArgLocation = AArch64ArgumentLocation;
+using CallLayout = AArch64CallLayout;
+
 // A branch waiting for the offset of the block it targets. AArch64 splits a
 // branch immediate across a field of its own width — 26 bits for B, 19 for the
 // conditional forms, 14 for the test-and-branch pair — so a patch site names
@@ -225,18 +228,10 @@ constexpr unsigned kReturn = 0;
 // Everything past the eighth travels on the stack.
 constexpr unsigned kIntArgRegs = 8;
 
-// How many it passes in vector registers: V0 through V7, on the same terms.
-constexpr unsigned kFpArgRegs = 8;
-
 // The register a caller puts the address of an indirect result in. It is
 // neither an argument register nor a result one — a callee returning something
 // too large for registers reads it and writes there, and returns nothing.
 constexpr unsigned kIndirectResult = 8;
-
-// The most members a homogeneous floating-point aggregate has. A composite of
-// five floats is a composite, and travels the way any other composite of its
-// size does.
-constexpr unsigned kMaxHfaMembers = 4;
 
 // The vector register a floating-point value is computed in. AAPCS64 preserves
 // only the low half of V8 through V15 across a call, so the caller-saved half
@@ -250,39 +245,6 @@ constexpr unsigned kFpTemp2 = 17;
 // The third, for the one floating-point operation that is not an instruction:
 // a remainder needs its quotient somewhere neither operand is.
 constexpr unsigned kFpTemp3 = 18;
-
-// Where AAPCS64 puts one argument: `count` registers of one file starting at
-// `first`, or `bytes` bytes at `offset` in the outgoing argument area. An
-// argument no register can carry travels as the address of a copy the caller
-// makes, and `byReference` says so — the location then describes where that
-// address goes rather than where the value does, and `copyOffset` says where in
-// the same area the copy itself sits.
-struct ArgLocation {
-    enum class Kind : std::uint8_t {
-        General, // X registers
-        Vector,  // V registers
-        Stack,   // the outgoing argument area
-        Slots,   // Windows C variadic imaginary-stack slots
-    };
-
-    Kind kind = Kind::General;
-    unsigned first = 0;
-    unsigned count = 1;
-    unsigned memberBytes = 8; // width of one register's worth, in the vector file
-    bool byReference = false;
-    std::int32_t offset = 0;     // byte offset into the area, when Stack
-    std::int32_t bytes = 8;      // bytes taken there
-    std::int32_t copyOffset = 0; // byte offset of the copy, when byReference
-    std::int32_t copyBytes = 0;
-};
-
-// One call's whole argument list, and the area the caller opens for the part of
-// it that does not travel in registers.
-struct CallLayout {
-    std::vector<ArgLocation> args;
-    std::int32_t areaBytes = 0;
-    bool windowsVariadic = false;
-};
 
 // Whether this call names one of the four reinterpretations the front end
 // lowers as a call: a value moves between the register files and no branch is
@@ -334,7 +296,6 @@ public:
         , packageInterfaceNames(inputPackageInterfaceNames)
         , pkgName(std::move(inputPackageName))
         , targetOs(inputTargetOs)
-        , callPolicy(AArch64CallPolicyFor(inputTargetOs))
         , buildInfo(inputBuildInfo)
         , diagnostics(inputDiagnostics)
         , moduleBuilder({.arch = RcuArch::AArch64,
@@ -342,7 +303,8 @@ public:
                          .packageName = pkgName,
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
-        , enc(moduleBuilder.SectionData(RcuModuleSection::Text)) {
+        , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
+        , callPlanner(layouts, interfaceNames, inputStructDecls, inputTargetOs) {
     }
 
     RcuFile Generate();
@@ -353,7 +315,6 @@ private:
     const std::vector<std::string> &packageInterfaceNames;
     std::string pkgName;
     Target::OS targetOs;
-    AArch64CallLayoutPolicy callPolicy;
     const BuildInfo &buildInfo;
     std::vector<Diagnostic> &diagnostics;
 
@@ -411,11 +372,7 @@ private:
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
 
-    // The declaration each struct layout came from, by name. A layout keeps
-    // offsets and sizes, and argument classification needs the field types
-    // themselves: whether a composite is made of floats alone is a question
-    // about its members rather than about its shape.
-    std::unordered_map<std::string, const LirStructDecl *> structFields;
+    AArch64CallPlanner callPlanner;
 
     // The immutable placement decisions for the function being emitted. The
     // pointed-to plan lives for every widening pass over that function.
@@ -1691,296 +1648,6 @@ private:
     // clobber, so a call destroys nothing that is live. X30 is the exception, and
     // the prologue has already written it into the frame record.
 
-    // How many members of a single floating-point type a value is built out of,
-    // reported through `count`. This is the question AAPCS64 asks of every
-    // argument first, because a homogeneous floating-point aggregate of no more
-    // than four members travels in the vector file whatever it weighs, while any
-    // other composite of the same size travels in the general-purpose one or in
-    // memory. Nesting does not end the homogeneity — a struct of two tuples of
-    // two floats is four members — but a type of any other kind does.
-    [[nodiscard]] bool CollectFloatMembers(const TypeRef &type, TypeRef::Kind &memberKind, unsigned &count) const {
-        if (count > kMaxHfaMembers) {
-            return false; // a fifth member ends it, however deep it was reached
-        }
-        if (IsFloat(type)) {
-            if (count == 0) {
-                memberKind = type.kind;
-            }
-            else if (type.kind != memberKind) {
-                return false; // a float32 beside a float64 is not homogeneous
-            }
-            ++count;
-            return true;
-        }
-        switch (type.kind) {
-        case TypeRef::Kind::Tuple:
-            for (const auto &element : type.inner) {
-                if (!CollectFloatMembers(element, memberKind, count)) {
-                    return false;
-                }
-            }
-            return !type.inner.empty();
-        case TypeRef::Kind::Array: {
-            if (type.inner.empty() || !type.arrayLength || *type.arrayLength == 0) {
-                return false;
-            }
-            for (std::uint64_t i = 0; i < *type.arrayLength; ++i) {
-                if (!CollectFloatMembers(type.inner[0], memberKind, count)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-        case TypeRef::Kind::Named: {
-            // An interface value is a pair of pointers whatever the type behind
-            // it holds, and a struct answers from its declaration: a computed
-            // layout keeps sizes and offsets rather than the field types this
-            // needs, so the declarations are kept beside it.
-            const std::string base = BaseTypeName(type.name);
-            if (interfaceNames.contains(base)) {
-                return false;
-            }
-            const auto decl = structFields.find(base);
-            if (decl == structFields.end()) {
-                return false;
-            }
-            for (const auto &field : decl->second->fields) {
-                if (!CollectFloatMembers(field.type, memberKind, count)) {
-                    return false;
-                }
-            }
-            return !decl->second->fields.empty();
-        }
-        default:
-            return false;
-        }
-    }
-
-    // The same, as the two numbers a caller needs: how many vector registers the
-    // value takes and how wide one of them is, or zero for a value made of
-    // something else. A float is one member of itself, which is what lets a
-    // scalar and an aggregate of them share every branch below.
-    [[nodiscard]] unsigned FloatMembers(const TypeRef &type, unsigned &memberBytes) const {
-        TypeRef::Kind memberKind = TypeRef::Kind::Float64;
-        unsigned count = 0;
-        if (!CollectFloatMembers(type, memberKind, count) || count == 0 || count > kMaxHfaMembers) {
-            return 0;
-        }
-        memberBytes = memberKind == TypeRef::Kind::Float32 ? 4 : 8;
-        return count;
-    }
-
-    // Whether a result comes back in memory the caller names rather than in
-    // registers, which is every composite past sixteen bytes that is not a
-    // homogeneous floating-point aggregate — four doubles are four registers,
-    // and four doubles are thirty-two bytes.
-    [[nodiscard]] bool ReturnsInMemory(const TypeRef &type) const {
-        unsigned memberBytes = 8;
-        return IsAggregate(type) && RuntimeSize(type) > 16 && FloatMembers(type, memberBytes) == 0;
-    }
-
-    // Where a returned value comes back, which is argument classification asked
-    // of one value at the front of an empty list: an HFA in V0 and up, and
-    // anything else in X0 and, where sixteen bytes need it, X1.
-    [[nodiscard]] ArgLocation ResultLocation(const TypeRef &type) const {
-        ArgLocation loc;
-        unsigned memberBytes = 8;
-        if (const unsigned members = FloatMembers(type, memberBytes); members > 0) {
-            loc.kind = ArgLocation::Kind::Vector;
-            loc.count = members;
-            loc.memberBytes = memberBytes;
-            return loc;
-        }
-        loc.kind = ArgLocation::Kind::General;
-        loc.count = RegistersFor(RuntimeSize(type));
-        return loc;
-    }
-
-    // How many whole registers a value of `size` bytes occupies, which is what a
-    // composite small enough to travel in them is broken into.
-    [[nodiscard]] static unsigned RegistersFor(const int size) {
-        return size > 8 ? static_cast<unsigned>((size + 7) / 8) : 1;
-    }
-
-    // Where AAPCS64 puts each argument of one call.
-    //
-    // Two counters walk the list, one per register file, and a third names the
-    // next free byte of the outgoing area. A value that does not fit the file it
-    // belongs to goes to the area — and so does every later value of that file,
-    // fit or not, because the standard saturates the counter rather than looking
-    // for a register the argument behind it left free. That is the rule a
-    // hand-written caller most often gets wrong, and it is the reason this is one
-    // walk over the whole list rather than a decision made argument by argument.
-    //
-    // A Windows C variadic call is the one platform variant reachable before
-    // the PE writer itself is: every argument, including the named ones, is
-    // allocated to an imaginary stack. Its first eight doublewords become X0
-    // through X7 and the remainder stays on the real stack. This deliberately
-    // records one argument as a run of slots instead of as one register-or-stack
-    // choice: a two-word composite starting in the eighth slot straddles X7 and
-    // the first real stack slot.
-    [[nodiscard]] CallLayout ClassifyWindowsVariadicArguments(const std::vector<TypeRef> &types) const {
-        CallLayout layout;
-        layout.args.reserve(types.size());
-        layout.windowsVariadic = true;
-        std::int32_t nextSlot = 0;
-
-        for (const TypeRef &type : types) {
-            const int size = RuntimeSize(type);
-            ArgLocation loc;
-            loc.kind = ArgLocation::Kind::Slots;
-            if (IsAggregate(type) && size > 16) {
-                // The imaginary stack holds the address of a caller-owned copy,
-                // just as the ordinary procedure-call rules do.
-                loc.byReference = true;
-                loc.copyBytes = size;
-                loc.bytes = 8;
-            }
-            else {
-                loc.bytes = AlignUp(std::max(size, 1), 8);
-            }
-            const int align = loc.byReference ? 8 : std::clamp(RuntimeAlign(type), 8, 16);
-            nextSlot = AlignUp(nextSlot, align);
-            loc.offset = nextSlot;
-            nextSlot += loc.bytes;
-            layout.args.push_back(loc);
-        }
-
-        // Only the bytes above the register window need real outgoing storage.
-        // Copies follow that storage and retain their natural alignment.
-        std::int32_t nextStack = std::max(nextSlot - static_cast<std::int32_t>(kIntArgRegs * 8), 0);
-        for (std::size_t i = 0; i < layout.args.size(); ++i) {
-            if (!layout.args[i].byReference) {
-                continue;
-            }
-            const int align = std::clamp(RuntimeAlign(types[i]), 8, 16);
-            nextStack = AlignUp(nextStack, align);
-            layout.args[i].copyOffset = nextStack;
-            nextStack += AlignUp(std::max(layout.args[i].copyBytes, 1), 8);
-        }
-        layout.areaBytes = AlignUp(nextStack, 16);
-        return layout;
-    }
-
-    // An anonymous argument on standard AAPCS64 is classified exactly like a
-    // named one: a float still arrives in a V register and `va_arg` finds it in
-    // the vector half of the register save area. Windows selects the separate
-    // imaginary-stack walk above. Apple instead classifies the declared prefix
-    // normally, then assigns every anonymous argument to one or more eight-byte
-    // stack slots. Its va_list is consequently a pointer into that stack area.
-    [[nodiscard]] CallLayout
-    ClassifyArguments(const std::vector<TypeRef> &types,
-                      const std::optional<std::uint32_t> fixedParamCount = std::nullopt) const {
-        if (targetOs == Target::OS::Windows && fixedParamCount) {
-            return ClassifyWindowsVariadicArguments(types);
-        }
-
-        CallLayout layout;
-        layout.args.reserve(types.size());
-        unsigned nextGeneral = 0;
-        unsigned nextVector = 0;
-        std::int32_t nextStack = 0;
-        const bool appleVariadic = fixedParamCount && targetOs == Target::OS::MacOS;
-
-        // Generic AAPCS64 gives every stack argument a whole number of
-        // doublewords. Apple instead uses the argument's natural alignment and
-        // exact size; only the completed area is padded back to the public
-        // stack alignment.
-        const auto onStack = [this, &nextStack](const int size, const int naturalAlign) {
-            ArgLocation loc;
-            loc.kind = ArgLocation::Kind::Stack;
-            const int align = callPolicy.StackAlignment(naturalAlign);
-            nextStack = AlignUp(nextStack, align);
-            loc.offset = nextStack;
-            loc.bytes = callPolicy.StackBytes(size);
-            nextStack += loc.bytes;
-            return loc;
-        };
-
-        // An integer, a pointer, or a composite whole registers can carry: as
-        // many of them as remain, and the area otherwise. Generic AAPCS64 makes
-        // a 16-byte-aligned composite start at an even register; Apple permits
-        // it to start in the next register even when that register is odd.
-        const auto inGeneralFile = [&](const int size, const int align, const unsigned needed) {
-            nextGeneral = callPolicy.FirstGeneralRegister(nextGeneral, align);
-            if (nextGeneral + needed <= kIntArgRegs) {
-                ArgLocation loc;
-                loc.kind = ArgLocation::Kind::General;
-                loc.first = nextGeneral;
-                loc.count = needed;
-                nextGeneral += needed;
-                return loc;
-            }
-            nextGeneral = kIntArgRegs;
-            return onStack(size, align);
-        };
-
-        for (std::size_t i = 0; i < types.size(); ++i) {
-            const TypeRef &type = types[i];
-            const int size = RuntimeSize(type);
-            const int align = std::clamp(RuntimeAlign(type), 1, 16);
-
-            if (appleVariadic && i >= *fixedParamCount) {
-                if (i == *fixedParamCount) {
-                    nextStack = AlignUp(nextStack, 8);
-                }
-                ArgLocation loc =
-                    onStack(IsAggregate(type) && size > 16 ? 8 : AlignUp(std::max(size, 1), 8), std::max(align, 8));
-                if (IsAggregate(type) && size > 16) {
-                    loc.byReference = true;
-                    loc.copyBytes = size;
-                }
-                layout.args.push_back(loc);
-                continue;
-            }
-
-            unsigned memberBytes = 8;
-            const unsigned members = FloatMembers(type, memberBytes);
-            if (members > 0) {
-                if (nextVector + members <= kFpArgRegs) {
-                    ArgLocation loc;
-                    loc.kind = ArgLocation::Kind::Vector;
-                    loc.first = nextVector;
-                    loc.count = members;
-                    loc.memberBytes = memberBytes;
-                    nextVector += members;
-                    layout.args.push_back(loc);
-                    continue;
-                }
-                nextVector = kFpArgRegs;
-                layout.args.push_back(onStack(size, align));
-                continue;
-            }
-            if (IsAggregate(type) && size > 16) {
-                // What travels is the address of a copy, which goes wherever a
-                // pointer in this position would have gone.
-                ArgLocation loc = inGeneralFile(8, 8, 1);
-                loc.byReference = true;
-                loc.copyBytes = size;
-                layout.args.push_back(loc);
-                continue;
-            }
-            layout.args.push_back(inGeneralFile(size, align, RegistersFor(size)));
-        }
-
-        // The copies sit above the arguments themselves. Where an argument sits
-        // is the callee's business and is fixed by the walk above; where its
-        // copy sits is nobody's but this generator's, so it is decided last.
-        for (std::size_t i = 0; i < layout.args.size(); ++i) {
-            if (!layout.args[i].byReference) {
-                continue;
-            }
-            const int align = callPolicy.StackAlignment(RuntimeAlign(types[i]));
-            nextStack = AlignUp(nextStack, align);
-            layout.args[i].copyOffset = nextStack;
-            nextStack += AlignUp(std::max(layout.args[i].copyBytes, 1), 8);
-        }
-        // The stack pointer is a multiple of sixteen at every public interface,
-        // which is what makes the adjustment a FrameAdjust at all.
-        layout.areaBytes = AlignUp(nextStack, 16);
-        return layout;
-    }
-
     // Fill the imaginary stack of a Windows C variadic call. Stack slots are
     // written before registers so the X9 scratch used for them cannot disturb
     // an already-filled argument. A scalar float crosses to the general file
@@ -2101,8 +1768,8 @@ private:
             // Apple makes this extension the caller's responsibility. The
             // generic path deliberately keeps its previous eager extension,
             // which is permitted and keeps Linux and Windows output stable.
-            const bool appleNarrowInteger =
-                callPolicy.callerExtendsNarrowIntegers && !IsAggregate(type) && !IsFloat(type) && RuntimeSize(type) < 4;
+            const bool appleNarrowInteger = callPlanner.Policy().callerExtendsNarrowIntegers && !IsAggregate(type) &&
+                                            !IsFloat(type) && RuntimeSize(type) < 4;
             if (appleNarrowInteger) {
                 LoadWidthFromSlot(A64::Xn(loc.first), reg, AccessWidth(RuntimeSize(type)), type.IsSigned());
                 return;
@@ -2170,7 +1837,7 @@ private:
                 continue;
             }
             const int size = RuntimeSize(types[i]);
-            if (IsAggregate(types[i]) && (size > 8 || callPolicy.compactStackArguments)) {
+            if (IsAggregate(types[i]) && (size > 8 || callPlanner.Policy().compactStackArguments)) {
                 const A64Reg source = A64::Xn(kSrcAddr);
                 SlotAddress(source, args[i]);
                 CopyBlock(A64::Sp, loc.offset, source, 0, size, paired);
@@ -2186,7 +1853,7 @@ private:
             }
             const A64Reg value = A64::Xn(kTemp);
             LoadFromSlot(value, args[i], types[i]);
-            const unsigned width = callPolicy.compactStackArguments ? AccessWidth(size) : 8U;
+            const unsigned width = callPlanner.Policy().compactStackArguments ? AccessWidth(size) : 8U;
             StoreScalar(value, A64::Sp, loc.offset, width);
         }
         for (std::size_t i = 0; i < args.size(); ++i) {
@@ -2234,9 +1901,9 @@ private:
         for (const LirReg arg : args) {
             types.push_back(TypeOfReg(arg));
         }
-        const CallLayout layout = ClassifyArguments(types, instr.cVariadicFixedParamCount);
+        const CallLayout layout = callPlanner.PlanArguments(types, instr.cVariadicFixedParamCount);
         const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
-        const bool indirectResult = keepsResult && ReturnsInMemory(instr.type);
+        const bool indirectResult = keepsResult && callPlanner.ReturnsInMemory(instr.type);
 
         if (layout.areaBytes > 0) {
             OpenStackArea(layout.areaBytes, "the outgoing argument area");
@@ -2269,7 +1936,7 @@ private:
         // and reads none of the rest; a result too large for registers needs
         // nothing at all, since the callee has already written it here.
         if (keepsResult && !indirectResult) {
-            MoveRegisterArgument(ResultLocation(instr.type), instr.dst, instr.type, false);
+            MoveRegisterArgument(callPlanner.PlanResult(instr.type), instr.dst, instr.type, false);
         }
     }
 
@@ -2286,7 +1953,7 @@ private:
         for (const auto &param : func.params) {
             types.push_back(param.type);
         }
-        const CallLayout layout = ClassifyArguments(types);
+        const CallLayout layout = callPlanner.PlanArguments(types);
 
         for (std::size_t i = 0; i < func.params.size(); ++i) {
             const LirParam &param = func.params[i];
@@ -3259,13 +2926,13 @@ private:
                     CopyBlock(destination, 0, source, 0, RuntimeSize(term.retType), RuntimeAlign(term.retType) >= 8);
                 }
                 else if (throughPointer) {
-                    LoadResultFromAddress(ResultLocation(term.retType),
+                    LoadResultFromAddress(callPlanner.PlanResult(term.retType),
                                           ReadPointerOperand(*term.retVal, A64::Xn(kSrcAddr)), term.retType);
                 }
                 else {
                     // X0 and V0 carry everything else, the load extending a
                     // narrow value the way AAPCS64 asks a callee to.
-                    MoveRegisterArgument(ResultLocation(term.retType), *term.retVal, term.retType, true);
+                    MoveRegisterArgument(callPlanner.PlanResult(term.retType), *term.retVal, term.retType, true);
                 }
             }
             EmitEpilogue();
@@ -3536,7 +3203,6 @@ private:
         }
         for (const auto &s : structDecls) {
             layouts[s.name] = ComputeStructLayout(s, layouts);
-            structFields[s.name] = &s;
         }
 
         PredeclareFunctions();

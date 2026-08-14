@@ -1,12 +1,16 @@
 #pragma once
 
-// Target-selected AAPCS64 fixed-argument policy. This is separate from the
-// emitter so the Apple deviations can be checked without exposing the
-// emitter's private LIR classification machinery.
-
+#include "CodeGen/Layout.h"
+#include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace Rux {
 struct AArch64CallLayoutPolicy {
@@ -41,4 +45,68 @@ struct AArch64CallLayoutPolicy {
     }
     return {};
 }
+
+// One argument's target location. A value larger than sixteen bytes travels
+// as the address of a caller-owned copy; copyOffset and copyBytes name that
+// copy inside the same outgoing area.
+struct AArch64ArgumentLocation {
+    enum class Kind : std::uint8_t {
+        General,
+        Vector,
+        Stack,
+        Slots, // Windows C-variadic imaginary-stack slots
+    };
+
+    Kind kind = Kind::General;
+    unsigned first = 0;
+    unsigned count = 1;
+    unsigned memberBytes = 8;
+    bool byReference = false;
+    std::int32_t offset = 0;
+    std::int32_t bytes = 8;
+    std::int32_t copyOffset = 0;
+    std::int32_t copyBytes = 0;
+};
+
+// A complete placement plan for one call's arguments and copies.
+struct AArch64CallLayout {
+    std::vector<AArch64ArgumentLocation> args;
+    std::int32_t areaBytes = 0;
+    bool windowsVariadic = false;
+};
+
+// Pure target-driven AAPCS64 argument and result classification. The planner
+// reads type metadata and produces locations only; instruction emission owns
+// no ABI placement decisions.
+class AArch64CallPlanner {
+public:
+    AArch64CallPlanner(const Layout::LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames,
+                       const std::vector<LirStructDecl> &structDecls, Target::OS targetOs);
+
+    [[nodiscard]] AArch64CallLayout PlanArguments(const std::vector<TypeRef> &types,
+                                                  std::optional<std::uint32_t> fixedParamCount = std::nullopt) const;
+
+    [[nodiscard]] AArch64ArgumentLocation PlanResult(const TypeRef &type) const;
+
+    [[nodiscard]] bool ReturnsInMemory(const TypeRef &type) const;
+
+    [[nodiscard]] const AArch64CallLayoutPolicy &Policy() const {
+        return policy;
+    }
+
+private:
+    const Layout::LayoutMap &layouts;
+    const std::unordered_set<std::string> &interfaceNames;
+    std::unordered_map<std::string, const LirStructDecl *> structFields;
+    Target::OS targetOs;
+    AArch64CallLayoutPolicy policy;
+
+    [[nodiscard]] int RuntimeSize(const TypeRef &type) const;
+    [[nodiscard]] int RuntimeAlign(const TypeRef &type) const;
+    [[nodiscard]] bool IsAggregate(const TypeRef &type) const;
+    [[nodiscard]] bool CollectFloatMembers(const TypeRef &type, TypeRef::Kind &memberKind, unsigned &count) const;
+    [[nodiscard]] unsigned FloatMembers(const TypeRef &type, unsigned &memberBytes) const;
+    [[nodiscard]] AArch64CallLayout PlanWindowsVariadicArguments(const std::vector<TypeRef> &types) const;
+    [[nodiscard]] static unsigned RegistersFor(int size);
+};
 } // namespace Rux

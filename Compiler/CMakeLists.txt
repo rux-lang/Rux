@@ -177,6 +177,7 @@ target_link_libraries(RuxArchive PUBLIC RuxObjectRcu)
 
 rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/Assembler.cpp
+    CodeGen/AArch64/CallLayout.cpp
     CodeGen/AArch64/Encoder.cpp
     CodeGen/AArch64/FramePlan.cpp
     CodeGen/AArch64/RcuEmitter.cpp)
