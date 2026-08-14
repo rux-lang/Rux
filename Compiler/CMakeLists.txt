@@ -191,6 +191,7 @@ target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon Rux
 rux_add_component(RuxLinker
     Linker/AArch64Relocation.cpp
     Linker/Coff/CoffObjectWriter.cpp
+    Linker/Elf/ElfObjectWriter.cpp
     Linker/Linker.cpp
     Linker/RcuLinkGraph.cpp
     Linker/RcuObjectLayout.cpp
