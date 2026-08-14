@@ -1,5 +1,7 @@
 #include "Linker/ArchiveWriter.h"
 
+#include "Linker/Coff/CoffObjectWriter.h"
+
 #include <algorithm>
 #include <array>
 #include <charconv>
