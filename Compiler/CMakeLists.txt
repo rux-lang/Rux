@@ -181,6 +181,7 @@ target_link_libraries(RuxCodeGenCommon PUBLIC RuxLir RuxObjectRcu RuxDiagnostics
 
 rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/Assembler.cpp
+    CodeGen/X86_64/AssemblerSupport.cpp
     CodeGen/X86_64/AssemblyControlFlowPrinter.cpp
     CodeGen/X86_64/AssemblyInstructionPrinter.cpp
     CodeGen/X86_64/AssemblyModulePrinter.cpp

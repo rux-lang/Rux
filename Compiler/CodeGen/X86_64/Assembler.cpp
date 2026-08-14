@@ -14,8 +14,7 @@
 // immediates, or memory references of the form [base + index*scale +/- disp],
 // optionally with a byte/word/dword/qword size prefix.
 
-#include "CodeGen/X86_64/Assembler.h"
-
+#include "CodeGen/X86_64/AssemblerSupport.h"
 #include "Object/Rcu/Rcu.h"
 
 #include <cstdint>
@@ -27,6 +26,10 @@
 namespace Rux {
 namespace {
 using Bytes = std::vector<std::uint8_t>;
+using X86_64AssemblerPrivate::ConditionCode;
+using X86_64AssemblerPrivate::LabelFixups;
+using X86_64AssemblerPrivate::LookupSseForm;
+using X86_64AssemblerPrivate::SseFormKind;
 
 // Resolved r/m encoding: the ModRM byte with an empty reg field, plus the SIB,
 // displacement, REX.B/X bits, and any rip-relative symbol reference.
@@ -49,19 +52,20 @@ public:
     Assembler(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out)
         : instrs_(instrs)
         , sourceName_(std::move(sourceName))
-        , out_(out) {
+        , out_(out)
+        , labelFixups_(sourceName_, out_, result_) {
     }
 
     AsmAssembly Run() {
-        CollectLabels();
+        labelFixups_.Collect(instrs_);
         for (const auto &instr : instrs_) {
             if (!instr.labelDef.empty()) {
-                labels_[instr.labelDef] = Here();
+                labelFixups_.Define(instr.labelDef, Here());
                 continue;
             }
             EncodeInstr(instr);
         }
-        ResolveLocalJumps();
+        labelFixups_.Resolve();
         result_.ok = result_.diagnostics.empty();
         return std::move(result_);
     }
@@ -71,18 +75,7 @@ private:
     std::string sourceName_;
     Bytes &out_;
     AsmAssembly result_;
-
-    // Label name -> offset within out_ (absolute).
-    std::unordered_map<std::string, std::uint32_t> labels_;
-
-    // Pending rel32 fixups to local labels: (field offset, target label).
-    struct LocalJump {
-        std::uint32_t fieldOff;
-        std::string label;
-        SourceLocation loc;
-    };
-
-    std::vector<LocalJump> localJumps_;
+    LabelFixups labelFixups_;
 
     void Error(const SourceLocation &loc, std::string msg) {
         Diagnostic d;
@@ -115,16 +108,6 @@ private:
 
     std::uint32_t Here() const {
         return static_cast<std::uint32_t>(out_.size());
-    }
-
-    void CollectLabels() {
-        // Offsets are filled during encoding; here we only reserve the names so
-        // a forward `jmp label` can tell a local label from an extern symbol.
-        for (const auto &instr : instrs_) {
-            if (!instr.labelDef.empty()) {
-                labels_.emplace(instr.labelDef, 0);
-            }
-        }
     }
 
     // Resolve one operand that names a register into its info, reporting an
@@ -829,29 +812,7 @@ private:
     void EmitRel32Target(const std::string &name, const SourceLocation &loc) {
         const std::uint32_t fieldOff = Here();
         Emit32(0);
-        if (labels_.contains(name)) {
-            localJumps_.push_back({fieldOff, name, loc});
-        }
-        else {
-            // The linker resolves rel32 as targetVA + addend - (site + 4).
-            result_.fixups.push_back({fieldOff, name, RcuRelType::Rel32, 0});
-        }
-    }
-
-    void ResolveLocalJumps() {
-        for (const auto &j : localJumps_) {
-            const auto it = labels_.find(j.label);
-            if (it == labels_.end()) {
-                Error(j.loc, std::format("undefined label '{}'", j.label));
-                continue;
-            }
-            const auto target = static_cast<std::int32_t>(it->second);
-            const std::int32_t rel = target - static_cast<std::int32_t>(j.fieldOff + 4);
-            out_[j.fieldOff] = rel & 0xFF;
-            out_[j.fieldOff + 1] = (rel >> 8) & 0xFF;
-            out_[j.fieldOff + 2] = (rel >> 16) & 0xFF;
-            out_[j.fieldOff + 3] = (rel >> 24) & 0xFF;
-        }
+        labelFixups_.RecordRel32(name, loc, fieldOff);
     }
 
     // --- SSE / SSE2 -------------------------------------------------------
@@ -1180,44 +1141,14 @@ private:
             return;
         }
 
-        // SSE/SSE2. Two-operand `xmm, xmm/mem` ops keyed by (prefix, opcode);
-        // prefix 0 = none, 0x66/0xF2/0xF3 = the mandatory prefix.
-        struct SseOp {
-            std::uint8_t prefix;
-            std::uint8_t opcode;
-        };
-
-        static const std::unordered_map<std::string_view, SseOp> sse = {
-            {"sqrtsd", {0xF2, 0x51}},   {"sqrtss", {0xF3, 0x51}},  {"addsd", {0xF2, 0x58}},
-            {"addss", {0xF3, 0x58}},    {"subsd", {0xF2, 0x5C}},   {"subss", {0xF3, 0x5C}},
-            {"mulsd", {0xF2, 0x59}},    {"mulss", {0xF3, 0x59}},   {"divsd", {0xF2, 0x5E}},
-            {"divss", {0xF3, 0x5E}},    {"minsd", {0xF2, 0x5D}},   {"minss", {0xF3, 0x5D}},
-            {"maxsd", {0xF2, 0x5F}},    {"maxss", {0xF3, 0x5F}},   {"cvtsd2ss", {0xF2, 0x5A}},
-            {"cvtss2sd", {0xF3, 0x5A}}, {"ucomisd", {0x66, 0x2E}}, {"ucomiss", {0x00, 0x2E}},
-            {"comisd", {0x66, 0x2F}},   {"comiss", {0x00, 0x2F}},  {"xorps", {0x00, 0x57}},
-            {"xorpd", {0x66, 0x57}},    {"andps", {0x00, 0x54}},   {"andpd", {0x66, 0x54}},
-            {"orps", {0x00, 0x56}},     {"orpd", {0x66, 0x56}},    {"andnps", {0x00, 0x55}},
-            {"andnpd", {0x66, 0x55}},   {"pxor", {0x66, 0xEF}},    {"pand", {0x66, 0xDB}},
-            {"por", {0x66, 0xEB}},
-        };
-        if (const auto it = sse.find(m); it != sse.end()) {
-            EncodeSseRegRm(in, it->second.prefix, it->second.opcode);
-            return;
-        }
-
-        // SSE data moves: (prefix, load opcode, store opcode).
-        struct SseMovOp {
-            std::uint8_t prefix;
-            std::uint8_t loadOp;
-            std::uint8_t storeOp;
-        };
-
-        static const std::unordered_map<std::string_view, SseMovOp> ssemov = {
-            {"movsd", {0xF2, 0x10, 0x11}},  {"movss", {0xF3, 0x10, 0x11}},  {"movups", {0x00, 0x10, 0x11}},
-            {"movupd", {0x66, 0x10, 0x11}}, {"movaps", {0x00, 0x28, 0x29}}, {"movapd", {0x66, 0x28, 0x29}},
-        };
-        if (const auto it = ssemov.find(m); it != ssemov.end()) {
-            EncodeSseMove(in, it->second.prefix, it->second.loadOp, it->second.storeOp);
+        // SSE/SSE2 r/m forms are decoded in the private support implementation.
+        if (const auto *form = LookupSseForm(m)) {
+            if (form->kind == SseFormKind::RegRm) {
+                EncodeSseRegRm(in, form->prefix, form->loadOpcode);
+            }
+            else {
+                EncodeSseMove(in, form->prefix, form->loadOpcode, form->storeOpcode);
+            }
             return;
         }
 
@@ -1255,25 +1186,6 @@ private:
         }
 
         Error(in.location, std::format("unsupported instruction '{}'", m));
-    }
-
-    // Map a jCC/setCC mnemonic (given the "j" or "set" prefix) to the low nibble
-    // of its condition-code opcode.
-    static std::optional<int> ConditionCode(const std::string &m, std::string_view prefix) {
-        if (m.size() <= prefix.size() || std::string_view(m).substr(0, prefix.size()) != prefix) {
-            return std::nullopt;
-        }
-        const std::string_view cc = std::string_view(m).substr(prefix.size());
-        static const std::unordered_map<std::string_view, int> table = {
-            {"o", 0x0},  {"no", 0x1}, {"b", 0x2},  {"c", 0x2},  {"nae", 0x2}, {"ae", 0x3},  {"nb", 0x3}, {"nc", 0x3},
-            {"e", 0x4},  {"z", 0x4},  {"ne", 0x5}, {"nz", 0x5}, {"be", 0x6},  {"na", 0x6},  {"a", 0x7},  {"nbe", 0x7},
-            {"s", 0x8},  {"ns", 0x9}, {"p", 0xA},  {"pe", 0xA}, {"np", 0xB},  {"po", 0xB},  {"l", 0xC},  {"nge", 0xC},
-            {"ge", 0xD}, {"nl", 0xD}, {"le", 0xE}, {"ng", 0xE}, {"g", 0xF},   {"nle", 0xF},
-        };
-        if (const auto it = table.find(cc); it != table.end()) {
-            return it->second;
-        }
-        return std::nullopt;
     }
 };
 } // namespace
