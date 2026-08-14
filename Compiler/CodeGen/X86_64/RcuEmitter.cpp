@@ -10,6 +10,7 @@
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
+#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <array>
@@ -48,7 +49,8 @@ public:
                          .packageName = pkgName,
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
-        , enc(moduleBuilder.SectionData(RcuModuleSection::Text)) {
+        , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
+        , runtimeHelpers(moduleBuilder, PlatformDefaultConvention(inputTargetOs, Target::Arch::X86_64)) {
     }
 
     RcuFile Generate();
@@ -77,21 +79,14 @@ private:
     // Encoder writes target instructions into the builder-owned text section.
     X64Enc enc;
 
+    X86_64RuntimeHelperEmitter runtimeHelpers;
+
     int constIdx = 0;
 
     // Declared extern symbols (by name → symbol index)
     std::unordered_map<std::string, uint32_t> externSyms;
     std::unordered_map<std::string, uint32_t> funcSyms;
     std::unordered_map<std::string, uint32_t> dataSyms;
-
-    // Symbol index of the synthesized integer-pow helper (~0u until
-    // used).
-    uint32_t ipowSym = ~0u;
-
-    // Symbol indices of the synthesized floating-point pow helpers (~0u
-    // until used). The f32 helper is a thin wrapper around the f64 one.
-    uint32_t fpowSym = ~0u;
-    uint32_t fpowf32Sym = ~0u;
 
     // Struct field layouts
     LayoutMap layouts;
@@ -311,251 +306,6 @@ private:
         const uint32_t idx = moduleBuilder.DeclareExternal(name, kind, dll).value_or(~0u);
         externSyms[name] = idx;
         return idx;
-    }
-
-    // Lazily declares the synthesized integer exponentiation helper and
-    // returns its symbol index. The body is emitted once per object by
-    // EmitIntPowHelper(), after all user functions, so forward calls to
-    // it resolve like any other local text symbol.
-    uint32_t EnsureIntPowHelper() {
-        if (ipowSym == ~0u) {
-            ipowSym = DeclareSymbol("__rux_ipow", {}, RcuSymKind::Func, RcuSymVis::Local);
-        }
-        return ipowSym;
-    }
-
-    // Emits the integer exponentiation helper into .text:
-    //   rax = rdi ** rsi   (signed exponent)
-    // Exponentiation by squaring; a negative exponent yields 0 and a
-    // zero exponent yields 1. Works for every integer width because the
-    // low bits of a two's-complement product are width-independent, so
-    // no libm/CRT dependency is needed on any backend.
-    void EmitIntPowHelper() {
-        if (ipowSym == ~0u) {
-            return;
-        }
-        if (!moduleBuilder.BeginFunction(ipowSym)) {
-            return;
-        }
-        if (EffectiveConv(CallingConvention::Default) == CallingConvention::SysV) {
-            // Keep the compact helper body below in its historical rcx/rdx
-            // form after accepting native SysV rdi/rsi arguments.
-            enc.Byte(0x48);
-            enc.Byte(0x89);
-            enc.Byte(0xF9); // mov rcx, rdi
-            enc.Byte(0x48);
-            enc.Byte(0x89);
-            enc.Byte(0xF2); // mov rdx, rsi
-        }
-        // clang-format off
-                static constexpr std::uint8_t kBody[] = {
-                    0x48, 0x85, 0xD2,                         // test rdx, rdx    ; exponent
-                    0x78, 0x20,                               // js   .negative   ; exp < 0 -> 0
-                    0xB8, 0x01, 0x00, 0x00, 0x00,             // mov  eax, 1      ; result = 1
-                    // .loop:
-                    0x48, 0x85, 0xD2,                         // test rdx, rdx
-                    0x74, 0x18,                               // jz   .done       ; exp == 0
-                    0x48, 0xF7, 0xC2, 0x01, 0x00, 0x00, 0x00, // test rdx, 1
-                    0x74, 0x04,                               // jz   .square
-                    0x48, 0x0F, 0xAF, 0xC1,                   // imul rax, rcx    ; result *= base
-                    // .square:
-                    0x48, 0x0F, 0xAF, 0xC9,                   // imul rcx, rcx    ; base *= base
-                    0x48, 0xD1, 0xFA,                         // sar  rdx, 1      ; exp >>= 1
-                    0xEB, 0xE5,                               // jmp  .loop
-                    // .negative:
-                    0x31, 0xC0,                               // xor  eax, eax    ; result = 0
-                    // .done:
-                    0xC3,                                     // ret
-                };
-        // clang-format on
-        for (const std::uint8_t b : kBody) {
-            enc.Byte(b);
-        }
-        (void)moduleBuilder.EndFunction(ipowSym);
-    }
-
-    // Lazily declares the synthesized double-precision pow helper and
-    // returns its symbol index. The body is emitted once per object by
-    // EmitFloatPowHelper(), alongside the other runtime helpers.
-    uint32_t EnsureFloatPowHelper() {
-        if (fpowSym == ~0u) {
-            fpowSym = DeclareSymbol("__rux_powf64", {}, RcuSymKind::Func, RcuSymVis::Local);
-        }
-        return fpowSym;
-    }
-
-    // Lazily declares the synthesized single-precision pow helper. It is a
-    // thin wrapper around the double helper, so ensure that one exists too.
-    uint32_t EnsureFloatPowF32Helper() {
-        EnsureFloatPowHelper();
-        if (fpowf32Sym == ~0u) {
-            fpowf32Sym = DeclareSymbol("__rux_powf32", {}, RcuSymKind::Func, RcuSymVis::Local);
-        }
-        return fpowf32Sym;
-    }
-
-    // Emits the double-precision exponentiation helper into .text:
-    //   xmm0 = xmm0 ** xmm1   (base ** exponent, both f64)
-    //
-    // Computed as |base|**exp = 2**(exp * log2(|base|)) on the x87 FPU
-    // (fyl2x + f2xm1 + fscale), so no libm/CRT dependency is needed on any
-    // backend. The sign of a negative base is restored for integer
-    // exponents (odd -> negated result, even -> positive); a negative base
-    // with a non-integer exponent yields NaN, matching C pow(). Special
-    // cases handled up front: exp == 0 -> 1, base == 0 -> 0 (or +inf for a
-    // negative exponent). Only volatile registers (rax/rdx, xmm0-xmm3) are
-    // touched, so the helper is ABI-safe under both SysV and Win64.
-    void EmitFloatPowHelper() {
-        if (fpowSym == ~0u) {
-            return;
-        }
-        if (!moduleBuilder.BeginFunction(fpowSym)) {
-            return;
-        }
-
-        auto b = [&](std::initializer_list<uint8_t> bytes) {
-            for (uint8_t x : bytes) {
-                enc.Byte(x);
-            }
-        };
-        // Emits a two-byte Jcc rel32 and returns the offset of its
-        // displacement field for later patching.
-        auto jcc = [&](uint8_t cc) -> uint32_t {
-            enc.Byte(0x0F);
-            enc.Byte(cc);
-            uint32_t off = enc.Size();
-            enc.Dword(0);
-            return off;
-        };
-        // Patches a previously emitted Jcc/Jmp to target the current offset.
-        auto patch = [&](uint32_t patchOff) {
-            int32_t rel = static_cast<int32_t>(enc.Size()) - static_cast<int32_t>(patchOff + 4);
-            enc.Patch32(patchOff, rel);
-        };
-
-        // clang-format off
-        // Prologue: reserve 16 bytes of scratch; [rsp]=base, [rsp+8]=exp.
-        b({0x48, 0x83, 0xEC, 0x10});             // sub  rsp, 16
-        b({0xF2, 0x0F, 0x11, 0x04, 0x24});       // movsd [rsp], xmm0      ; base
-        b({0xF2, 0x0F, 0x11, 0x4C, 0x24, 0x08}); // movsd [rsp+8], xmm1    ; exp
-
-        // exp == 0  ->  return 1.0  (covers base==0/inf/NaN per C pow).
-        b({0x48, 0x8B, 0x44, 0x24, 0x08});       // mov  rax, [rsp+8]
-        b({0x48, 0x01, 0xC0});                   // add  rax, rax          ; drop sign bit
-        uint32_t jExpNonZero = jcc(0x85);        // jnz  .not_exp0
-        b({0x48, 0xB8}); enc.Qword(0x3FF0000000000000ull); // mov rax, 1.0 bits
-        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
-        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
-        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
-        b({0xC3});                               // ret
-        patch(jExpNonZero);                      // .not_exp0:
-
-        // |base| == 0  ->  0.0 (exp>0) or +inf (exp<0).
-        b({0x48, 0x8B, 0x04, 0x24});             // mov  rax, [rsp]
-        b({0x48, 0x01, 0xC0});                   // add  rax, rax          ; drop sign bit
-        uint32_t jBaseNonZero = jcc(0x85);       // jnz  .base_nonzero
-        b({0x48, 0x8B, 0x44, 0x24, 0x08});       // mov  rax, [rsp+8]
-        b({0x48, 0x85, 0xC0});                   // test rax, rax          ; exp sign
-        uint32_t jBase0NegExp = jcc(0x88);       // js   .base0_neg_exp
-        b({0x31, 0xC0});                         // xor  eax, eax          ; +0.0
-        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
-        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
-        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
-        b({0xC3});                               // ret
-        patch(jBase0NegExp);                     // .base0_neg_exp:
-        b({0x48, 0xB8}); enc.Qword(0x7FF0000000000000ull); // mov rax, +inf bits
-        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
-        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
-        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
-        b({0xC3});                               // ret
-        patch(jBaseNonZero);                     // .base_nonzero:
-
-        // Sign decision -> edx: 0 keep, 1 negate, 2 NaN.
-        b({0x31, 0xD2});                         // xor  edx, edx
-        b({0x48, 0x8B, 0x04, 0x24});             // mov  rax, [rsp]        ; base bits
-        b({0x48, 0x85, 0xC0});                   // test rax, rax
-        uint32_t jBasePos = jcc(0x89);           // jns  .magnitude        ; base > 0
-        // base < 0: the exponent must be an integer, else the result is NaN.
-        b({0xF2, 0x0F, 0x10, 0x54, 0x24, 0x08}); // movsd xmm2, [rsp+8]
-        b({0xF2, 0x48, 0x0F, 0x2C, 0xC2});       // cvttsd2si rax, xmm2
-        b({0xF2, 0x48, 0x0F, 0x2A, 0xD8});       // cvtsi2sd  xmm3, rax
-        b({0x66, 0x0F, 0x2E, 0xD3});             // ucomisd xmm2, xmm3
-        uint32_t jNonInt = jcc(0x85);            // jne  .nonint
-        b({0x83, 0xE0, 0x01});                   // and  eax, 1            ; parity
-        b({0x89, 0xC2});                         // mov  edx, eax          ; 1 if odd
-        enc.Byte(0xE9); uint32_t jToMag = enc.Size(); enc.Dword(0); // jmp .magnitude
-        patch(jNonInt);                          // .nonint:
-        b({0xBA, 0x02, 0x00, 0x00, 0x00});       // mov  edx, 2
-        patch(jBasePos);                         // .magnitude:
-        patch(jToMag);
-
-        // magnitude = |base| ** exp  =  2 ** (exp * log2(|base|)).
-        b({0xDD, 0x44, 0x24, 0x08});             // fld  qword [rsp+8]     ; exp
-        b({0xDD, 0x04, 0x24});                   // fld  qword [rsp]       ; base
-        b({0xD9, 0xE1});                         // fabs                   ; |base|
-        b({0xD9, 0xF1});                         // fyl2x                  ; w = exp*log2(|base|)
-        b({0xD9, 0xC0});                         // fld  st0
-        b({0xD9, 0xFC});                         // frndint                ; i = round(w)
-        b({0xDC, 0xE9});                         // fsub st1, st0          ; frac = w - i in [-1,1]
-        b({0xD9, 0xC9});                         // fxch                   ; st0=frac st1=i
-        b({0xD9, 0xF0});                         // f2xm1                  ; 2^frac - 1
-        b({0xD9, 0xE8});                         // fld1
-        b({0xDE, 0xC1});                         // faddp st1, st0         ; 2^frac
-        b({0xD9, 0xFD});                         // fscale                 ; 2^frac * 2^i
-        b({0xDD, 0xD9});                         // fstp st1               ; drop i -> st0=magnitude
-
-        b({0x85, 0xD2});                         // test edx, edx
-        uint32_t jStore = jcc(0x84);             // jz   .store
-        b({0x83, 0xFA, 0x02});                   // cmp  edx, 2
-        uint32_t jNan = jcc(0x84);               // jz   .nan
-        b({0xD9, 0xE0});                         // fchs                   ; negate (odd exponent)
-        patch(jStore);                           // .store:
-        b({0xDD, 0x1C, 0x24});                   // fstp qword [rsp]
-        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
-        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
-        b({0xC3});                               // ret
-        patch(jNan);                             // .nan:
-        b({0xDD, 0xD8});                         // fstp st0               ; drop magnitude
-        b({0x48, 0xB8}); enc.Qword(0x7FF8000000000000ull); // mov rax, qNaN bits
-        b({0x48, 0x89, 0x04, 0x24});             // mov  [rsp], rax
-        b({0xF2, 0x0F, 0x10, 0x04, 0x24});       // movsd xmm0, [rsp]
-        b({0x48, 0x83, 0xC4, 0x10});             // add  rsp, 16
-        b({0xC3});                               // ret
-                   // clang-format on
-        (void)moduleBuilder.EndFunction(fpowSym);
-    }
-
-    // Emits the single-precision pow helper into .text:
-    //   xmm0 = xmm0 ** xmm1   (base ** exponent, both f32)
-    //
-    // Widens the arguments to f64, defers to __rux_powf64, then narrows the
-    // result. Computing in double precision keeps the f32 result correctly
-    // rounded and avoids duplicating the x87 sequence.
-    void EmitFloatPowF32Helper() {
-        if (fpowf32Sym == ~0u) {
-            return;
-        }
-        if (!moduleBuilder.BeginFunction(fpowf32Sym)) {
-            return;
-        }
-
-        auto b = [&](std::initializer_list<uint8_t> bytes) {
-            for (uint8_t x : bytes) {
-                enc.Byte(x);
-            }
-        };
-        // clang-format off
-        b({0xF3, 0x0F, 0x5A, 0xC0}); // cvtss2sd xmm0, xmm0
-        b({0xF3, 0x0F, 0x5A, 0xC9}); // cvtss2sd xmm1, xmm1
-        b({0x48, 0x83, 0xEC, 0x08}); // sub  rsp, 8            ; keep 16-byte align at call
-        uint32_t ro;
-        enc.Call(ro);
-        AddTextReloc(ro, fpowSym);   // call __rux_powf64
-        b({0x48, 0x83, 0xC4, 0x08}); // add  rsp, 8
-        b({0xF2, 0x0F, 0x5A, 0xC0}); // cvtsd2ss xmm0, xmm0
-        b({0xC3});                   // ret
-                   // clang-format on
-        (void)moduleBuilder.EndFunction(fpowf32Sym);
     }
 
     void PredeclareFunctions() {
@@ -1748,18 +1498,18 @@ private:
             if (IsFloat(t)) {
                 // Float exponentiation uses a synthesized x87 helper rather
                 // than libm pow, so no CRT/math DLL import is required.
-                uint32_t sym = t.kind == TypeRef::Kind::Float32 ? EnsureFloatPowF32Helper() : EnsureFloatPowHelper();
                 EmitCallArgs(instr.srcs, CallingConvention::Default);
                 uint32_t ro;
                 enc.Call(ro);
-                AddTextReloc(ro, sym);
+                runtimeHelpers.AddCallRelocation(ro, t.kind == TypeRef::Kind::Float32
+                                                         ? X86_64RuntimeHelper::FloatPower32
+                                                         : X86_64RuntimeHelper::FloatPower64);
             }
             else {
-                uint32_t sym = EnsureIntPowHelper();
                 EmitCallArgs(instr.srcs, CallingConvention::Default);
                 uint32_t ro;
                 enc.Call(ro);
-                AddTextReloc(ro, sym);
+                runtimeHelpers.AddCallRelocation(ro, X86_64RuntimeHelper::IntegerPower);
             }
             if (win64Call) {
                 enc.AddRspImm32(callFrameSize);
@@ -2657,11 +2407,7 @@ private:
         for (const auto &func : mod.funcs) {
             GenFunc(func);
         }
-        // Runtime helpers referenced by the generated code, emitted
-        // once. The f32 pow helper calls the f64 one, so emit f64 first.
-        EmitIntPowHelper();
-        EmitFloatPowHelper();
-        EmitFloatPowF32Helper();
+        runtimeHelpers.EmitRequested();
     }
 };
 
