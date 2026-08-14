@@ -3,7 +3,7 @@
 #include "CodeGen/AArch64/RcuEmitter.h"
 
 #include "CodeGen/AArch64/Assembler.h"
-#include "CodeGen/AArch64/CallLayout.h"
+#include "CodeGen/AArch64/CallAndTerminatorEmitter.h"
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/FunctionEmitter.h"
@@ -32,73 +32,6 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-using ArgLocation = AArch64ArgumentLocation;
-using CallLayout = AArch64CallLayout;
-
-// A branch waiting for the offset of the block it targets. AArch64 splits a
-// branch immediate across a field of its own width — 26 bits for B, 19 for the
-// conditional forms, 14 for the test-and-branch pair — so a patch site names
-// the instruction and the field inside it rather than a displacement the way an
-// x86-64 patch site does.
-struct JumpPatch {
-    std::uint32_t patchOff = 0; // byte offset of the branch instruction
-    std::uint32_t targetBlock = 0;
-    unsigned lsb = 0;       // low bit of the immediate field
-    unsigned width = 0;     // width of that field, in bits
-    std::uint64_t site = 0; // which branch of the function this is
-};
-
-// Which branch of a function a patch site is, which has to be a name the next
-// pass over the same function arrives at again: an offset changes when a branch
-// ahead of it is widened, and the block and the position inside its terminator
-// do not.
-constexpr std::uint64_t kNoSite = ~0ULL;
-
-[[nodiscard]] constexpr std::uint64_t BranchSite(const std::uint32_t block, const unsigned ordinal) {
-    return static_cast<std::uint64_t>(block) << 32U | ordinal;
-}
-
-// A one-instruction conditional branch: the condition-code form, and the
-// compare-and-branch pair that tests a register against zero. All three keep a
-// 19-bit signed immediate at bit 5, so all three reach a megabyte of code and
-// all three are widened the same way when the target turns out to be further.
-struct CondBranch {
-    enum class Form : std::uint8_t {
-        Condition, // B.<cond>
-        Zero,      // CBZ
-        NotZero,   // CBNZ
-    };
-
-    Form form = Form::Condition;
-    A64Condition cond = A64Condition::Eq;
-    A64Reg reg{};
-
-    // The branch taken exactly where this one is not, which is what a widened
-    // site branches over its own `B` with.
-    [[nodiscard]] CondBranch Inverted() const {
-        switch (form) {
-        case Form::Zero:
-            return {Form::NotZero, cond, reg};
-        case Form::NotZero:
-            return {Form::Zero, cond, reg};
-        default:
-            return {Form::Condition, A64::InvertCondition(cond), reg};
-        }
-    }
-};
-
-[[nodiscard]] CondBranch OnCondition(const A64Condition cond) {
-    return {CondBranch::Form::Condition, cond, {}};
-}
-
-[[nodiscard]] CondBranch OnZero(const A64Reg reg) {
-    return {CondBranch::Form::Zero, A64Condition::Eq, reg};
-}
-
-[[nodiscard]] CondBranch OnNotZero(const A64Reg reg) {
-    return {CondBranch::Form::NotZero, A64Condition::Eq, reg};
-}
-
 // How a write is asked of a Unix kernel on this system: the number the call is
 // known by, the register that number travels in, and the immediate SVC carries.
 // A failed assertion prints its message before it traps, and that print is the
@@ -157,18 +90,9 @@ constexpr unsigned kTemp = 9;
 // writes through it, so it is never the register the value itself is in.
 constexpr unsigned kAddr = 10;
 
-// The second address a block copy needs: an aggregate is read through one
-// pointer and written through another, and both are live at once.
-constexpr unsigned kSrcAddr = 11;
-
 // The second value register. LDP and STP move two registers at a time, and a
 // multiply by an element width needs somewhere to put the width.
 constexpr unsigned kTemp2 = 12;
-
-// How many arguments AAPCS64 passes in general-purpose registers: X0 through X7,
-// which is also where a callee finds them.
-// Everything past the eighth travels on the stack.
-constexpr unsigned kIntArgRegs = 8;
 
 // The register a caller puts the address of an indirect result in. It is
 // neither an argument register nor a result one — a callee returning something
@@ -211,7 +135,7 @@ constexpr unsigned kFpTemp = 16;
 // yet. Index zero is a real symbol, so absence needs a value of its own.
 constexpr std::uint32_t kNoSymbol = ~0U;
 
-class AArch64CodeGen final : private AArch64FunctionEmitterHooks {
+class AArch64CodeGen final : private AArch64FunctionEmitterHooks, private AArch64CallAndTerminatorHooks {
 public:
     explicit AArch64CodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                             const std::vector<std::string> &inputPackageInterfaceNames, std::string inputPackageName,
@@ -301,15 +225,6 @@ private:
     // pointed-to plan lives for every widening pass over that function.
     const AArch64FramePlan *activeFramePlan = nullptr;
 
-    // Per-emission state: where each block began and which branches are still
-    // waiting for a block offset.
-    std::vector<std::uint32_t> blockOffsets;
-    std::vector<JumpPatch> jumpPatches;
-
-    // The conditional branches of this function that a previous pass over it
-    // found too far from their target to reach in one instruction.
-    std::unordered_set<std::uint64_t> widenedSites;
-
     // The function being generated, so a report can say where it was reached.
     std::string currentFunc;
 
@@ -331,6 +246,10 @@ private:
     }
 
     void ReportFunctionDiagnostic(std::string message) override {
+        Report(std::move(message));
+    }
+
+    void ReportCallAndTerminatorDiagnostic(std::string message) override {
         Report(std::move(message));
     }
 
@@ -460,6 +379,17 @@ private:
         (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOff, symIdx, type, addend);
     }
 
+    void AddCallRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol) override {
+        AddTextReloc(sectionOffset, symbol, RcuRelType::AArch64Call26);
+    }
+
+    [[nodiscard]] std::uint32_t ResolveCallSymbol(const std::string &name) override {
+        if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
+            return it->second;
+        }
+        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
+    }
+
     void AddRodataReloc(const std::uint32_t sectionOff, const std::uint32_t symIdx, const std::uint16_t type,
                         const std::int32_t addend = 0) {
         (void)moduleBuilder.AddRelocation(RcuModuleSection::RoData, sectionOff, symIdx, type, addend);
@@ -494,98 +424,6 @@ private:
         AddTextReloc(ref.lo12, symbol, RcuRelType::AArch64LdstAbsLo12Nc);
     }
 
-    // Branches
-    //
-    // A branch to a block further down the function is emitted before the block
-    // it names has an offset, so the immediate is filled in once the whole body
-    // is laid out. Which form the branch took is decided before that, though,
-    // and the conditional forms reach only a megabyte: whether one of them
-    // reaches is a question this pass over the function cannot answer, so a site
-    // that did not is recorded and the function emitted again — see GenFunc.
-
-    // Fill in every branch immediate, and report whether all of them fitted.
-    // A conditional site that did not is remembered as one to widen; nothing
-    // else can be, since the 26 bits a `B` carries reach 128 megabytes and no
-    // function is that long.
-    bool PatchJumps() {
-        bool ok = true;
-        for (const auto &patch : jumpPatches) {
-            if (patch.targetBlock >= blockOffsets.size()) {
-                continue;
-            }
-            const auto target = static_cast<std::int32_t>(blockOffsets[patch.targetBlock]);
-            const std::int32_t instructions =
-                (target - static_cast<std::int32_t>(patch.patchOff)) / static_cast<std::int32_t>(A64Enc::InstrSize);
-            const std::int32_t limit = 1 << (patch.width - 1);
-            if (instructions < -limit || instructions >= limit) {
-                ok = false;
-                if (patch.site == kNoSite) {
-                    Report(
-                        std::format("AArch64 code generation reached a branch too far to encode in '{}'", currentFunc));
-                    continue;
-                }
-                widenedSites.insert(patch.site);
-                continue;
-            }
-            enc.PatchField(patch.patchOff, patch.lsb, patch.width, static_cast<std::uint32_t>(instructions));
-        }
-        return ok;
-    }
-
-    void EmitJumpTo(const std::uint32_t targetBlock) {
-        const std::uint32_t patchOff = enc.Size();
-        Must(enc.B(0), "a branch");
-        jumpPatches.push_back({patchOff, targetBlock, 0, 26, kNoSite});
-    }
-
-    void EmitCondBranch(const CondBranch &branch, const std::int64_t offset) {
-        switch (branch.form) {
-        case CondBranch::Form::Zero:
-            Must(enc.Cbz(branch.reg, offset), "a branch on zero");
-            break;
-        case CondBranch::Form::NotZero:
-            Must(enc.Cbnz(branch.reg, offset), "a branch on a nonzero value");
-            break;
-        default:
-            Must(enc.BCond(branch.cond, offset), "a conditional branch");
-            break;
-        }
-    }
-
-    // A conditional branch to a block, in the one-instruction form or — where a
-    // previous pass found the target out of reach — as the inverse of that
-    // branch over an unconditional one, which reaches anywhere.
-    void EmitCondBranchTo(const CondBranch &branch, const std::uint32_t targetBlock, const std::uint64_t site) {
-        if (widenedSites.contains(site)) {
-            EmitCondBranch(branch.Inverted(), 2 * A64Enc::InstrSize);
-            EmitJumpTo(targetBlock);
-            return;
-        }
-        const std::uint32_t patchOff = enc.Size();
-        EmitCondBranch(branch, 0);
-        jumpPatches.push_back({patchOff, targetBlock, 5, 19, site});
-    }
-
-    // A conditional branch over the instructions emitted right after it, whose
-    // target is therefore known as soon as they are: the copies one edge of a
-    // branch carries and the other must not run. Only a function with a hundred
-    // thousand instructions' worth of copies on one edge could put that target
-    // out of reach, which is a report rather than a case to widen.
-    [[nodiscard]] std::uint32_t EmitBranchOver(const CondBranch &branch) {
-        const std::uint32_t patchOff = enc.Size();
-        EmitCondBranch(branch, 0);
-        return patchOff;
-    }
-
-    void PatchBranchOver(const std::uint32_t patchOff) {
-        const std::uint32_t instructions = (enc.Size() - patchOff) / A64Enc::InstrSize;
-        if (instructions >= 1U << 18U) {
-            Report(std::format("AArch64 code generation reached a branch too far to encode in '{}'", currentFunc));
-            return;
-        }
-        enc.PatchField(patchOff, 5, 19, instructions);
-    }
-
     // Frame layout
     //
     // The frame record sits at the bottom of the frame, which is where X29
@@ -599,7 +437,7 @@ private:
         return *activeFramePlan;
     }
 
-    [[nodiscard]] std::int32_t Disp(const LirReg reg) {
+    [[nodiscard]] std::int32_t Disp(const LirReg reg) override {
         if (const auto it = FramePlan().SlotOffsets().find(reg); it != FramePlan().SlotOffsets().end()) {
             return it->second;
         }
@@ -608,7 +446,7 @@ private:
         return kFrameRecordSize;
     }
 
-    [[nodiscard]] int RuntimeSize(const TypeRef &t) const {
+    [[nodiscard]] int RuntimeSize(const TypeRef &t) const override {
         return RuntimeSizeOf(t, layouts, interfaceNames);
     }
 
@@ -616,7 +454,7 @@ private:
     // what decides whether a block copy of it may use the pair forms. AlignOf
     // can only derive an alignment from a size, so a named type answers from
     // its computed layout wherever the package declared one.
-    [[nodiscard]] int RuntimeAlign(const TypeRef &t) const {
+    [[nodiscard]] int RuntimeAlign(const TypeRef &t) const override {
         if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
             const std::string base = BaseTypeName(t.name);
             if (interfaceNames.contains(base)) {
@@ -640,17 +478,10 @@ private:
         return !IsFloat(t) && !IsAggregate(t) && t.kind != TypeRef::Kind::Str;
     }
 
-    // The vector register a value of this type is computed in: the S view for a
-    // float32 and the D view for a float64, which is what selects the precision
-    // of every floating-point instruction that names it.
-    [[nodiscard]] static A64Reg FpReg(const TypeRef &t, const unsigned index) {
-        return t.kind == TypeRef::Kind::Float32 ? A64::Sn(index) : A64::Dn(index);
-    }
-
     // Whether a value of this type moves as a block of bytes rather than in one
     // register. What counts as an aggregate is a property of the LIR type
     // rather than of the machine, so this is the x86-64 rule unchanged.
-    [[nodiscard]] bool IsAggregate(const TypeRef &t) const {
+    [[nodiscard]] bool IsAggregate(const TypeRef &t) const override {
         if (t.IsRange()) {
             return true;
         }
@@ -666,17 +497,6 @@ private:
         default:
             return false;
         }
-    }
-
-    // A block move needs an address on both sides, and half the time the value
-    // side is already one: a register holding a pointer to the very aggregate
-    // being moved is that address, and taking the address of its slot would
-    // copy the pointer rather than what it points at.
-    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto it = registerTypes.find(reg);
-        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
-               it->second.inner[0] == pointee;
     }
 
     // The machine register a virtual one lives in, or nothing where it lives in
@@ -771,7 +591,7 @@ private:
     // other systems keep the exact FrameAdjust sequence they emitted before.
     // Small Windows areas pass through ProbeStack too, but it deliberately
     // becomes the same single adjustment below one page.
-    void OpenStackArea(const std::int32_t bytes, const std::string_view what) {
+    void OpenStackArea(const std::int32_t bytes, const std::string_view what) override {
         Must(targetOs == Target::OS::Windows ? enc.ProbeStack(bytes) : enc.FrameAdjust(-bytes), what);
     }
 
@@ -788,7 +608,7 @@ private:
         EmitCalleeSaves(false);
     }
 
-    void EmitEpilogue() {
+    void EmitEpilogue() override {
         EmitCalleeSaves(true);
         if (FramePlan().FrameSize() <= kInlineFrameLimit) {
             Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, FramePlan().FrameSize(), A64IndexMode::PostIndex),
@@ -937,7 +757,7 @@ private:
         StoreScalar(value, A64::Fp, Disp(reg), width);
     }
 
-    void LoadWidthFromSlot(const A64Reg dst, const LirReg reg, const unsigned width, const bool sign) {
+    void LoadWidthFromSlot(const A64Reg dst, const LirReg reg, const unsigned width, const bool sign) override {
         if (const std::optional<A64Reg> home = GeneralHome(reg)) {
             EmitExtendFromHome(dst, *home, width, sign);
             return;
@@ -975,7 +795,7 @@ private:
 
     // A pointer is a doubleword whatever it points at, so bringing one out is
     // one access at a fixed width rather than LoadFromSlot's type-driven one.
-    void LoadPointer(const A64Reg dst, const LirReg reg) {
+    void LoadPointer(const A64Reg dst, const LirReg reg) override {
         LoadWidthFromSlot(dst, reg, 8, false);
     }
 
@@ -1094,7 +914,7 @@ private:
     // whichever register file its type asks for: an aggregate is a block copy,
     // a float goes through a vector register because that is the only thing that
     // holds one, and everything else is a load and a store.
-    void CopyFrameValue(const std::int32_t dstOff, const std::int32_t srcOff, const TypeRef &type) {
+    void CopyFrameValue(const std::int32_t dstOff, const std::int32_t srcOff, const TypeRef &type) override {
         const int size = RuntimeSize(type);
         if (IsAggregate(type) && size > 8) {
             CopyBlock(A64::Fp, dstOff, A64::Fp, srcOff, size, RuntimeAlign(type) >= 8);
@@ -1110,406 +930,6 @@ private:
         const unsigned width = AccessWidth(size);
         LoadScalar(value, A64::Fp, srcOff, width, type.IsSigned());
         StoreScalar(value, A64::Fp, dstOff, width);
-    }
-
-    // Phi moves
-    //
-    // A phi is not an instruction: the value it names is whatever the edge that
-    // reached it wrote into its slot, so what a phi lowers to is a copy in each
-    // predecessor, emitted on the edge itself. The copies of one edge are
-    // parallel — every one of them reads the values that held before any of them
-    // ran — so they can form a cycle no order of stores satisfies, and
-    // ResolvePhiMoves, which both back ends share, sequences them and says where
-    // a destination has to be preserved first.
-
-    [[nodiscard]] bool HasPhiMoves(const std::uint32_t from, const std::uint32_t to) const {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        const auto edges = phiMoves.find(from);
-        return edges != phiMoves.end() && edges->second.contains(to);
-    }
-
-    void EmitPhiMoves(const std::uint32_t from, const std::uint32_t to) {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        const auto edges = phiMoves.find(from);
-        if (edges == phiMoves.end()) {
-            return;
-        }
-        const auto moves = edges->second.find(to);
-        if (moves == edges->second.end()) {
-            return;
-        }
-        for (const auto &step : ResolvePhiMoves(moves->second)) {
-            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                CopyFrameValue(FramePlan().PhiTemporaryOffset(), Disp(step.dst), step.type);
-                continue;
-            }
-            CopyFrameValue(Disp(step.dst), step.sourceIsTemporary ? FramePlan().PhiTemporaryOffset() : Disp(step.src),
-                           step.type);
-        }
-    }
-
-    // AAPCS64 calls
-    //
-    // One convention, whatever the LIR says. Target-aware lowering resolves C
-    // calls to AAPCS64 on this architecture, while ordinary Rux calls may still
-    // carry `Default`; both select the same procedure call standard. Nothing
-    // here reads `instr.callConv` because there is no second AArch64 answer for
-    // it to select. The independent C-variadic distinction is consumed when
-    // argument classification needs a platform-specific variant.
-    //
-    // Nothing has to be saved around a call either. Every value this generator
-    // computes lives in a stack slot between instructions, and the registers it
-    // computes in — X9 through X12, V16 and V17 — are ones AAPCS64 lets a callee
-    // clobber, so a call destroys nothing that is live. X30 is the exception, and
-    // the prologue has already written it into the frame record.
-
-    // Fill the imaginary stack of a Windows C variadic call. Stack slots are
-    // written before registers so the X9 scratch used for them cannot disturb
-    // an already-filled argument. A scalar float crosses to the general file
-    // by bit-preserving FMOV; an HFA or any other composite is read as ordinary
-    // consecutive doublewords, with no SIMD classification at all.
-    void EmitWindowsVariadicCallArgs(const std::vector<LirReg> &args, const std::vector<TypeRef> &types,
-                                     const CallLayout &layout) {
-        const auto loadSlot = [&](const std::size_t index, const std::int32_t sourceOffset, const A64Reg dst) {
-            const ArgLocation &loc = layout.args[index];
-            if (loc.byReference) {
-                Must(enc.AddSubLargeImm(dst, A64::Sp, loc.copyOffset), "the address of an argument copy");
-                return;
-            }
-            if (IsAggregate(types[index])) {
-                LoadScalar(dst, A64::Fp, static_cast<std::int64_t>(Disp(args[index])) + sourceOffset, 8, false);
-                return;
-            }
-            if (IsFloat(types[index])) {
-                const A64Reg value = FpReg(types[index], kFpTemp);
-                LoadFpFromSlot(value, args[index]);
-                Must(enc.Fmov(A64::Gpr(dst.code, value.bits), value), "a variadic floating-point argument");
-                return;
-            }
-            LoadFromSlot(dst, args[index], types[index]);
-        };
-
-        // Caller-owned copies are part of the real outgoing area irrespective
-        // of whether their addresses land in a register or a stack slot.
-        for (std::size_t i = 0; i < args.size(); ++i) {
-            const ArgLocation &loc = layout.args[i];
-            if (!loc.byReference) {
-                continue;
-            }
-            const A64Reg source = A64::Xn(kSrcAddr);
-            SlotAddress(source, args[i]);
-            CopyBlock(A64::Sp, loc.copyOffset, source, 0, loc.copyBytes, RuntimeAlign(types[i]) >= 8);
-        }
-
-        constexpr std::int32_t registerBytes = static_cast<std::int32_t>(kIntArgRegs * 8);
-        for (const bool toRegisters : {false, true}) {
-            for (std::size_t i = 0; i < args.size(); ++i) {
-                const ArgLocation &loc = layout.args[i];
-                for (std::int32_t byte = 0; byte < loc.bytes; byte += 8) {
-                    const std::int32_t imaginaryOffset = loc.offset + byte;
-                    if ((imaginaryOffset < registerBytes) != toRegisters) {
-                        continue;
-                    }
-                    if (toRegisters) {
-                        loadSlot(i, byte, A64::Xn(static_cast<unsigned>(imaginaryOffset / 8)));
-                    }
-                    else {
-                        const A64Reg value = A64::Xn(kTemp);
-                        loadSlot(i, byte, value);
-                        StoreScalar(value, A64::Sp, imaginaryOffset - registerBytes, 8);
-                    }
-                }
-            }
-        }
-    }
-
-    // Move one argument between the registers AAPCS64 puts it in and the slot it
-    // lives in here: out of the slot where a caller fills them, into the slot
-    // where a callee spills them. What the two directions have in common is the
-    // location, so this is one function and a direction rather than two that
-    // would have to be kept in step.
-    void MoveRegisterArgument(const ArgLocation &loc, const LirReg reg, const TypeRef &type, const bool toRegisters) {
-        // A float of its own goes through the slot helpers rather than the HFA
-        // walk below, so that a value the allocation gave a register to is
-        // moved between two registers and reaches no memory. An aggregate of
-        // one float is still an aggregate and still takes the walk.
-        if (loc.kind == ArgLocation::Kind::Vector && loc.count == 1 && IsFloat(type)) {
-            const A64Reg value = A64::Vn(loc.first, loc.memberBytes * 8U);
-            if (toRegisters) {
-                LoadFpFromSlot(value, reg);
-            }
-            else {
-                StoreFpToSlot(value, reg);
-            }
-            return;
-        }
-        const auto disp = static_cast<std::int64_t>(Disp(reg));
-        if (loc.kind == ArgLocation::Kind::Vector) {
-            // The members of an HFA sit at their own width in memory and in one
-            // register each, so a pair of float32s is two S registers loaded
-            // four bytes apart.
-            for (unsigned i = 0; i < loc.count; ++i) {
-                const A64Reg member = A64::Vn(loc.first + i, loc.memberBytes * 8U);
-                const std::int64_t offset = disp + static_cast<std::int64_t>(i) * loc.memberBytes;
-                if (toRegisters) {
-                    LoadScalar(member, A64::Fp, offset, loc.memberBytes, false);
-                }
-                else {
-                    StoreScalar(member, A64::Fp, offset, loc.memberBytes);
-                }
-            }
-            return;
-        }
-        if (loc.count > 1) {
-            // A composite of no more than sixteen bytes is a whole number of
-            // doublewords here, since its slot was rounded up to one: the last
-            // register carries that padding rather than the value beside it.
-            for (unsigned i = 0; i < loc.count; ++i) {
-                const A64Reg word = A64::Xn(loc.first + i);
-                const std::int64_t offset = disp + static_cast<std::int64_t>(i) * 8;
-                if (toRegisters) {
-                    LoadScalar(word, A64::Fp, offset, 8, false);
-                }
-                else {
-                    StoreScalar(word, A64::Fp, offset, 8);
-                }
-            }
-            return;
-        }
-        // One register, at the width and the signedness the type asks for: the
-        // load extends a narrow value the way AAPCS64 asks a caller to, and the
-        // store writes only the bytes the type occupies.
-        if (toRegisters) {
-            // Apple makes this extension the caller's responsibility. The
-            // generic path deliberately keeps its previous eager extension,
-            // which is permitted and keeps Linux and Windows output stable.
-            const bool appleNarrowInteger = callPlanner.Policy().callerExtendsNarrowIntegers && !IsAggregate(type) &&
-                                            !IsFloat(type) && RuntimeSize(type) < 4;
-            if (appleNarrowInteger) {
-                LoadWidthFromSlot(A64::Xn(loc.first), reg, AccessWidth(RuntimeSize(type)), type.IsSigned());
-                return;
-            }
-            LoadFromSlot(A64::Xn(loc.first), reg, type);
-        }
-        else {
-            StoreToSlot(A64::Xn(loc.first), reg, type);
-        }
-    }
-
-    // The same movement into the registers a location names, from a value that
-    // lives at an address rather than in a slot of its own. A `ret` whose
-    // operand is the alloca holding the value is the one place that happens:
-    // the slot there holds the address, so reading the slot would return the
-    // pointer instead of what it points at.
-    void LoadResultFromAddress(const ArgLocation &loc, const A64Reg base, const TypeRef &type) {
-        if (loc.kind == ArgLocation::Kind::Vector) {
-            for (unsigned i = 0; i < loc.count; ++i) {
-                const A64Reg member = A64::Vn(loc.first + i, loc.memberBytes * 8U);
-                LoadScalar(member, base, static_cast<std::int64_t>(i) * loc.memberBytes, loc.memberBytes, false);
-            }
-            return;
-        }
-        if (loc.count > 1) {
-            for (unsigned i = 0; i < loc.count; ++i) {
-                LoadScalar(A64::Xn(loc.first + i), base, static_cast<std::int64_t>(i) * 8, 8, false);
-            }
-            return;
-        }
-        // One register: an aggregate that fits in it carries whatever padding
-        // follows it, and a scalar is read at its own width and signedness.
-        const bool aggregate = IsAggregate(type);
-        LoadScalar(A64::Xn(loc.first), base, 0, aggregate ? 8U : AccessWidth(RuntimeSize(type)),
-                   !aggregate && type.IsSigned());
-    }
-
-    // Put the arguments where the callee will look for them. Everything that
-    // travels in memory goes first, while no argument register holds anything
-    // yet: a value is read out of its slot through X9 and an aggregate is moved
-    // through X10 and X11, none of which an argument ever occupies, so neither
-    // pass disturbs the other.
-    void EmitCallArgs(const std::vector<LirReg> &args, const std::vector<TypeRef> &types, const CallLayout &layout) {
-        if (layout.windowsVariadic) {
-            EmitWindowsVariadicCallArgs(args, types, layout);
-            return;
-        }
-        for (std::size_t i = 0; i < args.size(); ++i) {
-            const ArgLocation &loc = layout.args[i];
-            const bool paired = RuntimeAlign(types[i]) >= 8;
-            if (loc.byReference) {
-                // The copy belongs to the caller, so a callee that writes to its
-                // own parameter writes to that rather than to the value here.
-                const A64Reg source = A64::Xn(kSrcAddr);
-                SlotAddress(source, args[i]);
-                CopyBlock(A64::Sp, loc.copyOffset, source, 0, loc.copyBytes, paired);
-                if (loc.kind == ArgLocation::Kind::Stack) {
-                    const A64Reg address = A64::Xn(kTemp);
-                    Must(enc.AddSubLargeImm(address, A64::Sp, loc.copyOffset), "the address of an argument copy");
-                    StoreScalar(address, A64::Sp, loc.offset, 8);
-                }
-                continue;
-            }
-            if (loc.kind != ArgLocation::Kind::Stack) {
-                continue;
-            }
-            const int size = RuntimeSize(types[i]);
-            if (IsAggregate(types[i]) && (size > 8 || callPlanner.Policy().compactStackArguments)) {
-                const A64Reg source = A64::Xn(kSrcAddr);
-                SlotAddress(source, args[i]);
-                CopyBlock(A64::Sp, loc.offset, source, 0, size, paired);
-                continue;
-            }
-            if (IsFloat(types[i])) {
-                // A float occupies the low bytes of its doubleword and leaves
-                // the rest as it found them, exactly as a narrow integer does.
-                const A64Reg value = types[i].kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
-                LoadFpFromSlot(value, args[i]);
-                StoreScalar(value, A64::Sp, loc.offset, value.bits / 8U);
-                continue;
-            }
-            const A64Reg value = A64::Xn(kTemp);
-            LoadFromSlot(value, args[i], types[i]);
-            const unsigned width = callPlanner.Policy().compactStackArguments ? AccessWidth(size) : 8U;
-            StoreScalar(value, A64::Sp, loc.offset, width);
-        }
-        for (std::size_t i = 0; i < args.size(); ++i) {
-            const ArgLocation &loc = layout.args[i];
-            if (loc.kind == ArgLocation::Kind::Stack) {
-                continue;
-            }
-            if (loc.byReference) {
-                Must(enc.AddSubLargeImm(A64::Xn(loc.first), A64::Sp, loc.copyOffset),
-                     "the address of an argument copy");
-                continue;
-            }
-            MoveRegisterArgument(loc, args[i], types[i], true);
-        }
-    }
-
-    // The symbol a direct call names: a function this module defines, or an
-    // external one. An extern declaration's `dll` reached its symbol when the
-    // module was predeclared, so a call to it carries that library whether the
-    // declaration was read before this call site or after it.
-    std::uint32_t CallTarget(const std::string &name) {
-        if (const auto it = funcSyms.find(name); it != funcSyms.end()) {
-            return it->second;
-        }
-        return GetOrAddExtern(name, RcuSymKind::ExternFunc);
-    }
-
-    // Open the outgoing argument area, fill the argument registers, branch, close
-    // the area again, and keep what came back.
-    void GenCall(const LirInstr &instr, const std::vector<LirReg> &args, const bool indirect) {
-        if (instr.isCVariadic != instr.cVariadicFixedParamCount.has_value()) {
-            Report(std::format("AArch64 code generation reached inconsistent C variadic call metadata in '{}'",
-                               currentFunc));
-            return;
-        }
-        if (instr.cVariadicFixedParamCount &&
-            (indirect || *instr.cVariadicFixedParamCount > static_cast<std::uint32_t>(args.size()))) {
-            Report(std::format("AArch64 code generation reached an invalid C variadic fixed-parameter count in '{}'",
-                               currentFunc));
-            return;
-        }
-
-        std::vector<TypeRef> types;
-        types.reserve(args.size());
-        for (const LirReg arg : args) {
-            types.push_back(TypeOfReg(arg));
-        }
-        const CallLayout layout = callPlanner.PlanArguments(types, instr.cVariadicFixedParamCount);
-        const bool keepsResult = instr.dst != LirNoReg && !instr.type.IsOpaque();
-        const bool indirectResult = keepsResult && callPlanner.ReturnsInMemory(instr.type);
-
-        if (layout.areaBytes > 0) {
-            OpenStackArea(layout.areaBytes, "the outgoing argument area");
-        }
-        EmitCallArgs(args, types, layout);
-        if (indirectResult) {
-            // A result too large for registers is written where the caller says,
-            // and the slot the value already has is somewhere it may be written:
-            // nothing else reads that slot until the call has returned.
-            SlotAddress(A64::Xn(kIndirectResult), instr.dst);
-        }
-        if (indirect) {
-            // The address is fetched after the arguments and into X9 rather than
-            // an argument register, so that fetching it cannot disturb them.
-            const A64Reg target = A64::Xn(kTemp);
-            LoadPointer(target, instr.srcs[0]);
-            Must(enc.Blr(target), "an indirect call");
-        }
-        else {
-            const std::uint32_t callSite = enc.Size();
-            Must(enc.Bl(0), "a call");
-            AddTextReloc(callSite, CallTarget(instr.strArg), RcuRelType::AArch64Call26);
-        }
-        if (layout.areaBytes > 0) {
-            Must(enc.FrameAdjust(layout.areaBytes), "the outgoing argument area");
-        }
-        // What came back is kept where every later mention of it will look. A
-        // narrow return arrives extended to at least a word with the bits above
-        // it unspecified, so the store writes only the bytes the type occupies
-        // and reads none of the rest; a result too large for registers needs
-        // nothing at all, since the callee has already written it here.
-        if (keepsResult && !indirectResult) {
-            MoveRegisterArgument(callPlanner.PlanResult(instr.type), instr.dst, instr.type, false);
-        }
-    }
-
-    // Bring the parameters in from where the caller left them, which is the same
-    // classification the caller made read the other way round. What arrived in
-    // registers is stored into the slot the prepass gave it; what arrived on the
-    // caller's stack is copied down into that slot, since the caller's area sits
-    // directly above this frame — the frame record is at the bottom of it, so
-    // what the caller wrote at its own stack pointer is at X29 plus the frame
-    // size. Every later mention of a parameter is then a read of its slot.
-    void EmitParamSpills(const LirFunc &func) {
-        std::vector<TypeRef> types;
-        types.reserve(func.params.size());
-        for (const auto &param : func.params) {
-            types.push_back(param.type);
-        }
-        const CallLayout layout = callPlanner.PlanArguments(types);
-
-        for (std::size_t i = 0; i < func.params.size(); ++i) {
-            const LirParam &param = func.params[i];
-            const ArgLocation &loc = layout.args[i];
-            const int size = RuntimeSize(param.type);
-            const bool paired = RuntimeAlign(param.type) >= 8;
-            const std::int64_t incoming = static_cast<std::int64_t>(FramePlan().FrameSize()) + loc.offset;
-            if (loc.byReference) {
-                // The caller's copy is the caller's: it is read into this frame
-                // once, and nothing here ever writes through the address again.
-                const A64Reg source = A64::Xn(kSrcAddr);
-                if (loc.kind == ArgLocation::Kind::Stack) {
-                    LoadScalar(source, A64::Fp, incoming, 8, false);
-                }
-                else {
-                    Must(enc.Mov(source, A64::Xn(loc.first)), "the address of an argument");
-                }
-                CopyBlock(A64::Fp, Disp(param.reg), source, 0, size, paired);
-                continue;
-            }
-            if (loc.kind != ArgLocation::Kind::Stack) {
-                MoveRegisterArgument(loc, param.reg, param.type, false);
-                continue;
-            }
-            if (IsAggregate(param.type) && size > 8) {
-                CopyBlock(A64::Fp, Disp(param.reg), A64::Fp, incoming, size, paired);
-                continue;
-            }
-            if (IsFloat(param.type)) {
-                const A64Reg value = param.type.kind == TypeRef::Kind::Float32 ? A64::Sn(kFpTemp) : A64::Dn(kFpTemp);
-                LoadScalar(value, A64::Fp, incoming, value.bits / 8U, false);
-                StoreFpToSlot(value, param.reg);
-                continue;
-            }
-            // Read at the width the parameter's own type occupies rather than a
-            // whole doubleword: a C caller writes a narrow argument into the low
-            // bytes of its stack slot and leaves the rest as it found it.
-            const A64Reg value = A64::Xn(kTemp);
-            LoadScalar(value, A64::Fp, incoming, AccessWidth(size), param.type.IsSigned());
-            StoreToSlot(value, param.reg, param.type);
-        }
     }
 
     // Integer arithmetic
@@ -1616,7 +1036,7 @@ private:
         EmitWindowsCall(writeFile, "a call to WriteFile");
     }
 
-    void GenAssert(const LirInstr &instr) {
+    void GenAssert(AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr) {
         const bool isAssertion = instr.op == LirOpcode::Assert;
         if (instr.srcs.size() < (isAssertion ? 2U : 1U)) {
             Report(std::format("AArch64 code generation reached a '{}' with too few operands in '{}'",
@@ -1636,7 +1056,7 @@ private:
         std::uint32_t heldBranch = 0;
         if (isAssertion) {
             LoadFromSlot(A64::Xn(kTemp), instr.srcs[0], TypeRef::MakeBool());
-            heldBranch = EmitBranchOver(OnNotZero(A64::Xn(kTemp)));
+            heldBranch = terminatorEmitter.EmitBranchOverNonZero(A64::Xn(kTemp));
         }
 
         const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
@@ -1681,153 +1101,26 @@ private:
 
         Must(enc.Brk(1), "an assertion trap");
         if (isAssertion) {
-            PatchBranchOver(heldBranch);
+            terminatorEmitter.PatchBranchOver(heldBranch);
         }
     }
 
-    void GenInstr(AArch64FunctionEmitter &functionEmitter, const LirInstr &instr) {
-        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr)) {
+    void GenInstr(AArch64FunctionEmitter &functionEmitter, AArch64CallEmitter &callEmitter,
+                  AArch64TerminatorEmitter &terminatorEmitter, const LirInstr &instr) {
+        if (functionEmitter.EmitArithmetic(instr) || functionEmitter.EmitMemory(instr) || callEmitter.Emit(instr)) {
             return;
         }
         switch (instr.op) {
         case LirOpcode::Assert:
         case LirOpcode::Panic:
-            GenAssert(instr);
+            GenAssert(terminatorEmitter, instr);
             break;
-        case LirOpcode::Call: {
-            GenCall(instr, instr.srcs, false);
-            break;
-        }
-        case LirOpcode::CallIndirect: {
-            if (instr.srcs.empty()) {
-                Report(std::format("AArch64 code generation reached an indirect call with no callee in '{}'",
-                                   currentFunc));
-                break;
-            }
-            GenCall(instr, {instr.srcs.begin() + 1, instr.srcs.end()}, true);
-            break;
-        }
         case LirOpcode::Phi:
             // Nothing: the value arrived in this register's slot along the edge
             // that reached this block, written by the predecessor's terminator.
             break;
         default:
             NotImplemented(std::format("the '{}' opcode", LirOpcodeName(instr.op)));
-            break;
-        }
-    }
-
-    // Compare the value in X9 against a case label. An immediate the arith form
-    // reaches is one instruction; anything else — a label past 4095, or a
-    // negative one — is materialized first, which is why the encoder's refusal
-    // is read rather than assumed away.
-    void CompareAgainstCase(const std::string &value) {
-        const std::uint64_t bits = ParseIntegerLiteralBits(value).value_or(0);
-        if (enc.SubsImm(A64::Xzr, A64::Xn(kTemp), bits) == A64Status::Ok) {
-            return;
-        }
-        const A64Reg label = A64::Xn(kTemp2);
-        Must(enc.LoadImm64(label, bits), "a case label");
-        Must(enc.Cmp(A64::Xn(kTemp), label), "a case comparison");
-    }
-
-    void GenTerm(const std::uint32_t blockIdx, const LirTerminator &term) {
-        switch (term.kind) {
-        case LirTermKind::Jump: {
-            EmitPhiMoves(blockIdx, term.trueTarget);
-            EmitJumpTo(term.trueTarget);
-            break;
-        }
-        case LirTermKind::Branch: {
-            // The condition is read at its own type, since a `bool8` occupies
-            // one byte of its slot and the bytes above it stand for nothing.
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const auto found = registerTypes.find(term.cond);
-            LoadFromSlot(A64::Xn(kTemp), term.cond, found != registerTypes.end() ? found->second : TypeRef::MakeBool());
-            const A64Reg cond = A64::Xn(kTemp);
-            // With no copies on either edge, the whole terminator is a branch on
-            // zero to one target and a branch to the other. With copies on
-            // either edge, each edge needs instructions of its own that the
-            // other must not run, so both become a short run ending in a jump.
-            if (!HasPhiMoves(blockIdx, term.trueTarget) && !HasPhiMoves(blockIdx, term.falseTarget)) {
-                EmitCondBranchTo(OnZero(cond), term.falseTarget, BranchSite(blockIdx, 0));
-                EmitJumpTo(term.trueTarget);
-                break;
-            }
-            const std::uint32_t toFalse = EmitBranchOver(OnZero(cond));
-            EmitPhiMoves(blockIdx, term.trueTarget);
-            EmitJumpTo(term.trueTarget);
-            PatchBranchOver(toFalse);
-            EmitPhiMoves(blockIdx, term.falseTarget);
-            EmitJumpTo(term.falseTarget);
-            break;
-        }
-        case LirTermKind::Return: {
-            if (term.retVal && *term.retVal != LirNoReg) {
-                // A value built in place is named by the alloca that holds it,
-                // so the operand is a pointer to the result rather than the
-                // result: it is read through that address, and its slot is the
-                // address itself.
-                const bool throughPointer = IsRegPointerTo(*term.retVal, term.retType);
-                if (FramePlan().IndirectResultOffset() != 0) {
-                    // The caller named the memory and the prologue kept the
-                    // address; the value is copied there and no register carries
-                    // any of it back.
-                    const A64Reg destination = A64::Xn(kAddr);
-                    LoadScalar(destination, A64::Fp, FramePlan().IndirectResultOffset(), 8, false);
-                    A64Reg source = A64::Xn(kSrcAddr);
-                    if (throughPointer) {
-                        source = ReadPointerOperand(*term.retVal, source);
-                    }
-                    else {
-                        SlotAddress(source, *term.retVal);
-                    }
-                    CopyBlock(destination, 0, source, 0, RuntimeSize(term.retType), RuntimeAlign(term.retType) >= 8);
-                }
-                else if (throughPointer) {
-                    LoadResultFromAddress(callPlanner.PlanResult(term.retType),
-                                          ReadPointerOperand(*term.retVal, A64::Xn(kSrcAddr)), term.retType);
-                }
-                else {
-                    // X0 and V0 carry everything else, the load extending a
-                    // narrow value the way AAPCS64 asks a callee to.
-                    MoveRegisterArgument(callPlanner.PlanResult(term.retType), *term.retVal, term.retType, true);
-                }
-            }
-            EmitEpilogue();
-            break;
-        }
-        case LirTermKind::Switch: {
-            // A chain of comparisons, which is what a jump table would be built
-            // out of anyway and is all the x86-64 back end emits: the labels a
-            // `match` produces are few and rarely contiguous.
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const auto found = registerTypes.find(term.cond);
-            LoadFromSlot(A64::Xn(kTemp), term.cond,
-                         found != registerTypes.end() ? found->second : TypeRef::MakeInt64());
-            unsigned ordinal = 0;
-            for (const auto &branch : term.cases) {
-                CompareAgainstCase(branch.value);
-                // A case whose edge carries copies is entered through them,
-                // which the comparison that failed has to skip over.
-                if (!HasPhiMoves(blockIdx, branch.target)) {
-                    EmitCondBranchTo(OnCondition(A64Condition::Eq), branch.target, BranchSite(blockIdx, ordinal++));
-                    continue;
-                }
-                const std::uint32_t toNext = EmitBranchOver(OnCondition(A64Condition::Ne));
-                EmitPhiMoves(blockIdx, branch.target);
-                EmitJumpTo(branch.target);
-                PatchBranchOver(toNext);
-            }
-            EmitPhiMoves(blockIdx, term.defaultTarget);
-            EmitJumpTo(term.defaultTarget);
-            break;
-        }
-        case LirTermKind::Unreachable:
-            // The permanently undefined encoding, which is what UD2 is on
-            // x86-64: control reaching here is a compiler bug, and a trap says
-            // so at the instruction rather than wherever falling through led.
-            Must(enc.Udf(0), "an unreachable terminator");
             break;
         }
     }
@@ -1895,7 +1188,9 @@ private:
         activeFramePlan = &framePlan;
         AArch64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, layouts, interfaceNames, currentFunc,
                                                *this);
-        widenedSites.clear();
+        AArch64CallEmitter callEmitter(enc, framePlan, callPlanner, currentFunc, *this);
+        AArch64TerminatorEmitter terminatorEmitter(enc, framePlan, callEmitter, currentFunc, *this);
+        terminatorEmitter.BeginFunction();
 
         // The body is emitted, and emitted again if any conditional branch in it
         // turned out not to reach its target: which form such a branch takes has
@@ -1918,24 +1213,23 @@ private:
             return;
         }
         while (true) {
-            jumpPatches.clear();
+            terminatorEmitter.BeginPass(func.blocks.size());
             EmitPrologue();
             if (FramePlan().IndirectResultOffset() != 0) {
                 StoreScalar(A64::Xn(kIndirectResult), A64::Fp, FramePlan().IndirectResultOffset(), 8);
             }
-            EmitParamSpills(func);
-            blockOffsets.assign(func.blocks.size(), 0);
+            callEmitter.EmitParamSpills(func);
             for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-                blockOffsets[bi] = enc.Size();
+                terminatorEmitter.MarkBlock(bi);
                 for (const auto &instr : func.blocks[bi].instrs) {
-                    GenInstr(functionEmitter, instr);
+                    GenInstr(functionEmitter, callEmitter, terminatorEmitter, instr);
                 }
                 if (func.blocks[bi].term) {
-                    GenTerm(bi, *func.blocks[bi].term);
+                    terminatorEmitter.Emit(bi, *func.blocks[bi].term);
                 }
             }
-            const std::size_t widened = widenedSites.size();
-            if (PatchJumps() || widenedSites.size() == widened) {
+            const std::size_t widened = terminatorEmitter.WidenedSiteCount();
+            if (terminatorEmitter.PatchJumps() || terminatorEmitter.WidenedSiteCount() == widened) {
                 break;
             }
             // Nothing this pass produced is kept: the constants it interned are
