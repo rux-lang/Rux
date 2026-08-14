@@ -2,6 +2,7 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
 #include "Ir/Hir/Hir.h"
@@ -15,8 +16,10 @@
 #include "Target/Platform.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <doctest.h>
+#include <format>
 #include <fstream>
 #include <string>
 #include <unordered_map>
@@ -249,6 +252,11 @@ TEST_CASE("RCU default calling convention follows the requested target") {
     };
     CHECK(std::ranges::search(linuxText, linuxArgument).begin() != linuxText.end());
     CHECK(std::ranges::search(windowsText, windowsArgument).begin() != windowsText.end());
+
+    const std::string linuxAssembly = AssemblyPrinter(package, Target::OS::Linux).Generate();
+    const std::string windowsAssembly = AssemblyPrinter(package, Target::OS::Windows).Generate();
+    CHECK(linuxAssembly.find("mov     rdi, rax\n    call    Consume") != std::string::npos);
+    CHECK(windowsAssembly.find("mov     rcx, rax\n    sub     rsp, 32\n    call    Consume") != std::string::npos);
 }
 
 TEST_CASE("RCU System V calls pass two-word aggregates in two registers") {
@@ -382,20 +390,71 @@ TEST_CASE("assembly phi lowering breaks a swap cycle with a stack temporary") {
     function.name = "PhiSwap";
     function.returnType = intType;
     function.blocks = {std::move(entry), std::move(loop)};
+    const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
     LirModule module;
     module.name = "test";
     module.funcs.push_back(std::move(function));
     LirPackage package;
     package.modules.push_back(std::move(module));
 
-    const std::string output = AssemblyPrinter(std::move(package)).Generate();
-    const std::string expected = "mov     rax, qword [rbp - 24]\n"
-                                 "    mov     qword [rbp - 40], rax\n"
-                                 "    mov     rax, qword [rbp - 32]\n"
-                                 "    mov     qword [rbp - 24], rax\n"
-                                 "    mov     rax, qword [rbp - 40]\n"
-                                 "    mov     qword [rbp - 32], rax";
+    const std::string output = AssemblyPrinter(std::move(package), Target::OS::Linux).Generate();
+    const auto &slots = plan.SlotOffsets();
+    const std::string expected = std::format("mov     rax, qword [rbp - {}]\n"
+                                             "    mov     qword [rbp - {}], rax\n"
+                                             "    mov     rax, qword [rbp - {}]\n"
+                                             "    mov     qword [rbp - {}], rax\n"
+                                             "    mov     rax, qword [rbp - {}]\n"
+                                             "    mov     qword [rbp - {}], rax",
+                                             slots.at(3), plan.PhiTemporaryOffset(), slots.at(4), slots.at(3),
+                                             plan.PhiTemporaryOffset(), slots.at(4));
+    CHECK(output.find(std::format("sub     rsp, {}", plan.FrameSize())) != std::string::npos);
     CHECK(output.find(expected) != std::string::npos);
+}
+
+TEST_CASE("assembly printer uses shared x86-64 frame slots and register homes") {
+    LirFunc function;
+    function.name = "FrameParity";
+    function.callConv = CallingConvention::SysV;
+    function.returnType = TypeRef::MakeInt64();
+    function.params = {{0, TypeRef::MakeInt64(), "left"}, {1, TypeRef::MakeInt64(), "right"}};
+
+    LirInstr add;
+    add.op = LirOpcode::Add;
+    add.dst = 2;
+    add.type = TypeRef::MakeInt64();
+    add.srcs = {0, 1};
+    LirInstr alloca;
+    alloca.op = LirOpcode::Alloca;
+    alloca.dst = 3;
+    alloca.type = TypeRef::MakeInt64();
+    alloca.strArg = "3";
+
+    LirBlock block;
+    block.instrs = {add, alloca};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 2;
+    block.term->retType = TypeRef::MakeInt64();
+    function.blocks.push_back(std::move(block));
+
+    const X86_64FramePlan plan = PlanX86_64Frame(function, {}, {}, Target::OS::Linux);
+    LirModule module;
+    module.name = "test";
+    module.funcs.push_back(std::move(function));
+    LirPackage package;
+    package.modules.push_back(std::move(module));
+
+    const std::string output = AssemblyPrinter(std::move(package), Target::OS::Linux).Generate();
+    const std::array<std::string_view, 5> registerNames = {"rbx", "r12", "r13", "r14", "r15"};
+    for (const int physicalRegister : plan.UsedPhysicalRegisters()) {
+        CHECK(output.find(std::format("push    {}", registerNames.at(physicalRegister))) != std::string::npos);
+    }
+    const std::int32_t localFrame =
+        plan.FrameSize() - static_cast<std::int32_t>(plan.UsedPhysicalRegisters().size() * 8);
+    CHECK(output.find(std::format("sub     rsp, {}", localFrame)) != std::string::npos);
+    CHECK(output.find(std::format("qword [rbp - {}], rdi", plan.SlotOffsets().at(0))) != std::string::npos);
+    CHECK(output.find(std::format("qword [rbp - {}], rsi", plan.SlotOffsets().at(1))) != std::string::npos);
+    CHECK(output.find(std::format("lea     rax, [rbp - {}]", plan.AllocaDataOffsets().at(3))) != std::string::npos);
 }
 
 TEST_CASE("string literal slices reference static storage") {

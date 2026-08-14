@@ -569,7 +569,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         }
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
-        AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm");
+        AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm", compileTimeContext.target.os);
     }
 
     // RCU object generation
