@@ -20,6 +20,21 @@ namespace {
     }
 }
 
+[[nodiscard]] std::optional<RcuMergedSection> MergedSectionForSymbolIndex(const std::uint16_t sectionIndex) {
+    switch (sectionIndex) {
+    case RCU_TEXT_IDX:
+        return RcuMergedSection::Text;
+    case RCU_RODATA_IDX:
+        return RcuMergedSection::RoData;
+    case RCU_DATA_IDX:
+        return RcuMergedSection::Data;
+    case RCU_BSS_IDX:
+        return RcuMergedSection::Bss;
+    default:
+        return std::nullopt;
+    }
+}
+
 [[nodiscard]] std::size_t Index(const RcuMergedSection section) {
     return static_cast<std::size_t>(section);
 }
@@ -89,14 +104,21 @@ RcuObjectLayout RcuObjectLayout::Build(const std::span<const RcuFile> inputObjec
         objectPlacement.symbols.resize(object.symbols.size());
         for (std::size_t symbolIndex = 0; symbolIndex < object.symbols.size(); ++symbolIndex) {
             const RcuSymbol &symbol = object.symbols[symbolIndex];
-            if (symbol.sectionIdx >= object.sections.size() || !objectPlacement.sections[symbol.sectionIdx]) {
+            const auto merged = MergedSectionForSymbolIndex(symbol.sectionIdx);
+            if (!merged) {
                 continue;
             }
-            const RcuSection &section = object.sections[symbol.sectionIdx];
-            if (symbol.value > section.data.size() || symbol.size > section.data.size() - symbol.value) {
+            const auto section = std::ranges::find_if(object.sections, [&](const RcuSection &candidate) {
+                return MergedSectionFor(candidate.type) == merged;
+            });
+            if (section == object.sections.end()) {
                 continue;
             }
-            const RcuSectionPlacement sectionPlacement = *objectPlacement.sections[symbol.sectionIdx];
+            if (symbol.value > section->data.size() || symbol.size > section->data.size() - symbol.value) {
+                continue;
+            }
+            const auto physicalSectionIndex = static_cast<std::size_t>(section - object.sections.begin());
+            const RcuSectionPlacement sectionPlacement = *objectPlacement.sections[physicalSectionIndex];
             objectPlacement.symbols[symbolIndex] =
                 RcuSectionPlacement{sectionPlacement.section, sectionPlacement.offset + symbol.value};
         }

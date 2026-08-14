@@ -130,3 +130,20 @@ TEST_CASE("RCU object layout exposes typed symbol relocation and image addresses
     CHECK_FALSE(RcuObjectLayout::Address({RcuMergedSection::Data, std::numeric_limits<std::uint64_t>::max()}, bases)
                     .has_value());
 }
+
+TEST_CASE("RCU object layout maps fixed symbol section ids across omitted physical sections") {
+    RcuFile object;
+    object.sections = {Section(RcuSecType::Text, 4, {0x11, 0x12, 0x13, 0x14}),
+                       Section(RcuSecType::Data, 8, {0x21, 0x22, 0x23, 0x24}),
+                       Section(RcuSecType::Bss, 16, std::vector<std::uint8_t>(8))};
+    object.symbols = {{"Entry", {}, 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+                      {"State", {}, 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global},
+                      {"Zeroes", {}, 0, 8, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+
+    const std::array objects = {std::move(object)};
+    const RcuObjectLayout layout = RcuObjectLayout::Build(objects);
+
+    CHECK(layout.Symbol({0, 0}) == (RcuSectionPlacement{RcuMergedSection::Text, 0}));
+    CHECK(layout.Symbol({0, 1}) == (RcuSectionPlacement{RcuMergedSection::Data, 0}));
+    CHECK(layout.Symbol({0, 2}) == (RcuSectionPlacement{RcuMergedSection::Bss, 0}));
+}

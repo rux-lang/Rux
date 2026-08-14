@@ -11,6 +11,7 @@
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
+#include "Linker/RcuObjectLayout.h"
 #include "Target/ElfProfile.h"
 
 #include <algorithm>
@@ -18,11 +19,9 @@
 #include <cstdint>
 #include <format>
 #include <fstream>
-#include <map>
 #include <ranges>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace Rux {
@@ -80,6 +79,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return false;
     }
     const Target::Elf64Profile &profile = *selectedProfile;
+    if (!graph) {
+        Error("internal: ELF64 linking requires an RCU link graph");
+        return false;
+    }
     const bool isShared = artifactKind == ArtifactKind::SharedLibrary;
     const bool aarch64 = profile.arch == Target::Arch::AArch64;
     const bool aarch64Plt = profile.pltInstructionShape == Target::ElfPltInstructionShape::AArch64;
@@ -96,32 +99,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     const auto alignUp = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
 
-    // 1. Collect the names defined across all objects (non-extern). A
-    //    cross-module call produces an ExternFunc relocation whose target is
-    //    defined in another object; those are not dynamic-library imports.
-    std::unordered_set<std::string> definedSymbols;
-    std::unordered_set<std::string> strongDefinitions;
-    for (const auto &obj : objects) {
-        for (const auto &sym : obj.symbols) {
-            if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData || sym.name.empty()) {
-                continue;
-            }
-            // Private Rux functions are local in their defining RCU object but
-            // are still referenced as externs from other source-file objects.
-            // Generated local data and constant labels remain object-relative.
-            if (sym.visibility != RcuSymVis::Local || sym.kind == RcuSymKind::Func) {
-                definedSymbols.insert(sym.name);
-            }
-            if (sym.visibility == RcuSymVis::Global && !strongDefinitions.insert(sym.name).second) {
-                Error("duplicate symbol '" + sym.name + "'");
-            }
-        }
-    }
-    if (!errors.empty()) {
-        return false;
-    }
-
-    // 2. Collect explicit library assignments from declarations first. A
+    // 1. Collect explicit library assignments from declarations first. A
     //    call and its extern declaration may live in different RCU objects;
     //    the call-site symbol then has an empty typeName while the declaration
     //    carries the library name.
@@ -139,41 +117,34 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         }
     }
 
-    // Collect the functions actually referenced by relocations. Prefer the
-    // library recorded by an extern declaration in any object, then the
-    // call-site metadata, and finally the host's default libc.
+    // Assign the graph's referenced externals to libraries. Prefer the library
+    // recorded by an extern declaration in any object, then the call-site
+    // metadata, and finally the target's default libc.
     // Imported data is not supported: direct lowering does not address the
     // datum through a GOT entry, and a copy relocation additionally needs the
     // defining object's size.
     std::unordered_map<std::string, std::string> importLib; // func -> library
-    for (const auto &obj : objects) {
-        for (const auto &sec : obj.sections) {
-            for (const auto &reloc : sec.relocs) {
-                if (reloc.symbolIndex >= obj.symbols.size()) {
-                    continue;
-                }
-                const auto &sym = obj.symbols[reloc.symbolIndex];
-                if (definedSymbols.contains(sym.name)) {
-                    continue;
-                }
-                if (sym.kind == RcuSymKind::ExternFunc) {
-                    const auto explicitIt = explicitImportLib.find(sym.name);
-                    const std::string &lib =
-                        explicitIt != explicitImportLib.end()
-                            ? explicitIt->second
-                            : (sym.typeName.empty() ? std::string(profile.defaultLibc) : sym.typeName);
-                    const auto [it, inserted] = importLib.try_emplace(sym.name, lib);
-                    if (!inserted && it->second != lib) {
-                        Error("external symbol '" + sym.name + "' is referenced from both '" + it->second + "' and '" +
-                              lib + "'");
-                    }
-                }
-                else if (sym.kind == RcuSymKind::ExternData) {
-                    Error("external data symbol '" + sym.name + "' cannot be imported for target '" +
-                          std::string(profile.targetName) +
-                          "' because GOT-aware data lowering and symbol-size metadata are not implemented");
-                }
-            }
+    for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
+        if (external.kind == RcuSymKind::ExternData) {
+            Error("external data symbol '" + external.name + "' cannot be imported for target '" +
+                  std::string(profile.targetName) +
+                  "' because GOT-aware data lowering and symbol-size metadata are not implemented");
+            continue;
+        }
+        if (external.kind != RcuSymKind::ExternFunc || external.referenceIndices.empty()) {
+            continue;
+        }
+        const RcuLinkReference &reference = graph->References()[external.referenceIndices.front()];
+        const RcuSymbol &callSite = objects[reference.objectIndex].symbols[reference.symbolIndex];
+        const auto explicitIt = explicitImportLib.find(external.name);
+        const std::string &library =
+            explicitIt != explicitImportLib.end()
+                ? explicitIt->second
+                : (callSite.typeName.empty() ? std::string(profile.defaultLibc) : callSite.typeName);
+        const auto [it, inserted] = importLib.try_emplace(external.name, library);
+        if (!inserted && it->second != library) {
+            Error("external symbol '" + external.name + "' is referenced from both '" + it->second + "' and '" +
+                  library + "'");
         }
     }
     if (!errors.empty()) {
@@ -245,68 +216,14 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             }
         }
     }
-    const auto preambleSize = static_cast<uint32_t>(textPre.size());
-
-    // 4. Merge per-object sections.
-    struct ObjLayout {
-        uint32_t textOff, rodataOff, dataOff, bssOff;
-    };
-
-    std::vector<ObjLayout> layouts(objects.size());
-    Buf mergedText, mergedRodata, mergedData;
-    uint64_t mergedBssSize = 0;
-    uint16_t bssAlignment = 1;
-    // Each object's section starts on the boundary that object asked for. An
-    // object aligns its own constants relative to the start of its section, so
-    // a preceding object ending on an odd byte would carry the whole of the
-    // next one off its alignment — which on AArch64 is not a matter of speed:
-    // the low twelve bits of a symbol's address go into a scaled load's
-    // immediate, and an address that does not divide by the access width has no
-    // encoding at all.
-    const auto padToAlignment = [](Buf &buf, const uint16_t alignment, const size_t prefixSize = 0) {
-        const size_t boundary = std::max<uint16_t>(alignment, 1);
-        while ((prefixSize + buf.size()) % boundary != 0) {
-            buf.push_back(0);
-        }
-    };
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-        for (const auto &sec : obj.sections) {
-            if (sec.type == RcuSecType::Text) {
-                padToAlignment(mergedText, sec.alignment, preambleSize);
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                padToAlignment(mergedRodata, sec.alignment);
-            }
-            else if (sec.type == RcuSecType::Data) {
-                padToAlignment(mergedData, sec.alignment);
-            }
-            else if (sec.type == RcuSecType::Bss) {
-                mergedBssSize = alignUp(mergedBssSize, std::max<uint16_t>(sec.alignment, 1));
-                bssAlignment = std::max(bssAlignment, sec.alignment);
-            }
-        }
-        layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
-                      static_cast<uint32_t>(mergedData.size()), static_cast<uint32_t>(mergedBssSize)};
-        for (const auto &sec : obj.sections) {
-            if (sec.type == RcuSecType::Text) {
-                mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
-            }
-            else if (sec.type == RcuSecType::Data) {
-                mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
-            }
-            else if (sec.type == RcuSecType::Bss) {
-                mergedBssSize += sec.data.size();
-            }
-        }
-    }
-
-    Buf textBuf;
-    textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
-    textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
+    // 3. Merge RCU sections after the format-owned entry preamble. The shared
+    // layout owns per-object alignment and all typed symbol/relocation offsets.
+    RcuLayoutPrefixes prefixes;
+    prefixes.text = textPre;
+    const RcuObjectLayout layout = RcuObjectLayout::Build(objects, prefixes);
+    Buf textBuf = layout.Data(RcuMergedSection::Text);
+    Buf rodataBuf = layout.Data(RcuMergedSection::RoData);
+    Buf dataBuf = layout.Data(RcuMergedSection::Data);
 
     // Points one call in the entry stub at `targetVA`, in whichever form that
     // architecture's call takes: an x86-64 displacement measured from the
@@ -328,44 +245,6 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return true;
     };
 
-    // Maps each defined (non-extern) symbol to its virtual address, given the
-    // final segment placement. Local data/constant labels are intentionally
-    // skipped: generated labels such as __f64_0 recur per object and must
-    // resolve relative to their owning object via the section-index path.
-    const auto buildDefinedSymMap = [&](uint64_t textVA, uint64_t roVA, uint64_t dataVA, uint64_t bssVA) {
-        std::unordered_map<std::string, uint64_t> m;
-        for (size_t i = 0; i < objects.size(); ++i) {
-            const auto &obj = objects[i];
-            const auto &lay = layouts[i];
-            for (const auto &sym : obj.symbols) {
-                if (sym.name.empty() || sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
-                    continue;
-                }
-                if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
-                    continue;
-                }
-                uint64_t va = 0;
-                if (sym.sectionIdx == RCU_TEXT_IDX) {
-                    va = textVA + preambleSize + lay.textOff + sym.value;
-                }
-                else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                    va = roVA + lay.rodataOff + sym.value;
-                }
-                else if (sym.sectionIdx == RCU_DATA_IDX) {
-                    va = dataVA + lay.dataOff + sym.value;
-                }
-                else if (sym.sectionIdx == RCU_BSS_IDX) {
-                    va = bssVA + lay.bssOff + sym.value;
-                }
-                else {
-                    continue;
-                }
-                m.try_emplace(sym.name, va);
-            }
-        }
-        return m;
-    };
-
     // .dynsym index of each imported function, filled in once the dynamic
     // symbol table is laid out below. A pointer to an import stored in a data
     // section resolves to the local PLT stub, which is the right answer only
@@ -373,136 +252,123 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // the loader through a GLOB_DAT naming the symbol instead.
     std::unordered_map<std::string, uint32_t> importDynsymIndex;
 
-    // Applies every object's relocations against the resolved symbol map.
-    const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &symMap, Buf &txt, Buf &ro, Buf &dat,
-                                 uint64_t textVA, uint64_t roVA, uint64_t dataVA, uint64_t bssVA,
-                                 Buf *dynamicRelocations) {
-        for (size_t i = 0; i < objects.size(); ++i) {
-            const auto &obj = objects[i];
-            const auto &lay = layouts[i];
-            for (const auto &sec : obj.sections) {
-                Buf *buf = nullptr;
-                uint32_t baseInBuf = 0;
-                uint64_t secBaseVA = 0;
-                if (sec.type == RcuSecType::Text) {
-                    buf = &txt;
-                    baseInBuf = preambleSize + lay.textOff;
-                    secBaseVA = textVA + preambleSize + lay.textOff;
-                }
-                else if (sec.type == RcuSecType::RoData) {
-                    buf = &ro;
-                    baseInBuf = lay.rodataOff;
-                    secBaseVA = roVA + lay.rodataOff;
-                }
-                else if (sec.type == RcuSecType::Data) {
-                    buf = &dat;
-                    baseInBuf = lay.dataOff;
-                    secBaseVA = dataVA + lay.dataOff;
-                }
-                else {
+    // Retain ELF's relocation-size diagnostics before graph references are
+    // applied. The graph deliberately indexes only structurally valid symbol
+    // references, while the format still owns instruction-field validation.
+    for (const RcuFile &object : objects) {
+        for (const RcuSection &section : object.sections) {
+            for (const RcuReloc &relocation : section.relocs) {
+                if (relocation.type == RcuRelType::None) {
                     continue;
                 }
+                if (relocation.symbolIndex >= object.symbols.size()) {
+                    Error(std::format("relocation at offset {} in section '{}' has invalid symbol index {}",
+                                      relocation.sectionOffset, section.name, relocation.symbolIndex));
+                    continue;
+                }
+                const RcuSymbol &symbol = object.symbols[relocation.symbolIndex];
+                const size_t relocationSize =
+                    relocation.type == RcuRelType::Abs64 || relocation.type == RcuRelType::AArch64Prel64 ? 8 : 4;
+                if (relocation.sectionOffset > section.data.size() ||
+                    relocationSize > section.data.size() - relocation.sectionOffset) {
+                    Error(std::format("{} relocation against '{}' at offset {} exceeds section '{}'",
+                                      RcuRelTypeName(relocation.type), symbol.name, relocation.sectionOffset,
+                                      section.name));
+                }
+            }
+        }
+    }
+    if (!errors.empty()) {
+        return false;
+    }
 
-                for (const auto &reloc : sec.relocs) {
-                    if (reloc.symbolIndex >= obj.symbols.size()) {
-                        Error(std::format("relocation at offset {} in section '{}' has invalid symbol index {}",
-                                          reloc.sectionOffset, sec.name, reloc.symbolIndex));
-                        continue;
-                    }
-                    const auto &sym = obj.symbols[reloc.symbolIndex];
-                    const size_t relocationSize =
-                        reloc.type == RcuRelType::Abs64 || reloc.type == RcuRelType::AArch64Prel64 ? 8 : 4;
-                    if (reloc.type != RcuRelType::None && (reloc.sectionOffset > sec.data.size() ||
-                                                           relocationSize > sec.data.size() - reloc.sectionOffset)) {
-                        Error(std::format("{} relocation against '{}' at offset {} exceeds section '{}'",
-                                          RcuRelTypeName(reloc.type), sym.name, reloc.sectionOffset, sec.name));
-                        continue;
-                    }
-                    uint64_t targetVA = 0;
-                    if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
-                        auto it = symMap.find(sym.name);
-                        if (it == symMap.end()) {
-                            Error("undefined external symbol '" + sym.name + "'");
-                            continue;
-                        }
-                        targetVA = it->second;
-                    }
-                    else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
-                        targetVA = symMap.at(sym.name);
-                    }
-                    else if (sym.sectionIdx == RCU_TEXT_IDX) {
-                        targetVA = textVA + preambleSize + lay.textOff + sym.value;
-                    }
-                    else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                        targetVA = roVA + lay.rodataOff + sym.value;
-                    }
-                    else if (sym.sectionIdx == RCU_DATA_IDX) {
-                        targetVA = dataVA + lay.dataOff + sym.value;
-                    }
-                    else if (sym.sectionIdx == RCU_BSS_IDX) {
-                        targetVA = bssVA + lay.bssOff + sym.value;
-                    }
-                    else {
-                        Error("undefined symbol '" + sym.name + "' — no definition or external import was found");
-                        continue;
-                    }
+    const auto symbolAddress = [&](const RcuSymbolLocation location,
+                                   const RcuSectionBases &bases) -> std::optional<uint64_t> {
+        const auto placement = layout.Symbol(location);
+        return placement ? RcuObjectLayout::Address(*placement, bases) : std::nullopt;
+    };
 
-                    const size_t patchAt = baseInBuf + reloc.sectionOffset;
-                    const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                    if (reloc.type == RcuRelType::None) {
-                        continue;
+    // Apply graph references to their typed merged-section placements.
+    const auto applyRelocs = [&](const std::unordered_map<std::string, uint64_t> &imports, Buf &txt, Buf &ro, Buf &dat,
+                                 const RcuSectionBases &bases, Buf *dynamicRelocations) {
+        for (const RcuLinkReference &reference : graph->References()) {
+            const RcuFile &object = objects[reference.objectIndex];
+            const RcuReloc &relocation = object.sections[reference.sectionIndex].relocs[reference.relocationIndex];
+            const RcuSymbol &symbol = object.symbols[reference.symbolIndex];
+            const auto sitePlacement = layout.Relocation(reference);
+            const auto siteAddress = sitePlacement ? RcuObjectLayout::Address(*sitePlacement, bases) : std::nullopt;
+            if (!sitePlacement || !siteAddress) {
+                continue;
+            }
+
+            Buf *buffer = nullptr;
+            switch (sitePlacement->section) {
+            case RcuMergedSection::Text:
+                buffer = &txt;
+                break;
+            case RcuMergedSection::RoData:
+                buffer = &ro;
+                break;
+            case RcuMergedSection::Data:
+                buffer = &dat;
+                break;
+            case RcuMergedSection::Bss:
+                continue;
+            }
+
+            std::optional<uint64_t> targetAddress;
+            if (reference.resolution == RcuLinkResolution::External) {
+                const auto imported = imports.find(symbol.name);
+                if (imported != imports.end()) {
+                    targetAddress = imported->second;
+                }
+            }
+            else if (reference.definition) {
+                targetAddress = symbolAddress(*reference.definition, bases);
+            }
+            if (!targetAddress) {
+                if (reference.resolution == RcuLinkResolution::External) {
+                    Error("undefined external symbol '" + symbol.name + "'");
+                }
+                continue;
+            }
+
+            const size_t patchAt = static_cast<size_t>(sitePlacement->offset);
+            if (!aarch64 && relocation.type == RcuRelType::Rel32) {
+                const auto displacement = static_cast<int32_t>(*targetAddress + relocation.addend - (*siteAddress + 4));
+                Patch32(*buffer, patchAt, static_cast<uint32_t>(displacement));
+            }
+            else if (relocation.type == RcuRelType::Abs64) {
+                const uint64_t value = *targetAddress + static_cast<uint64_t>(relocation.addend);
+                if (aarch64) {
+                    std::string error;
+                    if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
+                                                *siteAddress, symbol.name, "ELF writer", error)) {
+                        Error(std::move(error));
                     }
-                    if (!aarch64 && reloc.type == RcuRelType::Rel32) {
-                        if (patchAt + 4 > buf->size()) {
-                            continue;
-                        }
-                        const auto disp = static_cast<int32_t>(targetVA + reloc.addend - (siteVA + 4));
-                        Patch32(*buf, patchAt, static_cast<uint32_t>(disp));
-                    }
-                    else if (reloc.type == RcuRelType::Abs64) {
-                        if (patchAt + 8 > buf->size()) {
-                            continue;
-                        }
-                        const uint64_t value = targetVA + static_cast<uint64_t>(reloc.addend);
-                        if (aarch64) {
-                            std::string error;
-                            if (!ApplyAArch64Relocation(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA,
-                                                        sym.name, "ELF writer", error)) {
-                                Error(std::move(error));
-                            }
-                        }
-                        else {
-                            Patch64(*buf, patchAt, value);
-                        }
-                        if (dynamicRelocations != nullptr) {
-                            const auto importIt = importDynsymIndex.find(sym.name);
-                            const bool imported =
-                                importIt != importDynsymIndex.end() &&
-                                (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData);
-                            WriteU64(*dynamicRelocations, siteVA); // r_offset
-                            WriteU64(*dynamicRelocations,
-                                     imported ? static_cast<uint64_t>(importIt->second) << 32 | dynRelocs.globDat
-                                              : dynRelocs.relative);             // r_info
-                            WriteU64(*dynamicRelocations, imported ? 0 : value); // r_addend
-                        }
-                    }
-                    else if (!aarch64 && reloc.type == RcuRelType::Abs32) {
-                        if (patchAt + 4 > buf->size()) {
-                            continue;
-                        }
-                        Patch32(*buf, patchAt, static_cast<uint32_t>(targetVA + reloc.addend));
-                    }
-                    else {
-                        // Everything left names an instruction and rewrites a
-                        // field inside it. An x86-64 kind reaching here is an
-                        // x86-64 displacement in an AArch64 object, which is a
-                        // code-generator bug rather than something to patch.
-                        std::string error;
-                        if (!ApplyAArch64Relocation(*buf, patchAt, reloc.type, targetVA, reloc.addend, siteVA, sym.name,
-                                                    "ELF writer", error)) {
-                            Error(std::move(error));
-                        }
-                    }
+                }
+                else {
+                    Patch64(*buffer, patchAt, value);
+                }
+                if (dynamicRelocations != nullptr) {
+                    const auto import = importDynsymIndex.find(symbol.name);
+                    const bool imported =
+                        reference.resolution == RcuLinkResolution::External && import != importDynsymIndex.end();
+                    WriteU64(*dynamicRelocations, *siteAddress);
+                    WriteU64(*dynamicRelocations, imported
+                                                      ? static_cast<uint64_t>(import->second) << 32 | dynRelocs.globDat
+                                                      : dynRelocs.relative);
+                    WriteU64(*dynamicRelocations, imported ? 0 : value);
+                }
+            }
+            else if (!aarch64 && relocation.type == RcuRelType::Abs32) {
+                Patch32(*buffer, patchAt, static_cast<uint32_t>(*targetAddress + relocation.addend));
+            }
+            else {
+                std::string error;
+                if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
+                                            *siteAddress, symbol.name, "ELF writer", error)) {
+                    Error(std::move(error));
                 }
             }
         }
@@ -605,34 +471,32 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     if (!dynamic) {
         // --- Static executable: no imports, no interpreter. ---
-        const bool hasRodata = !mergedRodata.empty();
-        const bool hasWritable = !mergedData.empty() || mergedBssSize != 0;
+        const bool hasRodata = !rodataBuf.empty();
+        const bool hasWritable = !dataBuf.empty() || layout.BssSize() != 0;
         const auto phnum = static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0));
         constexpr uint64_t phoff = 64;
         const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
         const uint64_t textVA = imageBase + textOff;
-
-        Buf rodataBuf = mergedRodata;
 
         const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
         const uint64_t rdataVA = imageBase + rdataOff;
         const uint64_t afterReadOnly = hasRodata ? rdataOff + rodataBuf.size() : textOff + textBuf.size();
         const uint64_t dataOff = alignUp(afterReadOnly, kPage);
         const uint64_t dataVA = imageBase + dataOff;
-        const uint64_t bssVA = alignUp(dataVA + mergedData.size(), std::max<uint16_t>(bssAlignment, 1));
-        const uint64_t writableMemorySize = bssVA + mergedBssSize - dataVA;
+        const uint64_t bssVA = alignUp(dataVA + dataBuf.size(), layout.Alignment(RcuMergedSection::Bss));
+        const uint64_t writableMemorySize = bssVA + layout.BssSize() - dataVA;
+        const RcuSectionBases sectionBases{.text = textVA, .rodata = rdataVA, .data = dataVA, .bss = bssVA};
 
-        auto symMap = buildDefinedSymMap(textVA, rdataVA, dataVA, bssVA);
-        auto it = symMap.find("Main");
-        if (it == symMap.end()) {
-            Error("undefined symbol 'Main' — no entry point found");
+        const auto entryAddress = graph->EntryRoot() ? symbolAddress(*graph->EntryRoot(), sectionBases) : std::nullopt;
+        if (!entryAddress) {
+            Error("internal: ELF entry symbol was not placed");
             return false;
         }
-        if (!patchEntryCall(callMainOffset, textVA, it->second, "Main")) {
+        if (!patchEntryCall(callMainOffset, textVA, *entryAddress, "Main")) {
             return false;
         }
 
-        applyRelocs(symMap, textBuf, rodataBuf, mergedData, textVA, rdataVA, dataVA, bssVA, nullptr);
+        applyRelocs({}, textBuf, rodataBuf, dataBuf, sectionBases, nullptr);
         if (!errors.empty()) {
             return false;
         }
@@ -643,10 +507,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
             writePhdr(phdrs, 1, kPfR, rdataOff, rdataVA, rodataBuf.size(), rodataBuf.size(), kPage);
         }
         if (hasWritable) {
-            writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, mergedData.size(), writableMemorySize, kPage);
+            writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, dataBuf.size(), writableMemorySize, kPage);
         }
 
-        return emitFile(phnum, phdrs, {{textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &mergedData}}, textVA,
+        return emitFile(phnum, phdrs, {{textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &dataBuf}}, textVA,
                         phoff);
     }
 
@@ -666,33 +530,24 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         uint8_t kind;
         uint32_t size;
         uint32_t dynsymValueOffset;
+        RcuSymbolLocation location;
     };
 
     std::vector<SharedExport> sharedExports;
     if (isShared) {
-        std::map<std::string, SharedExport> exportsByName;
-        for (const auto &object : objects) {
-            for (const auto &symbol : object.symbols) {
-                if (symbol.visibility == RcuSymVis::Local || symbol.name.empty() ||
-                    symbol.sectionIdx == RCU_SEC_EXTERNAL) {
-                    continue;
-                }
-                exportsByName.try_emplace(symbol.name, SharedExport{symbol.name, symbol.kind, symbol.size, 0});
-            }
-        }
-        for (auto &[name, symbol] : exportsByName) {
-            (void)name;
-            sharedExports.push_back(std::move(symbol));
+        for (const RcuSymbolLocation location : graph->ExportRoots()) {
+            const RcuSymbol &symbol = objects[location.objectIndex].symbols[location.symbolIndex];
+            sharedExports.push_back({symbol.name, symbol.kind, symbol.size, 0, location});
         }
     }
 
     if (profile.definesBsdProcessGlobals && !isShared) {
         const auto exportPointerDataSymbol = [&](std::string name) {
-            while (mergedData.size() % 8) {
-                mergedData.push_back(0);
+            while (dataBuf.size() % 8) {
+                dataBuf.push_back(0);
             }
-            const auto dataOffset = static_cast<uint32_t>(mergedData.size());
-            WriteU64(mergedData, 0);
+            const auto dataOffset = static_cast<uint32_t>(dataBuf.size());
+            WriteU64(dataBuf, 0);
             exportedDataSymbols.push_back({std::move(name), dataOffset, 0});
         };
         // BSD startup normally provides these pointer definitions through
@@ -819,11 +674,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const size_t relaSz = n * 24;
     size_t relativeRelocationCount = 0;
     if (isShared) {
-        for (const auto &object : objects) {
-            for (const auto &section : object.sections) {
-                relativeRelocationCount += static_cast<size_t>(std::ranges::count_if(
-                    section.relocs, [](const RcuReloc &relocation) { return relocation.type == RcuRelType::Abs64; }));
-            }
+        for (const RcuLinkReference &reference : graph->References()) {
+            const RcuReloc &relocation =
+                objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
+            relativeRelocationCount += relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
         }
     }
     const size_t relaDynSz = relativeRelocationCount * 24;
@@ -861,7 +715,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint64_t textOff = alignUp(off, 16);
     off = textOff + textBuf.size();
     const uint64_t rodataOff = alignUp(off, 8);
-    off = rodataOff + mergedRodata.size();
+    off = rodataOff + rodataBuf.size();
     const uint64_t rxFileEnd = off;
 
     // Read/write segment starts on a fresh page.
@@ -873,9 +727,9 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     // The RW segment's file size must not claim bytes past the last one we
     // actually write (an empty .data would leave the trailing alignment gap
     // unwritten).
-    const uint64_t rwFileEnd = mergedData.empty() ? (gotOff + gotSz) : (dataOff + mergedData.size());
-    const uint64_t bssOff = alignUp(dataOff + mergedData.size(), std::max<uint16_t>(bssAlignment, 1));
-    const uint64_t rwMemoryEnd = bssOff + mergedBssSize;
+    const uint64_t rwFileEnd = dataBuf.empty() ? (gotOff + gotSz) : (dataOff + dataBuf.size());
+    const uint64_t bssOff = alignUp(dataOff + dataBuf.size(), layout.Alignment(RcuMergedSection::Bss));
+    const uint64_t rwMemoryEnd = bssOff + layout.BssSize();
 
     const uint64_t interpVA = imageBase + interpOff;
     const uint64_t hashVA = imageBase + hashOff;
@@ -890,6 +744,7 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
     const uint64_t gotVA = imageBase + gotOff;
     const uint64_t dataVA = imageBase + dataOff;
     const uint64_t bssVA = imageBase + bssOff;
+    const RcuSectionBases sectionBases{.text = textVA, .rodata = rodataVA, .data = dataVA, .bss = bssVA};
 
     for (const auto &symbol : exportedDataSymbols) {
         Patch64(dynsym, symbol.dynsymValueOffset, dataVA + symbol.dataOffset);
@@ -1026,43 +881,42 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    // 10. Resolve symbols: defined symbols plus each import at its PLT stub.
-    auto symMap = buildDefinedSymMap(textVA, rodataVA, dataVA, bssVA);
+    // 10. Resolve graph locations and format-owned import stubs.
+    std::unordered_map<std::string, uint64_t> importAddresses;
     for (size_t i = 0; i < n; ++i) {
-        symMap[importNames[i]] = pltVA + pltStubOffset(i);
+        importAddresses[importNames[i]] = pltVA + pltStubOffset(i);
     }
     for (const auto &symbol : sharedExports) {
-        const auto it = symMap.find(symbol.name);
-        if (it == symMap.end()) {
+        const auto address = symbolAddress(symbol.location, sectionBases);
+        if (!address) {
             Error("internal: exported ELF symbol '" + symbol.name + "' was not resolved");
             return false;
         }
-        Patch64(dynsym, symbol.dynsymValueOffset, it->second);
+        Patch64(dynsym, symbol.dynsymValueOffset, *address);
     }
     if (!isShared) {
-        const auto mainIt = symMap.find("Main");
-        if (mainIt == symMap.end()) {
-            Error("undefined symbol 'Main' — no entry point found");
+        const auto entryAddress = graph->EntryRoot() ? symbolAddress(*graph->EntryRoot(), sectionBases) : std::nullopt;
+        if (!entryAddress) {
+            Error("internal: ELF entry symbol was not placed");
             return false;
         }
-        if (!patchEntryCall(callMainOffset, textVA, mainIt->second, "Main")) {
+        if (!patchEntryCall(callMainOffset, textVA, *entryAddress, "Main")) {
             return false;
         }
 
         // Wire the entry stub's `call exit@plt` to libc exit's PLT stub.
-        const auto exitIt = symMap.find("exit");
-        if (exitIt == symMap.end()) {
+        const auto exit = importAddresses.find("exit");
+        if (exit == importAddresses.end()) {
             Error("internal: implicit libc 'exit' import was not resolved");
             return false;
         }
-        if (!patchEntryCall(callExitOffset, textVA, exitIt->second, "exit")) {
+        if (!patchEntryCall(callExitOffset, textVA, exit->second, "exit")) {
             return false;
         }
     }
 
     Buf relaDyn;
-    applyRelocs(symMap, textBuf, mergedRodata, mergedData, textVA, rodataVA, dataVA, bssVA,
-                isShared ? &relaDyn : nullptr);
+    applyRelocs(importAddresses, textBuf, rodataBuf, dataBuf, sectionBases, isShared ? &relaDyn : nullptr);
     if (!errors.empty()) {
         return false;
     }
@@ -1093,10 +947,10 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                      {relaOff, &rela},
                      {pltOff, &plt},
                      {textOff, &textBuf},
-                     {rodataOff, &mergedRodata},
+                     {rodataOff, &rodataBuf},
                      {dynamicOff, &dyn},
                      {gotOff, &got},
-                     {dataOff, &mergedData}},
+                     {dataOff, &dataBuf}},
                     isShared ? 0 : textVA, phoff);
 }
 } // namespace Rux
