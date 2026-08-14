@@ -1,4 +1,5 @@
 #include "Package/Manifest.h"
+#include "Package/PublicationValidation.h"
 #include "System/Os.h"
 
 #include <algorithm>

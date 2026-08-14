@@ -50,6 +50,7 @@ set(RUX_TEST_SOURCES
     PlatformAsmTests.cpp
     ProcessTests.cpp
     PrimitiveConstantsTests.cpp
+    PublicationValidationTests.cpp
     RcuModuleBuilderTests.cpp
     RcuTests.cpp
     RegistryTests.cpp
