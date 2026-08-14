@@ -136,6 +136,8 @@ The Mach-O image writer builds ad-hoc signatures entirely inside `RuxLinker`. It
 
 `RuxLinker` centralizes RCU object relationships in `RcuLinkGraph` and input-section placement in `RcuObjectLayout`. The layout accepts each format writer's generated text/read-only/data prefixes explicitly, aligns every object's contribution against those real preceding bytes, and produces the merged text, read-only-data, data and BSS placements once. Typed symbol and relocation placements are section-relative. The PE, ELF and Mach-O image writers consume the shared graph and layout directly. Format profiles continue to own target ABI policy, generated entry and import stubs, dynamic-loader metadata, relocations and image serialization; Mach-O additionally retains its in-process signing path.
 
+`RuxPackage` parses manifest text into a private TOML value tree before applying the Version 1 schema. The syntax parser owns scanning, source locations, supported string/integer/boolean/array/inline-table syntax, and exact-key duplicate rejection. Schema validation consumes that tree without scanner state; duplicate sections remain in the document so the schema layer diagnoses them at the later header.
+
 Build and check resolve path dependencies directly and registry dependencies from the shared package cache, which is keyed by identity and exact version so several versions of a package coexist:
 
 - Windows: `%LocalAppData%\Rux\Packages\<namespace>\<name>\<version>`, for example `%LocalAppData%\Rux\Packages\Rux\Io\0.1.0`

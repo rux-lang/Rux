@@ -72,6 +72,7 @@ rux_add_component(RuxPackage
     Package/Checksum.cpp
     Package/Identity.cpp
     Package/Manifest.cpp
+    Package/ManifestSyntax.cpp
     Package/Package.cpp
     Package/Version.cpp)
 target_link_libraries(RuxPackage PUBLIC RuxCrypto RuxTarget)
