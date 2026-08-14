@@ -1,4 +1,4 @@
-// Package inspection and cache commands: uninstall, list, and info.
+// Package inspection and cache lifecycle commands: list, info, and uninstall.
 //
 // Registry lookups use the versioned API in Driver/Registry. Installed packages
 // are cached per exact version, so one host can hold several versions of the

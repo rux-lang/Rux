@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,6 +44,63 @@ std::vector<unsigned char> ReadBinaryFile(const std::filesystem::path &path) {
 std::string ReadTextFile(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+constexpr const char *packageCacheHomeVariable = Target::HostOS == Target::OS::Windows ? "LOCALAPPDATA" : "HOME";
+
+class ScopedCliPackageCache {
+public:
+    ScopedCliPackageCache() {
+        const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+        savedHome_ = System::GetEnvPath(packageCacheHomeVariable);
+        root_ = System::TempDirectory() / ("rux-cli-package-cache-test-" + std::to_string(nonce));
+
+        std::error_code error;
+        std::filesystem::create_directories(root_, error);
+        REQUIRE(!error);
+        REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root_));
+        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root_.string()));
+    }
+
+    ScopedCliPackageCache(const ScopedCliPackageCache &) = delete;
+    ScopedCliPackageCache &operator=(const ScopedCliPackageCache &) = delete;
+
+    ~ScopedCliPackageCache() {
+        if (savedHome_) {
+            static_cast<void>(System::SetEnvPath(packageCacheHomeVariable, *savedHome_));
+        }
+        else {
+            static_cast<void>(System::UnsetEnv(packageCacheHomeVariable));
+        }
+        std::error_code error;
+        std::filesystem::remove_all(root_, error);
+    }
+
+private:
+    std::optional<std::filesystem::path> savedHome_;
+    std::filesystem::path root_;
+};
+
+std::filesystem::path WriteCachedPackage(const std::string_view packageNamespace, const std::string_view packageName,
+                                         const std::string_view version, const std::string_view description) {
+    const auto ns = IdentitySegment::Parse(packageNamespace);
+    const auto name = IdentitySegment::Parse(packageName);
+    const auto semanticVersion = SemanticVersion::Parse(version);
+    REQUIRE(ns.has_value());
+    REQUIRE(name.has_value());
+    REQUIRE(semanticVersion.has_value());
+
+    const auto packageDir = Driver::RegistryPackageDir(*ns, *name, *semanticVersion);
+    std::error_code error;
+    std::filesystem::create_directories(packageDir, error);
+    REQUIRE(!error);
+    std::ofstream manifest(packageDir / "Rux.toml", std::ios::binary);
+    manifest << "[Manifest]\nVersion = 1\n\n[Package]\nNamespace = \"" << packageNamespace << "\"\nName = \""
+             << packageName << "\"\nVersion = \"" << version << "\"\nType = \"SourceLibrary\"\nDescription = \""
+             << description << "\"\n";
+    manifest.close();
+    REQUIRE(manifest);
+    return packageDir;
 }
 
 uint16_t Read16(const std::vector<unsigned char> &bytes, const std::size_t offset) {
@@ -231,6 +289,67 @@ Type = "SourceLibrary"
 
     std::error_code error;
     std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("list and info preserve cache inspection output contracts") {
+    const ScopedCliPackageCache cache;
+    WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
+    WriteCachedPackage("rux", "my-pkg", "2.0.0", "second release");
+
+    const auto listed = Run(std::array<std::string_view, 2>{"list", "--global"});
+    REQUIRE(listed.exitCode == 0);
+    CHECK(listed.output.contains("Global cache (2 versions"));
+    CHECK(listed.output.contains("rux/my-pkg 1.0.0"));
+    CHECK(listed.output.contains("rux/my-pkg 2.0.0"));
+
+    // The requested spelling normalizes to the spelling on disk, while the
+    // explicit version still selects that exact cached manifest.
+    const auto json = Run(std::array<std::string_view, 3>{"info", "Rux/My_Pkg@1.0.0", "--json"});
+    REQUIRE(json.exitCode == 0);
+    CHECK(json.output.contains("\"success\": true"));
+    CHECK(json.output.contains("\"namespace\": \"rux\""));
+    CHECK(json.output.contains("\"name\": \"my-pkg\""));
+    CHECK(json.output.contains("\"version\": \"1.0.0\""));
+    CHECK(json.output.contains("\"description\": \"first release\""));
+    CHECK_FALSE(json.output.contains("second release"));
+
+    const auto text = Run(std::array<std::string_view, 2>{"info", "RUX/MY-PKG@2.0.0"});
+    REQUIRE(text.exitCode == 0);
+    CHECK(text.output.contains("Namespace:   rux"));
+    CHECK(text.output.contains("Name:        my-pkg"));
+    CHECK(text.output.contains("Version:     2.0.0"));
+    CHECK(text.output.contains("Description: second release"));
+}
+
+TEST_CASE("uninstall removes only selected installed versions") {
+    const ScopedCliPackageCache cache;
+    const auto first = WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
+    const auto second = WriteCachedPackage("rux", "my-pkg", "2.0.0", "second release");
+    const auto unrelated = WriteCachedPackage("rux", "other", "1.0.0", "other package");
+    const auto stray = first.parent_path() / "not-an-installed-version";
+    std::filesystem::create_directories(stray);
+
+    const auto removed = Run(std::array<std::string_view, 2>{"uninstall", "Rux/My_Pkg@1.0.0"});
+    REQUIRE(removed.exitCode == 0);
+    CHECK(removed.output.contains("Uninstalled Rux/My_Pkg 1.0.0"));
+    CHECK_FALSE(std::filesystem::exists(first));
+    CHECK(std::filesystem::exists(second));
+    CHECK(std::filesystem::exists(unrelated));
+    CHECK(std::filesystem::exists(stray));
+
+    const auto missing = Run(std::array<std::string_view, 2>{"uninstall", "rux/my-pkg@9.0.0"});
+    CHECK(missing.exitCode == 1);
+    CHECK(missing.output.contains("no installed version of 'rux/my-pkg' matches"));
+    CHECK(std::filesystem::exists(second));
+    CHECK(std::filesystem::exists(unrelated));
+    CHECK(std::filesystem::exists(stray));
+
+    const auto global = Run(std::array<std::string_view, 2>{"uninstall", "--global"});
+    REQUIRE(global.exitCode == 0);
+    CHECK(global.output.contains("Summary: 2 uninstalled"));
+    CHECK_FALSE(std::filesystem::exists(second));
+    CHECK_FALSE(std::filesystem::exists(unrelated));
+    CHECK(std::filesystem::exists(stray));
 }
 
 TEST_CASE("build help publishes the all-target matrix option") {
