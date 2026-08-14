@@ -5,18 +5,16 @@
 #include "CodeGen/AArch64/Assembler.h"
 #include "CodeGen/AArch64/CallLayout.h"
 #include "CodeGen/AArch64/Encoder.h"
+#include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
-#include "CodeGen/LinearScan.h"
-#include "CodeGen/PhiMoveResolver.h"
 #include "CodeGen/RcuModuleBuilder.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <algorithm>
 #include <bit>
-#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -253,28 +251,6 @@ constexpr unsigned kFpTemp2 = 17;
 // a remainder needs its quotient somewhere neither operand is.
 constexpr unsigned kFpTemp3 = 18;
 
-// The registers a value can live in between instructions rather than be read
-// out of the frame at every mention: X19 through X28, which AAPCS64 asks a
-// callee to preserve. That is what makes them the right ones and the only ones
-// — everything this generator computes in is clobbered by the next call, so a
-// value in one of those would have to be written back before every branch,
-// which is the frame it was trying to avoid.
-//
-// The three registers left out of the run are left out for reasons of their
-// own. X29 and X30 are the frame record, which the prologue already holds. X18
-// is the platform register: a system is entitled to keep something of its own
-// there, and the standard says a program may neither read nor write it, so
-// nothing here ever names it.
-constexpr unsigned kFirstCalleeSaved = 19;
-constexpr unsigned kCalleeSavedCount = 10;
-
-// The same for floating-point values: V8 through V15, of which AAPCS64
-// preserves the low 64 bits. That is exactly what this back end would put
-// there — a float64 is a doubleword and a float32 is half of one — so the half
-// the standard leaves to a caller is a half nothing here uses.
-constexpr unsigned kFirstCalleeSavedVector = 8;
-constexpr unsigned kCalleeSavedVectorCount = 8;
-
 // Where AAPCS64 puts one argument: `count` registers of one file starting at
 // `first`, or `bytes` bytes at `offset` in the outgoing argument area. An
 // argument no register can carry travels as the address of a copy the caller
@@ -441,44 +417,14 @@ private:
     // about its members rather than about its shape.
     std::unordered_map<std::string, const LirStructDecl *> structFields;
 
-    // Per-function state, the same set the x86-64 generator keeps: where each
-    // virtual register spills to, where an alloca's storage sits, what type
-    // each register holds, where each block began, and which branches are still
+    // The immutable placement decisions for the function being emitted. The
+    // pointed-to plan lives for every widening pass over that function.
+    const AArch64FramePlan *activeFramePlan = nullptr;
+
+    // Per-emission state: where each block began and which branches are still
     // waiting for a block offset.
-    std::unordered_map<LirReg, std::int32_t> slotMap;
-    std::unordered_map<LirReg, std::int32_t> allocaData;
-    std::unordered_map<LirReg, TypeRef> regTypes;
     std::vector<std::uint32_t> blockOffsets;
     std::vector<JumpPatch> jumpPatches;
-    std::int32_t nextOff = 0;
-    std::int32_t frameSize = 0;
-
-    // The parallel copies each edge of the control-flow graph carries, by the
-    // block the edge leaves and then the block it enters, and the frame region
-    // one destination is preserved in where the copies form a cycle.
-    std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>> phiMoves;
-    std::int32_t phiTempOff = 0;
-    int phiTempBytes = 0;
-
-    // Where the prologue kept the address a result too large for registers is
-    // written to, or zero in a function whose result comes back in them.
-    std::int32_t indirectResultOff = 0;
-
-    // The virtual registers this function keeps in a machine register rather
-    // than in the frame, one map per register file, each holding an index into
-    // the run that file's pool starts at. A register that reached neither map
-    // is read out of its slot, which every register still has.
-    std::unordered_map<LirReg, int> generalHomes;
-    std::unordered_map<LirReg, int> vectorHomes;
-
-    // The indices those maps handed out, ascending and each named once: the
-    // prologue writes exactly these into the frame and the epilogue reads
-    // exactly these back, so a function that allocated nothing saves nothing.
-    std::vector<int> savedGeneral;
-    std::vector<int> savedVector;
-
-    // Where that save area begins, or zero in a function with nothing to save.
-    std::int32_t calleeSaveOff = 0;
 
     // The conditional branches of this function that a previous pass over it
     // found too far from their target to reach in one instruction.
@@ -1177,42 +1123,17 @@ private:
     // sign is the only thing that differs, and it differs because STP writes
     // upward from the address it has just decremented SP to.
 
+    [[nodiscard]] const AArch64FramePlan &FramePlan() const {
+        return *activeFramePlan;
+    }
+
     [[nodiscard]] std::int32_t Disp(const LirReg reg) {
-        if (const auto it = slotMap.find(reg); it != slotMap.end()) {
+        if (const auto it = FramePlan().SlotOffsets().find(reg); it != FramePlan().SlotOffsets().end()) {
             return it->second;
         }
         Report(
             std::format("AArch64 code generation reached register %{} with no stack slot in '{}'", reg, currentFunc));
         return kFrameRecordSize;
-    }
-
-    std::int32_t AllocRegion(const int bytes) {
-        const int align = bytes > 0 ? std::min(bytes, 8) : 1;
-        nextOff = AlignUp(nextOff, align);
-        const std::int32_t offset = nextOff;
-        nextOff += bytes > 0 ? bytes : 8;
-        return offset;
-    }
-
-    // How much frame one value of this type takes. An aggregate is rounded up to
-    // a whole number of doublewords, because that is the unit a register's worth
-    // of one is written back in: the padding then belongs to the slot rather
-    // than to the value that would otherwise sit in those bytes.
-    [[nodiscard]] int SlotBytes(const TypeRef &type) const {
-        const int size = RuntimeSize(type);
-        if (size <= 0) {
-            return 8;
-        }
-        return IsAggregate(type) ? AlignUp(size, 8) : size;
-    }
-
-    std::int32_t AllocSlot(const LirReg reg, const int bytes) {
-        if (const auto it = slotMap.find(reg); it != slotMap.end()) {
-            return it->second;
-        }
-        const std::int32_t offset = AllocRegion(bytes);
-        slotMap[reg] = offset;
-        return offset;
     }
 
     [[nodiscard]] int RuntimeSize(const TypeRef &t) const {
@@ -1280,157 +1201,33 @@ private:
     // being moved is that address, and taking the address of its slot would
     // copy the pointer rather than what it points at.
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
-        const auto it = regTypes.find(reg);
-        return it != regTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto it = registerTypes.find(reg);
+        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
                it->second.inner[0] == pointee;
-    }
-
-    // How much storage an alloca needs: an element count in `strArg` makes it
-    // an array of that many, and otherwise it is one value of its type.
-    [[nodiscard]] int AllocaBytes(const LirInstr &instr) const {
-        if (instr.strArg.empty()) {
-            const int size = RuntimeSize(instr.type);
-            return size > 0 ? size : 8;
-        }
-        int count = 0;
-        const char *first = instr.strArg.data();
-        std::from_chars(first, first + instr.strArg.size(), count);
-        const TypeRef &elemType = instr.type.inner.empty() ? instr.type : instr.type.inner[0];
-        const int elemSize = RuntimeSize(elemType);
-        const int bytes = count * (elemSize > 0 ? elemSize : 8);
-        return bytes > 0 ? bytes : 8;
-    }
-
-    // Register allocation
-    //
-    // Which virtual registers are worth a machine register is the shared linear
-    // scan's question; which of them are eligible to be asked about is this back
-    // end's, and the answer has two halves, one per register file.
-    //
-    // A function of more than one block is refused outright, which is the
-    // restriction the x86-64 back end also carries. A value in a register would
-    // have to be correct at every edge, and a phi lowers to copies between
-    // slots here, so the two would disagree the moment control branched.
-    // Widening this is a pass of its own rather than a condition to relax.
-    void AllocateFunctionRegisters(const LirFunc &func) {
-        generalHomes.clear();
-        vectorHomes.clear();
-        savedGeneral.clear();
-        savedVector.clear();
-        calleeSaveOff = 0;
-        if (func.blocks.size() != 1) {
-            return;
-        }
-
-        ParamTypeMap paramTypes;
-        for (const auto &param : func.params) {
-            paramTypes[param.reg] = param.type;
-        }
-
-        std::vector<LiveInterval> general;
-        std::vector<LiveInterval> vector;
-        for (const auto &interval : ComputeLiveIntervals(func, paramTypes)) {
-            // A value with no size of its own is nothing's — an opaque result
-            // no mention keeps — and a value past a doubleword needs more than
-            // one register, which this allocation does not hand out.
-            const int size = RuntimeSize(interval.type);
-            if (IsFloat(interval.type)) {
-                vector.push_back(interval);
-            }
-            else if (IsRegisterValue(interval.type) && size > 0 && size <= 8) {
-                general.push_back(interval);
-            }
-        }
-
-        const RegisterAssignment integers = AllocateRegisters(general, kCalleeSavedCount);
-        const RegisterAssignment floats = AllocateRegisters(vector, kCalleeSavedVectorCount);
-        generalHomes = integers.physRegs;
-        vectorHomes = floats.physRegs;
-        savedGeneral = integers.usedPhysRegs;
-        savedVector = floats.usedPhysRegs;
     }
 
     // The machine register a virtual one lives in, or nothing where it lives in
     // the frame. A general-purpose home is always read and written whole: what
     // narrows a value is the mention that reads it, not the register itself.
     [[nodiscard]] std::optional<A64Reg> GeneralHome(const LirReg reg) const {
-        const auto it = generalHomes.find(reg);
-        if (it == generalHomes.end()) {
+        const auto &homes = FramePlan().GeneralRegisterHomes();
+        const auto it = homes.find(reg);
+        if (it == homes.end()) {
             return std::nullopt;
         }
-        return A64::Xn(kFirstCalleeSaved + static_cast<unsigned>(it->second));
+        return A64::Xn(it->second);
     }
 
     // A vector home is read at the precision of the value in it, which is fixed
     // by that register's type and so is the same at every mention.
     [[nodiscard]] std::optional<A64Reg> VectorHome(const LirReg reg, const unsigned bits) const {
-        const auto it = vectorHomes.find(reg);
-        if (it == vectorHomes.end()) {
+        const auto &homes = FramePlan().VectorRegisterHomes();
+        const auto it = homes.find(reg);
+        if (it == homes.end()) {
             return std::nullopt;
         }
-        return A64::Vn(kFirstCalleeSavedVector + static_cast<unsigned>(it->second), bits);
-    }
-
-    void PrepassFunc(const LirFunc &func) {
-        slotMap.clear();
-        allocaData.clear();
-        regTypes.clear();
-        phiMoves.clear();
-        phiTempOff = 0;
-        phiTempBytes = 0;
-        indirectResultOff = 0;
-        nextOff = kFrameRecordSize;
-
-        AllocateFunctionRegisters(func);
-
-        // The address a large result is written to arrives in a register and is
-        // needed at every return, so it is kept in the frame the way a parameter
-        // is. Nothing else is reserved for a function that returns in registers.
-        if (ReturnsInMemory(func.returnType)) {
-            indirectResultOff = AllocRegion(8);
-        }
-
-        // The registers the allocation handed out are the caller's, so what this
-        // function puts in them is written into its own frame first. One
-        // doubleword each, in one run, and next to the frame record so that the
-        // pair forms reach the whole of it in all but a very large frame.
-        const auto savedCount = static_cast<int>(savedGeneral.size() + savedVector.size());
-        if (savedCount > 0) {
-            calleeSaveOff = AllocRegion(savedCount * 8);
-        }
-        for (const auto &p : func.params) {
-            regTypes[p.reg] = p.type;
-            AllocSlot(p.reg, std::max(8, SlotBytes(p.type)));
-        }
-        for (std::uint32_t bi = 0; bi < func.blocks.size(); ++bi) {
-            for (const auto &instr : func.blocks[bi].instrs) {
-                // A phi's copies belong to the edges that reach it, so they are
-                // collected by predecessor here and emitted there. The region
-                // that breaks a cycle among them holds one value of the widest
-                // type any of them moves.
-                if (instr.op == LirOpcode::Phi) {
-                    for (const auto &[src, pred] : instr.phiPreds) {
-                        phiMoves[pred][bi].push_back({instr.dst, src, instr.type});
-                    }
-                    phiTempBytes = std::max(phiTempBytes, std::max(8, RuntimeSize(instr.type)));
-                }
-                if (instr.dst == LirNoReg) {
-                    continue;
-                }
-                if (instr.op == LirOpcode::Alloca) {
-                    regTypes[instr.dst] = TypeRef::MakePointer(instr.type);
-                    AllocSlot(instr.dst, 8);
-                    allocaData[instr.dst] = AllocRegion(AllocaBytes(instr));
-                    continue;
-                }
-                regTypes[instr.dst] = instr.type;
-                AllocSlot(instr.dst, SlotBytes(instr.type));
-            }
-        }
-        if (phiTempBytes > 0) {
-            phiTempOff = AllocRegion(phiTempBytes);
-        }
-        frameSize = AlignUp(nextOff, 16);
+        return A64::Vn(it->second, bits);
     }
 
     // STP writes the frame record at the address it decrements SP to, so the
@@ -1447,15 +1244,15 @@ private:
     [[nodiscard]] std::vector<A64Reg> SavedRegisters(const bool vectorFile) const {
         std::vector<A64Reg> regs;
         if (vectorFile) {
-            regs.reserve(savedVector.size());
-            for (const int index : savedVector) {
-                regs.push_back(A64::Dn(kFirstCalleeSavedVector + static_cast<unsigned>(index)));
+            regs.reserve(FramePlan().SavedVectorRegisters().size());
+            for (const unsigned reg : FramePlan().SavedVectorRegisters()) {
+                regs.push_back(A64::Dn(reg));
             }
             return regs;
         }
-        regs.reserve(savedGeneral.size());
-        for (const int index : savedGeneral) {
-            regs.push_back(A64::Xn(kFirstCalleeSaved + static_cast<unsigned>(index)));
+        regs.reserve(FramePlan().SavedGeneralRegisters().size());
+        for (const unsigned reg : FramePlan().SavedGeneralRegisters()) {
+            regs.push_back(A64::Xn(reg));
         }
         return regs;
     }
@@ -1489,10 +1286,10 @@ private:
     // bits of V8 through V15 and no more, and 64 bits is every float this back
     // end puts in one.
     void EmitCalleeSaves(const bool restore) {
-        if (calleeSaveOff == 0) {
+        if (FramePlan().CalleeSaveOffset() == 0) {
             return;
         }
-        std::int32_t offset = calleeSaveOff;
+        std::int32_t offset = FramePlan().CalleeSaveOffset();
         EmitCalleeSaveRun(SavedRegisters(false), offset, restore);
         EmitCalleeSaveRun(SavedRegisters(true), offset, restore);
     }
@@ -1507,11 +1304,12 @@ private:
     }
 
     void EmitPrologue() {
-        if (frameSize <= kInlineFrameLimit) {
-            Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, -frameSize, A64IndexMode::PreIndex), "the frame record");
+        if (FramePlan().FrameSize() <= kInlineFrameLimit) {
+            Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, -FramePlan().FrameSize(), A64IndexMode::PreIndex),
+                 "the frame record");
         }
         else {
-            OpenStackArea(frameSize, "the frame");
+            OpenStackArea(FramePlan().FrameSize(), "the frame");
             Must(enc.Stp(A64::Fp, A64::Lr, A64::Sp, 0), "the frame record");
         }
         Must(enc.Mov(A64::Fp, A64::Sp), "the frame pointer");
@@ -1520,12 +1318,13 @@ private:
 
     void EmitEpilogue() {
         EmitCalleeSaves(true);
-        if (frameSize <= kInlineFrameLimit) {
-            Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, frameSize, A64IndexMode::PostIndex), "the frame record");
+        if (FramePlan().FrameSize() <= kInlineFrameLimit) {
+            Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, FramePlan().FrameSize(), A64IndexMode::PostIndex),
+                 "the frame record");
         }
         else {
             Must(enc.Ldp(A64::Fp, A64::Lr, A64::Sp, 0), "the frame record");
-            Must(enc.FrameAdjust(frameSize), "the frame");
+            Must(enc.FrameAdjust(FramePlan().FrameSize()), "the frame");
         }
         Must(enc.Ret(), "the return");
     }
@@ -1852,11 +1651,13 @@ private:
     // a destination has to be preserved first.
 
     [[nodiscard]] bool HasPhiMoves(const std::uint32_t from, const std::uint32_t to) const {
+        const auto &phiMoves = FramePlan().PhiMoves();
         const auto edges = phiMoves.find(from);
         return edges != phiMoves.end() && edges->second.contains(to);
     }
 
     void EmitPhiMoves(const std::uint32_t from, const std::uint32_t to) {
+        const auto &phiMoves = FramePlan().PhiMoves();
         const auto edges = phiMoves.find(from);
         if (edges == phiMoves.end()) {
             return;
@@ -1867,10 +1668,11 @@ private:
         }
         for (const auto &step : ResolvePhiMoves(moves->second)) {
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                CopyFrameValue(phiTempOff, Disp(step.dst), step.type);
+                CopyFrameValue(FramePlan().PhiTemporaryOffset(), Disp(step.dst), step.type);
                 continue;
             }
-            CopyFrameValue(Disp(step.dst), step.sourceIsTemporary ? phiTempOff : Disp(step.src), step.type);
+            CopyFrameValue(Disp(step.dst), step.sourceIsTemporary ? FramePlan().PhiTemporaryOffset() : Disp(step.src),
+                           step.type);
         }
     }
 
@@ -2491,7 +2293,7 @@ private:
             const ArgLocation &loc = layout.args[i];
             const int size = RuntimeSize(param.type);
             const bool paired = RuntimeAlign(param.type) >= 8;
-            const std::int64_t incoming = static_cast<std::int64_t>(frameSize) + loc.offset;
+            const std::int64_t incoming = static_cast<std::int64_t>(FramePlan().FrameSize()) + loc.offset;
             if (loc.byReference) {
                 // The caller's copy is the caller's: it is read into this frame
                 // once, and nothing here ever writes through the address again.
@@ -2543,8 +2345,9 @@ private:
     // The type a virtual register holds, for an operand whose width is not the
     // instruction's own — a shift amount, or an index.
     [[nodiscard]] TypeRef TypeOfReg(const LirReg reg) const {
-        const auto it = regTypes.find(reg);
-        return it == regTypes.end() ? TypeRef::MakeInt64() : it->second;
+        const auto &registerTypes = FramePlan().RegisterTypes();
+        const auto it = registerTypes.find(reg);
+        return it == registerTypes.end() ? TypeRef::MakeInt64() : it->second;
     }
 
     // The two operands of a binary instruction, in whatever registers they turn
@@ -2828,6 +2631,7 @@ private:
             break;
         }
         case LirOpcode::Alloca: {
+            const auto &allocaData = FramePlan().AllocaDataOffsets();
             const auto it = allocaData.find(instr.dst);
             if (it == allocaData.end()) {
                 Report(std::format("AArch64 code generation reached an alloca with no storage in '{}'", currentFunc));
@@ -2937,9 +2741,11 @@ private:
         }
         case LirOpcode::FieldPtr: {
             const LirReg base = instr.srcs[0];
-            const auto baseType = regTypes.find(base);
-            const int offset =
-                baseType == regTypes.end() ? 0 : FieldOffsetOf(baseType->second, instr.strArg, layouts, interfaceNames);
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const auto baseType = registerTypes.find(base);
+            const int offset = baseType == registerTypes.end()
+                                 ? 0
+                                 : FieldOffsetOf(baseType->second, instr.strArg, layouts, interfaceNames);
             const A64Reg source = ReadPointerOperand(base, A64::Xn(kTemp));
             const A64Reg addr = ResultRegister(instr.dst, A64::Xn(kTemp));
             if (offset != 0) {
@@ -3254,8 +3060,9 @@ private:
             // the boolean the comparison produces, and the operands agree, so
             // the left one decides both which instruction compares them and
             // which condition then reads the flags it left.
-            const auto found = regTypes.find(instr.srcs[0]);
-            const TypeRef &operandType = found != regTypes.end() ? found->second : instr.type;
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const auto found = registerTypes.find(instr.srcs[0]);
+            const TypeRef &operandType = found != registerTypes.end() ? found->second : instr.type;
             A64Condition cond = A64Condition::Eq;
             if (IsFloat(operandType)) {
                 const auto operands = LoadFloatOperands(instr, operandType);
@@ -3290,8 +3097,9 @@ private:
                 break;
             }
             const TypeRef &dstType = instr.type;
-            const auto found = regTypes.find(instr.srcs[0]);
-            const TypeRef &srcType = found != regTypes.end() ? found->second : dstType;
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const auto found = registerTypes.find(instr.srcs[0]);
+            const TypeRef &srcType = found != registerTypes.end() ? found->second : dstType;
             const bool srcFloat = IsFloat(srcType);
             const bool dstFloat = IsFloat(dstType);
 
@@ -3407,8 +3215,9 @@ private:
         case LirTermKind::Branch: {
             // The condition is read at its own type, since a `bool8` occupies
             // one byte of its slot and the bytes above it stand for nothing.
-            const auto found = regTypes.find(term.cond);
-            LoadFromSlot(A64::Xn(kTemp), term.cond, found != regTypes.end() ? found->second : TypeRef::MakeBool());
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const auto found = registerTypes.find(term.cond);
+            LoadFromSlot(A64::Xn(kTemp), term.cond, found != registerTypes.end() ? found->second : TypeRef::MakeBool());
             const A64Reg cond = A64::Xn(kTemp);
             // With no copies on either edge, the whole terminator is a branch on
             // zero to one target and a branch to the other. With copies on
@@ -3434,12 +3243,12 @@ private:
                 // result: it is read through that address, and its slot is the
                 // address itself.
                 const bool throughPointer = IsRegPointerTo(*term.retVal, term.retType);
-                if (indirectResultOff != 0) {
+                if (FramePlan().IndirectResultOffset() != 0) {
                     // The caller named the memory and the prologue kept the
                     // address; the value is copied there and no register carries
                     // any of it back.
                     const A64Reg destination = A64::Xn(kAddr);
-                    LoadScalar(destination, A64::Fp, indirectResultOff, 8, false);
+                    LoadScalar(destination, A64::Fp, FramePlan().IndirectResultOffset(), 8, false);
                     A64Reg source = A64::Xn(kSrcAddr);
                     if (throughPointer) {
                         source = ReadPointerOperand(*term.retVal, source);
@@ -3466,8 +3275,10 @@ private:
             // A chain of comparisons, which is what a jump table would be built
             // out of anyway and is all the x86-64 back end emits: the labels a
             // `match` produces are few and rarely contiguous.
-            const auto found = regTypes.find(term.cond);
-            LoadFromSlot(A64::Xn(kTemp), term.cond, found != regTypes.end() ? found->second : TypeRef::MakeInt64());
+            const auto &registerTypes = FramePlan().RegisterTypes();
+            const auto found = registerTypes.find(term.cond);
+            LoadFromSlot(A64::Xn(kTemp), term.cond,
+                         found != registerTypes.end() ? found->second : TypeRef::MakeInt64());
             unsigned ordinal = 0;
             for (const auto &branch : term.cases) {
                 CompareAgainstCase(branch.value);
@@ -3554,7 +3365,8 @@ private:
             currentFunc.clear();
             return;
         }
-        PrepassFunc(func);
+        const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);
+        activeFramePlan = &framePlan;
         widenedSites.clear();
 
         // The body is emitted, and emitted again if any conditional branch in it
@@ -3573,14 +3385,15 @@ private:
                                                        func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
         funcSyms[func.name] = symIdx;
         if (!moduleBuilder.BeginFunction(symIdx)) {
+            activeFramePlan = nullptr;
             currentFunc.clear();
             return;
         }
         while (true) {
             jumpPatches.clear();
             EmitPrologue();
-            if (indirectResultOff != 0) {
-                StoreScalar(A64::Xn(kIndirectResult), A64::Fp, indirectResultOff, 8);
+            if (FramePlan().IndirectResultOffset() != 0) {
+                StoreScalar(A64::Xn(kIndirectResult), A64::Fp, FramePlan().IndirectResultOffset(), 8);
             }
             EmitParamSpills(func);
             blockOffsets.assign(func.blocks.size(), 0);
@@ -3604,6 +3417,7 @@ private:
         }
 
         (void)moduleBuilder.EndFunction(symIdx);
+        activeFramePlan = nullptr;
         currentFunc.clear();
     }
 
