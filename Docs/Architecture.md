@@ -57,7 +57,7 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                   | BuildInfo and Target                  |
 | `Archive`              | Deterministic native archive containers and symbol indexes                       | Object                                |
 | `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output | Object, Archive, and System      |
-| `Driver`               | End-to-end compilation orchestration and build reports                           | All compiler stages                   |
+| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution | All compiler stages                  |
 | `Formatter` / `Linter` | Source formatting and lint diagnostics                                           | Syntax; the linter also uses Semantic |
 
 The driver's artifact-aware Release composition adds `lir-declaration-pruner` after the profile-only local LIR pipeline. It consumes whole-package reachability before backend selection, retains declarations in module order, and removes unreachable private definitions and unused externs. Debug never schedules the pass, and public library roots remain intact. The pass reports function, constant, vtable, and extern counts plus a deterministic eliminated-IR estimate based on declaration, parameter, block, instruction, terminator, assembly-instruction, constant-element, and vtable-entry nodes.
@@ -126,7 +126,7 @@ rux lint -> RuxLinter    -> RuxSyntax + RuxSemantic
 rux      -> RuxDriver
 ```
 
-Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
+Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Driver/PackageResolution` collects manifest requirements through a typed `TargetTriple`, caches each normalized package index once, selects candidates, and walks dependency graphs in deterministic breadth-first order. It returns the selected graph or a structured failure without printing; CLI handlers retain project discovery, network-boundary messages, failure rendering, and installation reports. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
 `Driver/BuildTarget` owns output layout as distinct APIs rather than boolean path switches. The raw output root resolves `[Build].Output`; ordinary machine artifacts always append their typed `BuildProfile` and canonical `TargetTriple`. Tests, generated documentation, source archives, and `clean` opt into the raw-root contract explicitly.
 

@@ -44,6 +44,7 @@ set(RUX_TEST_SOURCES
     OsTests.cpp
     PackageCacheTests.cpp
     PackageIdentityTests.cpp
+    PackageResolutionTests.cpp
     PackageScaffoldTests.cpp
     PackageVersionTests.cpp
     PeLinkerTests.cpp

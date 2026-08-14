@@ -213,6 +213,7 @@ rux_add_component(RuxDriver
     Driver/BuildReport.cpp
     Driver/BuildTarget.cpp
     Driver/Credentials.cpp
+    Driver/PackageResolution.cpp
     Driver/Registry.cpp)
 target_link_libraries(RuxDriver PUBLIC
     RuxBuildInfo RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic

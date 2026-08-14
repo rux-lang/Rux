@@ -12,6 +12,7 @@
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
+#include "Driver/PackageResolution.h"
 #include "Driver/Registry.h"
 #include "Package/Artifact.h"
 #include "Package/Checksum.h"
@@ -23,13 +24,11 @@
 #include <cstdio>
 #include <filesystem>
 #include <format>
-#include <map>
 #include <optional>
 #include <print>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,25 +38,6 @@ using namespace System;
 using namespace CliSupport;
 
 namespace {
-/// One thing that must be resolved: a package and the requirement on it.
-struct Requirement {
-    IdentitySegment ns;
-    IdentitySegment package;
-    VersionRange range;
-};
-
-/// A package the resolver settled on.
-struct Resolution {
-    IdentitySegment ns;
-    IdentitySegment package;
-    SemanticVersion version;
-};
-
-/// The lookup key two spellings of one package share.
-std::string IdentityKey(const IdentitySegment &ns, const IdentitySegment &package) {
-    return ns.Normalized() + "/" + package.Normalized();
-}
-
 std::string Qualified(const IdentitySegment &ns, const IdentitySegment &package) {
     return QualifiedIdentity(ns, package);
 }
@@ -74,124 +54,8 @@ std::string TargetSuffix(const ManifestDependency &dependency) {
     return suffix + ']';
 }
 
-/**
- * @brief Fetches each package's index at most once per command.
- *
- * A dependency graph names the same package from several dependents, and the
- * index is the same document every time; one request per package keeps a large
- * install from hammering the registry.
- */
-class IndexCache {
-public:
-    explicit IndexCache(std::string registryBase)
-        : base(std::move(registryBase)) {
-    }
-
-    [[nodiscard]] const std::string &Base() const noexcept {
-        return base;
-    }
-
-    /// The index for one package, or nullptr after reporting why it is missing.
-    [[nodiscard]] const RegistryIndexEntry *Get(const IdentitySegment &ns, const IdentitySegment &package) {
-        const std::string key = IdentityKey(ns, package);
-        if (const auto found = entries.find(key); found != entries.end()) {
-            return &found->second;
-        }
-        auto fetched = FetchPackageIndex(base, ns, package);
-        if (!fetched) {
-            std::print(stderr, "error: {}\n", Describe(fetched.error(), base, Qualified(ns, package)));
-            return nullptr;
-        }
-        return &entries.emplace(key, std::move(*fetched)).first->second;
-    }
-
-private:
-    std::string base;
-    std::map<std::string, RegistryIndexEntry> entries;
-};
-
-/// The requirements accumulated for one package, and the version they settled on.
-struct Selection {
-    IdentitySegment ns;
-    IdentitySegment package;
-    std::vector<VersionRange> ranges;
-    SemanticVersion version;
-};
-
-/**
- * @brief Resolve `seeds` and everything they depend on.
- *
- * Breadth-first over the resolver index: each selected version contributes its
- * own dependency edges, so the whole transitive graph is decided before
- * anything is downloaded. One version is selected per package; when a later
- * requirement rules the current selection out, the package is re-selected
- * against every requirement seen so far. There is no backtracking, so a graph
- * with genuinely incompatible requirements is reported rather than silently
- * resolved one way.
- *
- * @return The resolved graph, or nullopt after the reason has been printed
- */
-std::optional<std::vector<Resolution>> ResolveGraph(IndexCache &index, const std::vector<Requirement> &seeds,
-                                                    const Target::OS targetOS) {
-    const SemanticVersion compiler = CompilerVersion();
-    std::map<std::string, Selection> selections;
-    std::vector<Requirement> queue = seeds;
-    std::unordered_set<std::string> processed;
-    // Insertion order is what the install phase reports, so seeds and their
-    // dependencies appear in the order they were discovered.
-    std::vector<std::string> order;
-
-    for (std::size_t i = 0; i < queue.size(); ++i) {
-        const Requirement requirement = queue[i];
-        const std::string key = IdentityKey(requirement.ns, requirement.package);
-        if (!processed.insert(key + "@" + requirement.range.Text()).second) {
-            continue;
-        }
-
-        const RegistryIndexEntry *entry = index.Get(requirement.ns, requirement.package);
-        if (entry == nullptr) {
-            return std::nullopt;
-        }
-
-        auto [selection, inserted] = selections.try_emplace(
-            key, Selection{.ns = entry->ns, .package = entry->package, .ranges = {}, .version = {}});
-        if (inserted) {
-            order.push_back(key);
-        }
-        selection->second.ranges.push_back(requirement.range);
-
-        const RegistryVersion *chosen = SelectVersion(*entry, selection->second.ranges, compiler);
-        if (chosen == nullptr) {
-            const ResolutionFailure failure =
-                DescribeResolutionFailure(*entry, selection->second.ranges, compiler, index.Base());
-            std::print(stderr, "error: {}\n", failure.message);
-            for (const auto &detail : failure.details) {
-                std::print(stderr, "{}{}\n", errorContinuation, detail);
-            }
-            return std::nullopt;
-        }
-        if (!selection->second.version.Empty() && selection->second.version.Text() == chosen->version.Text()) {
-            continue;
-        }
-        selection->second.version = chosen->version;
-        for (const auto &edge : chosen->dependencies) {
-            if (edge.MatchesTarget(targetOS)) {
-                queue.push_back(Requirement{.ns = edge.ns, .package = edge.package, .range = edge.range});
-            }
-        }
-    }
-
-    std::vector<Resolution> resolved;
-    resolved.reserve(order.size());
-    for (const auto &key : order) {
-        const Selection &selection = selections.at(key);
-        resolved.push_back(Resolution{.ns = selection.ns, .package = selection.package, .version = selection.version});
-    }
-    return resolved;
-}
-
 /// Whether the manifest in a cache directory really is the package it claims.
-bool CacheEntryMatches(const std::filesystem::path &root, const Resolution &resolution) {
+bool CacheEntryMatches(const std::filesystem::path &root, const ResolvedPackage &resolution) {
     const auto loaded = Manifest::Load(root / "Rux.toml");
     if (!loaded.Ok() || loaded.manifest->IsWorkspace()) {
         return false;
@@ -215,8 +79,8 @@ struct InstallTally {
  * directory until the archive has matched its digest and passed the artifact
  * contract, and the swap into place is atomic.
  */
-bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &resolved, const GlobalOptions &opts,
-                     InstallTally &tally) {
+bool InstallResolved(const PackageResolver &resolver, const std::vector<ResolvedPackage> &resolved,
+                     const GlobalOptions &opts, InstallTally &tally) {
     for (const auto &resolution : resolved) {
         const std::string identity = Qualified(resolution.ns, resolution.package);
         const std::filesystem::path packageDir =
@@ -233,14 +97,14 @@ bool InstallResolved(const IndexCache &index, const std::vector<Resolution> &res
         if (!opts.quiet) {
             std::print("Downloading {} {}\n", identity, resolution.version.Text());
         }
-        auto digest = FetchArtifactChecksum(index.Base(), resolution.ns, resolution.package, resolution.version);
+        auto digest = FetchArtifactChecksum(resolver.Base(), resolution.ns, resolution.package, resolution.version);
         if (!digest) {
-            std::print(stderr, "error: {}\n", Describe(digest.error(), index.Base(), identity));
+            std::print(stderr, "error: {}\n", Describe(digest.error(), resolver.Base(), identity));
             return false;
         }
-        auto archive = DownloadArtifact(index.Base(), resolution.ns, resolution.package, resolution.version);
+        auto archive = DownloadArtifact(resolver.Base(), resolution.ns, resolution.package, resolution.version);
         if (!archive) {
-            std::print(stderr, "error: {}\n", Describe(archive.error(), index.Base(), identity));
+            std::print(stderr, "error: {}\n", Describe(archive.error(), resolver.Base(), identity));
             return false;
         }
         if (const std::string actual = Sha256Hex(*archive); !DigestsEqual(actual, *digest)) {
@@ -320,17 +184,6 @@ void RemoveLegacyCacheEntries(const GlobalOptions &opts) {
     }
 }
 
-/// Collect the registry dependencies a manifest declares.
-void QueueRegistryDependencies(const Manifest &manifest, const std::optional<Target::OS> targetOS,
-                               std::vector<Requirement> &out) {
-    for (const auto &dep : manifest.dependencies) {
-        if (const RegistryDependencySource *registry = dep.Registry();
-            registry != nullptr && (!targetOS || dep.MatchesTarget(*targetOS))) {
-            out.push_back(Requirement{.ns = registry->ns, .package = dep.package, .range = registry->version});
-        }
-    }
-}
-
 /**
  * @brief Seed the resolver from the project the command was run in.
  *
@@ -340,8 +193,9 @@ void QueueRegistryDependencies(const Manifest &manifest, const std::optional<Tar
  *
  * @return The requirements, or nullopt after the reason has been printed
  */
-std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opts, const Target::OS targetOS) {
-    std::vector<Requirement> seeds;
+std::optional<std::vector<PackageRequirement>> SeedFromProject(const GlobalOptions &opts,
+                                                               const Target::TargetTriple target) {
+    std::vector<PackageRequirement> seeds;
     std::optional<std::filesystem::path> manifestPath;
     if (!opts.manifest.empty()) {
         manifestPath = RequireManifest(opts.manifest);
@@ -372,7 +226,8 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
                            memberPath.parent_path().string());
                 return std::nullopt;
             }
-            QueueRegistryDependencies(*memberManifest, targetOS, seeds);
+            auto requirements = CollectPackageRequirements(*memberManifest, target);
+            seeds.insert(seeds.end(), requirements.begin(), requirements.end());
         }
         return seeds;
     }
@@ -382,7 +237,7 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
         return std::nullopt;
     }
     if (!manifest->IsWorkspace()) {
-        QueueRegistryDependencies(*manifest, targetOS, seeds);
+        seeds = CollectPackageRequirements(*manifest, target);
         return seeds;
     }
 
@@ -405,14 +260,15 @@ std::optional<std::vector<Requirement>> SeedFromProject(const GlobalOptions &opt
             std::print(stderr, "error: workspace member '{}' is not a package\n", member);
             return std::nullopt;
         }
-        QueueRegistryDependencies(*memberManifest, targetOS, seeds);
+        auto requirements = CollectPackageRequirements(*memberManifest, target);
+        seeds.insert(seeds.end(), requirements.begin(), requirements.end());
     }
     return seeds;
 }
 
 /// A requirement read off the command line, and whether it was written down.
 struct SpecRequirement {
-    Requirement requirement;
+    PackageRequirement requirement;
 
     /// False when the spec named no `@requirement` and the wildcard stood in.
     /// `uninstall` distinguishes the two: naming a package removes every
@@ -488,7 +344,7 @@ bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_
     return true;
 }
 
-std::optional<Target::OS> ResolvePackageTarget(const std::string_view requested) {
+std::optional<Target::TargetTriple> ResolvePackageTarget(const std::string_view requested) {
     const auto target =
         requested.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(requested);
     if (!target) {
@@ -496,7 +352,14 @@ std::optional<Target::OS> ResolvePackageTarget(const std::string_view requested)
                    SupportedTargetTriples());
         return std::nullopt;
     }
-    return target->Os();
+    return target;
+}
+
+void ReportResolutionFailure(const ResolutionFailure &failure) {
+    std::print(stderr, "error: {}\n", failure.message);
+    for (const auto &detail : failure.details) {
+        std::print(stderr, "{}{}\n", errorContinuation, detail);
+    }
 }
 } // namespace
 
@@ -535,12 +398,12 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     // Timed from here rather than from entry, so the reported span is the work
     // the network and disk did, not the argument parsing above it.
     const auto installStart = std::chrono::steady_clock::now();
-    const auto targetOS = ResolvePackageTarget(targetArg);
-    if (!targetOS) {
+    const auto target = ResolvePackageTarget(targetArg);
+    if (!target) {
         return 1;
     }
 
-    std::vector<Requirement> seeds;
+    std::vector<PackageRequirement> seeds;
     if (!packageSpec.empty()) {
         auto spec = RequirementFromSpec(packageSpec, "install");
         if (!spec) {
@@ -549,7 +412,7 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
         seeds.push_back(std::move(spec->requirement));
     }
     else {
-        auto seeded = SeedFromProject(opts, *targetOS);
+        auto seeded = SeedFromProject(opts, *target);
         if (!seeded) {
             return 1;
         }
@@ -567,14 +430,15 @@ int Cli::RunInstall(std::span<const std::string_view> args, const GlobalOptions 
     if (!opts.quiet) {
         std::print("Resolving from {}\n", ResolveRegistryBase(registryArg));
     }
-    IndexCache index(ResolveRegistryBase(registryArg));
-    const auto resolved = ResolveGraph(index, seeds, *targetOS);
+    PackageResolver resolver(ResolveRegistryBase(registryArg));
+    const auto resolved = resolver.Resolve(seeds, *target);
     if (!resolved) {
+        ReportResolutionFailure(resolved.error());
         return 1;
     }
 
     InstallTally tally;
-    if (!InstallResolved(index, *resolved, opts, tally)) {
+    if (!InstallResolved(resolver, *resolved, opts, tally)) {
         return 1;
     }
     if (!opts.quiet) {
@@ -657,7 +521,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         }
         // A bare `Namespace/Name` removes every installed version; adding
         // `@requirement` narrows it to the versions that requirement selects.
-        const Requirement &requirement = spec->requirement;
+        const PackageRequirement &requirement = spec->requirement;
         int removed = 0;
         if (!removeVersions(requirement.ns, requirement.package,
                             spec->explicitRange ? std::optional(requirement.range) : std::nullopt, removed)) {
@@ -679,8 +543,7 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     if (!manifest) {
         return 1;
     }
-    std::vector<Requirement> declared;
-    QueueRegistryDependencies(*manifest, std::nullopt, declared);
+    const std::vector<PackageRequirement> declared = CollectPackageRequirements(*manifest);
     if (declared.empty()) {
         if (!opts.quiet) {
             std::print("  No registry dependencies to uninstall.\n");
@@ -968,18 +831,18 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         return 1;
     }
 
-    const auto targetOS = ResolvePackageTarget(targetArg);
-    if (!targetOS) {
+    const auto target = ResolvePackageTarget(targetArg);
+    if (!target) {
         return 1;
     }
 
-    std::vector<Requirement> seeds;
+    std::vector<PackageRequirement> seeds;
     if (global) {
         // Nothing declares a requirement on a cached package here, so each one
         // is refreshed to the newest release the registry still offers.
         const VersionRange any = *VersionRange::Parse("*");
         for (const auto &[ns, name] : CachedPackages()) {
-            seeds.push_back(Requirement{.ns = ns, .package = name, .range = any});
+            seeds.push_back(PackageRequirement{.ns = ns, .package = name, .range = any});
         }
         if (seeds.empty()) {
             if (!opts.quiet) {
@@ -989,7 +852,7 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
         }
     }
     else {
-        auto seeded = SeedFromProject(opts, *targetOS);
+        auto seeded = SeedFromProject(opts, *target);
         if (!seeded) {
             return 1;
         }
@@ -1007,14 +870,15 @@ int Cli::RunUpdate(std::span<const std::string_view> args, const GlobalOptions &
     if (!opts.quiet) {
         std::print("Resolving from {}\n", ResolveRegistryBase(registryArg));
     }
-    IndexCache index(ResolveRegistryBase(registryArg));
-    const auto resolved = ResolveGraph(index, seeds, *targetOS);
+    PackageResolver resolver(ResolveRegistryBase(registryArg));
+    const auto resolved = resolver.Resolve(seeds, *target);
     if (!resolved) {
+        ReportResolutionFailure(resolved.error());
         return 1;
     }
 
     InstallTally tally;
-    if (!InstallResolved(index, *resolved, opts, tally)) {
+    if (!InstallResolved(resolver, *resolved, opts, tally)) {
         return 1;
     }
     if (!opts.quiet) {
@@ -1077,7 +941,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         if (!spec) {
             return JsonFailure("invalid package identity or version requirement");
         }
-        const Requirement &requirement = spec->requirement;
+        const PackageRequirement &requirement = spec->requirement;
         const auto installed = FindInstalledPackage(requirement.ns, requirement.package, requirement.range);
         if (!installed) {
             // Not having it locally is worth distinguishing from it not
