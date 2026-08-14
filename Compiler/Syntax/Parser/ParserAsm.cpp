@@ -1,4 +1,4 @@
-// Inline-assembly operand parsing.
+// Inline-assembly function body, instruction, and operand parsing.
 
 #include "Syntax/Parser/Parser.h"
 
@@ -23,6 +23,16 @@ std::string LowerAsmName(std::string name) {
         character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
     }
     return name;
+}
+
+// x86-64 mnemonics that never take an operand. They have to be listed because
+// an identifier after one of them starts the next instruction rather than an
+// operand, and x86-64 operand syntax gives no other way to tell. AArch64 needs
+// no such list: its operands are registers, `#` immediates and brackets, so
+// `CanStartAsmOperand` asks the mnemonic table instead.
+bool IsZeroOperandAsmMnemonic(const std::string_view mnemonic) {
+    return mnemonic == "ret" || mnemonic == "leave" || mnemonic == "nop" || mnemonic == "syscall" ||
+           mnemonic == "cqo" || mnemonic == "cdq" || mnemonic == "cdqe";
 }
 
 // AArch64 shift and extend keywords, as written after a register or immediate
@@ -58,6 +68,66 @@ AsmExtendKind AsmExtendFromName(const std::string_view name) noexcept {
 }
 
 } // namespace
+
+// An asm body is a sequence of instructions and label definitions between the
+// braces of an `asm func`. Newlines are not significant to the lexer, so an
+// instruction's operand list simply ends at the first token that is not a
+// comma — the next mnemonic, a label, or the closing brace.
+std::vector<AsmInstr> Parser::ParseAsmBody() {
+    std::vector<AsmInstr> instrs;
+    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // A label definition: `name:`.
+        if (IsAsmNameToken(Peek()) && Peek(1).Is(TokenKind::Colon)) {
+            AsmInstr label;
+            label.arch = arch;
+            label.location = CurrentLocation();
+            label.labelDef = Advance().text; // name
+            Advance();                       // ':'
+            instrs.push_back(std::move(label));
+            continue;
+        }
+
+        if (!IsAsmNameToken(Peek())) {
+            EmitError(CurrentLocation(), std::format("expected an assembly mnemonic, found '{}'", Peek().text));
+            Advance(); // skip the offending token to make progress
+            continue;
+        }
+
+        AsmInstr instr;
+        instr.arch = arch;
+        instr.location = CurrentLocation();
+        instr.mnemonic = LowerAsmName(Advance().text);
+
+        // AArch64 writes a branch's condition into its name — `B.EQ` — and the
+        // lexer hands the three pieces over separately. Nothing in x86-64
+        // syntax joins a mnemonic to a name with a dot, so the form is read
+        // there too, for the reason CanStartAsmOperand reads '#' there: a
+        // `when #target.arch` arm for another architecture has to parse before
+        // it can be discarded, and what survives is reported as the foreign
+        // instruction it is rather than as a stray token.
+        if (Check(TokenKind::Dot) && IsAsmNameToken(Peek(1))) {
+            Advance(); // '.'
+            instr.mnemonic += '.';
+            instr.mnemonic += LowerAsmName(Advance().text);
+        }
+
+        // Operands, comma-separated. Stop when the operand is not followed
+        // by a comma (i.e. the next token starts a new instruction).
+        const bool zeroOperand = arch != Target::Arch::AArch64 && IsZeroOperandAsmMnemonic(instr.mnemonic);
+        if (zeroOperand || (!Check(TokenKind::RightBrace) && !CanStartAsmOperand())) {
+            instrs.push_back(std::move(instr));
+            continue;
+        }
+        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            instr.operands.push_back(ParseAsmOperand());
+            if (!Match(TokenKind::Comma)) {
+                break;
+            }
+        }
+        instrs.push_back(std::move(instr));
+    }
+    return instrs;
+}
 
 // True when the current token can begin an operand of the instruction whose
 // mnemonic was just consumed. Used to tell a zero-operand instruction (ret,

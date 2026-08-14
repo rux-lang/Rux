@@ -96,6 +96,7 @@ rux_add_component(RuxSyntax
     Syntax/Parser/Parser.cpp
     Syntax/Parser/ParserAsm.cpp
     Syntax/Parser/ParserDecl.cpp
+    Syntax/Parser/ParserDeclDispatch.cpp
     Syntax/Parser/ParserType.cpp
     Syntax/Parser/ParserStmt.cpp
     Syntax/Parser/ParserExpr.cpp

@@ -98,6 +98,8 @@ Process launches are confined the same way, and for a stronger reason: Rux encod
 
 The language parses the same for every target, with one exception: an `asm func` body is machine text rather than Rux, so `Parser` takes the target architecture and reads the body with that architecture's register table (`Target/AsmRegisters.h`). The mnemonics are checked later — a body whose instructions belong to the other architecture is an error reported during semantic analysis, after `when` folding has dropped the branches this build never reaches. A function that must reach both machines therefore writes a body per architecture under `when #target.arch`, as the platform packages' system-call wrappers do.
 
+Within the syntax component, `ParserDeclDispatch.cpp` owns top-level declaration selection and function shells, while `ParserAsm.cpp` owns inline-assembly body, instruction, and operand parsing. Both use the parser's existing private cursor and diagnostic state; this split adds no public parser interface.
+
 ## Architecture Naming
 
 Use one spelling per context so the website, repository, CLI, and compiler APIs stay predictable:
