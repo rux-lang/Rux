@@ -11,10 +11,10 @@ set(RUX_TEST_SOURCES
     AArch64ObjectTests.cpp
     AArch64RelocationTests.cpp
     AArch64RcuAbiTests.cpp
+    AArch64RcuAssemblyTests.cpp
     AArch64RcuControlFlowTests.cpp
     AArch64RcuDataTests.cpp
     AArch64RcuEmitterTestSupport.cpp
-    AArch64RcuEmitterTests.cpp
     AArch64RcuFloatingTests.cpp
     AArch64RcuFunctionImageTests.cpp
     AArch64RcuFrameTests.cpp

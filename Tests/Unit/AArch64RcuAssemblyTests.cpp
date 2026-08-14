@@ -16,8 +16,6 @@
 using namespace Rux;
 using namespace Rux::Testing;
 
-// Inline assembly
-//
 // An `asm func` is the one body this back end selects no instructions for.
 // The cases below verify its raw bytes and relocations.
 
@@ -103,4 +101,26 @@ TEST_CASE("AArch64 RCU emitter relocates a symbol an asm func names") {
     const RcuSymbol *caller = FindSymbol(object, "TripleThenAdd");
     REQUIRE(caller != nullptr);
     CHECK_EQ(relocs.front().sectionOffset, caller->value + *branch * 4);
+}
+
+TEST_CASE("AArch64 RCU emitter emits every word of an asm func") {
+    // An `asm func` is the body the source wrote and nothing else: no
+    // prologue opens a frame the body did not ask for, and no epilogue follows
+    // the RET the body already wrote.
+    const auto package = CompileToAArch64Lir(R"(
+        asm func AddAsm(a: int64, b: int64) -> int64 {
+            add x0, x0, x1
+            ret
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+
+    CheckFunctionImage(objects.front(), "AddAsm",
+                       {
+                           0x8B010000, // add x0, x0, x1
+                           0xD65F03C0, // ret
+                       });
 }
