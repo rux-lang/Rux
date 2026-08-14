@@ -226,6 +226,7 @@ rux_add_component(RuxLinker
     Linker/RcuLinkGraph.cpp
     Linker/RcuObjectLayout.cpp
     Linker/MachO/CodeSignature.cpp
+    Linker/MachO/MachOLinkEdit.cpp
     Linker/MachO/MachOObjectWriter.cpp
     Linker/NativeObjectWriter.cpp
     Linker/Pe/PeWriter.cpp
