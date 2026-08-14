@@ -186,6 +186,7 @@ rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/AssemblyModulePrinter.cpp
     CodeGen/X86_64/AssemblyPrinter.cpp
     CodeGen/X86_64/CallAndTerminatorEmitter.cpp
+    CodeGen/X86_64/Encoder.cpp
     CodeGen/X86_64/FramePlan.cpp
     CodeGen/X86_64/FunctionEmitter.cpp
     CodeGen/X86_64/RcuEmitter.cpp
