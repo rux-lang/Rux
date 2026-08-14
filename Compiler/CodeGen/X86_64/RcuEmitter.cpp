@@ -10,6 +10,7 @@
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
+#include "CodeGen/X86_64/FunctionEmitter.h"
 #include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Object/Rcu/RcuMetadata.h"
 
@@ -31,7 +32,7 @@ struct JumpPatch {
     uint32_t targetBlock;
 };
 
-class RcuCodeGen {
+class RcuCodeGen final : private X86_64FunctionEmitterHooks {
 public:
     explicit RcuCodeGen(const LirModule &module, const std::vector<LirStructDecl> &inputStructDecls,
                         const std::vector<std::string> &inputPackageInterfaceNames, std::string packageName,
@@ -409,8 +410,20 @@ private:
         return symbol;
     }
 
+    [[nodiscard]] std::uint32_t InternFloatSignMask(const bool float32) override {
+        return float32 ? InternF32SignMask() : InternF64SignMask();
+    }
+
     void AddTextReloc(uint32_t sectionOff, uint32_t symIdx, int32_t addend = 0) {
         (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, sectionOff, symIdx, RcuRelType::Rel32, addend);
+    }
+
+    void AddTextRelocation(const std::uint32_t sectionOffset, const std::uint32_t symbol) override {
+        AddTextReloc(sectionOffset, symbol);
+    }
+
+    void EmitCallArguments(const std::vector<LirReg> &arguments) override {
+        EmitCallArgs(arguments);
     }
 
     void AddRodataReloc(uint32_t sectionOff, uint32_t symIdx, uint16_t type, int32_t addend = 0) {
@@ -427,7 +440,7 @@ private:
     }
 
     // Load A (rax / xmm0) and B (r10 / xmm1)
-    void LoadA(const LirReg reg, const TypeRef &t) const {
+    void LoadA(const LirReg reg, const TypeRef &t) const override {
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         auto it = physicalRegisters.find(reg);
         if (it != physicalRegisters.end()) {
@@ -498,7 +511,7 @@ private:
         }
     }
 
-    void LoadB(LirReg reg, const TypeRef &t) const {
+    void LoadB(LirReg reg, const TypeRef &t) const override {
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         auto it = physicalRegisters.find(reg);
         if (it != physicalRegisters.end()) {
@@ -597,7 +610,7 @@ private:
         }
     }
 
-    void StoreA(LirReg dst, const TypeRef &t) const {
+    void StoreA(LirReg dst, const TypeRef &t) const override {
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         auto it = physicalRegisters.find(dst);
         if (it != physicalRegisters.end()) {
@@ -1043,7 +1056,10 @@ private:
     }
 
     // Instruction code generation
-    void GenInstr(const LirInstr &instr) {
+    void GenInstr(X86_64FunctionEmitter &functionEmitter, const LirInstr &instr) {
+        if (functionEmitter.EmitArithmetic(instr)) {
+            return;
+        }
         const auto &registerTypes = FramePlan().RegisterTypes();
         const auto &physicalRegisters = FramePlan().PhysicalRegisters();
         switch (instr.op) {
@@ -1366,361 +1382,6 @@ private:
                     enc.Byte(0x03);
                 }
             }
-            break;
-        }
-        case LirOpcode::Add:
-        case LirOpcode::Sub:
-        case LirOpcode::And:
-        case LirOpcode::Or:
-        case LirOpcode::Xor: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                const bool f32 = (t.kind == TypeRef::Kind::Float32);
-                if (instr.op == LirOpcode::Add) {
-                    if (f32) {
-                        enc.AddssXmm01();
-                    }
-                    else {
-                        enc.AddsdXmm01();
-                    }
-                }
-                else if (instr.op == LirOpcode::Sub) {
-                    if (f32) {
-                        enc.SubssXmm01();
-                    }
-                    else {
-                        enc.SubsdXmm01();
-                    }
-                }
-                else {
-                    if (f32) {
-                        enc.AddssXmm01();
-                    }
-                    else {
-                        enc.AddsdXmm01();
-                    }
-                } // bitwise on float: fallback
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                if (instr.op == LirOpcode::Add) {
-                    enc.AddRaxR10();
-                }
-                else if (instr.op == LirOpcode::Sub) {
-                    enc.SubRaxR10();
-                }
-                else if (instr.op == LirOpcode::And) {
-                    enc.AndRaxR10();
-                }
-                else if (instr.op == LirOpcode::Or) {
-                    enc.OrRaxR10();
-                }
-                else {
-                    enc.XorRaxR10();
-                }
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-        case LirOpcode::Mul: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                if (t.kind == TypeRef::Kind::Float32) {
-                    enc.MulssXmm01();
-                }
-                else {
-                    enc.MulsdXmm01();
-                }
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                enc.ImulRaxR10();
-            }
-            StoreA(instr.dst, t);
-            break;
-        }
-        case LirOpcode::Div:
-        case LirOpcode::Mod: {
-            if (const TypeRef &t = instr.type; IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                if (instr.op == LirOpcode::Div) {
-                    if (t.kind == TypeRef::Kind::Float32) {
-                        enc.DivssXmm01();
-                    }
-                    else {
-                        enc.DivsdXmm01();
-                    }
-                }
-                else {
-                    // Mod
-                    if (t.kind == TypeRef::Kind::Float32) {
-                        enc.FmodssXmm01();
-                    }
-                    else {
-                        enc.FmodsdXmm01();
-                    }
-                }
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                if (t.IsSigned()) {
-                    enc.Cqo();
-                    enc.IdivR10();
-                }
-                else {
-                    enc.XorRdxRdx();
-                    enc.DivR10();
-                }
-                if (instr.op == LirOpcode::Mod) {
-                    enc.MovRaxRdx();
-                }
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-        case LirOpcode::Pow: {
-            const TypeRef &t = instr.type;
-            const bool win64Call = EffectiveConv(CallingConvention::Default) == CallingConvention::Win64;
-            const int callFrameSize = win64Call ? Win64CallFrameSize(instr.srcs.size()) : 0;
-            if (win64Call) {
-                enc.SubRspImm32(callFrameSize);
-            }
-            if (IsFloat(t)) {
-                // Float exponentiation uses a synthesized x87 helper rather
-                // than libm pow, so no CRT/math DLL import is required.
-                EmitCallArgs(instr.srcs, CallingConvention::Default);
-                uint32_t ro;
-                enc.Call(ro);
-                runtimeHelpers.AddCallRelocation(ro, t.kind == TypeRef::Kind::Float32
-                                                         ? X86_64RuntimeHelper::FloatPower32
-                                                         : X86_64RuntimeHelper::FloatPower64);
-            }
-            else {
-                EmitCallArgs(instr.srcs, CallingConvention::Default);
-                uint32_t ro;
-                enc.Call(ro);
-                runtimeHelpers.AddCallRelocation(ro, X86_64RuntimeHelper::IntegerPower);
-            }
-            if (win64Call) {
-                enc.AddRspImm32(callFrameSize);
-            }
-            StoreA(instr.dst, t);
-            break;
-        }
-        case LirOpcode::Shl:
-        case LirOpcode::Shr:
-        case LirOpcode::Lshr: {
-            const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], instr.op == LirOpcode::Lshr ? UnsignedIntegerType(t) : t);
-            auto it = physicalRegisters.find(instr.srcs[1]);
-            if (it != physicalRegisters.end()) {
-                enc.MovR11PhysReg(it->second);
-            }
-            else {
-                enc.MovR11Load(Disp(instr.srcs[1]));
-            }
-            enc.MovRcxR11();
-            bool isShr = instr.op == LirOpcode::Shr || instr.op == LirOpcode::Lshr;
-            if (isShr && t.IsSigned() && instr.op != LirOpcode::Lshr) {
-                enc.SarRaxCl();
-            }
-            else if (isShr) {
-                enc.ShrRaxCl();
-            }
-            else {
-                enc.ShlRaxCl();
-            }
-            StoreA(instr.dst, t);
-            break;
-        }
-
-        case LirOpcode::Neg: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                const bool f32 = (t.kind == TypeRef::Kind::Float32);
-                const uint32_t maskSym = f32 ? InternF32SignMask() : InternF64SignMask();
-                uint32_t ro;
-                if (f32) {
-                    enc.MovssXmm1Rip(ro);
-                }
-                else {
-                    enc.MovsdXmm1Rip(ro);
-                }
-                AddTextReloc(ro, maskSym);
-                if (f32) {
-                    enc.XorpsXmm01();
-                }
-                else {
-                    enc.XorpdXmm01();
-                }
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                enc.NegRax();
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-
-        case LirOpcode::Not: {
-            LoadA(instr.srcs[0], instr.type);
-            enc.TestRaxRax();
-            enc.SeteAl();
-            enc.MovzxRaxAl();
-            StoreA(instr.dst, TypeRef::MakeBool());
-            break;
-        }
-        case LirOpcode::BitNot: {
-            LoadA(instr.srcs[0], instr.type);
-            if (instr.type.IsBool()) {
-                // For bools, ~ is logical NOT (xor with 1) so that
-                // ~true == false and ~false == true, matching the
-                // docs at Web/src/docs/types/bool.md (issue #95).
-                // A plain bitwise NOT would leave 0xFE in the low
-                // byte for `~true`, which the bool loads back as
-                // truthy.
-                enc.XorRaxImmediate(1);
-            }
-            else {
-                enc.NotRax();
-            }
-            StoreA(instr.dst, instr.type);
-            break;
-        }
-        case LirOpcode::CmpEq:
-        case LirOpcode::CmpNe:
-        case LirOpcode::CmpLt:
-        case LirOpcode::CmpLe:
-        case LirOpcode::CmpGt:
-        case LirOpcode::CmpGe: {
-            const TypeRef &lhsT = registerTypes.contains(instr.srcs[0]) ? registerTypes.at(instr.srcs[0]) : instr.type;
-            LoadA(instr.srcs[0], lhsT);
-            LoadB(instr.srcs[1], lhsT);
-            if (IsFloat(lhsT)) {
-                if (lhsT.kind == TypeRef::Kind::Float32) {
-                    enc.UcomissXmm01();
-                }
-                else {
-                    enc.UcomisdXmm01();
-                }
-
-                switch (instr.op) {
-                case LirOpcode::CmpEq:
-                    // ordered && equal
-                    enc.SeteAl();  // AL = ZF
-                    enc.SetnpDl(); // DL = !PF
-                    enc.AndAlDl();
-                    break;
-
-                case LirOpcode::CmpNe:
-                    // unordered || unequal
-                    enc.SetneAl(); // AL = !ZF
-                    enc.SetpDl();  // DL = PF
-                    enc.OrAlDl();
-                    break;
-
-                case LirOpcode::CmpLt:
-                    // ordered && CF
-                    enc.SetbAl();
-                    enc.SetnpDl();
-                    enc.AndAlDl();
-                    break;
-
-                case LirOpcode::CmpLe:
-                    // ordered && (CF || ZF)
-                    enc.SetbeAl();
-                    enc.SetnpDl();
-                    enc.AndAlDl();
-                    break;
-
-                case LirOpcode::CmpGt:
-                    // ordered && (!CF && !ZF)
-                    enc.SetaAl();
-                    enc.SetnpDl();
-                    enc.AndAlDl();
-                    break;
-
-                case LirOpcode::CmpGe:
-                    // ordered && !CF
-                    enc.SetaeAl();
-                    enc.SetnpDl();
-                    enc.AndAlDl();
-                    break;
-
-                default:
-                    break;
-                }
-            }
-            else {
-                enc.CmpRaxR10();
-                bool sig = lhsT.IsSigned();
-                switch (instr.op) {
-                case LirOpcode::CmpEq:
-                    enc.SeteAl();
-                    break;
-                case LirOpcode::CmpNe:
-                    enc.SetneAl();
-                    break;
-                case LirOpcode::CmpLt:
-                    sig ? enc.SetlAl() : enc.SetbAl();
-                    break;
-                case LirOpcode::CmpLe:
-                    sig ? enc.SetleAl() : enc.SetbeAl();
-                    break;
-                case LirOpcode::CmpGt:
-                    sig ? enc.SetgAl() : enc.SetaAl();
-                    break;
-                default:
-                    sig ? enc.SetgeAl() : enc.SetaeAl();
-                    break;
-                }
-            }
-            enc.MovzxRaxAl();
-            StoreA(instr.dst, TypeRef::MakeBool());
-            break;
-        }
-        case LirOpcode::Cast: {
-            const TypeRef &dstT = instr.type;
-            TypeRef srcT = registerTypes.contains(instr.srcs[0]) ? registerTypes.at(instr.srcs[0]) : dstT;
-            LoadA(instr.srcs[0], srcT);
-            bool srcFl = IsFloat(srcT), dstFl = IsFloat(dstT);
-            if (srcFl && !dstFl) {
-                if (srcT.kind == TypeRef::Kind::Float32) {
-                    enc.CvttsssiRaxXmm0();
-                }
-                else {
-                    enc.CvttsdsiRaxXmm0();
-                }
-            }
-            else if (!srcFl && dstFl) {
-                if (dstT.kind == TypeRef::Kind::Float32) {
-                    enc.Cvtsi2ssXmm0Rax();
-                }
-                else {
-                    enc.Cvtsi2sdXmm0Rax();
-                }
-            }
-            else if (srcFl && dstFl) {
-                if (srcT.kind == TypeRef::Kind::Float32 && dstT.kind == TypeRef::Kind::Float64) {
-                    enc.CvtsssdXmm0();
-                }
-                else if (srcT.kind == TypeRef::Kind::Float64 && dstT.kind == TypeRef::Kind::Float32) {
-                    enc.CvtsdssXmm0();
-                }
-            }
-            StoreA(instr.dst, dstT);
             break;
         }
         case LirOpcode::Call: {
@@ -2074,6 +1735,8 @@ private:
         }
         const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
         activeFramePlan = &framePlan;
+        X86_64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, EffectiveConv(CallingConvention::Default),
+                                              *this);
         const auto &usedPhysicalRegisters = framePlan.UsedPhysicalRegisters();
         const auto &physicalRegisters = framePlan.PhysicalRegisters();
         jumpPatches.clear();
@@ -2252,7 +1915,7 @@ private:
             blockOffsets[bi] = enc.Size();
             const auto &block = func.blocks[bi];
             for (const auto &instr : block.instrs) {
-                GenInstr(instr);
+                GenInstr(functionEmitter, instr);
             }
             if (block.term) {
                 GenTerm(bi, *block.term, func);
