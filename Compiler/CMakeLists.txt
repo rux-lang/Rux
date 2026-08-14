@@ -94,6 +94,7 @@ target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxSourceModel)
 
 rux_add_component(RuxSyntax
     Syntax/Parser/Parser.cpp
+    Syntax/Parser/ParserAsm.cpp
     Syntax/Parser/ParserDecl.cpp
     Syntax/Parser/ParserType.cpp
     Syntax/Parser/ParserStmt.cpp
