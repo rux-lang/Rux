@@ -1,14 +1,13 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 
-#include "CodeGen/FloatLiteral.h"
 #include "CodeGen/Layout.h"
+#include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/FramePlan.h"
+#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Target/Platform.h"
 
-#include <cstring>
 #include <format>
 #include <fstream>
-#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -78,7 +77,8 @@ class AsmGen {
 public:
     AsmGen(const LirPackage &package, const Target::OS inputTargetOs)
         : pkg(package)
-        , targetOs(inputTargetOs) {
+        , targetOs(inputTargetOs)
+        , modulePrinter(inputTargetOs) {
     }
 
     std::string Generate();
@@ -86,19 +86,7 @@ public:
 private:
     const LirPackage &pkg;
     Target::OS targetOs;
-
-    // Separate output streams assembled at the end
-    std::ostringstream text;    // .text section
-    std::ostringstream data;    // .data section (writable globals)
-    std::ostringstream rodata;  // .rodata section (string/fp constants)
-    std::ostringstream externs; // extern declarations
-    std::ostringstream globals; // global declarations
-
-    // Interned read-only constants
-    std::unordered_map<std::string, std::string> strLabels;
-    std::unordered_map<std::string, std::string> f32Labels;
-    std::unordered_map<std::string, std::string> f64Labels;
-    int constIdx = 0;
+    AssemblyModulePrinter modulePrinter;
 
     // Struct field layouts (built once)
     LayoutMap layouts;
@@ -106,16 +94,6 @@ private:
 
     std::string curFunc;
     const X86_64FramePlan *activeFramePlan = nullptr;
-
-    std::unordered_set<std::string> declaredExterns;
-
-    // Set when the unit uses the integer ** operator; emits __rux_ipow.
-    bool usesIpow = false;
-
-    // Set when the unit uses the float ** operator; emit the synthesized
-    // pow helpers. The f32 helper wraps the f64 one.
-    bool usesFpow = false;
-    bool usesFpowF32 = false;
 
     [[nodiscard]] const X86_64FramePlan &FramePlan() const {
         return *activeFramePlan;
@@ -134,212 +112,40 @@ private:
 
     // Low-level emit helpers
     void T(const std::string_view s) {
-        text << s << '\n';
+        modulePrinter.TextLine(s);
     }
 
     void TI(const std::string_view s) {
-        text << "    " << s << '\n';
+        modulePrinter.TextInstruction(s);
     }
 
     void TL(const std::string_view label) {
-        text << label << ":\n";
+        modulePrinter.TextLabel(label);
     }
 
     void TC(const std::string_view comment) {
-        text << "    ; " << comment << '\n';
+        modulePrinter.TextComment(comment);
     }
 
     void TB() {
-        text << '\n';
+        modulePrinter.TextBlank();
     }
 
     // Constant interning
     std::string InternStr(const std::string &val) {
-        if (const auto it = strLabels.find(val); it != strLabels.end()) {
-            return it->second;
-        }
-        std::string lbl = std::format("__str{}", constIdx++);
-        strLabels[val] = lbl;
-        // Emit as NUL-terminated bytes in .rodata
-        rodata << lbl << ":\n    db    ";
-        for (const unsigned char c : val) {
-            rodata << static_cast<int>(c) << ", ";
-        }
-        rodata << "0\n";
-        return lbl;
+        return modulePrinter.InternString(val);
     }
 
     std::string InternF32(const std::string &val) {
-        auto it = f32Labels.find(val);
-        if (it != f32Labels.end()) {
-            return it->second;
-        }
-        std::string lbl = std::format("__f32_{}", constIdx++);
-        f32Labels[val] = lbl;
-        std::uint32_t bits;
-        if (val.starts_with("0x")) {
-            bits = static_cast<std::uint32_t>(std::stoull(val, nullptr, 16));
-        }
-        else {
-            const float fv = ParseFloatLiteral<float>(val);
-            std::memcpy(&bits, &fv, sizeof(bits));
-        }
-        rodata << lbl << ":\n    dd    0x" << std::hex << bits << std::dec << "\n";
-        return lbl;
+        return modulePrinter.InternFloat32(val);
     }
 
     std::string InternF64(const std::string &val) {
-        auto it = f64Labels.find(val);
-        if (it != f64Labels.end()) {
-            return it->second;
-        }
-        std::string lbl = std::format("__f64_{}", constIdx++);
-        f64Labels[val] = lbl;
-        std::uint64_t bits;
-        if (val.starts_with("0x")) {
-            bits = std::stoull(val, nullptr, 16);
-        }
-        else {
-            const double dv = ParseFloatLiteral<double>(val);
-            std::memcpy(&bits, &dv, sizeof(bits));
-        }
-        rodata << lbl << ":\n    dq    0x" << std::hex << bits << std::dec << "\n";
-        return lbl;
+        return modulePrinter.InternFloat64(val);
     }
 
     void NeedExtern(const std::string &name) {
-        if (declaredExterns.insert(name).second) {
-            externs << "extern " << name << "\n";
-        }
-    }
-
-    // Integer exponentiation helper: rax = rdi ** rsi (signed
-    // exponent). Emitted once when the unit uses the integer **
-    // operator so the output is self-contained (no libm/CRT
-    // dependency). Mirrors the machine-code helper synthesized by the
-    // RCU backend.
-    void EmitIntPowHelper() {
-        TB();
-        TL("__rux_ipow");
-        TI("test    rdx, rdx");  // exponent
-        TI("js      .negative"); // negative exponent yields 0
-        TI("mov     eax, 1");    // result = 1
-        TL(".loop");
-        TI("test    rdx, rdx");
-        TI("jz      .done"); // exponent == 0
-        TI("test    rdx, 1");
-        TI("jz      .square");
-        TI("imul    rax, rcx"); // result *= base
-        TL(".square");
-        TI("imul    rcx, rcx"); // base *= base
-        TI("sar     rdx, 1");   // exponent >>= 1
-        TI("jmp     .loop");
-        TL(".negative");
-        TI("xor     eax, eax");
-        TL(".done");
-        TI("ret");
-    }
-
-    // Double-precision exponentiation helper: xmm0 = xmm0 ** xmm1
-    // (base ** exponent). Computed as |base|**exp = 2**(exp*log2(|base|))
-    // on the x87 FPU, so the output stays self-contained (no libm/CRT
-    // dependency). Mirrors the machine-code helper synthesized by the RCU
-    // backend; see EmitFloatPowHelper there for the full rationale.
-    void EmitFloatPowHelper() {
-        TB();
-        TL("__rux_powf64");
-        TI("sub     rsp, 16");
-        TI("movsd   [rsp], xmm0");     // base
-        TI("movsd   [rsp + 8], xmm1"); // exponent
-        // exp == 0 -> 1.0
-        TI("mov     rax, [rsp + 8]");
-        TI("add     rax, rax"); // drop sign bit
-        TI("jnz     .not_exp0");
-        TI("mov     rax, 0x3FF0000000000000");
-        TI("mov     [rsp], rax");
-        TI("movsd   xmm0, [rsp]");
-        TI("add     rsp, 16");
-        TI("ret");
-        TL(".not_exp0");
-        // |base| == 0 -> 0.0 (exp>0) or +inf (exp<0)
-        TI("mov     rax, [rsp]");
-        TI("add     rax, rax");
-        TI("jnz     .base_nonzero");
-        TI("mov     rax, [rsp + 8]");
-        TI("test    rax, rax");
-        TI("js      .base0_neg");
-        TI("xor     eax, eax");
-        TI("mov     [rsp], rax");
-        TI("movsd   xmm0, [rsp]");
-        TI("add     rsp, 16");
-        TI("ret");
-        TL(".base0_neg");
-        TI("mov     rax, 0x7FF0000000000000");
-        TI("mov     [rsp], rax");
-        TI("movsd   xmm0, [rsp]");
-        TI("add     rsp, 16");
-        TI("ret");
-        TL(".base_nonzero");
-        // Sign decision -> edx: 0 keep, 1 negate, 2 NaN.
-        TI("xor     edx, edx");
-        TI("mov     rax, [rsp]");
-        TI("test    rax, rax");
-        TI("jns     .magnitude"); // base > 0
-        TI("movsd   xmm2, [rsp + 8]");
-        TI("cvttsd2si rax, xmm2");
-        TI("cvtsi2sd xmm3, rax");
-        TI("ucomisd xmm2, xmm3");
-        TI("jne     .nonint"); // non-integer exponent -> NaN
-        TI("and     eax, 1");
-        TI("mov     edx, eax"); // 1 if odd
-        TI("jmp     .magnitude");
-        TL(".nonint");
-        TI("mov     edx, 2");
-        TL(".magnitude");
-        TI("fld     qword [rsp + 8]"); // exp
-        TI("fld     qword [rsp]");     // base
-        TI("fabs");                    // |base|
-        TI("fyl2x");                   // w = exp*log2(|base|)
-        TI("fld     st0");
-        TI("frndint");          // i = round(w)
-        TI("fsub    st1, st0"); // frac = w - i in [-1,1]
-        TI("fxch");
-        TI("f2xm1"); // 2^frac - 1
-        TI("fld1");
-        TI("faddp   st1, st0"); // 2^frac
-        TI("fscale");           // 2^frac * 2^i
-        TI("fstp    st1");      // drop i -> st0 = magnitude
-        TI("test    edx, edx");
-        TI("jz      .store");
-        TI("cmp     edx, 2");
-        TI("jz      .nan");
-        TI("fchs"); // negate (odd exponent)
-        TL(".store");
-        TI("fstp    qword [rsp]");
-        TI("movsd   xmm0, [rsp]");
-        TI("add     rsp, 16");
-        TI("ret");
-        TL(".nan");
-        TI("fstp    st0"); // drop magnitude
-        TI("mov     rax, 0x7FF8000000000000");
-        TI("mov     [rsp], rax");
-        TI("movsd   xmm0, [rsp]");
-        TI("add     rsp, 16");
-        TI("ret");
-    }
-
-    // Single-precision exponentiation helper: xmm0 = xmm0 ** xmm1. Widens
-    // the arguments to f64, defers to __rux_powf64, then narrows the result.
-    void EmitFloatPowF32Helper() {
-        TB();
-        TL("__rux_powf32");
-        TI("cvtss2sd xmm0, xmm0");
-        TI("cvtss2sd xmm1, xmm1");
-        TI("sub     rsp, 8"); // keep 16-byte alignment at the inner call
-        TI("call    __rux_powf64");
-        TI("add     rsp, 8");
-        TI("cvtsd2ss xmm0, xmm0");
-        TI("ret");
+        modulePrinter.DeclareExtern(name);
     }
 
     static std::string BaseTypeName(const std::string &name) {
@@ -636,49 +442,20 @@ private:
     }
 
     void GenModule(const LirModule &mod) {
-        // Extern variable declarations
-        for (const auto &ev : mod.externVars) {
-            NeedExtern(ev.name);
-            // Emit a comment in .data noting the extern
-            data << "; extern var: " << ev.name << "\n";
-        }
-
-        // Module-level constants in .rodata
-        for (const auto &c : mod.consts) {
-            std::string vis = c.isPublic ? "global " + c.name + "\n" : "";
-            data << vis;
-            data << c.name << ":  ; " << c.type.ToString() << " = " << c.value << "\n";
-            data << "    ; (constant — initialized at link time)\n";
-        }
-
-        // Vtables
-        for (const auto &vt : mod.vtables) {
-            rodata << vt.label << ":\n";
-            for (const auto &m : vt.methods) {
-                rodata << "    dq " << m << "\n";
-            }
-        }
+        modulePrinter.EmitModuleData(mod);
 
         // Functions
         for (const auto &func : mod.funcs) {
-            GenFunc(func);
+            if (modulePrinter.DeclareFunction(func)) {
+                GenFunc(func);
+            }
         }
     }
 
     void GenFunc(const LirFunc &func) {
-        if (func.isExtern) {
-            NeedExtern(func.name);
-            return;
-        }
-
         curFunc = func.name;
         const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
         activeFramePlan = &framePlan;
-
-        // Global / visibility declaration
-        if (func.isPublic) {
-            globals << "global " << func.name << "\n";
-        }
 
         TB();
         TC(std::format("── {} ─", func.name));
@@ -868,7 +645,7 @@ private:
             if (isAssertion) {
                 LoadA(instr.srcs[0], TypeRef::MakeBool());
                 TI("test    rax, rax");
-                okLabel = std::format(".{}_assert_ok_{}", curFunc, constIdx++);
+                okLabel = modulePrinter.CreateLocalLabel(std::format(".{}_assert_ok_", curFunc));
                 TI(std::format("{:<8}{}", "jnz", okLabel));
             }
 
@@ -1139,14 +916,14 @@ private:
                 // Float ** uses a synthesized x87 helper, not libm pow, so
                 // no CRT/math dependency is introduced.
                 const bool isF32 = t.kind == TypeRef::Kind::Float32;
-                usesFpow = true;
-                usesFpowF32 = usesFpowF32 || isF32;
+                modulePrinter.RequestHelper(isF32 ? X86_64RuntimeHelper::FloatPower32
+                                                  : X86_64RuntimeHelper::FloatPower64);
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
                 TI(isF32 ? "call    __rux_powf32" : "call    __rux_powf64");
             }
             else {
-                usesIpow = true;
+                modulePrinter.RequestHelper(X86_64RuntimeHelper::IntegerPower);
                 LoadA(instr.srcs[0], t);
                 LoadB(instr.srcs[1], t);
                 TI("mov     rcx, rax");
@@ -1700,45 +1477,7 @@ std::string AsmGen::Generate() {
     for (const auto &mod : pkg.modules) {
         GenModule(mod);
     }
-    if (usesIpow) {
-        EmitIntPowHelper();
-    }
-    // The f32 pow helper calls the f64 one, so emit f64 first.
-    if (usesFpow) {
-        EmitFloatPowHelper();
-    }
-    if (usesFpowF32) {
-        EmitFloatPowF32Helper();
-    }
-    std::ostringstream out;
-    out << "; Generated by Rux Compiler\n";
-    if (IsWin64Conv(CallingConvention::Default)) {
-        out << "; Target:  x86-64  (Windows x64 ABI, NASM syntax)\n";
-        out << "; Calling: rcx/rdx/r8/r9 (int args), xmm0-3 (float args)\n";
-    }
-    else {
-        out << "; Target:  x86-64  (System V AMD64 ABI, NASM syntax)\n";
-        out << "; Calling: rdi/rsi/rdx/rcx/r8/r9 (int args), xmm0-7 (float args)\n";
-    }
-    out << "; Scratch: r10, r11 (caller-saved)\n";
-    out << "\n";
-    out << "bits 64\n\n";
-    if (const std::string ext = externs.str(); !ext.empty()) {
-        out << ext << "\n";
-    }
-    if (const std::string glb = globals.str(); !glb.empty()) {
-        out << glb << "\n";
-    }
-    if (const std::string rod = rodata.str(); !rod.empty()) {
-        out << "section .rodata\n" << rod << "\n";
-    }
-    if (const std::string dat = data.str(); !dat.empty()) {
-        out << "section .data\n" << dat << "\n";
-    }
-    if (const std::string cod = text.str(); !cod.empty()) {
-        out << "section .text\n" << cod;
-    }
-    return out.str();
+    return modulePrinter.Finalize();
 }
 } // namespace
 
