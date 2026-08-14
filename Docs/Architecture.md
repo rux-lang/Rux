@@ -64,8 +64,9 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 
 `Parser::DumpAst` is the public AST-dump facade. Its implementation shares private stream and indentation state
 through `ParserDumpDetail::AstDumpWriter`; the declaration printer is the single owner of declaration dispatch and
-type-expression text, and calls back into the facade only for nested blocks and expressions. This keeps dump text
-stable while statement, pattern, and expression printers are split into their own owners incrementally.
+type-expression text, while the statement printer owns blocks, statement dispatch, and pattern formatting. The two
+focused printers call back into the facade for nested expressions and into each other at declaration/block boundaries,
+keeping dump text stable while expression printers are split into their own owner incrementally.
 
 The driver's artifact-aware Release composition adds `lir-declaration-pruner` after the profile-only local LIR pipeline. It consumes whole-package reachability before backend selection, retains declarations in module order, and removes unreachable private definitions and unused externs. Debug never schedules the pass, and public library roots remain intact. The pass reports function, constant, vtable, and extern counts plus a deterministic eliminated-IR estimate based on declaration, parameter, block, instruction, terminator, assembly-instruction, constant-element, and vtable-entry nodes.
 

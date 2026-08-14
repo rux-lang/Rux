@@ -8,6 +8,7 @@
 
 namespace Rux::ParserDumpDetail {
 class DeclarationPrinter;
+class StatementPrinter;
 
 // Private output and indentation state shared by the focused AST printers.
 // Parser::DumpAst remains the only public facade.
@@ -23,6 +24,7 @@ protected:
 
 private:
     friend class DeclarationPrinter;
+    friend class StatementPrinter;
 };
 
 class DeclarationPrinter {
@@ -58,5 +60,33 @@ private:
     void PrintTypeAliasDecl(const TypeAliasDecl &decl) const;
     void PrintExternFuncDecl(const ExternFuncDecl &decl) const;
     void PrintExternVarDecl(const ExternVarDecl &decl) const;
+};
+
+class StatementPrinter {
+public:
+    using ExpressionCallback = std::function<void(const Expr &)>;
+    using DeclarationCallback = std::function<void(const Decl &)>;
+
+    StatementPrinter(AstDumpWriter &writer, ExpressionCallback expressionCallback,
+                     DeclarationCallback declarationCallback);
+
+    void PrintBlock(const Block &block);
+    void Print(const Stmt &statement);
+    void PrintPattern(const Pattern &pattern);
+
+private:
+    AstDumpWriter &writer;
+    std::ostream &out;
+    int &indent;
+    ExpressionCallback printExpression;
+    DeclarationCallback printDeclaration;
+
+    void Pad() const;
+    void PrintLetStmt(const LetStmt &statement);
+    void PrintIfStmt(const IfStmt &statement);
+    void PrintWhileStmt(const WhileStmt &statement);
+    void PrintForStmt(const ForStmt &statement);
+    void PrintMatchStmt(const MatchStmt &statement);
+    void PrintReturnStmt(const ReturnStmt &statement);
 };
 } // namespace Rux::ParserDumpDetail

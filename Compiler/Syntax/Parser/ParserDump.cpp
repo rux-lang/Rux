@@ -30,7 +30,10 @@ public:
         : AstDumpWriter(output)
         , declarations(
               *this, [this](const Expr &expression) { PrintExpr(expression); },
-              [this](const Block &block) { PrintBlock(block); }) {
+              [this](const Block &block) { statements.PrintBlock(block); })
+        , statements(
+              *this, [this](const Expr &expression) { PrintExpr(expression); },
+              [this](const Decl &declaration) { declarations.Print(declaration); }) {
     }
 
     void Print(const Module &mod) {
@@ -46,6 +49,7 @@ public:
 
 private:
     ParserDumpDetail::DeclarationPrinter declarations;
+    ParserDumpDetail::StatementPrinter statements;
 
     [[nodiscard]] static std::string TypeStr(const TypeExpr *type) {
         return ParserDumpDetail::DeclarationPrinter::TypeString(type);
@@ -125,206 +129,6 @@ private:
             return ">>>=";
         default:
             return "?";
-        }
-    }
-
-    // Declarations
-    void PrintDecl(const Decl &decl) {
-        declarations.Print(decl);
-    }
-
-    // Block
-    void PrintBlock(const Block &block) {
-        Pad();
-        out << "Block [" << block.stmts.size() << " stmt" << (block.stmts.size() == 1 ? "" : "s") << "]\n";
-        ++indent;
-        for (const auto &stmt : block.stmts) {
-            if (stmt) {
-                PrintStmt(*stmt);
-            }
-        }
-        --indent;
-    }
-
-    // Statements
-    void PrintStmt(const Stmt &stmt) {
-        if (const auto *let = dynamic_cast<const LetStmt *>(&stmt)) {
-            PrintLetStmt(*let);
-        }
-        else if (const auto *ifStmt = dynamic_cast<const IfStmt *>(&stmt)) {
-            PrintIfStmt(*ifStmt);
-        }
-        else if (const auto *whileStmt = dynamic_cast<const WhileStmt *>(&stmt)) {
-            PrintWhileStmt(*whileStmt);
-        }
-        else if (const auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
-            PrintForStmt(*forStmt);
-        }
-        else if (const auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
-            PrintMatchStmt(*matchStmt);
-        }
-        else if (const auto *ret = dynamic_cast<const ReturnStmt *>(&stmt)) {
-            PrintReturnStmt(*ret);
-        }
-        else if (dynamic_cast<const BreakStmt *>(&stmt)) {
-            Pad();
-            out << "BreakStmt\n";
-        }
-        else if (dynamic_cast<const ContinueStmt *>(&stmt)) {
-            Pad();
-            out << "ContinueStmt\n";
-        }
-        else if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(&stmt)) {
-            Pad();
-            out << "ExprStmt\n";
-            ++indent;
-            if (exprStmt->expr) {
-                PrintExpr(*exprStmt->expr);
-            }
-            --indent;
-        }
-        else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
-            if (declStmt->decl) {
-                PrintDecl(*declStmt->decl);
-            }
-        }
-    }
-
-    void PrintLetStmt(const LetStmt &s) {
-        Pad();
-        out << "LetStmt '";
-        if (s.pattern) {
-            out << "<pattern>";
-        }
-        else {
-            out << s.name;
-        }
-        out << "' (" << (s.isMut ? "var" : "let") << ")";
-        if (s.type) {
-            out << " : " << TypeStr(s.type->get());
-        }
-        out << '\n';
-        ++indent;
-        if (s.pattern) {
-            PrintPattern(*s.pattern);
-        }
-        if (s.init) {
-            PrintExpr(*s.init);
-        }
-        --indent;
-    }
-
-    void PrintIfStmt(const IfStmt &s) {
-        Pad();
-        out << (s.isCompileTime ? "WhenStmt\n" : "IfStmt\n");
-        ++indent;
-
-        Pad();
-        out << "Condition\n";
-        ++indent;
-        if (s.condition) {
-            PrintExpr(*s.condition);
-        }
-        --indent;
-
-        Pad();
-        out << "Then\n";
-        ++indent;
-        if (s.thenBlock) {
-            PrintBlock(*s.thenBlock);
-        }
-        --indent;
-
-        for (const auto &elif : s.elseIfs) {
-            Pad();
-            out << "ElseIf\n";
-            ++indent;
-            Pad();
-            out << "Condition\n";
-            ++indent;
-            if (elif.condition) {
-                PrintExpr(*elif.condition);
-            }
-            --indent;
-            if (elif.block) {
-                PrintBlock(*elif.block);
-            }
-            --indent;
-        }
-
-        if (s.elseBlock) {
-            Pad();
-            out << "Else\n";
-            ++indent;
-            PrintBlock(*s.elseBlock);
-            --indent;
-        }
-        --indent;
-    }
-
-    void PrintWhileStmt(const WhileStmt &s) {
-        Pad();
-        out << "WhileStmt\n";
-        ++indent;
-        Pad();
-        out << "Condition\n";
-        ++indent;
-        if (s.condition) {
-            PrintExpr(*s.condition);
-        }
-        --indent;
-        if (s.body) {
-            PrintBlock(*s.body);
-        }
-        --indent;
-    }
-
-    void PrintForStmt(const ForStmt &s) {
-        Pad();
-        out << "ForStmt '" << s.variable << "' in\n";
-        ++indent;
-        if (s.iterable) {
-            PrintExpr(*s.iterable);
-        }
-        if (s.body) {
-            PrintBlock(*s.body);
-        }
-        --indent;
-    }
-
-    void PrintMatchStmt(const MatchStmt &s) {
-        Pad();
-        out << "MatchStmt\n";
-        ++indent;
-        Pad();
-        out << "Subject\n";
-        ++indent;
-        if (s.subject) {
-            PrintExpr(*s.subject);
-        }
-        --indent;
-        for (const auto &arm : s.arms) {
-            Pad();
-            out << "Arm\n";
-            ++indent;
-            if (arm.pattern) {
-                PrintPattern(*arm.pattern);
-            }
-            if (arm.body) {
-                PrintExpr(*arm.body);
-            }
-            --indent;
-        }
-        --indent;
-    }
-
-    void PrintReturnStmt(const ReturnStmt &s) {
-        Pad();
-        out << "ReturnStmt\n";
-        if (s.value) {
-            ++indent;
-            PrintExpr(**s.value);
-            --indent;
         }
     }
 
@@ -572,7 +376,7 @@ private:
         }
         else if (const auto *blockExpr = dynamic_cast<const BlockExpr *>(&expr)) {
             if (blockExpr->block) {
-                PrintBlock(*blockExpr->block);
+                statements.PrintBlock(*blockExpr->block);
             }
         }
         else if (const auto *matchExpr = dynamic_cast<const MatchExpr *>(&expr)) {
@@ -586,7 +390,7 @@ private:
                 Pad();
                 out << "Arm\n";
                 ++indent;
-                PrintPattern(*arm.pattern);
+                statements.PrintPattern(*arm.pattern);
                 if (arm.body) {
                     PrintExpr(*arm.body);
                 }
@@ -623,115 +427,6 @@ private:
             break;
         }
         out << ") '" << e.token.text << "'\n";
-    }
-
-    // Patterns
-    void PrintPattern(const Pattern &pat) {
-        if (dynamic_cast<const WildcardPattern *>(&pat)) {
-            Pad();
-            out << "WildcardPattern\n";
-        }
-        else if (const auto *litPat = dynamic_cast<const LiteralPattern *>(&pat)) {
-            Pad();
-            out << "LiteralPattern '" << litPat->value.text << "'\n";
-        }
-        else if (const auto *idPat = dynamic_cast<const IdentPattern *>(&pat)) {
-            Pad();
-            out << "IdentPattern '" << idPat->name << "'\n";
-        }
-        else if (const auto *rngPat = dynamic_cast<const RangePattern *>(&pat)) {
-            Pad();
-            out << "RangePattern " << (rngPat->inclusive ? "..." : "..") << '\n';
-            ++indent;
-            if (rngPat->lo) {
-                PrintPattern(*rngPat->lo);
-            }
-            if (rngPat->hi) {
-                PrintPattern(*rngPat->hi);
-            }
-            --indent;
-        }
-        else if (const auto *enumPat = dynamic_cast<const EnumPattern *>(&pat)) {
-            Pad();
-            out << "EnumPattern '";
-            if (enumPat->path.size() == 1) {
-                out << '.';
-            }
-            for (std::size_t i = 0; i < enumPat->path.size(); ++i) {
-                if (i) {
-                    out << '.';
-                }
-                out << enumPat->path[i];
-            }
-            out << "'";
-            if (!enumPat->args.empty()) {
-                out << " [" << enumPat->args.size() << " bindings]";
-            }
-            if (!enumPat->namedArgs.empty()) {
-                out << " [" << enumPat->namedArgs.size() << " fields]";
-            }
-            out << '\n';
-            if (!enumPat->args.empty() || !enumPat->namedArgs.empty()) {
-                ++indent;
-                for (const auto &a : enumPat->args) {
-                    if (a) {
-                        PrintPattern(*a);
-                    }
-                }
-                for (const auto &a : enumPat->namedArgs) {
-                    Pad();
-                    out << "." << a.name << ":\n";
-                    ++indent;
-                    if (a.pattern) {
-                        PrintPattern(*a.pattern);
-                    }
-                    --indent;
-                }
-                --indent;
-            }
-        }
-        else if (const auto *structPat = dynamic_cast<const StructPattern *>(&pat)) {
-            Pad();
-            out << "StructPattern '" << structPat->typeName << "'\n";
-            ++indent;
-            for (const auto &f : structPat->fields) {
-                Pad();
-                out << "." << f.name << ":\n";
-                ++indent;
-                if (f.pattern) {
-                    PrintPattern(*f.pattern);
-                }
-                --indent;
-            }
-            --indent;
-        }
-        else if (const auto *tuplePat = dynamic_cast<const TuplePattern *>(&pat)) {
-            Pad();
-            out << "TuplePattern [" << tuplePat->elements.size() << "]\n";
-            ++indent;
-            for (const auto &e : tuplePat->elements) {
-                if (e) {
-                    PrintPattern(*e);
-                }
-            }
-            --indent;
-        }
-        else if (const auto *guardedPat = dynamic_cast<const GuardedPattern *>(&pat)) {
-            Pad();
-            out << "GuardedPattern\n";
-            ++indent;
-            if (guardedPat->inner) {
-                PrintPattern(*guardedPat->inner);
-            }
-            Pad();
-            out << "Guard\n";
-            ++indent;
-            if (guardedPat->guard) {
-                PrintExpr(*guardedPat->guard);
-            }
-            --indent;
-            --indent;
-        }
     }
 };
 } // namespace
