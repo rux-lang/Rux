@@ -37,6 +37,7 @@ set(RUX_TEST_SOURCES
     FreeBSDAArch64LinkerTests.cpp
     MachOTests.cpp
     ManifestSyntaxTests.cpp
+    ManifestValidationTests.cpp
     ManifestTests.cpp
     OptimizerRegressionTests.cpp
     OptimizerTests.cpp
