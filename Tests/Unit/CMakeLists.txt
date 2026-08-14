@@ -15,6 +15,7 @@ set(RUX_TEST_SOURCES
     AArch64RcuDataTests.cpp
     AArch64RcuEmitterTestSupport.cpp
     AArch64RcuEmitterTests.cpp
+    AArch64RcuFloatingTests.cpp
     AArch64RcuFunctionImageTests.cpp
     AArch64RcuFrameTests.cpp
     AArch64RcuIntegerTests.cpp
