@@ -50,6 +50,13 @@ rux_add_component(RuxDiagnostics
     Diagnostics/Diagnostics.cpp)
 target_link_libraries(RuxDiagnostics PUBLIC RuxSourceModel)
 
+rux_add_component(RuxCliContract
+    Cli/CliSpec.cpp)
+
+rux_add_component(RuxCliHelp
+    Cli/CliHelpRenderer.cpp)
+target_link_libraries(RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics)
+
 rux_add_component(RuxSource
     Source/SourceLoader.cpp)
 target_link_libraries(RuxSource PUBLIC RuxDiagnostics)
@@ -244,7 +251,7 @@ add_executable(rux
     Cli/CmdTest.cpp
 )
 
-target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter RuxDocumentation)
+target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp)
 
 # Emit the compiler directly to Bin/ in the source tree while keeping CMake
 # intermediates in the build directory. Configuration-specific properties keep
@@ -257,7 +264,7 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
 if (WIN32)
-    set_property(TARGET rux RuxTarget RuxDiagnostics RuxSource RuxSystem RuxCrypto RuxPackage
+    set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxSource RuxSystem RuxCrypto RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY

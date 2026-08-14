@@ -276,36 +276,11 @@ int Cli::Run() const {
     if (operandCount > positionals.maximum) {
         return usageError(std::format("too many arguments for command '{}'", command));
     }
-    auto conflicts = [&](const std::string_view left, const std::string_view right) -> std::optional<int> {
+    for (const auto &[left, right] : commandSpec->conflicts) {
         if (Contains(seenOptions, left) && Contains(seenOptions, right)) {
             return usageError(std::format("options '{}' and '{}' cannot be used together", left, right));
         }
-        return std::nullopt;
-    };
-    if (const auto error = conflicts("--all", "--target"))
-        return *error;
-    if (const auto error = conflicts("--all", "--debug"))
-        return *error;
-    if (const auto error = conflicts("--all", "--release"))
-        return *error;
-    if (const auto error = conflicts("--all", "--emit"))
-        return *error;
-    if (const auto error = conflicts("--debug", "--release"))
-        return *error;
-    if (const auto error = conflicts("--source-only", "--manifest-only"))
-        return *error;
-    if (const auto error = conflicts("--executable", "--shared"))
-        return *error;
-    if (const auto error = conflicts("--executable", "--static"))
-        return *error;
-    if (const auto error = conflicts("--executable", "--source"))
-        return *error;
-    if (const auto error = conflicts("--shared", "--static"))
-        return *error;
-    if (const auto error = conflicts("--shared", "--source"))
-        return *error;
-    if (const auto error = conflicts("--static", "--source"))
-        return *error;
+    }
     if (command == "uninstall" && operandCount != 0 && Contains(seenOptions, "--global")) {
         return usageError("--global cannot be combined with a package argument");
     }

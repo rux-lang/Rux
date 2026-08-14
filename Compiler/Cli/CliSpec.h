@@ -10,6 +10,11 @@ struct OptionSpec {
     std::string_view desc;
 };
 
+struct OptionConflict {
+    std::string_view left;
+    std::string_view right;
+};
+
 struct CommandSpec {
     std::string_view name;
     std::string_view shortDesc;
@@ -19,6 +24,7 @@ struct CommandSpec {
     std::string_view footer;
     std::span<const std::string_view> examples;
     std::span<const OptionSpec> options;
+    std::span<const OptionConflict> conflicts;
 };
 
 struct ArgumentSpec {

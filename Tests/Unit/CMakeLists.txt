@@ -21,6 +21,7 @@ set(RUX_TEST_SOURCES
     CheckedLirBuilderTests.cpp
     CodegenTests.cpp
     ChecksumTests.cpp
+    CliContractTests.cpp
     CliProcessTests.cpp
     CompilerDriverTests.cpp
     ConstantEvaluatorTests.cpp
@@ -82,7 +83,7 @@ set_target_properties(rux-tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin/Tests/Unit)
 
-target_link_libraries(rux-tests PRIVATE RuxCore)
+target_link_libraries(rux-tests PRIVATE RuxCore RuxCliContract RuxCliHelp)
 if (TARGET RuxFormatter)
     target_link_libraries(rux-tests PRIVATE RuxFormatter)
 endif ()

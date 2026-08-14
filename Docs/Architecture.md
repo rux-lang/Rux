@@ -39,6 +39,8 @@ Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on
 | ---------------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
 | `SourceModel`          | Source locations and loaded-file identity values                                 | Standard library only                 |
 | `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind  | Standard library only                 |
+| `CliContract`          | Immutable command, option, argument, example, and conflict data                   | Standard library only                 |
+| `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                             | CliContract and Diagnostics           |
 | `Diagnostics`          | Diagnostic values and rendering primitives                                       | SourceModel                           |
 | `Source`               | Source discovery and loading                                                     | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON                  | Target, standard library, host APIs   |
@@ -125,6 +127,12 @@ rux fmt  -> RuxFormatter -> RuxSyntax
 rux lint -> RuxLinter    -> RuxSyntax + RuxSemantic
 rux      -> RuxDriver
 ```
+
+`RuxCliContract` is the single source of truth shared by command-line validation, human help, and versioned JSON
+help. It owns command options, positional limits, passthrough support, examples, and option conflicts such as the
+four flags incompatible with `build --all`. `RuxCliHelp` consumes that immutable data and returns rendered strings;
+terminal width and color capability are supplied by the CLI composition layer. This keeps wrapping, ANSI styling,
+examples, and JSON projection testable without launching a process or consulting host terminal state.
 
 Package commands use `Package/Manifest` for the strict versioned [`Rux.toml` contract](Manifest.md), `System/Process` and `System/Json` for registry transport and response parsing, and `Driver/Registry` for the registry's read contract: the resolver index, an exact version's checksum, and the artifact bytes. `Driver/PackageResolution` collects manifest requirements through a typed `TargetTriple`, caches each normalized package index once, selects candidates, and walks dependency graphs in deterministic breadth-first order. It returns the selected graph or a structured failure without printing; CLI handlers retain project discovery, network-boundary messages, failure rendering, and installation reports. `Package/Checksum` verifies a download against the digest the registry published, and `Package/Artifact` both builds and unpacks the `.ruxpkg` archive under one contract. Manifest failures carry source-located diagnostics rather than escaping as exceptions.
 
