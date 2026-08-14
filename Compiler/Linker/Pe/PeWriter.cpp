@@ -3,6 +3,7 @@
 #include "Linker/AArch64Relocation.h"
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
+#include "Linker/RcuObjectLayout.h"
 #include "System/Os.h"
 
 #include <algorithm>
@@ -245,8 +246,7 @@ static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs
                          const uint64_t textVa, const uint64_t rdataVa, const std::vector<uint32_t> &iatEntryOffsets,
                          const std::vector<std::string> &importNames,
                          const std::unordered_map<std::string, size_t> &importIndexes,
-                         const std::unordered_map<std::string, uint64_t> &symbols, const bool isDll,
-                         std::string &error) {
+                         const std::optional<uint64_t> entry, const bool isDll, std::string &error) {
     for (size_t i = 0; i < stubs.imports.size(); ++i) {
         for (const auto &patch : stubs.imports[i].patches) {
             if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset,
@@ -257,11 +257,10 @@ static bool PatchPeStubs(const PeArchitectureConfig &architecture, const PeStubs
     }
 
     const std::string_view entryName = isDll ? "DllMain" : "Main";
-    const auto entry = symbols.find(std::string(entryName));
-    if (entry != symbols.end()) {
+    if (entry) {
         const auto &patch = stubs.userEntry;
-        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, entry->second, 0,
-                                          patch.type, entryName, error)) {
+        if (!architecture.applyRelocation(text, patch.fieldOffset, textVa + patch.fieldOffset, *entry, 0, patch.type,
+                                          entryName, error)) {
             return false;
         }
     }
@@ -527,65 +526,41 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         Error("internal: no PE32+ architecture configuration for target");
         return false;
     }
+    if (!graph) {
+        Error("internal: PE32+ linking requires an RCU link graph");
+        return false;
+    }
     const bool isDll = artifactKind == ArtifactKind::SharedLibrary;
     // Preferred bases follow x86-64 linker convention — 0x140000000 for
     // executables, 0x180000000 for DLLs — but the .reloc table lets the
     // loader place either anywhere.
     const uint64_t imageBase = isDll ? 0x1'8000'0000ULL : kImageBase;
-    // 1. Collect imported external function names
+    // 1. Assign referenced external functions to their import DLLs.
 
     // EXEs always need ExitProcess for the entry thunk; DLLs do not.
     std::unordered_map<std::string, std::string> importDll;
-    std::unordered_set<std::string> explicitImportDlls;
-    std::unordered_map<std::string, std::vector<std::string>> explicitImportFuncsByDll;
+    std::unordered_map<std::string, std::string> explicitImportDll;
     if (!isDll) {
         importDll["ExitProcess"] = "KERNEL32.DLL";
     }
 
-    // First pass: collect explicit DLL assignments from symbol
-    // declarations. This handles the case where a call site and its
-    // declaration are in different translation units — the declaration
-    // carries the DLL name.
+    // DLL ownership is format-specific metadata, so retain it separately
+    // from the format-neutral graph. Looking across declarations handles a
+    // call site whose DLL name is carried by another translation unit.
     for (const auto &obj : objects) {
         for (const auto &sym : obj.symbols) {
             if (sym.kind == RcuSymKind::ExternFunc && !sym.typeName.empty()) {
-                importDll[sym.name] = sym.typeName;
-                explicitImportDlls.insert(sym.typeName);
-                explicitImportFuncsByDll[sym.typeName].push_back(sym.name);
+                explicitImportDll[sym.name] = sym.typeName;
             }
         }
     }
 
-    // Collect all symbol names that are defined (non-extern) across all
-    // objects. Cross-module calls produce ExternFunc relocations but the
-    // callee is defined in another RcuFile — those must NOT be treated as
-    // OS DLL imports.
-    std::unordered_set<std::string> definedSymbols;
-    for (const auto &obj : objects) {
-        for (const auto &sym : obj.symbols) {
-            if (sym.kind != RcuSymKind::ExternFunc && sym.kind != RcuSymKind::ExternData && !sym.name.empty()) {
-                definedSymbols.insert(sym.name);
-            }
+    for (const RcuReferencedExternal &external : graph->ReferencedExternals()) {
+        if (external.kind != RcuSymKind::ExternFunc) {
+            continue;
         }
-    }
-
-    // Second pass: collect imports from relocations. For compiler-generated
-    // extern symbols (e.g. runtime helpers) that carry no explicit DLL,
-    // fall back to KERNEL32.DLL so existing behavior is preserved. Skip
-    // symbols that are defined locally (cross-module references, not DLL
-    // imports).
-    for (const auto &obj : objects) {
-        for (const auto &sec : obj.sections) {
-            for (const auto &reloc : sec.relocs) {
-                if (reloc.symbolIndex >= obj.symbols.size()) {
-                    continue;
-                }
-                const auto &sym = obj.symbols[reloc.symbolIndex];
-                if (sym.kind == RcuSymKind::ExternFunc && !definedSymbols.contains(sym.name)) {
-                    importDll.try_emplace(sym.name, "KERNEL32.DLL");
-                }
-            }
-        }
+        const auto explicitDll = explicitImportDll.find(external.name);
+        importDll[external.name] = explicitDll == explicitImportDll.end() ? "KERNEL32.DLL" : explicitDll->second;
     }
 
     // Sorted for determinism
@@ -602,8 +577,14 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     }
     const size_t numImports = importNames.size();
 
+    std::map<std::string, std::vector<std::string>> explicitImportsByDll;
+    for (const auto &[name, dll] : importDll) {
+        if (explicitImportDll.contains(name)) {
+            explicitImportsByDll[dll].push_back(name);
+        }
+    }
     const auto outputDir = outputPath.parent_path();
-    for (const auto &dll : explicitImportDlls) {
+    for (const auto &[dll, functions] : explicitImportsByDll) {
         auto dllPath = FindDllFile(dll, importSearchDirs, outputDir);
         if (!dllPath) {
             Error("import DLL '" + dll + "' was not found");
@@ -616,7 +597,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
             continue;
         }
 
-        for (const auto &func : explicitImportFuncsByDll[dll]) {
+        for (const auto &func : functions) {
             if (!exports->contains(func)) {
                 Error("import function '" + func + "' was not found in DLL '" + dll + "'");
             }
@@ -631,69 +612,14 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     PeStubs stubs = BuildPeStubs(*architecture, isDll, numImports);
     Buf &textPre = stubs.bytes;
 
-    // The entry and import thunks have a variable length. Keep the first RCU
-    // text section aligned even when the number of imports changes: codegen
-    // records that alignment in the object, and the image writer must not
-    // discard it merely because it prepends linker-generated code.
-    uint16_t textAlignment = 1;
-    for (const auto &obj : objects) {
-        for (const auto &sec : obj.sections) {
-            if (sec.type == RcuSecType::Text) {
-                textAlignment = std::max(textAlignment, sec.alignment);
-            }
-        }
-    }
-    PadTo(textPre, textAlignment, architecture->codePadding);
-
-    const auto preambleSize = static_cast<uint32_t>(textPre.size());
-
-    // 3. Merge RCU sections
-
-    struct ObjLayout {
-        uint32_t textOff, rodataOff, dataOff;
-    };
-
-    std::vector<ObjLayout> layouts(objects.size());
-    Buf mergedText, mergedRodata, mergedData;
-
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-
-        // RCU section offsets are relative to a section whose alignment is
-        // part of the object contract. Preserve it between input objects for
-        // all three PE sections; otherwise a preceding object's odd size can
-        // misalign every symbol in the next object.
-        uint16_t objectTextAlignment = 1;
-        uint16_t objectRodataAlignment = 1;
-        uint16_t objectDataAlignment = 1;
-        for (const auto &sec : obj.sections) {
-            if (sec.type == RcuSecType::Text) {
-                objectTextAlignment = std::max(objectTextAlignment, sec.alignment);
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                objectRodataAlignment = std::max(objectRodataAlignment, sec.alignment);
-            }
-            else if (sec.type == RcuSecType::Data) {
-                objectDataAlignment = std::max(objectDataAlignment, sec.alignment);
-            }
-        }
-        PadTo(mergedText, objectTextAlignment, architecture->codePadding);
-        PadTo(mergedRodata, objectRodataAlignment);
-        PadTo(mergedData, objectDataAlignment);
-        layouts[i] = {static_cast<uint32_t>(mergedText.size()), static_cast<uint32_t>(mergedRodata.size()),
-                      static_cast<uint32_t>(mergedData.size())};
-        for (const auto &sec : obj.sections) {
-            if (sec.type == RcuSecType::Text) {
-                mergedText.insert(mergedText.end(), sec.data.begin(), sec.data.end());
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                mergedRodata.insert(mergedRodata.end(), sec.data.begin(), sec.data.end());
-            }
-            else if (sec.type == RcuSecType::Data) {
-                mergedData.insert(mergedData.end(), sec.data.begin(), sec.data.end());
-            }
-        }
-    }
+    // 3. Merge RCU sections after the format-owned entry and import stubs.
+    RcuLayoutPrefixes prefixes;
+    prefixes.text = textPre;
+    prefixes.textPadding = architecture->codePadding;
+    const RcuObjectLayout layout = RcuObjectLayout::Build(objects, prefixes);
+    Buf textBuf = layout.Data(RcuMergedSection::Text);
+    Buf rdataBuf = layout.Data(RcuMergedSection::RoData);
+    Buf dataBuf = layout.Data(RcuMergedSection::Data);
 
     // 4. Build import table appended to .rdata
     // Layout within .rdata (after user rodata):
@@ -704,8 +630,6 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     //   [DLL name strings]
     //   [IMAGE_IMPORT_BY_NAME entries per function]
 
-    Buf rdataBuf;
-    rdataBuf.insert(rdataBuf.end(), mergedRodata.begin(), mergedRodata.end());
     PadTo(rdataBuf, 8);
     std::map<std::string, std::vector<size_t>> importsByDll;
     for (size_t i = 0; i < numImports; ++i) {
@@ -768,19 +692,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // Reserve the complete export directory before assigning section RVAs.
     // Appending it after layout could move .data to another page and leave
     // already-resolved data symbols pointing at the old address.
-    std::vector<std::string> exportNames;
-    if (isDll) {
-        for (const auto &obj : objects) {
-            for (const auto &sym : obj.symbols) {
-                if (sym.kind == RcuSymKind::Func && sym.visibility != RcuSymVis::Local && !sym.name.empty() &&
-                    sym.name != "DllMain") {
-                    exportNames.push_back(sym.name);
-                }
-            }
-        }
-        std::ranges::sort(exportNames);
-        exportNames.erase(std::ranges::unique(exportNames).begin(), exportNames.end());
-    }
+    const std::vector<std::string> exportNames = isDll ? WindowsExportNames() : std::vector<std::string>{};
 
     uint32_t exportDirOff = 0;
     uint32_t exportDirSize = 0;
@@ -819,19 +731,16 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     // 5. Compute section layout (RVAs and file offsets)
     // Every Abs64 fixup becomes an IMAGE_REL_BASED_DIR64 entry, so the .reloc
     // section exists exactly when the merged objects contain one.
-    const bool hasAbsoluteFixups = std::ranges::any_of(objects, [](const auto &obj) {
-        return std::ranges::any_of(obj.sections, [](const auto &sec) {
-            if (sec.type != RcuSecType::Text && sec.type != RcuSecType::RoData && sec.type != RcuSecType::Data) {
-                return false;
-            }
-            return std::ranges::any_of(sec.relocs, [](const auto &reloc) { return reloc.type == RcuRelType::Abs64; });
-        });
+    const bool hasAbsoluteFixups = std::ranges::any_of(graph->References(), [&](const RcuLinkReference &reference) {
+        const RcuReloc &relocation =
+            objects[reference.objectIndex].sections[reference.sectionIndex].relocs[reference.relocationIndex];
+        return relocation.type == RcuRelType::Abs64 && layout.Relocation(reference).has_value();
     });
-    const uint32_t numSections = (mergedData.empty() ? 2u : 3u) + (hasAbsoluteFixups ? 1u : 0u);
+    const uint32_t numSections = (dataBuf.empty() ? 2u : 3u) + (hasAbsoluteFixups ? 1u : 0u);
     const uint32_t rawHdrBytes = 64 + 4 + 20 + 240 + numSections * 40;
     const uint32_t sizeOfHeaders = AlignUp(rawHdrBytes, kFileAlign);
     const uint32_t textRva = AlignUp(sizeOfHeaders, kSecAlign);
-    const uint32_t textVirtSize = preambleSize + static_cast<uint32_t>(mergedText.size());
+    const uint32_t textVirtSize = static_cast<uint32_t>(textBuf.size());
     const uint32_t textFileSize = AlignUp(textVirtSize, kFileAlign);
     const uint32_t textFileOff = sizeOfHeaders;
     const uint32_t rdataRva = textRva + AlignUp(textVirtSize, kSecAlign);
@@ -839,14 +748,14 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     uint32_t rdataFileSize = AlignUp(rdataVirtSize, kFileAlign);
     const uint32_t rdataFileOff = textFileOff + textFileSize;
     uint32_t dataRva = 0, dataVirtSize = 0, dataFileSize = 0, dataFileOff = 0;
-    if (!mergedData.empty()) {
+    if (!dataBuf.empty()) {
         dataRva = rdataRva + AlignUp(rdataVirtSize, kSecAlign);
-        dataVirtSize = static_cast<uint32_t>(mergedData.size());
+        dataVirtSize = static_cast<uint32_t>(dataBuf.size());
         dataFileSize = AlignUp(dataVirtSize, kFileAlign);
         dataFileOff = rdataFileOff + rdataFileSize;
     }
     const uint32_t sizeOfImage =
-        !mergedData.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign) : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
+        !dataBuf.empty() ? dataRva + AlignUp(dataVirtSize, kSecAlign) : rdataRva + AlignUp(rdataVirtSize, kSecAlign);
 
     // 6. Patch .rdata import table with real RVAs
     for (size_t g = 0; g < importDllNames.size(); ++g) {
@@ -868,57 +777,32 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     }
     // null descriptor and null thunk terminators already zeroed
 
-    // 7. Build global symbol map (name → VA)
+    // 7. Resolve graph locations against the final PE section bases.
+    const RcuSectionBases sectionBases{
+        .text = imageBase + textRva,
+        .rodata = imageBase + rdataRva,
+        .data = imageBase + dataRva,
+    };
+    const auto symbolAddress = [&](const RcuSymbolLocation location) -> std::optional<uint64_t> {
+        const auto placement = layout.Symbol(location);
+        return placement ? RcuObjectLayout::Address(*placement, sectionBases) : std::nullopt;
+    };
 
-    std::unordered_map<std::string, uint64_t> symMap;
-
-    // Add all imported function thunks first
+    std::unordered_map<std::string, uint64_t> importThunks;
     for (size_t i = 0; i < numImports; ++i) {
-        symMap[importNames[i]] = imageBase + textRva + stubs.imports[i].stubOffset;
-    }
-
-    // Add symbols defined in each RCU file. Local data/constant symbols are
-    // intentionally not added here: generated labels such as __f64_0 are
-    // reused per object and must resolve relative to their owning object.
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-        const auto &lay = layouts[i];
-        for (const auto &sym : obj.symbols) {
-            if (sym.name.empty()) {
-                continue;
-            }
-            if (sym.kind == RcuSymKind::ExternFunc || sym.kind == RcuSymKind::ExternData) {
-                continue; // already handled via thunks
-            }
-            if (sym.visibility == RcuSymVis::Local && sym.kind != RcuSymKind::Func && sym.name != "Main") {
-                continue;
-            }
-            uint64_t va = 0;
-            if (sym.sectionIdx == RCU_TEXT_IDX) {
-                va = imageBase + textRva + preambleSize + lay.textOff + sym.value;
-            }
-            else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                va = imageBase + rdataRva + lay.rodataOff + sym.value;
-            }
-            else if (sym.sectionIdx == RCU_DATA_IDX) {
-                va = imageBase + dataRva + lay.dataOff + sym.value;
-            }
-            else {
-                continue;
-            }
-            symMap.try_emplace(sym.name, va); // first definition wins
-        }
+        importThunks[importNames[i]] = imageBase + textRva + stubs.imports[i].stubOffset;
     }
 
     if (!exportNames.empty()) {
         const auto numberOfExports = static_cast<uint32_t>(exportNames.size());
         for (uint32_t i = 0; i < numberOfExports; ++i) {
-            const auto symbol = symMap.find(exportNames[i]);
-            if (symbol == symMap.end()) {
+            const auto location = graph->FindDefinition(exportNames[i]);
+            const auto address = location ? symbolAddress(*location) : std::nullopt;
+            if (!address) {
                 Error("internal: exported PE symbol '" + exportNames[i] + "' was not resolved");
                 continue;
             }
-            Patch32(rdataBuf, exportFunctionArrayOff + i * 4, static_cast<uint32_t>(symbol->second - imageBase));
+            Patch32(rdataBuf, exportFunctionArrayOff + i * 4, static_cast<uint32_t>(*address - imageBase));
             Patch32(rdataBuf, exportNameArrayOff + i * 4, rdataRva + exportNameStringOffsets[i]);
         }
         Patch32(rdataBuf, exportDirectoryPosition + 0, 0);                            // Characteristics
@@ -935,103 +819,70 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    // 8. Build final .text (preamble + user code)
-    Buf textBuf;
-    textBuf.insert(textBuf.end(), textPre.begin(), textPre.end());
-    textBuf.insert(textBuf.end(), mergedText.begin(), mergedText.end());
-
+    // 8. Patch the format-owned entry and import stubs.
+    const std::optional<RcuSymbolLocation> entryLocation =
+        isDll ? graph->FindDefinition("DllMain") : graph->EntryRoot();
+    const std::optional<uint64_t> entryAddress = entryLocation ? symbolAddress(*entryLocation) : std::nullopt;
     std::string stubError;
     if (!PatchPeStubs(*architecture, stubs, textBuf, imageBase + textRva, imageBase + rdataRva, iatEntryOff,
-                      importNames, importIdx, symMap, isDll, stubError)) {
+                      importNames, importIdx, entryAddress, isDll, stubError)) {
         Error(std::move(stubError));
         return false;
     }
 
-    // 9. Patch user code relocations
-
+    // 9. Patch graph references in the merged user sections.
     std::vector<uint32_t> baseRelocationRvas;
-    for (size_t i = 0; i < objects.size(); ++i) {
-        const auto &obj = objects[i];
-        const auto &lay = layouts[i];
-        for (const auto &sec : obj.sections) {
-            Buf *buf = nullptr;
-            uint32_t baseInBuf = 0;
-            uint64_t secBaseVA = 0;
-            if (sec.type == RcuSecType::Text) {
-                buf = &textBuf;
-                baseInBuf = preambleSize + lay.textOff;
-                secBaseVA = imageBase + textRva + preambleSize + lay.textOff;
-            }
-            else if (sec.type == RcuSecType::RoData) {
-                buf = &rdataBuf;
-                baseInBuf = lay.rodataOff;
-                secBaseVA = imageBase + rdataRva + lay.rodataOff;
-            }
-            else if (sec.type == RcuSecType::Data) {
-                buf = &mergedData;
-                baseInBuf = lay.dataOff;
-                secBaseVA = imageBase + dataRva + lay.dataOff;
-            }
-            else {
-                continue;
-            }
+    for (const RcuLinkReference &reference : graph->References()) {
+        const RcuFile &object = objects[reference.objectIndex];
+        const RcuReloc &relocation = object.sections[reference.sectionIndex].relocs[reference.relocationIndex];
+        const RcuSymbol &symbol = object.symbols[reference.symbolIndex];
+        const auto sitePlacement = layout.Relocation(reference);
+        const auto siteAddress = sitePlacement ? RcuObjectLayout::Address(*sitePlacement, sectionBases) : std::nullopt;
+        if (!sitePlacement || !siteAddress) {
+            continue;
+        }
 
-            for (const auto &reloc : sec.relocs) {
-                if (reloc.type == RcuRelType::None) {
-                    continue;
-                }
-                if (reloc.symbolIndex >= obj.symbols.size()) {
-                    Error(std::format("relocation in object {} refers to missing symbol index {}", obj.sourcePath,
-                                      reloc.symbolIndex));
-                    continue;
-                }
-                const auto &sym = obj.symbols[reloc.symbolIndex];
+        Buf *buffer = nullptr;
+        switch (sitePlacement->section) {
+        case RcuMergedSection::Text:
+            buffer = &textBuf;
+            break;
+        case RcuMergedSection::RoData:
+            buffer = &rdataBuf;
+            break;
+        case RcuMergedSection::Data:
+            buffer = &dataBuf;
+            break;
+        case RcuMergedSection::Bss:
+            continue;
+        }
 
-                // A 64-bit absolute slot moves with the image; record it for
-                // the base-relocation table before resolving its target.
-                if (reloc.type == RcuRelType::Abs64) {
-                    baseRelocationRvas.push_back(static_cast<uint32_t>(secBaseVA + reloc.sectionOffset - imageBase));
-                }
+        if (relocation.type == RcuRelType::Abs64) {
+            baseRelocationRvas.push_back(static_cast<uint32_t>(*siteAddress - imageBase));
+        }
 
-                // Resolve target VA
-                uint64_t targetVA = 0;
-                if (sym.kind == RcuSymKind::ExternFunc) {
-                    // OS import: resolved via thunk
-                    auto it = symMap.find(sym.name);
-                    if (it == symMap.end()) {
-                        Error("undefined external symbol '" + sym.name + "'");
-                        continue;
-                    }
-                    targetVA = it->second;
-                }
-                else if (sym.visibility != RcuSymVis::Local && !sym.name.empty() && symMap.contains(sym.name)) {
-                    // Named exported symbol, including cross-module
-                    // references.
-                    targetVA = symMap[sym.name];
-                }
-                else {
-                    // Unnamed or purely local — compute from section index
-                    if (sym.sectionIdx == RCU_TEXT_IDX) {
-                        targetVA = imageBase + textRva + preambleSize + lay.textOff + sym.value;
-                    }
-                    else if (sym.sectionIdx == RCU_RODATA_IDX) {
-                        targetVA = imageBase + rdataRva + lay.rodataOff + sym.value;
-                    }
-                    else if (sym.sectionIdx == RCU_DATA_IDX) {
-                        targetVA = imageBase + dataRva + lay.dataOff + sym.value;
-                    }
-                    else {
-                        continue;
-                    }
-                }
-                const size_t patchAt = baseInBuf + reloc.sectionOffset;
-                const uint64_t siteVA = secBaseVA + reloc.sectionOffset;
-                std::string relocationError;
-                if (!architecture->applyRelocation(*buf, patchAt, siteVA, targetVA, reloc.addend, reloc.type, sym.name,
-                                                   relocationError)) {
-                    Error(std::move(relocationError));
-                }
+        std::optional<uint64_t> targetAddress;
+        if (reference.resolution == RcuLinkResolution::External) {
+            const auto imported = importThunks.find(symbol.name);
+            if (imported != importThunks.end()) {
+                targetAddress = imported->second;
             }
+        }
+        else if (reference.definition) {
+            targetAddress = symbolAddress(*reference.definition);
+        }
+        if (!targetAddress) {
+            if (symbol.kind == RcuSymKind::ExternFunc) {
+                Error("undefined external symbol '" + symbol.name + "'");
+            }
+            continue;
+        }
+
+        std::string relocationError;
+        if (!architecture->applyRelocation(*buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
+                                           *targetAddress, relocation.addend, relocation.type, symbol.name,
+                                           relocationError)) {
+            Error(std::move(relocationError));
         }
     }
 
@@ -1065,7 +916,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     const auto relocVirtSize = static_cast<uint32_t>(relocBuf.size());
     const uint32_t relocRva = sizeOfImage;
     const uint32_t relocFileSize = AlignUp(relocVirtSize, kFileAlign);
-    const uint32_t relocFileOff = mergedData.empty() ? rdataFileOff + rdataFileSize : dataFileOff + dataFileSize;
+    const uint32_t relocFileOff = dataBuf.empty() ? rdataFileOff + rdataFileSize : dataFileOff + dataFileSize;
     const uint32_t finalSizeOfImage = relocBuf.empty() ? sizeOfImage : relocRva + AlignUp(relocVirtSize, kSecAlign);
 
     // 11. Emit PE32+ file
@@ -1185,7 +1036,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     wU16(0);
     wU16(0);
     wU32(kScnRData);
-    if (!mergedData.empty()) {
+    if (!dataBuf.empty()) {
         wSec8(".data");
         wU32(dataVirtSize);
         wU32(dataRva);
@@ -1215,8 +1066,8 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     padTo(kFileAlign);
     wBuf(rdataBuf);
     padTo(kFileAlign);
-    if (!mergedData.empty()) {
-        wBuf(mergedData);
+    if (!dataBuf.empty()) {
+        wBuf(dataBuf);
         padTo(kFileAlign);
     }
     if (!relocBuf.empty()) {

@@ -51,6 +51,7 @@ private:
     void Error(std::string msg);
 
     [[nodiscard]] bool BuildGraph();
+    [[nodiscard]] std::vector<std::string> WindowsExportNames() const;
 
     // Object-format writers, one per target family. Each is always compiled;
     // Link() selects the one matching `targetOs`.

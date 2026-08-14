@@ -56,6 +56,22 @@ bool Linker::BuildGraph() {
     return !graph->HasErrors();
 }
 
+std::vector<std::string> Linker::WindowsExportNames() const {
+    std::vector<std::string> exports;
+    if (!graph) {
+        return exports;
+    }
+    for (const RcuSymbolLocation location : graph->ExportRoots()) {
+        const RcuSymbol &symbol = objects[location.objectIndex].symbols[location.symbolIndex];
+        if (symbol.kind == RcuSymKind::Func && symbol.name != "DllMain") {
+            exports.push_back(symbol.name);
+        }
+    }
+    std::ranges::sort(exports);
+    exports.erase(std::unique(exports.begin(), exports.end()), exports.end());
+    return exports;
+}
+
 bool Linker::Link(const std::filesystem::path &outputPath) {
     // Preserve the target-profile diagnostic before graph policy (such as a
     // missing executable entry) for an OS that has no complete image writer.
@@ -74,17 +90,7 @@ bool Linker::Link(const std::filesystem::path &outputPath) {
             return false;
         }
         if (artifactKind == ArtifactKind::SharedLibrary) {
-            std::vector<std::string> exports;
-            for (const auto &object : objects) {
-                for (const auto &symbol : object.symbols) {
-                    if (symbol.kind == RcuSymKind::Func && symbol.visibility != RcuSymVis::Local &&
-                        !symbol.name.empty() && symbol.name != "DllMain") {
-                        exports.push_back(symbol.name);
-                    }
-                }
-            }
-            std::ranges::sort(exports);
-            exports.erase(std::unique(exports.begin(), exports.end()), exports.end());
+            const std::vector<std::string> exports = WindowsExportNames();
             auto importLibraryPath = outputPath;
             importLibraryPath.replace_extension(".lib");
             std::string error;
