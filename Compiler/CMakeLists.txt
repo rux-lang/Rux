@@ -98,7 +98,8 @@ rux_add_component(RuxSyntax
     Syntax/Parser/ParserType.cpp
     Syntax/Parser/ParserStmt.cpp
     Syntax/Parser/ParserExpr.cpp
-    Syntax/Parser/ParserDump.cpp)
+    Syntax/Parser/ParserDump.cpp
+    Syntax/Parser/ParserDumpDecl.cpp)
 target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics RuxTarget)
 
 rux_add_component(RuxSemantic

@@ -48,6 +48,7 @@ set(RUX_TEST_SOURCES
     PackageResolutionTests.cpp
     PackageScaffoldTests.cpp
     PackageVersionTests.cpp
+    ParserDumpTests.cpp
     PeLinkerTests.cpp
     PlatformAsmTests.cpp
     ProcessTests.cpp

@@ -1,22 +1,36 @@
 // Human-readable AST dump (Parser::DumpAst).
 
+#include "Syntax/Parser/Detail/AstDumpWriter.h"
 #include "Syntax/Parser/Parser.h"
 
-#include <cstdlib>
 #include <format>
 #include <fstream>
 #include <ostream>
-#include <string>
 #include <string_view>
 #include <vector>
+
+namespace Rux::ParserDumpDetail {
+AstDumpWriter::AstDumpWriter(std::ostream &output)
+    : out(output) {
+}
+
+void AstDumpWriter::Pad() const {
+    for (int index = 0; index < indent; ++index) {
+        out << "  ";
+    }
+}
+} // namespace Rux::ParserDumpDetail
 
 namespace Rux {
 // AstPrinter  –  human-readable tree dump
 namespace {
-class AstPrinter {
+class AstPrinter final : private ParserDumpDetail::AstDumpWriter {
 public:
     explicit AstPrinter(std::ostream &output)
-        : out(output) {
+        : AstDumpWriter(output)
+        , declarations(
+              *this, [this](const Expr &expression) { PrintExpr(expression); },
+              [this](const Block &block) { PrintBlock(block); }) {
     }
 
     void Print(const Module &mod) {
@@ -24,86 +38,17 @@ public:
         ++indent;
         for (const auto &item : mod.items) {
             if (item) {
-                PrintDecl(*item);
+                declarations.Print(*item);
             }
         }
         --indent;
     }
 
 private:
-    std::ostream &out;
-    int indent = 0;
+    ParserDumpDetail::DeclarationPrinter declarations;
 
-    // Helpers
-    void Pad() const {
-        for (int i = 0; i < indent; ++i) {
-            out << "  ";
-        }
-    }
-
-    static std::string TypeStr(const TypeExpr *t) {
-        if (!t) {
-            return "<null>";
-        }
-        if (const auto *n = dynamic_cast<const NamedTypeExpr *>(t)) {
-            std::string s = n->name;
-            if (!n->typeArgs.empty()) {
-                s += "<";
-                for (std::size_t i = 0; i < n->typeArgs.size(); ++i) {
-                    if (i) {
-                        s += ", ";
-                    }
-                    s += TypeStr(n->typeArgs[i].get());
-                }
-                s += ">";
-            }
-            return s;
-        }
-        if (const auto *p = dynamic_cast<const PathTypeExpr *>(t)) {
-            std::string s;
-            for (std::size_t i = 0; i < p->segments.size(); ++i) {
-                if (i) {
-                    s += "::";
-                }
-                s += p->segments[i];
-            }
-            return s;
-        }
-        if (const auto *a = dynamic_cast<const ArrayTypeExpr *>(t)) {
-            std::string element = TypeStr(a->element.get());
-            if (dynamic_cast<const PointerTypeExpr *>(a->element.get())) {
-                element = "(" + element + ")";
-            }
-            std::string s = element + "[";
-            if (a->size) {
-                s += "N"; // size is an Expr, not easily stringified
-            }
-            return s + "]";
-        }
-        if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(t)) {
-            std::string pointee = TypeStr(ptr->pointee.get());
-            if (dynamic_cast<const ArrayTypeExpr *>(ptr->pointee.get())) {
-                pointee = "(" + pointee + ")";
-            }
-            return (ptr->pointeeMut ? "*var " : "*") + pointee;
-        }
-        if (const auto *tup = dynamic_cast<const TupleTypeExpr *>(t)) {
-            std::string s = "(";
-            for (std::size_t i = 0; i < tup->elements.size(); ++i) {
-                if (i) {
-                    s += ", ";
-                }
-                s += TypeStr(tup->elements[i].get());
-            }
-            if (tup->elements.size() == 1) {
-                s += ",";
-            }
-            return s + ")";
-        }
-        if (dynamic_cast<const SelfTypeExpr *>(t)) {
-            return "self";
-        }
-        return "<type>";
+    [[nodiscard]] static std::string TypeStr(const TypeExpr *type) {
+        return ParserDumpDetail::DeclarationPrinter::TypeString(type);
     }
 
     static std::string_view OpStr(const TokenKind op) noexcept {
@@ -184,472 +129,8 @@ private:
     }
 
     // Declarations
-
     void PrintDecl(const Decl &decl) {
-        if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            PrintFuncDecl(*fn);
-        }
-        else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
-            PrintStructDecl(*st);
-        }
-        else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
-            PrintEnumDecl(*en);
-        }
-        else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
-            PrintUnionDecl(*un);
-        }
-        else if (const auto *iface = dynamic_cast<const InterfaceDecl *>(&decl)) {
-            PrintInterfaceDecl(*iface);
-        }
-        else if (const auto *impl = dynamic_cast<const ImplDecl *>(&decl)) {
-            PrintImplDecl(*impl);
-        }
-        else if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
-            PrintModuleDecl(*mod);
-        }
-        else if (const auto *use = dynamic_cast<const UseDecl *>(&decl)) {
-            PrintUseDecl(*use);
-        }
-        else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
-            PrintConstDecl(*cnst);
-        }
-        else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
-            PrintTypeAliasDecl(*alias);
-        }
-        else if (const auto *extFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            PrintExternFuncDecl(*extFn);
-        }
-        else if (const auto *extVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
-            PrintExternVarDecl(*extVar);
-        }
-        else if (const auto *when = dynamic_cast<const WhenDecl *>(&decl)) {
-            PrintWhenDecl(*when);
-        }
-    }
-
-    void PrintWhenDecl(const WhenDecl &d) {
-        Pad();
-        out << "WhenDecl\n";
-        ++indent;
-        for (const auto &branch : d.branches) {
-            Pad();
-            out << (branch.condition ? "Branch\n" : "Else\n");
-            ++indent;
-            if (branch.condition) {
-                Pad();
-                out << "Condition\n";
-                ++indent;
-                PrintExpr(*branch.condition);
-                --indent;
-            }
-            for (const auto &item : branch.items) {
-                if (item) {
-                    PrintDecl(*item);
-                }
-            }
-            --indent;
-        }
-        --indent;
-    }
-
-    void PrintFuncDecl(const FuncDecl &f) {
-        if (f.isNoReturn) {
-            Pad();
-            out << "#NoReturn()\n";
-        }
-        Pad();
-        if (f.isPublic) {
-            out << "pub ";
-        }
-        if (f.isAsm) {
-            out << "asm ";
-        }
-        out << "FuncDecl '" << f.name << "'";
-        // Generic params
-        if (!f.typeParams.empty()) {
-            out << '<';
-            for (std::size_t i = 0; i < f.typeParams.size(); ++i) {
-                if (i) {
-                    out << ", ";
-                }
-                out << f.typeParams[i];
-            }
-            out << '>';
-        }
-        // Params
-        out << " (";
-        for (std::size_t i = 0; i < f.params.size(); ++i) {
-            if (i) {
-                out << ", ";
-            }
-            const auto &p = f.params[i];
-            if (p.isVariadic) {
-                out << "...";
-                continue;
-            }
-            if (p.isMut) {
-                out << "var ";
-            }
-            out << p.name << ": " << TypeStr(p.type.get());
-        }
-        out << ')';
-        // Return type
-        if (f.returnType) {
-            out << " -> " << TypeStr(f.returnType->get());
-        }
-        if (f.isAsm) {
-            out << '\n';
-            ++indent;
-            for (const auto &instr : f.asmBody) {
-                Pad();
-                if (!instr.labelDef.empty()) {
-                    out << instr.labelDef << ":\n";
-                    continue;
-                }
-                out << instr.mnemonic;
-                for (std::size_t i = 0; i < instr.operands.size(); ++i) {
-                    out << (i == 0 ? " " : ", ");
-                    PrintAsmOperand(instr.operands[i], instr.arch);
-                }
-                out << '\n';
-            }
-            --indent;
-            return;
-        }
-        out << (f.body ? "" : " [signature]") << '\n';
-        if (f.body) {
-            ++indent;
-            PrintBlock(*f.body);
-            --indent;
-        }
-    }
-
-    // The shift or extend an AArch64 operand carries, printed as it was
-    // written. Nothing is printed for an operand that carries neither, which
-    // is every x86-64 one.
-    void PrintAsmShift(const AsmOperand &op) {
-        static constexpr std::string_view shiftNames[5] = {"", "lsl", "lsr", "asr", "ror"};
-        static constexpr std::string_view extendNames[9] = {"",     "uxtb", "uxth", "uxtw", "uxtx",
-                                                            "sxtb", "sxth", "sxtw", "sxtx"};
-        if (op.shift != AsmShiftKind::None) {
-            out << ", " << shiftNames[static_cast<std::size_t>(op.shift)] << " #" << op.shiftAmount;
-        }
-        else if (op.extend != AsmExtendKind::None) {
-            out << ", " << extendNames[static_cast<std::size_t>(op.extend)];
-            if (op.shiftAmount != 0) {
-                out << " #" << op.shiftAmount;
-            }
-        }
-    }
-
-    void PrintAsmOperand(const AsmOperand &op, const Target::Arch arch) {
-        switch (op.kind) {
-        case AsmOperand::Kind::Reg:
-        case AsmOperand::Kind::Sym:
-            out << op.name;
-            PrintAsmShift(op);
-            break;
-        case AsmOperand::Kind::Imm:
-            if (arch == Target::Arch::AArch64) {
-                out << '#';
-            }
-            out << op.imm;
-            PrintAsmShift(op);
-            break;
-        case AsmOperand::Kind::Mem: {
-            if (arch == Target::Arch::AArch64) {
-                out << '[' << op.memBase;
-                if (!op.memIndex.empty()) {
-                    out << ", " << op.memIndex;
-                    PrintAsmShift(op);
-                }
-                else if (op.imm != 0 && op.indexMode != AsmIndexMode::PostIndex) {
-                    out << ", #" << op.imm;
-                }
-                if (!op.memSym.empty()) {
-                    out << ", " << op.memSym;
-                }
-                out << ']';
-                if (op.indexMode == AsmIndexMode::PreIndex) {
-                    out << '!';
-                }
-                else if (op.indexMode == AsmIndexMode::PostIndex) {
-                    out << ", #" << op.imm;
-                }
-                break;
-            }
-            out << '[';
-            bool wrote = false;
-            if (!op.memBase.empty()) {
-                out << op.memBase;
-                wrote = true;
-            }
-            if (!op.memIndex.empty()) {
-                out << (wrote ? " + " : "") << op.memIndex << '*' << op.memScale;
-                wrote = true;
-            }
-            if (!op.memSym.empty()) {
-                out << (wrote ? " + " : "") << op.memSym;
-                wrote = true;
-            }
-            if (op.imm != 0 || !wrote) {
-                out << (wrote && op.imm >= 0 ? " + " : (wrote ? " - " : "")) << (wrote ? std::abs(op.imm) : op.imm);
-            }
-            out << ']';
-            break;
-        }
-        case AsmOperand::Kind::None:
-            break;
-        }
-    }
-
-    void PrintStructDecl(const StructDecl &s) {
-        Pad();
-        if (s.isPublic) {
-            out << "pub ";
-        }
-        out << "StructDecl '" << s.name << "'";
-        if (!s.typeParams.empty()) {
-            out << '<';
-            for (std::size_t i = 0; i < s.typeParams.size(); ++i) {
-                if (i) {
-                    out << ", ";
-                }
-                out << s.typeParams[i];
-            }
-            out << '>';
-        }
-        out << '\n';
-        ++indent;
-        for (const auto &f : s.fields) {
-            Pad();
-            if (f.isPublic) {
-                out << "pub ";
-            }
-            out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
-        }
-        --indent;
-    }
-
-    void PrintEnumDecl(const EnumDecl &e) {
-        Pad();
-        if (e.isPublic) {
-            out << "pub ";
-        }
-        out << "EnumDecl '" << e.name << "'";
-        if (!e.typeParams.empty()) {
-            out << '<';
-            for (std::size_t i = 0; i < e.typeParams.size(); ++i) {
-                if (i) {
-                    out << ", ";
-                }
-                out << e.typeParams[i];
-            }
-            out << '>';
-        }
-        if (e.baseType) {
-            out << " : " << TypeStr(e.baseType.get());
-        }
-        out << '\n';
-        ++indent;
-        for (const auto &v : e.variants) {
-            Pad();
-            out << "Variant '" << v.name << "'";
-            if (!v.fields.empty()) {
-                out << " (";
-                for (std::size_t i = 0; i < v.fields.size(); ++i) {
-                    if (i) {
-                        out << ", ";
-                    }
-                    out << TypeStr(v.fields[i].get());
-                }
-                out << ')';
-            }
-            if (!v.namedFields.empty()) {
-                out << " { ";
-                for (std::size_t i = 0; i < v.namedFields.size(); ++i) {
-                    if (i) {
-                        out << " ";
-                    }
-                    out << v.namedFields[i].name << ": " << TypeStr(v.namedFields[i].type.get()) << ";";
-                }
-                out << " }";
-            }
-            if (v.discriminant) {
-                out << " = " << *v.discriminant;
-            }
-            out << '\n';
-        }
-        --indent;
-    }
-
-    void PrintUnionDecl(const UnionDecl &u) {
-        Pad();
-        if (u.isPublic) {
-            out << "pub ";
-        }
-        out << "UnionDecl '" << u.name << "'\n";
-        ++indent;
-        for (const auto &f : u.fields) {
-            Pad();
-            out << "Field '" << f.name << "' : " << TypeStr(f.type.get()) << '\n';
-        }
-        --indent;
-    }
-
-    void PrintInterfaceDecl(const InterfaceDecl &iface) {
-        Pad();
-        if (iface.isPublic) {
-            out << "pub ";
-        }
-        out << "InterfaceDecl '" << iface.name << "'\n";
-        ++indent;
-        for (const auto &m : iface.methods) {
-            if (m) {
-                PrintFuncDecl(*m);
-            }
-        }
-        --indent;
-    }
-
-    void PrintImplDecl(const ImplDecl &impl) {
-        Pad();
-        out << "ImplDecl ";
-        if (impl.interfaceName) {
-            out << *impl.interfaceName << " for ";
-        }
-        out << impl.typeName << '\n';
-        ++indent;
-        for (const auto &m : impl.methods) {
-            if (m) {
-                PrintFuncDecl(*m);
-            }
-        }
-        for (const auto &conditional : impl.conditionals) {
-            if (conditional) {
-                PrintWhenDecl(*conditional);
-            }
-        }
-        --indent;
-    }
-
-    void PrintModuleDecl(const ModuleDecl &mod) {
-        Pad();
-        if (mod.isPublic) {
-            out << "pub ";
-        }
-        out << "ModuleDecl '" << mod.name << "'\n";
-        ++indent;
-        for (const auto &item : mod.items) {
-            if (item) {
-                PrintDecl(*item);
-            }
-        }
-        --indent;
-    }
-
-    void PrintUseDecl(const UseDecl &u) const {
-        Pad();
-        out << "ImportDecl '";
-        for (std::size_t i = 0; i < u.path.size(); ++i) {
-            if (i) {
-                out << '.';
-            }
-            out << u.path[i];
-        }
-        switch (u.kind) {
-        case UseDecl::Kind::Glob:
-            out << ".*";
-            break;
-        case UseDecl::Kind::Multi: {
-            out << "::{";
-            for (std::size_t i = 0; i < u.names.size(); ++i) {
-                if (i) {
-                    out << ", ";
-                }
-                out << u.names[i];
-            }
-            out << '}';
-            break;
-        }
-        default:
-            break;
-        }
-        out << "'\n";
-    }
-
-    void PrintConstDecl(const ConstDecl &c) {
-        Pad();
-        if (c.isPublic) {
-            out << "pub ";
-        }
-        out << "ConstDecl '" << c.name << "'";
-        if (c.type) {
-            out << " : " << TypeStr(c.type->get());
-        }
-        out << '\n';
-        ++indent;
-        if (c.value) {
-            PrintExpr(*c.value);
-        }
-        --indent;
-    }
-
-    void PrintTypeAliasDecl(const TypeAliasDecl &t) const {
-        Pad();
-        if (t.isPublic) {
-            out << "pub ";
-        }
-        out << "TypeAliasDecl '" << t.name << "' = " << TypeStr(t.type.get()) << '\n';
-    }
-
-    void PrintExternFuncDecl(const ExternFuncDecl &f) const {
-        if (f.isNoReturn) {
-            Pad();
-            out << "#NoReturn()\n";
-        }
-        if (!f.dll.empty()) {
-            Pad();
-            out << "#Link(\"" << f.dll << "\"";
-            if (!f.symbolName.empty()) {
-                out << ", \"" << f.symbolName << "\"";
-            }
-            out << ")\n";
-        }
-        if (f.callConv != CallingConvention::Default) {
-            Pad();
-            out << "#Abi(" << ConventionName(f.callConv) << ")\n";
-        }
-        Pad();
-        if (f.isPublic) {
-            out << "pub ";
-        }
-        out << "ExternFuncDecl '" << f.name << "' (";
-        for (std::size_t i = 0; i < f.params.size(); ++i) {
-            if (i) {
-                out << ", ";
-            }
-            if (f.params[i].isMut) {
-                out << "var ";
-            }
-            out << f.params[i].name << ": " << TypeStr(f.params[i].type.get());
-        }
-        if (f.isVariadic) {
-            out << (f.params.empty() ? "..." : ", ...");
-        }
-        out << ')';
-        if (f.returnType) {
-            out << " -> " << TypeStr(f.returnType->get());
-        }
-        out << '\n';
-    }
-
-    void PrintExternVarDecl(const ExternVarDecl &v) const {
-        Pad();
-        if (v.isPublic) {
-            out << "pub ";
-        }
-        out << "ExternVarDecl '" << v.name << "' : " << TypeStr(v.type.get()) << '\n';
+        declarations.Print(decl);
     }
 
     // Block
