@@ -206,4 +206,25 @@ private:
     void EncodeCondAlias(const AsmInstr &in, CondAliasFn fn);
     void EncodeCondSet(const AsmInstr &in, CondSetFn fn);
 };
+
+// Load/store, addressing, floating-point and conversion forms live in their
+// own implementation. The final facade derives from this context and falls
+// through to branch and system instructions when DispatchMemoryFloating does
+// not claim a mnemonic.
+class MemoryFloatingAssemblerContext : public IntegerAssemblerContext {
+public:
+    using IntegerAssemblerContext::IntegerAssemblerContext;
+
+protected:
+    [[nodiscard]] bool DispatchMemoryFloating(const AsmInstr &in);
+
+private:
+    [[nodiscard]] std::optional<A64Reg> BaseOf(const AsmOperand &op);
+    [[nodiscard]] bool CheckBase(const AsmOperand &addr, A64Reg base);
+    void EncodeMem(const AsmInstr &in, const MemForms &forms);
+    void EncodePair(const AsmInstr &in, PairFn fn);
+    void EncodeFmov(const AsmInstr &in);
+    void EncodeFcmp(const AsmInstr &in, bool signalling);
+    void EncodeFccmp(const AsmInstr &in);
+};
 } // namespace Rux::AArch64AssemblerPrivate
