@@ -9,6 +9,7 @@
 #include "Linker/Linker.h"
 #include "Linker/LinkerInternal.h"
 #include "Linker/MachO/CodeSignature.h"
+#include "Linker/MachO/MachOLayout.h"
 #include "Linker/MachO/MachOLinkEdit.h"
 #include "Linker/RcuObjectLayout.h"
 
@@ -28,9 +29,7 @@ namespace {
 constexpr uint64_t kExecutableBase = 0x1'0000'0000ULL;
 constexpr const char *kSystemLibName = "libSystem.B.dylib";
 constexpr const char *kDefaultLib = "/usr/lib/libSystem.B.dylib";
-constexpr const char *kDyldPath = "/usr/lib/dyld";
 constexpr std::size_t kMachUuidSize = 16;
-constexpr std::size_t kMachHeaderSize = 32;
 
 enum class MachOEntryStrategy : uint8_t {
     Main,
@@ -106,14 +105,6 @@ const MachOArchitectureProfile *ArchitectureProfile(const Target::Arch architect
     return nullptr;
 }
 
-std::optional<uint64_t> AlignUp64(const uint64_t value, const uint64_t alignment) {
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0 ||
-        value > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
-        return std::nullopt;
-    }
-    return (value + alignment - 1) & ~(alignment - 1);
-}
-
 bool AddSigned(const uint64_t value, const int32_t addend, uint64_t &result) {
     if (addend >= 0) {
         const auto positive = static_cast<uint64_t>(addend);
@@ -133,14 +124,6 @@ bool AddSigned(const uint64_t value, const int32_t addend, uint64_t &result) {
 
 bool SupportsRelocation(const MachOArchitectureProfile &profile, const uint16_t type) {
     return std::ranges::find(profile.supportedRelocations, type) != profile.supportedRelocations.end();
-}
-
-uint32_t AlignmentPower(const uint32_t alignment) {
-    uint32_t power = 0;
-    for (uint32_t value = alignment; value > 1; value >>= 1U) {
-        ++power;
-    }
-    return power;
 }
 
 bool ApplyMachORelocation(const MachOArchitectureProfile &profile, Buf &buffer, const size_t patchOffset,
@@ -207,75 +190,11 @@ bool ApplyMachORelocation(const MachOArchitectureProfile &profile, Buf &buffer, 
     return true;
 }
 
-void WriteMachName(Buf &buffer, const char *name) {
-    char field[16] = {};
-    for (size_t i = 0; i < sizeof(field) && name[i] != '\0'; ++i) {
-        field[i] = name[i];
-    }
-    for (const char byte : field) {
-        WriteU8(buffer, static_cast<uint8_t>(byte));
-    }
-}
-
-uint32_t StringCommandSize(const uint32_t headerSize, const std::string &value) {
-    const auto size = AlignUp64(headerSize + value.size() + 1, 8);
-    return size && *size <= std::numeric_limits<uint32_t>::max() ? static_cast<uint32_t>(*size) : 0;
-}
-
 std::string NormalizeDylibName(const std::string &name) {
     if (name == kSystemLibName) {
         return kDefaultLib;
     }
     return name;
-}
-
-void WriteDylinkerCommand(Buf &commands) {
-    const std::string path = kDyldPath;
-    const uint32_t commandSize = StringCommandSize(12, path);
-    WriteU32(commands, 0x0E); // LC_LOAD_DYLINKER
-    WriteU32(commands, commandSize);
-    WriteU32(commands, 12); // path offset in command
-    for (const char byte : path) {
-        WriteU8(commands, static_cast<uint8_t>(byte));
-    }
-    WriteU8(commands, 0);
-    while (commands.size() % 8 != 0) {
-        WriteU8(commands, 0);
-    }
-}
-
-void WriteDylibCommand(Buf &commands, const std::string &path) {
-    const uint32_t commandSize = StringCommandSize(24, path);
-    WriteU32(commands, 0x0C); // LC_LOAD_DYLIB
-    WriteU32(commands, commandSize);
-    WriteU32(commands, 24);      // path offset in command
-    WriteU32(commands, 2);       // timestamp (conventional ld64 value)
-    WriteU32(commands, 0x10000); // current version 1.0.0
-    WriteU32(commands, 0x10000); // compatibility version 1.0.0
-    for (const char byte : path) {
-        WriteU8(commands, static_cast<uint8_t>(byte));
-    }
-    WriteU8(commands, 0);
-    while (commands.size() % 8 != 0) {
-        WriteU8(commands, 0);
-    }
-}
-
-void WriteIdDylibCommand(Buf &commands, const std::string &path) {
-    const uint32_t commandSize = StringCommandSize(24, path);
-    WriteU32(commands, 0x0D); // LC_ID_DYLIB
-    WriteU32(commands, commandSize);
-    WriteU32(commands, 24);
-    WriteU32(commands, 0);       // deterministic timestamp
-    WriteU32(commands, 0x10000); // current version 1.0.0
-    WriteU32(commands, 0x10000); // compatibility version 1.0.0
-    for (const char byte : path) {
-        WriteU8(commands, static_cast<uint8_t>(byte));
-    }
-    WriteU8(commands, 0);
-    while (commands.size() % 8 != 0) {
-        WriteU8(commands, 0);
-    }
 }
 
 } // namespace
@@ -366,12 +285,6 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     const bool dynamic = isShared || positionIndependent || !importLib.empty();
     const bool slidImage = isShared || positionIndependent;
     const bool writableConstSegment = slidImage && architecture->requiresPositionIndependentExecutable;
-
-    // Segment order is [__PAGEZERO], __TEXT, [__DATA_CONST], __DATA, __LINKEDIT.
-    // Rebase and bind opcodes address segments by that index.
-    const uint8_t textSegmentIndex = isShared ? 0 : 1;
-    const uint8_t constSegmentIndex = static_cast<uint8_t>(textSegmentIndex + (writableConstSegment ? 1 : 0));
-    const uint8_t dataSegmentIndex = static_cast<uint8_t>(constSegmentIndex + 1);
 
     std::vector<std::string> importNames;
     importNames.reserve(importLib.size());
@@ -481,162 +394,48 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     }
     Buf importPointers(importNames.size() * 8, 0);
 
-    constexpr uint32_t segmentCommandSize = 72;
-    constexpr uint32_t sectionSize = 80;
-    const uint32_t threadCommandSize = 16 + architecture->threadStateCount * 4;
-    // __const is a __TEXT section unless it needs to be rebased, in which case
-    // it becomes the only section of a writable __DATA_CONST segment.
-    const uint32_t textSectionCount = (dynamic ? 2 : 1) + (writableConstSegment ? 0 : 1);
-    const uint32_t dataSectionCount = dynamic ? 2 : 1;
-    const uint32_t textCommandSize = segmentCommandSize + textSectionCount * sectionSize;
-    const uint32_t constCommandSize = segmentCommandSize + sectionSize;
-    const uint32_t dataCommandSize = segmentCommandSize + dataSectionCount * sectionSize;
-
-    uint32_t commandCount = isShared ? 3 : 4; // [PAGEZERO], TEXT, DATA, LINKEDIT
-    uint32_t commandsSize = textCommandSize + dataCommandSize + segmentCommandSize;
-    if (!isShared) {
-        commandsSize += segmentCommandSize;
+    const MachOEntryStrategy entryStrategy =
+        dynamic ? architecture->dynamicEntryStrategy : architecture->staticEntryStrategy;
+    if ((!isShared && dynamic && entryStrategy != MachOEntryStrategy::Main) ||
+        (!dynamic && entryStrategy != MachOEntryStrategy::UnixThread)) {
+        Error("internal: Mach-O entry strategy is not implemented for " +
+              std::string(Target::ToDisplayString(architecture->architecture)));
+        return false;
     }
-    if (writableConstSegment) {
-        ++commandCount;
-        commandsSize += constCommandSize;
-    }
-    if (dynamic) {
-        commandCount += (isShared ? 4 : 5) + static_cast<uint32_t>(neededLibs.size());
-        commandsSize += 48; // LC_DYLD_INFO_ONLY
-        commandsSize += 24; // LC_SYMTAB
-        commandsSize += 80; // LC_DYSYMTAB
-        if (isShared) {
-            const std::string installName = "@rpath/" + outputPath.filename().string();
-            commandsSize += StringCommandSize(24, installName); // LC_ID_DYLIB
-        }
-        else {
-            commandsSize += StringCommandSize(12, kDyldPath);
-            commandsSize += 24; // LC_MAIN
-        }
-        for (const auto &library : neededLibs) {
-            commandsSize += StringCommandSize(24, library);
-        }
-    }
-    else {
-        ++commandCount;
-        commandsSize += threadCommandSize;
-    }
-    // dyld refuses an image it links without an LC_UUID to identify it by, so
-    // every image carries one.
-    ++commandCount;
-    commandsSize += 24; // LC_UUID
-    if (architecture->emitBuildVersion) {
-        ++commandCount;
-        commandsSize += 24; // LC_BUILD_VERSION
-    }
-    ++commandCount;
-    commandsSize += 16; // LC_CODE_SIGNATURE
-
-    const auto alignLayout = [&](const uint64_t value, const uint64_t alignment,
-                                 const std::string_view description) -> std::optional<uint64_t> {
-        const auto aligned = AlignUp64(value, alignment);
-        if (!aligned) {
-            Error("Mach-O " + std::string(description) + " alignment overflows the image layout");
-        }
-        return aligned;
+    const std::string installName = isShared ? "@rpath/" + outputPath.filename().string() : std::string{};
+    const MachO::ImageLayoutRequest imageLayoutRequest{
+        .neededLibraries = neededLibs,
+        .installName = installName,
+        .imageBase = imageBase,
+        .vmPageAlignment = architecture->vmPageAlignment,
+        .fileAlignment = architecture->fileAlignment,
+        .instructionStubAlignment = architecture->instructionStubAlignment,
+        .instructionStubSize = architecture->instructionStubSize,
+        .cpuType = architecture->cpuType,
+        .cpuSubtype = architecture->cpuSubtype,
+        .threadStateFlavor = architecture->threadStateFlavor,
+        .threadStateCount = architecture->threadStateCount,
+        .threadProgramCounterIndex = architecture->threadProgramCounterIndex,
+        .textSize = textBuffer.size(),
+        .stubSize = stubs.size(),
+        .constantDataSize = rodataBuffer.size(),
+        .importPointerSize = importPointers.size(),
+        .writableDataSize = dataBuffer.size(),
+        .importCount = importNames.size(),
+        .dynamic = dynamic,
+        .shared = isShared,
+        .positionIndependent = positionIndependent,
+        .writableConstantSegment = writableConstSegment,
+        .emitBuildVersion = architecture->emitBuildVersion,
     };
-    const auto checkedAdd = [&](const uint64_t left, const uint64_t right,
-                                const std::string_view description) -> std::optional<uint64_t> {
-        if (left > std::numeric_limits<uint64_t>::max() - right) {
-            Error("Mach-O " + std::string(description) + " overflows the image layout");
-            return std::nullopt;
-        }
-        return left + right;
-    };
-
-    const uint64_t headerSize = 32 + static_cast<uint64_t>(commandsSize);
-    const auto textOffsetValue = alignLayout(headerSize, architecture->fileAlignment, "text offset");
-    if (!textOffsetValue) {
+    const MachO::ImageLayout imageLayout = MachO::ImageLayoutBuilder::Plan(imageLayoutRequest);
+    for (const std::string &diagnostic : imageLayout.diagnostics) {
+        Error(diagnostic);
+    }
+    if (imageLayout.HasErrors()) {
         return false;
     }
-    const uint64_t textOffset = *textOffsetValue;
-    const uint64_t textVA = imageBase + textOffset;
-    const auto textEnd = checkedAdd(textOffset, textBuffer.size(), "text size");
-    const auto stubsOffsetValue =
-        textEnd ? alignLayout(*textEnd, architecture->instructionStubAlignment, "instruction-stub offset")
-                : std::nullopt;
-    if (!stubsOffsetValue) {
-        return false;
-    }
-    const uint64_t stubsOffset = *stubsOffsetValue;
-    const uint64_t stubsVA = imageBase + stubsOffset;
-    const auto stubsEnd = checkedAdd(stubsOffset, stubs.size(), "instruction-stub size");
-    const uint64_t rodataAlignment = writableConstSegment ? architecture->vmPageAlignment : 16;
-    const auto rodataOffsetValue =
-        stubsEnd ? alignLayout(*stubsEnd, rodataAlignment, "constant-data offset") : std::nullopt;
-    if (!rodataOffsetValue) {
-        return false;
-    }
-    const uint64_t rodataOffset = *rodataOffsetValue;
-    const uint64_t rodataVA = imageBase + rodataOffset;
-    const auto textSegmentFileEndValue =
-        writableConstSegment ? stubsEnd : checkedAdd(rodataOffset, rodataBuffer.size(), "text segment size");
-    const auto textSegmentVMSizeValue =
-        textSegmentFileEndValue ? alignLayout(*textSegmentFileEndValue, architecture->vmPageAlignment, "text segment")
-                                : std::nullopt;
-    if (!textSegmentFileEndValue || !textSegmentVMSizeValue) {
-        return false;
-    }
-    const uint64_t textSegmentFileEnd = *textSegmentFileEndValue;
-    const uint64_t textSegmentVMSize = *textSegmentVMSizeValue;
-
-    // A rebased __const owns the pages between __TEXT and __DATA; otherwise the
-    // writable data follows __TEXT directly.
-    const uint64_t constSegmentFileSize = writableConstSegment ? rodataBuffer.size() : 0;
-    const auto constSegmentVMSizeValue = writableConstSegment
-                                           ? alignLayout(std::max<uint64_t>(constSegmentFileSize, 1),
-                                                         architecture->vmPageAlignment, "constant segment")
-                                           : std::optional<uint64_t>{0};
-    if (!constSegmentVMSizeValue) {
-        return false;
-    }
-    const uint64_t constSegmentVMSize = *constSegmentVMSizeValue;
-    const auto dataSegmentOffsetValue =
-        writableConstSegment ? checkedAdd(rodataOffset, constSegmentVMSize, "data segment")
-                             : alignLayout(textSegmentFileEnd, architecture->vmPageAlignment, "data segment");
-    if (!dataSegmentOffsetValue) {
-        return false;
-    }
-    const uint64_t dataSegmentOffset = *dataSegmentOffsetValue;
-    const uint64_t dataSegmentVA = imageBase + dataSegmentOffset;
-    const uint64_t pointersOffset = dataSegmentOffset;
-    const uint64_t pointersVA = dataSegmentVA;
-    const auto pointersEnd = checkedAdd(pointersOffset, importPointers.size(), "import-pointer size");
-    const auto dataOffsetValue = pointersEnd ? alignLayout(*pointersEnd, 8, "writable-data offset") : std::nullopt;
-    if (!dataOffsetValue) {
-        return false;
-    }
-    const uint64_t dataOffset = *dataOffsetValue;
-    const uint64_t dataVA = imageBase + dataOffset;
-    const auto dataEnd = checkedAdd(dataOffset, dataBuffer.size(), "writable-data size");
-    if (!dataEnd) {
-        return false;
-    }
-    const uint64_t dataSegmentFileSize = *dataEnd - dataSegmentOffset;
-    const auto dataSegmentVMSizeValue =
-        alignLayout(std::max<uint64_t>(dataSegmentFileSize, 1), architecture->vmPageAlignment, "data segment");
-    if (!dataSegmentVMSizeValue) {
-        return false;
-    }
-    const uint64_t dataSegmentVMSize = *dataSegmentVMSizeValue;
-
-    const auto linkeditOffsetValue = checkedAdd(dataSegmentOffset, dataSegmentVMSize, "link-edit offset");
-    if (!linkeditOffsetValue) {
-        return false;
-    }
-    const uint64_t linkeditOffset = *linkeditOffsetValue;
-    const uint64_t linkeditVA = imageBase + linkeditOffset;
-    const RcuSectionBases sectionBases{
-        .text = textVA,
-        .rodata = rodataVA,
-        .data = dataVA,
-    };
+    const RcuSectionBases &sectionBases = imageLayout.sectionBases;
     const auto symbolAddress = [&](const RcuSymbolLocation location) -> std::optional<uint64_t> {
         const auto placement = layout.Symbol(location);
         return placement && placement->section != RcuMergedSection::Bss
@@ -644,7 +443,6 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
                  : std::nullopt;
     };
 
-    const uint64_t constSegmentVA = writableConstSegment ? rodataVA : imageBase;
     const MachO::LinkEditLayout linkEdit = MachO::LinkEditBuilder::Build({
         .graph = *graph,
         .objects = objects,
@@ -654,13 +452,13 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
             {
                 .sectionBases = sectionBases,
                 .imageBase = imageBase,
-                .constantSegmentAddress = constSegmentVA,
-                .dataSegmentAddress = dataSegmentVA,
-                .linkEditOffset = linkeditOffset,
+                .constantSegmentAddress = imageLayout.constantSegmentAddress,
+                .dataSegmentAddress = imageLayout.dataSegmentAddress,
+                .linkEditOffset = imageLayout.linkEditOffset,
                 .vmPageAlignment = architecture->vmPageAlignment,
-                .textSegmentIndex = textSegmentIndex,
-                .constantSegmentIndex = constSegmentIndex,
-                .dataSegmentIndex = dataSegmentIndex,
+                .textSegmentIndex = imageLayout.textSegmentIndex,
+                .constantSegmentIndex = imageLayout.constantSegmentIndex,
+                .dataSegmentIndex = imageLayout.dataSegmentIndex,
             },
         .codeSignatureIdentifier = packageName,
         .dynamic = dynamic,
@@ -675,27 +473,13 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    const auto requireU32 = [&](const uint64_t value, const std::string_view description) {
-        if (value > std::numeric_limits<uint32_t>::max()) {
-            Error("Mach-O " + std::string(description) + " does not fit in its 32-bit load-command field");
-            return false;
-        }
-        return true;
-    };
-    if (!requireU32(textOffset, "text file offset") || !requireU32(stubsOffset, "instruction-stub file offset") ||
-        !requireU32(rodataOffset, "constant-data file offset") ||
-        !requireU32(pointersOffset, "import-pointer file offset") ||
-        !requireU32(dataOffset, "writable-data file offset") || !requireU32(linkeditOffset, "link-edit file offset")) {
-        return false;
-    }
-
     // Patch each stub to its corresponding pointer slot.
     for (size_t i = 0; i < importNames.size(); ++i) {
         const uint64_t stubOffset = i * architecture->instructionStubSize;
-        const uint64_t pointerAddress = pointersVA + i * 8;
+        const uint64_t pointerAddress = imageLayout.importPointerAddress + i * 8;
         if (targetArch == Target::Arch::AArch64) {
             std::string relocationError;
-            const uint64_t adrpVA = stubsVA + stubOffset;
+            const uint64_t adrpVA = imageLayout.stubAddress + stubOffset;
             if (!ApplyAArch64Relocation(stubs, stubOffset, RcuRelType::AArch64AdrPrelPgHi21, pointerAddress, 0, adrpVA,
                                         importNames[i], "Mach-O AArch64 instruction stub", relocationError) ||
                 !ApplyAArch64Relocation(stubs, stubOffset + 4, RcuRelType::AArch64LdstAbsLo12Nc, pointerAddress, 0,
@@ -706,7 +490,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
             }
         }
         else {
-            const uint64_t stubNextInstruction = stubsVA + stubOffset + architecture->instructionStubSize;
+            const uint64_t stubNextInstruction =
+                imageLayout.stubAddress + stubOffset + architecture->instructionStubSize;
             const uint64_t displacement = pointerAddress - stubNextInstruction;
             if (displacement > static_cast<uint64_t>(std::numeric_limits<int32_t>::max())) {
                 Error("Mach-O instruction stub for '" + importNames[i] + "' cannot reach its pointer slot");
@@ -718,7 +503,7 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
 
     std::unordered_map<std::string, uint64_t> importStubs;
     for (size_t i = 0; i < importNames.size(); ++i) {
-        importStubs[importNames[i]] = stubsVA + i * architecture->instructionStubSize;
+        importStubs[importNames[i]] = imageLayout.stubAddress + i * architecture->instructionStubSize;
     }
 
     if (!isShared) {
@@ -731,13 +516,14 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         if (targetArch == Target::Arch::AArch64) {
             std::string relocationError;
             if (!ApplyAArch64Relocation(textBuffer, callMainDisp, RcuRelType::AArch64Call26, *entryAddress, 0,
-                                        textVA + callMainDisp, "Main", "Mach-O AArch64 entry stub", relocationError)) {
+                                        imageLayout.textAddress + callMainDisp, "Main", "Mach-O AArch64 entry stub",
+                                        relocationError)) {
                 Error(std::move(relocationError));
                 return false;
             }
         }
         else {
-            const uint64_t callMainNextInstruction = textVA + callMainDisp + 4;
+            const uint64_t callMainNextInstruction = imageLayout.textAddress + callMainDisp + 4;
             const uint64_t magnitude = *entryAddress >= callMainNextInstruction
                                          ? *entryAddress - callMainNextInstruction
                                          : callMainNextInstruction - *entryAddress;
@@ -821,285 +607,33 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         return false;
     }
 
-    Buf loadCommands;
-
-    if (!isShared) {
-        // __PAGEZERO
-        WriteU32(loadCommands, 0x19);
-        WriteU32(loadCommands, segmentCommandSize);
-        WriteMachName(loadCommands, "__PAGEZERO");
-        WriteU64(loadCommands, 0);
-        WriteU64(loadCommands, kExecutableBase);
-        WriteU64(loadCommands, 0);
-        WriteU64(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
+    MachO::LoadCommandLayout loadCommands =
+        MachO::ImageLayoutBuilder::BuildLoadCommands(imageLayoutRequest, imageLayout, linkEdit);
+    for (const std::string &diagnostic : loadCommands.diagnostics) {
+        Error(diagnostic);
     }
-
-    // __TEXT: __text, [__stubs], __const
-    WriteU32(loadCommands, 0x19);
-    WriteU32(loadCommands, textCommandSize);
-    WriteMachName(loadCommands, "__TEXT");
-    WriteU64(loadCommands, imageBase);
-    WriteU64(loadCommands, textSegmentVMSize);
-    WriteU64(loadCommands, 0);
-    WriteU64(loadCommands, textSegmentFileEnd);
-    WriteU32(loadCommands, 0x05);
-    WriteU32(loadCommands, 0x05);
-    WriteU32(loadCommands, textSectionCount);
-    WriteU32(loadCommands, 0);
-
-    WriteMachName(loadCommands, "__text");
-    WriteMachName(loadCommands, "__TEXT");
-    WriteU64(loadCommands, textVA);
-    WriteU64(loadCommands, textBuffer.size());
-    WriteU32(loadCommands, static_cast<uint32_t>(textOffset));
-    WriteU32(loadCommands, 4);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0x8000'0400);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-
-    if (dynamic) {
-        WriteMachName(loadCommands, "__stubs");
-        WriteMachName(loadCommands, "__TEXT");
-        WriteU64(loadCommands, stubsVA);
-        WriteU64(loadCommands, stubs.size());
-        WriteU32(loadCommands, static_cast<uint32_t>(stubsOffset));
-        WriteU32(loadCommands, AlignmentPower(architecture->instructionStubAlignment));
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0x8000'0408); // instructions | S_SYMBOL_STUBS
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, architecture->instructionStubSize);
-        WriteU32(loadCommands, 0);
-    }
-
-    // __DATA_CONST holds constant data that dyld rebases; a fixed-address image
-    // keeps it read-only inside __TEXT.
-    const char *const constSegmentName = writableConstSegment ? "__DATA_CONST" : "__TEXT";
-    if (writableConstSegment) {
-        WriteU32(loadCommands, 0x19);
-        WriteU32(loadCommands, constCommandSize);
-        WriteMachName(loadCommands, constSegmentName);
-        WriteU64(loadCommands, constSegmentVA);
-        WriteU64(loadCommands, constSegmentVMSize);
-        WriteU64(loadCommands, rodataOffset);
-        WriteU64(loadCommands, constSegmentFileSize);
-        WriteU32(loadCommands, 0x03);
-        WriteU32(loadCommands, 0x03);
-        WriteU32(loadCommands, 1);
-        // SG_READ_ONLY: dyld maps the segment writable, applies its rebases,
-        // and re-protects it read-only afterwards. dyld refuses to load a
-        // __DATA_CONST segment that does not carry the flag.
-        WriteU32(loadCommands, 0x10);
-    }
-
-    WriteMachName(loadCommands, "__const");
-    WriteMachName(loadCommands, constSegmentName);
-    WriteU64(loadCommands, rodataVA);
-    WriteU64(loadCommands, rodataBuffer.size());
-    WriteU32(loadCommands, static_cast<uint32_t>(rodataOffset));
-    WriteU32(loadCommands, 4);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-
-    // __DATA: [__nl_symbol_ptr], __data
-    WriteU32(loadCommands, 0x19);
-    WriteU32(loadCommands, dataCommandSize);
-    WriteMachName(loadCommands, "__DATA");
-    WriteU64(loadCommands, dataSegmentVA);
-    WriteU64(loadCommands, dataSegmentVMSize);
-    WriteU64(loadCommands, dataSegmentOffset);
-    WriteU64(loadCommands, dataSegmentFileSize);
-    WriteU32(loadCommands, 0x03);
-    WriteU32(loadCommands, 0x03);
-    WriteU32(loadCommands, dataSectionCount);
-    WriteU32(loadCommands, 0);
-
-    if (dynamic) {
-        WriteMachName(loadCommands, "__nl_symbol_ptr");
-        WriteMachName(loadCommands, "__DATA");
-        WriteU64(loadCommands, pointersVA);
-        WriteU64(loadCommands, importPointers.size());
-        WriteU32(loadCommands, static_cast<uint32_t>(pointersOffset));
-        WriteU32(loadCommands, 3);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0x06); // S_NON_LAZY_SYMBOL_POINTERS
-        WriteU32(loadCommands, static_cast<uint32_t>(importNames.size()));
-        WriteU32(loadCommands, 0);
-        WriteU32(loadCommands, 0);
-    }
-
-    WriteMachName(loadCommands, "__data");
-    WriteMachName(loadCommands, "__DATA");
-    WriteU64(loadCommands, dataVA);
-    WriteU64(loadCommands, dataBuffer.size());
-    WriteU32(loadCommands, static_cast<uint32_t>(dataOffset));
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-
-    // __LINKEDIT contains dyld metadata followed by the deterministic
-    // in-process ad-hoc signature.
-    WriteU32(loadCommands, 0x19);
-    WriteU32(loadCommands, segmentCommandSize);
-    WriteMachName(loadCommands, "__LINKEDIT");
-    WriteU64(loadCommands, linkeditVA);
-    WriteU64(loadCommands, linkEdit.vmSize);
-    WriteU64(loadCommands, linkeditOffset);
-    WriteU64(loadCommands, linkEdit.fileSize);
-    WriteU32(loadCommands, 0x01);
-    WriteU32(loadCommands, 0x01);
-    WriteU32(loadCommands, 0);
-    WriteU32(loadCommands, 0);
-
-    if (dynamic) {
-        WriteU32(loadCommands, 0x8000'0022); // LC_DYLD_INFO_ONLY
-        WriteU32(loadCommands, 48);
-        WriteU32(loadCommands, linkEdit.rebaseOpcodes.empty() ? 0 : static_cast<uint32_t>(linkeditOffset));
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.rebaseOpcodes.size()));
-        WriteU32(loadCommands, linkEdit.bindOpcodes.empty() ? 0 : static_cast<uint32_t>(linkEdit.bindOffset));
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.bindOpcodes.size()));
-        WriteU32(loadCommands, 0); // weak_bind_off
-        WriteU32(loadCommands, 0); // weak_bind_size
-        WriteU32(loadCommands, 0); // lazy_bind_off
-        WriteU32(loadCommands, 0); // lazy_bind_size
-        WriteU32(loadCommands, linkEdit.exportTrie.empty() ? 0 : static_cast<uint32_t>(linkEdit.exportTrieOffset));
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.exportTrie.size()));
-
-        WriteU32(loadCommands, 0x02); // LC_SYMTAB
-        WriteU32(loadCommands, 24);
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.symbolTableOffset));
-        WriteU32(loadCommands, linkEdit.symbolCount);
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.stringTableOffset));
-        WriteU32(loadCommands, linkEdit.stringTableSize);
-
-        WriteU32(loadCommands, 0x0B); // LC_DYSYMTAB
-        WriteU32(loadCommands, 80);
-        WriteU32(loadCommands, 0);                    // ilocalsym
-        WriteU32(loadCommands, 0);                    // nlocalsym
-        WriteU32(loadCommands, 0);                    // iextdefsym
-        WriteU32(loadCommands, linkEdit.exportCount); // nextdefsym
-        WriteU32(loadCommands, linkEdit.exportCount); // iundefsym
-        WriteU32(loadCommands, linkEdit.importCount);
-        WriteU32(loadCommands, 0); // tocoff
-        WriteU32(loadCommands, 0); // ntoc
-        WriteU32(loadCommands, 0); // modtaboff
-        WriteU32(loadCommands, 0); // nmodtab
-        WriteU32(loadCommands, 0); // extrefsymoff
-        WriteU32(loadCommands, 0); // nextrefsyms
-        WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.indirectSymbolsOffset));
-        WriteU32(loadCommands, linkEdit.importCount * 2);
-        WriteU32(loadCommands, 0); // extreloff
-        WriteU32(loadCommands, 0); // nextrel
-        WriteU32(loadCommands, 0); // locreloff
-        WriteU32(loadCommands, 0); // nlocrel
-
-        if (isShared) {
-            WriteIdDylibCommand(loadCommands, "@rpath/" + outputPath.filename().string());
-        }
-        else {
-            WriteDylinkerCommand(loadCommands);
-
-            if (architecture->dynamicEntryStrategy != MachOEntryStrategy::Main) {
-                Error("internal: Mach-O dynamic entry strategy is not implemented for " +
-                      std::string(Target::ToDisplayString(architecture->architecture)));
-                return false;
-            }
-            WriteU32(loadCommands, 0x8000'0028); // LC_MAIN
-            WriteU32(loadCommands, 24);
-            WriteU64(loadCommands, textOffset); // entryoff from start of __TEXT/file
-            WriteU64(loadCommands, 0);          // stacksize
-        }
-
-        for (const auto &library : neededLibs) {
-            WriteDylibCommand(loadCommands, library);
-        }
-    }
-    else {
-        if (architecture->staticEntryStrategy != MachOEntryStrategy::UnixThread) {
-            Error("internal: Mach-O static entry strategy is not implemented for " +
-                  std::string(Target::ToDisplayString(architecture->architecture)));
-            return false;
-        }
-        WriteU32(loadCommands, 0x05); // LC_UNIXTHREAD
-        WriteU32(loadCommands, threadCommandSize);
-        WriteU32(loadCommands, architecture->threadStateFlavor);
-        WriteU32(loadCommands, architecture->threadStateCount);
-        for (uint32_t reg = 0; reg < architecture->threadStateCount / 2; ++reg) {
-            WriteU64(loadCommands, reg == architecture->threadProgramCounterIndex ? textVA : 0);
-        }
-    }
-
-    // The identifier itself is a digest of the finished image, so it is filled
-    // in once the rest of the file exists. Remember where its bytes land.
-    WriteU32(loadCommands, 0x1B); // LC_UUID
-    WriteU32(loadCommands, 24);
-    const std::size_t uuidCommandPayload = loadCommands.size();
-    loadCommands.insert(loadCommands.end(), kMachUuidSize, 0);
-
-    if (architecture->emitBuildVersion) {
-        WriteU32(loadCommands, 0x32); // LC_BUILD_VERSION
-        WriteU32(loadCommands, 24);
-        WriteU32(loadCommands, 1);           // PLATFORM_MACOS
-        WriteU32(loadCommands, 0x001A'0000); // macOS 26.0 deployment target
-        WriteU32(loadCommands, 0x001A'0000); // macOS 26.0 SDK baseline
-        WriteU32(loadCommands, 0);           // no build-tool records
-    }
-
-    WriteU32(loadCommands, 0x1D); // LC_CODE_SIGNATURE
-    WriteU32(loadCommands, 16);
-    WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.codeSignatureOffset));
-    WriteU32(loadCommands, static_cast<uint32_t>(linkEdit.codeSignatureSize));
-
-    if (loadCommands.size() != commandsSize) {
-        Error("internal: Mach-O load-command size mismatch");
+    if (loadCommands.HasErrors()) {
         return false;
     }
 
-    Buf header;
-    WriteU32(header, 0xFEED'FACF); // MH_MAGIC_64
-    WriteU32(header, architecture->cpuType);
-    WriteU32(header, architecture->cpuSubtype);
-    WriteU32(header, isShared ? 6 : 2); // MH_DYLIB or MH_EXECUTE
-    WriteU32(header, commandCount);
-    WriteU32(header, commandsSize);
-    // MH_NOUNDEFS | [MH_DYLDLINK] | [MH_PIE]
-    WriteU32(header, (dynamic ? 0x0000'0005U : 0x0000'0001U) | (positionIndependent ? 0x0020'0000U : 0U));
-    WriteU32(header, 0);
-
-    Buf image = std::move(header);
-    image.insert(image.end(), loadCommands.begin(), loadCommands.end());
+    Buf image = std::move(loadCommands.header);
+    image.insert(image.end(), loadCommands.commands.begin(), loadCommands.commands.end());
     const auto appendAt = [&](const uint64_t offset, const Buf &buffer) {
         image.resize(static_cast<std::size_t>(offset), 0);
         image.insert(image.end(), buffer.begin(), buffer.end());
     };
-    appendAt(textOffset, textBuffer);
-    appendAt(stubsOffset, stubs);
-    appendAt(rodataOffset, rodataBuffer);
-    appendAt(pointersOffset, importPointers);
-    appendAt(dataOffset, dataBuffer);
-    appendAt(linkeditOffset, linkEdit.contents);
+    appendAt(imageLayout.textOffset, textBuffer);
+    appendAt(imageLayout.stubOffset, stubs);
+    appendAt(imageLayout.constantDataOffset, rodataBuffer);
+    appendAt(imageLayout.importPointerOffset, importPointers);
+    appendAt(imageLayout.writableDataOffset, dataBuffer);
+    appendAt(imageLayout.linkEditOffset, linkEdit.contents);
     image.resize(static_cast<std::size_t>(linkEdit.codeSignatureOffset), 0);
 
     // Identify the image by a digest of itself, taken while the UUID field is
     // still zero. Two links of the same input therefore agree, and the value
     // has to be in place before the signature covers it.
-    const std::size_t uuidOffset = kMachHeaderSize + uuidCommandPayload;
+    const std::size_t uuidOffset = loadCommands.uuidOffset;
     if (uuidOffset + kMachUuidSize > image.size()) {
         Error("internal: Mach-O UUID load command falls outside the image");
         return false;
@@ -1113,8 +647,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
 
     Buf codeSignature;
     std::string signatureError;
-    if (!MachO::BuildAdHocCodeSignature(image, packageName, 0, textSegmentFileEnd, isShared ? 0 : 1, codeSignature,
-                                        signatureError)) {
+    if (!MachO::BuildAdHocCodeSignature(image, packageName, 0, imageLayout.textSegmentFileEnd, isShared ? 0 : 1,
+                                        codeSignature, signatureError)) {
         Error(std::move(signatureError));
         return false;
     }

@@ -1,6 +1,7 @@
 #include "Crypto/Sha256.h"
 #include "Linker/Linker.h"
 #include "Linker/MachO/CodeSignature.h"
+#include "Linker/MachO/MachOLayout.h"
 #include "MachOReader.h"
 
 #include <algorithm>
@@ -86,6 +87,43 @@ MachOImage LinkAndRead(RcuFile object, const ArtifactKind kind, const std::files
     return image;
 }
 } // namespace
+
+TEST_CASE("Mach-O image layout builder places fixed-address sections") {
+    MachO::ImageLayoutRequest request;
+    request.imageBase = 0x1'0000'0000;
+    request.vmPageAlignment = 0x1000;
+    request.fileAlignment = 16;
+    request.instructionStubAlignment = 2;
+    request.instructionStubSize = 6;
+    request.threadStateCount = 42;
+    request.textSize = 32;
+    request.constantDataSize = 24;
+    request.writableDataSize = 8;
+    const MachO::ImageLayout layout = MachO::ImageLayoutBuilder::Plan(request);
+
+    REQUIRE_FALSE(layout.HasErrors());
+    CHECK(layout.commandCount == 7);
+    CHECK(layout.commandsSize == 752);
+    CHECK(layout.textOffset == 784);
+    CHECK(layout.constantDataOffset == 816);
+    CHECK(layout.dataSegmentAddress == 0x1'0000'1000);
+    CHECK(layout.linkEditOffset == 0x2000);
+    CHECK(layout.textSegmentIndex == 1);
+    CHECK(layout.constantSegmentIndex == 1);
+    CHECK(layout.dataSegmentIndex == 2);
+}
+
+TEST_CASE("Mach-O image layout builder diagnoses invalid target alignment") {
+    MachO::ImageLayoutRequest request;
+    request.vmPageAlignment = 0x1000;
+    request.fileAlignment = 3;
+    request.instructionStubAlignment = 2;
+    request.threadStateCount = 42;
+    const MachO::ImageLayout layout = MachO::ImageLayoutBuilder::Plan(request);
+
+    REQUIRE(layout.HasErrors());
+    CHECK(layout.diagnostics.front() == "Mach-O text offset alignment overflows the image layout");
+}
 
 TEST_CASE("Mach-O ad-hoc signature builder covers empty and partial pages") {
     std::vector<std::uint8_t> signature;
