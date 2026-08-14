@@ -1,122 +1,40 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 
 #include "CodeGen/Layout.h"
+#include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 #include "CodeGen/X86_64/FramePlan.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
-#include "Target/Platform.h"
 
 #include <format>
 #include <fstream>
-#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Rux {
 using namespace Layout;
 
-// Type utilities
 namespace {
-// x86-64 register names sized for the rax family
-std::string_view GprA(int bytes) {
-    switch (bytes) {
-    case 1:
-        return "al";
-    case 2:
-        return "ax";
-    case 4:
-        return "eax";
-    default:
-        return "rax";
-    }
-}
-
-// r10 family (caller-saved scratch — primary operand)
-[[maybe_unused]] std::string_view GprB(const int bytes) {
-    switch (bytes) {
-    case 1:
-        return "r10b";
-    case 2:
-        return "r10w";
-    case 4:
-        return "r10d";
-    default:
-        return "r10";
-    }
-}
-
-// r11 family (caller-saved scratch — secondary operand)
-[[maybe_unused]] std::string_view GprC(const int bytes) {
-    switch (bytes) {
-    case 1:
-        return "r11b";
-    case 2:
-        return "r11w";
-    case 4:
-        return "r11d";
-    default:
-        return "r11";
-    }
-}
-
-std::string_view PtrSize(const int bytes) {
-    switch (bytes) {
-    case 1:
-        return "byte";
-    case 2:
-        return "word";
-    case 4:
-        return "dword";
-    default:
-        return "qword";
-    }
-}
-
-// Code generator
 class AsmGen {
 public:
     AsmGen(const LirPackage &package, const Target::OS inputTargetOs)
-        : pkg(package)
+        : package(package)
         , targetOs(inputTargetOs)
         , modulePrinter(inputTargetOs) {
     }
 
-    std::string Generate();
+    [[nodiscard]] std::string Generate();
 
 private:
-    const LirPackage &pkg;
+    const LirPackage &package;
     Target::OS targetOs;
     AssemblyModulePrinter modulePrinter;
-
-    // Struct field layouts (built once)
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
+    std::string currentFunction;
 
-    std::string curFunc;
-    const X86_64FramePlan *activeFramePlan = nullptr;
-
-    [[nodiscard]] const X86_64FramePlan &FramePlan() const {
-        return *activeFramePlan;
-    }
-
-    [[nodiscard]] bool IsWin64Conv(const CallingConvention convention) const {
-        CallingConvention resolved = convention;
-        if (resolved == CallingConvention::Default) {
-            resolved = PlatformDefaultConvention(targetOs, Target::Arch::X86_64);
-        }
-        else {
-            resolved = ResolveCConvention(resolved, targetOs, Target::Arch::X86_64);
-        }
-        return resolved == CallingConvention::Win64;
-    }
-
-    // Low-level emit helpers
-    void T(const std::string_view s) {
-        modulePrinter.TextLine(s);
-    }
-
-    void TI(const std::string_view s) {
-        modulePrinter.TextInstruction(s);
+    void TI(const std::string_view instruction) {
+        modulePrinter.TextInstruction(instruction);
     }
 
     void TL(const std::string_view label) {
@@ -131,532 +49,150 @@ private:
         modulePrinter.TextBlank();
     }
 
-    // Constant interning
-    std::string InternStr(const std::string &val) {
-        return modulePrinter.InternString(val);
-    }
-
-    std::string InternF32(const std::string &val) {
-        return modulePrinter.InternFloat32(val);
-    }
-
-    std::string InternF64(const std::string &val) {
-        return modulePrinter.InternFloat64(val);
+    [[nodiscard]] std::string InternString(const std::string &value) {
+        return modulePrinter.InternString(value);
     }
 
     void NeedExtern(const std::string &name) {
         modulePrinter.DeclareExtern(name);
     }
 
-    static std::string BaseTypeName(const std::string &name) {
-        const std::size_t pos = name.find('<');
-        return pos == std::string::npos ? name : name.substr(0, pos);
-    }
-
-    [[nodiscard]] int SizeOfRuntime(const TypeRef &t) const {
-        if (t.kind == TypeRef::Kind::Named) {
-            const std::string base = BaseTypeName(t.name);
-            if (interfaceNames.contains(base)) {
-                return 16; // {data: *opaque, vtable: *opaque}
-            }
-            if (base == "Slice") {
-                return 16;
-            }
-            if (base == "String" || base == "StringArray" || base == "SystemTime") {
-                return 16;
-            }
-            if (base == "StringBuilder") {
-                return 24;
-            }
-            if (const auto it = layouts.find(base); it != layouts.end()) {
-                return it->second.totalSize;
-            }
+    [[nodiscard]] std::string BlockLabel(const std::uint32_t index, const std::string &label) const {
+        if (index == 0) {
+            return currentFunction;
         }
-        return SizeOf(t);
+        return "." + currentFunction + "_" + label;
     }
 
-    [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
-        if (t.kind != TypeRef::Kind::Named) {
-            return false;
-        }
-        const std::string base = BaseTypeName(t.name);
-        return base == "Slice" || interfaceNames.contains(base);
-    }
-
-    [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto it = registerTypes.find(reg);
-        return it != registerTypes.end() && it->second.kind == TypeRef::Kind::Pointer && !it->second.inner.empty() &&
-               it->second.inner[0] == pointee;
-    }
-
-    std::string_view PhysRegName(int rIdx) const {
-        switch (rIdx) {
-        case 0:
-            return "rbx";
-        case 1:
-            return "r12";
-        case 2:
-            return "r13";
-        case 3:
-            return "r14";
-        case 4:
-            return "r15";
-        default:
-            return "rbx";
-        }
-    }
-
-    // Load/store helpers
-    // Integer loads promote to 64-bit (sign- or zero-extend as needed).
-    // Float loads use xmm0 (primary) or xmm1 (secondary).
-    // Load vreg into rax (integer) or xmm0 (float)
-    void LoadA(LirReg reg, const TypeRef &t) {
-        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-        auto it = physicalRegisters.find(reg);
-        if (it != physicalRegisters.end()) {
-            TI(std::format("{:<8}rax, {}", "mov", PhysRegName(it->second)));
-            int sz = SizeOfRuntime(t);
-            if (sz > 0 && sz < 8) {
-                if (t.IsSigned()) {
-                    if (sz == 4)
-                        TI("movsxd  rax, eax");
-                    else if (sz == 2)
-                        TI("movsx   rax, ax");
-                    else
-                        TI("movsx   rax, al");
-                }
-                else {
-                    if (sz == 4)
-                        TI("mov     eax, eax");
-                    else if (sz == 2)
-                        TI("movzx   rax, ax");
-                    else
-                        TI("movzx   rax, al");
-                }
-            }
+    void EmitPhiMoves(std::uint32_t fromBlock, std::uint32_t toBlock, AssemblyInstructionPrinter &instructionPrinter) {
+        const auto &phiMoves = instructionPrinter.FramePlan().PhiMoves();
+        const auto from = phiMoves.find(fromBlock);
+        if (from == phiMoves.end()) {
             return;
         }
-        int sz = SizeOfRuntime(t);
-        int runtimeSz = SizeOfRuntime(t);
-        int off = FramePlan().SlotOffsets().at(reg);
-        if (runtimeSz == 16) {
-            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-            TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", off - 8));
-        }
-        else if (IsFloat(t)) {
-            TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-        }
-        else if (sz == 8 || sz == 0) {
-            TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-        }
-        else if (t.IsSigned()) {
-            TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
-        }
-        else {
-            if (sz == 4) {
-                TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", off));
-            }
-            else {
-                TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), off));
-            }
-        }
-    }
-
-    // Load vreg into r10 (integer) or xmm1 (float)
-    void LoadB(LirReg reg, const TypeRef &t) {
-        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-        auto it = physicalRegisters.find(reg);
-        if (it != physicalRegisters.end()) {
-            TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
-            int sz = SizeOfRuntime(t);
-            if (sz > 0 && sz < 8) {
-                if (t.IsSigned()) {
-                    if (sz == 4)
-                        TI("movsxd  r10, r10d");
-                    else if (sz == 2)
-                        TI("movsx   r10, r10w");
-                    else
-                        TI("movsx   r10, r10b");
-                }
-                else {
-                    if (sz == 4)
-                        TI("mov     r10d, r10d");
-                    else if (sz == 2)
-                        TI("movzx   r10, r10w");
-                    else
-                        TI("movzx   r10, r10b");
-                }
-            }
-            return;
-        }
-        int sz = SizeOfRuntime(t);
-        int32_t off = FramePlan().SlotOffsets().at(reg);
-        if (IsFloat(t)) {
-            TI(std::format("{:<8}xmm1, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-        }
-        else if (sz == 8 || sz == 0) {
-            TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", off));
-        }
-        else if (t.IsSigned()) {
-            TI(std::format("{:<8}r10, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
-        }
-        else {
-            if (sz == 4) {
-                TI(std::format("{:<8}r10d, dword [rbp - {}]", "mov", off));
-            }
-            else {
-                TI(std::format("{:<8}r10, {} [rbp - {}]", "movzx", PtrSize(sz), off));
-            }
-        }
-    }
-
-    // Store rax (integer) or xmm0 (float) into dst's slot
-    void StoreA(LirReg dst, const TypeRef &t) {
-        const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-        auto it = physicalRegisters.find(dst);
-        if (it != physicalRegisters.end()) {
-            TI(std::format("{:<8}{}, rax", "mov", PhysRegName(it->second)));
-            return;
-        }
-        int sz = SizeOfRuntime(t);
-        int runtimeSz = SizeOfRuntime(t);
-        int off = FramePlan().SlotOffsets().at(dst);
-        if (runtimeSz == 16) {
-            TI(std::format("{:<8}qword [rbp - {}], rax", "mov", off));
-            TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", off - 8));
-        }
-        else if (IsFloat(t)) {
-            TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-        }
-        else {
-            int store_sz = (sz > 0) ? sz : 8;
-            TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(store_sz), off, GprA(store_sz)));
-        }
-    }
-
-    void LoadReturnValue(LirReg reg, const TypeRef &t) {
-        const int size = SizeOfRuntime(t);
-        if (IsRegPointerTo(reg, t) && (size == 1 || size == 2 || size == 4 || size == 8 || size == 16)) {
-            const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-            auto it = physicalRegisters.find(reg);
-            if (it != physicalRegisters.end()) {
-                TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
-            }
-            else {
-                TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(reg)));
-            }
-            if (size == 16) {
-                TI(std::format("{:<8}rax, qword [r10]", "mov"));
-                TI(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
-            }
-            else if (size == 8) {
-                TI(std::format("{:<8}rax, qword [r10]", "mov"));
-            }
-            else if (size == 4) {
-                TI(std::format("{:<8}eax, dword [r10]", "mov"));
-            }
-            else {
-                TI(std::format("{:<8}eax, {} [r10]", "movzx", PtrSize(size)));
-            }
-            return;
-        }
-        LoadA(reg, t);
-    }
-
-    // Block labels
-    [[nodiscard]] std::string BlockLabel(uint32_t idx, const std::string &label) const {
-        if (idx == 0) {
-            return curFunc;
-        }
-        return "." + curFunc + "_" + label;
-    }
-
-    // Phi move emission
-    void EmitPhiMoves(uint32_t fromBlock, uint32_t toBlock) {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        auto it1 = phiMoves.find(fromBlock);
-        if (it1 == phiMoves.end()) {
-            return;
-        }
-        auto it2 = it1->second.find(toBlock);
-        if (it2 == it1->second.end()) {
+        const auto to = from->second.find(toBlock);
+        if (to == from->second.end()) {
             return;
         }
 
-        std::vector<PhiMoveStep> steps = ResolvePhiMoves(it2->second);
-        const int32_t tempOff = FramePlan().PhiTemporaryOffset();
-
+        const std::vector<PhiMoveStep> steps = ResolvePhiMoves(to->second);
+        const std::int32_t temporaryOffset = instructionPrinter.FramePlan().PhiTemporaryOffset();
         for (const auto &step : steps) {
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
-                int sz = SizeOfRuntime(step.type);
-                if (sz == 16) {
-                    LoadA(step.dst, step.type);
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", tempOff));
-                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", tempOff - 8));
+                const int size = instructionPrinter.SizeOfRuntime(step.type);
+                instructionPrinter.LoadA(step.dst, step.type);
+                if (size == 16) {
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", temporaryOffset));
+                    TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", temporaryOffset - 8));
                 }
                 else if (IsFloat(step.type)) {
-                    LoadA(step.dst, step.type);
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), tempOff));
+                    TI(std::format("{:<8}{} [rbp - {}], xmm0", size == 4 ? "movss" : "movsd",
+                                   size == 4 ? "dword" : "qword", temporaryOffset));
                 }
                 else {
-                    LoadA(step.dst, step.type);
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", tempOff));
+                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", temporaryOffset));
                 }
+            }
+            else if (step.sourceIsTemporary) {
+                const int size = instructionPrinter.SizeOfRuntime(step.type);
+                if (size == 16) {
+                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", temporaryOffset));
+                    TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", temporaryOffset - 8));
+                }
+                else if (IsFloat(step.type)) {
+                    TI(std::format("{:<8}xmm0, {} [rbp - {}]", size == 4 ? "movss" : "movsd",
+                                   size == 4 ? "dword" : "qword", temporaryOffset));
+                }
+                else {
+                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", temporaryOffset));
+                }
+                instructionPrinter.StoreA(step.dst, step.type);
             }
             else {
-                if (step.sourceIsTemporary) {
-                    int sz = SizeOfRuntime(step.type);
-                    if (sz == 16) {
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", tempOff));
-                        TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", tempOff - 8));
-                        StoreA(step.dst, step.type);
-                    }
-                    else if (IsFloat(step.type)) {
-                        TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz), tempOff));
-                        StoreA(step.dst, step.type);
-                    }
-                    else {
-                        TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", tempOff));
-                        StoreA(step.dst, step.type);
-                    }
-                }
-                else {
-                    LoadA(step.src, step.type);
-                    StoreA(step.dst, step.type);
-                }
+                instructionPrinter.LoadA(step.src, step.type);
+                instructionPrinter.StoreA(step.dst, step.type);
             }
         }
     }
 
-    // Module / function generation
     void BuildLayouts() {
-        for (const auto &mod : pkg.modules) {
-            for (const auto &name : mod.interfaceNames) {
+        for (const auto &module : package.modules) {
+            for (const auto &name : module.interfaceNames) {
                 interfaceNames.insert(name);
             }
-            for (const auto &s : mod.structs) {
-                layouts[s.name] = ComputeStructLayout(s, layouts);
+            for (const auto &structure : module.structs) {
+                layouts[structure.name] = ComputeStructLayout(structure, layouts);
             }
         }
     }
 
-    void GenModule(const LirModule &mod) {
-        modulePrinter.EmitModuleData(mod);
-
-        // Functions
-        for (const auto &func : mod.funcs) {
-            if (modulePrinter.DeclareFunction(func)) {
-                GenFunc(func);
+    void GenModule(const LirModule &module) {
+        modulePrinter.EmitModuleData(module);
+        for (const auto &function : module.funcs) {
+            if (modulePrinter.DeclareFunction(function)) {
+                GenFunction(function);
             }
         }
     }
 
-    void GenFunc(const LirFunc &func) {
-        curFunc = func.name;
-        const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
-        activeFramePlan = &framePlan;
+    void GenFunction(const LirFunc &function) {
+        currentFunction = function.name;
+        const X86_64FramePlan framePlan = PlanX86_64Frame(function, layouts, interfaceNames, targetOs);
+        AssemblyInstructionPrinter instructionPrinter(modulePrinter, framePlan, layouts, interfaceNames, targetOs);
+        instructionPrinter.EmitFunctionSetup(function);
 
+        for (std::uint32_t index = 0; index < function.blocks.size(); ++index) {
+            GenBlock(index, function.blocks[index], function, instructionPrinter);
+        }
         TB();
-        TC(std::format("── {} ─", func.name));
-        TL(func.name);
-
-        // Prologue
-        TI("push    rbp");
-        TI("mov     rbp, rsp");
-        for (int rIdx : FramePlan().UsedPhysicalRegisters()) {
-            TI(std::format("push    {}", PhysRegName(rIdx)));
-        }
-        const int32_t remainingFrame =
-            FramePlan().FrameSize() - static_cast<int32_t>(FramePlan().UsedPhysicalRegisters().size() * 8);
-        if (remainingFrame > 0) {
-            TI(std::format("sub     rsp, {}", remainingFrame));
-        }
-
-        // Spill parameter ABI registers to their stack slots
-        if (IsWin64Conv(CallingConvention::Default)) {
-            int argIdx = 0;
-            for (const auto &p : func.params) {
-                int sz = SizeOf(p.type);
-                int off = FramePlan().SlotOffsets().at(p.reg);
-                if (argIdx < 4) {
-                    if (IsWin64AddressParam(p.type)) {
-                        TI(std::format("mov     qword [rbp - {}], {}", off, kWin64IntArgRegs[argIdx]));
-                    }
-                    else if (IsFloat(p.type)) {
-                        TI(std::format("{:<8}{} [rbp - {}], {}", sz == 4 ? "movss" : "movsd", PtrSize(sz), off,
-                                       kFltArgRegs[argIdx]));
-                    }
-                    else {
-                        TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(sz, 1)), off,
-                                       kWin64IntArgRegs[argIdx]));
-                    }
-                    argIdx++;
-                }
-                else {
-                    // Remaining arguments arrive on the stack at [rbp + 16 + 32 + (argIdx - 4)*8]
-                    int32_t stackArgOff = 48 + (argIdx - 4) * 8;
-                    if (IsWin64AddressParam(p.type)) {
-                        TI(std::format("mov     rax, qword [rbp + {}]", stackArgOff));
-                        TI(std::format("mov     qword [rbp - {}], rax", off));
-                    }
-                    else if (IsFloat(p.type)) {
-                        TI(std::format("{:<8}xmm0, {} [rbp + {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz),
-                                       stackArgOff));
-                        TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz), off));
-                    }
-                    else {
-                        TI(std::format("mov     rax, {} [rbp + {}]", PtrSize(std::max(sz, 1)), stackArgOff));
-                        TI(std::format("mov     {} [rbp - {}], rax", PtrSize(std::max(sz, 1)), off));
-                    }
-                    argIdx++;
-                }
-            }
-        }
-        else {
-            int intArgIdx = 0, fltArgIdx = 0;
-            for (const auto &p : func.params) {
-                int sz = SizeOf(p.type);
-                int off = FramePlan().SlotOffsets().at(p.reg);
-                if (IsFloat(p.type)) {
-                    if (fltArgIdx < 8) {
-                        TI(std::format("{:<8}{} [rbp - {}], {}", sz == 4 ? "movss" : "movsd", PtrSize(sz), off,
-                                       kFltArgRegs[fltArgIdx]));
-                        fltArgIdx++;
-                    }
-                    // Remaining float params arrive on the stack (System
-                    // V): skip for now
-                }
-                else {
-                    if (intArgIdx < 6) {
-                        TI(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(sz, 1)), off,
-                                       kIntArgRegs[intArgIdx]));
-                        intArgIdx++;
-                    }
-                    // Stack params beyond the 6th: at [rbp + 16 + 8*n]
-                }
-            }
-        }
-        // Load params into their allocated physical registers
-        for (const auto &p : func.params) {
-            const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-            auto it = physicalRegisters.find(p.reg);
-            if (it != physicalRegisters.end()) {
-                int sz = IsWin64AddressParam(p.type) ? 8 : SizeOfRuntime(p.type);
-                int off = FramePlan().SlotOffsets().at(p.reg);
-                if (sz == 8 || sz == 0) {
-                    TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", off));
-                }
-                else if (p.type.IsSigned()) {
-                    TI(std::format("{:<8}rax, {} [rbp - {}]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz), off));
-                }
-                else {
-                    if (sz == 4) {
-                        TI(std::format("{:<8}eax, dword [rbp - {}]", "mov", off));
-                    }
-                    else {
-                        TI(std::format("{:<8}rax, {} [rbp - {}]", "movzx", PtrSize(sz), off));
-                    }
-                }
-                TI(std::format("{:<8}{}, rax", "mov", PhysRegName(it->second)));
-            }
-        }
-
-        // Basic blocks
-        for (uint32_t bi = 0; bi < func.blocks.size(); bi++) {
-            GenBlock(bi, func.blocks[bi], func);
-        }
-
-        TB();
-        activeFramePlan = nullptr;
     }
 
-    void GenBlock(uint32_t idx, const LirBlock &block, const LirFunc &func) {
-        // Emit label for every block after entry
-        std::string lbl = BlockLabel(idx, block.label);
-        if (idx != 0) {
+    void GenBlock(const std::uint32_t index, const LirBlock &block, const LirFunc &function,
+                  AssemblyInstructionPrinter &instructionPrinter) {
+        const std::string label = BlockLabel(index, block.label);
+        if (index != 0) {
             TB();
-            TL(lbl);
+            TL(label);
         }
-
-        for (const auto &instr : block.instrs) {
-            GenInstr(instr, func);
+        for (const auto &instruction : block.instrs) {
+            GenInstruction(instruction, instructionPrinter);
         }
-
         if (block.term) {
-            GenTerminator(idx, *block.term, func);
+            GenTerminator(index, *block.term, function, instructionPrinter);
         }
         else {
             TI("nop    ; missing terminator");
         }
     }
 
-    // Instruction generation
-    void GenInstr(const LirInstr &instr, const LirFunc & /*func*/) {
-        switch (instr.op) {
-        case LirOpcode::Const: {
-            if (instr.dst == LirNoReg) {
-                break;
-            }
-            const TypeRef &t = instr.type;
-            int sz = SizeOf(t);
-            if (t.kind == TypeRef::Kind::Str) {
-                std::string lbl = InternStr(instr.strArg);
-                TI(std::format("{:<8}rax, {}", "lea", lbl));
-            }
-            else if (t.kind == TypeRef::Kind::Float32) {
-                std::string lbl = InternF32(instr.strArg);
-                TI(std::format("{:<8}xmm0, dword [rel {}]", "movss", lbl));
-                TI(std::format("{:<8}dword [rbp - {}], xmm0", "movss", FramePlan().SlotOffsets().at(instr.dst)));
-                break;
-            }
-            else if (t.kind == TypeRef::Kind::Float64) {
-                std::string lbl = InternF64(instr.strArg);
-                TI(std::format("{:<8}xmm0, qword [rel {}]", "movsd", lbl));
-                TI(std::format("{:<8}qword [rbp - {}], xmm0", "movsd", FramePlan().SlotOffsets().at(instr.dst)));
-                break;
-            }
-            else if (t.kind == TypeRef::Kind::Bool) {
-                std::string v = (instr.strArg == "true" || instr.strArg == "1") ? "1" : "0";
-                TI(std::format("{:<8}rax, {}", "mov", v));
-            }
-            else {
-                // Integer / char: the literal is the numeric value
-                TI(std::format("{:<8}rax, {}", "mov", instr.strArg.empty() ? "0" : instr.strArg));
-            }
-            StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
-            break;
+    void GenInstruction(const LirInstr &instruction, AssemblyInstructionPrinter &instructionPrinter) {
+        if (instructionPrinter.EmitArithmetic(instruction) || instructionPrinter.EmitMemory(instruction)) {
+            return;
         }
 
-        case LirOpcode::Alloca: {
-            int32_t dataOff = FramePlan().AllocaDataOffsets().at(instr.dst);
-            TI(std::format("{:<8}rax, [rbp - {}]", "lea", dataOff));
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-
+        switch (instruction.op) {
         case LirOpcode::Assert:
         case LirOpcode::Panic: {
-            const bool isAssertion = instr.op == LirOpcode::Assert;
-            if (instr.srcs.size() < (isAssertion ? 2 : 1)) {
+            const bool isAssertion = instruction.op == LirOpcode::Assert;
+            if (instruction.srcs.size() < (isAssertion ? 2 : 1)) {
                 break;
             }
             std::string okLabel;
             if (isAssertion) {
-                LoadA(instr.srcs[0], TypeRef::MakeBool());
+                instructionPrinter.LoadA(instruction.srcs[0], TypeRef::MakeBool());
                 TI("test    rax, rax");
-                okLabel = modulePrinter.CreateLocalLabel(std::format(".{}_assert_ok_", curFunc));
+                okLabel = modulePrinter.CreateLocalLabel(std::format(".{}_assert_ok_", currentFunction));
                 TI(std::format("{:<8}{}", "jnz", okLabel));
             }
 
-            const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
+            const LirReg messageRegister = instruction.srcs[isAssertion ? 1 : 0];
             const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
-            const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
-            const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
+            const std::string function = instruction.sourceFunction.empty() ? "<unknown>" : instruction.sourceFunction;
+            const std::string file = instruction.sourceFile.empty() ? "<unknown>" : instruction.sourceFile;
             const std::string suffix =
-                std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
+                std::format("\n  at {} ({}:{}:{})\n", function, file, instruction.sourceLine, instruction.sourceColumn);
 
-            if (IsWin64Conv(CallingConvention::Default)) {
+            if (instructionPrinter.IsWin64Convention(CallingConvention::Default)) {
                 NeedExtern("GetStdHandle");
                 NeedExtern("WriteFile");
                 TI("sub     rsp, 48");
@@ -670,7 +206,7 @@ private:
                 };
                 const auto writeStatic = [&](const std::string &value) {
                     prepareWrite();
-                    const std::string label = InternStr(value);
+                    const std::string label = InternString(value);
                     TI(std::format("{:<8}rdx, [rel {}]", "lea", label));
                     TI(std::format("{:<8}r8d, {}", "mov", value.size()));
                     TI("call    WriteFile");
@@ -678,7 +214,7 @@ private:
 
                 writeStatic(prefix);
                 prepareWrite();
-                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
                 TI("mov     r10, rax");
                 TI("mov     rdx, [r10]");
                 TI("mov     r8, [r10 + 8]");
@@ -690,7 +226,7 @@ private:
                                         : targetOs == Target::OS::Linux ? 1
                                                                         : 4;
                 const auto writeStatic = [&](const std::string &value) {
-                    const std::string label = InternStr(value);
+                    const std::string label = InternString(value);
                     TI(std::format("{:<8}rsi, [rel {}]", "lea", label));
                     TI(std::format("{:<8}edx, {}", "mov", value.size()));
                     TI("mov     edi, 2");
@@ -699,7 +235,7 @@ private:
                 };
 
                 writeStatic(prefix);
-                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
                 TI("mov     r10, rax");
                 TI("mov     rsi, [r10]");
                 TI("mov     rdx, [r10 + 8]");
@@ -715,725 +251,257 @@ private:
             }
             break;
         }
-
-        case LirOpcode::Load: {
-            const TypeRef &t = instr.type;
-            int sz = SizeOfRuntime(t);
-            int runtimeSz = SizeOfRuntime(t);
-            if (!instr.strArg.empty()) {
-                // Named global / constant
-                TI(std::format("{:<8}rax, [rel {}]", "mov", instr.strArg));
-            }
-            else {
-                // Load through pointer in srcs[0]
-                LirReg ptr = instr.srcs[0];
-                const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-                auto it = physicalRegisters.find(ptr);
-                if (it != physicalRegisters.end()) {
-                    TI(std::format("{:<8}r10, {}", "mov", PhysRegName(it->second)));
-                }
-                else {
-                    TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(ptr)));
-                }
-                if (runtimeSz == 16) {
-                    TI(std::format("{:<8}rax, qword [r10]", "mov"));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", FramePlan().SlotOffsets().at(instr.dst)));
-                    TI(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
-                    TI(std::format("{:<8}qword [rbp - {}], rax", "mov", FramePlan().SlotOffsets().at(instr.dst) - 8));
-                    break;
-                }
-                if (IsFloat(t)) {
-                    TI(std::format("{:<8}xmm0, {} [r10]", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
-                    TI(std::format("{:<8}{} [rbp - {}], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz),
-                                   FramePlan().SlotOffsets().at(instr.dst)));
-                    break;
-                }
-                else if (sz == 8 || sz == 0) {
-                    TI(std::format("{:<8}rax, qword [r10]", "mov"));
-                }
-                else if (t.IsSigned()) {
-                    TI(std::format("{:<8}rax, {} [r10]", sz == 4 ? "movsxd" : "movsx", PtrSize(sz)));
-                }
-                else {
-                    if (sz == 4) {
-                        TI(std::format("{:<8}eax, dword [r10]", "mov"));
-                    }
-                    else {
-                        TI(std::format("{:<8}rax, {} [r10]", "movzx", PtrSize(sz)));
-                    }
-                }
-            }
-            StoreA(instr.dst, sz > 0 ? t : TypeRef::MakeInt64());
+        case LirOpcode::Call:
+            EmitCall(instruction.strArg, instruction.srcs, instruction.dst, instruction.type, instruction.callConv,
+                     instructionPrinter);
             break;
-        }
-
-        case LirOpcode::Store: {
-            LirReg val = instr.srcs[0];
-            LirReg ptr = instr.srcs[1];
-            const TypeRef &t = instr.type;
-            int sz = SizeOfRuntime(t);
-            int runtimeSz = SizeOfRuntime(t);
-
-            // Load pointer
-            const auto &physicalRegisters = FramePlan().PhysicalRegisters();
-            auto itPtr = physicalRegisters.find(ptr);
-            if (itPtr != physicalRegisters.end()) {
-                TI(std::format("{:<8}r11, {}", "mov", PhysRegName(itPtr->second)));
-            }
-            else {
-                TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(ptr)));
-            }
-
-            if (runtimeSz == 16) {
-                TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(val)));
-                TI(std::format("{:<8}qword [r11], rax", "mov"));
-                TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(val) - 8));
-                TI(std::format("{:<8}qword [r11 + 8], rax", "mov"));
-            }
-            else if (IsFloat(t)) {
-                TI(std::format("{:<8}xmm0, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", PtrSize(sz),
-                               FramePlan().SlotOffsets().at(val)));
-                TI(std::format("{:<8}{} [r11], xmm0", sz == 4 ? "movss" : "movsd", PtrSize(sz)));
-            }
-            else {
-                int store_sz = (sz > 0) ? sz : 8;
-                LoadA(val, t);
-                TI(std::format("{:<8}{} [r11], {}", "mov", PtrSize(store_sz), GprA(store_sz)));
-            }
+        case LirOpcode::CallIndirect:
+            EmitCallIndirect(instruction.srcs, instruction.dst, instruction.type, instruction.callConv,
+                             instructionPrinter);
             break;
-        }
-
-        case LirOpcode::Add:
-        case LirOpcode::Sub:
-        case LirOpcode::And:
-        case LirOpcode::Or:
-        case LirOpcode::Xor: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                std::string_view op;
-                bool f32 = (t.kind == TypeRef::Kind::Float32);
-                switch (instr.op) {
-                case LirOpcode::Add:
-                    op = f32 ? "addss" : "addsd";
-                    break;
-                case LirOpcode::Sub:
-                    op = f32 ? "subss" : "subsd";
-                    break;
-                default:
-                    op = f32 ? "addss" : "addsd";
-                    break;
-                }
-                TI(std::format("{:<8}xmm0, xmm1", op));
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                std::string_view op;
-                switch (instr.op) {
-                case LirOpcode::Add:
-                    op = "add";
-                    break;
-                case LirOpcode::Sub:
-                    op = "sub";
-                    break;
-                case LirOpcode::And:
-                    op = "and";
-                    break;
-                case LirOpcode::Or:
-                    op = "or";
-                    break;
-                case LirOpcode::Xor:
-                    op = "xor";
-                    break;
-                default:
-                    op = "add";
-                    break;
-                }
-                TI(std::format("{:<8}rax, r10", op));
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-
-        case LirOpcode::Mul: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                TI(t.kind == TypeRef::Kind::Float32 ? "mulss   xmm0, xmm1" : "mulsd   xmm0, xmm1");
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                TI("imul    rax, r10");
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-
-        case LirOpcode::Div:
-        case LirOpcode::Mod: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                TI(t.kind == TypeRef::Kind::Float32 ? "divss   xmm0, xmm1" : "divsd   xmm0, xmm1");
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                // idiv uses rdx:rax; result in rax (quotient) or rdx
-                // (remainder)
-                if (t.IsSigned()) {
-                    TI("cqo"); // sign-extend rax → rdx:rax
-                    TI("idiv    r10");
-                }
-                else {
-                    TI("xor     rdx, rdx"); // zero-extend rax
-                    TI("div     r10");
-                }
-                if (instr.op == LirOpcode::Mod) {
-                    TI("mov     rax, rdx"); // remainder is in rdx
-                }
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-
-        case LirOpcode::Pow: {
-            // Integer ** calls the in-unit __rux_ipow helper; float ** calls libm pow.
-            const TypeRef &t = instr.type;
-            const int shadowSpace = IsWin64Conv(CallingConvention::Default) ? 32 : 0;
-            if (shadowSpace > 0) {
-                TI(std::format("sub     rsp, {}", shadowSpace));
-            }
-            if (IsFloat(t)) {
-                // Float ** uses a synthesized x87 helper, not libm pow, so
-                // no CRT/math dependency is introduced.
-                const bool isF32 = t.kind == TypeRef::Kind::Float32;
-                modulePrinter.RequestHelper(isF32 ? X86_64RuntimeHelper::FloatPower32
-                                                  : X86_64RuntimeHelper::FloatPower64);
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                TI(isF32 ? "call    __rux_powf32" : "call    __rux_powf64");
-            }
-            else {
-                modulePrinter.RequestHelper(X86_64RuntimeHelper::IntegerPower);
-                LoadA(instr.srcs[0], t);
-                LoadB(instr.srcs[1], t);
-                TI("mov     rcx, rax");
-                TI("mov     rdx, r10");
-                TI("call    __rux_ipow");
-            }
-            if (shadowSpace > 0) {
-                TI(std::format("add     rsp, {}", shadowSpace));
-            }
-            StoreA(instr.dst, t);
-            break;
-        }
-
-        case LirOpcode::Shl:
-        case LirOpcode::Shr:
-        case LirOpcode::Lshr: {
-            const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], instr.op == LirOpcode::Lshr ? UnsignedIntegerType(t) : t);
-            // Shift count must be in cl
-            TI(std::format("{:<8}r11, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(instr.srcs[1])));
-            TI("mov     rcx, r11");
-            if (bool isShr = instr.op == LirOpcode::Shr || instr.op == LirOpcode::Lshr;
-                isShr && t.IsSigned() && instr.op != LirOpcode::Lshr) {
-                TI("sar     rax, cl");
-            }
-            else if (isShr) {
-                TI("shr     rax, cl");
-            }
-            else {
-                TI("shl     rax, cl");
-            }
-            StoreA(instr.dst, t);
-            break;
-        }
-
-        case LirOpcode::Neg: {
-            const TypeRef &t = instr.type;
-            if (IsFloat(t)) {
-                LoadA(instr.srcs[0], t);
-                // Negate by XOR with sign bit
-                if (t.kind == TypeRef::Kind::Float32) {
-                    std::string lbl = InternF32("0x80000000");
-                    TI(std::format("movss   xmm1, dword [rel {}]", lbl));
-                    TI("xorps   xmm0, xmm1");
-                }
-                else {
-                    std::string lbl = InternF64("0x8000000000000000");
-                    TI(std::format("movsd   xmm1, qword [rel {}]", lbl));
-                    TI("xorpd   xmm0, xmm1");
-                }
-                StoreA(instr.dst, t);
-            }
-            else {
-                LoadA(instr.srcs[0], t);
-                TI("neg     rax");
-                StoreA(instr.dst, t);
-            }
-            break;
-        }
-
-        case LirOpcode::Not: {
-            // Logical not: result = (operand == 0) ? 1 : 0
-            const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], t);
-            TI("test    rax, rax");
-            TI("setz    al");
-            TI("movzx   rax, al");
-            StoreA(instr.dst, TypeRef::MakeBool());
-            break;
-        }
-
-        case LirOpcode::BitNot: {
-            const TypeRef &t = instr.type;
-            LoadA(instr.srcs[0], t);
-            TI("not     rax");
-            StoreA(instr.dst, t);
-            break;
-        }
-
-        case LirOpcode::CmpEq:
-        case LirOpcode::CmpNe:
-        case LirOpcode::CmpLt:
-        case LirOpcode::CmpLe:
-        case LirOpcode::CmpGt:
-        case LirOpcode::CmpGe: {
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            const TypeRef &lhsT = registerTypes.contains(instr.srcs[0]) ? registerTypes.at(instr.srcs[0]) : instr.type;
-            LoadA(instr.srcs[0], lhsT);
-            LoadB(instr.srcs[1], lhsT);
-            if (IsFloat(lhsT)) {
-                TI(lhsT.kind == TypeRef::Kind::Float32 ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1");
-                std::string_view set;
-                switch (instr.op) {
-                case LirOpcode::CmpEq:
-                    set = "sete";
-                    break;
-                case LirOpcode::CmpNe:
-                    set = "setne";
-                    break;
-                case LirOpcode::CmpLt:
-                    set = "setb";
-                    break;
-                case LirOpcode::CmpLe:
-                    set = "setbe";
-                    break;
-                case LirOpcode::CmpGt:
-                    set = "seta";
-                    break;
-                default:
-                    set = "setae";
-                    break;
-                }
-                TI(std::format("{:<8}al", set));
-            }
-            else {
-                TI("cmp     rax, r10");
-                std::string_view set;
-                bool sig = lhsT.IsSigned();
-                switch (instr.op) {
-                case LirOpcode::CmpEq:
-                    set = "sete";
-                    break;
-                case LirOpcode::CmpNe:
-                    set = "setne";
-                    break;
-                case LirOpcode::CmpLt:
-                    set = sig ? "setl" : "setb";
-                    break;
-                case LirOpcode::CmpLe:
-                    set = sig ? "setle" : "setbe";
-                    break;
-                case LirOpcode::CmpGt:
-                    set = sig ? "setg" : "seta";
-                    break;
-                default:
-                    set = sig ? "setge" : "setae";
-                    break;
-                }
-                TI(std::format("{:<8}al", set));
-            }
-            TI("movzx   rax, al");
-            StoreA(instr.dst, TypeRef::MakeBool());
-            break;
-        }
-
-        case LirOpcode::Cast: {
-            const TypeRef &dst_t = instr.type;
-            TypeRef src_t;
-            // strArg holds the source type string; try to reconstruct
-            // enough info by looking up the register type
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            if (registerTypes.contains(instr.srcs[0])) {
-                src_t = registerTypes.at(instr.srcs[0]);
-            }
-            else {
-                src_t = dst_t;
-            }
-
-            bool srcFloat = IsFloat(src_t);
-            bool dstFloat = IsFloat(dst_t);
-
-            LoadA(instr.srcs[0], src_t);
-
-            if (!srcFloat && !dstFloat) {
-                // int → int: sign/zero extend is already done by LoadA;
-                // for narrowing, the lower bits in rax are already
-                // correct. Nothing extra needed for most cases.
-            }
-            else if (srcFloat && !dstFloat) {
-                // float → int
-                bool f32src = (src_t.kind == TypeRef::Kind::Float32);
-                if (bool signed_ = dst_t.IsSigned(); signed_) {
-                    TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
-                }
-                else {
-                    // Unsigned: no direct instruction; use signed then
-                    // re-interpret
-                    TI(f32src ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0");
-                }
-            }
-            else if (!srcFloat && dstFloat) {
-                // int → float
-                bool f32dst = (dst_t.kind == TypeRef::Kind::Float32);
-                TI(f32dst ? "cvtsi2ss  xmm0, rax" : "cvtsi2sd  xmm0, rax");
-            }
-            else {
-                // float → float
-                bool f32src = (src_t.kind == TypeRef::Kind::Float32);
-                bool f32dst = (dst_t.kind == TypeRef::Kind::Float32);
-                if (f32src && !f32dst) {
-                    TI("cvtss2sd  xmm0, xmm0");
-                }
-                else if (!f32src && f32dst) {
-                    TI("cvtsd2ss  xmm0, xmm0");
-                }
-            }
-            StoreA(instr.dst, dst_t);
-            break;
-        }
-
-        case LirOpcode::Call: {
-            EmitCall(instr.strArg, instr.srcs, instr.dst, instr.type, instr.callConv);
-            break;
-        }
-
-        case LirOpcode::CallIndirect: {
-            // strArg empty; srcs[0] = callee, srcs[1..] = args
-            EmitCallIndirect(instr.srcs, instr.dst, instr.type, instr.callConv);
-            break;
-        }
-
-        case LirOpcode::FieldPtr: {
-            LirReg base = instr.srcs[0];
-            LoadA(base, FramePlan().RegisterTypes().at(base));
-
-            // Compute field offset using struct layout
-            int fieldOff = ResolveFieldOffset(base, instr.strArg);
-            if (fieldOff != 0) {
-                TI(std::format("{:<8}rax, [rax + {}]", "lea", fieldOff));
-            }
-            // else pointer is already at the field start
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-
-        case LirOpcode::IndexPtr: {
-            LirReg base = instr.srcs[0];
-            LirReg idx = instr.srcs[1];
-            int elemSz = (instr.type.kind == TypeRef::Kind::Pointer && !instr.type.inner.empty())
-                           ? SizeOfRuntime(instr.type.inner[0])
-                           : 8;
-            if (elemSz < 1) {
-                elemSz = 1;
-            }
-
-            LoadA(base, FramePlan().RegisterTypes().at(base));
-            LoadB(idx, FramePlan().RegisterTypes().at(idx));
-            TI(std::format("{:<8}r11, r10, {}", "imul", elemSz));
-            TI("add     rax, r11");
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-        }
-
-        case LirOpcode::Phi:
-            // Phi moves are emitted by predecessors before their
-            // terminators. The phi dst slot is already allocated;
-            // nothing to emit here.
-            break;
-
-        case LirOpcode::GlobalAddr:
-            TI(std::format("{:<8}rax, [rel {}]", "lea", instr.strArg));
-            StoreA(instr.dst, TypeRef::MakePointer(instr.type));
-            break;
-
-        case LirOpcode::StringAddr: {
-            const TypeRef elemType = instr.type.inner.empty() ? TypeRef::MakeChar8() : instr.type.inner[0];
-            const std::string lbl = InternStr(EncodeStringLiteral(instr.strArg, SizeOfRuntime(elemType)));
-            TI(std::format("{:<8}rax, [rel {}]", "lea", lbl));
-            StoreA(instr.dst, instr.type);
-            break;
-        }
-
         default:
-            TC(std::format("TODO: opcode {}", static_cast<int>(instr.op)));
+            TC(std::format("TODO: opcode {}", static_cast<int>(instruction.op)));
             break;
         }
     }
 
-    // Field offset resolution. The rule itself is Layout's, so the printer and
-    // the RCU emitter cannot drift apart on where a field sits.
-    [[nodiscard]] int ResolveFieldOffset(const LirReg base, const std::string &fieldName) const {
-        const auto &registerTypes = FramePlan().RegisterTypes();
-        const auto typeIt = registerTypes.find(base);
-        if (typeIt == registerTypes.end()) {
-            return 0;
-        }
-        return FieldOffsetOf(typeIt->second, fieldName, layouts, interfaceNames);
-    }
-
-    // Call emission
-    void EmitCall(const std::string &callee, const std::vector<LirReg> &args, LirReg dst, const TypeRef &retType,
-                  CallingConvention callConv) {
-        const bool win64 = IsWin64Conv(callConv);
-        const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
-        const int maxIntRegs = win64 ? 4 : 6;
-        std::vector<LirReg> stackArgs;
-        // Set up arguments into ABI registers
+    void EmitCall(const std::string &callee, const std::vector<LirReg> &arguments, const LirReg destination,
+                  const TypeRef &returnType, const CallingConvention convention,
+                  AssemblyInstructionPrinter &instructionPrinter) {
+        const bool win64 = instructionPrinter.IsWin64Convention(convention);
+        const auto *integerRegisters = win64 ? kWin64IntArgRegs : kIntArgRegs;
+        const int maximumIntegerRegisters = win64 ? 4 : 6;
+        std::vector<LirReg> stackArguments;
         if (win64) {
-            for (int i = 0; i < static_cast<int>(args.size()); ++i) {
-                LirReg arg = args[i];
-                const auto &registerTypes = FramePlan().RegisterTypes();
-                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                if (i < 4) {
-                    if (IsFloat(at)) {
-                        int sz = SizeOf(at);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[i],
-                                       PtrSize(sz), FramePlan().SlotOffsets().at(arg)));
+            for (int index = 0; index < static_cast<int>(arguments.size()); ++index) {
+                const LirReg argument = arguments[index];
+                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+                const TypeRef type =
+                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
+                if (index < 4) {
+                    if (IsFloat(type)) {
+                        const int size = SizeOf(type);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[index],
+                                       size == 4 ? "dword" : "qword",
+                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
                     }
                     else {
-                        LoadA(arg, at);
-                        TI(std::format("{:<8}{}, rax", "mov", intRegs[i]));
+                        instructionPrinter.LoadA(argument, type);
+                        TI(std::format("{:<8}{}, rax", "mov", integerRegisters[index]));
                     }
                 }
                 else {
-                    stackArgs.push_back(arg);
+                    stackArguments.push_back(argument);
                 }
             }
         }
         else {
-            int intIdx = 0, fltIdx = 0;
-            for (LirReg arg : args) {
-                const auto &registerTypes = FramePlan().RegisterTypes();
-                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                if (IsFloat(at)) {
-                    if (fltIdx < 8) {
-                        int sz = SizeOf(at);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
-                                       PtrSize(sz), FramePlan().SlotOffsets().at(arg)));
-                        fltIdx++;
+            int integerIndex = 0;
+            int floatIndex = 0;
+            for (const LirReg argument : arguments) {
+                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+                const TypeRef type =
+                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
+                if (IsFloat(type)) {
+                    if (floatIndex < 8) {
+                        const int size = SizeOf(type);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[floatIndex],
+                                       size == 4 ? "dword" : "qword",
+                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
+                        ++floatIndex;
                     }
                     else {
-                        stackArgs.push_back(arg);
+                        stackArguments.push_back(argument);
                     }
                 }
+                else if (integerIndex < maximumIntegerRegisters) {
+                    instructionPrinter.LoadA(argument, type);
+                    TI(std::format("{:<8}{}, rax", "mov", integerRegisters[integerIndex]));
+                    ++integerIndex;
+                }
                 else {
-                    if (intIdx < maxIntRegs) {
-                        LoadA(arg, at);
-                        TI(std::format("{:<8}{}, rax", "mov", intRegs[intIdx]));
-                        intIdx++;
-                    }
-                    else {
-                        stackArgs.push_back(arg);
-                    }
+                    stackArguments.push_back(argument);
                 }
             }
         }
-        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                                     : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+
+        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
+                                     : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
         if (stackBytes > 0) {
             TI(std::format("sub     rsp, {}", stackBytes));
-            StoreStackArgs(stackArgs, win64);
+            StoreStackArguments(stackArguments, win64, instructionPrinter);
         }
-        // The shared frame plan keeps the prologue and every temporary call
-        // allocation aligned to the same ABI boundary as binary emission.
         TI(std::format("{:<8}{}", "call", callee));
         if (stackBytes > 0) {
             TI(std::format("add     rsp, {}", stackBytes));
         }
-        if (dst != LirNoReg && !retType.IsOpaque()) {
-            StoreA(dst, retType);
+        if (destination != LirNoReg && !returnType.IsOpaque()) {
+            instructionPrinter.StoreA(destination, returnType);
         }
     }
 
-    void EmitCallIndirect(const std::vector<LirReg> &srcs, LirReg dst, const TypeRef &retType,
-                          CallingConvention callConv) {
-        if (srcs.empty()) {
+    void EmitCallIndirect(const std::vector<LirReg> &sources, const LirReg destination, const TypeRef &returnType,
+                          const CallingConvention convention, AssemblyInstructionPrinter &instructionPrinter) {
+        if (sources.empty()) {
             return;
         }
-        LirReg callee = srcs[0];
-        std::vector<LirReg> args(srcs.begin() + 1, srcs.end());
-        const std::vector<LirReg> stackArgs = EmitCallArgs(args, callConv);
-        const bool win64 = IsWin64Conv(callConv);
-        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArgs.size()) * 8, 16)
-                                     : AlignUp(static_cast<int>(stackArgs.size()) * 8, 16);
+        const LirReg callee = sources[0];
+        const std::vector<LirReg> arguments(sources.begin() + 1, sources.end());
+        const std::vector<LirReg> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
+        const bool win64 = instructionPrinter.IsWin64Convention(convention);
+        const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
+                                     : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
         if (stackBytes > 0) {
             TI(std::format("sub     rsp, {}", stackBytes));
-            StoreStackArgs(stackArgs, win64);
+            StoreStackArguments(stackArguments, win64, instructionPrinter);
         }
-        // Load the callee after preparing args because arg setup uses
-        // r10.
-        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", FramePlan().SlotOffsets().at(callee)));
+        TI(std::format("{:<8}r10, qword [rbp - {}]", "mov", instructionPrinter.FramePlan().SlotOffsets().at(callee)));
         TI("call    r10");
         if (stackBytes > 0) {
             TI(std::format("add     rsp, {}", stackBytes));
         }
-        if (dst != LirNoReg && !retType.IsOpaque()) {
-            StoreA(dst, retType);
+        if (destination != LirNoReg && !returnType.IsOpaque()) {
+            instructionPrinter.StoreA(destination, returnType);
         }
     }
 
-    void StoreStackArgs(const std::vector<LirReg> &stackArgs, bool win64) {
-        for (std::size_t i = 0; i < stackArgs.size(); ++i) {
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            TypeRef at = registerTypes.contains(stackArgs[i]) ? registerTypes.at(stackArgs[i]) : TypeRef::MakeInt64();
-            LoadA(stackArgs[i], at);
-            const int offset = win64 ? (32 + i * 8) : (i * 8);
+    void StoreStackArguments(const std::vector<LirReg> &arguments, const bool win64,
+                             AssemblyInstructionPrinter &instructionPrinter) {
+        for (std::size_t index = 0; index < arguments.size(); ++index) {
+            const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+            const TypeRef type =
+                registerTypes.contains(arguments[index]) ? registerTypes.at(arguments[index]) : TypeRef::MakeInt64();
+            instructionPrinter.LoadA(arguments[index], type);
+            const std::size_t offset = win64 ? 32 + index * 8 : index * 8;
             TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
         }
     }
 
-    std::vector<LirReg> EmitCallArgs(const std::vector<LirReg> &args, CallingConvention callConv) {
-        const bool win64 = IsWin64Conv(callConv);
-        const auto *intRegs = win64 ? kWin64IntArgRegs : kIntArgRegs;
-        const int maxIntRegs = win64 ? 4 : 6;
-        std::vector<LirReg> stackArgs;
+    [[nodiscard]] std::vector<LirReg> EmitCallArguments(const std::vector<LirReg> &arguments,
+                                                        const CallingConvention convention,
+                                                        AssemblyInstructionPrinter &instructionPrinter) {
+        const bool win64 = instructionPrinter.IsWin64Convention(convention);
+        const auto *integerRegisters = win64 ? kWin64IntArgRegs : kIntArgRegs;
+        const int maximumIntegerRegisters = win64 ? 4 : 6;
+        std::vector<LirReg> stackArguments;
         if (win64) {
-            for (int i = 0; i < static_cast<int>(args.size()); ++i) {
-                LirReg arg = args[i];
-                const auto &registerTypes = FramePlan().RegisterTypes();
-                TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                if (i < 4) {
-                    if (IsFloat(at)) {
-                        const int sz = SizeOf(at);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[i],
-                                       PtrSize(sz), FramePlan().SlotOffsets().at(arg)));
+            for (int index = 0; index < static_cast<int>(arguments.size()); ++index) {
+                const LirReg argument = arguments[index];
+                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+                const TypeRef type =
+                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
+                if (index < 4) {
+                    if (IsFloat(type)) {
+                        const int size = SizeOf(type);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[index],
+                                       size == 4 ? "dword" : "qword",
+                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
                     }
                     else {
-                        LoadA(arg, at);
-                        TI(std::format("{:<8}{}, rax", "mov", intRegs[i]));
+                        instructionPrinter.LoadA(argument, type);
+                        TI(std::format("{:<8}{}, rax", "mov", integerRegisters[index]));
                     }
                 }
                 else {
-                    stackArgs.push_back(arg);
+                    stackArguments.push_back(argument);
                 }
             }
         }
         else {
-            int intIdx = 0, fltIdx = 0;
-            for (LirReg arg : args) {
-                const auto &registerTypes = FramePlan().RegisterTypes();
-                if (TypeRef at = registerTypes.contains(arg) ? registerTypes.at(arg) : TypeRef::MakeInt64();
-                    IsFloat(at)) {
-                    if (fltIdx < 8) {
-                        const int sz = SizeOf(at);
-                        TI(std::format("{:<8}{}, {} [rbp - {}]", sz == 4 ? "movss" : "movsd", kFltArgRegs[fltIdx],
-                                       PtrSize(sz), FramePlan().SlotOffsets().at(arg)));
-                        fltIdx++;
+            int integerIndex = 0;
+            int floatIndex = 0;
+            for (const LirReg argument : arguments) {
+                const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+                const TypeRef type =
+                    registerTypes.contains(argument) ? registerTypes.at(argument) : TypeRef::MakeInt64();
+                if (IsFloat(type)) {
+                    if (floatIndex < 8) {
+                        const int size = SizeOf(type);
+                        TI(std::format("{:<8}{}, {} [rbp - {}]", size == 4 ? "movss" : "movsd", kFltArgRegs[floatIndex],
+                                       size == 4 ? "dword" : "qword",
+                                       instructionPrinter.FramePlan().SlotOffsets().at(argument)));
+                        ++floatIndex;
                     }
                     else {
-                        stackArgs.push_back(arg);
+                        stackArguments.push_back(argument);
                     }
                 }
+                else if (integerIndex < maximumIntegerRegisters) {
+                    instructionPrinter.LoadA(argument, type);
+                    TI(std::format("{:<8}{}, rax", "mov", integerRegisters[integerIndex]));
+                    ++integerIndex;
+                }
                 else {
-                    if (intIdx < maxIntRegs) {
-                        LoadA(arg, at);
-                        TI(std::format("{:<8}{}, rax", "mov", intRegs[intIdx]));
-                        intIdx++;
-                    }
-                    else {
-                        stackArgs.push_back(arg);
-                    }
+                    stackArguments.push_back(argument);
                 }
             }
         }
-        return stackArgs;
+        return stackArguments;
     }
 
-    // Terminator generation
-    void GenTerminator(uint32_t blockIdx, const LirTerminator &term, const LirFunc &func) {
-        switch (term.kind) {
-        case LirTermKind::Jump: {
-            EmitPhiMoves(blockIdx, term.trueTarget);
-            TI(std::format("{:<8}{}", "jmp", BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label)));
+    [[nodiscard]] bool HasPhiMoves(const std::uint32_t from, const std::uint32_t to,
+                                   const AssemblyInstructionPrinter &instructionPrinter) const {
+        const auto &phiMoves = instructionPrinter.FramePlan().PhiMoves();
+        const auto block = phiMoves.find(from);
+        return block != phiMoves.end() && block->second.contains(to);
+    }
+
+    void GenTerminator(const std::uint32_t blockIndex, const LirTerminator &terminator, const LirFunc &function,
+                       AssemblyInstructionPrinter &instructionPrinter) {
+        switch (terminator.kind) {
+        case LirTermKind::Jump:
+            EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
+            TI(std::format("{:<8}{}", "jmp",
+                           BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label)));
             break;
-        }
-
         case LirTermKind::Branch: {
-            // Load condition
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            TypeRef condT = registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeBool();
-            LoadA(term.cond, condT);
+            const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+            const TypeRef conditionType =
+                registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeBool();
+            instructionPrinter.LoadA(terminator.cond, conditionType);
             TI("test    rax, rax");
-
-            std::string trueLabel = BlockLabel(term.trueTarget, func.blocks[term.trueTarget].label);
-            std::string falseLabel = BlockLabel(term.falseTarget, func.blocks[term.falseTarget].label);
-
-            // Check whether either branch needs phi moves
-            bool truePhi = HasPhiMoves(blockIdx, term.trueTarget);
-            bool falsePhi = HasPhiMoves(blockIdx, term.falseTarget);
-
+            const std::string trueLabel =
+                BlockLabel(terminator.trueTarget, function.blocks[terminator.trueTarget].label);
+            const std::string falseLabel =
+                BlockLabel(terminator.falseTarget, function.blocks[terminator.falseTarget].label);
+            const bool truePhi = HasPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
+            const bool falsePhi = HasPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
             if (!truePhi && !falsePhi) {
                 TI(std::format("{:<8}{}", "jz", falseLabel));
                 TI(std::format("{:<8}{}", "jmp", trueLabel));
             }
             else {
-                // Use intermediate labels so each path has room for phi
-                // moves
-                std::string trampTrue = std::format(".{}_br{}_t", curFunc, blockIdx);
-                std::string trampFalse = std::format(".{}_br{}_f", curFunc, blockIdx);
-                TI(std::format("{:<8}{}", "jz", trampFalse));
-                TL(trampTrue);
-                EmitPhiMoves(blockIdx, term.trueTarget);
+                const std::string trampolineTrue = std::format(".{}_br{}_t", currentFunction, blockIndex);
+                const std::string trampolineFalse = std::format(".{}_br{}_f", currentFunction, blockIndex);
+                TI(std::format("{:<8}{}", "jz", trampolineFalse));
+                TL(trampolineTrue);
+                EmitPhiMoves(blockIndex, terminator.trueTarget, instructionPrinter);
                 TI(std::format("{:<8}{}", "jmp", trueLabel));
-                TL(trampFalse);
-                EmitPhiMoves(blockIdx, term.falseTarget);
+                TL(trampolineFalse);
+                EmitPhiMoves(blockIndex, terminator.falseTarget, instructionPrinter);
                 TI(std::format("{:<8}{}", "jmp", falseLabel));
             }
             break;
         }
-
-        case LirTermKind::Return: {
-            if (term.retVal && *term.retVal != LirNoReg) {
-                LoadReturnValue(*term.retVal, term.retType);
-                // Result already in rax or xmm0 — do not overwrite
+        case LirTermKind::Return:
+            if (terminator.retVal && *terminator.retVal != LirNoReg) {
+                instructionPrinter.LoadReturnValue(*terminator.retVal, terminator.retType);
             }
-            EmitEpilogue();
+            EmitEpilogue(instructionPrinter);
             break;
-        }
-
         case LirTermKind::Switch: {
-            const auto &registerTypes = FramePlan().RegisterTypes();
-            TypeRef condT = registerTypes.contains(term.cond) ? registerTypes.at(term.cond) : TypeRef::MakeInt64();
-            LoadA(term.cond, condT);
-            for (const auto &c : term.cases) {
-                TI(std::format("{:<8}rax, {}", "cmp", c.value));
-                std::string lbl = BlockLabel(c.target, func.blocks[c.target].label);
-                TI(std::format("{:<8}{}", "je", lbl));
+            const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
+            const TypeRef conditionType =
+                registerTypes.contains(terminator.cond) ? registerTypes.at(terminator.cond) : TypeRef::MakeInt64();
+            instructionPrinter.LoadA(terminator.cond, conditionType);
+            for (const auto &switchCase : terminator.cases) {
+                TI(std::format("{:<8}rax, {}", "cmp", switchCase.value));
+                TI(std::format("{:<8}{}", "je",
+                               BlockLabel(switchCase.target, function.blocks[switchCase.target].label)));
             }
-            EmitPhiMoves(blockIdx, term.defaultTarget);
-            TI(std::format("{:<8}{}", "jmp", BlockLabel(term.defaultTarget, func.blocks[term.defaultTarget].label)));
+            EmitPhiMoves(blockIndex, terminator.defaultTarget, instructionPrinter);
+            TI(std::format("{:<8}{}", "jmp",
+                           BlockLabel(terminator.defaultTarget, function.blocks[terminator.defaultTarget].label)));
             break;
         }
         case LirTermKind::Unreachable:
@@ -1442,25 +510,17 @@ private:
         }
     }
 
-    [[nodiscard]] bool HasPhiMoves(uint32_t from, uint32_t to) const {
-        const auto &phiMoves = FramePlan().PhiMoves();
-        const auto it = phiMoves.find(from);
-        if (it == phiMoves.end()) {
-            return false;
-        }
-        return it->second.contains(to);
-    }
-
-    void EmitEpilogue() {
-        const auto &usedPhysicalRegisters = FramePlan().UsedPhysicalRegisters();
+    void EmitEpilogue(const AssemblyInstructionPrinter &instructionPrinter) {
+        const auto &usedPhysicalRegisters = instructionPrinter.FramePlan().UsedPhysicalRegisters();
         if (!usedPhysicalRegisters.empty()) {
-            const int32_t remainingFrame =
-                FramePlan().FrameSize() - static_cast<int32_t>(usedPhysicalRegisters.size() * 8);
+            const std::int32_t remainingFrame = instructionPrinter.FramePlan().FrameSize() -
+                                                static_cast<std::int32_t>(usedPhysicalRegisters.size() * 8);
             if (remainingFrame > 0) {
                 TI(std::format("add     rsp, {}", remainingFrame));
             }
-            for (auto it = usedPhysicalRegisters.rbegin(); it != usedPhysicalRegisters.rend(); ++it) {
-                TI(std::format("pop     {}", PhysRegName(*it)));
+            for (auto registerIndex = usedPhysicalRegisters.rbegin(); registerIndex != usedPhysicalRegisters.rend();
+                 ++registerIndex) {
+                TI(std::format("pop     {}", instructionPrinter.PhysicalRegisterName(*registerIndex)));
             }
             TI("pop     rbp");
         }
@@ -1471,35 +531,33 @@ private:
     }
 };
 
-// AsmGen::Generate
 std::string AsmGen::Generate() {
     BuildLayouts();
-    for (const auto &mod : pkg.modules) {
-        GenModule(mod);
+    for (const auto &module : package.modules) {
+        GenModule(module);
     }
     return modulePrinter.Finalize();
 }
 } // namespace
 
-// Public API
 AssemblyPrinter::AssemblyPrinter(LirPackage package, const Target::OS inputTargetOs)
     : lir(std::move(package))
     , targetOs(inputTargetOs) {
 }
 
 std::string AssemblyPrinter::Generate() const {
-    AsmGen gen(lir, targetOs);
-    return gen.Generate();
+    AsmGen generator(lir, targetOs);
+    return generator.Generate();
 }
 
 bool AssemblyPrinter::Emit(const LirPackage &package, const std::filesystem::path &path, const Target::OS targetOs) {
-    AsmGen gen(package, targetOs);
-    std::string text = gen.Generate();
-    std::ofstream f(path, std::ios::out | std::ios::trunc);
-    if (!f) {
+    AsmGen generator(package, targetOs);
+    const std::string text = generator.Generate();
+    std::ofstream file(path, std::ios::out | std::ios::trunc);
+    if (!file) {
         return false;
     }
-    f << text;
-    return f.good();
+    file << text;
+    return file.good();
 }
 } // namespace Rux
