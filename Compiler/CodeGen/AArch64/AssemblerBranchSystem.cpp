@@ -3,6 +3,7 @@
 
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "CodeGen/AArch64/Registers.h"
+#include "CodeGen/BackendDiagnostics.h"
 #include "Object/Rcu/Rcu.h"
 
 #include <cstdint>
@@ -338,15 +339,8 @@ void BranchSystemAssemblerContext::EncodeSysMove(const AsmInstr &in, const bool 
 }
 
 void BranchSystemAssemblerContext::Unsupported(const AsmInstr &in) {
-    if (IsAsmMnemonic(Target::Arch::AArch64, in.mnemonic)) {
-        Error(in.location, std::format("unsupported instruction '{}'", in.mnemonic));
-        return;
-    }
-    if (const auto closest = ClosestAsmMnemonic(Target::Arch::AArch64, in.mnemonic)) {
-        Error(in.location, std::format("unknown instruction '{}'; did you mean '{}'?", in.mnemonic, *closest));
-        return;
-    }
-    Error(in.location, std::format("unknown instruction '{}'", in.mnemonic));
+    auto diagnostic = ClassifyAsmInstruction(in.mnemonic, TargetOs(), Target::Arch::AArch64);
+    Error(in.location, std::move(diagnostic.message), std::move(diagnostic.notes), std::move(diagnostic.help));
 }
 
 void BranchSystemAssemblerContext::Dispatch(const AsmInstr &in) {

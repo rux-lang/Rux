@@ -1,6 +1,7 @@
 #include "CodeGen/RcuModuleBuilder.h"
 
 #include <algorithm>
+#include <bit>
 #include <format>
 #include <limits>
 #include <utility>
@@ -13,6 +14,47 @@ namespace {
 
 [[nodiscard]] std::string LiteralKey(const std::string_view family, const std::string_view key) {
     return std::format("{}:{}:{}", family.size(), family, key);
+}
+
+[[nodiscard]] constexpr std::string_view SectionName(const RcuModuleSection section) noexcept {
+    switch (section) {
+    case RcuModuleSection::Text:
+        return ".text";
+    case RcuModuleSection::RoData:
+        return ".rodata";
+    case RcuModuleSection::Data:
+        return ".data";
+    }
+    return "<invalid>";
+}
+
+[[nodiscard]] constexpr std::size_t RelocationWidth(const std::uint16_t type) noexcept {
+    switch (type) {
+    case RcuRelType::Abs64:
+    case RcuRelType::AArch64Prel64:
+        return 8;
+    case RcuRelType::Abs32:
+    case RcuRelType::Rel32:
+    case RcuRelType::AArch64Call26:
+    case RcuRelType::AArch64Jump26:
+    case RcuRelType::AArch64CondBr19:
+    case RcuRelType::AArch64TstBr14:
+    case RcuRelType::AArch64AdrPrelPgHi21:
+    case RcuRelType::AArch64AddAbsLo12Nc:
+    case RcuRelType::AArch64LdstAbsLo12Nc:
+    case RcuRelType::AArch64MovwUabsG0:
+    case RcuRelType::AArch64MovwUabsG1:
+    case RcuRelType::AArch64MovwUabsG2:
+    case RcuRelType::AArch64MovwUabsG3:
+    case RcuRelType::AArch64Prel32:
+        return 4;
+    default:
+        return 0;
+    }
+}
+
+[[nodiscard]] constexpr bool IsAArch64InstructionRelocation(const std::uint16_t type) noexcept {
+    return type >= RcuRelType::AArch64Call26 && type <= RcuRelType::AArch64MovwUabsG3;
 }
 
 [[nodiscard]] RcuSection MakeSection(const RcuModuleSection id, std::vector<std::uint8_t> data,
@@ -50,6 +92,9 @@ bool RcuModuleBuildResult::HasErrors() const noexcept {
 
 RcuModuleBuilder::RcuModuleBuilder(RcuModuleDescription inputDescription)
     : description(std::move(inputDescription)) {
+    if (description.arch != RcuArch::X86_64 && description.arch != RcuArch::AArch64) {
+        Report(std::format("cannot construct an RCU module for unknown architecture byte {}", description.arch));
+    }
 }
 
 std::size_t RcuModuleBuilder::SectionIndex(const RcuModuleSection section) {
@@ -71,7 +116,12 @@ const std::vector<RcuReloc> &RcuModuleBuilder::Relocations(const RcuModuleSectio
 std::uint32_t RcuModuleBuilder::AlignSection(const RcuModuleSection section, const std::uint16_t alignment) {
     auto &data = SectionData(section);
     if (alignment == 0) {
-        Report("RCU section alignment must be non-zero");
+        Report(std::format("cannot align RCU section '{}': alignment must be non-zero", SectionName(section)));
+        return static_cast<std::uint32_t>(data.size());
+    }
+    if (!std::has_single_bit(alignment)) {
+        Report(std::format("cannot align RCU section '{}' to {} bytes: alignment must be a power of two",
+                           SectionName(section), alignment));
         return static_cast<std::uint32_t>(data.size());
     }
     while (data.size() % alignment != 0) {
@@ -201,7 +251,8 @@ bool RcuModuleBuilder::DefineSymbol(const std::uint32_t symbolIndex, const RcuMo
     }
     const auto sectionSize = SectionData(section).size();
     if (offset > sectionSize || size > sectionSize - offset) {
-        Report(std::format("RCU symbol '{}' lies outside its section", symbol.name));
+        Report(std::format("cannot define RCU symbol '{}' at offset {} with size {} in section '{}' of {} bytes",
+                           symbol.name, offset, size, SectionName(section), sectionSize));
         return false;
     }
     symbol.sectionIdx = static_cast<std::uint16_t>(section);
@@ -293,11 +344,32 @@ bool RcuModuleBuilder::AddRelocation(const RcuModuleSection section, const std::
         return false;
     }
     if (symbolIndex >= symbols.size()) {
-        Report(std::format("RCU relocation references invalid symbol index {}", symbolIndex));
+        Report(std::format("cannot add RCU relocation in section '{}' at offset {}: symbol index {} is invalid",
+                           SectionName(section), sectionOffset, symbolIndex));
         return false;
     }
-    if (sectionOffset >= SectionData(section).size()) {
-        Report(std::format("RCU relocation offset {} lies outside its section", sectionOffset));
+    const std::size_t width = RelocationWidth(type);
+    if (width == 0) {
+        Report(std::format("cannot add unknown RCU relocation type {} in section '{}' for symbol '{}'", type,
+                           SectionName(section), symbols[symbolIndex].name));
+        return false;
+    }
+    if (description.arch == RcuArch::X86_64 && type >= RcuRelType::AArch64Call26) {
+        Report(std::format("RCU relocation '{}' is not available for {} modules", RcuRelTypeName(type),
+                           RcuArchName(description.arch)));
+        return false;
+    }
+    if (IsAArch64InstructionRelocation(type) && section != RcuModuleSection::Text) {
+        Report(std::format("AArch64 instruction relocation '{}' requires section '.text', found '{}'",
+                           RcuRelTypeName(type), SectionName(section)));
+        return false;
+    }
+    const std::size_t sectionSize = SectionData(section).size();
+    if (sectionOffset > sectionSize || width > sectionSize - sectionOffset) {
+        Report(std::format("RCU relocation '{}' for symbol '{}' at offset {} needs {} bytes in section '{}' of {} "
+                           "bytes",
+                           RcuRelTypeName(type), symbols[symbolIndex].name, sectionOffset, width, SectionName(section),
+                           sectionSize));
         return false;
     }
     sectionRelocations[SectionIndex(section)].push_back({sectionOffset, symbolIndex, type, addend});

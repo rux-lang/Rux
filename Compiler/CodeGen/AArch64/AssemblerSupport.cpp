@@ -1,5 +1,6 @@
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "CodeGen/AArch64/Registers.h"
+#include "CodeGen/BackendDiagnostics.h"
 
 #include <cctype>
 #include <format>
@@ -148,9 +149,11 @@ std::string FoundText(const AsmOperand &op) {
     return "nothing";
 }
 
-AssemblerContext::AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out)
+AssemblerContext::AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out,
+                                   const Target::OS targetOs)
     : instrs_(instrs)
     , sourceName_(std::move(sourceName))
+    , targetOs_(targetOs)
     , out_(out)
     , enc_(out_) {
 }
@@ -174,12 +177,15 @@ void AssemblerContext::Begin(const AsmInstr &in, const Syntax syntax) {
     syntax_ = syntax;
 }
 
-void AssemblerContext::Error(const SourceLocation &loc, std::string msg) {
+void AssemblerContext::Error(const SourceLocation &loc, std::string msg, std::vector<std::string> notes,
+                             std::optional<std::string> help) {
     Diagnostic diagnostic;
     diagnostic.severity = Diagnostic::Severity::Error;
     diagnostic.message = std::move(msg);
     diagnostic.location = loc;
     diagnostic.sourceName = sourceName_;
+    diagnostic.notes = std::move(notes);
+    diagnostic.help = std::move(help);
     result_.diagnostics.push_back(std::move(diagnostic));
 }
 
@@ -194,6 +200,10 @@ void AssemblerContext::FormError(const SourceLocation &loc, const std::string &w
 
 const std::string &AssemblerContext::Mnemonic() const {
     return in_->mnemonic;
+}
+
+Target::OS AssemblerContext::TargetOs() const {
+    return targetOs_;
 }
 
 std::size_t AssemblerContext::IndexOf(const AsmOperand &op) const {
@@ -225,7 +235,15 @@ bool AssemblerContext::Operands(const std::size_t least, const std::size_t most)
 std::optional<A64Reg> AssemblerContext::RegNamed(const std::string &name, const SourceLocation &loc) {
     const AsmRegInfo info = LookupRegister(Target::Arch::AArch64, name);
     if (!info.valid) {
-        FormError(loc, std::format("'{}' is not an AArch64 register", name));
+        if (LookupRegister(Target::Arch::X86_64, name).valid) {
+            Error(loc,
+                  std::format("register '{}' is not available for target '{}'", name,
+                              BackendTargetName(targetOs_, Target::Arch::AArch64)),
+                  {std::format("'{}' is an x86-64 register", name)});
+        }
+        else {
+            FormError(loc, std::format("'{}' is not an AArch64 register", name));
+        }
         return std::nullopt;
     }
     return ToA64Reg(info);
@@ -368,7 +386,16 @@ void AssemblerContext::Emit(const AsmInstr &in, const A64Status status) {
 void AssemblerContext::EncodeInstr(const AsmInstr &in) {
     const std::uint32_t before = Here();
     const std::size_t reported = result_.diagnostics.size();
-    Dispatch(in);
+    if (in.arch != Target::Arch::Unknown && in.arch != Target::Arch::AArch64) {
+        Error(in.location,
+              std::format("inline assembly parsed for {} cannot be emitted for target '{}'",
+                          Target::ToDisplayString(in.arch), BackendTargetName(targetOs_, Target::Arch::AArch64)),
+              {std::format("instruction: '{}'", in.mnemonic)},
+              "compile the assembly body for the architecture it was parsed for");
+    }
+    else {
+        Dispatch(in);
+    }
     if (result_.diagnostics.size() != reported && Here() == before) {
         enc_.Word(0);
     }

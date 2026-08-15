@@ -14,6 +14,11 @@
 namespace Rux::X86_64AssemblerPrivate {
 using Bytes = std::vector<std::uint8_t>;
 
+void Append32(Bytes &out, std::int32_t value);
+void Append64(Bytes &out, std::uint64_t value);
+[[nodiscard]] bool FitsInt8(std::int64_t value);
+[[nodiscard]] bool FitsInt32(std::int64_t value);
+
 class LabelFixups {
 public:
     LabelFixups(std::string_view sourceName, Bytes &out, AsmAssembly &result);

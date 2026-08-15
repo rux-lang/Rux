@@ -23,6 +23,7 @@ set(RUX_TEST_SOURCES
     AArch64RcuVariadicAbiTests.cpp
     AArch64RuntimeHelperTests.cpp
     ArtifactTests.cpp
+    BackendDiagnosticTests.cpp
     AsmParserTests.cpp
     BuiltinAssertTests.cpp
     BuiltinPanicTests.cpp

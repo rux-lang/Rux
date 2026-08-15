@@ -9,6 +9,8 @@
 #include "CodeGen/AArch64/FunctionEmitter.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/AArch64/RuntimeHelpers.h"
+#include "CodeGen/BackendDiagnostics.h"
+#include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
@@ -240,8 +242,12 @@ private:
     // in.
 
     void Report(std::string message) {
-        if (reported.insert(message).second) {
-            diagnostics.push_back(ErrorDiagnostic(std::move(message)));
+        Report(ErrorDiagnostic(std::move(message)));
+    }
+
+    void Report(Diagnostic diagnostic) {
+        if (reported.insert(diagnostic.message).second) {
+            diagnostics.push_back(std::move(diagnostic));
         }
     }
 
@@ -249,17 +255,16 @@ private:
         Report(std::move(message));
     }
 
+    void ReportFunctionDiagnostic(Diagnostic diagnostic) override {
+        Report(std::move(diagnostic));
+    }
+
     void ReportCallAndTerminatorDiagnostic(std::string message) override {
         Report(std::move(message));
     }
 
     void NotImplemented(const std::string_view what) {
-        if (currentFunc.empty()) {
-            Report(std::format("AArch64 code generation for {} is not implemented yet", what));
-            return;
-        }
-        Report(
-            std::format("AArch64 code generation for {} is not implemented yet, reached in '{}'", what, currentFunc));
+        Report(UnsupportedBackendConstructDiagnostic(what, targetOs, Target::Arch::AArch64, currentFunc));
     }
 
     // Every encoder reports a status rather than asserting, so an operand
@@ -1120,7 +1125,7 @@ private:
             // that reached this block, written by the predecessor's terminator.
             break;
         default:
-            NotImplemented(std::format("the '{}' opcode", LirOpcodeName(instr.op)));
+            Report(UnsupportedLirDiagnostic(instr.op, targetOs, Target::Arch::AArch64, currentFunc));
             break;
         }
     }
@@ -1162,7 +1167,7 @@ private:
             return;
         }
 
-        AsmAssembly assembled = AssembleAArch64AsmFunc(func.asmBody, mod.name, TextData());
+        AsmAssembly assembled = AssembleAArch64AsmFunc(func.asmBody, mod.name, TextData(), targetOs);
         for (const auto &fixup : assembled.fixups) {
             (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, fixup.offset, ResolveAsmSymbol(fixup.symbol),
                                               fixup.relType, fixup.addend);
@@ -1187,7 +1192,7 @@ private:
         const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);
         activeFramePlan = &framePlan;
         AArch64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, layouts, interfaceNames, currentFunc,
-                                               *this);
+                                               targetOs, *this);
         AArch64CallEmitter callEmitter(enc, framePlan, callPlanner, currentFunc, *this);
         AArch64TerminatorEmitter terminatorEmitter(enc, framePlan, callEmitter, currentFunc, *this);
         terminatorEmitter.BeginFunction();
@@ -1268,31 +1273,8 @@ private:
         }
     }
 
-    // Append one element of a constant sequence, little-endian, at the width
-    // its type occupies. The literal is read the same way a `const` instruction
-    // reads one, so the two agree on what a suffix and a base mean.
     void AppendConstElement(const std::string &literal, const TypeRef &type) {
-        const int size = SizeOf(type);
-        std::uint64_t bits = 0;
-        if (type.kind == TypeRef::Kind::Float64) {
-            const double value = ParseFloatLiteral<double>(literal);
-            std::memcpy(&bits, &value, 8);
-        }
-        else if (type.kind == TypeRef::Kind::Float32) {
-            const float value = ParseFloatLiteral<float>(literal);
-            std::uint32_t narrow = 0;
-            std::memcpy(&narrow, &value, 4);
-            bits = narrow;
-        }
-        else if (type.IsBool()) {
-            bits = literal == "true" || literal == "1" ? 1 : 0;
-        }
-        else {
-            bits = ParseIntegerLiteralBits(literal).value_or(0);
-        }
-        for (int i = 0; i < size; ++i) {
-            RodataData().push_back(static_cast<std::uint8_t>(bits >> (8 * i) & 0xFFU));
-        }
+        AppendScalarConstant(RodataData(), literal, type);
     }
 
     // A slice constant becomes two read-only symbols: its elements, and a

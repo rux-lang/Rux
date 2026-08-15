@@ -2,6 +2,8 @@
 
 #include "CodeGen/X86_64/RcuEmitter.h"
 
+#include "CodeGen/BackendDiagnostics.h"
+#include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
@@ -85,9 +87,17 @@ private:
     // Struct field layouts
     LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
+    std::unordered_set<std::string> reportedDiagnostics;
+    std::string currentFunc;
 
     const X86_64FramePlan *activeFramePlan = nullptr;
     X86_64CallEmitter *activeCallEmitter = nullptr;
+
+    void Report(Diagnostic diagnostic) {
+        if (reportedDiagnostics.insert(diagnostic.message).second) {
+            diagnostics.push_back(std::move(diagnostic));
+        }
+    }
 
     [[nodiscard]] std::vector<std::uint8_t> &TextData() {
         return moduleBuilder.SectionData(RcuModuleSection::Text);
@@ -661,6 +671,9 @@ private:
         case LirOpcode::Panic: {
             const bool isAssertion = instr.op == LirOpcode::Assert;
             if (instr.srcs.size() < (isAssertion ? 2 : 1)) {
+                Report(UnsupportedLirDiagnostic(
+                    instr.op, targetOs, Target::Arch::X86_64, currentFunc,
+                    std::format("expected at least {} operands, found {}", isAssertion ? 2 : 1, instr.srcs.size())));
                 break;
             }
             uint32_t okPatch = 0;
@@ -756,7 +769,12 @@ private:
             }
             break;
         }
+        case LirOpcode::Phi:
+            // The predecessor's terminator has already copied the selected
+            // incoming value into this register's home.
+            break;
         default:
+            Report(UnsupportedLirDiagnostic(instr.op, targetOs, Target::Arch::X86_64, currentFunc));
             break;
         }
     }
@@ -790,7 +808,7 @@ private:
             return;
         }
 
-        AsmAssembly asmResult = AssembleAsmFunc(func.asmBody, mod.name, TextData());
+        AsmAssembly asmResult = AssembleAsmFunc(func.asmBody, mod.name, TextData(), targetOs);
         for (const auto &fixup : asmResult.fixups) {
             (void)moduleBuilder.AddRelocation(RcuModuleSection::Text, fixup.offset, ResolveAsmSymbol(fixup.symbol),
                                               fixup.relType, fixup.addend);
@@ -808,9 +826,12 @@ private:
             return;
         }
         if (func.isAsm) {
+            currentFunc = func.name;
             GenAsmFunc(func);
+            currentFunc.clear();
             return;
         }
+        currentFunc = func.name;
         const X86_64FramePlan framePlan = PlanX86_64Frame(func, layouts, interfaceNames, targetOs);
         activeFramePlan = &framePlan;
         X86_64CallEmitter callEmitter(enc, framePlan, targetOs, *this);
@@ -828,6 +849,7 @@ private:
         if (!moduleBuilder.BeginFunction(symIdx)) {
             activeCallEmitter = nullptr;
             activeFramePlan = nullptr;
+            currentFunc.clear();
             return;
         }
         // Prologue
@@ -1006,6 +1028,7 @@ private:
         (void)moduleBuilder.EndFunction(symIdx);
         activeCallEmitter = nullptr;
         activeFramePlan = nullptr;
+        currentFunc.clear();
     }
 
     // Module generation
@@ -1035,34 +1058,8 @@ private:
         }
     }
 
-    // Appends one element of a constant array to .rodata, little-endian.
     void AppendConstElement(const std::string &literal, const TypeRef &type) {
-        const int size = SizeOf(type);
-        std::uint64_t bits = 0;
-        if (type.kind == TypeRef::Kind::Float64) {
-            const double value = ParseFloatLiteral<double>(literal);
-            std::memcpy(&bits, &value, 8);
-        }
-        else if (type.kind == TypeRef::Kind::Float32) {
-            const float value = ParseFloatLiteral<float>(literal);
-            std::uint32_t narrow = 0;
-            std::memcpy(&narrow, &value, 4);
-            bits = narrow;
-        }
-        else if (type.IsBool()) {
-            bits = (literal == "true" || literal == "1") ? 1 : 0;
-        }
-        else if (literal.starts_with('-')) {
-            const std::uint64_t magnitude = ParseIntegerLiteralBits(literal.substr(1)).value_or(0);
-            bits = static_cast<std::uint64_t>(-static_cast<std::int64_t>(magnitude));
-        }
-        else {
-            bits = ParseIntegerLiteralBits(literal).value_or(0);
-        }
-        for (int i = 0; i < size; ++i) {
-            RodataData().push_back(bits & 0xFF);
-            bits >>= 8;
-        }
+        AppendScalarConstant(RodataData(), literal, type);
     }
 
     // A slice constant becomes two read-only symbols: its elements, and a

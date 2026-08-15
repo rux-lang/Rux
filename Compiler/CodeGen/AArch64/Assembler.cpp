@@ -5,8 +5,8 @@
 
 namespace Rux {
 AsmAssembly AssembleAArch64AsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName,
-                                   std::vector<std::uint8_t> &out) {
-    AArch64AssemblerPrivate::BranchSystemAssemblerContext asmr(instrs, sourceName, out);
+                                   std::vector<std::uint8_t> &out, const Target::OS targetOs) {
+    AArch64AssemblerPrivate::BranchSystemAssemblerContext asmr(instrs, sourceName, out, targetOs);
     return asmr.Run();
 }
 } // namespace Rux

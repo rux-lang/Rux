@@ -14,6 +14,7 @@
 // immediates, or memory references of the form [base + index*scale +/- disp],
 // optionally with a byte/word/dword/qword size prefix.
 
+#include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/X86_64/AssemblerSupport.h"
 #include "Object/Rcu/Rcu.h"
 
@@ -26,10 +27,7 @@
 namespace Rux {
 namespace {
 using Bytes = std::vector<std::uint8_t>;
-using X86_64AssemblerPrivate::ConditionCode;
-using X86_64AssemblerPrivate::LabelFixups;
-using X86_64AssemblerPrivate::LookupSseForm;
-using X86_64AssemblerPrivate::SseFormKind;
+using namespace X86_64AssemblerPrivate;
 
 // Resolved r/m encoding: the ModRM byte with an empty reg field, plus the SIB,
 // displacement, REX.B/X bits, and any rip-relative symbol reference.
@@ -49,9 +47,10 @@ struct RmEnc {
 
 class Assembler {
 public:
-    Assembler(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out)
+    Assembler(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out, const Target::OS targetOs)
         : instrs_(instrs)
         , sourceName_(std::move(sourceName))
+        , targetOs_(targetOs)
         , out_(out)
         , labelFixups_(sourceName_, out_, result_) {
     }
@@ -73,17 +72,21 @@ public:
 private:
     const std::vector<AsmInstr> &instrs_;
     std::string sourceName_;
+    Target::OS targetOs_;
     Bytes &out_;
     AsmAssembly result_;
     LabelFixups labelFixups_;
 
-    void Error(const SourceLocation &loc, std::string msg) {
-        Diagnostic d;
-        d.severity = Diagnostic::Severity::Error;
-        d.message = std::move(msg);
+    void Error(const SourceLocation &loc, std::string msg, std::vector<std::string> notes = {},
+               std::optional<std::string> help = {}) {
+        Diagnostic d = ErrorDiagnostic(std::move(msg), std::move(notes), std::move(help));
         d.location = loc;
         d.sourceName = sourceName_;
         result_.diagnostics.push_back(std::move(d));
+    }
+
+    void Error(const SourceLocation &loc, AsmInstructionDiagnostic diagnostic) {
+        Error(loc, std::move(diagnostic.message), std::move(diagnostic.notes), std::move(diagnostic.help));
     }
 
     // Emission primitives
@@ -92,18 +95,11 @@ private:
     }
 
     void Emit32(std::int32_t v) {
-        const auto u = static_cast<std::uint32_t>(v);
-        out_.push_back(u & 0xFF);
-        out_.push_back((u >> 8) & 0xFF);
-        out_.push_back((u >> 16) & 0xFF);
-        out_.push_back((u >> 24) & 0xFF);
+        Append32(out_, v);
     }
 
     void Emit64(std::uint64_t v) {
-        for (int i = 0; i < 8; ++i) {
-            out_.push_back(v & 0xFF);
-            v >>= 8;
-        }
+        Append64(out_, v);
     }
 
     std::uint32_t Here() const {
@@ -115,7 +111,7 @@ private:
     std::optional<AsmRegInfo> Reg(const AsmOperand &op) {
         AsmRegInfo info = LookupRegister(Target::Arch::X86_64, op.name);
         if (!info.valid) {
-            Error(op.location, std::format("unknown register '{}'", op.name));
+            Error(op.location, ClassifyAsmRegister(op.name, targetOs_, Target::Arch::X86_64));
             return std::nullopt;
         }
         return info;
@@ -154,7 +150,7 @@ private:
         if (hasBase) {
             AsmRegInfo b = LookupRegister(Target::Arch::X86_64, op.memBase);
             if (!b.valid || b.size != 8) {
-                Error(op.location, std::format("invalid base register '{}'", op.memBase));
+                Error(op.location, std::format("'{}' is not an x86-64 base register", op.memBase));
             }
             baseCode = b.code;
             e.rexB = b.code >= 8;
@@ -162,7 +158,7 @@ private:
         if (hasIndex) {
             AsmRegInfo x = LookupRegister(Target::Arch::X86_64, op.memIndex);
             if (!x.valid || x.size != 8) {
-                Error(op.location, std::format("invalid index register '{}'", op.memIndex));
+                Error(op.location, std::format("'{}' is not an x86-64 index register", op.memIndex));
             }
             if (x.code == 4) {
                 Error(op.location, "rsp cannot be used as an index register");
@@ -379,14 +375,6 @@ private:
         }
     }
 
-    static bool FitsInt8(std::int64_t v) {
-        return v >= -128 && v <= 127;
-    }
-
-    static bool FitsInt32(std::int64_t v) {
-        return v >= INT32_MIN && v <= INT32_MAX;
-    }
-
     // --- ALU family (add/or/adc/sbb/and/sub/xor/cmp/mov) -------------------
     // For each op we know: the r/m,reg opcode (odd variant), and the /ext used
     // by the 0x80/0x81/0x83 immediate group.
@@ -411,7 +399,8 @@ private:
             RmEnc rm = EncodeRm(dst, reg);
             const bool useImm8 = !byte && FitsInt8(src.imm);
             if (!byte && !useImm8 && !FitsInt32(src.imm)) {
-                Error(src.location, "immediate does not fit in 32 bits");
+                Error(src.location, Signed32EncodingRangeDiagnostic(in.mnemonic, src.imm));
+                return;
             }
             const std::uint8_t opcode = byte ? 0x80 : (useImm8 ? 0x83 : 0x81);
             EmitModRM(opSize, {opcode}, spec.ext, rm, in.location);
@@ -491,7 +480,8 @@ private:
             std::optional<AsmRegInfo> ignore;
             RmEnc rm = EncodeRm(dst, ignore);
             if (!FitsInt32(src.imm)) {
-                Error(src.location, "immediate does not fit in 32 bits");
+                Error(src.location, Signed32EncodingRangeDiagnostic("mov", src.imm));
+                return;
             }
             EmitModRM(opSize, {static_cast<std::uint8_t>(byte ? 0xC6 : 0xC7)}, 0, rm, in.location);
             EmitAluImm(src.imm, opSize, byte);
@@ -653,7 +643,8 @@ private:
             RmEnc rm = EncodeRm(src, ignore);
             const bool imm8 = FitsInt8(imm);
             if (!imm8 && !FitsInt32(imm)) {
-                Error(in.location, "immediate does not fit in 32 bits");
+                Error(in.operands.back().location, Signed32EncodingRangeDiagnostic("imul", imm));
+                return;
             }
             EmitModRM(dstReg->size, {static_cast<std::uint8_t>(imm8 ? 0x6B : 0x69)}, dstReg->code, rm, in.location);
             if (imm8) {
@@ -980,6 +971,11 @@ private:
     }
 
     void EncodeInstr(const AsmInstr &in) {
+        if (in.arch != Target::Arch::Unknown && in.arch != Target::Arch::X86_64) {
+            Error(in.location,
+                  ParsedAssemblyArchitectureDiagnostic(in.mnemonic, in.arch, targetOs_, Target::Arch::X86_64));
+            return;
+        }
         const std::string &m = in.mnemonic;
 
         // Zero-operand and fixed encodings first.
@@ -1185,13 +1181,14 @@ private:
             return;
         }
 
-        Error(in.location, std::format("unsupported instruction '{}'", m));
+        Error(in.location, ClassifyAsmInstruction(m, targetOs_, Target::Arch::X86_64));
     }
 };
 } // namespace
 
-AsmAssembly AssembleAsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName, Bytes &out) {
-    Assembler asmr(instrs, sourceName, out);
+AsmAssembly AssembleAsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName, Bytes &out,
+                            const Target::OS targetOs) {
+    Assembler asmr(instrs, sourceName, out, targetOs);
     return asmr.Run();
 }
 } // namespace Rux

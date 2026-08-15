@@ -4,6 +4,7 @@
 #include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/RuntimeHelpers.h"
 #include "CodeGen/Layout.h"
+#include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
 
 #include <cstdint>
@@ -42,6 +43,7 @@ public:
     virtual void LoadNamedDataSymbol(A64Reg destination, const std::string &name) = 0;
     virtual void LoadFloatConstant(A64Reg destination, const TypeRef &type, const std::string &literal) = 0;
     virtual void ReportFunctionDiagnostic(std::string message) = 0;
+    virtual void ReportFunctionDiagnostic(Diagnostic diagnostic) = 0;
 };
 
 // Selects instruction families for one planned AArch64 function. Each family
@@ -51,7 +53,7 @@ public:
     AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
                            AArch64RuntimeHelperEmitter &runtimeHelpers, const Layout::LayoutMap &layouts,
                            const std::unordered_set<std::string> &interfaceNames, std::string functionName,
-                           AArch64FunctionEmitterHooks &hooks);
+                           Target::OS targetOs, AArch64FunctionEmitterHooks &hooks);
 
     // Includes integer and floating arithmetic, comparisons, shifts, unary and
     // bit operations, casts, power operations and float-bit reinterpretations.
@@ -73,6 +75,7 @@ private:
     const Layout::LayoutMap &layouts;
     const std::unordered_set<std::string> &interfaceNames;
     std::string functionName;
+    Target::OS targetOs;
     AArch64FunctionEmitterHooks &hooks;
 
     [[nodiscard]] TypeRef TypeOfReg(LirReg reg) const;

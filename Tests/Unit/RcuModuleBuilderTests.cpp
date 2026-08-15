@@ -157,11 +157,11 @@ TEST_CASE("RCU module builder rejects duplicate definitions and conflicting decl
 
 TEST_CASE("RCU module builder rejects invalid relocation indices and offsets early") {
     RcuModuleBuilder builder(Description());
-    builder.SectionData(RcuModuleSection::Text).push_back(0);
+    builder.SectionData(RcuModuleSection::Text).resize(4);
     const auto target = builder.DeclareExternal("Target", RcuSymKind::ExternFunc);
     REQUIRE(target == 0);
     CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Text, 0, 7, RcuRelType::Rel32));
-    CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Text, 1, *target, RcuRelType::Rel32));
+    CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Text, 4, *target, RcuRelType::Rel32));
     CHECK(builder.Relocations(RcuModuleSection::Text).empty());
     REQUIRE(builder.AddRelocation(RcuModuleSection::Text, 0, *target, RcuRelType::Rel32, -4));
     REQUIRE(builder.Relocations(RcuModuleSection::Text).size() == 1);
@@ -184,6 +184,45 @@ TEST_CASE("RCU module builder aligns section buffers without owning literal enco
     CHECK(builder.AlignSection(RcuModuleSection::RoData, 8) == 8);
     CHECK(builder.SectionData(RcuModuleSection::RoData) == std::vector<std::uint8_t>{0xFF, 0, 0, 0, 0, 0, 0, 0});
     CHECK(builder.AlignSection(RcuModuleSection::RoData, 4) == 8);
+
+    CHECK(builder.AlignSection(RcuModuleSection::RoData, 3) == 8);
+    CHECK(builder.Diagnostics().back().message ==
+          "cannot align RCU section '.rodata' to 3 bytes: alignment must be a power of two");
+}
+
+TEST_CASE("RCU module builder rejects unknown architectures and architecture-specific relocations") {
+    RcuModuleBuilder unknown(Description(0xFF));
+    const auto unknownResult = unknown.Finalize();
+    REQUIRE(unknownResult.HasErrors());
+    CHECK(unknownResult.diagnostics.front().message ==
+          "cannot construct an RCU module for unknown architecture byte 255");
+
+    RcuModuleBuilder x86(Description(RcuArch::X86_64));
+    x86.SectionData(RcuModuleSection::Text).resize(4);
+    const auto target = x86.DeclareExternal("Target", RcuSymKind::ExternFunc);
+    REQUIRE(target.has_value());
+    CHECK_FALSE(x86.AddRelocation(RcuModuleSection::Text, 0, *target, RcuRelType::AArch64Call26));
+    CHECK(x86.Diagnostics().back().message == "RCU relocation 'AARCH64_CALL26' is not available for x86-64 modules");
+}
+
+TEST_CASE("RCU module builder reports relocation widths and owning sections") {
+    RcuModuleBuilder builder(Description(RcuArch::AArch64));
+    builder.SectionData(RcuModuleSection::Text).resize(3);
+    builder.SectionData(RcuModuleSection::Data).resize(8);
+    const auto target = builder.DeclareExternal("Target", RcuSymKind::ExternFunc);
+    REQUIRE(target.has_value());
+
+    CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Text, 0, *target, RcuRelType::AArch64Call26));
+    CHECK(builder.Diagnostics().back().message == "RCU relocation 'AARCH64_CALL26' for symbol 'Target' at offset 0 "
+                                                  "needs 4 bytes in section '.text' of 3 bytes");
+
+    CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Data, 0, *target, RcuRelType::AArch64Call26));
+    CHECK(builder.Diagnostics().back().message ==
+          "AArch64 instruction relocation 'AARCH64_CALL26' requires section '.text', found '.data'");
+
+    CHECK_FALSE(builder.AddRelocation(RcuModuleSection::Data, 0, *target, 999));
+    CHECK(builder.Diagnostics().back().message ==
+          "cannot add unknown RCU relocation type 999 in section '.data' for symbol 'Target'");
 }
 
 TEST_CASE("RCU module builder truncates speculative section data and relocations together") {

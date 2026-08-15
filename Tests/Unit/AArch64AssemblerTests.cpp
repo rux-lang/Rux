@@ -314,7 +314,10 @@ TEST_CASE("AArch64 assembler answers to every mnemonic the architecture names") 
         }
         INFO(mnemonic);
         const Assembled assembled = Assemble(std::format("    {}\n", mnemonic));
-        CHECK(FirstError(assembled) == std::format("unsupported instruction '{}'", mnemonic));
+        CHECK(FirstError(assembled) ==
+              std::format("instruction '{}' is recognized for target 'linux-aarch64' but is not implemented by its "
+                          "assembler",
+                          mnemonic));
     }
 
     // And the conditional branch, whose condition is part of its name rather
@@ -465,7 +468,8 @@ TEST_CASE("AArch64 assembler materializes a constant no single MOV reaches") {
 TEST_CASE("AArch64 assembler names the instruction a misspelling meant") {
     SUBCASE("an instruction the architecture has and the encoders do not") {
         const Assembled assembled = Assemble("    adc x0, x1, x2\n");
-        CHECK(FirstError(assembled) == "unsupported instruction 'adc'");
+        CHECK(FirstError(assembled) == "instruction 'adc' is recognized for target 'linux-aarch64' but is not "
+                                       "implemented by its assembler");
     }
 
     SUBCASE("a misspelling one edit from a real instruction") {

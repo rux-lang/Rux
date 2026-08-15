@@ -120,8 +120,8 @@ std::string ReadFileText(const std::filesystem::path &path) {
 
         code.clear();
         const AsmAssembly assembled = target.arch == Target::Arch::AArch64
-                                        ? AssembleAArch64AsmFunc(func->asmBody, fileName, code)
-                                        : AssembleAsmFunc(func->asmBody, fileName, code);
+                                        ? AssembleAArch64AsmFunc(func->asmBody, fileName, code, target.os)
+                                        : AssembleAsmFunc(func->asmBody, fileName, code, target.os);
         for (const auto &diag : assembled.diagnostics) {
             INFO("assembling ", path.string(), " for ", triple);
             CHECK_MESSAGE(diag.severity != Diagnostic::Severity::Error, func->name, ": ", diag.message);

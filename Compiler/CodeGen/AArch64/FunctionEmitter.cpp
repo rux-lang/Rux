@@ -1,5 +1,6 @@
 #include "CodeGen/AArch64/FunctionEmitter.h"
 
+#include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 
@@ -81,13 +82,15 @@ constexpr std::int32_t kFrameRecordSize = 16;
 AArch64FunctionEmitter::AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
                                                AArch64RuntimeHelperEmitter &runtimeHelpers, const LayoutMap &layouts,
                                                const std::unordered_set<std::string> &interfaceNames,
-                                               std::string functionName, AArch64FunctionEmitterHooks &hooks)
+                                               std::string functionName, const Target::OS targetOs,
+                                               AArch64FunctionEmitterHooks &hooks)
     : encoder(encoder)
     , framePlan(framePlan)
     , runtimeHelpers(runtimeHelpers)
     , layouts(layouts)
     , interfaceNames(interfaceNames)
     , functionName(std::move(functionName))
+    , targetOs(targetOs)
     , hooks(hooks) {
 }
 
@@ -209,7 +212,8 @@ void AArch64FunctionEmitter::Report(std::string message) {
 }
 
 void AArch64FunctionEmitter::NotImplemented(std::string what) {
-    Report(std::format("AArch64 code generation for {} is not implemented yet, reached in '{}'", what, functionName));
+    hooks.ReportFunctionDiagnostic(
+        UnsupportedBackendConstructDiagnostic(what, targetOs, Target::Arch::AArch64, functionName));
 }
 
 void AArch64FunctionEmitter::Must(const A64Status status, const std::string_view what) {

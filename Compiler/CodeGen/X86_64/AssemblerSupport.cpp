@@ -9,6 +9,29 @@
 #include <utility>
 
 namespace Rux::X86_64AssemblerPrivate {
+void Append32(Bytes &out, const std::int32_t value) {
+    const auto bits = static_cast<std::uint32_t>(value);
+    out.push_back(bits & 0xFF);
+    out.push_back((bits >> 8) & 0xFF);
+    out.push_back((bits >> 16) & 0xFF);
+    out.push_back((bits >> 24) & 0xFF);
+}
+
+void Append64(Bytes &out, std::uint64_t value) {
+    for (int byte = 0; byte < 8; ++byte) {
+        out.push_back(value & 0xFF);
+        value >>= 8;
+    }
+}
+
+bool FitsInt8(const std::int64_t value) {
+    return value >= -128 && value <= 127;
+}
+
+bool FitsInt32(const std::int64_t value) {
+    return value >= INT32_MIN && value <= INT32_MAX;
+}
+
 LabelFixups::LabelFixups(const std::string_view sourceName, Bytes &out, AsmAssembly &result)
     : sourceName_(sourceName)
     , out_(out)

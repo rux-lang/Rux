@@ -113,7 +113,7 @@ template <typename Map>
 
 class AssemblerContext {
 public:
-    AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out);
+    AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out, Target::OS targetOs);
     virtual ~AssemblerContext() = default;
 
     AsmAssembly Run();
@@ -129,6 +129,7 @@ private:
 
     const std::vector<AsmInstr> &instrs_;
     std::string sourceName_;
+    Target::OS targetOs_;
     Bytes &out_;
     AsmAssembly result_;
     std::unordered_map<std::string, std::uint32_t> labels_;
@@ -144,9 +145,11 @@ protected:
     };
 
     void Begin(const AsmInstr &in, Syntax syntax);
-    void Error(const SourceLocation &loc, std::string msg);
+    void Error(const SourceLocation &loc, std::string msg, std::vector<std::string> notes = {},
+               std::optional<std::string> help = {});
     void FormError(const SourceLocation &loc, const std::string &what);
     [[nodiscard]] const std::string &Mnemonic() const;
+    [[nodiscard]] Target::OS TargetOs() const;
     [[nodiscard]] std::size_t IndexOf(const AsmOperand &op) const;
     [[nodiscard]] std::uint32_t Here() const;
     [[nodiscard]] bool Operands(std::size_t count);
