@@ -46,6 +46,26 @@ std::string Describe(const IdentityError &error) {
     return "invalid identity segment";
 }
 
+std::string DescribeIdentity(const std::string_view role, const std::string_view value, const IdentityError &error) {
+    switch (error.kind) {
+    case IdentityErrorKind::Empty:
+        return std::format("{} is empty", role);
+    case IdentityErrorKind::TooLong:
+        return std::format("{} '{}' is {} bytes, exceeding the {}-byte limit", role, value, value.size(),
+                           identitySegmentMaxLength);
+    case IdentityErrorKind::InvalidCharacter:
+        return std::format("{} '{}' contains '{}' at byte {}", role, value, value[error.offset], error.offset + 1);
+    case IdentityErrorKind::LeadingSeparator:
+        return std::format("{} '{}' starts with separator '{}'", role, value, value.front());
+    case IdentityErrorKind::TrailingSeparator:
+        return std::format("{} '{}' ends with separator '{}'", role, value, value.back());
+    case IdentityErrorKind::AdjacentSeparators:
+        return std::format("{} '{}' has adjacent separators at bytes {} and {}", role, value, error.offset,
+                           error.offset + 1);
+    }
+    return std::format("{} '{}' is invalid", role, value);
+}
+
 std::expected<IdentitySegment, IdentityError> IdentitySegment::Parse(const std::string_view value) {
     if (value.empty()) {
         return std::unexpected(IdentityError{IdentityErrorKind::Empty, 0});

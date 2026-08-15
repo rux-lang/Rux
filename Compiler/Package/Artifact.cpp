@@ -18,9 +18,17 @@
 
 namespace Rux {
 namespace fs = std::filesystem;
-using ArtifactResult = std::expected<PackageArtifact, std::string>;
+using ArtifactResult = std::expected<PackageArtifact, PackageProblem>;
 
 namespace {
+PackageProblem Problem(std::string message, std::string note = {}) {
+    PackageProblem problem{.message = std::move(message), .notes = {}, .help = {}};
+    if (!note.empty()) {
+        problem.notes.push_back(std::move(note));
+    }
+    return problem;
+}
+
 /// One regular file destined for the archive.
 struct ArtifactEntry {
     std::string path; ///< Logical, `/`-separated archive path.
@@ -439,19 +447,25 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
 
     auto manifestSource = ReadFileBytes(manifestPath);
     if (!manifestSource) {
-        return std::unexpected(std::move(manifestSource.error()));
+        return std::unexpected(
+            Problem(std::format("could not read publication manifest '{}'", manifestPath.generic_string()),
+                    std::move(manifestSource.error())));
     }
     if (manifestSource->size() > manifestMaxBytes) {
-        return std::unexpected(std::format("Rux.toml exceeds the {}-byte manifest limit", manifestMaxBytes));
+        return std::unexpected(Problem(std::format("publication manifest '{}' exceeds the {}-byte limit",
+                                                   manifestPath.generic_string(), manifestMaxBytes)));
     }
     if (!IsUtf8(*manifestSource)) {
-        return std::unexpected("Rux.toml is not valid UTF-8");
+        return std::unexpected(
+            Problem(std::format("publication manifest '{}' is not valid UTF-8", manifestPath.generic_string())));
     }
 
     std::vector<ArtifactEntry> entries;
     entries.emplace_back("Rux.toml", *manifestSource);
     if (auto collected = CollectSources(root, entries); !collected) {
-        return std::unexpected(std::move(collected.error()));
+        return std::unexpected(
+            Problem(std::format("could not collect package sources from '{}'", (root / "Src").generic_string()),
+                    std::move(collected.error())));
     }
 
     // ReadmeFile and LicenseFile each name an archive entry, so a declared path
@@ -464,18 +478,20 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
         std::error_code ec;
         const fs::path file = root / referenced;
         if (!fs::is_regular_file(file, ec)) {
-            return std::unexpected(std::format("'{}' is declared in Rux.toml but is not a regular file", referenced));
+            return std::unexpected(Problem(std::format("publication file '{}' is not a regular file", referenced),
+                                           "the path is declared by ReadmeFile or LicenseFile in Rux.toml"));
         }
         auto data = ReadFileBytes(file);
         if (!data) {
-            return std::unexpected(std::move(data.error()));
+            return std::unexpected(
+                Problem(std::format("could not read publication file '{}'", referenced), std::move(data.error())));
         }
         if (data->size() > artifactMaxTextBytes) {
-            return std::unexpected(
-                std::format("'{}' exceeds the {}-byte referenced-text limit", referenced, artifactMaxTextBytes));
+            return std::unexpected(Problem(
+                std::format("publication file '{}' exceeds the {}-byte text limit", referenced, artifactMaxTextBytes)));
         }
         if (!IsUtf8(*data)) {
-            return std::unexpected(std::format("'{}' is not valid UTF-8", referenced));
+            return std::unexpected(Problem(std::format("publication file '{}' is not valid UTF-8", referenced)));
         }
         entries.emplace_back(referenced, std::move(*data));
     }
@@ -487,15 +503,16 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
     std::string previousFolded;
     for (const auto &entry : entries) {
         if (const std::string rejection = RejectEntryPath(entry.path); !rejection.empty()) {
-            return std::unexpected(rejection);
+            return std::unexpected(
+                Problem(std::format("package file '{}' has an unsafe archive path", entry.path), rejection));
         }
         if (entry.data.size() > artifactMaxFileBytes) {
-            return std::unexpected(
-                std::format("'{}' exceeds the {}-byte file limit", entry.path, artifactMaxFileBytes));
+            return std::unexpected(Problem(
+                std::format("package file '{}' exceeds the {}-byte file limit", entry.path, artifactMaxFileBytes)));
         }
         if (IsRuxSource(entry.path)) {
             if (!IsUtf8(entry.data)) {
-                return std::unexpected(std::format("'{}' is not valid UTF-8", entry.path));
+                return std::unexpected(Problem(std::format("package source '{}' is not valid UTF-8", entry.path)));
             }
             ++sourceFileCount;
         }
@@ -507,19 +524,22 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
                                [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (folded == previousFolded) {
             return std::unexpected(
-                std::format("'{}' collides with another entry that differs only in case", entry.path));
+                Problem(std::format("package file '{}' duplicates another archive path after case folding", entry.path),
+                        "archive entry paths must be unique on case-sensitive and case-insensitive filesystems"));
         }
         previousFolded = std::move(folded);
     }
 
     if (sourceFileCount == 0) {
-        return std::unexpected("the package contains no Src/**/*.rux source file");
+        return std::unexpected(
+            Problem("package contains no Rux source file", "publication requires at least one 'Src/**/*.rux' file"));
     }
     if (entries.size() > artifactMaxEntries) {
-        return std::unexpected(std::format("the package has more than {} entries", artifactMaxEntries));
+        return std::unexpected(Problem(std::format("package has more than {} archive entries", artifactMaxEntries)));
     }
     if (expandedBytes > artifactMaxExpandedBytes) {
-        return std::unexpected(std::format("the package expands to more than {} bytes", artifactMaxExpandedBytes));
+        return std::unexpected(
+            Problem(std::format("package contents exceed the {}-byte expanded limit", artifactMaxExpandedBytes)));
     }
 
     std::string archive;
@@ -551,7 +571,8 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
     put16(0); // Archive comment length
 
     if (archive.size() > artifactMaxBytes) {
-        return std::unexpected(std::format("the archive exceeds the {}-byte publication limit", artifactMaxBytes));
+        return std::unexpected(
+            Problem(std::format("package archive exceeds the {}-byte publication limit", artifactMaxBytes)));
     }
 
     return PackageArtifact{.manifestSource = std::move(*manifestSource),
@@ -560,15 +581,16 @@ ArtifactResult BuildPackageArtifact(const fs::path &manifestPath, const Manifest
                            .sourceFileCount = sourceFileCount};
 }
 
-std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(const std::string_view archive,
-                                                                     const fs::path &dest) {
+std::expected<ExtractedArtifact, PackageProblem> ExtractPackageArtifact(const std::string_view archive,
+                                                                        const fs::path &dest) {
     if (archive.size() > artifactMaxBytes) {
-        return std::unexpected(std::format("the archive exceeds the {}-byte publication limit", artifactMaxBytes));
+        return std::unexpected(
+            Problem(std::format("package archive exceeds the {}-byte publication limit", artifactMaxBytes)));
     }
 
     auto entries = ReadArchiveEntries(archive);
     if (!entries) {
-        return std::unexpected(std::move(entries.error()));
+        return std::unexpected(Problem("package archive is invalid", std::move(entries.error())));
     }
 
     ExtractedArtifact summary;
@@ -577,26 +599,29 @@ std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(const std::
     folded.reserve(entries->size());
     for (const auto &entry : *entries) {
         if (const std::string rejection = RejectEntryPath(entry.path); !rejection.empty()) {
-            return std::unexpected(rejection);
+            return std::unexpected(
+                Problem(std::format("archive entry '{}' has an unsafe path", entry.path), rejection));
         }
         if (entry.path == "Rux.toml") {
             if (entry.data.size() > manifestMaxBytes) {
-                return std::unexpected(std::format("Rux.toml exceeds the {}-byte manifest limit", manifestMaxBytes));
+                return std::unexpected(
+                    Problem(std::format("archive manifest 'Rux.toml' exceeds the {}-byte limit", manifestMaxBytes)));
             }
             if (!IsUtf8(entry.data)) {
-                return std::unexpected("Rux.toml is not valid UTF-8");
+                return std::unexpected(Problem("archive manifest 'Rux.toml' is not valid UTF-8"));
             }
             foundManifest = true;
         }
         if (IsRuxSource(entry.path)) {
             if (!IsUtf8(entry.data)) {
-                return std::unexpected(std::format("'{}' is not valid UTF-8", entry.path));
+                return std::unexpected(Problem(std::format("archive source '{}' is not valid UTF-8", entry.path)));
             }
             ++summary.sourceFileCount;
         }
         summary.expandedBytes += entry.data.size();
         if (summary.expandedBytes > artifactMaxExpandedBytes) {
-            return std::unexpected(std::format("the package expands to more than {} bytes", artifactMaxExpandedBytes));
+            return std::unexpected(
+                Problem(std::format("package contents exceed the {}-byte expanded limit", artifactMaxExpandedBytes)));
         }
 
         std::string key = entry.path;
@@ -607,13 +632,15 @@ std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(const std::
 
     std::ranges::sort(folded);
     if (std::ranges::adjacent_find(folded) != folded.end()) {
-        return std::unexpected("the archive has entries that differ only in case");
+        return std::unexpected(Problem("package archive has duplicate entry paths after case folding",
+                                       "archive entry paths must be unique on every supported filesystem"));
     }
     if (!foundManifest) {
-        return std::unexpected("the archive has no Rux.toml at its root");
+        return std::unexpected(Problem("package archive has no root 'Rux.toml' manifest"));
     }
     if (summary.sourceFileCount == 0) {
-        return std::unexpected("the archive contains no Src/**/*.rux source file");
+        return std::unexpected(Problem("package archive contains no Rux source file",
+                                       "publication requires at least one 'Src/**/*.rux' entry"));
     }
     summary.fileCount = entries->size();
 
@@ -622,17 +649,21 @@ std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(const std::
     std::error_code ec;
     fs::create_directories(dest, ec);
     if (ec) {
-        return std::unexpected(std::format("failed to create '{}'", dest.generic_string()));
+        return std::unexpected(Problem(std::format("could not extract package archive to '{}'", dest.generic_string()),
+                                       std::format("could not create the destination: {}", ec.message())));
     }
     for (const auto &entry : *entries) {
         const fs::path output = dest / fs::path(entry.path);
         fs::create_directories(output.parent_path(), ec);
         if (ec) {
-            return std::unexpected(std::format("failed to create '{}'", output.parent_path().generic_string()));
+            return std::unexpected(
+                Problem(std::format("could not extract archive entry '{}'", entry.path),
+                        std::format("could not create '{}': {}", output.parent_path().generic_string(), ec.message())));
         }
         std::ofstream file(output, std::ios::binary | std::ios::trunc);
         if (!file.write(entry.data.data(), static_cast<std::streamsize>(entry.data.size()))) {
-            return std::unexpected(std::format("failed to write '{}'", output.generic_string()));
+            return std::unexpected(Problem(std::format("could not extract archive entry '{}'", entry.path),
+                                           std::format("could not write '{}'", output.generic_string())));
         }
     }
     return summary;

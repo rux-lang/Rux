@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Package/Manifest.h"
+#include "Package/Problem.h"
 
 #include <cstddef>
 #include <expected>
@@ -56,7 +57,7 @@ struct PackageArtifact {
  *
  * @return The artifact, or the reason the package cannot be packed
  */
-[[nodiscard]] std::expected<PackageArtifact, std::string>
+[[nodiscard]] std::expected<PackageArtifact, PackageProblem>
 BuildPackageArtifact(const std::filesystem::path &manifestPath, const Manifest &manifest);
 
 /**
@@ -91,6 +92,6 @@ struct ExtractedArtifact {
  *
  * @return What was extracted, or the reason the archive was rejected
  */
-[[nodiscard]] std::expected<ExtractedArtifact, std::string> ExtractPackageArtifact(std::string_view archive,
-                                                                                   const std::filesystem::path &dest);
+[[nodiscard]] std::expected<ExtractedArtifact, PackageProblem>
+ExtractPackageArtifact(std::string_view archive, const std::filesystem::path &dest);
 } // namespace Rux

@@ -222,4 +222,9 @@ TEST_CASE("Version errors explain themselves") {
     CHECK(Describe(VersionError{VersionErrorKind::TooManyComponents, 0, {}}).find("three") != std::string::npos);
     CHECK(Describe(VersionError{VersionErrorKind::LeadingZero, 0, "minor"}).find("minor") != std::string::npos);
     CHECK(Describe(VersionError{VersionErrorKind::WildcardMustStandAlone, 0, {}}).find('*') != std::string::npos);
+    CHECK(DescribeVersion("package version", "1.a.0", VersionError{VersionErrorKind::InvalidCharacter, 2, "minor"}) ==
+          "package version '1.a.0' contains invalid character 'a' at byte 3 in the minor");
+    CHECK(DescribeVersion("version requirement", "1.*.3",
+                          VersionError{VersionErrorKind::ComponentAfterWildcard, 2, {}}) ==
+          "version requirement '1.*.3': a numeric component cannot follow a wildcard");
 }

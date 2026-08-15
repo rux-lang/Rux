@@ -74,12 +74,15 @@ std::string QualifiedName(const Manifest &manifest) {
 
 /// Group every publication-profile rejection under the package that carries it.
 void ReportPublicationRejections(const std::filesystem::path &manifestPath, const Manifest &manifest,
-                                 const std::vector<std::string> &rejections, const std::string_view command,
+                                 const std::vector<PackageProblem> &rejections, const std::string_view command,
                                  const CliSupport::Reporter &diagnostics) {
     diagnostics.Error(std::format("{} {} does not meet publication requirements", QualifiedName(manifest),
                                   manifest.package.version.Text()));
     for (const auto &rejection : rejections) {
-        diagnostics.Note(rejection);
+        diagnostics.Note(rejection.message);
+        for (const auto &note : rejection.notes) {
+            diagnostics.Note(note);
+        }
     }
     diagnostics.Help(std::format("update '{}', then run 'rux {}' again", manifestPath.string(), command));
 }
@@ -146,9 +149,11 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
     result.Progress("Packing", std::format("{} {}", QualifiedName(manifest), manifest.package.version.Text()));
     auto artifact = BuildPackageArtifact(manifestPath, manifest);
     if (!artifact) {
-        diagnostics.Error(
-            std::format("could not pack {} {}", QualifiedName(manifest), manifest.package.version.Text()));
-        diagnostics.Note(artifact.error());
+        diagnostics.Error(artifact.error().message);
+        diagnostics.Note(std::format("package: {} {}", QualifiedName(manifest), manifest.package.version.Text()));
+        for (const auto &note : artifact.error().notes) {
+            diagnostics.Note(note);
+        }
         diagnostics.Help("correct the package files, then run 'rux pack' again");
         return 1;
     }
@@ -252,9 +257,11 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     output.Progress("Packing", std::format("{} {}", QualifiedName(manifest), manifest.package.version.Text()));
     auto artifact = BuildPackageArtifact(manifestPath, manifest);
     if (!artifact) {
-        diagnostics.Error(
-            std::format("could not pack {} {}", QualifiedName(manifest), manifest.package.version.Text()));
-        diagnostics.Note(artifact.error());
+        diagnostics.Error(artifact.error().message);
+        diagnostics.Note(std::format("package: {} {}", QualifiedName(manifest), manifest.package.version.Text()));
+        for (const auto &note : artifact.error().notes) {
+            diagnostics.Note(note);
+        }
         diagnostics.Help("correct the package files, then run 'rux publish' again");
         return 1;
     }

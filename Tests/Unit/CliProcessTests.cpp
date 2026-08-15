@@ -796,7 +796,7 @@ Local = { Path = "Local" }
     CHECK(invalid.exitCode == 1);
     CHECK(CountOccurrences(invalid.output, "error:") == 1);
     CHECK(invalid.output.contains("does not meet publication requirements"));
-    CHECK(CountOccurrences(invalid.output, "note:") == 4);
+    CHECK(CountOccurrences(invalid.output, "note:") == 8);
     CHECK(invalid.output.contains("help: update '"));
 
     const ScopedCliPackageCache cache;

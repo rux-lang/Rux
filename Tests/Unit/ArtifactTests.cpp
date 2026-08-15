@@ -72,7 +72,7 @@ public:
         return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
     }
 
-    [[nodiscard]] std::expected<PackageArtifact, std::string> Build() const {
+    [[nodiscard]] std::expected<PackageArtifact, PackageProblem> Build() const {
         const auto result = Manifest::Load(ManifestPath());
         REQUIRE(result.Ok());
         return BuildPackageArtifact(ManifestPath(), *result.manifest);
@@ -81,6 +81,11 @@ public:
 private:
     std::filesystem::path root;
 };
+
+bool ProblemContains(const PackageProblem &problem, const std::string_view text) {
+    return problem.message.contains(text) ||
+           std::ranges::any_of(problem.notes, [text](const std::string &note) { return note.contains(text); });
+}
 
 // Read the entry names out of a ZIP central directory. Deliberately independent
 // of the writer so a bug in one is not mirrored by the other.
@@ -318,7 +323,7 @@ LicenseFile = "LICENSE.md"
 
     const auto artifact = fixture.Build();
     REQUIRE_FALSE(artifact.has_value());
-    CHECK(artifact.error().contains("LICENSE.md"));
+    CHECK(ProblemContains(artifact.error(), "LICENSE.md"));
 }
 
 TEST_CASE("a declared readme that does not exist is rejected") {
@@ -337,7 +342,7 @@ ReadmeFile = "README.md"
 
     const auto artifact = fixture.Build();
     REQUIRE_FALSE(artifact.has_value());
-    CHECK(artifact.error().contains("README.md"));
+    CHECK(ProblemContains(artifact.error(), "README.md"));
 }
 
 TEST_CASE("a package without a Rux source is rejected") {
@@ -347,7 +352,7 @@ TEST_CASE("a package without a Rux source is rejected") {
 
     const auto artifact = fixture.Build();
     REQUIRE_FALSE(artifact.has_value());
-    CHECK(artifact.error().contains("Src/**/*.rux"));
+    CHECK(ProblemContains(artifact.error(), "Src/**/*.rux"));
 }
 
 TEST_CASE("a package without a Src directory is rejected") {
@@ -356,7 +361,7 @@ TEST_CASE("a package without a Src directory is rejected") {
 
     const auto artifact = fixture.Build();
     REQUIRE_FALSE(artifact.has_value());
-    CHECK(artifact.error().contains("Src"));
+    CHECK(ProblemContains(artifact.error(), "Src"));
 }
 
 TEST_CASE("a source that is not valid UTF-8 is rejected") {
@@ -366,7 +371,7 @@ TEST_CASE("a source that is not valid UTF-8 is rejected") {
 
     const auto artifact = fixture.Build();
     REQUIRE_FALSE(artifact.has_value());
-    CHECK(artifact.error().contains("UTF-8"));
+    CHECK(ProblemContains(artifact.error(), "UTF-8"));
 }
 
 TEST_CASE("the default archive name carries the display identity and exact version") {
@@ -444,7 +449,7 @@ TEST_CASE("a compressed entry is rejected because package archives are Stored on
     const auto archive = BuildArchive(MinimalEntries(), ArchiveDefect{.method = 8, .corruptCrc = false});
     const auto extracted = ExtractPackageArtifact(archive, fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("compressed"));
+    CHECK(ProblemContains(extracted.error(), "compressed"));
 }
 
 TEST_CASE("an entry whose checksum does not match its bytes is rejected") {
@@ -452,7 +457,7 @@ TEST_CASE("an entry whose checksum does not match its bytes is rejected") {
     const auto archive = BuildArchive(MinimalEntries(), ArchiveDefect{.method = 0, .corruptCrc = true});
     const auto extracted = ExtractPackageArtifact(archive, fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("checksum"));
+    CHECK(ProblemContains(extracted.error(), "checksum"));
 }
 
 TEST_CASE("an entry path that escapes the destination is rejected") {
@@ -463,7 +468,7 @@ TEST_CASE("an entry path that escapes the destination is rejected") {
     const auto dest = fixture.Scratch("extracted");
     const auto extracted = ExtractPackageArtifact(BuildArchive(entries), dest);
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains(".."));
+    CHECK(ProblemContains(extracted.error(), ".."));
     CHECK_FALSE(std::filesystem::exists(dest.parent_path() / "Escaped.rux"));
 }
 
@@ -487,7 +492,7 @@ TEST_CASE("an archive without a root manifest is rejected") {
     const auto archive = BuildArchive({{"Src/Widget.rux", "module Widget;\n"}});
     const auto extracted = ExtractPackageArtifact(archive, fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("Rux.toml"));
+    CHECK(ProblemContains(extracted.error(), "Rux.toml"));
 }
 
 TEST_CASE("an archive without a Rux source is rejected") {
@@ -495,7 +500,7 @@ TEST_CASE("an archive without a Rux source is rejected") {
     const auto archive = BuildArchive({{"Rux.toml", std::string(publishableManifest)}, {"README.md", "# Widget\n"}});
     const auto extracted = ExtractPackageArtifact(archive, fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("Src"));
+    CHECK(ProblemContains(extracted.error(), "Src"));
 }
 
 TEST_CASE("entries differing only in case are rejected as a collision") {
@@ -504,7 +509,7 @@ TEST_CASE("entries differing only in case are rejected as a collision") {
     entries.emplace_back("Src/widget.rux", "module Other;\n");
     const auto extracted = ExtractPackageArtifact(BuildArchive(entries), fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("case"));
+    CHECK(ProblemContains(extracted.error(), "case"));
 }
 
 TEST_CASE("an archive past the publication size limit is rejected before it is read") {
@@ -521,7 +526,7 @@ TEST_CASE("an archive past the publication size limit is rejected before it is r
     const auto dest = fixture.Scratch("extracted");
     const auto extracted = ExtractPackageArtifact(archive, dest);
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("publication limit"));
+    CHECK(ProblemContains(extracted.error(), "publication limit"));
     CHECK_FALSE(std::filesystem::exists(dest));
 }
 
@@ -531,7 +536,7 @@ TEST_CASE("an entry larger than the per-file limit is rejected") {
     entries.emplace_back("Src/Huge.rux", std::string(artifactMaxFileBytes + 1, 'a'));
     const auto extracted = ExtractPackageArtifact(BuildArchive(entries), fixture.Scratch("extracted"));
     REQUIRE_FALSE(extracted.has_value());
-    CHECK(extracted.error().contains("file limit"));
+    CHECK(ProblemContains(extracted.error(), "file limit"));
 }
 
 TEST_CASE("a directory entry is ignored rather than written as a file") {

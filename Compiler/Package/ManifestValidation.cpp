@@ -178,7 +178,15 @@ private:
         const std::string &text = Typed(value, Value::Kind::String, field).text;
         auto segment = IdentitySegment::Parse(text);
         if (!segment) {
-            FailAt(value.location, std::format("'{}' is not a valid identity: {}", field, Describe(segment.error())));
+            std::string_view role = field;
+            if (field == "[Package].Name") {
+                role = "package name";
+            }
+            else if (field == "[Package].Namespace") {
+                role = "package namespace";
+            }
+            FailAt(value.location, DescribeIdentity(role, text, segment.error()),
+                   std::string(identitySegmentConstraint));
         }
         return *segment;
     }
@@ -187,7 +195,9 @@ private:
         const std::string &text = Typed(value, Value::Kind::String, field).text;
         auto version = SemanticVersion::Parse(text);
         if (!version) {
-            FailAt(value.location, std::format("'{}' is not a valid version: {}", field, Describe(version.error())));
+            const std::string_view role = field == "[Package].Version" ? "package version" : field;
+            FailAt(value.location, DescribeVersion(role, text, version.error()),
+                   "use a complete Semantic Versioning value such as '1.2.3'");
         }
         return *version;
     }
@@ -483,9 +493,10 @@ private:
                 Typed(*requirement->value, Value::Kind::String, std::format("dependency '{}'.Version", entry.key)).text;
             auto range = VersionRange::Parse(text);
             if (!range) {
-                FailAt(requirement->value->location,
-                       std::format("dependency '{}'.Version is not a valid requirement: {}", entry.key,
-                                   Describe(range.error())));
+                FailAt(
+                    requirement->value->location,
+                    DescribeVersion(std::format("dependency '{}' version requirement", entry.key), text, range.error()),
+                    "use a range such as '^1.2.0' or '>=1.0.0, <2.0.0'");
             }
             dependency.source = RegistryDependencySource{
                 ReadIdentity(*ns->value, std::format("dependency '{}'.Namespace", entry.key)), *range};

@@ -69,10 +69,13 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
 
     const auto parsedSpec = ParsePackageSpec(spec);
     if (!parsedSpec) {
-        diagnostics.Error(std::format("package specification '{}' is invalid", spec));
-        diagnostics.Note(parsedSpec.error());
-        diagnostics.Help(pathArg.empty() ? "use '[namespace]/[package]@[requirement]' for a registry dependency"
-                                         : "use '[package] --path [path]' for a path dependency");
+        diagnostics.Error(parsedSpec.error().message);
+        for (const auto &note : parsedSpec.error().notes) {
+            diagnostics.Note(note);
+        }
+        diagnostics.Help(parsedSpec.error().help.value_or(
+            pathArg.empty() ? "use '[namespace]/[package]@[requirement]' for a registry dependency"
+                            : "use '[package] --path [path]' for a path dependency"));
         return 1;
     }
     const std::string packageName = parsedSpec->name.Text();

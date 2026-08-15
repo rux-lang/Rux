@@ -366,6 +366,15 @@ std::string Describe(const VersionError &error) {
     return "invalid version";
 }
 
+std::string DescribeVersion(const std::string_view role, const std::string_view value, const VersionError &error) {
+    if (error.kind == VersionErrorKind::InvalidCharacter && error.offset < value.size()) {
+        return std::format("{} '{}' contains invalid character '{}' at byte {}{}", role, value, value[error.offset],
+                           error.offset + 1,
+                           error.section.empty() ? std::string() : std::format(" in the {}", error.section));
+    }
+    return std::format("{} '{}': {}", role, value, Describe(error));
+}
+
 std::expected<SemanticVersion, VersionError> SemanticVersion::Parse(const std::string_view value) {
     if (value.empty()) {
         return Fail(VersionErrorKind::Empty, 0);

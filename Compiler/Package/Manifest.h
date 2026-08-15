@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Package/Identity.h"
+#include "Package/Problem.h"
 #include "Package/Version.h"
 #include "Target/Target.h"
 
@@ -349,5 +350,5 @@ struct PackageSpec {
  * @brief Parse `[Namespace/]Name[@requirement]`.
  * @return The parsed reference, or an explanation of what was rejected
  */
-[[nodiscard]] std::expected<PackageSpec, std::string> ParsePackageSpec(std::string_view spec);
+[[nodiscard]] std::expected<PackageSpec, PackageProblem> ParsePackageSpec(std::string_view spec);
 } // namespace Rux

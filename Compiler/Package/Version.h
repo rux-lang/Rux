@@ -49,6 +49,9 @@ struct VersionError {
  */
 [[nodiscard]] std::string Describe(const VersionError &error);
 
+/// Explain a version rejection while naming the rejected value and character.
+[[nodiscard]] std::string DescribeVersion(std::string_view role, std::string_view value, const VersionError &error);
+
 /**
  * @brief A strict Semantic Versioning 2.0.0 value.
  *

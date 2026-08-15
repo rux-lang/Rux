@@ -107,4 +107,10 @@ TEST_CASE("Identity segments that normalize differently stay distinct") {
 TEST_CASE("Identity errors explain themselves") {
     CHECK(Describe(IdentityError{IdentityErrorKind::LeadingSeparator, 0}).find("cannot start") != std::string::npos);
     CHECK(Describe(IdentityError{IdentityErrorKind::TooLong, 64}).find("64") != std::string::npos);
+
+    CHECK(DescribeIdentity("package name", "bad/name", IdentityError{IdentityErrorKind::InvalidCharacter, 3}) ==
+          "package name 'bad/name' contains '/' at byte 4");
+    CHECK(DescribeIdentity("namespace", "bad-", IdentityError{IdentityErrorKind::TrailingSeparator, 3}) ==
+          "namespace 'bad-' ends with separator '-'");
+    CHECK(identitySegmentConstraint.contains("ASCII letters or digits"));
 }

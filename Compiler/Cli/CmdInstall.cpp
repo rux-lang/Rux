@@ -100,9 +100,11 @@ std::optional<PackageRequirement> RequirementFromSpec(const std::string_view spe
                                                       const CliSupport::Reporter &diagnostics) {
     const auto parsed = ParsePackageSpec(spec);
     if (!parsed) {
-        diagnostics.Error(std::format("package specification '{}' is invalid", spec));
-        diagnostics.Note(parsed.error());
-        diagnostics.Help("use '[namespace]/[package]@[requirement]'");
+        diagnostics.Error(parsed.error().message);
+        for (const auto &note : parsed.error().notes) {
+            diagnostics.Note(note);
+        }
+        diagnostics.Help(parsed.error().help.value_or("use '[namespace]/[package]@[requirement]'"));
         return std::nullopt;
     }
     if (!parsed->ns) {
@@ -332,18 +334,42 @@ bool InstallResolved(const PackageResolver &resolver, const std::vector<Resolved
             std::filesystem::remove_all(staging, ec);
             diagnostics.Error(
                 std::format("downloaded archive for {} {} was rejected", identity, resolution.version.Text()));
-            diagnostics.Note(extracted.error());
+            diagnostics.Note(extracted.error().message);
+            for (const auto &note : extracted.error().notes) {
+                diagnostics.Note(note);
+            }
             diagnostics.Help("contact the registry operator; the published archive is unsafe or invalid");
             return false;
         }
 
         const auto staged = Manifest::Load(staging / "Rux.toml");
-        if (!staged.Ok() || staged.manifest->IsWorkspace() || !staged.manifest->package.ns ||
+        if (!staged.Ok()) {
+            std::filesystem::remove_all(staging, ec);
+            diagnostics.Error(std::format("archive published as {} {} contains an invalid manifest", identity,
+                                          resolution.version.Text()));
+            if (!staged.diagnostics.empty()) {
+                diagnostics.Note(staged.diagnostics.front().Format());
+            }
+            diagnostics.Help("contact the registry operator; the artifact metadata is inconsistent");
+            return false;
+        }
+        if (staged.manifest->IsWorkspace() || !staged.manifest->package.ns ||
             *staged.manifest->package.ns != resolution.ns || staged.manifest->package.name != resolution.package ||
             staged.manifest->package.version.Text() != resolution.version.Text()) {
             std::filesystem::remove_all(staging, ec);
             diagnostics.Error(std::format("archive published as {} {} contains a different package", identity,
                                           resolution.version.Text()));
+            if (staged.manifest->IsWorkspace()) {
+                diagnostics.Note("archive manifest declares a workspace instead of a package");
+            }
+            else {
+                const std::string actualIdentity = staged.manifest->package.ns
+                                                     ? std::format("{}/{}", staged.manifest->package.ns->Text(),
+                                                                   staged.manifest->package.name.Text())
+                                                     : staged.manifest->package.name.Text();
+                diagnostics.Note(std::format("archive manifest declares {} {}", actualIdentity,
+                                             staged.manifest->package.version.Text()));
+            }
             diagnostics.Help("contact the registry operator; the artifact metadata is inconsistent");
             return false;
         }

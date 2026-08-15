@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Package/Manifest.h"
+#include "Package/Problem.h"
 
 #include <string>
 #include <string_view>
@@ -18,5 +19,5 @@ inline constexpr std::string_view publicationMinRuxFloor = "0.4.0";
  * Rejections have no source position because missing required publication
  * fields have no token to point at.
  */
-[[nodiscard]] std::vector<std::string> ValidateForPublication(const Manifest &manifest);
+[[nodiscard]] std::vector<PackageProblem> ValidateForPublication(const Manifest &manifest);
 } // namespace Rux

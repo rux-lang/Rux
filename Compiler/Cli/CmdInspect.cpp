@@ -64,9 +64,11 @@ std::optional<SpecRequirement> RequirementFromSpec(const std::string_view spec, 
                                                    const CliSupport::Reporter &diagnostics) {
     const auto parsed = ParsePackageSpec(spec);
     if (!parsed) {
-        diagnostics.Error(std::format("package specification '{}' is invalid", spec));
-        diagnostics.Note(parsed.error());
-        diagnostics.Help("use '[namespace]/[package]@[requirement]'");
+        diagnostics.Error(parsed.error().message);
+        for (const auto &note : parsed.error().notes) {
+            diagnostics.Note(note);
+        }
+        diagnostics.Help(parsed.error().help.value_or("use '[namespace]/[package]@[requirement]'"));
         return std::nullopt;
     }
     if (!parsed->ns) {

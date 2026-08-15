@@ -374,19 +374,34 @@ std::vector<std::filesystem::path> DiscoverManifestlessWorkspaceManifests(const 
     return manifests;
 }
 
-std::expected<PackageSpec, std::string> ParsePackageSpec(const std::string_view spec) {
+std::expected<PackageSpec, PackageProblem> ParsePackageSpec(const std::string_view spec) {
     std::string_view rest = spec;
     PackageSpec parsed;
 
+    const auto identityProblem = [](const std::string_view role, const std::string_view value,
+                                    const IdentityError &error) {
+        return PackageProblem{DescribeIdentity(role, value, error), {std::string(identitySegmentConstraint)}, {}};
+    };
+
     if (const auto at = rest.find('@'); at != std::string_view::npos) {
+        if (rest.find('@', at + 1) != std::string_view::npos) {
+            return std::unexpected(
+                PackageProblem{std::format("package specification '{}' contains more than one '@' separator", spec),
+                               {"a package specification has at most one version requirement"},
+                               {}});
+        }
         const std::string_view requirement = rest.substr(at + 1);
         if (requirement.empty()) {
-            return std::unexpected("missing version requirement after '@'");
+            return std::unexpected(
+                PackageProblem{std::format("package specification '{}' has no requirement after '@'", spec),
+                               {"version requirements use Semantic Versioning ranges"},
+                               {}});
         }
         auto range = VersionRange::Parse(requirement);
         if (!range) {
-            return std::unexpected(
-                std::format("invalid version requirement '{}': {}", requirement, Describe(range.error())));
+            return std::unexpected(PackageProblem{DescribeVersion("version requirement", requirement, range.error()),
+                                                  {"requirements use forms such as '^1.2.0' or '>=1.0.0, <2.0.0'"},
+                                                  {}});
         }
         parsed.version = std::move(*range);
         rest = rest.substr(0, at);
@@ -394,10 +409,15 @@ std::expected<PackageSpec, std::string> ParsePackageSpec(const std::string_view 
 
     std::string_view nameText = rest;
     if (const auto slash = rest.find('/'); slash != std::string_view::npos) {
+        if (rest.find('/', slash + 1) != std::string_view::npos) {
+            return std::unexpected(
+                PackageProblem{std::format("package specification '{}' contains more than one '/' separator", spec),
+                               {"registry identities use exactly 'namespace/package'"},
+                               {}});
+        }
         auto ns = IdentitySegment::Parse(rest.substr(0, slash));
         if (!ns) {
-            return std::unexpected(
-                std::format("invalid namespace '{}': {}", rest.substr(0, slash), Describe(ns.error())));
+            return std::unexpected(identityProblem("namespace", rest.substr(0, slash), ns.error()));
         }
         parsed.ns = std::move(*ns);
         nameText = rest.substr(slash + 1);
@@ -405,7 +425,7 @@ std::expected<PackageSpec, std::string> ParsePackageSpec(const std::string_view 
 
     auto name = IdentitySegment::Parse(nameText);
     if (!name) {
-        return std::unexpected(std::format("invalid package name '{}': {}", nameText, Describe(name.error())));
+        return std::unexpected(identityProblem("package name", nameText, name.error()));
     }
     parsed.name = std::move(*name);
     return parsed;

@@ -38,7 +38,7 @@ Io = { Namespace = "Rux", Version = "^1.0.0" }
     CHECK(ValidateForPublication(manifest).empty());
 }
 
-TEST_CASE("Publication validation preserves every package rejection message") {
+TEST_CASE("Publication validation returns every rejection with its governing constraint") {
     const Manifest manifest = Parsed(R"([Manifest]
 Version = 1
 
@@ -51,15 +51,16 @@ Type = "Executable"
 Util = { Path = "../Util" }
 )");
 
-    CHECK(ValidateForPublication(manifest) ==
-          std::vector<std::string>{"[Package].Type = \"Executable\" cannot be published by Rux 0.4.0; "
-                                   "this release publishes only Type = \"SourceLibrary\"",
-                                   "publication requires [Package].Namespace; a namespace-free package "
-                                   "is local-only",
-                                   "publication requires [Manifest].MinRux, the oldest compiler release "
-                                   "that can build the package; it must be at least 0.4.0",
-                                   "dependency 'Util' uses Path = \"../Util\"; publication requires "
-                                   "registry dependencies"});
+    const auto rejections = ValidateForPublication(manifest);
+    REQUIRE(rejections.size() == 4);
+    CHECK(rejections[0].message == "package type 'Executable' cannot be published by Rux 0.4.0");
+    CHECK(rejections[0].notes == std::vector<std::string>{"[Package].Type must be 'SourceLibrary' for publication"});
+    CHECK(rejections[1].message == "package has no publication namespace");
+    CHECK(rejections[1].notes.front().contains("[Package].Namespace"));
+    CHECK(rejections[2].message == "package has no minimum supported Rux version");
+    CHECK(rejections[2].notes.front().contains("[Manifest].MinRux"));
+    CHECK(rejections[3].message == "dependency 'Util' uses local path '../Util'");
+    CHECK(rejections[3].notes.front().contains("registry packages"));
 }
 
 TEST_CASE("Publication validation preserves the minimum compiler rejection message") {
@@ -74,8 +75,10 @@ Version = "1.2.3"
 Type = "SourceLibrary"
 )");
 
-    CHECK(ValidateForPublication(manifest) ==
-          std::vector<std::string>{"[Manifest].MinRux is '0.3.9' but publication requires at least 0.4.0"});
+    const auto rejections = ValidateForPublication(manifest);
+    REQUIRE(rejections.size() == 1);
+    CHECK(rejections.front().message == "minimum Rux version '0.3.9' is too old for publication");
+    CHECK(rejections.front().notes == std::vector<std::string>{"[Manifest].MinRux must be at least 0.4.0"});
 }
 
 TEST_CASE("Publication validation preserves the workspace rejection message") {
@@ -86,8 +89,12 @@ Version = 1
 Packages = ["Packages/Core"]
 )");
 
-    CHECK(ValidateForPublication(manifest) ==
-          std::vector<std::string>{"a workspace cannot be published; publish a member package instead"});
+    const auto rejections = ValidateForPublication(manifest);
+    REQUIRE(rejections.size() == 1);
+    CHECK(rejections.front().message == "a workspace cannot be published");
+    CHECK(rejections.front().notes.front().contains("[Workspace]"));
+    REQUIRE(rejections.front().help.has_value());
+    CHECK(rejections.front().help->contains("member package"));
 }
 
 TEST_CASE("Publication problem documents become labeled context and actionable guidance") {

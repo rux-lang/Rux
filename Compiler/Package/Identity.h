@@ -37,6 +37,16 @@ struct IdentityError {
 [[nodiscard]] std::string Describe(const IdentityError &error);
 
 /**
+ * @brief Describe an identity rejection while naming its role and value.
+ * @param role User-facing role such as `package name` or `namespace`
+ */
+[[nodiscard]] std::string DescribeIdentity(std::string_view role, std::string_view value, const IdentityError &error);
+
+/// The permitted spelling shared by identity diagnostics.
+inline constexpr std::string_view identitySegmentConstraint =
+    "use 1 to 64 ASCII letters or digits separated by single '-' or '_' characters";
+
+/**
  * @brief A display-preserving segment of a package identity.
  *
  * A segment is 1 to 64 bytes of ASCII alphanumeric characters separated by

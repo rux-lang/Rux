@@ -215,7 +215,8 @@ Type = "Executable"
     CHECK(diagnostic.path == std::filesystem::path("Rux.toml"));
     CHECK(diagnostic.line == 6);
     CHECK(diagnostic.column == 11);
-    CHECK(diagnostic.message.find("'[Package].Version' is not a valid version") != std::string::npos);
+    CHECK(diagnostic.message.find("package version 'not a version'") != std::string::npos);
+    CHECK(diagnostic.message.find("missing or empty numeric component in the minor") != std::string::npos);
     CHECK(diagnostic.Format().starts_with("Rux.toml:6:11: "));
     CHECK(diagnostic.Render().starts_with("Rux.toml:6:11: error: "));
     CHECK(diagnostic.Render().contains("6 | Version = \"not a version\""));
@@ -346,7 +347,7 @@ TEST_CASE("Unknown, duplicate and mistyped input is rejected") {
     SUBCASE("invalid identity") {
         CHECK(Rejected("[Manifest]\nVersion = 1\n\n[Package]\nName = \"My__Pkg\"\nVersion = \"0.1.0\"\n"
                        "Type = \"Executable\"\n")
-                  .message.find("not a valid identity") != std::string::npos);
+                  .message.find("package name 'My__Pkg' has adjacent separators") != std::string::npos);
     }
     SUBCASE("the retired license URL field") {
         CHECK(Rejected(WithPackage("LicenseUrl = \"https://example.com/LICENSE.md\"\n"))
@@ -465,7 +466,7 @@ TEST_CASE("Dependency entries follow the documented rules") {
     }
     SUBCASE("invalid version requirement") {
         CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Namespace = \"Rux\", Version = \"1 || 2\" }\n"))
-                  .message.find("not a valid requirement") != std::string::npos);
+                  .message.find("dependency 'Io' version requirement '1 || 2'") != std::string::npos);
     }
     SUBCASE("import names collide after normalization") {
         const auto diagnostic =
@@ -644,6 +645,16 @@ TEST_CASE("Package specifications parse into validated identities") {
     CHECK_FALSE(ParsePackageSpec("Rux/Io@1 || 2").has_value());
     CHECK_FALSE(ParsePackageSpec("My__Pkg").has_value());
     CHECK_FALSE(ParsePackageSpec("-bad/Io").has_value());
+
+    const auto badName = ParsePackageSpec("Bad__Name");
+    REQUIRE_FALSE(badName.has_value());
+    CHECK(badName.error().message == "package name 'Bad__Name' has adjacent separators at bytes 4 and 5");
+    CHECK(badName.error().notes == std::vector<std::string>{std::string(identitySegmentConstraint)});
+
+    const auto badRange = ParsePackageSpec("Rux/Io@1 || 2");
+    REQUIRE_FALSE(badRange.has_value());
+    CHECK(badRange.error().message.contains("version requirement '1 || 2'"));
+    CHECK_FALSE(badRange.error().notes.empty());
 }
 
 // --- Publication validation profile ------------------------------------------
@@ -670,15 +681,15 @@ TEST_CASE("the publication profile rejects what local validation allows") {
     SUBCASE("a workspace is not a package") {
         const auto rejections = ValidateForPublication(Accepted(canonicalWorkspace));
         REQUIRE(rejections.size() == 1);
-        CHECK(rejections.front().contains("workspace"));
+        CHECK(rejections.front().message.contains("workspace"));
     }
 
     SUBCASE("a namespace-free package is local-only") {
         const auto rejections = ValidateForPublication(Accepted(WithPackage("", "SourceLibrary")));
         // The same manifest also omits MinRux, so both rules report.
         REQUIRE(rejections.size() == 2);
-        CHECK(rejections[0].contains("Namespace"));
-        CHECK(rejections[1].contains("MinRux"));
+        CHECK(rejections[0].notes.front().contains("Namespace"));
+        CHECK(rejections[1].notes.front().contains("MinRux"));
     }
 
     SUBCASE("MinRux is required") {
@@ -692,7 +703,7 @@ Version = "0.1.0"
 Type = "SourceLibrary"
 )"));
         REQUIRE(rejections.size() == 1);
-        CHECK(rejections.front().contains("MinRux"));
+        CHECK(rejections.front().notes.front().contains("MinRux"));
     }
 
     SUBCASE("MinRux below the floor is rejected") {
@@ -707,7 +718,7 @@ Version = "0.1.0"
 Type = "SourceLibrary"
 )"));
         REQUIRE(rejections.size() == 1);
-        CHECK(rejections.front().contains("0.3.9"));
+        CHECK(rejections.front().message.contains("0.3.9"));
     }
 
     SUBCASE("a path dependency cannot be resolved from the registry") {
@@ -725,17 +736,15 @@ Type = "SourceLibrary"
 Util = { Path = "../Util" }
 )"));
         REQUIRE(rejections.size() == 1);
-        CHECK(rejections.front().contains("Util"));
+        CHECK(rejections.front().message.contains("Util"));
     }
 
     SUBCASE("only SourceLibrary is publishable in Rux 0.4.0") {
         for (const std::string_view type : {"Executable", "SharedLibrary", "StaticLibrary"}) {
             const auto rejections = ValidateForPublication(Accepted(WithPackage("Namespace = \"Rux\"\n", type)));
             REQUIRE(rejections.size() == 2);
-            CHECK(rejections[0] == "[Package].Type = \"" + std::string(type) +
-                                       "\" cannot be published by Rux 0.4.0; this release publishes only Type = "
-                                       "\"SourceLibrary\"");
-            CHECK(rejections[1].contains("MinRux"));
+            CHECK(rejections[0].message == "package type '" + std::string(type) + "' cannot be published by Rux 0.4.0");
+            CHECK(rejections[1].notes.front().contains("MinRux"));
         }
     }
 }
