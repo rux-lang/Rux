@@ -262,7 +262,9 @@ int Cli::Run() const {
         commandArgs.push_back(argument);
     }
 
-    if (command.empty()) {
+    // `command` and `commandSpec` are set together above, so testing the pointer
+    // also covers the no-command case and keeps the uses below provably non-null.
+    if (commandSpec == nullptr) {
         PrintHelp(options.color);
         return 0;
     }

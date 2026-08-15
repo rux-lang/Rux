@@ -35,7 +35,9 @@ jobs:
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # The AArch64 VM is fully emulated, so its build is roughly an order of
+    # magnitude slower than the KVM-accelerated x86-64 one.
+    timeout-minutes: 150
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -48,6 +50,9 @@ jobs:
           release: "14.4"
           arch: ${{ matrix.vm_arch }}
           usesh: true
+          # Match the Ubuntu host so the emulated build compiles in parallel.
+          cpu: 4
+          mem: 8192
           # Cache the prepared VM image so the LLVM and build-tool packages do
           # not need to be downloaded on every workflow run.
           cache-after-prepare: true
@@ -94,7 +99,7 @@ jobs:
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -113,6 +118,8 @@ jobs:
           release: "14.4"
           arch: ${{ matrix.vm_arch }}
           usesh: true
+          cpu: 4
+          mem: 8192
           # The prebuilt binary needs the Clang runtime libraries. The
           # workspace and test manifests resolve first-party packages
           # locally, so no registry or Git client is needed.
@@ -170,7 +177,7 @@ jobs:
     name: Cross runtime (transferred to AArch64)
     needs: cross-build
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout verifier
         uses: actions/checkout@v6
@@ -189,6 +196,8 @@ jobs:
           release: "14.4"
           arch: aarch64
           usesh: true
+          cpu: 4
+          mem: 8192
           run: |
             set -e
             sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload

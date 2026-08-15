@@ -18,6 +18,10 @@ permissions:
 env:
   CMAKE_VERSION: "4.3.3"
   NINJA_VERSION: "1.13.2"
+  LLVM_VERSION: "22.1.8"
+  # The upstream installer is placed outside Program Files so it cannot merge
+  # with the older LLVM the x86-64 image preinstalls.
+  LLVM_ROOT: "C:/LLVM"
 
 jobs:
   build:
@@ -31,12 +35,14 @@ jobs:
             runner: windows-2025
             vs_arch: amd64
             compiler_target: x86_64-pc-windows-msvc
+            llvm_installer: win64
             artifact: rux-windows-x86_64
           - arch: aarch64
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
             compiler_target: aarch64-pc-windows-msvc
+            llvm_installer: woa64
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
@@ -45,6 +51,22 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      # Neither runner image satisfies the Clang 22.1 floor: windows-2025 ships
+      # Clang 20 and windows-11-arm has only the Clang 19 bundled with Visual
+      # Studio, so install the upstream release for the host architecture.
+      - name: Install Clang 22
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-setup.exe'
+          $version = "${{ env.LLVM_VERSION }}"
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-${{ matrix.llvm_installer }}.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          # NSIS: /S is silent, /D is the target directory and must come last,
+          # unquoted, with backslashes and no trailing separator.
+          $root = "${{ env.LLVM_ROOT }}".Replace('/', '\')
+          Start-Process -FilePath $installer -ArgumentList '/S', "/D=$root" -Wait -NoNewWindow
+          & "${{ env.LLVM_ROOT }}/bin/clang++.exe" --version
 
       - name: Install CMake and Ninja
         uses: lukka/get-cmake@v4.3.3
@@ -59,9 +81,11 @@ jobs:
         run: |
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
 
+          # An absolute path, because the developer environment above puts the
+          # Visual Studio Clang on PATH ahead of the one installed here.
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_CXX_COMPILER=clang++ `
+            -DCMAKE_CXX_COMPILER="${{ env.LLVM_ROOT }}/bin/clang++.exe" `
             -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON

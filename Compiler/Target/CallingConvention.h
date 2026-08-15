@@ -24,13 +24,15 @@ constexpr CallingConvention PlatformCConvention(const Target::OS os, const Targe
     return os == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
 }
 
-// Rux functions use AAPCS64 on AArch64 and retain the existing x86-64 defaults:
-// System V on Linux, Win64 on other systems.
+// Rux functions use AAPCS64 on AArch64. On x86-64 they follow the same split as
+// the C ABI, because the internal ABI has to interoperate with the target's
+// register, shadow-space, and stack-alignment rules: Win64 on Windows, System V
+// on every other modeled system, macOS and FreeBSD included.
 constexpr CallingConvention PlatformDefaultConvention(const Target::OS os, const Target::Arch arch) {
     if (arch == Target::Arch::AArch64) {
         return CallingConvention::AAPCS64;
     }
-    return os == Target::OS::Linux ? CallingConvention::SysV : CallingConvention::Win64;
+    return os == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
 }
 
 // Host-defaulted wrappers, correct only when the target is the host. Anything

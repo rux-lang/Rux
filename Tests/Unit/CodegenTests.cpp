@@ -57,10 +57,13 @@ static LirPackage CompileToLir(const std::string &source) {
     return CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", TargetContext::CreateNative());
 }
 
+// The printer defaults its target OS to the host, which is only correct when the
+// two agree. Pass the same target the LIR was lowered for, so the rendered ABI
+// describes the triple below rather than whatever machine the suite runs on.
 static std::string CompileToAsm(const std::string &source) {
-    const std::string_view target = RUX_OS_WINDOWS ? "windows-x86_64" : "linux-x86_64";
-    AssemblyPrinter printer(CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux",
-                                            Driver::TargetContextForTriple(*Target::TargetTriple::Parse(target))));
+    const std::string_view triple = RUX_OS_WINDOWS ? "windows-x86_64" : "linux-x86_64";
+    const auto target = Driver::TargetContextForTriple(*Target::TargetTriple::Parse(triple));
+    AssemblyPrinter printer(CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", target), target.os);
     return printer.Generate();
 }
 
@@ -629,6 +632,12 @@ TEST_CASE("platform conventions are decided by the target OS and architecture") 
     CHECK_EQ(PlatformDefaultConvention(Target::OS::Linux, Target::Arch::X86_64), CallingConvention::SysV);
     CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows, Target::Arch::X86_64), CallingConvention::Win64);
     CHECK_EQ(PlatformDefaultConvention(Target::OS::Windows, Target::Arch::AArch64), CallingConvention::AAPCS64);
+
+    // Win64 belongs to Windows alone. macOS and FreeBSD are System V on x86-64,
+    // for the internal ABI exactly as for the C ABI.
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::MacOS, Target::Arch::X86_64), CallingConvention::SysV);
+    CHECK_EQ(PlatformDefaultConvention(Target::OS::FreeBSD, Target::Arch::X86_64), CallingConvention::SysV);
+    CHECK_EQ(PlatformCConvention(Target::OS::FreeBSD, Target::Arch::X86_64), CallingConvention::SysV);
 
     // `.C` collapses against the target; concrete conventions pass through.
     CHECK_EQ(ResolveCConvention(CallingConvention::C, Target::OS::Windows, Target::Arch::X86_64),
