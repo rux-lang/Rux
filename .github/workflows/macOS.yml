@@ -68,12 +68,32 @@ jobs:
         run: ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact
+        id: upload
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
+
+      # Hosted macOS runners intermittently fail CreateArtifact with DNS
+      # errors (ENOTFOUND) and the action has no built-in retry, so pause
+      # for the blip to clear and try once more. Overwrite in case the
+      # first attempt created the artifact before failing.
+      - name: Wait before upload retry
+        if: steps.upload.outcome == 'failure'
+        run: sleep 15
+
+      - name: Upload binary artifact (retry)
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
 
   test:
     name: Test (${{ matrix.label }})
