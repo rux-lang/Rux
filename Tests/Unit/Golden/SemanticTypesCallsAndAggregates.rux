@@ -1,0 +1,15 @@
+func Add(left: int, right: int) {}
+
+struct Point {
+    x: int;
+    y: bool;
+}
+
+func Main() {
+    Add(1, "two");
+    let point = Point { x: "left", extra: 3 };
+    let values = [1, "two"];
+    values[false];
+    let pair = (1, true);
+    pair.name;
+}

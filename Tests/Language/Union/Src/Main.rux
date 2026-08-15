@@ -4,8 +4,7 @@ union Bits {
     asBytes: uint8[4]
 }
 
-// type Word = Bits;
-
 func Main() -> int {
-    return 0;
+    let bits = Bits { asInt: 0i32 };
+    return bits.asInt;
 }

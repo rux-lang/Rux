@@ -414,6 +414,13 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
 TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName) {
     const auto structure = structDecls.find(expression.typeName);
     if (structure == structDecls.end()) {
+        if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
+            for (const auto &field : unionType->second->fields) {
+                if (field.name == fieldName) {
+                    return ResolveType(*field.type);
+                }
+            }
+        }
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expression.typeName); enumDecl && variant) {
             for (const auto &field : variant->namedFields) {
                 if (field.name == fieldName) {

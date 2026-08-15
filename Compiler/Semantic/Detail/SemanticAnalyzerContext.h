@@ -37,6 +37,10 @@ protected:
                    std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message) const;
     void EmitUndefinedName(SourceLocation location, const std::string &name) const;
+    void EmitGenericArityError(const TypeExpr &expression, std::string subject, std::size_t expectedCount,
+                               std::size_t actualCount);
+    [[nodiscard]] std::optional<TypeRef> ResolveStructTypeReference(const TypeExpr &expression, const std::string &name,
+                                                                    const std::vector<TypeRef> &typeArguments);
 
     void PushScope();
     void PopScope();
@@ -119,6 +123,7 @@ private:
 
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+    std::unordered_set<const TypeExpr *> reportedGenericArity;
 
     void RegisterBuiltins();
     void IndexDeclarations();

@@ -5,6 +5,27 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+template <typename Range, typename Projection>
+[[nodiscard]] std::string AvailableNames(const Range &values, Projection projection) {
+    std::vector<std::string> names;
+    names.reserve(values.size());
+    for (const auto &value : values) {
+        names.push_back(std::format("'{}'", projection(value)));
+    }
+    std::ranges::sort(names);
+    if (names.empty()) {
+        return "none";
+    }
+    std::string result;
+    for (std::size_t index = 0; index < names.size(); ++index) {
+        if (index != 0) {
+            result += index + 1 == names.size() ? " and " : ", ";
+        }
+        result += names[index];
+    }
+    return result;
+}
+
 [[nodiscard]] std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
     if (name == "opaque") {
         return TypeRef::MakeOpaque();
@@ -193,6 +214,13 @@ TypeRef SemanticAnalyzerContext::StructFieldType(const TypeRef &objectType, cons
     }
     const auto structure = structDecls.find(typeName);
     if (structure == structDecls.end()) {
+        if (const auto unionType = unionDecls.find(typeName); unionType != unionDecls.end()) {
+            for (const auto &field : unionType->second->fields) {
+                if (field.name == fieldName) {
+                    return ResolveType(*field.type);
+                }
+            }
+        }
         return TypeRef::MakeUnknown();
     }
 
@@ -218,10 +246,66 @@ TypeRef SemanticAnalyzerContext::StructFieldType(const TypeRef &objectType, cons
 void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &expression) {
     const auto structure = structDecls.find(expression.typeName);
     if (structure == structDecls.end()) {
+        if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
+            if (!expression.typeArgs.empty()) {
+                EmitError(expression.location, std::format("union initializer for '{}' does not accept type arguments",
+                                                           expression.typeName));
+            }
+            if (expression.fields.size() != 1) {
+                EmitError(expression.location,
+                          std::format("union initializer for '{}' must select exactly one field, but {} provided",
+                                      expression.typeName,
+                                      expression.fields.size() == 1
+                                          ? "1 was"
+                                          : std::format("{} were", expression.fields.size())));
+            }
+            std::unordered_set<std::string> seen;
+            for (const auto &field : expression.fields) {
+                const TypeRef valueType = CheckExpr(*field.value);
+                if (!seen.insert(field.name).second) {
+                    EmitError(field.location, std::format("field '{}' is initialized more than once for union '{}'",
+                                                          field.name, expression.typeName));
+                    continue;
+                }
+                const auto expectedField =
+                    std::ranges::find_if(unionType->second->fields, [&](const UnionDecl::Field &candidate) {
+                        return candidate.name == field.name;
+                    });
+                if (expectedField == unionType->second->fields.end()) {
+                    EmitError(
+                        field.location, std::format("union '{}' has no field '{}'", expression.typeName, field.name),
+                        {std::format("available fields are {}",
+                                     AvailableNames(unionType->second->fields, [](const UnionDecl::Field &candidate) {
+                                         return candidate.name;
+                                     }))});
+                    continue;
+                }
+                const TypeRef fieldType = ResolveType(*expectedField->type);
+                if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
+                    !CanAssignExprTo(*field.value, valueType, fieldType)) {
+                    EmitError(
+                        field.location,
+                        AssignmentErrorMessage(
+                            *field.value, fieldType,
+                            std::format("field '{}' in initializer for union '{}' has type '{}', but its "
+                                        "declaration requires '{}'",
+                                        field.name, expression.typeName, valueType.ToString(), fieldType.ToString())),
+                        {std::format("field '{}' declared at line {}, column {}", field.name,
+                                     expectedField->location.line, expectedField->location.column)});
+                }
+            }
+            return;
+        }
+
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expression.typeName); enumDecl) {
             if (!variant) {
                 EmitError(expression.location,
-                          std::format("unknown enum variant '{}' in initializer", expression.typeName));
+                          std::format("enum '{}' has no variant '{}'", enumDecl->name,
+                                      expression.typeName.substr(expression.typeName.find("::") + 2)),
+                          {std::format("available variants are {}",
+                                       AvailableNames(enumDecl->variants, [](const EnumDecl::Variant &candidate) {
+                                           return candidate.name;
+                                       }))});
                 for (const auto &field : expression.fields) {
                     CheckExpr(*field.value);
                 }
@@ -229,7 +313,9 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
             }
             if (variant->namedFields.empty()) {
                 EmitError(expression.location,
-                          std::format("enum variant '{}' has no named fields", expression.typeName));
+                          std::format("enum variant '{}' cannot use a named-field initializer because it has no named "
+                                      "fields",
+                                      expression.typeName));
                 for (const auto &field : expression.fields) {
                     CheckExpr(*field.value);
                 }
@@ -241,42 +327,57 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                 fields.emplace(field.name, &field);
             }
 
-            std::unordered_set<std::string> initialized;
+            std::unordered_map<std::string, SourceLocation> initialized;
             for (const auto &field : expression.fields) {
                 const TypeRef valueType = CheckExpr(*field.value);
-                if (!initialized.insert(field.name).second) {
-                    EmitError(field.location, std::format("duplicate field '{}' in initializer for '{}'", field.name,
-                                                          expression.typeName));
+                if (const auto [first, inserted] = initialized.emplace(field.name, field.location); !inserted) {
+                    EmitError(field.location,
+                              std::format("field '{}' is initialized more than once for '{}'", field.name,
+                                          expression.typeName),
+                              {std::format("the first initializer for '{}' is at line {}, column {}", field.name,
+                                           first->second.line, first->second.column)});
                     continue;
                 }
 
                 const auto expectedField = fields.find(field.name);
                 if (expectedField == fields.end()) {
-                    EmitError(field.location, std::format("unknown field '{}' in initializer for '{}'", field.name,
-                                                          expression.typeName));
+                    EmitError(field.location,
+                              std::format("enum variant '{}' has no field '{}'", expression.typeName, field.name),
+                              {std::format("available fields are {}",
+                                           AvailableNames(variant->namedFields,
+                                                          [](const auto &candidate) { return candidate.name; }))});
                     continue;
                 }
 
                 const TypeRef fieldType = ResolveType(*expectedField->second->type);
                 if (!valueType.IsUnknown() && !fieldType.IsUnknown() &&
                     !CanAssignExprTo(*field.value, valueType, fieldType)) {
-                    EmitError(field.location, AssignmentErrorMessage(
-                                                  *field.value, fieldType,
-                                                  std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                              valueType.ToString(), field.name, fieldType.ToString())));
+                    EmitError(
+                        field.location,
+                        AssignmentErrorMessage(*field.value, fieldType,
+                                               std::format("field '{}' in initializer for '{}' has type '{}', but its "
+                                                           "declaration requires '{}'",
+                                                           field.name, expression.typeName, valueType.ToString(),
+                                                           fieldType.ToString())),
+                        {std::format("field '{}' declared at line {}, column {}", field.name,
+                                     expectedField->second->location.line, expectedField->second->location.column)});
                 }
             }
 
             for (const auto &field : variant->namedFields) {
                 if (!initialized.contains(field.name)) {
-                    EmitError(expression.location, std::format("missing field '{}' in initializer for '{}'", field.name,
-                                                               expression.typeName));
+                    EmitError(expression.location,
+                              std::format("initializer for '{}' is missing required field '{}'", expression.typeName,
+                                          field.name),
+                              {std::format("field '{}' declared at line {}, column {}", field.name, field.location.line,
+                                           field.location.column)});
                 }
             }
             return;
         }
 
-        EmitError(expression.location, std::format("unknown type '{}' in struct initializer", expression.typeName));
+        EmitError(expression.location,
+                  std::format("type '{}' is not defined for an aggregate initializer", expression.typeName));
         for (const auto &field : expression.fields) {
             CheckExpr(*field.value);
         }
@@ -286,8 +387,10 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
     const StructDecl &declaration = *structure->second;
     if (expression.typeArgs.size() != declaration.typeParams.size()) {
         EmitError(expression.location,
-                  std::format("struct '{}' expects {} type argument(s), got {}", expression.typeName,
-                              declaration.typeParams.size(), expression.typeArgs.size()));
+                  std::format(
+                      "struct initializer for '{}' requires {} type argument{}, but {} provided", expression.typeName,
+                      declaration.typeParams.size(), declaration.typeParams.size() == 1 ? "" : "s",
+                      expression.typeArgs.size() == 1 ? "1 was" : std::format("{} were", expression.typeArgs.size())));
     }
 
     const auto substitutions = StructTypeSubstitutions(declaration, expression.typeArgs);
@@ -296,35 +399,46 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
         fields.emplace(field.name, &field);
     }
 
-    std::unordered_set<std::string> initialized;
+    std::unordered_map<std::string, SourceLocation> initialized;
     for (const auto &field : expression.fields) {
         const TypeRef valueType = CheckExpr(*field.value);
-        if (!initialized.insert(field.name).second) {
+        if (const auto [first, inserted] = initialized.emplace(field.name, field.location); !inserted) {
             EmitError(field.location,
-                      std::format("duplicate field '{}' in initializer for '{}'", field.name, expression.typeName));
+                      std::format("field '{}' is initialized more than once for '{}'", field.name, expression.typeName),
+                      {std::format("the first initializer for '{}' is at line {}, column {}", field.name,
+                                   first->second.line, first->second.column)});
             continue;
         }
 
         const auto expectedField = fields.find(field.name);
         if (expectedField == fields.end()) {
-            EmitError(field.location,
-                      std::format("unknown field '{}' in initializer for '{}'", field.name, expression.typeName));
+            EmitError(field.location, std::format("struct '{}' has no field '{}'", expression.typeName, field.name),
+                      {std::format("available fields are {}",
+                                   AvailableNames(declaration.fields,
+                                                  [](const StructDecl::Field &candidate) { return candidate.name; }))});
             continue;
         }
 
         const TypeRef fieldType = ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
         if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*field.value, valueType, fieldType)) {
             EmitError(field.location,
-                      AssignmentErrorMessage(*field.value, fieldType,
-                                             std::format("cannot assign '{}' to field '{}' of type '{}'",
-                                                         valueType.ToString(), field.name, fieldType.ToString())));
+                      AssignmentErrorMessage(
+                          *field.value, fieldType,
+                          std::format("field '{}' in initializer for '{}' has type '{}', but its declaration requires "
+                                      "'{}'",
+                                      field.name, expression.typeName, valueType.ToString(), fieldType.ToString())),
+                      {std::format("field '{}' declared at line {}, column {}", field.name,
+                                   expectedField->second->location.line, expectedField->second->location.column)});
         }
     }
 
     for (const auto &field : declaration.fields) {
         if (!initialized.contains(field.name)) {
-            EmitError(expression.location,
-                      std::format("missing field '{}' in initializer for '{}'", field.name, expression.typeName));
+            EmitError(
+                expression.location,
+                std::format("initializer for '{}' is missing required field '{}'", expression.typeName, field.name),
+                {std::format("field '{}' declared at line {}, column {}", field.name, field.location.line,
+                             field.location.column)});
         }
     }
 }
@@ -347,8 +461,18 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
             EmitError(index->location, std::format("cannot slice value of type '{}'", objectType.ToString()));
             return TypeRef::MakeUnknown();
         }
+        if (!indexType.IsUnknown() && !indexType.IsInteger()) {
+            EmitError(index->index->location,
+                      std::format("index for type '{}' must be an integer or range, but has type '{}'",
+                                  objectType.ToString(), indexType.ToString()));
+            return TypeRef::MakeUnknown();
+        }
         if (auto elementType = IndexElementType(objectType)) {
             return *elementType;
+        }
+        if (!objectType.IsUnknown()) {
+            EmitError(index->object->location, std::format("type '{}' cannot be indexed", objectType.ToString()), {},
+                      "only arrays, slices, and pointers support indexing");
         }
         return TypeRef::MakeUnknown();
     }
@@ -366,7 +490,8 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 return TypeRef::MakeUInt64();
             }
             EmitError(field->location,
-                      std::format("unknown field '{}' on type '{}'", field->field, objectType.ToString()));
+                      std::format("slice type '{}' has no member '{}'", objectType.ToString(), field->field),
+                      {"available slice members are 'data' and 'length'"});
             return TypeRef::MakeUnknown();
         }
         if (objectType.IsRange()) {
@@ -378,20 +503,29 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 return elementType;
             }
             EmitError(field->location,
-                      std::format("unknown field '{}' on type '{}'", field->field, objectType.ToString()));
+                      std::format("range type '{}' has no member '{}'", objectType.ToString(), field->field),
+                      {"range members are 'start' and 'end' when that bound is present"});
             return TypeRef::MakeUnknown();
         }
         if (objectType.kind == TypeRef::Kind::Tuple) {
             try {
-                const std::size_t index = std::stoul(field->field);
-                if (index < objectType.inner.size()) {
-                    return objectType.inner[index];
+                std::size_t consumed = 0;
+                const std::size_t index = std::stoul(field->field, &consumed);
+                if (consumed == field->field.size()) {
+                    if (index < objectType.inner.size()) {
+                        return objectType.inner[index];
+                    }
+                    EmitError(field->location,
+                              std::format("tuple index {} is out of range for a tuple with {} element{}", index,
+                                          objectType.inner.size(), objectType.inner.size() == 1 ? "" : "s"));
+                    return TypeRef::MakeUnknown();
                 }
             }
             catch (...) {
             }
             EmitError(field->location,
-                      std::format("tuple index '{}' out of range for type '{}'", field->field, objectType.ToString()));
+                      std::format("tuple type '{}' has no member '{}'", objectType.ToString(), field->field), {},
+                      "tuple members use zero-based numeric indices such as '.0'");
             return TypeRef::MakeUnknown();
         }
 
@@ -404,7 +538,8 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 return opaquePointer;
             }
             EmitError(field->location,
-                      std::format("unknown field '{}' on interface type '{}'", field->field, objectType.ToString()));
+                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field),
+                      {"available interface representation members are 'data' and 'vtable'"});
             return TypeRef::MakeUnknown();
         }
 
@@ -414,7 +549,20 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 return fieldType;
             }
             EmitError(field->location,
-                      std::format("unknown field '{}' on type '{}'", field->field, objectType.ToString()));
+                      std::format("struct '{}' has no field '{}'", objectType.ToString(), field->field),
+                      {std::format("available fields are {}",
+                                   AvailableNames(structDecls.at(structName)->fields,
+                                                  [](const StructDecl::Field &candidate) { return candidate.name; }))});
+            return TypeRef::MakeUnknown();
+        }
+        if (!structName.empty() && unionDecls.contains(structName)) {
+            if (TypeRef fieldType = StructFieldType(objectType, field->field); !fieldType.IsUnknown()) {
+                return fieldType;
+            }
+            EmitError(field->location, std::format("union '{}' has no field '{}'", objectType.ToString(), field->field),
+                      {std::format("available fields are {}",
+                                   AvailableNames(unionDecls.at(structName)->fields,
+                                                  [](const UnionDecl::Field &candidate) { return candidate.name; }))});
             return TypeRef::MakeUnknown();
         }
 
@@ -439,10 +587,28 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
 
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
         TypeRef elementType = TypeRef::MakeUnknown();
-        for (const auto &element : array->elements) {
+        std::size_t inferredFrom = 0;
+        const Expr *inferredExpression = nullptr;
+        for (std::size_t index = 0; index < array->elements.size(); ++index) {
+            const auto &element = array->elements[index];
             const TypeRef type = CheckExpr(*element);
             if (elementType.IsUnknown()) {
                 elementType = type;
+                inferredFrom = index;
+                inferredExpression = element.get();
+            }
+            else if (!type.IsUnknown() && !CanAssignExprTo(*element, type, elementType)) {
+                if (inferredExpression && CanAssignExprTo(*inferredExpression, elementType, type)) {
+                    elementType = type;
+                    inferredFrom = index;
+                    inferredExpression = element.get();
+                }
+                else {
+                    EmitError(
+                        element->location,
+                        std::format("array element {} has type '{}', but element {} established element type '{}'",
+                                    index + 1, type.ToString(), inferredFrom + 1, elementType.ToString()));
+                }
             }
         }
         return TypeRef::MakeArray(elementType, array->elements.size());

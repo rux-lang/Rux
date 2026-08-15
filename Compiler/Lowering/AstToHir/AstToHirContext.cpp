@@ -160,6 +160,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
     }
     else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+        unionDecls[unionDecl->name] = unionDecl;
         simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(unionDecl->name));
     }
     else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {

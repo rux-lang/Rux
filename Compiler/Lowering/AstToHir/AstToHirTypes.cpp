@@ -844,6 +844,13 @@ TypeRef AstToHirContext::StructFieldType(const TypeRef &objectType, const std::s
     }
     const auto structIt = structDecls.find(typeName);
     if (structIt == structDecls.end()) {
+        if (const auto unionType = unionDecls.find(typeName); unionType != unionDecls.end()) {
+            for (const auto &field : unionType->second->fields) {
+                if (field.name == fieldName) {
+                    return ResolveType(*field.type);
+                }
+            }
+        }
         return TypeRef::MakeUnknown();
     }
 

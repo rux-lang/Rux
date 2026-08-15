@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <utility>
 
 namespace Rux::SemanticDetail {
@@ -64,6 +65,39 @@ SemanticAnalyzerContext::~SemanticAnalyzerContext() = default;
 
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
     return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
+}
+
+void SemanticAnalyzerContext::EmitGenericArityError(const TypeExpr &expression, std::string subject,
+                                                    const std::size_t expectedCount, const std::size_t actualCount) {
+    if (!reportedGenericArity.insert(&expression).second) {
+        return;
+    }
+    EmitError(expression.location, std::format("{} requires {} type argument{}, but {} provided", std::move(subject),
+                                               expectedCount, expectedCount == 1 ? "" : "s",
+                                               actualCount == 1 ? "1 was" : std::format("{} were", actualCount)));
+}
+
+std::optional<TypeRef> SemanticAnalyzerContext::ResolveStructTypeReference(const TypeExpr &expression,
+                                                                           const std::string &name,
+                                                                           const std::vector<TypeRef> &typeArguments) {
+    const auto declaration = structDecls.find(name);
+    if (declaration == structDecls.end()) {
+        return std::nullopt;
+    }
+    if (typeArguments.size() != declaration->second->typeParams.size()) {
+        EmitGenericArityError(expression, std::format("struct type '{}'", name), declaration->second->typeParams.size(),
+                              typeArguments.size());
+        return TypeRef::MakeUnknown();
+    }
+    std::string instantiatedName = name;
+    for (std::size_t index = 0; index < typeArguments.size(); ++index) {
+        instantiatedName += index == 0 ? "<" : ", ";
+        instantiatedName += typeArguments[index].ToString();
+    }
+    if (!typeArguments.empty()) {
+        instantiatedName += ">";
+    }
+    return TypeRef::MakeNamed(std::move(instantiatedName));
 }
 
 void SemanticAnalyzerContext::RegisterBuiltins() {

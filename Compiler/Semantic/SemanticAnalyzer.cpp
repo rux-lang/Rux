@@ -1205,11 +1205,15 @@ private:
             if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
                 const auto &decl = *enumIt->second;
                 if (resolvedArgs.size() != decl.typeParams.size()) {
-                    EmitError(expr.location, std::format("enum '{}' expects {} type argument(s), got {}", t->name,
-                                                         decl.typeParams.size(), resolvedArgs.size()));
+                    EmitGenericArityError(expr, std::format("enum type '{}'", t->name), decl.typeParams.size(),
+                                          resolvedArgs.size());
                     return TypeRef::MakeUnknown();
                 }
                 return EnumType(decl, resolvedArgs);
+            }
+
+            if (auto structType = ResolveStructTypeReference(expr, t->name, resolvedArgs)) {
+                return *structType;
             }
 
             Symbol *sym = currentScope ? currentScope->Lookup(t->name) : nullptr;
@@ -1229,10 +1233,6 @@ private:
                     }
                     return TypeRef::MakeNamed(GenericTypeName(*t));
                 }
-            }
-
-            if (structDecls.contains(t->name)) {
-                return TypeRef::MakeNamed(GenericTypeName(*t));
             }
 
             if (sym) {

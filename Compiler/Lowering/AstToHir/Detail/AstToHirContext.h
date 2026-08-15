@@ -76,6 +76,7 @@ protected:
     std::unordered_set<std::string> generatedMonomorphizedFuncNames;
     std::unordered_map<std::string, const StructDecl *> structDecls;
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
+    std::unordered_map<std::string, const UnionDecl *> unionDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methodsByType;
     std::unordered_map<std::string, const InterfaceDecl *> interfaceDecls;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;

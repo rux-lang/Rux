@@ -1,11 +1,132 @@
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
+#include "Syntax/Parser/Detail/AstDumpWriter.h"
 
 #include <algorithm>
 #include <format>
 
 namespace Rux::SemanticDetail {
+namespace {
+using ParserDumpDetail::DeclarationPrinter;
+
+[[nodiscard]] std::string ArgumentTypes(const std::vector<TypeRef> &types) {
+    std::string result;
+    for (std::size_t index = 0; index < types.size(); ++index) {
+        if (index != 0) {
+            result += ", ";
+        }
+        result += types[index].ToString();
+    }
+    return result;
+}
+
+[[nodiscard]] std::vector<const Param *> VisibleParameters(const FuncDecl &declaration, const bool isMethod) {
+    std::vector<const Param *> result;
+    for (const Param &parameter : declaration.params) {
+        if (isMethod && parameter.name == "self") {
+            continue;
+        }
+        result.push_back(&parameter);
+    }
+    return result;
+}
+
+[[nodiscard]] std::string CandidateSignature(const FuncDecl &declaration, const bool isMethod) {
+    std::string result = declaration.name + "(";
+    const auto parameters = VisibleParameters(declaration, isMethod);
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+        if (index != 0) {
+            result += ", ";
+        }
+        const Param &parameter = *parameters[index];
+        result += parameter.name;
+        result += ": ";
+        result += DeclarationPrinter::TypeString(parameter.type.get());
+        if (parameter.isVariadic) {
+            result += "...";
+        }
+        if (parameter.defaultValue) {
+            result += " = ...";
+        }
+    }
+    return result + ")";
+}
+
+[[nodiscard]] std::string Counted(const std::size_t count, const std::string_view singular) {
+    return std::format("{} {}{}", count, singular, count == 1 ? "" : "s");
+}
+} // namespace
+
 TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression) {
     const CallExpr *e = &expression;
+    const auto sourceFor = [&](const FuncDecl &declaration) -> std::string {
+        if (const auto source = functionDeclFiles.find(&declaration); source != functionDeclFiles.end()) {
+            return source->second;
+        }
+        return currentFile;
+    };
+    const auto declarationNote = [&](const FuncDecl &declaration, const bool isMethod) {
+        return std::format("candidate '{}' declared at '{}':{}:{}", CandidateSignature(declaration, isMethod),
+                           sourceFor(declaration), declaration.location.line, declaration.location.column);
+    };
+    const auto parameterNote = [&](const Param &parameter, const FuncDecl &declaration) {
+        return std::format("parameter '{}' declared at '{}':{}:{}", parameter.name, sourceFor(declaration),
+                           parameter.location.line, parameter.location.column);
+    };
+    const auto emitArityError = [&](const std::string_view callable, const std::size_t requiredCount,
+                                    const std::size_t maximumCount, const bool variadic, const std::size_t actualCount,
+                                    const FuncDecl *declaration = nullptr, const bool isMethod = false) {
+        std::string expectation;
+        if (variadic) {
+            expectation = "at least " + Counted(requiredCount, "argument");
+        }
+        else if (requiredCount != maximumCount) {
+            expectation = std::format("between {} and {} arguments", requiredCount, maximumCount);
+        }
+        else {
+            expectation = Counted(maximumCount, "argument");
+        }
+        std::vector<std::string> notes;
+        if (declaration) {
+            notes.push_back(declarationNote(*declaration, isMethod));
+        }
+        EmitError(e->location,
+                  std::format("call to '{}' expects {}, but {} provided", callable, expectation,
+                              actualCount == 1 ? "1 was" : std::format("{} were", actualCount)),
+                  std::move(notes));
+    };
+    const auto emitArgumentTypeError = [&](const std::string_view callable, const std::size_t argumentIndex,
+                                           const TypeRef &argumentType, const TypeRef &parameterType,
+                                           const Param *parameter, const FuncDecl *declaration = nullptr,
+                                           const bool variadic = false) {
+        const std::string parameterName = parameter && !parameter->name.empty()
+                                            ? std::format("parameter '{}'", parameter->name)
+                                            : std::format("parameter {}", argumentIndex + 1);
+        std::vector<std::string> notes;
+        if (parameter && declaration) {
+            notes.push_back(parameterNote(*parameter, *declaration));
+        }
+        EmitError(e->args[argumentIndex]->location,
+                  std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
+                              argumentType.ToString(), variadic ? "variadic " : "", parameterName,
+                              parameterType.ToString()),
+                  std::move(notes));
+    };
+    const auto emitOverloadError = [&](const std::string_view callable, const std::vector<TypeRef> &argumentTypes,
+                                       const std::vector<const FuncDecl *> &candidates, const bool isMethod = false,
+                                       const std::optional<TypeRef> &receiverType = std::nullopt) {
+        std::vector<std::string> notes;
+        notes.reserve(candidates.size());
+        for (const FuncDecl *candidate : candidates) {
+            notes.push_back(declarationNote(*candidate, isMethod));
+        }
+        const std::string subject = receiverType
+                                      ? std::format("method '{}' on type '{}'", callable, receiverType->ToString())
+                                      : std::format("'{}'", callable);
+        EmitError(
+            e->location,
+            std::format("no matching overload for {} with argument types ({})", subject, ArgumentTypes(argumentTypes)),
+            std::move(notes));
+    };
     if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
         std::vector<TypeRef> argTypes;
         argTypes.reserve(e->args.size());
@@ -25,21 +146,57 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
             const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes, e->typeArgs);
             if (!decl) {
-                std::string argList;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (i > 0) {
-                        argList += ", ";
-                    }
-                    argList += argTypes[i].ToString();
+                if (sym->funcOverloads.size() != 1) {
+                    emitOverloadError(ident->name, argTypes, sym->funcOverloads);
+                    return TypeRef::MakeUnknown();
                 }
-                EmitError(e->location, std::format("no matching overload for '{}' "
-                                                   "with argument types ({})",
-                                                   ident->name, argList));
+
+                const FuncDecl &candidate = *sym->funcOverloads.front();
+                std::unordered_map<std::string, TypeRef> candidateSubstitutions;
+                const std::size_t substitutionCount = std::min(candidate.typeParams.size(), e->typeArgs.size());
+                for (std::size_t index = 0; index < substitutionCount; ++index) {
+                    candidateSubstitutions.emplace(candidate.typeParams[index], ResolveType(*e->typeArgs[index]));
+                }
+                const TypeRef candidateType = MakeFuncTypeWithSubstitution(
+                    candidate.params, candidate.returnType, candidateSubstitutions, candidate.typeParams);
+                const std::size_t candidateParamCount =
+                    candidateType.inner.empty() ? 0 : candidateType.inner.size() - 1;
+                std::size_t candidateRequiredCount = 0;
+                for (const Param &parameter : candidate.params) {
+                    if (!parameter.isVariadic && !parameter.defaultValue) {
+                        ++candidateRequiredCount;
+                    }
+                }
+                const bool candidateIsVariadic = !candidate.params.empty() && candidate.params.back().isVariadic;
+                const bool candidateArityOk = candidateIsVariadic ? argTypes.size() >= candidateRequiredCount
+                                                                  : argTypes.size() >= candidateRequiredCount &&
+                                                                        argTypes.size() <= candidateParamCount;
+                if (!candidateArityOk) {
+                    emitArityError(ident->name, candidateRequiredCount, candidateParamCount, candidateIsVariadic,
+                                   argTypes.size(), &candidate);
+                    return TypeRef::MakeUnknown();
+                }
+
+                const auto parameters = VisibleParameters(candidate, false);
+                for (std::size_t index = 0; index < std::min(argTypes.size(), candidateParamCount); ++index) {
+                    const TypeRef &parameterType = candidateType.inner[index];
+                    if (!argTypes[index].IsUnknown() && !parameterType.IsUnknown() &&
+                        !CanAssignExprTo(*e->args[index], argTypes[index], parameterType)) {
+                        emitArgumentTypeError(ident->name, index, argTypes[index], parameterType,
+                                              index < parameters.size() ? parameters[index] : nullptr, &candidate);
+                        return TypeRef::MakeUnknown();
+                    }
+                }
+
+                emitOverloadError(ident->name, argTypes, sym->funcOverloads);
                 return TypeRef::MakeUnknown();
             }
             if (e->typeArgs.size() != decl->typeParams.size()) {
-                EmitError(e->location, std::format("function '{}' expects {} type argument(s), got {}", ident->name,
-                                                   decl->typeParams.size(), e->typeArgs.size()));
+                EmitError(e->location,
+                          std::format("function '{}' requires {}, but {} provided", ident->name,
+                                      Counted(decl->typeParams.size(), "type argument"),
+                                      e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())),
+                          {declarationNote(*decl, false)});
             }
             if (!decl->warnMessage.empty()) {
                 EmitWarning(e->location, decl->warnMessage);
@@ -67,17 +224,16 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
             if (!arityOk) {
-                EmitError(e->location,
-                          std::format("function expects {} argument(s), got {}", paramCount, argTypes.size()));
+                emitArityError(ident->name, requiredCount, paramCount, isVariadic, argTypes.size(), decl);
             }
             else {
+                const auto parameters = VisibleParameters(*decl, false);
                 for (std::size_t i = 0; i < argTypes.size() && i < paramCount; ++i) {
                     const TypeRef &paramType = funcType.inner[i];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
-                        EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
-                                                                    "parameter of type '{}'",
-                                                                    argTypes[i].ToString(), paramType.ToString()));
+                        emitArgumentTypeError(ident->name, i, argTypes[i], paramType,
+                                              i < parameters.size() ? parameters[i] : nullptr, decl);
                     }
                 }
                 if (isVariadic) {
@@ -88,27 +244,23 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     if (isSingleSpread) {
                         if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
                             argTypes[paramCount] != sliceType) {
-                            EmitError(e->args[paramCount]->location,
-                                      std::format("cannot spread '{}' to "
-                                                  "variadic "
-                                                  "parameter of type '{}'",
-                                                  argTypes[paramCount].ToString(), varElemType.ToString()));
+                            emitArgumentTypeError(ident->name, paramCount, argTypes[paramCount], sliceType,
+                                                  &decl->params.back(), decl, true);
                         }
                     }
                     else {
                         for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
                             if (dynamic_cast<const SpreadExpr *>(e->args[i].get())) {
-                                EmitError(e->args[i]->location, "spread argument must be "
-                                                                "the only variadic "
-                                                                "argument");
+                                EmitError(e->args[i]->location,
+                                          std::format("spread argument to '{}' must be the only argument for variadic "
+                                                      "parameter '{}'",
+                                                      ident->name, decl->params.back().name),
+                                          {parameterNote(decl->params.back(), *decl)});
                             }
                             else if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
                                      !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
-                                EmitError(e->args[i]->location,
-                                          std::format("cannot pass '{}' to "
-                                                      "variadic "
-                                                      "parameter of type '{}'",
-                                                      argTypes[i].ToString(), varElemType.ToString()));
+                                emitArgumentTypeError(ident->name, i, argTypes[i], varElemType, &decl->params.back(),
+                                                      decl, true);
                             }
                         }
                     }
@@ -136,18 +288,18 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
 
             if (argTypes.size() != paramTypes.size()) {
-                EmitError(e->location,
-                          std::format("function expects {} argument(s), got {}", paramTypes.size(), argTypes.size()));
+                emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), method,
+                               true);
             }
             else {
+                const auto parameters = VisibleParameters(*method, true);
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     const TypeRef &argType = argTypes[i];
                     const TypeRef &paramType = paramTypes[i];
                     if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                        EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
-                                                                    "parameter of type '{}'",
-                                                                    argType.ToString(), paramType.ToString()));
+                        emitArgumentTypeError(field->field, i, argType, paramType,
+                                              i < parameters.size() ? parameters[i] : nullptr, method);
                     }
                 }
             }
@@ -157,6 +309,38 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             return ResolveMethodReturnType(receiverType, *method);
         }
 
+        const std::string receiverName = NamedBaseTypeName(receiverType);
+        if (const auto typeMethods = methodsByType.find(receiverName); typeMethods != methodsByType.end()) {
+            if (const auto namedMethods = typeMethods->second.find(field->field);
+                namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
+                const auto &candidates = namedMethods->second;
+                if (candidates.size() == 1) {
+                    const FuncDecl &candidate = *candidates.front();
+                    const std::vector<TypeRef> parameterTypes = ResolveMethodParamTypes(receiverType, candidate);
+                    if (argTypes.size() != parameterTypes.size()) {
+                        emitArityError(field->field, parameterTypes.size(), parameterTypes.size(), false,
+                                       argTypes.size(), &candidate, true);
+                    }
+                    else {
+                        const auto parameters = VisibleParameters(candidate, true);
+                        for (std::size_t index = 0; index < argTypes.size(); ++index) {
+                            if (!argTypes[index].IsUnknown() && !parameterTypes[index].IsUnknown() &&
+                                !CanAssignExprTo(*e->args[index], argTypes[index], parameterTypes[index])) {
+                                emitArgumentTypeError(field->field, index, argTypes[index], parameterTypes[index],
+                                                      index < parameters.size() ? parameters[index] : nullptr,
+                                                      &candidate);
+                                break;
+                            }
+                        }
+                    }
+                }
+                else {
+                    emitOverloadError(field->field, argTypes, candidates, true, receiverType);
+                }
+                return TypeRef::MakeUnknown();
+            }
+        }
+
         if (const FuncDecl *method = LookupInterfaceMethod(receiverType, field->field)) {
             std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method);
             const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
@@ -164,18 +348,18 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
 
             if (!arityOk) {
-                EmitError(e->location,
-                          std::format("function expects {} argument(s), got {}", paramTypes.size(), argTypes.size()));
+                emitArityError(field->field, paramTypes.size(), paramTypes.size(), isVariadic, argTypes.size(), method,
+                               true);
             }
             else {
+                const auto parameters = VisibleParameters(*method, true);
                 for (std::size_t i = 0; i < paramTypes.size(); ++i) {
                     const TypeRef &argType = argTypes[i];
                     const TypeRef &paramType = paramTypes[i];
                     if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                        EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
-                                                                    "parameter of type '{}'",
-                                                                    argType.ToString(), paramType.ToString()));
+                        emitArgumentTypeError(field->field, i, argType, paramType,
+                                              i < parameters.size() ? parameters[i] : nullptr, method);
                     }
                 }
 
@@ -184,10 +368,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
                         if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
                             !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
-                            EmitError(e->args[i]->location,
-                                      std::format("cannot pass '{}' to variadic "
-                                                  "parameter of type '{}'",
-                                                  argTypes[i].ToString(), varElemType.ToString()));
+                            emitArgumentTypeError(field->field, i, argTypes[i], varElemType, &method->params.back(),
+                                                  method, true);
                         }
                     }
                 }
@@ -206,10 +388,12 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     if (const EnumDecl::Variant *variant = LookupEnumVariant(path->segments[0], path->segments[1])) {
                         const EnumDecl &decl = *enumIt->second;
                         if (e->typeArgs.size() != decl.typeParams.size()) {
-                            EmitError(e->location,
-                                      std::format("enum variant '{}::{}' expects {} type argument(s), got {}",
-                                                  path->segments[0], path->segments[1], decl.typeParams.size(),
-                                                  e->typeArgs.size()));
+                            EmitError(e->location, std::format("enum variant '{}::{}' requires {}, but {} provided",
+                                                               path->segments[0], path->segments[1],
+                                                               Counted(decl.typeParams.size(), "type argument"),
+                                                               e->typeArgs.size() == 1
+                                                                   ? "1 was"
+                                                                   : std::format("{} were", e->typeArgs.size())));
                         }
                         std::vector<TypeRef> typeArgs;
                         typeArgs.reserve(e->typeArgs.size());
@@ -224,8 +408,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                             argTypes.push_back(CheckExpr(*arg));
                         }
                         if (argTypes.size() != paramCount) {
-                            EmitError(e->location, std::format("function expects {} argument(s), got {}", paramCount,
-                                                               argTypes.size()));
+                            emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
+                                           paramCount, false, argTypes.size());
                         }
                         else {
                             for (std::size_t i = 0; i < argTypes.size(); ++i) {
@@ -233,8 +417,13 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                                 if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                                     !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
                                     EmitError(e->args[i]->location,
-                                              std::format("cannot pass '{}' to parameter of type '{}'",
-                                                          argTypes[i].ToString(), paramType.ToString()));
+                                              std::format("argument {} to enum variant '{}::{}' has type '{}', but "
+                                                          "field {} requires '{}'",
+                                                          i + 1, path->segments[0], path->segments[1],
+                                                          argTypes[i].ToString(), i + 1, paramType.ToString()),
+                                              {std::format("variant '{}::{}' declared at '{}':{}:{}", path->segments[0],
+                                                           path->segments[1], currentFile, variant->location.line,
+                                                           variant->location.column)});
                                 }
                             }
                         }
@@ -254,9 +443,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 if (const auto structIt = structDecls.find(path->segments[0]);
                     structIt != structDecls.end() && !structIt->second->typeParams.empty() &&
                     e->typeArgs.size() != structIt->second->typeParams.size()) {
-                    EmitError(e->location,
-                              std::format("associated function on '{}' expects {} type argument(s), got {}",
-                                          path->segments[0], structIt->second->typeParams.size(), e->typeArgs.size()));
+                    EmitError(
+                        e->location,
+                        std::format("associated function on '{}' requires {}, but {} provided", path->segments[0],
+                                    Counted(structIt->second->typeParams.size(), "type argument"),
+                                    e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
                 }
                 receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
                 const std::string &methodName = path->segments[1];
@@ -268,25 +459,58 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 if (const FuncDecl *method = LookupMethod(receiverType, methodName, argTypes)) {
                     std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
                     if (argTypes.size() != paramTypes.size()) {
-                        EmitError(e->location, std::format("function expects {} "
-                                                           "argument(s), got {}",
-                                                           paramTypes.size(), argTypes.size()));
+                        emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),
+                                       paramTypes.size(), false, argTypes.size(), method, true);
                     }
                     else {
+                        const auto parameters = VisibleParameters(*method, true);
                         for (std::size_t i = 0; i < argTypes.size(); ++i) {
                             const TypeRef &argType = argTypes[i];
                             const TypeRef &paramType = paramTypes[i];
                             if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                                 !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                                EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
-                                                                            "parameter of type '{}'",
-                                                                            argType.ToString(), paramType.ToString()));
+                                emitArgumentTypeError(std::format("{}::{}", path->segments[0], methodName), i, argType,
+                                                      paramType, i < parameters.size() ? parameters[i] : nullptr,
+                                                      method);
                             }
                         }
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                           MethodTypeSubstitutions(receiverType), receiverType);
                     return ResolveMethodReturnType(receiverType, *method);
+                }
+
+                const std::string receiverName = NamedBaseTypeName(receiverType);
+                if (const auto typeMethods = methodsByType.find(receiverName); typeMethods != methodsByType.end()) {
+                    if (const auto namedMethods = typeMethods->second.find(methodName);
+                        namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
+                        const std::string callable = std::format("{}::{}", path->segments[0], methodName);
+                        const auto &candidates = namedMethods->second;
+                        if (candidates.size() == 1) {
+                            const FuncDecl &candidate = *candidates.front();
+                            const auto parameterTypes = ResolveMethodParamTypes(receiverType, candidate);
+                            if (argTypes.size() != parameterTypes.size()) {
+                                emitArityError(callable, parameterTypes.size(), parameterTypes.size(), false,
+                                               argTypes.size(), &candidate, true);
+                            }
+                            else {
+                                const auto parameters = VisibleParameters(candidate, true);
+                                for (std::size_t index = 0; index < argTypes.size(); ++index) {
+                                    if (!argTypes[index].IsUnknown() && !parameterTypes[index].IsUnknown() &&
+                                        !CanAssignExprTo(*e->args[index], argTypes[index], parameterTypes[index])) {
+                                        emitArgumentTypeError(callable, index, argTypes[index], parameterTypes[index],
+                                                              index < parameters.size() ? parameters[index] : nullptr,
+                                                              &candidate);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        else {
+                            emitOverloadError(callable, argTypes, candidates, true, receiverType);
+                        }
+                        return TypeRef::MakeUnknown();
+                    }
                 }
             }
         }
@@ -307,9 +531,15 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
     if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
         const std::size_t paramCount = calleeType.inner.size() - 1;
         const bool arityOk = calleeType.isVariadic ? argTypes.size() >= paramCount : argTypes.size() == paramCount;
+        std::string callableName = "function value";
+        if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->callee.get())) {
+            callableName = identifier->name;
+        }
+        else if (const auto *path = dynamic_cast<const PathExpr *>(e->callee.get()); path && !path->segments.empty()) {
+            callableName = path->segments.back();
+        }
         if (!arityOk) {
-            EmitError(e->location, std::format("function expects {}{} argument(s), got {}",
-                                               calleeType.isVariadic ? "at least " : "", paramCount, argTypes.size()));
+            emitArityError(callableName, paramCount, paramCount, calleeType.isVariadic, argTypes.size());
         }
         else {
             // Only the fixed parameters are type-checked; trailing
@@ -319,9 +549,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 const TypeRef &paramType = calleeType.inner[i];
                 if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                     !CanAssignExprTo(*e->args[i], argType, paramType)) {
-                    EmitError(e->args[i]->location, std::format("cannot pass '{}' to "
-                                                                "parameter of type '{}'",
-                                                                argType.ToString(), paramType.ToString()));
+                    const Param *parameter = nullptr;
+                    if (calleeSymbol && calleeSymbol->externDecl && i < calleeSymbol->externDecl->params.size()) {
+                        parameter = &calleeSymbol->externDecl->params[i];
+                    }
+                    emitArgumentTypeError(callableName, i, argType, paramType, parameter);
                 }
             }
         }
