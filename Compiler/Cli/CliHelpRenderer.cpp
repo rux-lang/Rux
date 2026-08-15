@@ -221,7 +221,7 @@ void AppendCommandJson(std::string &output, const CommandSpec &command) {
                                      : std::format("rux {}{}{}", command.name, example.empty() ? "" : " ", example));
     }
     output += "],\"documentationUrl\":";
-    AppendJsonString(output, std::format("https://rux-lang.dev/docs/cli/{}", command.name));
+    AppendJsonString(output, DocumentationUrl(command.name));
     output += '}';
 }
 } // namespace
@@ -288,6 +288,8 @@ std::string RenderCommand(const CommandSpec &command, const std::size_t terminal
         }
         output += '\n';
     }
+    output += std::format("{}Documentation:{}\n", style.Bold(), style.Reset());
+    output += std::format("    {}{}{}\n", style.Cyan(), DocumentationUrl(command.name), style.Reset());
     return output;
 }
 

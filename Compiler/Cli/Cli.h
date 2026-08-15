@@ -56,7 +56,8 @@ private:
     static void PrintHelpFor(std::string_view command, ColorMode color = ColorMode::Auto);
     static void PrintHelpJson(std::string_view command = {});
     static void PrintVersion();
-    static void PrintUnknownCommand(std::string_view command);
-    static void PrintUnknownOption(std::string_view option, std::string_view command = {});
+    static void PrintUnknownCommand(std::string_view command, ColorMode color = ColorMode::Auto);
+    static void PrintUnknownOption(std::string_view option, std::string_view command = {},
+                                   ColorMode color = ColorMode::Auto);
 };
 } // namespace Rux

@@ -124,6 +124,11 @@ std::size_t CountOccurrences(const std::string_view text, const std::string_view
     }
     return count;
 }
+
+std::string NormalizeNewlines(std::string text) {
+    std::erase(text, '\r');
+    return text;
+}
 } // namespace
 
 TEST_CASE("help JSON publishes the stable 0.4 command contract") {
@@ -144,7 +149,9 @@ TEST_CASE("help JSON publishes the stable 0.4 command contract") {
 TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     const auto unknown = Run(std::array<std::string_view, 1>{"bild"});
     CHECK(unknown.exitCode == 2);
-    CHECK(unknown.output.contains("Did you mean 'build'"));
+    CHECK(NormalizeNewlines(unknown.output) == "error: unknown command 'bild'\n"
+                                               "  help: try 'rux build'\n"
+                                               "  help: run 'rux help' for usage information\n");
 
     CHECK(Run(std::array<std::string_view, 2>{"build", "--target"}).exitCode == 2);
     CHECK(Run(std::array<std::string_view, 2>{"build", "--color=sometimes"}).exitCode == 2);
@@ -153,6 +160,74 @@ TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     CHECK(profileConflict.exitCode == 2);
     CHECK(profileConflict.output.contains("options '--debug' and '--release' cannot be used together"));
     CHECK(Run(std::array<std::string_view, 2>{"fmt", "extra"}).exitCode == 2);
+}
+
+TEST_CASE("CLI usage failures identify rejected input and give precise help") {
+    const auto unknownCommand = Run(std::array<std::string_view, 1>{"frobnicate"});
+    CHECK(unknownCommand.exitCode == 2);
+    CHECK(NormalizeNewlines(unknownCommand.output) == "error: unknown command 'frobnicate'\n"
+                                                      "  help: run 'rux help' for usage information\n");
+
+    const auto unknownOption = Run(std::array<std::string_view, 2>{"build", "--targt"});
+    CHECK(unknownOption.exitCode == 2);
+    CHECK(NormalizeNewlines(unknownOption.output) == "error: unknown option '--targt' for command 'build'\n"
+                                                     "  help: try 'rux build --target linux-x86_64'\n"
+                                                     "  help: run 'rux help build' for usage information\n");
+
+    const auto unrelatedOption = Run(std::array<std::string_view, 2>{"build", "--banana"});
+    CHECK(unrelatedOption.exitCode == 2);
+    CHECK(NormalizeNewlines(unrelatedOption.output) == "error: unknown option '--banana' for command 'build'\n"
+                                                       "  help: run 'rux help build' for usage information\n");
+
+    const auto globalOption = Run(std::array<std::string_view, 1>{"--colo"});
+    CHECK(globalOption.exitCode == 2);
+    CHECK(NormalizeNewlines(globalOption.output) == "error: unknown option '--colo'\n"
+                                                    "  help: try 'rux --color auto'\n"
+                                                    "  help: run 'rux help' for usage information\n");
+}
+
+TEST_CASE("CLI usage failures explain values operands conflicts and repetition") {
+    const auto missingValue = Run(std::array<std::string_view, 2>{"build", "--target"});
+    CHECK(missingValue.exitCode == 2);
+    CHECK(NormalizeNewlines(missingValue.output) == "error: option '--target' requires a target triple\n"
+                                                    "  help: try 'rux build --target linux-x86_64'\n"
+                                                    "  help: run 'rux help build' for usage information\n");
+
+    const auto invalidValue = Run(std::array<std::string_view, 1>{"--color=sometimes"});
+    CHECK(invalidValue.exitCode == 2);
+    CHECK(NormalizeNewlines(invalidValue.output) == "error: value 'sometimes' is not valid for option '--color'\n"
+                                                    "  note: accepted color modes are 'auto', 'always', and 'never'\n"
+                                                    "  help: try 'rux --color auto'\n"
+                                                    "  help: run 'rux help' for usage information\n");
+
+    const auto unexpectedValue = Run(std::array<std::string_view, 1>{"--quiet=true"});
+    CHECK(unexpectedValue.exitCode == 2);
+    CHECK(NormalizeNewlines(unexpectedValue.output) == "error: option '--quiet' does not accept a value\n"
+                                                       "  help: try 'rux --quiet'\n"
+                                                       "  help: run 'rux help' for usage information\n");
+
+    const auto missingOperand = Run(std::array<std::string_view, 1>{"new"});
+    CHECK(missingOperand.exitCode == 2);
+    CHECK(NormalizeNewlines(missingOperand.output) == "error: command 'new' requires a name argument\n"
+                                                      "  help: try 'rux new App'\n"
+                                                      "  help: run 'rux help new' for usage information\n");
+
+    const auto extraOperand = Run(std::array<std::string_view, 2>{"fmt", "extra"});
+    CHECK(extraOperand.exitCode == 2);
+    CHECK(NormalizeNewlines(extraOperand.output) == "error: argument 'extra' is not accepted by command 'fmt'\n"
+                                                    "  help: run 'rux help fmt' for usage information\n");
+
+    const auto conflict = Run(std::array<std::string_view, 3>{"build", "--debug", "--release"});
+    CHECK(conflict.exitCode == 2);
+    CHECK(NormalizeNewlines(conflict.output) == "error: options '--debug' and '--release' cannot be used together\n"
+                                                "  help: use either '--debug' or '--release', but not both\n"
+                                                "  help: run 'rux help build' for usage information\n");
+
+    const auto repeated = Run(std::array<std::string_view, 3>{"build", "--release", "--release"});
+    CHECK(repeated.exitCode == 2);
+    CHECK(NormalizeNewlines(repeated.output) == "error: option '--release' was specified more than once\n"
+                                                "  help: remove the repeated '--release' option\n"
+                                                "  help: run 'rux help build' for usage information\n");
 }
 
 TEST_CASE("build --all conflicts are usage errors before manifest loading") {

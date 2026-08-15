@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 
 #include "Cli/CliSpec.h"
+#include "Cli/Reporter.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -73,38 +74,123 @@ bool IsRepeatable(const std::string_view option) {
 bool Contains(const std::vector<std::string_view> &values, const std::string_view value) {
     return std::ranges::find(values, value) != values.end();
 }
-} // namespace
 
-void Cli::PrintUnknownCommand(const std::string_view command) {
-    std::println(stderr, "error: unknown command '{}'", command);
-    if (const auto suggestion = Closest(command, Commands(), [](const CommandSpec &spec) { return spec.name; })) {
-        std::println(stderr, "  Did you mean '{}'?", *suggestion);
-    }
-    std::println(stderr, "\nUse 'rux help' for a list of available commands.");
+std::string HelpCommand(const std::string_view command) {
+    return command.empty() ? "rux help" : std::format("rux help {}", command);
 }
 
-void Cli::PrintUnknownOption(const std::string_view option, const std::string_view command) {
+int ReportUsageError(const ColorMode color, const std::string_view command, const std::string_view message,
+                     const std::string_view note = {}, const std::string_view correction = {}) {
+    const CliSupport::Reporter reporter(stderr, {.color = color});
+    reporter.Error(message);
+    if (!note.empty()) {
+        reporter.Note(note);
+    }
+    if (!correction.empty()) {
+        reporter.Help(correction);
+    }
+    reporter.Help(std::format("run '{}' for usage information", HelpCommand(command)));
+    return 2;
+}
+
+std::string_view ValueDescription(const OptionSpec &option) {
+    const auto preferred = PreferredOptionName(option);
+    if (preferred == "--target")
+        return "target triple";
+    if (preferred == "--manifest")
+        return "manifest path";
+    if (preferred == "--color")
+        return "color mode";
+    if (preferred == "--registry")
+        return "registry URL";
+    if (preferred == "--namespace")
+        return "namespace";
+    if (preferred == "--define")
+        return "compile-time definition";
+    if (preferred == "--emit")
+        return "output kind";
+    if (option.flags.contains("<dir>"))
+        return "directory";
+    return "path";
+}
+
+std::string_view SampleValue(const std::string_view command, const OptionSpec &option) {
+    const auto preferred = PreferredOptionName(option);
+    if (preferred == "--target")
+        return "linux-x86_64";
+    if (preferred == "--manifest")
+        return "Rux.toml";
+    if (preferred == "--color")
+        return "auto";
+    if (preferred == "--registry")
+        return "http://localhost:8080";
+    if (preferred == "--namespace")
+        return "Rux";
+    if (preferred == "--define")
+        return "Feature=true";
+    if (preferred == "--emit")
+        return "lir";
+    if (preferred == "--output")
+        return option.flags.contains("<dir>") ? "Docs" : "Dist/Package.ruxpkg";
+    if (preferred == "--path")
+        return command == "add" ? "../Json" : ".";
+    return "value";
+}
+
+std::string OptionInvocation(const std::string_view command, const OptionSpec &option) {
+    std::string invocation = command.empty() ? "rux" : std::format("rux {}", command);
+    invocation += std::format(" {}", PreferredOptionName(option));
+    if (OptionTakesValue(option)) {
+        invocation += std::format(" {}", SampleValue(command, option));
+    }
+    return invocation;
+}
+
+std::string FirstCommandExample(const CommandSpec &command) {
+    const auto example = std::ranges::find_if(
+        command.examples, [](const std::string_view value) { return !value.empty() && !value.starts_with("rux"); });
+    return example == command.examples.end() ? std::format("rux {}", command.name)
+                                             : std::format("rux {} {}", command.name, *example);
+}
+} // namespace
+
+void Cli::PrintUnknownCommand(const std::string_view command, const ColorMode color) {
+    std::string correction;
+    if (const auto suggestion = Closest(command, Commands(), [](const CommandSpec &spec) { return spec.name; })) {
+        correction = std::format("try 'rux {}'", *suggestion);
+    }
+    static_cast<void>(ReportUsageError(color, {}, std::format("unknown command '{}'", command), {}, correction));
+}
+
+void Cli::PrintUnknownOption(const std::string_view option, const std::string_view command, const ColorMode color) {
+    std::string correction;
     if (command.empty()) {
-        std::println(stderr, "error: unknown option '{}'", option);
         if (const auto suggestion = Closest(option, CliContract::GlobalOptions(),
                                             [](const OptionSpec &spec) { return PreferredOptionName(spec); })) {
-            std::println(stderr, "  Did you mean '{}'?", *suggestion);
+            const auto globals = CliContract::GlobalOptions();
+            const auto *spec = FindOption(globals, *suggestion);
+            if (spec != nullptr) {
+                correction = std::format("try '{}'", OptionInvocation({}, *spec));
+            }
         }
-        std::println(stderr, "\nUse 'rux help' for a list of global options.");
+        static_cast<void>(ReportUsageError(color, {}, std::format("unknown option '{}'", option), {}, correction));
         return;
     }
 
-    std::println(stderr, "error: unknown option '{}' for command '{}'", option, command);
     if (const auto *spec = FindCommand(command)) {
         std::vector<OptionSpec> candidates(spec->options.begin(), spec->options.end());
         const auto globals = CliContract::GlobalOptions();
         candidates.insert(candidates.end(), globals.begin(), globals.end());
         if (const auto suggestion = Closest(
                 option, candidates, [](const OptionSpec &candidate) { return PreferredOptionName(candidate); })) {
-            std::println(stderr, "  Did you mean '{}'?", *suggestion);
+            const auto *suggested = FindOption(candidates, *suggestion);
+            if (suggested != nullptr) {
+                correction = std::format("try '{}'", OptionInvocation(command, *suggested));
+            }
         }
     }
-    std::println(stderr, "\nUse 'rux help {}' for more information about this command.", command);
+    static_cast<void>(ReportUsageError(
+        color, command, std::format("unknown option '{}' for command '{}'", option, command), {}, correction));
 }
 
 Cli::Cli(const int argc, char *argv[])
@@ -126,56 +212,74 @@ int Cli::Run() const {
     const CommandSpec *commandSpec = nullptr;
     std::vector<std::string_view> commandArgs;
     std::vector<std::string_view> seenOptions;
-    std::size_t operandCount = 0;
+    std::vector<std::string_view> seenGlobalOptions;
+    std::vector<std::string_view> operands;
     bool passthrough = false;
-
-    auto usageError = [](const std::string_view message) {
-        std::println(stderr, "error: {}", message);
-        return 2;
-    };
 
     auto consumeGlobal = [&](std::size_t &index) -> std::optional<int> {
         const auto argument = raw[index];
         const auto spelling = OptionSpelling(argument);
-        if (spelling == "-q" || spelling == "--quiet") {
-            if (AttachedValue(argument))
-                return usageError(std::format("option '{}' does not take a value", spelling));
-            options.quiet = true;
-            return 0;
-        }
-        if (spelling == "-v" || spelling == "--verbose") {
-            if (AttachedValue(argument))
-                return usageError(std::format("option '{}' does not take a value", spelling));
-            options.verbose = true;
-            return 0;
-        }
-        if (spelling != "--color" && spelling != "--manifest")
+        const auto globals = CliContract::GlobalOptions();
+        const auto *option = FindOption(globals, spelling);
+        if (option == nullptr)
             return std::nullopt;
 
-        auto value = AttachedValue(argument);
-        if (!value) {
-            if (index + 1 >= raw.size() || raw[index + 1].starts_with('-')) {
-                return usageError(std::format("option '{}' requires a value", spelling));
+        const auto preferred = PreferredOptionName(*option);
+        if (preferred == "--help" || preferred == "--version") {
+            if (AttachedValue(argument)) {
+                return ReportUsageError(options.color, {},
+                                        std::format("option '{}' does not accept a value", preferred), {},
+                                        std::format("try '{}'", OptionInvocation({}, *option)));
             }
-            value = raw[++index];
+            return std::nullopt;
         }
-        if (value->empty())
-            return usageError(std::format("option '{}' requires a value", spelling));
-        if (spelling == "--manifest") {
+        if (Contains(seenGlobalOptions, preferred)) {
+            return ReportUsageError(options.color, {},
+                                    std::format("option '{}' was specified more than once", preferred), {},
+                                    std::format("remove the repeated '{}' option", preferred));
+        }
+        seenGlobalOptions.push_back(preferred);
+
+        auto value = AttachedValue(argument);
+        if (OptionTakesValue(*option)) {
+            if (!value) {
+                if (index + 1 >= raw.size() || raw[index + 1].starts_with('-')) {
+                    return ReportUsageError(
+                        options.color, {},
+                        std::format("option '{}' requires a {}", preferred, ValueDescription(*option)), {},
+                        std::format("try '{}'", OptionInvocation({}, *option)));
+                }
+                value = raw[++index];
+            }
+            if (value->empty()) {
+                return ReportUsageError(options.color, {},
+                                        std::format("option '{}' requires a {}", preferred, ValueDescription(*option)),
+                                        {}, std::format("try '{}'", OptionInvocation({}, *option)));
+            }
+        }
+        else if (value) {
+            return ReportUsageError(options.color, {}, std::format("option '{}' does not accept a value", preferred),
+                                    {}, std::format("try '{}'", OptionInvocation({}, *option)));
+        }
+
+        if (preferred == "--manifest")
             options.manifest = *value;
+        else if (preferred == "--color") {
+            if (*value == "auto")
+                options.color = ColorMode::Auto;
+            else if (*value == "always")
+                options.color = ColorMode::On;
+            else if (*value == "never")
+                options.color = ColorMode::Off;
+            else
+                return ReportUsageError(
+                    options.color, {}, std::format("value '{}' is not valid for option '--color'", *value),
+                    "accepted color modes are 'auto', 'always', and 'never'", "try 'rux --color auto'");
         }
-        else if (*value == "auto") {
-            options.color = ColorMode::Auto;
-        }
-        else if (*value == "always") {
-            options.color = ColorMode::On;
-        }
-        else if (*value == "never") {
-            options.color = ColorMode::Off;
-        }
-        else {
-            return usageError("--color expects one of: auto, always, never");
-        }
+        else if (preferred == "--quiet")
+            options.quiet = true;
+        else if (preferred == "--verbose")
+            options.verbose = true;
         return 0;
     };
 
@@ -202,15 +306,16 @@ int Cli::Run() const {
 
         if (command.empty()) {
             if (argument == "--")
-                return usageError("'--' is only valid after the 'run' command");
+                return ReportUsageError(options.color, {}, "argument separator '--' requires the 'run' command", {},
+                                        "try 'rux run -- <arguments>'");
             if (argument.starts_with('-')) {
-                PrintUnknownOption(OptionSpelling(argument));
+                PrintUnknownOption(OptionSpelling(argument), {}, options.color);
                 return 2;
             }
             command = argument;
             commandSpec = FindCommand(command);
             if (!commandSpec) {
-                PrintUnknownCommand(command);
+                PrintUnknownCommand(command, options.color);
                 return 2;
             }
             continue;
@@ -218,7 +323,9 @@ int Cli::Run() const {
 
         if (!passthrough && argument == "--") {
             if (!PositionalsFor(command).acceptsPassthrough) {
-                return usageError(std::format("'--' is not supported by command '{}'", command));
+                return ReportUsageError(
+                    options.color, command,
+                    std::format("argument separator '--' is not accepted by command '{}'", command));
             }
             passthrough = true;
             commandArgs.push_back(argument);
@@ -232,12 +339,14 @@ int Cli::Run() const {
             const auto spelling = OptionSpelling(argument);
             const auto *option = FindOption(commandSpec->options, spelling);
             if (!option) {
-                PrintUnknownOption(spelling, command);
+                PrintUnknownOption(spelling, command, options.color);
                 return 2;
             }
             const auto preferred = PreferredOptionName(*option);
             if (!IsRepeatable(preferred) && Contains(seenOptions, preferred)) {
-                return usageError(std::format("option '{}' may only be specified once", preferred));
+                return ReportUsageError(options.color, command,
+                                        std::format("option '{}' was specified more than once", preferred), {},
+                                        std::format("remove the repeated '{}' option", preferred));
             }
             seenOptions.push_back(preferred);
             commandArgs.push_back(spelling);
@@ -245,20 +354,29 @@ int Cli::Run() const {
             if (OptionTakesValue(*option)) {
                 if (!value) {
                     if (i + 1 >= raw.size() || raw[i + 1].starts_with('-')) {
-                        return usageError(std::format("option '{}' requires a value", spelling));
+                        return ReportUsageError(
+                            options.color, command,
+                            std::format("option '{}' requires a {}", preferred, ValueDescription(*option)), {},
+                            std::format("try '{}'", OptionInvocation(command, *option)));
                     }
                     value = raw[++i];
                 }
-                if (value->empty())
-                    return usageError(std::format("option '{}' requires a value", spelling));
+                if (value->empty()) {
+                    return ReportUsageError(
+                        options.color, command,
+                        std::format("option '{}' requires a {}", preferred, ValueDescription(*option)), {},
+                        std::format("try '{}'", OptionInvocation(command, *option)));
+                }
                 commandArgs.push_back(*value);
             }
             else if (value) {
-                return usageError(std::format("option '{}' does not take a value", spelling));
+                return ReportUsageError(options.color, command,
+                                        std::format("option '{}' does not accept a value", preferred), {},
+                                        std::format("try '{}'", OptionInvocation(command, *option)));
             }
             continue;
         }
-        ++operandCount;
+        operands.push_back(argument);
         commandArgs.push_back(argument);
     }
 
@@ -269,22 +387,33 @@ int Cli::Run() const {
         return 0;
     }
     if (options.quiet && options.verbose)
-        return usageError("--quiet and --verbose cannot be used together");
+        return ReportUsageError(options.color, command, "options '--quiet' and '--verbose' cannot be used together", {},
+                                "use either '--quiet' or '--verbose', but not both");
 
     const auto &positionals = PositionalsFor(command);
-    if (operandCount < positionals.minimum) {
-        return usageError(std::format("command '{}' requires an argument", command));
+    if (operands.size() < positionals.minimum) {
+        const auto argument = positionals.arguments[operands.size()];
+        return ReportUsageError(options.color, command,
+                                std::format("command '{}' requires a {} argument", command, argument.name), {},
+                                std::format("try '{}'", FirstCommandExample(*commandSpec)));
     }
-    if (operandCount > positionals.maximum) {
-        return usageError(std::format("too many arguments for command '{}'", command));
+    if (operands.size() > positionals.maximum) {
+        return ReportUsageError(
+            options.color, command,
+            std::format("argument '{}' is not accepted by command '{}'", operands[positionals.maximum], command));
     }
     for (const auto &[left, right] : commandSpec->conflicts) {
         if (Contains(seenOptions, left) && Contains(seenOptions, right)) {
-            return usageError(std::format("options '{}' and '{}' cannot be used together", left, right));
+            return ReportUsageError(options.color, command,
+                                    std::format("options '{}' and '{}' cannot be used together", left, right), {},
+                                    std::format("use either '{}' or '{}', but not both", left, right));
         }
     }
-    if (command == "uninstall" && operandCount != 0 && Contains(seenOptions, "--global")) {
-        return usageError("--global cannot be combined with a package argument");
+    if (command == "uninstall" && !operands.empty() && Contains(seenOptions, "--global")) {
+        return ReportUsageError(
+            options.color, command,
+            std::format("option '--global' cannot be used with package argument '{}'", operands.front()), {},
+            std::format("try 'rux uninstall {}' or 'rux uninstall --global'", operands.front()));
     }
 
     const std::span<const std::string_view> rest(commandArgs);

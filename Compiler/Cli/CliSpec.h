@@ -49,4 +49,5 @@ struct PositionalSpec {
 [[nodiscard]] bool OptionMatches(const OptionSpec &option, std::string_view spelling);
 [[nodiscard]] bool OptionTakesValue(const OptionSpec &option);
 [[nodiscard]] std::string_view PreferredOptionName(const OptionSpec &option);
+[[nodiscard]] std::string_view DocumentationUrl(std::string_view command);
 } // namespace Rux::CliContract

@@ -4,10 +4,12 @@
 #include "Cli/Cli.h"
 #include "Cli/CliHelpRenderer.h"
 #include "Cli/CliSpec.h"
+#include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
 #include "System/Os.h"
 
 #include <cstdio>
+#include <format>
 #include <print>
 #include <span>
 #include <string_view>
@@ -26,15 +28,11 @@ void Cli::PrintHelp(const ColorMode color) {
 }
 
 void Cli::PrintHelpFor(const std::string_view command, const ColorMode color) {
-    if (command == "help") {
-        PrintHelp(color);
-        return;
-    }
     if (const auto *spec = CliContract::FindCommand(command)) {
         std::print("{}", CliHelp::RenderCommand(*spec, TerminalWidth(), ColorEnabled(color, OutputStream::Stdout)));
         return;
     }
-    PrintUnknownCommand(command);
+    PrintUnknownCommand(command, color);
 }
 
 void Cli::PrintVersion() {
@@ -57,12 +55,14 @@ int Cli::RunHelp(std::span<const std::string_view> args, const GlobalOptions &op
             command = arg;
         }
         else {
-            std::println(stderr, "error: too many arguments for command 'help'");
+            const CliSupport::Reporter reporter(stderr, {.color = opts.color});
+            reporter.Error(std::format("argument '{}' is not accepted by command 'help'", arg));
+            reporter.Help("run 'rux help help' for usage information");
             return 2;
         }
     }
     if (!command.empty() && !CliContract::FindCommand(command)) {
-        PrintUnknownCommand(command);
+        PrintUnknownCommand(command, opts.color);
         return 2;
     }
     if (json) {
