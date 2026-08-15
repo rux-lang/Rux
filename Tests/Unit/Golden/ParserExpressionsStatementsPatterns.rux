@@ -1,0 +1,23 @@
+func Expressions() {
+    let assigned = ;
+    let operand = 1 + ;
+    let call = Invoke(1 2);
+    let index = values[];
+}
+
+func Statements(value: int) {
+    if {}
+    for item in {}
+    match value {
+        => 0,
+        1 => ,
+        2 => 2
+    }
+}
+
+func Patterns(value: int) {
+    let (first second) = value;
+    match value {
+        1.. => 1
+    }
+}

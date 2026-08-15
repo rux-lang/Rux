@@ -53,9 +53,8 @@ private:
     [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
     bool Match(TokenKind kind) noexcept;
     const Token &Expect(TokenKind kind, std::string_view message);
-    // Declaration/type diagnostics name both the grammar role and the token
-    // that prevented it from being parsed. The general expression/statement
-    // parser keeps using Expect until its diagnostics are handled by MSG-017.
+    // Grammar-aware diagnostics name both the role of a missing token and the
+    // token that prevented it from being parsed.
     const Token &ExpectBefore(TokenKind kind, std::string_view expected, std::optional<std::string> help = {});
     bool ConsumeBodyStart(std::string_view role);
     [[nodiscard]] bool IsAtEnd() const noexcept;
@@ -78,6 +77,7 @@ private:
     // boundary).
     void Synchronize();
     void Recover();
+    bool RecoverDelimitedList(TokenKind closing);
 
     // Top-level
     DeclPtr ParseDecl();
@@ -152,7 +152,7 @@ private:
     TypeExprPtr ParseFunctionType();                                 // func(params) -> T
 
     // Blocks and statements
-    std::unique_ptr<Block> ParseBlock();
+    std::unique_ptr<Block> ParseBlock(std::string_view role = "the block");
     StmtPtr ParseStmt();
     std::unique_ptr<LetStmt> ParseLetStmt();
     std::unique_ptr<IfStmt> ParseIfStmt();
@@ -165,6 +165,9 @@ private:
 
     // Expressions (Pratt / precedence-climbing)
     ExprPtr ParseExpr();
+    ExprPtr ParseExprImpl();
+    ExprPtr ParseRequiredExpr(std::string_view context = {});
+    void EmitMissingExpression(std::string_view context = {});
     ExprPtr ParseAssign();
     ExprPtr ParseRange();
     ExprPtr ParseTernary();
@@ -186,6 +189,8 @@ private:
 
     // Patterns
     PatternPtr ParsePattern();
+    PatternPtr ParsePatternImpl();
+    PatternPtr ParseRequiredPattern(std::string_view context = {});
     PatternPtr ParsePrimaryPattern();
     PatternPtr ParseMatchArmPattern();
 

@@ -67,7 +67,7 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
         a->location = loc;
         a->element = std::move(base);
         if (!Check(TokenKind::RightBracket)) {
-            a->size = ParseExpr();
+            a->size = ParseRequiredExpr("after '[' in the array type");
         }
         ExpectBefore(TokenKind::RightBracket, "']' to close the array type");
         base = std::move(a);

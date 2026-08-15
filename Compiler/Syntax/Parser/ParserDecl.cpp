@@ -851,7 +851,7 @@ std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     }
 
     ExpectBefore(TokenKind::Assign, "'=' before the constant value");
-    decl->value = ParseExpr();
+    decl->value = ParseRequiredExpr("after '=' in the constant declaration");
 
     ExpectBefore(TokenKind::Semicolon, "';' after the constant declaration");
     return decl;
@@ -885,16 +885,16 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
         return items;
     };
 
-    auto parseCondition = [&] {
+    auto parseCondition = [&](const std::string_view context) {
         structInitAllowed = false;
-        auto condition = ParseExpr();
+        auto condition = ParseRequiredExpr(context);
         structInitAllowed = true;
         return condition;
     };
 
     WhenDecl::Branch first;
     first.location = loc;
-    first.condition = parseCondition();
+    first.condition = parseCondition("after 'when'");
 
     // Compile-time match: `when subject { pattern => ..., else => ... }`.
     if (Check(TokenKind::LeftBrace) && NextBraceIsMatchArms()) {
@@ -920,7 +920,7 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
         }
         const bool isElseWhen = Match(TokenKind::WhenKeyword) || isElseIf;
         if (isElseWhen) {
-            branch.condition = parseCondition();
+            branch.condition = parseCondition("after 'else when'");
         }
         branch.items = parseItems();
         decl->branches.push_back(std::move(branch));
@@ -951,10 +951,10 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
         }
         else {
             structInitAllowed = false;
-            branch.patterns.push_back(ParseExpr());
+            branch.patterns.push_back(ParseRequiredExpr("at the start of the 'when' arm"));
             // Commas before `=>` separate patterns that share this arm's body.
             while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
-                branch.patterns.push_back(ParseExpr());
+                branch.patterns.push_back(ParseRequiredExpr("after ',' in the 'when' arm pattern list"));
             }
             structInitAllowed = true;
         }

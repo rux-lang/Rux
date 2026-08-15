@@ -171,7 +171,7 @@ Param Parser::ParseParam(const bool allowVariadic) {
         parameter.isVariadic = true;
     }
     if (!parameter.isVariadic && Match(TokenKind::Assign)) {
-        parameter.defaultValue = ParseExpr();
+        parameter.defaultValue = ParseRequiredExpr("after '=' in the default argument");
     }
     return parameter;
 }

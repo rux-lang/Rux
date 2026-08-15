@@ -1,1 +1,1 @@
-3:5: error: expected ';'
+3:5: error: expected ';' after the binding declaration before 'return'

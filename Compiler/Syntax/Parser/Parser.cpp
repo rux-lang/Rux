@@ -340,4 +340,11 @@ void Parser::Recover() {
         Advance();
     }
 }
+
+bool Parser::RecoverDelimitedList(const TokenKind closing) {
+    while (!CheckAny({TokenKind::Comma, closing, TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
+        Advance();
+    }
+    return Match(TokenKind::Comma);
+}
 } // namespace Rux

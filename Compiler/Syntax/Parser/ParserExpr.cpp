@@ -11,7 +11,28 @@
 namespace Rux {
 // Expressions
 ExprPtr Parser::ParseExpr() {
+    return ParseRequiredExpr();
+}
+
+ExprPtr Parser::ParseExprImpl() {
     return ParseAssign();
+}
+
+ExprPtr Parser::ParseRequiredExpr(const std::string_view context) {
+    auto expression = ParseExprImpl();
+    if (!expression) {
+        EmitMissingExpression(context);
+    }
+    return expression;
+}
+
+void Parser::EmitMissingExpression(const std::string_view context) {
+    if (context.empty()) {
+        EmitExpected(CurrentLocation(), "an expression");
+    }
+    else {
+        EmitExpected(CurrentLocation(), std::format("an expression {}", context));
+    }
 }
 
 // right-associative: a = b = c  =>  a = (b = c)
@@ -31,8 +52,11 @@ ExprPtr Parser::ParseAssign() {
     for (auto op : kAssignOps) {
         if (Check(op)) {
             const auto loc = CurrentLocation();
-            Advance();
+            const std::string opText = Advance().text;
             auto right = ParseAssign(); // right-associative
+            if (!right) {
+                EmitMissingExpression(std::format("after '{}'", opText));
+            }
             auto e = std::make_unique<AssignExpr>();
             e->location = loc;
             e->op = op;
@@ -108,8 +132,14 @@ ExprPtr Parser::ParseTernary() {
     if (Match(TokenKind::Question)) {
         const auto loc = Previous().location;
         auto thenExpr = ParseOr();
-        Expect(TokenKind::Colon, "expected ':' in ternary");
+        if (!thenExpr) {
+            EmitMissingExpression("after '?' in the conditional expression");
+        }
+        ExpectBefore(TokenKind::Colon, "':' between the conditional expression branches");
         auto elseExpr = ParseTernary(); // right-associative
+        if (!elseExpr) {
+            EmitMissingExpression("after ':' in the conditional expression");
+        }
         auto e = std::make_unique<TernaryExpr>();
         e->location = loc;
         e->condition = std::move(cond);
@@ -124,8 +154,12 @@ ExprPtr Parser::ParseOr() {
     auto left = ParseAnd();
     while (Check(TokenKind::PipePipe)) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseAnd();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -140,8 +174,12 @@ ExprPtr Parser::ParseAnd() {
     auto left = ParseBitOr();
     while (Check(TokenKind::AmpAmp)) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseBitOr();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -156,8 +194,12 @@ ExprPtr Parser::ParseBitOr() {
     auto left = ParseBitXor();
     while (Check(TokenKind::Pipe)) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseBitXor();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -172,8 +214,12 @@ ExprPtr Parser::ParseBitXor() {
     auto left = ParseBitAnd();
     while (Check(TokenKind::Caret)) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseBitAnd();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -188,8 +234,12 @@ ExprPtr Parser::ParseBitAnd() {
     auto left = ParseEquality();
     while (Check(TokenKind::Amp)) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseEquality();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -204,8 +254,12 @@ ExprPtr Parser::ParseEquality() {
     auto left = ParseComparison();
     while (CheckAny({TokenKind::Equal, TokenKind::BangEqual})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseComparison();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -220,8 +274,12 @@ ExprPtr Parser::ParseComparison() {
     auto left = ParseShift();
     while (CheckAny({TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseShift();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -261,8 +319,12 @@ ExprPtr Parser::ParseShift() {
     auto left = ParseAdd();
     while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseAdd();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -277,8 +339,12 @@ ExprPtr Parser::ParseAdd() {
     auto left = ParseMul();
     while (CheckAny({TokenKind::Plus, TokenKind::Minus})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseMul();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -293,8 +359,12 @@ ExprPtr Parser::ParseMul() {
     auto left = ParseExp();
     while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto right = ParseExp();
+        if (!right) {
+            EmitMissingExpression(std::format("after '{}'", opToken.text));
+        }
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
         e->op = op;
@@ -316,6 +386,9 @@ ExprPtr Parser::ParseExp() {
         Advance(); // second *
 
         auto right = ParseExp(); // right-associative
+        if (!right) {
+            EmitMissingExpression("after '**'");
+        }
 
         auto e = std::make_unique<BinaryExpr>();
         e->location = loc;
@@ -336,8 +409,12 @@ ExprPtr Parser::ParseUnary() {
     if (CheckAny({TokenKind::Bang, TokenKind::Minus, TokenKind::Tilde, TokenKind::Star, TokenKind::At,
                   TokenKind::PlusPlus, TokenKind::MinusMinus})) {
         const auto loc = CurrentLocation();
-        const auto op = Advance().kind;
+        const Token opToken = Advance();
+        const auto op = opToken.kind;
         auto operand = ParseUnary();
+        if (!operand) {
+            EmitMissingExpression(std::format("after unary '{}'", opToken.text));
+        }
         auto e = std::make_unique<UnaryExpr>();
         e->location = loc;
         e->op = op;
@@ -364,7 +441,7 @@ ExprPtr Parser::ParsePostfix() {
                 name = Advance().text;
             }
             else {
-                name = Expect(TokenKind::Ident, "expected field name or tuple index").text;
+                name = ExpectBefore(TokenKind::Ident, "a field name or tuple index after '.'").text;
             }
 
             if (Check(TokenKind::LeftParen) && !name.empty() && !std::isdigit(name[0])) {
@@ -392,7 +469,7 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Qualified path: expr::member
         if (Match(TokenKind::ColonColon)) {
-            const std::string seg = Expect(TokenKind::Ident, "expected identifier").text;
+            const std::string seg = ExpectBefore(TokenKind::Ident, "a path segment after '::'").text;
             // Build or extend a PathExpr
             if (auto *path = dynamic_cast<PathExpr *>(left.get())) {
                 path->segments.push_back(seg);
@@ -425,15 +502,29 @@ ExprPtr Parser::ParsePostfix() {
                 while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                     StructInitExpr::Field field;
                     field.location = CurrentLocation();
-                    field.name = Expect(TokenKind::Ident, "expected field name").text;
-                    Expect(TokenKind::Colon, "expected ':'");
-                    field.value = ParseExpr();
+                    field.name = ExpectBefore(TokenKind::Ident, "a field name in the initializer").text;
+                    ExpectBefore(TokenKind::Colon, "':' after the initializer field name");
+                    field.value = ParseRequiredExpr("after ':' in the initializer field");
+                    const bool validField = !field.name.empty() && field.value != nullptr;
                     e->fields.push_back(std::move(field));
-                    if (!Match(TokenKind::Comma)) {
+                    if (!validField) {
+                        if (RecoverDelimitedList(TokenKind::RightBrace)) {
+                            continue;
+                        }
+                        break;
+                    }
+                    if (Match(TokenKind::Comma)) {
+                        continue;
+                    }
+                    if (!Check(TokenKind::RightBrace)) {
+                        EmitExpected(CurrentLocation(), "',' between initializer fields");
+                        continue;
+                    }
+                    else {
                         break;
                     }
                 }
-                Expect(TokenKind::RightBrace, "expected '}'");
+                ExpectBefore(TokenKind::RightBrace, "'}' to close the initializer");
                 left = std::move(e);
                 continue;
             }
@@ -462,8 +553,8 @@ ExprPtr Parser::ParsePostfix() {
         }
         // Index: expr[idx]
         if (Match(TokenKind::LeftBracket)) {
-            auto idx = ParseExpr();
-            Expect(TokenKind::RightBracket, "expected ']'");
+            auto idx = ParseRequiredExpr("after '[' in the index expression");
+            ExpectBefore(TokenKind::RightBracket, "']' to close the index expression");
             auto e = std::make_unique<IndexExpr>();
             e->location = loc;
             e->object = std::move(left);
@@ -493,24 +584,32 @@ ExprPtr Parser::ParsePrimary() {
         auto e = std::make_unique<MatchExpr>();
         e->location = loc;
         structInitAllowed = false;
-        e->subject = ParseExpr();
+        e->subject = ParseRequiredExpr("after 'match'");
         structInitAllowed = true;
 
-        Expect(TokenKind::LeftBrace, "expected '{'");
+        if (!Match(TokenKind::LeftBrace)) {
+            EmitExpected(CurrentLocation(), "'{' to start the match expression arms");
+            return e;
+        }
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             MatchExpr::Arm arm;
             arm.location = CurrentLocation();
             arm.pattern = ParseMatchArmPattern();
-            Expect(TokenKind::FatArrow, "expected '=>'");
+            if (!arm.pattern) {
+                while (!CheckAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                    Advance();
+                }
+            }
+            ExpectBefore(TokenKind::FatArrow, "'=>' after the match arm pattern");
 
             if (Check(TokenKind::LeftBrace)) {
                 auto bexpr = std::make_unique<BlockExpr>();
                 bexpr->location = CurrentLocation();
-                bexpr->block = ParseBlock();
+                bexpr->block = ParseBlock("the match arm body");
                 arm.body = std::move(bexpr);
             }
             else {
-                arm.body = ParseExpr();
+                arm.body = ParseRequiredExpr("after '=>' in the match arm");
             }
 
             e->arms.push_back(std::move(arm));
@@ -518,12 +617,17 @@ ExprPtr Parser::ParsePrimary() {
                 if (Check(TokenKind::RightBrace)) {
                     EmitError(Previous().location, "trailing comma is not allowed in match blocks");
                 }
+                continue;
             }
-            else {
-                break;
+            if (!Check(TokenKind::RightBrace)) {
+                EmitExpected(CurrentLocation(), "',' between match arms");
+                while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                    Advance();
+                }
+                Match(TokenKind::Comma);
             }
         }
-        Expect(TokenKind::RightBrace, "expected '}'");
+        ExpectBefore(TokenKind::RightBrace, "'}' to close the match expression");
         return e;
     }
 
@@ -553,9 +657,9 @@ ExprPtr Parser::ParsePrimary() {
         Advance();
         auto e = std::make_unique<SizeOfExpr>();
         e->location = loc;
-        Expect(TokenKind::LeftParen, "expected '(' after 'sizeof'");
-        e->type = ParseType();
-        Expect(TokenKind::RightParen, "expected ')' after sizeof type");
+        ExpectBefore(TokenKind::LeftParen, "'(' after 'sizeof'");
+        e->type = ParseType("add the queried type inside 'sizeof(...)'");
+        ExpectBefore(TokenKind::RightParen, "')' after the 'sizeof' type");
         return e;
     }
     // Compiler-injected intrinsic value: #target, #build, #source, ... The
@@ -581,31 +685,62 @@ ExprPtr Parser::ParsePrimary() {
         auto e = std::make_unique<ArrayExpr>();
         e->location = loc;
         while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
-            e->elements.push_back(ParseExpr());
-            if (!Match(TokenKind::Comma)) {
+            auto element = ParseRequiredExpr(e->elements.empty() ? "after '[' in the slice literal"
+                                                                 : "after ',' in the slice literal");
+            const bool validElement = element != nullptr;
+            e->elements.push_back(std::move(element));
+            if (!validElement) {
+                if (RecoverDelimitedList(TokenKind::RightBracket)) {
+                    continue;
+                }
+                break;
+            }
+            if (Match(TokenKind::Comma)) {
+                continue;
+            }
+            if (!Check(TokenKind::RightBracket)) {
+                EmitExpected(CurrentLocation(), "',' between slice elements");
+                continue;
+            }
+            else {
                 break;
             }
         }
-        Expect(TokenKind::RightBracket, "expected ']'");
+        ExpectBefore(TokenKind::RightBracket, "']' to close the slice literal");
         return e;
     }
     // Grouped expression or tuple: (expr)  or  (expr, expr, ...)
     if (Match(TokenKind::LeftParen)) {
-        auto first = ParseExpr();
+        auto first = ParseRequiredExpr("after '('");
         if (Match(TokenKind::Comma)) {
             auto t = std::make_unique<TupleExpr>();
             t->location = loc;
             t->elements.push_back(std::move(first));
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                t->elements.push_back(ParseExpr());
-                if (!Match(TokenKind::Comma)) {
+                auto element = ParseRequiredExpr("after ',' in the tuple expression");
+                const bool validElement = element != nullptr;
+                t->elements.push_back(std::move(element));
+                if (!validElement) {
+                    if (RecoverDelimitedList(TokenKind::RightParen)) {
+                        continue;
+                    }
+                    break;
+                }
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (!Check(TokenKind::RightParen)) {
+                    EmitExpected(CurrentLocation(), "',' between tuple elements");
+                    continue;
+                }
+                else {
                     break;
                 }
             }
-            Expect(TokenKind::RightParen, "expected ')'");
+            ExpectBefore(TokenKind::RightParen, "')' to close the tuple expression");
             return t;
         }
-        Expect(TokenKind::RightParen, "expected ')'");
+        ExpectBefore(TokenKind::RightParen, "')' to close the grouped expression");
         return first;
     }
     // Identifier, possible struct init, or path expression
@@ -626,16 +761,31 @@ ExprPtr Parser::ParsePrimary() {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 StructInitExpr::Field field;
                 field.location = CurrentLocation();
-                field.name = Check(TokenKind::ModuleKeyword) ? Advance().text
-                                                             : Expect(TokenKind::Ident, "expected field name").text;
-                Expect(TokenKind::Colon, "expected ':'");
-                field.value = ParseExpr();
+                field.name = Check(TokenKind::ModuleKeyword)
+                               ? Advance().text
+                               : ExpectBefore(TokenKind::Ident, "a field name in the initializer").text;
+                ExpectBefore(TokenKind::Colon, "':' after the initializer field name");
+                field.value = ParseRequiredExpr("after ':' in the initializer field");
+                const bool validField = !field.name.empty() && field.value != nullptr;
                 e->fields.push_back(std::move(field));
-                if (!Match(TokenKind::Comma)) {
+                if (!validField) {
+                    if (RecoverDelimitedList(TokenKind::RightBrace)) {
+                        continue;
+                    }
+                    break;
+                }
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (!Check(TokenKind::RightBrace)) {
+                    EmitExpected(CurrentLocation(), "',' between initializer fields");
+                    continue;
+                }
+                else {
                     break;
                 }
             }
-            Expect(TokenKind::RightBrace, "expected '}'");
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the initializer");
             return e;
         }
         auto e = std::make_unique<IdentExpr>();
@@ -643,30 +793,43 @@ ExprPtr Parser::ParsePrimary() {
         e->name = name;
         return e;
     }
-    EmitError(loc, std::format("unexpected token '{}' in expression", Peek().text));
     return nullptr;
 }
 
 std::vector<ExprPtr> Parser::ParseArgList() {
     std::vector<ExprPtr> args;
-    Expect(TokenKind::LeftParen, "expected '('");
+    ExpectBefore(TokenKind::LeftParen, "'(' to start the argument list");
     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-        auto e = ParseExpr();
-        if (Match(TokenKind::DotDotDot)) {
+        auto e = ParseRequiredExpr(args.empty() ? "after '(' in the argument list" : "after ',' in the argument list");
+        if (e && Match(TokenKind::DotDotDot)) {
             const auto loc = e->location;
             auto spread = std::make_unique<SpreadExpr>();
             spread->location = loc;
             spread->operand = std::move(e);
             args.push_back(std::move(spread));
         }
-        else {
+        else if (e) {
             args.push_back(std::move(e));
         }
-        if (!Match(TokenKind::Comma)) {
+        if (Match(TokenKind::Comma)) {
+            continue;
+        }
+        if (!Check(TokenKind::RightParen)) {
+            EmitExpected(CurrentLocation(), "',' between arguments");
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightParen, TokenKind::Semicolon, TokenKind::RightBrace}) &&
+                   !IsAtEnd()) {
+                Advance();
+            }
+            if (Match(TokenKind::Comma)) {
+                continue;
+            }
+            break;
+        }
+        else {
             break;
         }
     }
-    Expect(TokenKind::RightParen, "expected ')'");
+    ExpectBefore(TokenKind::RightParen, "')' to close the argument list");
     return args;
 }
 
@@ -679,7 +842,7 @@ PatternPtr Parser::ParseMatchArmPattern() {
         return pattern;
     }
 
-    auto pattern = ParsePattern();
+    auto pattern = ParseRequiredPattern("at the start of the match arm");
     if (dynamic_cast<const WildcardPattern *>(pattern.get())) {
         EmitError(loc, "use 'else' for the default match arm");
     }
@@ -687,6 +850,23 @@ PatternPtr Parser::ParseMatchArmPattern() {
 }
 
 PatternPtr Parser::ParsePattern() {
+    return ParseRequiredPattern();
+}
+
+PatternPtr Parser::ParseRequiredPattern(const std::string_view context) {
+    auto pattern = ParsePatternImpl();
+    if (!pattern) {
+        if (context.empty()) {
+            EmitExpected(CurrentLocation(), "a pattern");
+        }
+        else {
+            EmitExpected(CurrentLocation(), std::format("a pattern {}", context));
+        }
+    }
+    return pattern;
+}
+
+PatternPtr Parser::ParsePatternImpl() {
     auto inner = ParsePrimaryPattern();
     if (!inner) {
         return nullptr;
@@ -695,7 +875,7 @@ PatternPtr Parser::ParsePattern() {
     // Guard: pattern if condition
     if (Match(TokenKind::IfKeyword)) {
         const auto loc = Previous().location;
-        auto guard = ParseExpr();
+        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
         auto p = std::make_unique<GuardedPattern>();
         p->location = loc;
         p->inner = std::move(inner);
@@ -707,8 +887,11 @@ PatternPtr Parser::ParsePattern() {
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
-        Advance();
+        const std::string operatorText = Advance().text;
         auto hi = ParsePrimaryPattern();
+        if (!hi) {
+            EmitExpected(CurrentLocation(), std::format("a range pattern end after '{}'", operatorText));
+        }
         auto p = std::make_unique<RangePattern>();
         p->location = loc;
         p->inclusive = incl;
@@ -726,20 +909,36 @@ PatternPtr Parser::ParsePrimaryPattern() {
     const auto parseEnumPatternSuffix = [this](std::unique_ptr<EnumPattern> pattern) -> PatternPtr {
         if (Match(TokenKind::LeftParen)) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                pattern->args.push_back(ParsePattern());
-                if (!Match(TokenKind::Comma)) {
+                auto argument = ParseRequiredPattern(pattern->args.empty() ? "after '(' in the variant pattern"
+                                                                           : "after ',' in the variant pattern");
+                const bool validArgument = argument != nullptr;
+                pattern->args.push_back(std::move(argument));
+                if (!validArgument) {
+                    if (RecoverDelimitedList(TokenKind::RightParen)) {
+                        continue;
+                    }
+                    break;
+                }
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (!Check(TokenKind::RightParen)) {
+                    EmitExpected(CurrentLocation(), "',' between variant pattern elements");
+                    continue;
+                }
+                else {
                     break;
                 }
             }
-            Expect(TokenKind::RightParen, "expected ')'");
+            ExpectBefore(TokenKind::RightParen, "')' to close the variant pattern");
         }
         else if (Match(TokenKind::LeftBrace)) {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumPattern::NamedArg arg;
                 arg.location = CurrentLocation();
-                arg.name = Expect(TokenKind::Ident, "expected variant field name").text;
+                arg.name = ExpectBefore(TokenKind::Ident, "a variant field name").text;
                 if (Match(TokenKind::Colon)) {
-                    arg.pattern = ParsePattern();
+                    arg.pattern = ParseRequiredPattern("after ':' in the variant field pattern");
                 }
                 else {
                     auto binding = std::make_unique<IdentPattern>();
@@ -748,11 +947,24 @@ PatternPtr Parser::ParsePrimaryPattern() {
                     arg.pattern = std::move(binding);
                 }
                 pattern->namedArgs.push_back(std::move(arg));
-                if (!Match(TokenKind::Comma)) {
+                if (pattern->namedArgs.back().name.empty() || pattern->namedArgs.back().pattern == nullptr) {
+                    if (RecoverDelimitedList(TokenKind::RightBrace)) {
+                        continue;
+                    }
+                    break;
+                }
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (!Check(TokenKind::RightBrace)) {
+                    EmitExpected(CurrentLocation(), "',' between variant pattern fields");
+                    continue;
+                }
+                else {
                     break;
                 }
             }
-            Expect(TokenKind::RightBrace, "expected '}'");
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the variant pattern");
         }
         return pattern;
     };
@@ -790,12 +1002,28 @@ PatternPtr Parser::ParsePrimaryPattern() {
         auto p = std::make_unique<TuplePattern>();
         p->location = loc;
         while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-            p->elements.push_back(ParsePattern());
-            if (!Match(TokenKind::Comma)) {
+            auto element = ParseRequiredPattern(p->elements.empty() ? "after '(' in the tuple pattern"
+                                                                    : "after ',' in the tuple pattern");
+            const bool validElement = element != nullptr;
+            p->elements.push_back(std::move(element));
+            if (!validElement) {
+                if (RecoverDelimitedList(TokenKind::RightParen)) {
+                    continue;
+                }
+                break;
+            }
+            if (Match(TokenKind::Comma)) {
+                continue;
+            }
+            if (!Check(TokenKind::RightParen)) {
+                EmitExpected(CurrentLocation(), "',' between tuple pattern elements");
+                continue;
+            }
+            else {
                 break;
             }
         }
-        Expect(TokenKind::RightParen, "expected ')'");
+        ExpectBefore(TokenKind::RightParen, "')' to close the tuple pattern");
         return p;
     }
 
@@ -803,7 +1031,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
     if (Match(TokenKind::Dot)) {
         auto p = std::make_unique<EnumPattern>();
         p->location = loc;
-        p->path.push_back(Expect(TokenKind::Ident, "expected enum variant name after '.'").text);
+        p->path.push_back(ExpectBefore(TokenKind::Ident, "an enum variant name after '.'").text);
         return parseEnumPatternSuffix(std::move(p));
     }
 
@@ -816,7 +1044,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
         if (Check(TokenKind::ColonColon) && Peek(1).Is(TokenKind::Ident)) {
             std::vector<std::string> path = {name};
             while (Match(TokenKind::ColonColon)) {
-                path.push_back(Expect(TokenKind::Ident, "expected variant name").text);
+                path.push_back(ExpectBefore(TokenKind::Ident, "a variant name after '::'").text);
             }
             auto p = std::make_unique<EnumPattern>();
             p->location = loc;
@@ -833,15 +1061,29 @@ PatternPtr Parser::ParsePrimaryPattern() {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 StructPattern::Field f;
                 f.location = CurrentLocation();
-                f.name = Expect(TokenKind::Ident, "expected field name").text;
-                Expect(TokenKind::Colon, "expected ':'");
-                f.pattern = ParsePattern();
+                f.name = ExpectBefore(TokenKind::Ident, "a field name in the structure pattern").text;
+                ExpectBefore(TokenKind::Colon, "':' after the structure pattern field name");
+                f.pattern = ParseRequiredPattern("after ':' in the structure field pattern");
+                const bool validField = !f.name.empty() && f.pattern != nullptr;
                 p->fields.push_back(std::move(f));
-                if (!Match(TokenKind::Comma)) {
+                if (!validField) {
+                    if (RecoverDelimitedList(TokenKind::RightBrace)) {
+                        continue;
+                    }
+                    break;
+                }
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (!Check(TokenKind::RightBrace)) {
+                    EmitExpected(CurrentLocation(), "',' between structure pattern fields");
+                    continue;
+                }
+                else {
                     break;
                 }
             }
-            Expect(TokenKind::RightBrace, "expected '}'");
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the structure pattern");
             return p;
         }
 
@@ -852,7 +1094,6 @@ PatternPtr Parser::ParsePrimaryPattern() {
         return p;
     }
 
-    EmitError(loc, std::format("expected a pattern, got '{}'", Peek().text));
     return nullptr;
 }
 } // namespace Rux

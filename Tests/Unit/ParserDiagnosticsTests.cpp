@@ -13,11 +13,11 @@ using namespace Rux;
 
 namespace {
 
-ParseResult ParseSource(const std::string_view source) {
+ParseResult ParseSource(const std::string_view source, const Target::Arch arch = Target::HostArch) {
     Lexer lexer(std::string(source), "parser-diagnostics.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
-    Parser parser(std::move(lexed.tokens), "parser-diagnostics.rux");
+    Parser parser(std::move(lexed.tokens), "parser-diagnostics.rux", arch);
     return parser.Parse();
 }
 
@@ -37,6 +37,17 @@ bool HasDiagnosticContaining(const ParseResult &result, const std::string_view t
         }
     }
     return false;
+}
+
+std::string DiagnosticMessages(const ParseResult &result) {
+    std::string messages;
+    for (const auto &diagnostic : result.diagnostics) {
+        if (!messages.empty()) {
+            messages += " | ";
+        }
+        messages += diagnostic.message;
+    }
+    return messages;
 }
 
 } // namespace
@@ -67,6 +78,7 @@ TEST_CASE("declaration diagnostics identify the rejected starter and expected de
     for (const auto &testCase : cases) {
         CAPTURE(testCase.source);
         const auto parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
         CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
     }
 }
@@ -115,6 +127,7 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
     for (const auto &testCase : cases) {
         CAPTURE(testCase.source);
         const auto parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
         CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
     }
 }
@@ -174,4 +187,164 @@ func Good();
     const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[5].get());
     REQUIRE(function != nullptr);
     CHECK_EQ(function->name, "Good");
+}
+
+TEST_CASE("expression diagnostics name their owning operator and delimiter") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {"func F() { let value = ; }", "expected an expression after '=' in the binding before ';'"},
+        {"func F() { let value = 1 + ; }", "expected an expression after '+' before ';'"},
+        {"func F() { let value = !; }", "expected an expression after unary '!' before ';'"},
+        {"func F() { let value = flag ? : 0; }",
+         "expected an expression after '?' in the conditional expression before ':'"},
+        {"func F() { let value = flag ? 1 : ; }",
+         "expected an expression after ':' in the conditional expression before ';'"},
+        {"func F() { let value = Call(1 2); }", "expected ',' between arguments before '2'"},
+        {"func F() { let value = Call(1; }", "expected ')' to close the argument list before ';'"},
+        {"func F() { let value = items[]; }", "expected an expression after '[' in the index expression before ']'"},
+        {"func F() { let value = [1 2]; }", "expected ',' between slice elements before '2'"},
+        {"func F() { let value = Pair { first: }; }",
+         "expected an expression after ':' in the initializer field before '}'"},
+    };
+
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
+}
+
+TEST_CASE("statement diagnostics identify the condition, iterable, body, and terminator") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {"func F() { if {} }", "expected an expression after 'if' before '{'"},
+        {"func F() { while {} }", "expected an expression after 'while' before '{'"},
+        {"func F() { do {} while ; }", "expected an expression after 'while' in the 'do' statement before ';'"},
+        {"func F() { for item in {} }", "expected an expression after 'in' in the 'for' statement before '{'"},
+        {"func F() { loop ; }", "expected '{' to start the 'loop' body before ';'"},
+        {"func F() { match {} }", "expected an expression after 'match' before '{'"},
+        {"func F() { break }", "expected ';' after the 'break' statement before '}'"},
+        {"func F() { continue }", "expected ';' after the 'continue' statement before '}'"},
+        {"func F() { return 1 }", "expected ';' after the 'return' statement before '}'"},
+        {"func F() { let value: int }", "expected ';' after the binding declaration before '}'"},
+    };
+
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
+}
+
+TEST_CASE("pattern diagnostics cover destructuring, ranges, guards, and match arms") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {"func F() { let (first second) = value; }", "expected ',' between tuple pattern elements before 'second'"},
+        {"func F() { let Point { x: first y: second } = value; }",
+         "expected ',' between structure pattern fields before 'y'"},
+        {"func F() { match value { .Some(first second) => 1 } }",
+         "expected ',' between variant pattern elements before 'second'"},
+        {"func F() { match value { 1.. => 1 } }", "expected a range pattern end after '..' before '=>'"},
+        {"func F() { match value { item if => 1 } }",
+         "expected an expression after 'if' in the pattern guard before '=>'"},
+        {"func F() { match value { => 1 } }", "expected a pattern at the start of the match arm before '=>'"},
+    };
+
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source);
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
+}
+
+TEST_CASE("match recovery reaches arms after malformed patterns and bodies") {
+    const auto parsed = ParseSource(R"(
+func F(value: int) {
+    match value {
+        => 0,
+        1 => ,
+        2 => 2
+    }
+}
+)");
+
+    CHECK(FindDiagnostic(parsed, "expected a pattern at the start of the match arm before '=>'") != nullptr);
+    CHECK(FindDiagnostic(parsed, "expected an expression after '=>' in the match arm before ','") != nullptr);
+    REQUIRE_EQ(parsed.module.items.size(), 1);
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *match = dynamic_cast<const MatchStmt *>(function->body->stmts[0].get());
+    REQUIRE(match != nullptr);
+    CHECK_EQ(match->arms.size(), 3);
+}
+
+TEST_CASE("every pattern family retains its accepted syntax") {
+    const auto parsed = ParseSource(R"(
+func F(value: int) {
+    match value {
+        0 => 0,
+        -1 => 1,
+        .Some(item) => 2,
+        Event::Named { value: inner } => 3,
+        Point { x: first, y: second } => 4,
+        (first, second) => 5,
+        1..=3 => 6,
+        item if item > 0 => 7,
+        else => 8
+    }
+}
+)");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    CHECK_FALSE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 1);
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *match = dynamic_cast<const MatchStmt *>(function->body->stmts[0].get());
+    REQUIRE(match != nullptr);
+    CHECK_EQ(match->arms.size(), 9);
+}
+
+TEST_CASE("assembly diagnostics cover malformed instruction and operand forms on both targets") {
+    struct Case {
+        Target::Arch arch;
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {Target::Arch::X86_64, "asm func F() { 1 }", "expected an assembly instruction mnemonic or label before '1'"},
+        {Target::Arch::X86_64, "asm func F() { mov rax, }",
+         "expected an operand after ',' in the 'mov' instruction before '}'"},
+        {Target::Arch::X86_64, "asm func F() { mov rax, [rbp +] }",
+         "expected a memory operand term after '+' before ']'"},
+        {Target::Arch::X86_64, "asm func F() { lea rax, [rbp + rax*] }",
+         "expected an integer scale after '*' in the memory operand before ']'"},
+        {Target::Arch::AArch64, "asm func F() { add x0, x1, x2, lsl }",
+         "expected an integer shift amount after 'lsl' before '}'"},
+        {Target::Arch::AArch64, "asm func F() { ldr x0, [x1 }", "expected ']' to close the memory operand before '}'"},
+    };
+
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source, testCase.arch);
+        CAPTURE(DiagnosticMessages(parsed));
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
 }

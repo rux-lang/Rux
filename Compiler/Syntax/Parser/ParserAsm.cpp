@@ -88,7 +88,7 @@ std::vector<AsmInstr> Parser::ParseAsmBody() {
         }
 
         if (!IsAsmNameToken(Peek())) {
-            EmitError(CurrentLocation(), std::format("expected an assembly mnemonic, found '{}'", Peek().text));
+            EmitExpected(CurrentLocation(), "an assembly instruction mnemonic or label");
             Advance(); // skip the offending token to make progress
             continue;
         }
@@ -121,6 +121,11 @@ std::vector<AsmInstr> Parser::ParseAsmBody() {
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             instr.operands.push_back(ParseAsmOperand());
             if (!Match(TokenKind::Comma)) {
+                break;
+            }
+            if (Check(TokenKind::RightBrace) || IsAtEnd()) {
+                EmitExpected(CurrentLocation(),
+                             std::format("an operand after ',' in the '{}' instruction", instr.mnemonic));
                 break;
             }
         }
@@ -211,7 +216,10 @@ AsmOperand Parser::ParseAsmOperand() {
 
     // An identifier-like token: either a register or a symbol / label reference.
     if (!IsAsmNameToken(Peek())) {
-        EmitError(CurrentLocation(), std::format("expected an assembly operand, found '{}'", Peek().text));
+        EmitExpected(CurrentLocation(), "a register, immediate, memory operand, symbol, or label");
+        if (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+            Advance();
+        }
         return op;
     }
     const Token &token = Advance();
@@ -259,7 +267,7 @@ void Parser::ParseAsmShift(AsmOperand &op) {
         op.shiftAmount = static_cast<int>(ParseAsmInt());
     }
     else if (shift != AsmShiftKind::None) {
-        EmitError(CurrentLocation(), std::format("expected a shift amount after '{}'", keyword));
+        EmitExpected(CurrentLocation(), std::format("an integer shift amount after '{}'", keyword));
     }
 }
 
@@ -270,14 +278,20 @@ void Parser::ParseAsmShift(AsmOperand &op) {
 // both: the separators an architecture does not use simply never appear.
 void Parser::ParseAsmMemory(AsmOperand &op) {
     op.kind = AsmOperand::Kind::Mem;
-    Expect(TokenKind::LeftBracket, "expected '['");
+    ExpectBefore(TokenKind::LeftBracket, "'[' to start the memory operand");
     bool negateNext = false;
-    while (!Check(TokenKind::RightBracket) && !IsAtEnd()) {
+    while (!CheckAny({TokenKind::RightBracket, TokenKind::RightBrace}) && !IsAtEnd()) {
         if (Match(TokenKind::Plus)) {
+            if (CheckAny({TokenKind::RightBracket, TokenKind::RightBrace, TokenKind::Comma})) {
+                EmitExpected(CurrentLocation(), "a memory operand term after '+'");
+            }
             negateNext = false;
             continue;
         }
         if (Match(TokenKind::Minus)) {
+            if (CheckAny({TokenKind::RightBracket, TokenKind::RightBrace, TokenKind::Comma})) {
+                EmitExpected(CurrentLocation(), "a memory operand term after '-'");
+            }
             negateNext = true;
             continue;
         }
@@ -296,7 +310,12 @@ void Parser::ParseAsmMemory(AsmOperand &op) {
             // Scaled index: reg * scale.
             if (Match(TokenKind::Star)) {
                 op.memIndex = std::move(lowered);
-                op.memScale = static_cast<int>(ParseAsmInt());
+                if (!CheckAny({TokenKind::IntLiteral, TokenKind::Minus, TokenKind::Plus})) {
+                    EmitExpected(CurrentLocation(), "an integer scale after '*' in the memory operand");
+                }
+                else {
+                    op.memScale = static_cast<int>(ParseAsmInt());
+                }
             }
             else if (lowered == "rip") {
                 op.memBase = "rip";
@@ -304,7 +323,12 @@ void Parser::ParseAsmMemory(AsmOperand &op) {
             else if (AsmShiftFromName(lowered) != AsmShiftKind::None) {
                 op.shift = AsmShiftFromName(lowered);
                 Match(TokenKind::Hash);
-                op.shiftAmount = static_cast<int>(ParseAsmInt());
+                if (!CheckAny({TokenKind::IntLiteral, TokenKind::Minus, TokenKind::Plus})) {
+                    EmitExpected(CurrentLocation(), std::format("an integer shift amount after '{}'", lowered));
+                }
+                else {
+                    op.shiftAmount = static_cast<int>(ParseAsmInt());
+                }
             }
             else if (AsmExtendFromName(lowered) != AsmExtendKind::None) {
                 op.extend = AsmExtendFromName(lowered);
@@ -326,10 +350,10 @@ void Parser::ParseAsmMemory(AsmOperand &op) {
             }
             continue;
         }
-        EmitError(CurrentLocation(), std::format("unexpected token '{}' in memory operand", Peek().text));
+        EmitExpected(CurrentLocation(), "a register, integer, symbol, '+', '-', or ',' in the memory operand");
         Advance();
     }
-    Expect(TokenKind::RightBracket, "expected ']'");
+    ExpectBefore(TokenKind::RightBracket, "']' to close the memory operand");
 
     // Writeback: `[X0, #8]!` updates the base before the access, `[X0], #8`
     // after it. The post-index offset sits outside the brackets, so it has to
@@ -356,7 +380,10 @@ std::int64_t Parser::ParseAsmInt() {
     else {
         Match(TokenKind::Plus);
     }
-    const Token &token = Expect(TokenKind::IntLiteral, "expected an integer");
+    const Token &token = ExpectBefore(TokenKind::IntLiteral, "an integer assembly immediate");
+    if (!token.Is(TokenKind::IntLiteral)) {
+        return 0;
+    }
     std::string text;
     for (const char character : token.text) {
         if (character != '_') {

@@ -2,15 +2,18 @@
 
 #include "Syntax/Parser/Parser.h"
 
+#include <format>
 #include <memory>
 #include <optional>
 #include <vector>
 
 namespace Rux {
 // Block and statements
-std::unique_ptr<Block> Parser::ParseBlock() {
+std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!Match(TokenKind::LeftBrace)) {
+        EmitExpected(CurrentLocation(), std::format("'{{' to start {}", role));
+    }
 
     auto block = std::make_unique<Block>();
     block->location = loc;
@@ -24,7 +27,7 @@ std::unique_ptr<Block> Parser::ParseBlock() {
         }
     }
 
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close {}", role));
     return block;
 }
 
@@ -86,7 +89,7 @@ StmtPtr Parser::ParseStmt() {
         if (Check(TokenKind::Ident)) {
             label = Advance().text;
         }
-        Expect(TokenKind::Semicolon, "expected ';'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the 'break' statement");
         auto s = std::make_unique<BreakStmt>();
         s->location = loc;
         s->label = label;
@@ -99,7 +102,7 @@ StmtPtr Parser::ParseStmt() {
         if (Check(TokenKind::Ident)) {
             label = Advance().text;
         }
-        Expect(TokenKind::Semicolon, "expected ';'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the 'continue' statement");
         auto s = std::make_unique<ContinueStmt>();
         s->location = loc;
         s->label = label;
@@ -152,27 +155,30 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (!s->isMut) {
         Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
     }
-    if (Check(TokenKind::Ident)) {
+    if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
         s->name = Advance().text;
     }
     else {
-        s->pattern = ParsePattern();
+        s->pattern = ParseRequiredPattern("after the binding keyword");
         if (!s->pattern) {
-            EmitError(CurrentLocation(), "expected variable name or destructuring pattern");
+            while (!CheckAny({TokenKind::Colon, TokenKind::Assign, TokenKind::Semicolon}) && !IsAtEnd()) {
+                Advance();
+            }
         }
     }
 
     if (Match(TokenKind::Colon)) {
-        s->type = ParseType();
+        s->type = ParseType("add the binding type after ':'");
     }
 
     if (Match(TokenKind::Assign)) {
-        s->init = ParseExpr();
+        s->init = ParseRequiredExpr("after '=' in the binding");
     }
     else if (!s->type) {
-        EmitError(CurrentLocation(), "expected '='");
+        EmitExpected(CurrentLocation(), "'=' before the binding initializer",
+                     "add a type annotation or initialize the binding");
     }
-    Expect(TokenKind::Semicolon, "expected ';'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the binding declaration");
     return s;
 }
 
@@ -187,7 +193,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     s->location = loc;
     s->isCompileTime = isCompileTime;
     structInitAllowed = false;
-    auto subject = ParseExpr();
+    auto subject = ParseRequiredExpr(isCompileTime ? "after 'when'" : "after 'if'");
     structInitAllowed = true;
 
     // Compile-time match: `when subject { pattern, ... => body, ... else => body }`.
@@ -199,18 +205,18 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
 
         auto parseArmBody = [&]() -> std::unique_ptr<Block> {
             if (Check(TokenKind::LeftBrace)) {
-                return ParseBlock();
+                return ParseBlock("the 'when' arm body");
             }
             auto block = std::make_unique<Block>();
             block->location = CurrentLocation();
             auto exprStmt = std::make_unique<ExprStmt>();
             exprStmt->location = CurrentLocation();
-            exprStmt->expr = ParseExpr();
+            exprStmt->expr = ParseRequiredExpr("after '=>' in the 'when' arm");
             block->stmts.push_back(std::move(exprStmt));
             return block;
         };
 
-        Expect(TokenKind::LeftBrace, "expected '{'");
+        ExpectBefore(TokenKind::LeftBrace, "'{' to start the 'when' match arms");
         bool sawElse = false;
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             IfStmt::MatchArm arm;
@@ -220,14 +226,14 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
             }
             else {
                 structInitAllowed = false;
-                arm.patterns.push_back(ParseExpr());
+                arm.patterns.push_back(ParseRequiredExpr("at the start of the 'when' arm"));
                 // Commas before `=>` separate patterns that share this arm's body.
                 while (Match(TokenKind::Comma) && !Check(TokenKind::FatArrow)) {
-                    arm.patterns.push_back(ParseExpr());
+                    arm.patterns.push_back(ParseRequiredExpr("after ',' in the 'when' arm pattern list"));
                 }
                 structInitAllowed = true;
             }
-            Expect(TokenKind::FatArrow, "expected '=>' after a 'when' arm pattern");
+            ExpectBefore(TokenKind::FatArrow, "'=>' after a 'when' arm pattern");
             arm.block = parseArmBody();
             s->matchArms.push_back(std::move(arm));
 
@@ -236,12 +242,12 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
                 EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
             }
         }
-        Expect(TokenKind::RightBrace, "expected '}' to close the 'when' match");
+        ExpectBefore(TokenKind::RightBrace, "'}' to close the 'when' match");
         return s;
     }
 
     s->condition = std::move(subject);
-    s->thenBlock = ParseBlock();
+    s->thenBlock = ParseBlock(isCompileTime ? "the 'when' body" : "the 'if' body");
 
     // A chain keeps the keyword it opened with: `if`/`else if` throughout, or
     // `when`/`else when` throughout. Mixing them would hide which arms the
@@ -259,14 +265,14 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         }
         Advance(); // consume 'if' / 'when'
         structInitAllowed = false;
-        elif.condition = ParseExpr();
+        elif.condition = ParseRequiredExpr(isCompileTime ? "after 'else when'" : "after 'else if'");
         structInitAllowed = true;
-        elif.block = ParseBlock();
+        elif.block = ParseBlock(isCompileTime ? "the 'else when' body" : "the 'else if' body");
         s->elseIfs.push_back(std::move(elif));
     }
 
     if (Match(TokenKind::ElseKeyword)) {
-        s->elseBlock = ParseBlock();
+        s->elseBlock = ParseBlock("the 'else' body");
     }
 
     return s;
@@ -279,9 +285,9 @@ std::unique_ptr<WhileStmt> Parser::ParseWhileStmt() {
     auto s = std::make_unique<WhileStmt>();
     s->location = loc;
     structInitAllowed = false;
-    s->condition = ParseExpr();
+    s->condition = ParseRequiredExpr("after 'while'");
     structInitAllowed = true;
-    s->body = ParseBlock();
+    s->body = ParseBlock("the 'while' body");
     return s;
 }
 
@@ -291,12 +297,12 @@ std::unique_ptr<DoWhileStmt> Parser::ParseDoWhileStmt() {
 
     auto s = std::make_unique<DoWhileStmt>();
     s->location = loc;
-    s->body = ParseBlock();
-    Expect(TokenKind::WhileKeyword, "expected 'while' after do body");
+    s->body = ParseBlock("the 'do' body");
+    ExpectBefore(TokenKind::WhileKeyword, "'while' after the 'do' body");
     structInitAllowed = false;
-    s->condition = ParseExpr();
+    s->condition = ParseRequiredExpr("after 'while' in the 'do' statement");
     structInitAllowed = true;
-    Expect(TokenKind::Semicolon, "expected ';' after do-while condition");
+    ExpectBefore(TokenKind::Semicolon, "';' after the 'do while' condition");
     return s;
 }
 
@@ -306,7 +312,7 @@ std::unique_ptr<LoopStmt> Parser::ParseLoopStmt() {
 
     auto s = std::make_unique<LoopStmt>();
     s->location = loc;
-    s->body = ParseBlock();
+    s->body = ParseBlock("the 'loop' body");
     return s;
 }
 
@@ -316,12 +322,12 @@ std::unique_ptr<ForStmt> Parser::ParseForStmt() {
 
     auto s = std::make_unique<ForStmt>();
     s->location = loc;
-    s->variable = Expect(TokenKind::Ident, "expected loop variable").text;
-    Expect(TokenKind::InKeyword, "expected 'in'");
+    s->variable = ExpectBefore(TokenKind::Ident, "a loop variable after 'for'").text;
+    ExpectBefore(TokenKind::InKeyword, "'in' after the loop variable");
     structInitAllowed = false;
-    s->iterable = ParseExpr();
+    s->iterable = ParseRequiredExpr("after 'in' in the 'for' statement");
     structInitAllowed = true;
-    s->body = ParseBlock();
+    s->body = ParseBlock("the 'for' body");
     return s;
 }
 
@@ -332,25 +338,33 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
     auto s = std::make_unique<MatchStmt>();
     s->location = loc;
     structInitAllowed = false;
-    s->subject = ParseExpr();
+    s->subject = ParseRequiredExpr("after 'match'");
     structInitAllowed = true;
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!Match(TokenKind::LeftBrace)) {
+        EmitExpected(CurrentLocation(), "'{' to start the match statement arms");
+        return s;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         MatchStmt::Arm arm;
         arm.location = CurrentLocation();
         arm.pattern = ParseMatchArmPattern();
-        Expect(TokenKind::FatArrow, "expected '=>'");
+        if (!arm.pattern) {
+            while (!CheckAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::FatArrow, "'=>' after the match arm pattern");
 
         if (Check(TokenKind::LeftBrace)) {
             // Block body
             auto bexpr = std::make_unique<BlockExpr>();
             bexpr->location = CurrentLocation();
-            bexpr->block = ParseBlock();
+            bexpr->block = ParseBlock("the match arm body");
             arm.body = std::move(bexpr);
         }
         else {
-            arm.body = ParseExpr();
+            arm.body = ParseRequiredExpr("after '=>' in the match arm");
         }
 
         s->arms.push_back(std::move(arm));
@@ -358,12 +372,17 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
             if (Check(TokenKind::RightBrace)) {
                 EmitError(Previous().location, "trailing comma is not allowed in match blocks");
             }
+            continue;
         }
-        else {
-            break;
+        if (!Check(TokenKind::RightBrace)) {
+            EmitExpected(CurrentLocation(), "',' between match arms");
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+            Match(TokenKind::Comma);
         }
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the match statement");
     return s;
 }
 
@@ -375,10 +394,10 @@ std::unique_ptr<ReturnStmt> Parser::ParseReturnStmt() {
     s->location = loc;
 
     if (!Check(TokenKind::Semicolon)) {
-        s->value = ParseExpr();
+        s->value = ParseRequiredExpr("after 'return'");
     }
 
-    Expect(TokenKind::Semicolon, "expected ';'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the 'return' statement");
     return s;
 }
 } // namespace Rux
