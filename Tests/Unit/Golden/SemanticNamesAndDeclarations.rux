@@ -1,0 +1,16 @@
+const Config = 1;
+struct Config {}
+
+interface Drawable {
+    func Draw(self);
+}
+
+struct Widget {}
+extend Widget : Drawable {}
+
+func Main() {
+    let count = 1;
+    coutn;
+    Config::Value;
+    missing;
+}

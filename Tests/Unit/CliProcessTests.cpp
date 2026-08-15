@@ -621,7 +621,7 @@ func Main() -> int {
     REQUIRE(invalidSource);
     const auto quiet = Run(std::array<std::string_view, 5>{"--manifest", manifest, "build", "--all", "--quiet"});
     CHECK(quiet.exitCode == 1);
-    CHECK(CountOccurrences(quiet.output, "undefined name 'Missing'") == 16);
+    CHECK(CountOccurrences(quiet.output, "name 'Missing' is not defined in this scope") == 16);
     CHECK_FALSE(quiet.output.contains("Build matrix"));
     CHECK_FALSE(quiet.output.contains("Aggregate statistics:"));
     CHECK_FALSE(quiet.output.contains("Compiling"));
@@ -1163,7 +1163,7 @@ Type = "Executable"
     CHECK(normalized.contains("Passed Pass in "));
     CHECK(normalized.contains("Failed BuildFail in "));
     CHECK(normalized.contains("note: the test package did not compile"));
-    CHECK(normalized.contains("undefined name 'Missing'"));
+    CHECK(normalized.contains("name 'Missing' is not defined in this scope"));
     CHECK(normalized.contains("Failed RuntimeFail in "));
     CHECK(normalized.contains("note: test 'RuntimeFail' exited with code"));
     CHECK(normalized.contains("  Output:\n"));

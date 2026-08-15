@@ -7,12 +7,27 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
-void SemanticAnalyzerContext::EmitError(const SourceLocation location, std::string message) const {
-    diags.push_back({SemanticDiagnostic::Severity::Error, currentFile, location, std::move(message), {}, {}, {}});
+void SemanticAnalyzerContext::EmitError(const SourceLocation location, std::string message,
+                                        std::vector<std::string> notes, std::optional<std::string> help) const {
+    diags.push_back({SemanticDiagnostic::Severity::Error,
+                     currentFile,
+                     location,
+                     std::move(message),
+                     std::move(notes),
+                     std::move(help),
+                     {}});
 }
 
 void SemanticAnalyzerContext::EmitWarning(const SourceLocation location, std::string message) const {
     diags.push_back({SemanticDiagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
+}
+
+void SemanticAnalyzerContext::EmitUndefinedName(const SourceLocation location, const std::string &name) const {
+    std::optional<std::string> help;
+    if (const Symbol *suggestion = currentScope->Suggest(name)) {
+        help = std::format("did you mean '{}'?", suggestion->name);
+    }
+    EmitError(location, std::format("name '{}' is not defined in this scope", name), {}, std::move(help));
 }
 
 void SemanticAnalyzerContext::PushScope() {

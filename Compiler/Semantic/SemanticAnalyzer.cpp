@@ -1235,7 +1235,21 @@ private:
                 return TypeRef::MakeNamed(GenericTypeName(*t));
             }
 
-            EmitError(expr.location, std::format("unknown type '{}'", t->name));
+            if (sym) {
+                EmitError(expr.location,
+                          std::format("name '{}' is a {}, not a type", t->name, SymbolKindName(sym->kind)),
+                          {DeclarationNote(*sym)});
+            }
+            else {
+                std::optional<std::string> help;
+                if (currentScope) {
+                    if (const Symbol *suggestion = currentScope->Suggest(t->name)) {
+                        help = std::format("did you mean '{}'?", suggestion->name);
+                    }
+                }
+                EmitError(expr.location, std::format("type '{}' is not defined in this scope", t->name), {},
+                          std::move(help));
+            }
             return TypeRef::MakeUnknown();
         }
 
@@ -2026,10 +2040,13 @@ private:
             }
             const auto previousSignature = ResolveFunctionSignature(*previous, isMethod);
             if (previousSignature && SameFunctionSignature(*signature, *previousSignature)) {
-                EmitError(decl.location,
-                          std::format("function '{}' has the same parameter signature as a previous declaration at "
-                                      "{}:{}",
-                                      decl.name, previous->location.line, previous->location.column));
+                const auto source = functionDeclFiles.find(previous);
+                const std::string &previousFile = source == functionDeclFiles.end() ? currentFile : source->second;
+                EmitError(
+                    decl.location,
+                    std::format("function '{}' has the same parameter signature as an earlier overload", decl.name),
+                    {std::format("the earlier overload was declared at '{}':{}:{}", previousFile,
+                                 previous->location.line, previous->location.column)});
                 return;
             }
         }
@@ -2361,22 +2378,47 @@ private:
 
         // A compound receiver (e.g. `int[]`) resolves through the type
         // expression rather than a named symbol.
+        const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
+        const Symbol *extendedSymbol = currentScope->Lookup(typeName);
         if (d.extendedType) {
             ValidateArrayType(*d.extendedType);
         }
-        TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
+        const bool receiverMayResolve = extendedSymbol != nullptr || d.typeName.starts_with("Slice<");
+        TypeRef extendedType =
+            d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
         const bool isSliceReceiver =
             extendedType.kind == TypeRef::Kind::Array ||
             (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
-        const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
-        if (!isSliceReceiver && !currentScope->Lookup(typeName)) {
-            EmitError(d.location, std::format("extend for unknown type '{}'", d.typeName));
+        if (!isSliceReceiver && !extendedSymbol) {
+            std::optional<std::string> help;
+            if (const Symbol *suggestion = currentScope->Suggest(typeName)) {
+                help = std::format("did you mean '{}'?", suggestion->name);
+            }
+            EmitError(d.location, std::format("cannot extend type '{}' because it is not defined", d.typeName), {},
+                      std::move(help));
+        }
+        else if (extendedSymbol && extendedSymbol->kind != Symbol::Kind::Type) {
+            EmitError(d.location,
+                      std::format("cannot extend '{}' because it is a {}, not a type", d.typeName,
+                                  SymbolKindName(extendedSymbol->kind)),
+                      {DeclarationNote(*extendedSymbol)});
         }
 
         if (d.interfaceName) {
             Symbol *ifaceSym = currentScope->Lookup(*d.interfaceName);
-            if (!ifaceSym || ifaceSym->kind != Symbol::Kind::Interface) {
-                EmitError(d.location, std::format("'{}' is not a known interface", *d.interfaceName));
+            if (!ifaceSym) {
+                std::optional<std::string> help;
+                if (const Symbol *suggestion = currentScope->Suggest(*d.interfaceName)) {
+                    help = std::format("did you mean '{}'?", suggestion->name);
+                }
+                EmitError(d.location, std::format("interface '{}' is not defined", *d.interfaceName), {},
+                          std::move(help));
+            }
+            else if (ifaceSym->kind != Symbol::Kind::Interface) {
+                EmitError(d.location,
+                          std::format("name '{}' is a {}, not an interface", *d.interfaceName,
+                                      SymbolKindName(ifaceSym->kind)),
+                          {DeclarationNote(*ifaceSym)});
             }
             else {
                 std::unordered_set<std::string> implNames;
@@ -2385,9 +2427,10 @@ private:
                 }
                 for (const auto &required : ifaceSym->interfaceMethods) {
                     if (!implNames.count(required)) {
-                        EmitError(d.location, std::format("extend of '{}' for '{}' is "
-                                                          "missing method '{}'",
-                                                          *d.interfaceName, d.typeName, required));
+                        EmitError(d.location,
+                                  std::format("implementation of interface '{}' for type '{}' is missing method '{}'",
+                                              *d.interfaceName, d.typeName, required),
+                                  {std::format("interface '{}' requires method '{}'", *d.interfaceName, required)});
                     }
                 }
             }
@@ -2553,30 +2596,37 @@ private:
             }
         }
 
-        Scope *matchedScope = nullptr;
-        std::string matchedPackage;
+        std::vector<std::pair<std::string, Scope *>> matches;
         for (const auto &[candidatePackage, moduleScopes] : packageModuleScopes) {
             auto modIt = moduleScopes.find(logicalModulePath);
             if (modIt == moduleScopes.end()) {
                 continue;
             }
-            if (matchedScope && matchedScope != modIt->second) {
-                EmitError(d.location, std::format("ambiguous module '{}'", logicalModulePath));
-                return {};
+            if (std::ranges::none_of(matches, [&](const auto &match) { return match.second == modIt->second; })) {
+                matches.emplace_back(candidatePackage, modIt->second);
             }
-            matchedScope = modIt->second;
-            matchedPackage = candidatePackage;
         }
 
-        if (matchedScope) {
-            return {&matchedScope->Table(), ImportScopeDisplayName(matchedPackage, logicalModulePath)};
+        std::ranges::sort(matches, {}, &std::pair<std::string, Scope *>::first);
+        if (matches.size() > 1) {
+            std::vector<std::string> notes;
+            for (const auto &[candidatePackage, _] : matches) {
+                notes.push_back(
+                    std::format("module '{}' is available from package '{}'", logicalModulePath, candidatePackage));
+            }
+            EmitError(d.location, std::format("module '{}' is ambiguous", logicalModulePath), std::move(notes),
+                      std::format("qualify the import with one of the listed package names"));
+            return {};
+        }
+        if (!matches.empty()) {
+            return {&matches[0].second->Table(), ImportScopeDisplayName(matches[0].first, logicalModulePath)};
         }
 
         if (!packageModuleScopes.contains(pkgName)) {
-            EmitError(d.location, std::format("unknown package or module '{}'", pkgName));
+            EmitError(d.location, std::format("package or module '{}' is not defined", pkgName));
         }
         else {
-            EmitError(d.location, std::format("module '{}' not found in package '{}'", modulePath, pkgName));
+            EmitError(d.location, std::format("module '{}' was not found in package '{}'", modulePath, pkgName));
         }
         return {};
     }
@@ -2589,18 +2639,19 @@ private:
         }
         auto sym_it = scope.table->find(name);
         if (sym_it == scope.table->end()) {
-            std::string message = std::format("'{}' not found in {}", name, scope.displayName);
+            std::string message = std::format("name '{}' was not found in {}", name, scope.displayName);
+            std::optional<std::string> help;
             // The item is not at this path, but if one of the package's modules
             // holds it, point at the fully-qualified import.
             if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
                 for (const auto &[candidateModule, candidateScope] : pkgIt->second) {
                     if (!candidateModule.empty() && candidateScope->Table().contains(name)) {
-                        message += std::format("; did you mean 'import {}::{}::{}'?", pkgName, candidateModule, name);
+                        help = std::format("did you mean 'import {}::{}::{}'?", pkgName, candidateModule, name);
                         break;
                     }
                 }
             }
-            EmitError(d.location, std::move(message));
+            EmitError(d.location, std::move(message), {}, std::move(help));
             return;
         }
         DefineImportedSymbol(sym_it->second);
@@ -2735,9 +2786,8 @@ private:
                 if (bindModuleAlias(pkgName)) {
                     return;
                 }
-                EmitError(d.location, std::format("import '{}' does not name a module; name an "
-                                                  "item instead (e.g. import {}::Name)",
-                                                  pkgName, pkgName));
+                EmitError(d.location, std::format("import '{}' does not name a module", pkgName), {},
+                          std::format("import an item instead, for example 'import {}::Name'", pkgName));
                 return;
             }
             const std::string &name = d.path.back();
@@ -3019,7 +3069,7 @@ private:
             if (sym) {
                 return sym->type;
             }
-            EmitError(e->location, std::format("undefined name '{}'", e->name));
+            EmitUndefinedName(e->location, e->name);
             return TypeRef::MakeUnknown();
         }
 
@@ -3036,7 +3086,7 @@ private:
             }
             Symbol *first = currentScope->Lookup(e->segments[0]);
             if (!first) {
-                EmitError(e->location, std::format("undefined name '{}'", e->segments[0]));
+                EmitUndefinedName(e->location, e->segments[0]);
                 return TypeRef::MakeUnknown();
             }
             if (e->segments.size() >= 2 &&
@@ -3077,7 +3127,11 @@ private:
             Scope *moduleScope = nullptr;
             for (std::size_t i = 1; i < e->segments.size(); ++i) {
                 if (current->kind != Symbol::Kind::Module || !current->moduleScope) {
-                    return current->type;
+                    EmitError(
+                        e->location,
+                        std::format("name '{}' is a {}, not a module", current->name, SymbolKindName(current->kind)),
+                        {DeclarationNote(*current)});
+                    return TypeRef::MakeUnknown();
                 }
                 moduleScope = current->moduleScope;
                 Symbol *item = moduleScope->Lookup(e->segments[i]);

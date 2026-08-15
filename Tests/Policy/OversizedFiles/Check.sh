@@ -34,12 +34,16 @@ review_exception() {
         reviewed_reason='cohesive module-level RCU sections, symbols, retry orchestration, fixups, and shared emitter hooks'
         ;;
     Compiler/Semantic/SemanticAnalyzer.cpp)
-        reviewed_limit=3452
+        reviewed_limit=3506
         reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, and shared-context policy'
         ;;
     Tests/Unit/AArch64EncoderVectors.inc)
         reviewed_limit=1605
         reviewed_reason='dense one-line instruction reference vectors whose locality makes coverage auditable'
+        ;;
+    Tests/Unit/CliProcessTests.cpp)
+        reviewed_limit=1322
+        reviewed_reason='end-to-end CLI stream, option, workspace, and process contracts sharing one filesystem fixture'
         ;;
     Tests/Unit/OptimizerTests.cpp)
         reviewed_limit=1284

@@ -1,6 +1,8 @@
 #include "Semantic/SemanticProgramIndex.h"
 
+#include <algorithm>
 #include <format>
+#include <limits>
 #include <utility>
 
 namespace Rux::SemanticDetail {
@@ -13,13 +15,59 @@ std::string BaseTypeName(const std::string &name) {
     const std::size_t position = name.find('<');
     return position == std::string::npos ? name : name.substr(0, position);
 }
+
+std::size_t EditDistance(const std::string_view left, const std::string_view right) {
+    std::vector<std::size_t> previous(right.size() + 1);
+    std::vector<std::size_t> current(right.size() + 1);
+    for (std::size_t i = 0; i <= right.size(); ++i) {
+        previous[i] = i;
+    }
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        current[0] = i + 1;
+        for (std::size_t j = 0; j < right.size(); ++j) {
+            current[j + 1] =
+                std::min({current[j] + 1, previous[j + 1] + 1, previous[j] + (left[i] == right[j] ? 0U : 1U)});
+        }
+        previous.swap(current);
+    }
+    return previous.back();
+}
 } // namespace
+
+std::string_view SymbolKindName(const Symbol::Kind kind) {
+    switch (kind) {
+    case Symbol::Kind::Var:
+        return "variable";
+    case Symbol::Kind::Func:
+        return "function";
+    case Symbol::Kind::Type:
+        return "type";
+    case Symbol::Kind::Const:
+        return "constant";
+    case Symbol::Kind::Module:
+        return "module";
+    case Symbol::Kind::Interface:
+        return "interface";
+    }
+    return "symbol";
+}
+
+std::string DeclarationNote(const Symbol &symbol) {
+    if (symbol.sourceName.empty() || symbol.location.line == 0) {
+        return std::format("'{}' is declared as a {}", symbol.name, SymbolKindName(symbol.kind));
+    }
+    return std::format("'{}' was declared as a {} at '{}':{}:{}", symbol.name, SymbolKindName(symbol.kind),
+                       symbol.sourceName, symbol.location.line, symbol.location.column);
+}
 
 Scope::Scope(Scope *parentScope)
     : parent(parentScope) {
 }
 
 bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName) {
+    if (symbol.sourceName.empty()) {
+        symbol.sourceName = sourceName;
+    }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
         if (iterator->second.kind == Symbol::Kind::Func && symbol.kind == Symbol::Kind::Func) {
             iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
@@ -30,14 +78,21 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
             if (!iterator->second.externDecl && symbol.externDecl) {
                 iterator->second.externDecl = symbol.externDecl;
             }
+            iterator->second.isPublic = iterator->second.isPublic || symbol.isPublic;
             return true;
         }
+        const Symbol &previous = iterator->second;
+        const std::string message =
+            previous.kind == symbol.kind
+                ? std::format("{} '{}' is already declared in this scope", SymbolKindName(symbol.kind), symbol.name)
+                : std::format("name '{}' cannot be declared as a {} because it is already a {} "
+                              "in this scope",
+                              symbol.name, SymbolKindName(symbol.kind), SymbolKindName(previous.kind));
         diagnostics.push_back({SemanticDiagnostic::Severity::Error,
                                sourceName,
                                symbol.location,
-                               std::format("'{}' is already defined (first defined at {}:{})", symbol.name,
-                                           iterator->second.location.line, iterator->second.location.column),
-                               {},
+                               message,
+                               {DeclarationNote(previous)},
                                {},
                                {}});
         return false;
@@ -57,6 +112,22 @@ Symbol *Scope::Lookup(const std::string &name) {
 Symbol *Scope::LookupLocal(const std::string &name) {
     auto iterator = table.find(name);
     return iterator == table.end() ? nullptr : &iterator->second;
+}
+
+const Symbol *Scope::Suggest(const std::string &name) const {
+    const Symbol *best = nullptr;
+    std::size_t bestDistance = std::numeric_limits<std::size_t>::max();
+    for (const Scope *scope = this; scope != nullptr; scope = scope->parent) {
+        for (const auto &[candidate, symbol] : scope->table) {
+            const std::size_t distance = EditDistance(name, candidate);
+            if (distance < bestDistance || (distance == bestDistance && best != nullptr && candidate < best->name)) {
+                best = &symbol;
+                bestDistance = distance;
+            }
+        }
+    }
+    const std::size_t threshold = name.size() < 4 ? 1 : std::min<std::size_t>(3, (name.size() + 2) / 3);
+    return bestDistance <= threshold ? best : nullptr;
 }
 
 Scope *Scope::Parent() const {
@@ -117,6 +188,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = name;
         symbol.location = declaration.location;
         symbol.isMut = isMut;
+        symbol.isPublic = declaration.isPublic;
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {publicKind, name, sourceName, declaration.location, std::move(resolvedType), isMut});
@@ -132,6 +204,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.kind = Symbol::Kind::Func;
         symbol.name = function->name;
         symbol.location = function->location;
+        symbol.isPublic = function->isPublic;
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
@@ -157,6 +230,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.kind = Symbol::Kind::Interface;
         symbol.name = interface->name;
         symbol.location = interface->location;
+        symbol.isPublic = interface->isPublic;
         for (const auto &method : interface->methods) {
             symbol.interfaceMethods.push_back(method->name);
         }
@@ -170,6 +244,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.kind = Symbol::Kind::Const;
         symbol.name = constant->name;
         symbol.location = constant->location;
+        symbol.isPublic = constant->isPublic;
         symbol.intrinsicName = constant->intrinsicName;
         if (constant->type) {
             symbol.type = resolveType(**constant->type);
@@ -184,6 +259,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.kind = Symbol::Kind::Type;
         symbol.name = alias->name;
         symbol.location = alias->location;
+        symbol.isPublic = alias->isPublic;
         symbol.type = resolveType(*alias->type);
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
@@ -196,6 +272,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.kind = Symbol::Kind::Func;
         symbol.name = externFunction->name;
         symbol.location = externFunction->location;
+        symbol.isPublic = externFunction->isPublic;
         symbol.externDecl = externFunction;
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Func, externFunction->name, sourceName,
@@ -222,6 +299,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             symbol.kind = Symbol::Kind::Module;
             symbol.name = module->name;
             symbol.location = declaration.location;
+            symbol.isPublic = module->isPublic;
             symbol.moduleScope = moduleScope;
             if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
                 publicSymbols.push_back(

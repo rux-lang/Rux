@@ -88,9 +88,9 @@ TEST_CASE("semantic analyzer context preserves dependency and diagnostic orderin
     CHECK(model.modules[1] == &user.module);
     REQUIRE_EQ(model.diagnostics.size(), 2);
     CHECK_EQ(model.diagnostics[0].sourceName, "dependency.rux");
-    CHECK_EQ(model.diagnostics[0].message, "undefined name 'missingDependency'");
+    CHECK_EQ(model.diagnostics[0].message, "name 'missingDependency' is not defined in this scope");
     CHECK_EQ(model.diagnostics[1].sourceName, "user.rux");
-    CHECK_EQ(model.diagnostics[1].message, "undefined name 'missingUser'");
+    CHECK_EQ(model.diagnostics[1].message, "name 'missingUser' is not defined in this scope");
 }
 
 TEST_CASE("semantic model retains resolved AST type facts") {
@@ -1052,7 +1052,7 @@ TEST_CASE("duplicate free-function signatures are rejected") {
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].severity, Diagnostic::Severity::Error);
     CHECK_EQ(diagnostics[0].location.line, 3);
-    CHECK_EQ(diagnostics[0].message, "function 'Do' has the same parameter signature as a previous declaration at 2:9");
+    CHECK_EQ(diagnostics[0].message, "function 'Do' has the same parameter signature as an earlier overload");
 }
 
 TEST_CASE("duplicate method signatures are rejected") {
@@ -1069,8 +1069,7 @@ TEST_CASE("duplicate method signatures are rejected") {
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].severity, Diagnostic::Severity::Error);
     CHECK_EQ(diagnostics[0].location.line, 6);
-    CHECK_EQ(diagnostics[0].message,
-             "function 'Run' has the same parameter signature as a previous declaration at 5:13");
+    CHECK_EQ(diagnostics[0].message, "function 'Run' has the same parameter signature as an earlier overload");
 }
 
 TEST_CASE("same function signature in distinct modules remains valid") {
@@ -1111,14 +1110,14 @@ TEST_CASE("unimplemented primitive names cannot be declared as user types") {
     const auto diagnostics = AnalyzeSource("struct int128 {}");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK(diagnostics.front().message.starts_with("'int128' is already defined"));
+    CHECK_EQ(diagnostics.front().message, "type 'int128' is already declared in this scope");
 }
 
 TEST_CASE("ordinary unknown types keep the unknown-type diagnostic") {
     const auto diagnostics = AnalyzeSource("struct Holder { value: CustomInteger; }");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "unknown type 'CustomInteger'");
+    CHECK_EQ(diagnostics.front().message, "type 'CustomInteger' is not defined in this scope");
 }
 
 TEST_CASE("a flexible array is accepted only as the final struct field") {
@@ -1334,8 +1333,8 @@ TEST_CASE("bare package import without an eponymous module is an error") {
     )");
 
     const bool reported = std::ranges::any_of(diagnostics, [](const SemanticDiagnostic &d) {
-        return d.severity == Diagnostic::Severity::Error &&
-               d.message == "import 'Utils' does not name a module; name an item instead (e.g. import Utils::Name)";
+        return d.severity == Diagnostic::Severity::Error && d.message == "import 'Utils' does not name a module" &&
+               d.help.has_value() && *d.help == "import an item instead, for example 'import Utils::Name'";
     });
     CHECK(reported);
 }
@@ -1353,8 +1352,8 @@ TEST_CASE("importing a module's item without naming the module is an error") {
     )");
 
     const bool reported = std::ranges::any_of(diagnostics, [](const SemanticDiagnostic &d) {
-        return d.severity == Diagnostic::Severity::Error &&
-               d.message == "'Bar' not found in package 'Foo'; did you mean 'import Foo::Foo::Bar'?";
+        return d.severity == Diagnostic::Severity::Error && d.message == "name 'Bar' was not found in package 'Foo'" &&
+               d.help.has_value() && *d.help == "did you mean 'import Foo::Foo::Bar'?";
     });
     CHECK(reported);
 }

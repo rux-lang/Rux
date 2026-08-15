@@ -143,7 +143,7 @@ TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") 
         func Main() { Panic("missing import"); }
     )");
     CHECK(std::ranges::any_of(undefinedDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "undefined name 'Panic'";
+        return diagnostic.message == "name 'Panic' is not defined in this scope";
     }));
 
     const auto signatureDiagnostics = Analyze(R"(

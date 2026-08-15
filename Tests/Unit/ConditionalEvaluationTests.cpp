@@ -143,8 +143,9 @@ func Selected() -> int {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(std::ranges::any_of(model.diagnostics,
-                              [](const auto &diagnostic) { return diagnostic.message == "undefined name '#line'"; }));
+    CHECK(std::ranges::any_of(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "name '#line' is not defined in this scope";
+    }));
 }
 
 TEST_CASE("intrinsic declares a compiler-initialized ordinary constant") {

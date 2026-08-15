@@ -1,1 +1,1 @@
-2:12: error: undefined name 'missing'
+2:12: error: name 'missing' is not defined in this scope

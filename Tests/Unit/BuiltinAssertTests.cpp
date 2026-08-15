@@ -157,7 +157,7 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
         func Main() { Assert(true, "missing import"); }
     )");
     CHECK(std::ranges::any_of(undefinedDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "undefined name 'Assert'";
+        return diagnostic.message == "name 'Assert' is not defined in this scope";
     }));
 
     const auto signatureDiagnostics = Analyze(R"(

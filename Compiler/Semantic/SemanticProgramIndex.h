@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -24,9 +25,11 @@ struct Symbol {
 
     Kind kind = Kind::Var;
     std::string name;
+    std::string sourceName;
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
+    bool isPublic = false;
     std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
     const ExternFuncDecl *externDecl = nullptr;
@@ -41,6 +44,7 @@ public:
     bool Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, const std::string &sourceName);
     [[nodiscard]] Symbol *Lookup(const std::string &name);
     [[nodiscard]] Symbol *LookupLocal(const std::string &name);
+    [[nodiscard]] const Symbol *Suggest(const std::string &name) const;
     [[nodiscard]] Scope *Parent() const;
     [[nodiscard]] const std::unordered_map<std::string, Symbol> &Table() const;
 
@@ -48,6 +52,9 @@ private:
     Scope *parent;
     std::unordered_map<std::string, Symbol> table;
 };
+
+[[nodiscard]] std::string_view SymbolKindName(Symbol::Kind kind);
+[[nodiscard]] std::string DeclarationNote(const Symbol &symbol);
 
 // Owns the package/module declaration topology built before semantic checking.
 // The analyzer supplies type resolution because aliases and typed constants

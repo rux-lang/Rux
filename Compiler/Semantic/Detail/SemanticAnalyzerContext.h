@@ -33,8 +33,10 @@ public:
     void Run();
 
 protected:
-    void EmitError(SourceLocation location, std::string message) const;
+    void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
+                   std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message) const;
+    void EmitUndefinedName(SourceLocation location, const std::string &name) const;
 
     void PushScope();
     void PopScope();

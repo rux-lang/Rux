@@ -1,0 +1,5 @@
+2:1: error: name 'Config' cannot be declared as a type because it is already a constant in this scope
+9:1: error: implementation of interface 'Drawable' for type 'Widget' is missing method 'Draw'
+13:5: error: name 'coutn' is not defined in this scope
+14:11: error: name 'Config' is a constant, not a module
+15:5: error: name 'missing' is not defined in this scope
