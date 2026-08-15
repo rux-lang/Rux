@@ -48,6 +48,8 @@ public:
     // `primary` is the status verb and is the only bold portion of the line.
     void Progress(std::string_view primary, std::string_view detail = {}) const;
     void Success(std::string_view primary, std::string_view detail = {}) const;
+    // Failure outcomes remain visible in quiet mode, just like diagnostics.
+    void Failure(std::string_view primary, std::string_view detail = {}) const;
     void Detail(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Verbose(std::string_view text) const;
     void Write(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
@@ -56,7 +58,8 @@ public:
 
 private:
     void Labeled(std::string_view label, std::string_view text, std::string_view color, bool indented = false) const;
-    void Status(std::string_view primary, std::string_view detail, Reporting::StatusKind kind) const;
+    void Status(std::string_view primary, std::string_view detail, Reporting::StatusKind kind,
+                MessageVisibility visibility) const;
 
     std::FILE *output_;
     ReporterOptions options_;

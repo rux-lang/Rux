@@ -55,6 +55,7 @@ TEST_CASE("CLI reporter renders every semantic message family consistently") {
     reporter.Link("https://rux-lang.dev/cli/update");
     reporter.Progress("Compiling", "App v0.4.0");
     reporter.Success("Built", "App in 25 ms");
+    reporter.Failure("Failed", "Tests in 30 ms");
     reporter.Detail("Output: Bin/App");
     constexpr std::array table = {TableRow{"Passed", "2"}, TableRow{"Failed", "0"}};
     reporter.Table(table);
@@ -67,6 +68,7 @@ TEST_CASE("CLI reporter renders every semantic message family consistently") {
                                 "  docs: https://rux-lang.dev/cli/update\n"
                                 "Compiling App v0.4.0\n"
                                 "Built App in 25 ms\n"
+                                "Failed Tests in 30 ms\n"
                                 "  Output: Bin/App\n"
                                 "  Passed: 2\n"
                                 "  Failed: 0\n"
@@ -86,6 +88,7 @@ TEST_CASE("CLI reporter applies quiet and verbose policy by message visibility")
         reporter.Link("https://rux-lang.dev/cli/");
         reporter.Progress("Checking", "App");
         reporter.Success("Checked", "App");
+        reporter.Failure("Failed", "App");
         reporter.Detail("ordinary detail");
         reporter.Verbose("phase detail");
         constexpr std::array rows = {TableRow{"Total", "1"}};
@@ -96,7 +99,8 @@ TEST_CASE("CLI reporter applies quiet and verbose policy by message visibility")
                                     "warning: unsafe\n"
                                     "  note: context\n"
                                     "  help: fix it\n"
-                                    "  docs: https://rux-lang.dev/cli/\n");
+                                    "  docs: https://rux-lang.dev/cli/\n"
+                                    "Failed App\n");
     }
 
     SUBCASE("normal output omits verbose-only detail") {

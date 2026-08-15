@@ -55,9 +55,9 @@ void Reporter::Link(const std::string_view text) const {
                style_.Cyan(), text, style_.Reset());
 }
 
-void Reporter::Status(const std::string_view primary, const std::string_view detail,
-                      const Reporting::StatusKind kind) const {
-    if (!Visible(MessageVisibility::Normal)) {
+void Reporter::Status(const std::string_view primary, const std::string_view detail, const Reporting::StatusKind kind,
+                      const MessageVisibility visibility) const {
+    if (!Visible(visibility)) {
         return;
     }
     std::print(output_, "{}{}{}{}", style_.Color(kind), style_.Bold(), primary, style_.Reset());
@@ -68,11 +68,15 @@ void Reporter::Status(const std::string_view primary, const std::string_view det
 }
 
 void Reporter::Progress(const std::string_view primary, const std::string_view detail) const {
-    Status(primary, detail, Reporting::StatusKind::Progress);
+    Status(primary, detail, Reporting::StatusKind::Progress, MessageVisibility::Normal);
 }
 
 void Reporter::Success(const std::string_view primary, const std::string_view detail) const {
-    Status(primary, detail, Reporting::StatusKind::Success);
+    Status(primary, detail, Reporting::StatusKind::Success, MessageVisibility::Normal);
+}
+
+void Reporter::Failure(const std::string_view primary, const std::string_view detail) const {
+    Status(primary, detail, Reporting::StatusKind::Failure, MessageVisibility::Always);
 }
 
 void Reporter::Detail(const std::string_view text, const MessageVisibility visibility) const {

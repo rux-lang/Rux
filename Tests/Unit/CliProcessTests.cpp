@@ -9,6 +9,7 @@
 #include <chrono>
 #include <doctest.h>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <optional>
@@ -44,6 +45,16 @@ std::vector<unsigned char> ReadBinaryFile(const std::filesystem::path &path) {
 std::string ReadTextFile(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+void WriteTextFile(const std::filesystem::path &path, const std::string_view contents) {
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    REQUIRE(!error);
+    std::ofstream output(path, std::ios::binary);
+    output << contents;
+    output.close();
+    REQUIRE(output);
 }
 
 constexpr const char *packageCacheHomeVariable = Target::HostOS == Target::OS::Windows ? "LOCALAPPDATA" : "HOME";
@@ -717,6 +728,159 @@ TEST_CASE("check and lint render source frames while check JSON remains frame-fr
     CHECK(!error);
 }
 
+TEST_CASE("check reports package and workspace outcomes with shared timing grammar") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-check-report-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+
+[Workspace]
+Packages = ["Alpha", "Beta"]
+)");
+    for (const std::string_view package : {"Alpha", "Beta"}) {
+        const auto packageRoot = root / package;
+        WriteTextFile(packageRoot / "Rux.toml",
+                      std::format("[Manifest]\nVersion = 1\n\n[Package]\nName = \"{}\"\nVersion = \"0.1.0\"\n"
+                                  "Type = \"SourceLibrary\"\n",
+                                  package));
+        WriteTextFile(packageRoot / "Src" / (std::string(package) + ".rux"), std::format("module {} {{}}\n", package));
+    }
+
+    const auto manifest = manifestPath.string();
+    const auto human = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "check"});
+    CAPTURE(human.output);
+    CHECK(human.exitCode == 0);
+    CHECK(human.output.contains("Checking workspace (" + Driver::HostTargetTriple() + ")"));
+    CHECK(human.output.contains("  Packages: 2"));
+    CHECK(human.output.contains("Checked Alpha in "));
+    CHECK(human.output.contains("Checked Beta in "));
+    CHECK(human.output.contains("Checked 2 packages in "));
+    CHECK(human.output.contains("(2 passed, 0 failed)"));
+    CHECK_FALSE(human.output.contains("[PASSED]"));
+
+    const auto json = Run(std::array<std::string_view, 4>{"--manifest", manifest, "check", "--json"});
+    CHECK(json.exitCode == 0);
+    const auto normalizedJson = NormalizeNewlines(json.output);
+    CHECK(normalizedJson.starts_with("{\n"));
+    CHECK(json.output.contains("\"success\": true"));
+    CHECK_FALSE(json.output.contains("Checking"));
+    CHECK_FALSE(json.output.contains("Checked"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    CHECK(!error);
+}
+
+TEST_CASE("test reports successful empty trees as timed no-work outcomes") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-empty-test-report-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+
+[Package]
+Name = "EmptyTests"
+Version = "0.1.0"
+Type = "Executable"
+)");
+    WriteTextFile(root / "Src" / "Main.rux", "func Main() -> int { return 0; }\n");
+
+    const auto manifest = manifestPath.string();
+    const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "test"});
+    CAPTURE(result.output);
+    CHECK(result.exitCode == 0);
+    CHECK(result.output.contains("Testing EmptyTests v0.1.0 (debug, " + Driver::HostTargetTriple() + ")"));
+    CHECK(result.output.contains("Passed 0 tests in "));
+    CHECK(result.output.contains("No test directory found at 'Tests/'"));
+
+    const auto quiet = Run(std::array<std::string_view, 4>{"--manifest", manifest, "test", "--quiet"});
+    CHECK(quiet.exitCode == 0);
+    CHECK(quiet.output.empty());
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    CHECK(!error);
+}
+
+TEST_CASE("test keeps failed rows, reasons, diagnostics, and captured output together") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-test-report-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+
+[Package]
+Name = "TestReport"
+Version = "0.1.0"
+Type = "Executable"
+)");
+    WriteTextFile(root / "Src" / "Main.rux", "func Main() -> int { return 0; }\n");
+
+    auto WriteTest = [&](const std::string_view name, const std::string_view source,
+                         const std::string_view dependencies = {}) {
+        const auto testRoot = root / "Tests" / name;
+        WriteTextFile(testRoot / "Rux.toml",
+                      std::format("[Manifest]\nVersion = 1\n\n[Package]\nName = \"{}\"\nVersion = \"0.1.0\"\n"
+                                  "Type = \"Executable\"\n{}",
+                                  name, dependencies));
+        WriteTextFile(testRoot / "Src" / "Main.rux", source);
+    };
+    WriteTest("Pass", "func Main() -> int { return 0; }\n");
+    WriteTest("BuildFail", "func Main() -> int { return Missing; }\n");
+    const auto runtimeRoot = root / "Tests" / "RuntimeFail";
+    std::error_code copyError;
+    std::filesystem::create_directories(root / "Packages", copyError);
+    REQUIRE(!copyError);
+    std::filesystem::copy(std::filesystem::path(RUX_ROOT_DIR) / "Packages" / "Core", root / "Packages" / "Core",
+                          std::filesystem::copy_options::recursive, copyError);
+    CAPTURE(copyError.message());
+    REQUIRE(!copyError);
+    WriteTest("RuntimeFail", "import Core::Panic;\nfunc Main() -> int { Panic(\"first line\\nsecond line\"); }\n",
+              "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
+    const auto runtimeManifest = Manifest::Load(runtimeRoot / "Rux.toml");
+    std::string runtimeManifestErrors;
+    for (const auto &diagnostic : runtimeManifest.diagnostics) {
+        runtimeManifestErrors += diagnostic.Format() + '\n';
+    }
+    CAPTURE(runtimeManifestErrors);
+    REQUIRE(runtimeManifest.Ok());
+
+    const auto manifest = manifestPath.string();
+    const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "test"});
+    const auto normalized = NormalizeNewlines(result.output);
+    CAPTURE(normalized);
+    CHECK(result.exitCode == 1);
+    CHECK(normalized.contains("Passed Pass in "));
+    CHECK(normalized.contains("Failed BuildFail in "));
+    CHECK(normalized.contains("note: the test package did not compile"));
+    CHECK(normalized.contains("undefined name 'Missing'"));
+    CHECK(normalized.contains("Failed RuntimeFail in "));
+    CHECK(normalized.contains("note: test 'RuntimeFail' exited with code"));
+    CHECK(normalized.contains("  Output:\n"));
+    CHECK(normalized.contains("    Panic: first line\n    second line"));
+    CHECK(normalized.contains("Failed 3 tests in "));
+    CHECK(normalized.contains("(1 passed, 2 failed)"));
+    CHECK_FALSE(normalized.contains("[FAILED]"));
+
+    const auto quiet = Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "test", "--quiet"});
+    const auto normalizedQuiet = NormalizeNewlines(quiet.output);
+    CAPTURE(normalizedQuiet);
+    CHECK(quiet.exitCode == 1);
+    CHECK(normalizedQuiet.contains("Failed BuildFail in "));
+    CHECK(normalizedQuiet.contains("Failed RuntimeFail in "));
+    CHECK(normalizedQuiet.contains("note: the test package did not compile"));
+    CHECK(normalizedQuiet.contains("  Output:\n"));
+    CHECK_FALSE(normalizedQuiet.contains("Testing TestReport"));
+    CHECK_FALSE(normalizedQuiet.contains("Running 3 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Passed Pass"));
+    CHECK_FALSE(normalizedQuiet.contains("Failed 3 tests"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    CHECK(!error);
+}
+
 TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its ARM64 alias") {
     const auto manifest = ArithmeticManifest();
     const auto check =
@@ -782,9 +946,12 @@ TEST_CASE("target tests reject a foreign operating system before discovering pac
     const auto result = Run(std::array<std::string_view, 3>{"test", "--target", foreignTarget});
 
     CHECK(result.exitCode == 1);
-    CHECK(result.output.contains("test suite cannot execute on this host"));
+    CHECK(result.output.contains("target '" + foreignTarget + "' cannot be executed on host"));
+    CHECK(result.output.contains("can build and check target '" + foreignTarget + "'"));
     CHECK(result.output.contains("rux build --target " + foreignTarget));
-    CHECK(result.output.contains("then test on a native"));
+    CHECK(result.output.contains("rux check --target " + foreignTarget));
+    CHECK(result.output.contains("rux test --target " + foreignTarget));
+    CHECK(result.output.contains("on a native '" + foreignTarget + "' host"));
     CHECK_FALSE(result.output.contains("Running "));
 }
 
