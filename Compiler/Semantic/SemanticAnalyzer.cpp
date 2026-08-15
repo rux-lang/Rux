@@ -3262,19 +3262,17 @@ private:
 
         if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
             TypeRef operandType = CheckExpr(*e->operand);
-            ResolveType(*e->type);
-            const std::string ifaceName = NamedBaseTypeName(operandType);
+            const std::string ifaceName = NamedBaseTypeName(ResolveType(*e->type));
             if (!ifaceName.empty()) {
                 Symbol *sym = currentScope->Lookup(ifaceName);
                 if (sym && sym->kind == Symbol::Kind::Interface) {
-                    EmitError(e->location, "runtime type checking with 'is' on "
-                                           "interface types is not yet "
-                                           "implemented");
+                    EmitError(e->location, std::format("type test 'is {}' is unavailable: interface checks are not "
+                                                       "implemented",
+                                                       ifaceName));
                 }
             }
             return TypeRef::MakeBool();
         }
-
         if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
             const TypeRef subjectType = CheckExpr(*e->subject);
             TypeRef resultType = TypeRef::MakeUnknown();
@@ -3332,17 +3330,19 @@ private:
             maxCodePoint && (operandType.IsInteger() || IsCharType(operandType))) {
             if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
                 EmitError(expression.location,
-                          std::format("constant value is out of range for type '{}'", targetType.ToString()));
+                          std::format("constant cast from '{}' to '{}' is outside the target type's range",
+                                      operandType.ToString(), targetType.ToString()));
             }
             else if (const auto charValue = EvalConstCharCastValue(*expression.operand)) {
                 if (*charValue > *maxCodePoint) {
                     EmitError(expression.location,
-                              std::format("constant value is out of range for type '{}'", targetType.ToString()));
+                              std::format("constant cast from '{}' to '{}' is outside the target type's range",
+                                          operandType.ToString(), targetType.ToString()));
                 }
                 else if (IsSurrogateCodePoint(*charValue)) {
                     EmitError(expression.location,
-                              std::format("surrogate code point U+{:04X} cannot be converted to '{}'", *charValue,
-                                          targetType.ToString()));
+                              std::format("cast from '{}' to '{}' uses invalid surrogate code point U+{:04X}",
+                                          operandType.ToString(), targetType.ToString(), *charValue));
                 }
             }
         }

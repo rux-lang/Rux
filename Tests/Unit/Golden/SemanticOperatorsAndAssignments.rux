@@ -1,0 +1,14 @@
+const Limit: int = 10;
+
+func Main() {
+    let fixed = 1;
+    let pointer: *int = @fixed;
+
+    let product = 1 * "two";
+    let logical = true && 1;
+    let shifted = 1u8 >>> 1;
+    fixed += 1;
+    *pointer = 2;
+    Limit = 11;
+    (1 + 2) = 3;
+}

@@ -210,6 +210,8 @@ private:
     [[nodiscard]] TypeRef StructFieldType(const TypeRef &objectType, const std::string &fieldName);
     void CheckStructInitExpression(const StructInitExpr &expression);
     [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
+    [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
+                                             std::string_view operatorName);
     void CheckMutability(const Expr &target);
 };
 } // namespace Rux::SemanticDetail

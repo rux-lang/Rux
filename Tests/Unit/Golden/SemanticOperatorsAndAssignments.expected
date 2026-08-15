@@ -1,0 +1,7 @@
+7:21: error: operator '*' cannot combine left operand 'int' with right operand 'Slice<char8>'
+8:24: error: operator '&&' requires a bool right operand, but found 'int'
+9:23: error: operator '>>>' requires a signed integer left operand, but found 'uint8'
+10:5: error: cannot modify immutable variable 'fixed'
+11:5: error: cannot modify data through read-only pointer '*int'
+12:5: error: cannot modify constant 'Limit'
+13:8: error: operator '=' requires an assignable target, but its left operand has type 'int'

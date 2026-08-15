@@ -13,7 +13,6 @@
 using namespace Rux;
 
 namespace {
-
 std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
@@ -932,8 +931,8 @@ TEST_CASE("let and var independently control binding and pointee mutability") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 3);
-    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'immutable'");
-    CHECK_EQ(diagnostics[1].message, "cannot assign through a pointer to immutable data");
+    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'immutable'");
+    CHECK_EQ(diagnostics[1].message, "cannot modify data through read-only pointer '*int'");
     CHECK_EQ(diagnostics[2].message, "cannot assign '*int' to '*var int': '@immutable' yields a read-only '*T'; "
                                      "declare 'immutable' with 'var' for a '*var T'");
 }
@@ -954,8 +953,8 @@ TEST_CASE("function parameters are immutable unless declared var") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'x'");
-    CHECK_EQ(diagnostics[1].message, "cannot assign to immutable variable 'ptr'");
+    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'x'");
+    CHECK_EQ(diagnostics[1].message, "cannot modify immutable variable 'ptr'");
 }
 
 TEST_CASE("pointer binding mutability is independent of pointee mutability") {
@@ -980,8 +979,8 @@ TEST_CASE("pointer binding mutability is independent of pointee mutability") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "cannot assign to immutable variable 'immutableReadOnly'");
-    CHECK_EQ(diagnostics[1].message, "cannot assign to immutable variable 'immutableWritable'");
+    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'immutableReadOnly'");
+    CHECK_EQ(diagnostics[1].message, "cannot modify immutable variable 'immutableWritable'");
 }
 
 TEST_CASE("byte is a canonical alias of uint8") {
@@ -1217,7 +1216,8 @@ TEST_CASE("generic arithmetic is checked after type substitution") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "'/' applied to non-numeric type 'bool8'");
+    CHECK_EQ(diagnostics.front().message,
+             "operator '/' cannot combine left operand 'bool8' with right operand 'bool8'");
 }
 
 TEST_CASE("contextual enum patterns diagnose unknown variants") {
@@ -1268,7 +1268,7 @@ TEST_CASE("logical right shift requires a signed integer left operand") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "'>>>' requires a signed integer left operand, got 'uint8'");
+    CHECK_EQ(diagnostics.front().message, "operator '>>>' requires a signed integer left operand, but found 'uint8'");
 
     const auto compoundDiagnostics = AnalyzeSource(R"(
         func Main() {
@@ -1278,7 +1278,8 @@ TEST_CASE("logical right shift requires a signed integer left operand") {
     )");
 
     REQUIRE_EQ(compoundDiagnostics.size(), 1);
-    CHECK_EQ(compoundDiagnostics.front().message, "'>>>=' requires a signed integer target, got 'uint8'");
+    CHECK_EQ(compoundDiagnostics.front().message,
+             "operator '>>>=' requires a signed integer left operand, but found 'uint8'");
 }
 
 TEST_CASE("pointer and array type syntax preserves grouping") {

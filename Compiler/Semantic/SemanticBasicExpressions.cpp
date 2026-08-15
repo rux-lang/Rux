@@ -29,7 +29,7 @@ bool IsNullLiteral(const Expr &expression) {
     return literal && literal->token.kind == TokenKind::NullKeyword;
 }
 
-std::string_view BinaryOperatorName(const TokenKind op) noexcept {
+std::string_view OperatorName(const TokenKind op) noexcept {
     using TK = TokenKind;
     switch (op) {
     case TK::Plus:
@@ -74,9 +74,89 @@ std::string_view BinaryOperatorName(const TokenKind op) noexcept {
         return ">";
     case TK::GreaterEqual:
         return ">=";
+    case TK::Assign:
+        return "=";
+    case TK::PlusAssign:
+        return "+=";
+    case TK::MinusAssign:
+        return "-=";
+    case TK::StarAssign:
+        return "*=";
+    case TK::SlashAssign:
+        return "/=";
+    case TK::PercentAssign:
+        return "%=";
+    case TK::AmpAssign:
+        return "&=";
+    case TK::PipeAssign:
+        return "|=";
+    case TK::CaretAssign:
+        return "^=";
+    case TK::LessLessAssign:
+        return "<<=";
+    case TK::GreaterGreaterAssign:
+        return ">>=";
+    case TK::GreaterGreaterGreaterAssign:
+        return ">>>=";
+    case TK::Bang:
+        return "!";
+    case TK::Tilde:
+        return "~";
+    case TK::PlusPlus:
+        return "++";
+    case TK::MinusMinus:
+        return "--";
     default:
         return {};
     }
+}
+
+TokenKind BinaryOperation(const TokenKind op) noexcept {
+    using TK = TokenKind;
+    switch (op) {
+    case TK::PlusAssign:
+        return TK::Plus;
+    case TK::MinusAssign:
+        return TK::Minus;
+    case TK::StarAssign:
+        return TK::Star;
+    case TK::SlashAssign:
+        return TK::Slash;
+    case TK::PercentAssign:
+        return TK::Percent;
+    case TK::AmpAssign:
+        return TK::Amp;
+    case TK::PipeAssign:
+        return TK::Pipe;
+    case TK::CaretAssign:
+        return TK::Caret;
+    case TK::LessLessAssign:
+        return TK::LessLess;
+    case TK::GreaterGreaterAssign:
+        return TK::GreaterGreater;
+    case TK::GreaterGreaterGreaterAssign:
+        return TK::GreaterGreaterGreater;
+    default:
+        return op;
+    }
+}
+
+bool IsCharacter(const TypeRef &type) noexcept {
+    return type.kind == TypeRef::Kind::Char8 || type.kind == TypeRef::Kind::Char16 ||
+           type.kind == TypeRef::Kind::Char32;
+}
+
+bool IsAssignablePlace(const Expr &expression) noexcept {
+    if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const FieldExpr *>(&expression) ||
+        dynamic_cast<const IndexExpr *>(&expression)) {
+        return true;
+    }
+    const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
+    return unary && unary->op == TokenKind::Star;
+}
+
+bool IsCastValue(const TypeRef &type) noexcept {
+    return type.IsNumeric() || type.IsBool() || IsCharacter(type) || type.kind == TypeRef::Kind::Pointer;
 }
 } // namespace
 
@@ -85,10 +165,12 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return LiteralType(literal->token);
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
-        if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
-            CheckMutability(*unary->operand);
-        }
         TypeRef operandType = CheckExpr(*unary->operand);
+        if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
+            if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
+                return operandType;
+            }
+        }
         if (unary->op == TokenKind::At) {
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
             return TypeRef::MakePointer(std::move(operandType));
@@ -96,12 +178,11 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return CheckUnary(unary->op, operandType, unary->location);
     }
     if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
-        CheckMutability(*postfix->operand);
         TypeRef operandType = CheckExpr(*postfix->operand);
-        if (!operandType.IsUnknown() && !operandType.IsNumeric()) {
-            EmitError(postfix->location,
-                      std::format("'{}' applied to non-numeric type '{}'",
-                                  postfix->op == TokenKind::PlusPlus ? "++" : "--", operandType.ToString()));
+        const bool isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));
+        if (isAssignable && !operandType.IsUnknown() && !operandType.IsNumeric()) {
+            EmitError(postfix->location, std::format("operator '{}' requires a numeric operand, but found '{}'",
+                                                     OperatorName(postfix->op), operandType.ToString()));
         }
         return operandType;
     }
@@ -111,20 +192,20 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location);
     }
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
-        CheckMutability(*assignment->target);
         TypeRef target = CheckExpr(*assignment->target);
         TypeRef value = CheckExpr(*assignment->value);
-        if (assignment->op == TokenKind::GreaterGreaterGreaterAssign) {
-            if (!target.IsSigned()) {
+        const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        if (isAssignable && assignment->op != TokenKind::Assign && !target.IsUnknown() && !value.IsUnknown()) {
+            const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
+                                               assignment->location);
+            if (!result.IsUnknown() && !result.IsAssignableTo(target)) {
                 EmitError(assignment->location,
-                          std::format("'>>>=' requires a signed integer target, got '{}'", target.ToString()));
-            }
-            if (!value.IsInteger()) {
-                EmitError(assignment->location,
-                          std::format("'>>>=' right operand must be an integer, got '{}'", value.ToString()));
+                          std::format("operator '{}' produces '{}', which cannot be stored in target type '{}'",
+                                      OperatorName(assignment->op), result.ToString(), target.ToString()));
             }
         }
-        if (!target.IsUnknown() && !value.IsUnknown() && !CanAssignExprTo(*assignment->value, value, target)) {
+        else if (isAssignable && !target.IsUnknown() && !value.IsUnknown() &&
+                 !CanAssignExprTo(*assignment->value, value, target)) {
             EmitError(assignment->location, AssignmentErrorMessage(*assignment->value, target,
                                                                    std::format("cannot assign '{}' to '{}'",
                                                                                value.ToString(), target.ToString())));
@@ -134,7 +215,21 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
     if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
         const TypeRef operandType = CheckExpr(*cast->operand);
         TypeRef targetType = ResolveType(*cast->type);
-        ValidateCastConstant(*cast, operandType, targetType);
+        const auto isCastValue = [&](const TypeRef &type) {
+            if (IsCastValue(type)) {
+                return true;
+            }
+            const std::string typeName = NamedBaseTypeName(type);
+            return !typeName.empty() && enumDecls.contains(typeName);
+        };
+        if (!operandType.IsUnknown() && !targetType.IsUnknown() &&
+            (!isCastValue(operandType) || !isCastValue(targetType))) {
+            EmitError(cast->location, std::format("cannot cast value of type '{}' to '{}'", operandType.ToString(),
+                                                  targetType.ToString()));
+        }
+        else {
+            ValidateCastConstant(*cast, operandType, targetType);
+        }
         return targetType;
     }
     return std::nullopt;
@@ -171,22 +266,26 @@ TypeRef SemanticAnalyzerContext::CheckUnary(const TokenKind op, const TypeRef &o
     switch (op) {
     case TokenKind::Bang:
         if (!operand.IsBool()) {
-            EmitError(location, std::format("'!' applied to non-bool type '{}'", operand.ToString()));
+            EmitError(location,
+                      std::format("operator '!' requires a bool operand, but found '{}'", operand.ToString()));
         }
         return TypeRef::MakeBool();
     case TokenKind::Minus:
         if (!operand.IsNumeric()) {
-            EmitError(location, std::format("unary '-' applied to non-numeric type '{}'", operand.ToString()));
+            EmitError(location,
+                      std::format("operator '-' requires a numeric operand, but found '{}'", operand.ToString()));
         }
         return operand;
     case TokenKind::Tilde:
         if (!operand.IsInteger() && !operand.IsBool()) {
-            EmitError(location, std::format("'~' applied to non-integer type '{}'", operand.ToString()));
+            EmitError(location, std::format("operator '~' requires an integer or bool operand, but found '{}'",
+                                            operand.ToString()));
         }
         return operand;
     case TokenKind::Star:
         if (operand.kind != TypeRef::Kind::Pointer) {
-            EmitError(location, std::format("'*' (dereference) applied to non-pointer type '{}'", operand.ToString()));
+            EmitError(location,
+                      std::format("operator '*' requires a pointer operand, but found '{}'", operand.ToString()));
         }
         return operand.inner.empty() ? TypeRef::MakeUnknown() : operand.inner[0];
     case TokenKind::At:
@@ -194,8 +293,8 @@ TypeRef SemanticAnalyzerContext::CheckUnary(const TokenKind op, const TypeRef &o
     case TokenKind::PlusPlus:
     case TokenKind::MinusMinus:
         if (!operand.IsNumeric()) {
-            EmitError(location, std::format("'{}' applied to non-numeric type '{}'",
-                                            op == TokenKind::PlusPlus ? "++" : "--", operand.ToString()));
+            EmitError(location, std::format("operator '{}' requires a numeric operand, but found '{}'",
+                                            OperatorName(op), operand.ToString()));
         }
         return operand;
     default:
@@ -206,9 +305,11 @@ TypeRef SemanticAnalyzerContext::CheckUnary(const TokenKind op, const TypeRef &o
 TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &left, const TypeRef &right,
                                              const Expr &leftExpression, const Expr &rightExpression,
                                              const SourceLocation location) {
+    const TokenKind operation = BinaryOperation(op);
+    const std::string_view operatorName = OperatorName(op);
     const bool comparesNullPointer = (IsNullLiteral(leftExpression) && right.kind == TypeRef::Kind::Pointer) ||
                                      (IsNullLiteral(rightExpression) && left.kind == TypeRef::Kind::Pointer);
-    if (comparesNullPointer && (op == TokenKind::Equal || op == TokenKind::BangEqual)) {
+    if (comparesNullPointer && (operation == TokenKind::Equal || operation == TokenKind::BangEqual)) {
         return TypeRef::MakeBool();
     }
     if (left.IsUnknown() || right.IsUnknown()) {
@@ -219,7 +320,7 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
             deferredBinaryChecks[currentFunctionDecl].push_back(
                 {op, left, right, &leftExpression, &rightExpression, location});
         }
-        switch (op) {
+        switch (operation) {
         case TokenKind::AmpAmp:
         case TokenKind::PipePipe:
         case TokenKind::Equal:
@@ -234,9 +335,9 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
         }
     }
 
-    const std::string_view operatorName = BinaryOperatorName(op);
-    if (!operatorName.empty()) {
-        if (const FuncDecl *method = LookupOperatorMethod(left, std::string(operatorName), {right})) {
+    const std::string_view methodOperatorName = OperatorName(operation);
+    if (!methodOperatorName.empty()) {
+        if (const FuncDecl *method = LookupOperatorMethod(left, std::string(methodOperatorName), {right})) {
             const std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(left, *method);
             TypeRef returnType = ResolveOperatorReturnType(left, *method);
             if (parameterTypes.size() != 1) {
@@ -251,23 +352,14 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
         }
     }
 
-    const auto isNumericOrChar = [](const TypeRef &type) {
-        return type.IsNumeric() || type.kind == TypeRef::Kind::Char8 || type.kind == TypeRef::Kind::Char16 ||
-               type.kind == TypeRef::Kind::Char32;
-    };
-    const auto isIntegerOrChar = [](const TypeRef &type) {
-        return type.IsInteger() || type.kind == TypeRef::Kind::Char8 || type.kind == TypeRef::Kind::Char16 ||
-               type.kind == TypeRef::Kind::Char32;
-    };
-    const auto isChar = [](const TypeRef::Kind kind) {
-        return kind == TypeRef::Kind::Char8 || kind == TypeRef::Kind::Char16 || kind == TypeRef::Kind::Char32;
-    };
+    const auto isNumericOrChar = [](const TypeRef &type) { return type.IsNumeric() || IsCharacter(type); };
+    const auto isIntegerOrChar = [](const TypeRef &type) { return type.IsInteger() || IsCharacter(type); };
     const auto compatibleType = [&](const Expr &leftExpr, const TypeRef &leftType, const Expr &rightExpr,
                                     const TypeRef &rightType) -> std::optional<TypeRef> {
-        if ((leftType.IsInteger() && isChar(rightType.kind)) || (rightType.IsInteger() && isChar(leftType.kind))) {
+        if ((leftType.IsInteger() && IsCharacter(rightType)) || (rightType.IsInteger() && IsCharacter(leftType))) {
             return leftType.IsInteger() ? leftType : rightType;
         }
-        if (isChar(leftType.kind) && isChar(rightType.kind)) {
+        if (IsCharacter(leftType) && IsCharacter(rightType)) {
             return leftType;
         }
         if (leftType.IsInteger() && rightType.IsInteger()) {
@@ -283,7 +375,7 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     };
 
     using TK = TokenKind;
-    switch (op) {
+    switch (operation) {
     case TK::Plus: {
         if (left.kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
             return left;
@@ -291,102 +383,96 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
         if (isIntegerOrChar(left) && right.kind == TypeRef::Kind::Pointer) {
             return right;
         }
-        if (!isNumericOrChar(left)) {
-            EmitError(location, std::format("'+' applied to non-numeric type '{}'", left.ToString()));
+        if (isNumericOrChar(left) && isNumericOrChar(right)) {
+            if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
+                return *result;
+            }
         }
-        else if (!isNumericOrChar(right)) {
-            EmitError(location, std::format("'+' right operand must be numeric, got '{}'", right.ToString()));
-        }
-        else if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
-            return *result;
-        }
-        else {
-            EmitError(location,
-                      std::format("mismatched types in addition: '{}' and '{}'", left.ToString(), right.ToString()));
-        }
+        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
+                                        operatorName, left.ToString(), right.ToString()));
         return left;
     }
     case TK::Minus: {
         if (left.kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
             return left;
         }
-        if (!isNumericOrChar(left)) {
-            EmitError(location, std::format("'-' applied to non-numeric type '{}'", left.ToString()));
+        if (isNumericOrChar(left) && isNumericOrChar(right)) {
+            if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
+                return *result;
+            }
         }
-        else if (!isNumericOrChar(right)) {
-            EmitError(location, std::format("'-' right operand must be numeric, got '{}'", right.ToString()));
-        }
-        else if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
-            return *result;
-        }
-        else {
-            EmitError(location,
-                      std::format("mismatched types in subtraction: '{}' and '{}'", left.ToString(), right.ToString()));
-        }
+        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
+                                        operatorName, left.ToString(), right.ToString()));
         return left;
     }
     case TK::Star:
     case TK::Slash:
     case TK::Percent:
     case TK::StarStar: {
-        const std::string operatorText = op == TK::Star ? "*" : op == TK::Slash ? "/" : op == TK::Percent ? "%" : "**";
-        if (!isNumericOrChar(left)) {
-            EmitError(location, std::format("'{}' applied to non-numeric type '{}'", operatorText, left.ToString()));
+        if (isNumericOrChar(left) && isNumericOrChar(right)) {
+            if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
+                return *result;
+            }
         }
-        else if (!isNumericOrChar(right)) {
-            EmitError(location,
-                      std::format("'{}' right operand must be numeric, got '{}'", operatorText, right.ToString()));
-        }
-        else if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
-            return *result;
-        }
-        else {
-            EmitError(location, std::format("mismatched types in binary operation: '{}' and '{}'", left.ToString(),
-                                            right.ToString()));
-        }
+        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
+                                        operatorName, left.ToString(), right.ToString()));
         return left;
     }
     case TK::Amp:
     case TK::Pipe:
-    case TK::Caret:
-    case TK::LessLess:
-    case TK::GreaterGreater: {
+    case TK::Caret: {
         const auto isBitwiseOperand = [](const TypeRef &type) {
-            return type.IsInteger() || type.IsBool() || type.kind == TypeRef::Kind::Char8 ||
-                   type.kind == TypeRef::Kind::Char16 || type.kind == TypeRef::Kind::Char32;
+            return type.IsInteger() || type.IsBool() || IsCharacter(type);
         };
         if (!isBitwiseOperand(left)) {
-            EmitError(location, std::format("bitwise operator applied to non-integer type '{}'", left.ToString()));
+            EmitError(location,
+                      std::format("operator '{}' requires an integer, bool, or character left operand, but found '{}'",
+                                  operatorName, left.ToString()));
         }
         else if (!isBitwiseOperand(right)) {
-            EmitError(location,
-                      std::format("bitwise operator right operand must be integer, got '{}'", right.ToString()));
+            EmitError(location, std::format("operator '{}' requires an integer, bool, or character right operand, "
+                                            "but found '{}'",
+                                            operatorName, right.ToString()));
         }
         else if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
             return *result;
         }
         else {
-            EmitError(location, std::format("mismatched types in bitwise operation: '{}' and '{}'", left.ToString(),
-                                            right.ToString()));
+            EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
+                                            operatorName, left.ToString(), right.ToString()));
         }
         return left;
     }
-    case TK::GreaterGreaterGreater:
-        if (!left.IsSigned()) {
-            EmitError(location, std::format("'>>>' requires a signed integer left operand, got '{}'", left.ToString()));
+    case TK::LessLess:
+    case TK::GreaterGreater:
+        if (!isIntegerOrChar(left)) {
+            EmitError(location,
+                      std::format("operator '{}' requires an integer or character left operand, but found '{}'",
+                                  operatorName, left.ToString()));
         }
         if (!right.IsInteger()) {
-            EmitError(location, std::format("'>>>' right operand must be an integer, got '{}'", right.ToString()));
+            EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
+                                            operatorName, right.ToString()));
+        }
+        return left;
+    case TK::GreaterGreaterGreater:
+        if (!left.IsSigned()) {
+            EmitError(location, std::format("operator '{}' requires a signed integer left operand, but found '{}'",
+                                            operatorName, left.ToString()));
+        }
+        if (!right.IsInteger()) {
+            EmitError(location, std::format("operator '{}' requires an integer right operand, but found '{}'",
+                                            operatorName, right.ToString()));
         }
         return left;
     case TK::AmpAmp:
     case TK::PipePipe:
         if (!left.IsBool()) {
-            EmitError(location, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
+            EmitError(location, std::format("operator '{}' requires a bool left operand, but found '{}'", operatorName,
                                             left.ToString()));
         }
         if (!right.IsBool()) {
-            EmitError(location, std::format("'{}' applied to non-bool type '{}'", op == TK::AmpAmp ? "&&" : "||",
+            EmitError(location, std::format("operator '{}' requires a bool right operand, but found '{}'", operatorName,
                                             right.ToString()));
         }
         return TypeRef::MakeBool();
@@ -397,11 +483,11 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     case TK::Greater:
     case TK::GreaterEqual: {
         const bool boolIntegerComparison =
-            (op == TK::Equal || op == TK::BangEqual) &&
+            (operation == TK::Equal || operation == TK::BangEqual) &&
             ((left.IsBool() && right.IsInteger()) || (left.IsInteger() && right.IsBool()));
         if (!boolIntegerComparison && !compatibleType(leftExpression, left, rightExpression, right)) {
-            EmitError(location,
-                      std::format("cannot compare mismatched types '{}' and '{}'", left.ToString(), right.ToString()));
+            EmitError(location, std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
+                                            operatorName, left.ToString(), right.ToString()));
         }
         return TypeRef::MakeBool();
     }
@@ -459,17 +545,19 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
             return;
         }
         if (symbol->kind == Symbol::Kind::Const) {
-            EmitError(target.location, std::format("cannot assign to constant '{}'", identifier->name));
+            EmitError(target.location, std::format("cannot modify constant '{}'", identifier->name));
             return;
         }
         if (symbol->kind == Symbol::Kind::Var && !symbol->isMut) {
-            EmitError(target.location, std::format("cannot assign to immutable variable '{}'", identifier->name));
+            EmitError(target.location, std::format("cannot modify immutable variable '{}'", identifier->name), {},
+                      std::format("declare '{}' with 'var' to make it mutable", identifier->name));
         }
     }
     else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&target); unary && unary->op == TokenKind::Star) {
         const TypeRef pointer = CheckExpr(*unary->operand);
         if (pointer.kind == TypeRef::Kind::Pointer && !pointer.inner.empty() && !pointer.inner[0].isMut) {
-            EmitError(target.location, "cannot assign through a pointer to immutable data");
+            EmitError(target.location,
+                      std::format("cannot modify data through read-only pointer '{}'", pointer.ToString()));
         }
     }
     else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
@@ -479,7 +567,8 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
         const TypeRef objectType = CheckExpr(*field->object);
         if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
-                EmitError(target.location, "cannot assign through a pointer to immutable data");
+                EmitError(target.location,
+                          std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
         }
         else {
@@ -490,12 +579,25 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
         const TypeRef objectType = CheckExpr(*index->object);
         if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
-                EmitError(target.location, "cannot assign through a pointer to immutable data");
+                EmitError(target.location,
+                          std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
         }
         else {
             CheckMutability(*index->object);
         }
     }
+}
+
+bool SemanticAnalyzerContext::CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
+                                                    const std::string_view operatorName) {
+    if (!IsAssignablePlace(target)) {
+        EmitError(target.location,
+                  std::format("operator '{}' requires an assignable target, but its left operand has type '{}'",
+                              operatorName, targetType.ToString()));
+        return false;
+    }
+    CheckMutability(target);
+    return true;
 }
 } // namespace Rux::SemanticDetail
