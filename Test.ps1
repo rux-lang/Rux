@@ -194,6 +194,7 @@ try {
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Test.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Check.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/ScriptMessages/Check.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/InstallerMessages/Check.sh")
 
     if (-not $SkipBuild) {
         & (Join-Path $repositoryRoot "Build.ps1") `

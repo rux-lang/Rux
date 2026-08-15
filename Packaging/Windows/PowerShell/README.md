@@ -1,6 +1,6 @@
 # Rux PowerShell Installer
 
-`install.ps1` downloads a published `rux-windows.zip`, installs `rux.exe` for the current user, and adds the installation directory to the user PATH. It does not require administrator privileges.
+`install.ps1` detects x86-64 or AArch64, downloads the matching `rux-windows-<architecture>.zip`, installs `rux.exe` for the current user, and adds the installation directory to the user PATH. It does not require administrator privileges.
 
 ## Quick install
 
@@ -10,7 +10,7 @@ Run from Windows PowerShell 5.1 or PowerShell 7+:
 irm https://rux-lang.dev/install.ps1 | iex
 ```
 
-The default destination is `%LocalAppData%\Programs\Rux`. The current session can use `rux` immediately; open a new terminal for the PATH change to appear in other processes.
+The default destination is `%LocalAppData%\Programs\Rux`. The current session can use `rux` immediately; restart your terminal to use `rux` from `PATH` in other processes.
 
 ```powershell
 rux version
@@ -46,4 +46,4 @@ Delete the installation directory, then remove that directory from the user PATH
 
 ## Release integration
 
-The script consumes the `rux-windows.zip` asset created by the [release workflow](../../../.github/workflows/Release.yml). Without `-Version`, GitHub's latest-release redirect selects the asset; a pinned version downloads from its matching `v*` tag.
+The script consumes an architecture-qualified ZIP created by the [release workflow](../../../.github/workflows/Release.yml). Without `-Version`, GitHub's latest-release redirect selects the asset; a pinned version downloads from its matching `v*` tag.

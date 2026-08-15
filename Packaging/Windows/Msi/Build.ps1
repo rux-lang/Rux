@@ -32,15 +32,35 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+trap {
+    [Console]::Error.WriteLine("error: $($_.Exception.Message)")
+    exit 1
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+$startedAt = Get-Date
+
+function Format-BuildDuration {
+    param([Parameter(Mandatory)][TimeSpan]$Duration)
+
+    $milliseconds = [Math]::Max(0, [Math]::Round($Duration.TotalMilliseconds))
+    if ($milliseconds -lt 1000) {
+        return "$milliseconds ms"
+    }
+    if ($milliseconds -lt 60000) {
+        return ($milliseconds / 1000).ToString("0.## 's'", [Globalization.CultureInfo]::InvariantCulture)
+    }
+
+    $minutes = [Math]::Floor($milliseconds / 60000)
+    $seconds = ($milliseconds % 60000) / 1000
+    return "$minutes min $($seconds.ToString("0.0 's'", [Globalization.CultureInfo]::InvariantCulture))"
+}
 
 # --- Resolve the rux.exe to package ---------------------------------------
 if (-not $RuxExe) {
     $RuxExe = Join-Path $repoRoot 'Bin\rux.exe'
 }
 if (-not (Test-Path $RuxExe)) {
-    throw "rux.exe not found at '$RuxExe'. Build it first " +
-          "(cmake --build Build --config Release) or pass -RuxExe."
+    throw "rux.exe was not found at '$RuxExe'; build it first or pass '-RuxExe'"
 }
 $RuxExe = (Resolve-Path $RuxExe).Path
 
@@ -51,7 +71,7 @@ if (-not $Version) {
         $Version = $Matches[1]
     }
     else {
-        throw "Could not parse VERSION from CMakeLists.txt; pass -Version."
+        throw "version was not found in 'CMakeLists.txt'; pass '-Version'"
     }
 }
 
@@ -60,10 +80,10 @@ if (-not $Version) {
 # (OSMF) EULA, which would break unattended/CI builds.
 $WixVersion = '6.*'
 if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing the WiX .NET global tool (v$WixVersion)..."
+    Write-Host "Installing WiX .NET global tool v$WixVersion"
     dotnet tool install --global wix --version $WixVersion
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install the WiX .NET global tool (exit code $LASTEXITCODE)."
+        throw "command 'dotnet tool install' failed with exit code $LASTEXITCODE"
     }
     $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
 }
@@ -72,18 +92,19 @@ if (-not (Get-Command wix -ErrorAction SilentlyContinue)) {
 # mismatched extension major version is rejected). Idempotent: re-adding an
 # already-registered extension is a no-op.
 $wixVer = (wix --version) -replace '\+.*$', ''   # e.g. "6.0.2+hash" -> "6.0.2"
+Write-Host "Installing WixToolset.UI extension v$wixVer"
 $extensionOutput = wix extension add -g "WixToolset.UI.wixext/$wixVer" 2>&1
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to install WixToolset.UI.wixext/$wixVer (exit code $LASTEXITCODE): $extensionOutput"
+    throw "command 'wix extension add' failed with exit code ${LASTEXITCODE}: $extensionOutput"
 }
 
 # --- Build -----------------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $msi = Join-Path $OutDir 'rux-windows.msi'
 
-Write-Host "Building $msi"
-Write-Host "  version: $Version"
-Write-Host "  rux.exe: $RuxExe"
+Write-Host "Building Rux v$Version (windows-x86_64)"
+Write-Host "  Source: '$RuxExe'"
+Write-Host "  Output: '$msi'"
 
 # wix resolves relative source paths (LICENSE.md, License.rtf, Readme.txt) against
 # the working directory, so run from this script's folder. RuxExe/OutDir were
@@ -97,11 +118,13 @@ try {
         -d RuxExe=$RuxExe `
         -o $msi
     if ($LASTEXITCODE -ne 0) {
-        throw "wix build failed with exit code $LASTEXITCODE."
+        throw "command 'wix build' failed with exit code $LASTEXITCODE"
     }
 }
 finally {
     Pop-Location
 }
 
-Write-Host "Done: $msi"
+$elapsed = Format-BuildDuration -Duration ((Get-Date) - $startedAt)
+Write-Host "Built Rux MSI in $elapsed" -ForegroundColor Green
+Write-Host "  Output: '$msi'"

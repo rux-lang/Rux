@@ -108,7 +108,7 @@ Canonical release asset names use `rux-<os>-<architecture>.<extension>`:
 
 The architecture identifiers in filenames are `x86_64` and `aarch64`, matching compiler target and CI artifact identifiers. The release tag already carries the version, so asset names deliberately omit it; this also keeps stable GitHub `releases/latest/download/<asset>` URLs.
 
-For compatibility, the workflow also publishes the former architecture-unqualified names (`rux-freebsd.tar.gz`, `rux-linux.tar.gz`, `rux-macos.tar.gz`, `rux-windows.zip`, and `rux-windows.msi`) as x86-64 aliases. The Linux and PowerShell installers consume their aliases until they become architecture-aware.
+For compatibility, the workflow also publishes the former architecture-unqualified names (`rux-freebsd.tar.gz`, `rux-linux.tar.gz`, `rux-macos.tar.gz`, `rux-windows.zip`, and `rux-windows.msi`) as x86-64 aliases. The Linux and PowerShell installers consume the architecture-qualified assets.
 
 The Linux and PowerShell installers use GitHub's `releases/latest/download/<asset>` redirect unless the user pins a version. Publishing the draft therefore makes the new release available to those installers without another repository change. The website's install endpoints serve the scripts; they do not host the release binaries themselves.
 

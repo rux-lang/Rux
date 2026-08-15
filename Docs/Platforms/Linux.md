@@ -10,15 +10,13 @@ Run the per-user installer:
 curl -fsSL https://rux-lang.dev/install.sh | sh
 ```
 
-The installer places `rux` in `~/.local/bin` without requiring root access. Open a new terminal after installation, then verify the compiler:
+The installer selects the native x86-64 or AArch64 release and places `rux` in `~/.local/bin` without requiring root access. Restart your terminal after installation, then verify the compiler:
 
 ```sh
 rux version
 ```
 
 Run the installer again to upgrade. The [Linux installer guide](../../Packaging/Linux/README.md) covers version pinning, custom destinations, PATH changes, and removal.
-
-The installer currently selects the x86-64 compatibility asset. On AArch64, download `rux-linux-aarch64.tar.gz` from the [latest GitHub release](https://github.com/rux-lang/Rux/releases/latest), extract it, and place `rux` in a directory on `PATH`.
 
 ## Building from Source
 

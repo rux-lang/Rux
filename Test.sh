@@ -153,6 +153,7 @@ run_checked NoExternalToolchain sh Tests/Policy/NoExternalToolchain/Check.sh
 run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Test.sh
 run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Check.sh
 run_checked ScriptMessages sh Tests/Policy/ScriptMessages/Check.sh
+run_checked InstallerMessages sh Tests/Policy/InstallerMessages/Check.sh
 
 if [ "$skip_build" = false ]; then
     if [ -n "$compiler" ]; then

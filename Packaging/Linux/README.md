@@ -4,7 +4,7 @@ A per-user installer that downloads a published Rux release from GitHub, install
 
 ## What it does
 
-- Downloads the latest (or a pinned) `rux-linux.tar.gz` from the [GitHub Releases](https://github.com/rux-lang/Rux/releases).
+- Detects x86-64 or AArch64 and downloads the matching `rux-linux-<architecture>.tar.gz` from the [GitHub Releases](https://github.com/rux-lang/Rux/releases).
 - Installs `rux` to `~/.local/bin` (**no root / sudo**).
 - Adds that directory to your `PATH` via your shell rc file if it isn't there already (skippable with `--no-modify-path`).
 - Works with either `curl` or `wget`, in any POSIX `sh`.
@@ -15,7 +15,7 @@ A per-user installer that downloads a published Rux release from GitHub, install
 curl -fsSL https://rux-lang.dev/install.sh | sh
 ```
 
-Then open a **new** terminal so the updated `PATH` takes effect and verify the installation:
+Restart your terminal to use `rux` from `PATH`, then verify the installation:
 
 ```sh
 rux version
@@ -59,7 +59,7 @@ sudo ./install.sh --dir /usr/local/bin --no-modify-path
 
 ## Requirements and behavior
 
-The script requires an x86-64 Linux host, `tar`, and either `curl` or `wget`. It downloads into a temporary directory, verifies that the archive contains a `rux` binary, and replaces the destination binary only after extraction. It does not install the Rux package cache; `rux install` manages language-package dependencies separately.
+The script requires an x86-64 or AArch64 Linux host, `tar`, and either `curl` or `wget`. It downloads into a temporary directory, validates the archive, verifies that it contains a `rux` binary, and replaces the destination binary only after extraction. Failures name the release URL or destination and provide a manual recovery where applicable. It does not install the Rux package cache; `rux install` manages language-package dependencies separately.
 
 The default PATH update is idempotent and targets the current login shell: `.bashrc`, `.zshrc`, Fish's `config.fish`, or `.profile`. Use `--no-modify-path` when shell configuration is managed elsewhere.
 
@@ -75,5 +75,5 @@ If the installer added a PATH line, remove the adjacent `Added by the Rux instal
 
 ## Notes
 
-- Currently, only the x86-64 Linux binary is published; unsupported architectures receive a build-from-source error.
-- The script is served directly from this repository. The release workflow attaches the `rux-linux.tar.gz` asset it consumes.
+- Unsupported architectures receive a build-from-source error.
+- The script is served directly from this repository. The release workflow attaches the architecture-qualified assets it consumes.

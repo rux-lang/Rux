@@ -127,7 +127,7 @@ Supporting layers around the pipeline:
 
 There are two broad suites: Rux-language/package tests (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`). Target-specific native fixtures supplement them where a complete OS interaction needs a dedicated driver script.
 
-`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points.
+`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points. `Tests/Policy/InstallerMessages/Check.sh` covers native-architecture selection, explicit/latest releases, download and extraction failures, PATH/profile handling, Windows user-PATH ownership, MSI downgrade recovery, and timed success output.
 
 ### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 

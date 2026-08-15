@@ -64,9 +64,9 @@ msiexec /i rux-windows.msi /qn
 msiexec /x rux-windows.msi /qn
 ```
 
-Double-clicking the `.msi` runs the interactive wizard. After installing, open a **new** terminal so the updated `PATH` is picked up, then run `rux help`.
+Double-clicking the `.msi` runs the interactive wizard. After installing, restart your terminal to use `rux` from `PATH`, then run `rux help`.
 
-Upgrades use the same commands: the MSI's stable upgrade code replaces an older Rux installation and blocks downgrades. The package cache under `%LocalAppData%\Rux\Packages` is independent and is not removed when the compiler is uninstalled.
+Upgrades use the same commands: the MSI's stable upgrade code replaces an older Rux installation. A downgrade is blocked with instructions to uninstall the newer version first. The package cache under `%LocalAppData%\Rux\Packages` is independent and is not removed when the compiler is uninstalled.
 
 ## CI
 

@@ -33,7 +33,8 @@
       Compressed="yes">
 
     <!-- Allow clean in-place upgrades; block downgrades with a clear message. -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of Rux is already installed." />
+    <MajorUpgrade
+        DowngradeErrorMessage="A newer version of Rux is already installed. Uninstall it before installing this version." />
 
     <!-- Embed everything into a single self-contained .msi (no external .cab). -->
     <MediaTemplate EmbedCab="yes" />
