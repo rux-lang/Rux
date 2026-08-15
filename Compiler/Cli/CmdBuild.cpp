@@ -137,8 +137,9 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     if (!manifest) {
         return 1;
     }
+    const auto packageRoot = manifestPath->parent_path();
     if (buildAll) {
-        const auto matrix = GenerateBuildMatrix(manifestPath->parent_path(), *manifest);
+        const auto matrix = GenerateBuildMatrix(packageRoot, *manifest);
         if (!opts.quiet && !showStats) {
             const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
             std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}] across {} build cells\n", style.Cyan(),
@@ -178,7 +179,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         }
 
         if (!opts.quiet) {
-            PrintBuildMatrixReport(reports, showStats, ColorEnabled(opts.color, OutputStream::Stdout));
+            PrintBuildMatrixReport(reports, packageRoot, showStats, ColorEnabled(opts.color, OutputStream::Stdout));
         }
         return allSucceeded ? 0 : 1;
     }
@@ -211,12 +212,12 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (!opts.quiet && showStats) {
-        PrintBuildStats(result.primaryArtifactPath, profileName, targetName, result.stats,
+        PrintBuildStats(result.primaryArtifactPath, packageRoot, profileName, targetName, result.stats,
                         ColorEnabled(opts.color, OutputStream::Stdout));
         return 0;
     }
     if (!opts.quiet) {
-        PrintBuildSummary(result.primaryArtifactPath, profileName, targetName, result.stats,
+        PrintBuildSummary(result.primaryArtifactPath, packageRoot, profileName, targetName, result.stats,
                           ColorEnabled(opts.color, OutputStream::Stdout));
     }
     return 0;

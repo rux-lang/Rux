@@ -150,7 +150,7 @@ jobs:
         run: |
           ./Bin/rux check --target linux-aarch64
           ./Bin/rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
-          artifact=Bin/Tests/Language/Release/linux-aarch64/Arithmetic
+          artifact=Bin/Tests/Language/Release/Linux/AArch64/Arithmetic
           set -- $(od -An -v -t u1 -N 20 "$artifact")
           test "$1" -eq 127 -a "$2" -eq 69 -a "$3" -eq 76 -a "$4" -eq 70
           shift 18

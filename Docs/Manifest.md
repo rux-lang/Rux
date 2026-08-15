@@ -87,18 +87,18 @@ The retired `Program`, `Library`, and `Source` spellings are invalid and have no
 
 `[Build]` is optional. `Output` is a package-relative path and defaults to `Bin`. `[Build.Defines]` is an optional table whose values are exposed to compile-time configuration.
 
-An ordinary artifact always writes to `<Output>/<Profile>/<Target>/`, including when the target is the host. For example, `rux build --release` on a Windows x86-64 host produces `Dist/Release/windows-x86_64/Name.exe`; `--target macos-arm64` canonicalizes to `Dist/Release/macos-aarch64/Name`. Profile and target directories therefore never collide. Artifact names follow the target rather than the host: `Name.exe` for Windows, `libName.dylib` for a macOS shared library, `libName.a` for a macOS static library, and `libName.so` on ELF targets.
+An ordinary artifact always writes to `<Output>/<Profile>/<OS>/<Arch>/`, including when the target is the host. For example, `rux build --release` on a Windows x86-64 host produces `Dist/Release/Windows/x86-64/Name.exe`; `--target macos-arm64` canonicalizes to `Dist/Release/macOS/AArch64/Name`. Profile and target directories therefore never collide. Artifact names follow the target rather than the host: `Name.exe` for Windows, `libName.dylib` for a macOS shared library, `libName.a` for a macOS static library, and `libName.so` on ELF targets.
 
 `rux build --all` applies this layout to all eight canonical targets in both profiles, producing 16 distinct directories below the configured root. The [package build guide](Builds.md) lists their exact order and documents the matrix flag and reporting rules.
 
-Outputs that are not ordinary machine artifacts use the configured root explicitly. Native `rux test` artifacts go directly below the test manifest's `Output`; selecting another executable architecture adds its canonical target component but no profile. `rux doc` defaults to `<Output>/Docs`, and `rux pack` writes its target-independent `.ruxpkg` directly to `<Output>`. `rux clean` removes exactly the configured output root and the package's `Temp` tree.
+Outputs that are not ordinary machine artifacts use the configured root explicitly. Native `rux test` artifacts go directly below the test manifest's `Output`; selecting another executable architecture adds the same OS and architecture components but no profile. `rux doc` defaults to `<Output>/Docs`, and `rux pack` writes its target-independent `.ruxpkg` directly to `<Output>`. `rux clean` removes exactly the configured output root and the package's `Temp` tree.
 
 | Output kind                        | Layout                                  |
 | ---------------------------------- | --------------------------------------- |
-| Normal Debug artifact              | `<Output>/Debug/<canonical-target>/`    |
-| Normal Release artifact            | `<Output>/Release/<canonical-target>/`  |
+| Normal Debug artifact              | `<Output>/Debug/<OS>/<Arch>/`           |
+| Normal Release artifact            | `<Output>/Release/<OS>/<Arch>/`         |
 | Native test artifact               | `<Output>/`                             |
-| Explicit non-host test artifact    | `<Output>/<canonical-target>/`          |
+| Explicit non-host test artifact    | `<Output>/<OS>/<Arch>/`                 |
 | Generated documentation            | `<Output>/Docs/`                        |
 | Published or locally packed source | `<Output>/<Name>-<Version>.ruxpkg`      |
 

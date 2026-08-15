@@ -98,8 +98,9 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         return 1;
     }
     if (!buildQuiet) {
-        const auto report = FormatBuildSummary(result.primaryArtifactPath, profileName, targetName, result.stats,
-                                               ColorEnabled(opts.color, OutputStream::Stderr));
+        const auto report =
+            FormatBuildSummary(result.primaryArtifactPath, manifestPath->parent_path(), profileName, targetName,
+                               result.stats, ColorEnabled(opts.color, OutputStream::Stderr));
         std::fwrite(report.data(), sizeof(char), report.size(), stderr);
     }
     auto exePath = result.primaryArtifactPath;

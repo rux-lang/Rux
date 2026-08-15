@@ -156,16 +156,20 @@ std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, co
     return output.lexically_normal();
 }
 
+std::filesystem::path TargetOutputPath(const Target::TargetTriple target) {
+    return std::filesystem::path(Target::ToString(target.Os())) / Target::ToDisplayString(target.Architecture());
+}
+
 std::filesystem::path ResolveArtifactOutputDir(const std::filesystem::path &root, const Manifest &manifest,
                                                const BuildProfile profile, const Target::TargetTriple target) {
-    return ResolveRawOutputRoot(root, manifest) / ToString(profile) / target.CanonicalName();
+    return ResolveRawOutputRoot(root, manifest) / ToString(profile) / TargetOutputPath(target);
 }
 
 std::filesystem::path ResolveTestOutputDir(const std::filesystem::path &root, const Manifest &manifest,
                                            const Target::TargetTriple target) {
     auto output = ResolveRawOutputRoot(root, manifest);
     if (target != Target::TargetTriple::Host()) {
-        output /= target.CanonicalName();
+        output /= TargetOutputPath(target);
     }
     return output;
 }

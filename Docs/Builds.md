@@ -12,16 +12,16 @@ The target defaults to the compiler's host triple. `--target <triple>` selects a
 
 | Canonical target ID   | Display name          | Object and image format |
 | --------------------- | --------------------- | ----------------------- |
-| `freebsd-x86_64`      | FreeBSD x86-64        | ELF                     |
 | `freebsd-aarch64`     | FreeBSD AArch64       | ELF                     |
-| `linux-x86_64`        | Linux x86-64          | ELF                     |
+| `freebsd-x86_64`      | FreeBSD x86-64        | ELF                     |
 | `linux-aarch64`       | Linux AArch64         | ELF                     |
-| `macos-x86_64`        | macOS x86-64          | Mach-O                  |
+| `linux-x86_64`        | Linux x86-64          | ELF                     |
 | `macos-aarch64`       | macOS AArch64         | Mach-O                  |
-| `windows-x86_64`      | Windows x86-64        | PE/COFF                 |
+| `macos-x86_64`        | macOS x86-64          | Mach-O                  |
 | `windows-aarch64`     | Windows AArch64       | PE/COFF                 |
+| `windows-x86_64`      | Windows x86-64        | PE/COFF                 |
 
-Target IDs are machine-facing values. They use `x86_64` and `aarch64`, including in output directories, `#target.triple`, CI artifact IDs, and command examples. Prose and reports use the display spellings x86-64 and AArch64.
+Target IDs are machine-facing values. They use `x86_64` and `aarch64` in `--target`, `#target.triple`, CI artifact IDs, and command examples. Prose, build reports, and output directories use the display spellings macOS, x86-64, and AArch64.
 
 The CLI accepts `x86-64`, `x64`, and `amd64` as x86-64 aliases, and `arm64` as an AArch64 alias. An alias is normalized before compilation and never changes the output directory. For example:
 
@@ -29,15 +29,17 @@ The CLI accepts `x86-64`, `x64`, and `amd64` as x86-64 aliases, and `arm64` as a
 ./Bin/rux build --release --target windows-x86-64
 ```
 
-writes beneath `Bin/Release/windows-x86_64/`, not a directory named after the alias.
+writes beneath `Bin/Release/Windows/x86-64/`, exactly as `--target windows-x64` and `--target windows-x86_64` do.
 
 ## Ordinary Artifact Paths
 
 `[Build].Output` in `Rux.toml` is an output root and defaults to `Bin`. Every ordinary machine artifact is placed under:
 
 ```text
-<Output>/<Profile>/<canonical-target>/
+<Output>/<Profile>/<OS>/<Arch>/
 ```
+
+The OS component is `FreeBSD`, `Linux`, `macOS`, or `Windows`; the architecture component is `x86-64` or `AArch64`.
 
 The rule applies equally to host and cross builds. Given this manifest fragment:
 
@@ -52,8 +54,8 @@ these commands produce separate directories:
 | --------------------------------------------------------- | ----------------------------------- |
 | `rux build`                                               | `Dist/Debug/<host-target>/`         |
 | `rux build --release`                                     | `Dist/Release/<host-target>/`       |
-| `rux build --target linux-x86_64`                         | `Dist/Debug/linux-x86_64/`          |
-| `rux build --release --target windows-aarch64`            | `Dist/Release/windows-aarch64/`     |
+| `rux build --target linux-x86_64`                         | `Dist/Debug/Linux/x86-64/`          |
+| `rux build --release --target windows-aarch64`            | `Dist/Release/Windows/AArch64/`     |
 
 Artifact names follow the target OS: Windows executables end in `.exe`; shared libraries use `.dll`, `.so`, or `.dylib`; and static libraries use `.lib` or `.a`. The [manifest reference](Manifest.md#package-manifests) defines package kinds, names, and the raw-root layouts used by tests, generated documentation, and source archives.
 
@@ -69,24 +71,24 @@ The command always attempts these 16 cells sequentially and in this order:
 
 | Order | Profile | Target                | Default artifact directory             |
 | ----: | ------- | --------------------- | -------------------------------------- |
-|     1 | Debug   | `freebsd-x86_64`      | `Bin/Debug/freebsd-x86_64/`            |
-|     2 | Debug   | `freebsd-aarch64`     | `Bin/Debug/freebsd-aarch64/`           |
-|     3 | Debug   | `linux-x86_64`        | `Bin/Debug/linux-x86_64/`              |
-|     4 | Debug   | `linux-aarch64`       | `Bin/Debug/linux-aarch64/`             |
-|     5 | Debug   | `macos-x86_64`        | `Bin/Debug/macos-x86_64/`              |
-|     6 | Debug   | `macos-aarch64`       | `Bin/Debug/macos-aarch64/`             |
-|     7 | Debug   | `windows-x86_64`      | `Bin/Debug/windows-x86_64/`            |
-|     8 | Debug   | `windows-aarch64`     | `Bin/Debug/windows-aarch64/`           |
-|     9 | Release | `freebsd-x86_64`      | `Bin/Release/freebsd-x86_64/`          |
-|    10 | Release | `freebsd-aarch64`     | `Bin/Release/freebsd-aarch64/`         |
-|    11 | Release | `linux-x86_64`        | `Bin/Release/linux-x86_64/`            |
-|    12 | Release | `linux-aarch64`       | `Bin/Release/linux-aarch64/`           |
-|    13 | Release | `macos-x86_64`        | `Bin/Release/macos-x86_64/`            |
-|    14 | Release | `macos-aarch64`       | `Bin/Release/macos-aarch64/`           |
-|    15 | Release | `windows-x86_64`      | `Bin/Release/windows-x86_64/`          |
-|    16 | Release | `windows-aarch64`     | `Bin/Release/windows-aarch64/`         |
+|     1 | Debug   | `freebsd-aarch64`     | `Bin/Debug/FreeBSD/AArch64/`           |
+|     2 | Debug   | `freebsd-x86_64`      | `Bin/Debug/FreeBSD/x86-64/`            |
+|     3 | Debug   | `linux-aarch64`       | `Bin/Debug/Linux/AArch64/`             |
+|     4 | Debug   | `linux-x86_64`        | `Bin/Debug/Linux/x86-64/`              |
+|     5 | Debug   | `macos-aarch64`       | `Bin/Debug/macOS/AArch64/`             |
+|     6 | Debug   | `macos-x86_64`        | `Bin/Debug/macOS/x86-64/`              |
+|     7 | Debug   | `windows-aarch64`     | `Bin/Debug/Windows/AArch64/`           |
+|     8 | Debug   | `windows-x86_64`      | `Bin/Debug/Windows/x86-64/`            |
+|     9 | Release | `freebsd-aarch64`     | `Bin/Release/FreeBSD/AArch64/`         |
+|    10 | Release | `freebsd-x86_64`      | `Bin/Release/FreeBSD/x86-64/`          |
+|    11 | Release | `linux-aarch64`       | `Bin/Release/Linux/AArch64/`           |
+|    12 | Release | `linux-x86_64`        | `Bin/Release/Linux/x86-64/`            |
+|    13 | Release | `macos-aarch64`       | `Bin/Release/macOS/AArch64/`           |
+|    14 | Release | `macos-x86_64`        | `Bin/Release/macOS/x86-64/`            |
+|    15 | Release | `windows-aarch64`     | `Bin/Release/Windows/AArch64/`         |
+|    16 | Release | `windows-x86_64`      | `Bin/Release/Windows/x86-64/`          |
 
-A configured output root replaces only `Bin` in this table. Because every cell has both a profile and canonical target component, all 16 directories are distinct and repeated matrix builds use the same paths and order.
+A configured output root replaces only `Bin` in this table. Because every cell has a profile, an OS, and an architecture component, all 16 directories are distinct and repeated matrix builds use the same paths and order.
 
 ### Flags with `--all`
 
@@ -115,7 +117,18 @@ Conflicting flags are usage errors and are rejected before the manifest is loade
 
 Matrix execution continues after a cell fails. Successful artifacts remain on disk, diagnostics from failed cells are printed, and the command exits nonzero if any of the 16 cells failed.
 
-The normal report lists every cell in matrix order, its outcome, target, profile, elapsed time, and artifact path. `--stats` adds per-cell and aggregate compiler statistics. `--quiet` prints only errors and suppresses both the matrix table and aggregate statistics. `--verbose` prints a start line for each cell in addition to the final report.
+The normal report lists every cell in matrix order, its outcome, profile, target, elapsed time, and artifact path:
+
+```text
+Build matrix
+Status  Profile  Target           Time      Output
+Built   Debug    FreeBSD AArch64  12 ms     Bin\Debug\FreeBSD\AArch64\App
+Failed  Debug    FreeBSD x86-64   8 ms      Bin\Debug\FreeBSD\x86-64
+```
+
+The target column carries the display name from the [target table](#profiles-and-targets), whose two words are also the two directory components the cell writes to.
+
+Artifact paths are printed relative to the directory holding the manifest; an output root outside that directory keeps its full path. A failed cell reports its output directory rather than an artifact that was never produced. `--stats` adds per-cell and aggregate compiler statistics. `--quiet` prints only errors and suppresses both the matrix table and aggregate statistics. `--verbose` prints a start line for each cell in addition to the final report.
 
 ## Cross-Compilation and Execution
 

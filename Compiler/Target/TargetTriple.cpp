@@ -54,11 +54,13 @@ TargetTriple TargetTriple::Host() noexcept {
 }
 
 std::span<const TargetTriple> TargetTriple::Supported() noexcept {
+    // Operating systems in alphabetical order, and each one's architectures in
+    // the order the Arch enumeration declares them.
     static constexpr std::array catalog{
-        TargetTriple{OS::FreeBSD, Arch::X86_64}, TargetTriple{OS::FreeBSD, Arch::AArch64},
-        TargetTriple{OS::Linux, Arch::X86_64},   TargetTriple{OS::Linux, Arch::AArch64},
-        TargetTriple{OS::MacOS, Arch::X86_64},   TargetTriple{OS::MacOS, Arch::AArch64},
-        TargetTriple{OS::Windows, Arch::X86_64}, TargetTriple{OS::Windows, Arch::AArch64},
+        TargetTriple{OS::FreeBSD, Arch::AArch64}, TargetTriple{OS::FreeBSD, Arch::X86_64},
+        TargetTriple{OS::Linux, Arch::AArch64},   TargetTriple{OS::Linux, Arch::X86_64},
+        TargetTriple{OS::MacOS, Arch::AArch64},   TargetTriple{OS::MacOS, Arch::X86_64},
+        TargetTriple{OS::Windows, Arch::AArch64}, TargetTriple{OS::Windows, Arch::X86_64},
     };
     return catalog;
 }

@@ -21,7 +21,7 @@ case "$compiler_arch" in
         output_dir="$repo_root/Bin/Tests/Native/Release"
         ;;
     x86_64)
-        output_dir="$repo_root/Bin/Tests/Native/Release/macos-aarch64"
+        output_dir="$repo_root/Bin/Tests/Native/Release/macOS/AArch64"
         ;;
     *)
         fail "unknown compiler architecture '$compiler_arch'"

@@ -92,15 +92,19 @@ void ReportManifestDiagnostics(const ManifestResult &result);
 // placed relative to this path rather than in a machine-artifact directory.
 [[nodiscard]] std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, const Manifest &manifest);
 
-// Directory for an ordinary machine artifact. Every build receives both its
-// typed profile and canonical target components, including a host build.
+// Target components of an output directory: the OS name and the architecture
+// display name, e.g. "FreeBSD/x86-64" or "macOS/AArch64".
+[[nodiscard]] std::filesystem::path TargetOutputPath(Target::TargetTriple target);
+
+// Directory for an ordinary machine artifact. Every build receives its typed
+// profile plus both target components, including a host build.
 [[nodiscard]] std::filesystem::path ResolveArtifactOutputDir(const std::filesystem::path &root,
                                                              const Manifest &manifest, BuildProfile profile,
                                                              Target::TargetTriple target);
 
 // Test manifests intentionally name a central raw output root and omit the
-// profile. A selected foreign target gets a canonical suffix so it cannot
-// overwrite host test artifacts.
+// profile. A selected foreign target gets the same OS and architecture suffix
+// so it cannot overwrite host test artifacts.
 [[nodiscard]] std::filesystem::path ResolveTestOutputDir(const std::filesystem::path &root, const Manifest &manifest,
                                                          Target::TargetTriple target);
 

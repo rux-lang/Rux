@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 $scriptDir = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $scriptDir "../../..")).Path
 $ruxPath = (Resolve-Path $Rux).Path
-$outputDir = Join-Path $repoRoot "Bin/Tests/Native/Release/macos-aarch64"
+$outputDir = Join-Path $repoRoot "Bin/Tests/Native/Release/macOS/AArch64"
 $snapshotDir = Join-Path ([System.IO.Path]::GetTempPath()) ("rux-macos-aarch64-cross-" + [guid]::NewGuid())
 
 function Fail([string]$Message) {

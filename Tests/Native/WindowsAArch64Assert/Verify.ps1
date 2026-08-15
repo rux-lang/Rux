@@ -11,7 +11,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $nativeExecutable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/WindowsAArch64Assert.exe"
-$crossExecutable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/windows-aarch64/WindowsAArch64Assert.exe"
+$crossExecutable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/Windows/AArch64/WindowsAArch64Assert.exe"
 $executable = if (Test-Path $nativeExecutable) { $nativeExecutable } else { $crossExecutable }
 $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $startInfo.FileName = $executable

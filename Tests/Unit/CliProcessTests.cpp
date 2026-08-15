@@ -407,18 +407,22 @@ func Main() -> int {
     CHECK(reported.exitCode == 1);
     CHECK(CountOccurrences(reported.output, "'imul' is an x86-64 instruction") == 8);
     CHECK(reported.output.contains("Build matrix"));
-    CHECK(reported.output.contains("Built   Debug    freebsd-x86_64"));
-    CHECK(reported.output.contains("Failed  Debug    freebsd-aarch64"));
-    CHECK(reported.output.contains("Built   Release  windows-x86_64"));
-    CHECK(reported.output.contains("Failed  Release  windows-aarch64"));
+    CHECK(reported.output.contains("Status  Profile  Target           Time"));
+    CHECK(reported.output.contains("Built   Debug    FreeBSD x86-64"));
+    CHECK(reported.output.contains("Failed  Debug    FreeBSD AArch64"));
+    CHECK(reported.output.contains("Built   Release  Windows x86-64"));
+    CHECK(reported.output.contains("Failed  Release  Windows AArch64"));
     CHECK(reported.output.contains("16 cells: 8 succeeded, 8 failed"));
     CHECK(reported.output.contains("Aggregate statistics:"));
     CHECK_FALSE(reported.output.contains("\033["));
+    // Artifact paths are reported relative to the package root.
+    CHECK(reported.output.contains(
+        (std::filesystem::path("Artifacts") / "Debug" / "FreeBSD" / "x86-64" / "MatrixFixture").string()));
 
     for (const std::string_view profile : {"Debug", "Release"}) {
-        for (const std::string_view target : {"freebsd-x86_64", "linux-x86_64", "macos-x86_64", "windows-x86_64"}) {
-            const auto fileName = target.starts_with("windows-") ? "MatrixFixture.exe" : "MatrixFixture";
-            CHECK(std::filesystem::is_regular_file(root / "Artifacts" / profile / target / fileName));
+        for (const std::string_view os : {"FreeBSD", "Linux", "macOS", "Windows"}) {
+            const auto fileName = os == "Windows" ? "MatrixFixture.exe" : "MatrixFixture";
+            CHECK(std::filesystem::is_regular_file(root / "Artifacts" / profile / os / "x86-64" / fileName));
         }
     }
 
@@ -441,7 +445,8 @@ TEST_CASE("clean removes only the configured output root and Temp tree") {
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto root = System::TempDirectory() / ("rux-clean-test-" + std::to_string(nonce));
     const auto manifestPath = root / "Rux.toml";
-    std::filesystem::create_directories(root / "Artifacts" / "Release" / Driver::HostTargetTriple());
+    std::filesystem::create_directories(root / "Artifacts" / "Release" /
+                                        Driver::TargetOutputPath(Target::TargetTriple::Host()));
     std::filesystem::create_directories(root / "Temp" / "Obj");
     std::filesystem::create_directories(root / "Keep");
     std::ofstream manifestFile(manifestPath, std::ios::binary);
@@ -567,8 +572,8 @@ TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its 
     REQUIRE(result.exitCode == 0);
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    const auto output =
-        std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" / "macos-aarch64" / "Arithmetic";
+    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" / "macOS" /
+                        "AArch64" / "Arithmetic";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     std::ifstream input(output, std::ios::binary);
@@ -601,8 +606,8 @@ TEST_CASE("CLI checks and builds the canonical FreeBSD AArch64 target through it
     CHECK_FALSE(result.output.contains("not implemented"));
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" /
-                        "freebsd-aarch64" / "Arithmetic";
+    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" / "FreeBSD" /
+                        "AArch64" / "Arithmetic";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     Testing::ElfImage image{ReadBinaryFile(output)};
@@ -634,8 +639,8 @@ TEST_CASE("CLI cross-builds a Windows AArch64 executable without trying to run i
     REQUIRE(result.exitCode == 0);
     CHECK_FALSE(result.output.contains("cannot run"));
 
-    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" /
-                        "windows-aarch64" / "Arithmetic.exe";
+    const auto output = std::filesystem::path(RUX_ROOT_DIR) / "Bin" / "Tests" / "Language" / "Release" / "Windows" /
+                        "AArch64" / "Arithmetic.exe";
     REQUIRE(std::filesystem::is_regular_file(output));
 
     std::ifstream input(output, std::ios::binary);

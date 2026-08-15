@@ -5,8 +5,8 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 rux=${1:-"$repo_root/Bin/rux"}
-executable="$repo_root/Bin/Tests/Language/Release/freebsd-aarch64/Arithmetic"
-archive="$repo_root/Bin/Tests/Native/Release/freebsd-aarch64/libFreeBSDAArch64Static.a"
+executable="$repo_root/Bin/Tests/Language/Release/FreeBSD/AArch64/Arithmetic"
+archive="$repo_root/Bin/Tests/Native/Release/FreeBSD/AArch64/libFreeBSDAArch64Static.a"
 
 fail() {
     echo "FreeBSD AArch64 cross-build smoke failure: $*" >&2

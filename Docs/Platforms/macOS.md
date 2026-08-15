@@ -41,18 +41,18 @@ An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.dylib` 
 
 The x86-64 backend writes Mach-O objects and images directly, from a host of either architecture. The AArch64 backend writes relocatable Mach-O objects and the BSD archive used for static libraries, including ARM64 branch, page, page-offset, pointer, and explicit-addend relocations. It links executables with 16 KiB segments, the macOS 26 build-version command, and an in-process ad-hoc signature. Every AArch64 executable is dynamic and position-independent — the macOS kernel refuses a static arm64 image outright and refuses a dyld-linked one that is not marked `MH_PIE` — so even a program with no imports carries `LC_LOAD_DYLINKER`, `LC_MAIN`, and a `libSystem` dependency. Because the loader slides such an image, constant data holding absolute pointers moves out of read-only `__TEXT` into a writable `__DATA_CONST` segment, marked `SG_READ_ONLY`, that dyld rebases and then re-protects read-only — current dyld refuses the segment without the flag. Executables with C imports additionally use eagerly bound non-lazy pointers and Apple ARM64 X16 symbol stubs. Shared libraries use the same stubs for external calls, export public code and data through dyld metadata, rebase image-local pointers, omit executable entry commands, and carry deterministic `@rpath/libName.dylib` identities. Imported data remains unavailable until GOT-aware lowering is implemented.
 
-Every Release build adds the canonical target below the configured output directory. With the default `Output = "Bin"`, the three package kinds therefore write:
+Every Release build adds the target operating system and architecture below the configured output directory. With the default `Output = "Bin"`, the three package kinds therefore write:
 
 ```text
-Bin/Release/macos-aarch64/Name
-Bin/Release/macos-aarch64/libName.dylib
-Bin/Release/macos-aarch64/libName.a
+Bin/Release/macOS/AArch64/Name
+Bin/Release/macOS/AArch64/libName.dylib
+Bin/Release/macOS/AArch64/libName.a
 ```
 
 The path is identical on a native `macos-aarch64` compiler. Cross-produced artifacts are not launched by Rux. Transfer an executable or its libraries to an Apple Silicon Mac, preserve executable permissions, and launch it there, for example:
 
 ```sh
-scp Bin/Release/macos-aarch64/Name apple-silicon-mac:/tmp/Name
+scp Bin/Release/macOS/AArch64/Name apple-silicon-mac:/tmp/Name
 ssh apple-silicon-mac 'chmod +x /tmp/Name && /tmp/Name'
 ```
 

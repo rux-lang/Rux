@@ -1,4 +1,5 @@
 #include "Driver/BuildPlan.h"
+#include "Driver/BuildTarget.h"
 
 #include <doctest.h>
 #include <filesystem>
@@ -22,12 +23,12 @@ TEST_CASE("build matrix follows profile and target catalog order") {
         const auto &debug = cells[index];
         CHECK(debug.profile == BuildProfile::Debug);
         CHECK(debug.target == targets[index]);
-        CHECK(debug.outputDirectory == root / "Artifacts" / "Debug" / std::string(targets[index].CanonicalName()));
+        CHECK(debug.outputDirectory == root / "Artifacts" / "Debug" / TargetOutputPath(targets[index]));
 
         const auto &release = cells[targets.size() + index];
         CHECK(release.profile == BuildProfile::Release);
         CHECK(release.target == targets[index]);
-        CHECK(release.outputDirectory == root / "Artifacts" / "Release" / std::string(targets[index].CanonicalName()));
+        CHECK(release.outputDirectory == root / "Artifacts" / "Release" / TargetOutputPath(targets[index]));
     }
 }
 

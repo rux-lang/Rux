@@ -88,7 +88,7 @@ Pass the canonical target to build or check an AArch64 package from either compi
 ./Bin/rux.exe test --release --target windows-aarch64
 ```
 
-Run workspace commands from the repository root; use `--manifest <path>` before the subcommand for an individual package. Every build is placed below its canonical target directory, such as `Bin/Release/windows-aarch64/Name.exe`, including when that target is the host.
+Run workspace commands from the repository root; use `--manifest <path>` before the subcommand for an individual package. Every build is placed below its own operating-system and architecture directory, such as `Bin/Release/Windows/AArch64/Name.exe`, including when that target is the host.
 
 `rux build --all` also produces both Windows targets in Debug and Release; see the [matrix path and flag rules](../Builds.md#building-the-complete-matrix).
 

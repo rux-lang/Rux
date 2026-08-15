@@ -134,8 +134,20 @@ std::string FormatDuration(std::chrono::milliseconds elapsed) {
     return FormatDecimal(static_cast<double>(elapsed.count()) / 1000.0, 2) + "s";
 }
 
-std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
-                             const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+std::string DisplayPath(const std::filesystem::path &path, const std::filesystem::path &packageRoot) {
+    if (packageRoot.empty()) {
+        return path.string();
+    }
+    const auto relative = path.lexically_relative(packageRoot);
+    const auto text = relative.string();
+    // An output root outside the package keeps its full path rather than a
+    // chain of parent references that is longer than the path it replaces.
+    return text.empty() || text.starts_with("..") ? path.string() : text;
+}
+
+std::string FormatBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
+                             std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
+                             const bool colorEnabled) {
     const auto totalMs = stats.total.count();
     const double seconds = stats.totalSeconds;
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
@@ -184,7 +196,7 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
            << "  Extern declarations:       " << FormatNumber(stats.prunedExternDeclarations) << '\n'
            << "  Estimated IR eliminated:   " << FormatNumber(stats.estimatedLirNodesEliminated) << " nodes\n\n"
            << style.cyan << style.bold << "Output:" << style.reset << '\n'
-           << "  Executable:                " << style.cyan << exePath.filename().string() << style.reset << '\n'
+           << "  Executable:                " << style.cyan << DisplayPath(exePath, packageRoot) << style.reset << '\n'
            << "  Executable size:           " << FormatSize(stats.executableSize) << '\n'
            << "  Peak memory:               " << FormatSize(stats.peakMemoryBytes) << "\n\n"
            << style.cyan << style.bold << "Performance:" << style.reset << '\n'
@@ -195,8 +207,9 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, std::string_v
     return output.str();
 }
 
-std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
-                               const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+std::string FormatBuildSummary(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
+                               std::string_view profileName, const std::string_view targetTriple,
+                               const BuildStats &stats, const bool colorEnabled) {
     const auto triple = ReportedTriple(targetTriple);
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
     const std::string crossTarget =
@@ -210,8 +223,8 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string
     const auto style = Style(colorEnabled);
     std::ostringstream output;
     output << style.green << style.bold << "Built" << style.reset << ' ' << style.bold << profileName << style.reset
-           << crossTarget << " [" << style.cyan << exePath.string() << style.reset << "] in " << style.bold << totalMs
-           << " ms" << style.reset << '\n'
+           << crossTarget << " [" << style.cyan << DisplayPath(exePath, packageRoot) << style.reset << "] in "
+           << style.bold << totalMs << " ms" << style.reset << '\n'
            << style.dim << FormatNumber(totalFiles) << " files | " << FormatNumber(totalLines) << " LOC | "
            << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
            << " LOC/s | " << exePath.filename().string() << ' ' << FormatSize(stats.executableSize) << style.reset
@@ -219,7 +232,8 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, std::string
     return output.str();
 }
 
-std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells, const bool includeStats,
+std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells,
+                                    const std::filesystem::path &packageRoot, const bool includeStats,
                                     const bool colorEnabled) {
     const auto style = Style(colorEnabled);
     std::size_t succeeded = 0;
@@ -255,7 +269,7 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     std::ostringstream output;
     output << style.bold << "Build matrix" << style.reset << '\n';
     output << style.cyan << style.bold << std::left << std::setw(8) << "Status" << std::setw(9) << "Profile"
-           << std::setw(19) << "Target" << std::setw(10) << "Time";
+           << std::setw(17) << "Target" << std::setw(10) << "Time";
     if (includeStats) {
         output << std::right << std::setw(8) << "Files" << std::setw(10) << "LOC" << std::setw(11) << "Tokens"
                << std::setw(10) << "Size" << "  ";
@@ -266,7 +280,7 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
         const auto statusColor = cell.succeeded ? style.green : style.red;
         const auto outputPath = cell.succeeded ? cell.artifactPath : cell.outputDirectory;
         output << statusColor << style.bold << std::left << std::setw(8) << (cell.succeeded ? "Built" : "Failed")
-               << style.reset << std::setw(9) << ToString(cell.profile) << std::setw(19) << cell.target.CanonicalName()
+               << style.reset << std::setw(9) << ToString(cell.profile) << std::setw(17) << cell.target.DisplayName()
                << std::setw(10) << FormatDuration(cell.elapsed);
         if (includeStats) {
             output << std::right << std::setw(8) << FormatNumber(cell.stats.localFiles + cell.stats.dependencyFiles)
@@ -274,7 +288,7 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
                    << FormatNumber(cell.stats.localTokens + cell.stats.dependencyTokens) << std::setw(10)
                    << FormatSize(cell.stats.executableSize) << "  ";
         }
-        output << std::left << outputPath.string() << '\n';
+        output << std::left << DisplayPath(outputPath, packageRoot) << '\n';
     }
 
     const std::size_t failed = cells.size() - succeeded;
@@ -296,21 +310,23 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     return output.str();
 }
 
-void PrintBuildStats(const std::filesystem::path &exePath, std::string_view profileName,
-                     const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
-    const auto report = FormatBuildStats(exePath, profileName, targetTriple, stats, colorEnabled);
+void PrintBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
+                     std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
+                     const bool colorEnabled) {
+    const auto report = FormatBuildStats(exePath, packageRoot, profileName, targetTriple, stats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 
-void PrintBuildSummary(const std::filesystem::path &exePath, std::string_view profileName,
-                       const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
-    const auto report = FormatBuildSummary(exePath, profileName, targetTriple, stats, colorEnabled);
+void PrintBuildSummary(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
+                       std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
+                       const bool colorEnabled) {
+    const auto report = FormatBuildSummary(exePath, packageRoot, profileName, targetTriple, stats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 
-void PrintBuildMatrixReport(const std::span<const BuildCellReport> cells, const bool includeStats,
-                            const bool colorEnabled) {
-    const auto report = FormatBuildMatrixReport(cells, includeStats, colorEnabled);
+void PrintBuildMatrixReport(const std::span<const BuildCellReport> cells, const std::filesystem::path &packageRoot,
+                            const bool includeStats, const bool colorEnabled) {
+    const auto report = FormatBuildMatrixReport(cells, packageRoot, includeStats, colorEnabled);
     std::fwrite(report.data(), sizeof(char), report.size(), stdout);
 }
 } // namespace Rux::Driver

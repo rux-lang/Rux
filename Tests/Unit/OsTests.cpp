@@ -129,8 +129,8 @@ TEST_CASE("typed target triples reject unknown components without host fallback"
 
 TEST_CASE("target catalog has one stable canonical and display spelling per supported machine") {
     constexpr std::array canonical = {
-        "freebsd-x86_64", "freebsd-aarch64", "linux-x86_64",   "linux-aarch64",
-        "macos-x86_64",   "macos-aarch64",   "windows-x86_64", "windows-aarch64",
+        "freebsd-aarch64", "freebsd-x86_64", "linux-aarch64",   "linux-x86_64",
+        "macos-aarch64",   "macos-x86_64",   "windows-aarch64", "windows-x86_64",
     };
     const auto supported = TargetTriple::Supported();
     REQUIRE(supported.size() == canonical.size());

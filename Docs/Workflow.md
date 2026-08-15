@@ -48,7 +48,7 @@ The repository provides matching platform entry points. PowerShell users can run
 
 The same rule applies to FreeBSD AArch64. Every supported host can build or
 check `freebsd-aarch64`; Release output lands below
-`Bin/Release/freebsd-aarch64/`. Only FreeBSD with an AArch64 compiler process or
+`Bin/Release/FreeBSD/AArch64/`. Only FreeBSD with an AArch64 compiler process or
 native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use
 `Tests/Native/FreeBSDAArch64/BuildTransfer.sh` on x86-64 FreeBSD and
 `VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and

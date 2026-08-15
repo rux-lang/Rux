@@ -6,8 +6,8 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 rux=${1:-"$repo_root/Bin/rux"}
 payload_dir=${2:-"$repo_root/FreeBSDAArch64Payload"}
-output_dir="$repo_root/Bin/Tests/Native/Release/freebsd-aarch64"
-syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/freebsd-aarch64/Syscall"
+output_dir="$repo_root/Bin/Tests/Native/Release/FreeBSD/AArch64"
+syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/FreeBSD/AArch64/Syscall"
 
 fail() {
     echo "FreeBSD AArch64 transfer build failure: $*" >&2
