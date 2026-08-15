@@ -142,10 +142,10 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         const auto matrix = GenerateBuildMatrix(packageRoot, *manifest);
         if (!opts.quiet && !showStats) {
             const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
-            std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}] across {} build cells\n", style.Cyan(),
-                       style.Bold(), style.Reset(), style.Bold(), manifest->package.name.Text(), style.Reset(),
-                       manifest->package.version.Text(), style.Cyan(), manifestPath->parent_path().string(),
-                       style.Reset(), matrix.size());
+            std::print(stderr, "{} {}{}{} v{} [{}{}{}] across {} build cells\n",
+                       Reporting::RenderStatus(Reporting::StatusVerb::Compiling, style), style.Bold(),
+                       manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(), style.Cyan(),
+                       manifestPath->parent_path().string(), style.Reset(), matrix.size());
         }
 
         std::vector<BuildCellReport> reports;
@@ -187,7 +187,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     const std::string_view profileName = ToString(profile);
     if (!opts.quiet && !showStats) {
         const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
-        std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}]\n", style.Cyan(), style.Bold(), style.Reset(),
+        std::print(stderr, "{} {}{}{} v{} [{}{}{}]\n", Reporting::RenderStatus(Reporting::StatusVerb::Compiling, style),
                    style.Bold(), manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(),
                    style.Cyan(), manifestPath->parent_path().string(), style.Reset());
     }

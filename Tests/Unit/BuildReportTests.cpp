@@ -39,16 +39,6 @@ TEST_CASE("FormatTokenThroughput picks a unit per magnitude") {
     CHECK(FormatTokenThroughput(2'000'000.0) == "2 M tok/s");
 }
 
-TEST_CASE("FormatDuration reports milliseconds below one second and seconds above") {
-    using namespace std::chrono_literals;
-    CHECK(FormatDuration(0ms) == "0 ms");
-    CHECK(FormatDuration(842ms) == "842 ms");
-    CHECK(FormatDuration(999ms) == "999 ms");
-    CHECK(FormatDuration(1000ms) == "1s");
-    CHECK(FormatDuration(1230ms) == "1.23s");
-    CHECK(FormatDuration(12500ms) == "12.5s");
-}
-
 TEST_CASE("FormatSize reports KB below one MB and MB above") {
     CHECK(FormatSize(512) == "1 KB");
     CHECK(FormatSize(10 * 1024) == "10 KB");
@@ -166,7 +156,22 @@ TEST_CASE("Build matrix report retains ordered cell outcomes and aggregate statu
     CHECK(report.contains((std::filesystem::path("Bin") / "Debug" / TargetOutputPath(*freeBsd) / "App").string()));
     CHECK(report.contains((std::filesystem::path("Bin") / "Debug" / TargetOutputPath(*linux)).string()));
     CHECK_FALSE(report.contains("Workspace"));
-    CHECK(report.contains("2 cells: 1 succeeded, 1 failed in 20 ms"));
+    CHECK(report.contains("Failed 2 cells in 20 ms (1 succeeded, 1 failed)"));
+}
+
+TEST_CASE("Successful build matrix uses the canonical completed summary and singular label") {
+    const auto target = Rux::Target::TargetTriple::Parse("linux-x86_64");
+    REQUIRE(target);
+    const std::vector<BuildCellReport> cells{{.profile = Rux::BuildProfile::Release,
+                                              .target = *target,
+                                              .outputDirectory = "Bin/Release/Linux/x86-64",
+                                              .succeeded = true,
+                                              .artifactPath = "Bin/Release/Linux/x86-64/App",
+                                              .stats = {},
+                                              .elapsed = std::chrono::milliseconds(1230)}};
+
+    const auto report = FormatBuildMatrixReport(cells, {}, false, false);
+    CHECK(report.contains("Built 1 cell in 1.23 s (1 succeeded, 0 failed)"));
 }
 
 TEST_CASE("Build matrix stats report includes per-cell and aggregate values with semantic color") {

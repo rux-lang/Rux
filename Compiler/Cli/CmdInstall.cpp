@@ -14,6 +14,7 @@
 #include "Package/Artifact.h"
 #include "Package/Checksum.h"
 #include "Package/Manifest.h"
+#include "Reporting/Reporting.h"
 #include "System/Process.h"
 
 #include <algorithm>
@@ -358,7 +359,7 @@ int ResolveAndInstall(const InstallCommand command, const std::vector<PackageReq
     if (!opts.quiet) {
         if (command == InstallCommand::Install) {
             std::print("Summary: {} installed, {} already up-to-date in {}\n", tally.installed, tally.upToDate,
-                       FormatDuration(ElapsedMs(started)));
+                       Reporting::FormatDuration(ElapsedMs(started)));
         }
         else {
             std::print("Summary: {} newly installed, {} already current\n", tally.installed, tally.upToDate);

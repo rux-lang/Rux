@@ -3,44 +3,14 @@
 // Terminal styling helpers for the CLI.
 
 #include "Cli/Cli.h"
+#include "Reporting/Reporting.h"
 
 #include <string_view>
 
 namespace Rux::CliSupport {
-// Holds whether ANSI styling is active and hands out escape codes that collapse
-// to empty strings when color is disabled, so call sites can interpolate them
-// unconditionally.
-struct AnsiStyle {
-    bool enabled = false;
-
-    [[nodiscard]] std::string_view Green() const {
-        return enabled ? "\033[32m" : "";
-    }
-
-    [[nodiscard]] std::string_view Red() const {
-        return enabled ? "\033[31m" : "";
-    }
-
-    [[nodiscard]] std::string_view Yellow() const {
-        return enabled ? "\033[33m" : "";
-    }
-
-    [[nodiscard]] std::string_view Cyan() const {
-        return enabled ? "\033[36m" : "";
-    }
-
-    [[nodiscard]] std::string_view Bold() const {
-        return enabled ? "\033[1m" : "";
-    }
-
-    [[nodiscard]] std::string_view Dim() const {
-        return enabled ? "\033[2m" : "";
-    }
-
-    [[nodiscard]] std::string_view Reset() const {
-        return enabled ? "\033[0m" : "";
-    }
-};
+// Color-policy detection stays in the CLI. Presentation tokens and semantic
+// style live in the host-independent reporting component.
+using AnsiStyle = Reporting::Style;
 
 // Decide whether ANSI styling should be emitted, honoring --color, the NO_COLOR
 // convention, TERM=dumb, and whether the selected stream is an interactive
@@ -57,5 +27,5 @@ enum class OutputStream {
 
 // Indent that lines a continuation up under the message of an `error: ` line,
 // so the detail reads as belonging to the error rather than to the next thing.
-inline constexpr std::string_view errorContinuation = "       ";
+inline constexpr std::string_view errorContinuation = Reporting::errorContinuation;
 } // namespace Rux::CliSupport

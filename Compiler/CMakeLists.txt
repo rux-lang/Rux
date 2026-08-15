@@ -42,6 +42,9 @@ rux_add_interface_component(RuxSourceModel)
 
 rux_add_interface_component(RuxBuildInfo)
 
+rux_add_component(RuxReporting
+    Reporting/Reporting.cpp)
+
 rux_add_component(RuxTarget
     Target/TargetTriple.cpp)
 target_link_libraries(RuxTarget PUBLIC RuxSourceModel)
@@ -55,7 +58,7 @@ rux_add_component(RuxCliContract
 
 rux_add_component(RuxCliHelp
     Cli/CliHelpRenderer.cpp)
-target_link_libraries(RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics)
+target_link_libraries(RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics RuxReporting)
 
 rux_add_component(RuxSource
     Source/SourceLoader.cpp)
@@ -250,7 +253,8 @@ rux_add_component(RuxDriver
 target_link_libraries(RuxDriver PUBLIC
     RuxBuildInfo RuxSource RuxSystem RuxPackage RuxLexer RuxSyntax RuxSemantic
     RuxHir RuxLir RuxLowering RuxOptimization RuxCodeGenX86_64 RuxCodeGenAArch64
-    RuxObjectRcu RuxLinker)
+    RuxObjectRcu RuxLinker
+    PRIVATE RuxReporting)
 
 # Compatibility aggregation target for embedders and existing tests. It owns
 # no sources; dependency validation happens in the component targets above.
@@ -276,7 +280,8 @@ add_executable(rux
     Cli/CmdTest.cpp
 )
 
-target_link_libraries(rux PRIVATE RuxCore RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp)
+target_link_libraries(rux PRIVATE
+    RuxCore RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxReporting)
 
 # Emit the compiler directly to Bin/ in the source tree while keeping CMake
 # intermediates in the build directory. Configuration-specific properties keep
@@ -289,7 +294,8 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
 if (WIN32)
-    set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxSource RuxSystem RuxCrypto RuxPackage
+    set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxReporting RuxSource RuxSystem RuxCrypto
+        RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY

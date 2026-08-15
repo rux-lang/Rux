@@ -2,6 +2,7 @@
 
 #include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
+#include "Reporting/Reporting.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,27 +13,6 @@
 
 namespace Rux::Driver {
 namespace {
-struct ReportStyle {
-    std::string_view green;
-    std::string_view red;
-    std::string_view cyan;
-    std::string_view bold;
-    std::string_view dim;
-    std::string_view reset;
-};
-
-ReportStyle Style(const bool enabled) {
-    if (!enabled) {
-        return {};
-    }
-    return {.green = "\033[32m",
-            .red = "\033[31m",
-            .cyan = "\033[36m",
-            .bold = "\033[1m",
-            .dim = "\033[2m",
-            .reset = "\033[0m"};
-}
-
 // The triple a report names. An embedder that leaves it unset built for the
 // host, which is what the report said before it carried a target at all.
 std::optional<Target::TargetTriple> ReportedTriple(const std::string_view targetTriple) {
@@ -125,15 +105,6 @@ std::string FormatSize(std::uintmax_t bytes) {
     return FormatDecimal(mb, 2) + " MB";
 }
 
-std::string FormatDuration(std::chrono::milliseconds elapsed) {
-    // Milliseconds below a second, seconds above: a four-digit millisecond count
-    // is harder to read than the same span written as `1.23s`.
-    if (elapsed < std::chrono::seconds(1)) {
-        return FormatNumber(static_cast<std::uintmax_t>(elapsed.count())) + " ms";
-    }
-    return FormatDecimal(static_cast<double>(elapsed.count()) / 1000.0, 2) + "s";
-}
-
 std::string DisplayPath(const std::filesystem::path &path, const std::filesystem::path &packageRoot) {
     if (packageRoot.empty()) {
         return path.string();
@@ -148,7 +119,6 @@ std::string DisplayPath(const std::filesystem::path &path, const std::filesystem
 std::string FormatBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
                              std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
                              const bool colorEnabled) {
-    const auto totalMs = stats.total.count();
     const double seconds = stats.totalSeconds;
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
@@ -163,20 +133,21 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, const std::fi
     const auto triple = ReportedTriple(targetTriple);
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
     const std::string display = triple ? triple->DisplayName() : canonical;
-    const auto style = Style(colorEnabled);
+    const Reporting::Style style{colorEnabled};
     std::ostringstream output;
-    output << style.bold << "Rux Compiler " << CompilerBuild::compilerVersion << style.reset << '\n'
+    output << style.Bold() << "Rux Compiler " << CompilerBuild::compilerVersion << style.Reset() << '\n'
            << "Target: " << display << " (" << canonical << ")\n"
-           << "Mode: " << style.bold << profileName << style.reset << "\n\n"
-           << style.green << style.bold << "Build finished successfully." << style.reset << "\n\n"
-           << "Total build time:            " << style.bold << totalMs << " ms" << style.reset << '\n'
-           << "  Lexing:                    " << stats.lexing.count() << " ms\n"
-           << "  Parsing:                   " << stats.parsing.count() << " ms\n"
-           << "  Semantic:                  " << stats.semantic.count() << " ms\n"
-           << "  HIR:                       " << stats.hir.count() << " ms\n"
-           << "  LIR:                       " << stats.lir.count() << " ms\n"
-           << "  Codegen:                   " << stats.codegen.count() << " ms\n"
-           << "  Linking:                   " << stats.linking.count() << " ms\n\n"
+           << "Mode: " << style.Bold() << profileName << style.Reset() << "\n\n"
+           << style.Green() << style.Bold() << "Build finished successfully." << style.Reset() << "\n\n"
+           << "Total build time:            " << style.Bold() << Reporting::FormatDuration(stats.total) << style.Reset()
+           << '\n'
+           << "  Lexing:                    " << Reporting::FormatDuration(stats.lexing) << '\n'
+           << "  Parsing:                   " << Reporting::FormatDuration(stats.parsing) << '\n'
+           << "  Semantic:                  " << Reporting::FormatDuration(stats.semantic) << '\n'
+           << "  HIR:                       " << Reporting::FormatDuration(stats.hir) << '\n'
+           << "  LIR:                       " << Reporting::FormatDuration(stats.lir) << '\n'
+           << "  Codegen:                   " << Reporting::FormatDuration(stats.codegen) << '\n'
+           << "  Linking:                   " << Reporting::FormatDuration(stats.linking) << "\n\n"
            << "Total files:                 " << FormatNumber(totalFiles) << '\n'
            << "  Local files:               " << FormatNumber(stats.localFiles) << '\n'
            << "  Dependency files:          " << FormatNumber(stats.dependencyFiles) << "\n\n"
@@ -195,11 +166,12 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, const std::fi
            << "  Vtables:                   " << FormatNumber(stats.prunedVtables) << '\n'
            << "  Extern declarations:       " << FormatNumber(stats.prunedExternDeclarations) << '\n'
            << "  Estimated IR eliminated:   " << FormatNumber(stats.estimatedLirNodesEliminated) << " nodes\n\n"
-           << style.cyan << style.bold << "Output:" << style.reset << '\n'
-           << "  Executable:                " << style.cyan << DisplayPath(exePath, packageRoot) << style.reset << '\n'
+           << style.Cyan() << style.Bold() << "Output:" << style.Reset() << '\n'
+           << "  Executable:                " << style.Cyan() << DisplayPath(exePath, packageRoot) << style.Reset()
+           << '\n'
            << "  Executable size:           " << FormatSize(stats.executableSize) << '\n'
            << "  Peak memory:               " << FormatSize(stats.peakMemoryBytes) << "\n\n"
-           << style.cyan << style.bold << "Performance:" << style.reset << '\n'
+           << style.Cyan() << style.Bold() << "Performance:" << style.Reset() << '\n'
            << "  Compile speed:             " << FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed)))
            << " LOC/s\n"
            << "  Token throughput:          " << FormatTokenThroughput(tokenThroughput) << '\n'
@@ -214,28 +186,27 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, const std::
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
     const std::string crossTarget =
         triple && *triple == Target::TargetTriple::Host() ? std::string{} : " for " + canonical;
-    const auto totalMs = stats.total.count();
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
     const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
     const double compileSpeed = stats.totalSeconds > 0.0 ? static_cast<double>(totalLines) / stats.totalSeconds : 0.0;
 
-    const auto style = Style(colorEnabled);
+    const Reporting::Style style{colorEnabled};
     std::ostringstream output;
-    output << style.green << style.bold << "Built" << style.reset << ' ' << style.bold << profileName << style.reset
-           << crossTarget << " [" << style.cyan << DisplayPath(exePath, packageRoot) << style.reset << "] in "
-           << style.bold << totalMs << " ms" << style.reset << '\n'
-           << style.dim << FormatNumber(totalFiles) << " files | " << FormatNumber(totalLines) << " LOC | "
-           << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
-           << " LOC/s | " << exePath.filename().string() << ' ' << FormatSize(stats.executableSize) << style.reset
-           << '\n';
+    output << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << style.Bold() << profileName
+           << style.Reset() << crossTarget << " [" << style.Cyan() << DisplayPath(exePath, packageRoot) << style.Reset()
+           << "] in " << style.Bold() << Reporting::FormatDuration(stats.total) << style.Reset() << '\n'
+           << style.Dim() << FormatNumber(totalFiles) << ' ' << Reporting::Pluralize(totalFiles, "file") << " | "
+           << FormatNumber(totalLines) << " LOC | " << FormatCompactNumber(static_cast<double>(totalTokens))
+           << " tokens | " << FormatCompactNumber(compileSpeed) << " LOC/s | " << exePath.filename().string() << ' '
+           << FormatSize(stats.executableSize) << style.Reset() << '\n';
     return output.str();
 }
 
 std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells,
                                     const std::filesystem::path &packageRoot, const bool includeStats,
                                     const bool colorEnabled) {
-    const auto style = Style(colorEnabled);
+    const Reporting::Style style{colorEnabled};
     std::size_t succeeded = 0;
     std::chrono::milliseconds totalElapsed{0};
     BuildStats aggregate;
@@ -267,21 +238,22 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     }
 
     std::ostringstream output;
-    output << style.bold << "Build matrix" << style.reset << '\n';
-    output << style.cyan << style.bold << std::left << std::setw(8) << "Status" << std::setw(9) << "Profile"
+    output << style.Bold() << "Build matrix" << style.Reset() << '\n';
+    output << style.Cyan() << style.Bold() << std::left << std::setw(8) << "Status" << std::setw(9) << "Profile"
            << std::setw(17) << "Target" << std::setw(10) << "Time";
     if (includeStats) {
         output << std::right << std::setw(8) << "Files" << std::setw(10) << "LOC" << std::setw(11) << "Tokens"
                << std::setw(10) << "Size" << "  ";
     }
-    output << std::left << "Output" << style.reset << '\n';
+    output << std::left << "Output" << style.Reset() << '\n';
 
     for (const auto &cell : cells) {
-        const auto statusColor = cell.succeeded ? style.green : style.red;
+        const auto status = cell.succeeded ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
         const auto outputPath = cell.succeeded ? cell.artifactPath : cell.outputDirectory;
-        output << statusColor << style.bold << std::left << std::setw(8) << (cell.succeeded ? "Built" : "Failed")
-               << style.reset << std::setw(9) << ToString(cell.profile) << std::setw(17) << cell.target.DisplayName()
-               << std::setw(10) << FormatDuration(cell.elapsed);
+        output << style.Color(Reporting::KindOf(status)) << style.Bold() << std::left << std::setw(8)
+               << Reporting::StatusText(status) << style.Reset() << std::setw(9) << ToString(cell.profile)
+               << std::setw(17) << cell.target.DisplayName() << std::setw(10)
+               << Reporting::FormatDuration(cell.elapsed);
         if (includeStats) {
             output << std::right << std::setw(8) << FormatNumber(cell.stats.localFiles + cell.stats.dependencyFiles)
                    << std::setw(10) << FormatNumber(cell.stats.localLines + cell.stats.dependencyLines) << std::setw(11)
@@ -292,10 +264,12 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     }
 
     const std::size_t failed = cells.size() - succeeded;
+    const auto overall = failed == 0 ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
     output << '\n'
-           << style.bold << cells.size() << " cells: " << style.green << succeeded << " succeeded" << style.reset
-           << ", " << (failed == 0 ? style.dim : style.red) << failed << " failed" << style.reset << " in "
-           << FormatDuration(totalElapsed) << style.reset << '\n';
+           << Reporting::RenderStatus(overall, style) << ' ' << Reporting::FormatCount(cells.size(), "cell") << " in "
+           << style.Bold() << Reporting::FormatDuration(totalElapsed) << style.Reset() << " (" << style.Green()
+           << succeeded << " succeeded" << style.Reset() << ", " << (failed == 0 ? style.Dim() : style.Red()) << failed
+           << " failed" << style.Reset() << ")\n";
     if (includeStats) {
         output << "Aggregate statistics: " << FormatNumber(aggregate.localFiles + aggregate.dependencyFiles)
                << " files | " << FormatNumber(aggregate.localLines + aggregate.dependencyLines) << " LOC | "

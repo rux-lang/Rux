@@ -3,6 +3,7 @@
 #include "Cli/CliHelpRenderer.h"
 
 #include "Diagnostics/Diagnostics.h"
+#include "Reporting/Reporting.h"
 
 #include <algorithm>
 #include <concepts>
@@ -41,21 +42,7 @@ constexpr auto whitespace = " \t"sv;
 constexpr auto cliName = "rux"sv;
 } // namespace Layout
 
-struct Style {
-    bool enabled = false;
-
-    [[nodiscard]] std::string_view Cyan() const {
-        return enabled ? "\033[36m"sv : ""sv;
-    }
-
-    [[nodiscard]] std::string_view Bold() const {
-        return enabled ? "\033[1m"sv : ""sv;
-    }
-
-    [[nodiscard]] std::string_view Reset() const {
-        return enabled ? "\033[0m"sv : ""sv;
-    }
-};
+using Rux::Reporting::Style;
 
 std::size_t UsableWidth(const std::size_t terminalWidth, const std::size_t indent) {
     if (terminalWidth <= indent) {

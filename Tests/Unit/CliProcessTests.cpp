@@ -412,7 +412,8 @@ func Main() -> int {
     CHECK(reported.output.contains("Failed  Debug    FreeBSD AArch64"));
     CHECK(reported.output.contains("Built   Release  Windows x86-64"));
     CHECK(reported.output.contains("Failed  Release  Windows AArch64"));
-    CHECK(reported.output.contains("16 cells: 8 succeeded, 8 failed"));
+    CHECK(reported.output.contains("Failed 16 cells in "));
+    CHECK(reported.output.contains("(8 succeeded, 8 failed)"));
     CHECK(reported.output.contains("Aggregate statistics:"));
     CHECK_FALSE(reported.output.contains("\033["));
     // Artifact paths are reported relative to the package root.
