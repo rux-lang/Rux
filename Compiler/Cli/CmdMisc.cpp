@@ -1,7 +1,9 @@
 // `rux fmt` and `rux doc`.
 
 #include "Cli/Cli.h"
+#include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/Reporter.h"
 #include "Documentation/Generator.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
@@ -149,6 +151,7 @@ int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opt
 }
 
 int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter progress(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     bool openAfter = false;
     bool includePrivate = false;
     std::filesystem::path requestedOutput;
@@ -230,8 +233,11 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         compileOptions.defines = defines;
         compileOptions.localPackageRoots = localPackages;
         compileOptions.localDependenciesOnly = rootManifest->IsWorkspace();
-        compileOptions.quiet = true;
-        compileOptions.verbose = opts.verbose;
+        if (opts.verbose) {
+            compileOptions.emitProgress = [&](const CompileProgress &event) {
+                CliSupport::ReportCompileProgress(progress, event);
+            };
+        }
         compileOptions.checkOnly = true;
         compileOptions.captureFrontend = true;
         CompilerDriver driver(std::move(compileOptions));

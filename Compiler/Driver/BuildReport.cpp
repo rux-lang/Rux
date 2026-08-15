@@ -5,8 +5,8 @@
 #include "Reporting/Reporting.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
-#include <cstdio>
 #include <iomanip>
 #include <optional>
 #include <sstream>
@@ -20,6 +20,12 @@ std::optional<Target::TargetTriple> ReportedTriple(const std::string_view target
         return Target::TargetTriple::Host();
     }
     return Target::TargetTriple::Parse(targetTriple);
+}
+
+std::string ProfileName(const BuildProfile profile) {
+    std::string name(ToString(profile));
+    name.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
+    return name;
 }
 } // namespace
 
@@ -116,9 +122,9 @@ std::string DisplayPath(const std::filesystem::path &path, const std::filesystem
     return text.empty() || text.starts_with("..") ? path.string() : text;
 }
 
-std::string FormatBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                             std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
-                             const bool colorEnabled) {
+std::string FormatBuildStats(const std::string_view packageName, const std::filesystem::path &artifactPath,
+                             const std::filesystem::path &packageRoot, const BuildProfile profile,
+                             const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
     const double seconds = stats.totalSeconds;
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
@@ -133,12 +139,15 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, const std::fi
     const auto triple = ReportedTriple(targetTriple);
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
     const std::string display = triple ? triple->DisplayName() : canonical;
+    const std::string profileName = ProfileName(profile);
     const Reporting::Style style{colorEnabled};
     std::ostringstream output;
     output << style.Bold() << "Rux Compiler " << CompilerBuild::compilerVersion << style.Reset() << '\n'
+           << "Package: " << packageName << '\n'
            << "Target: " << display << " (" << canonical << ")\n"
-           << "Mode: " << style.Bold() << profileName << style.Reset() << "\n\n"
-           << style.Green() << style.Bold() << "Build finished successfully." << style.Reset() << "\n\n"
+           << "Profile: " << profileName << "\n\n"
+           << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << packageName << " (" << profileName
+           << ", " << canonical << ") in " << Reporting::FormatDuration(stats.total) << "\n\n"
            << "Total build time:            " << style.Bold() << Reporting::FormatDuration(stats.total) << style.Reset()
            << '\n'
            << "  Lexing:                    " << Reporting::FormatDuration(stats.lexing) << '\n'
@@ -167,9 +176,9 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, const std::fi
            << "  Extern declarations:       " << FormatNumber(stats.prunedExternDeclarations) << '\n'
            << "  Estimated IR eliminated:   " << FormatNumber(stats.estimatedLirNodesEliminated) << " nodes\n\n"
            << style.Cyan() << style.Bold() << "Output:" << style.Reset() << '\n'
-           << "  Executable:                " << style.Cyan() << DisplayPath(exePath, packageRoot) << style.Reset()
+           << "  Artifact:                  " << style.Cyan() << DisplayPath(artifactPath, packageRoot) << style.Reset()
            << '\n'
-           << "  Executable size:           " << FormatSize(stats.executableSize) << '\n'
+           << "  Artifact size:             " << FormatSize(stats.executableSize) << '\n'
            << "  Peak memory:               " << FormatSize(stats.peakMemoryBytes) << "\n\n"
            << style.Cyan() << style.Bold() << "Performance:" << style.Reset() << '\n'
            << "  Compile speed:             " << FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed)))
@@ -179,13 +188,12 @@ std::string FormatBuildStats(const std::filesystem::path &exePath, const std::fi
     return output.str();
 }
 
-std::string FormatBuildSummary(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                               std::string_view profileName, const std::string_view targetTriple,
-                               const BuildStats &stats, const bool colorEnabled) {
+std::string FormatBuildSummary(const std::string_view packageName, const std::filesystem::path &artifactPath,
+                               const std::filesystem::path &packageRoot, const BuildProfile profile,
+                               const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
     const auto triple = ReportedTriple(targetTriple);
     const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
-    const std::string crossTarget =
-        triple && *triple == Target::TargetTriple::Host() ? std::string{} : " for " + canonical;
+    const std::string profileName = ProfileName(profile);
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
     const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
@@ -193,17 +201,19 @@ std::string FormatBuildSummary(const std::filesystem::path &exePath, const std::
 
     const Reporting::Style style{colorEnabled};
     std::ostringstream output;
-    output << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << style.Bold() << profileName
-           << style.Reset() << crossTarget << " [" << style.Cyan() << DisplayPath(exePath, packageRoot) << style.Reset()
-           << "] in " << style.Bold() << Reporting::FormatDuration(stats.total) << style.Reset() << '\n'
-           << style.Dim() << FormatNumber(totalFiles) << ' ' << Reporting::Pluralize(totalFiles, "file") << " | "
-           << FormatNumber(totalLines) << " LOC | " << FormatCompactNumber(static_cast<double>(totalTokens))
-           << " tokens | " << FormatCompactNumber(compileSpeed) << " LOC/s | " << exePath.filename().string() << ' '
-           << FormatSize(stats.executableSize) << style.Reset() << '\n';
+    output << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << packageName << " (" << profileName
+           << ", " << canonical << ") in " << Reporting::FormatDuration(stats.total) << '\n'
+           << Reporting::indentation << "Output: " << style.Cyan() << DisplayPath(artifactPath, packageRoot)
+           << style.Reset() << '\n'
+           << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
+           << Reporting::Pluralize(totalFiles, "file") << " | " << FormatNumber(totalLines) << " LOC | "
+           << FormatCompactNumber(static_cast<double>(totalTokens)) << " tokens | " << FormatCompactNumber(compileSpeed)
+           << " LOC/s | " << artifactPath.filename().string() << ' ' << FormatSize(stats.executableSize)
+           << style.Reset() << '\n';
     return output.str();
 }
 
-std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells,
+std::string FormatBuildMatrixReport(const std::string_view packageName, const std::span<const BuildCellReport> cells,
                                     const std::filesystem::path &packageRoot, const bool includeStats,
                                     const bool colorEnabled) {
     const Reporting::Style style{colorEnabled};
@@ -238,9 +248,9 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     }
 
     std::ostringstream output;
-    output << style.Bold() << "Build matrix" << style.Reset() << '\n';
+    output << style.Bold() << "Build matrix for " << packageName << style.Reset() << '\n';
     output << style.Cyan() << style.Bold() << std::left << std::setw(8) << "Status" << std::setw(9) << "Profile"
-           << std::setw(17) << "Target" << std::setw(10) << "Time";
+           << std::setw(20) << "Target" << std::setw(10) << "Time";
     if (includeStats) {
         output << std::right << std::setw(8) << "Files" << std::setw(10) << "LOC" << std::setw(11) << "Tokens"
                << std::setw(10) << "Size" << "  ";
@@ -251,8 +261,8 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
         const auto status = cell.succeeded ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
         const auto outputPath = cell.succeeded ? cell.artifactPath : cell.outputDirectory;
         output << style.Color(Reporting::KindOf(status)) << style.Bold() << std::left << std::setw(8)
-               << Reporting::StatusText(status) << style.Reset() << std::setw(9) << ToString(cell.profile)
-               << std::setw(17) << cell.target.DisplayName() << std::setw(10)
+               << Reporting::StatusText(status) << style.Reset() << std::setw(9) << ProfileName(cell.profile)
+               << std::setw(20) << cell.target.CanonicalName() << std::setw(10)
                << Reporting::FormatDuration(cell.elapsed);
         if (includeStats) {
             output << std::right << std::setw(8) << FormatNumber(cell.stats.localFiles + cell.stats.dependencyFiles)
@@ -284,23 +294,4 @@ std::string FormatBuildMatrixReport(const std::span<const BuildCellReport> cells
     return output.str();
 }
 
-void PrintBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                     std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
-                     const bool colorEnabled) {
-    const auto report = FormatBuildStats(exePath, packageRoot, profileName, targetTriple, stats, colorEnabled);
-    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
-}
-
-void PrintBuildSummary(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                       std::string_view profileName, const std::string_view targetTriple, const BuildStats &stats,
-                       const bool colorEnabled) {
-    const auto report = FormatBuildSummary(exePath, packageRoot, profileName, targetTriple, stats, colorEnabled);
-    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
-}
-
-void PrintBuildMatrixReport(const std::span<const BuildCellReport> cells, const std::filesystem::path &packageRoot,
-                            const bool includeStats, const bool colorEnabled) {
-    const auto report = FormatBuildMatrixReport(cells, packageRoot, includeStats, colorEnabled);
-    std::fwrite(report.data(), sizeof(char), report.size(), stdout);
-}
 } // namespace Rux::Driver

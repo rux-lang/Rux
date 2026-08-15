@@ -4,6 +4,7 @@
 
 #include "Cli/CliSpec.h"
 #include "Cli/Reporter.h"
+#include "Driver/BuildTarget.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -339,6 +340,26 @@ int Cli::Run() const {
             const auto spelling = OptionSpelling(argument);
             const auto *option = FindOption(commandSpec->options, spelling);
             if (!option) {
+                if (command == "run" && spelling == "--target") {
+                    auto requested = AttachedValue(argument);
+                    if (!requested && i + 1 < raw.size() && !raw[i + 1].starts_with('-')) {
+                        requested = raw[i + 1];
+                    }
+                    if (requested && !requested->empty()) {
+                        return ReportUsageError(
+                            options.color, command, std::format("command 'run' cannot execute target '{}'", *requested),
+                            std::format("'rux run' builds and executes only the host target '{}'",
+                                        Rux::Driver::HostTargetTriple()),
+                            std::format(
+                                "build it with 'rux build --target {}', then run the output on a compatible host",
+                                *requested));
+                    }
+                    return ReportUsageError(
+                        options.color, command, "option '--target' is not available for command 'run'",
+                        std::format("'rux run' builds and executes only the host target '{}'",
+                                    Rux::Driver::HostTargetTriple()),
+                        "use 'rux run' for the host or 'rux build --target linux-x86_64' for a cross build");
+                }
                 PrintUnknownOption(spelling, command, options.color);
                 return 2;
             }

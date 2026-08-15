@@ -194,7 +194,6 @@ module Api {
         options.manifestPath = appRoot / "Rux.toml";
         options.manifest = application;
         options.target = Target::TargetTriple::Host();
-        options.quiet = true;
         options.checkOnly = checkOnly;
         options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
             diagnostics.push_back(diagnostic);
@@ -684,12 +683,17 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("macos-aarch64");
     options.profile = BuildProfile::Release;
+    std::vector<CompilePhase> phases;
+    options.emitProgress = [&](const CompileProgress &progress) { phases.push_back(progress.phase); };
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 
     CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
     REQUIRE(result.ok);
     CHECK(diagnostics.empty());
+    CHECK(phases == std::vector{CompilePhase::Lexing, CompilePhase::Parsing, CompilePhase::LoadingDependency,
+                                CompilePhase::Analyzing, CompilePhase::LoweringToHir, CompilePhase::LoweringToLir,
+                                CompilePhase::EmittingObjects, CompilePhase::Linking});
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.primaryArtifactPath.filename() == "App");
     CHECK(ArtifactTargetPath(result.primaryArtifactPath) ==
@@ -732,7 +736,8 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
     CHECK_FALSE(image.mainEntryOffset);
     CHECK_FALSE(image.threadEntryAddress);
 
-    const auto report = FormatBuildStats(result.primaryArtifactPath, {}, "Release", "macos-arm64", result.stats, false);
+    const auto report = FormatBuildStats("App", result.primaryArtifactPath, {}, BuildProfile::Release, "macos-arm64",
+                                         result.stats, false);
     CHECK(report.contains("Target: macOS AArch64 (macos-aarch64)\n"));
 }
 
@@ -863,8 +868,8 @@ TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a s
     }));
 
     CHECK(CanonicalTargetTriple("freebsd-arm64") == "freebsd-aarch64");
-    const auto report =
-        FormatBuildStats(result.primaryArtifactPath, {}, "Release", "freebsd-arm64", result.stats, false);
+    const auto report = FormatBuildStats("App", result.primaryArtifactPath, {}, BuildProfile::Release, "freebsd-arm64",
+                                         result.stats, false);
     CHECK(report.contains("Target: FreeBSD AArch64 (freebsd-aarch64)\n"));
 }
 

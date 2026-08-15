@@ -59,11 +59,14 @@ TEST_CASE("Build summary applies semantic ANSI styling only when enabled") {
         std::filesystem::path("Bin") / "Debug" / TargetOutputPath(Rux::Target::TargetTriple::Host()) / "App.exe";
     const auto executable = root / artifact;
 
-    const auto plain = FormatBuildSummary(executable, root, "Debug", HostTargetTriple(), stats, false);
+    const auto plain =
+        FormatBuildSummary("App", executable, root, Rux::BuildProfile::Debug, HostTargetTriple(), stats, false);
     CHECK_FALSE(plain.contains("\033["));
-    CHECK(plain.contains("Built Debug [" + artifact.string() + "] in 275 ms"));
+    CHECK(plain.contains("Built App (debug, " + HostTargetTriple() + ") in 275 ms"));
+    CHECK(plain.contains("  Output: " + artifact.string()));
 
-    const auto colored = FormatBuildSummary(executable, root, "Debug", HostTargetTriple(), stats, true);
+    const auto colored =
+        FormatBuildSummary("App", executable, root, Rux::BuildProfile::Debug, HostTargetTriple(), stats, true);
     CHECK(colored.contains("\033[32m\033[1mBuilt\033[0m"));
     CHECK(colored.contains("\033[36m" + artifact.string() + "\033[0m"));
     CHECK(colored.contains("\033[2m93 files"));
@@ -79,7 +82,7 @@ TEST_CASE("Reported paths are relative to the package root only when they sit be
     CHECK(DisplayPath("Bin/App.exe", {}) == "Bin/App.exe");
 }
 
-TEST_CASE("Build summary names the target only when it is not the host") {
+TEST_CASE("Build summary always names its profile and canonical target") {
     BuildStats stats;
     stats.total = std::chrono::milliseconds(275);
     // The host is one triple, so naming a second one leaves a target that is
@@ -87,11 +90,12 @@ TEST_CASE("Build summary names the target only when it is not the host") {
     const std::string foreign = HostTargetTriple() == "windows-aarch64" ? "linux-aarch64" : "windows-aarch64";
     const std::filesystem::path executable = std::filesystem::path("Bin/Debug") / foreign / "App";
 
-    CHECK(FormatBuildSummary(executable, {}, "Debug", foreign, stats, false)
-              .contains("Built Debug for " + foreign + " ["));
+    CHECK(FormatBuildSummary("App", executable, {}, Rux::BuildProfile::Debug, foreign, stats, false)
+              .contains("Built App (debug, " + foreign + ")"));
     // An unset target means the host, which is how the summary read before it
     // carried a target at all.
-    CHECK(FormatBuildSummary(executable, {}, "Debug", {}, stats, false).contains("Built Debug ["));
+    CHECK(FormatBuildSummary("App", executable, {}, Rux::BuildProfile::Debug, {}, stats, false)
+              .contains("Built App (debug, " + HostTargetTriple() + ")"));
 }
 
 TEST_CASE("Detailed build report styles success and section headings") {
@@ -101,22 +105,24 @@ TEST_CASE("Detailed build report styles success and section headings") {
     stats.prunedVtables = 1;
     stats.prunedExternDeclarations = 3;
     stats.estimatedLirNodesEliminated = 42;
-    const auto plain = FormatBuildStats("App/Bin/App.exe", "App", "Release", HostTargetTriple(), stats, false);
-    const auto colored = FormatBuildStats("App/Bin/App.exe", "App", "Release", HostTargetTriple(), stats, true);
+    const auto plain =
+        FormatBuildStats("App", "App/Bin/App.exe", "App", Rux::BuildProfile::Release, HostTargetTriple(), stats, false);
+    const auto colored =
+        FormatBuildStats("App", "App/Bin/App.exe", "App", Rux::BuildProfile::Release, HostTargetTriple(), stats, true);
 
     CHECK_FALSE(plain.contains("\033["));
-    CHECK(colored.contains("\033[32m\033[1mBuild finished successfully.\033[0m"));
+    CHECK(colored.contains("\033[32m\033[1mBuilt\033[0m App (release,"));
     CHECK(colored.contains("\033[36m\033[1mOutput:\033[0m"));
     CHECK(colored.contains("\033[36m\033[1mPerformance:\033[0m"));
-    CHECK(plain.contains("Executable:                " + (std::filesystem::path("Bin") / "App.exe").string() + '\n'));
+    CHECK(plain.contains("Artifact:                  " + (std::filesystem::path("Bin") / "App.exe").string() + '\n'));
     CHECK(plain.contains("LIR declarations pruned:     7\n"));
     CHECK(plain.contains("Estimated IR eliminated:   42 nodes\n"));
 }
 
 TEST_CASE("Detailed build report names the target it built for") {
     BuildStats stats;
-    const auto report =
-        FormatBuildStats("Bin/Release/Windows/AArch64/App.exe", {}, "Release", "windows-arm64", stats, false);
+    const auto report = FormatBuildStats("App", "Bin/Release/Windows/AArch64/App.exe", {}, Rux::BuildProfile::Release,
+                                         "windows-arm64", stats, false);
 
     CHECK(report.contains("Target: Windows AArch64 (windows-aarch64)\n"));
 }
@@ -146,13 +152,13 @@ TEST_CASE("Build matrix report retains ordered cell outcomes and aggregate statu
          .elapsed = std::chrono::milliseconds(8)},
     };
 
-    const auto report = FormatBuildMatrixReport(cells, root, false, false);
+    const auto report = FormatBuildMatrixReport("App", cells, root, false, false);
 
     CHECK_FALSE(report.contains("\033["));
-    CHECK(report.contains("Status  Profile  Target           Time"));
+    CHECK(report.contains("Status  Profile  Target              Time"));
     CHECK(report.find("FreeBSD") < report.find("Linux"));
-    CHECK(report.contains("Built   Debug    FreeBSD x86-64   "));
-    CHECK(report.contains("Failed  Debug    Linux AArch64    "));
+    CHECK(report.contains("Built   debug    freebsd-x86_64"));
+    CHECK(report.contains("Failed  debug    linux-aarch64"));
     CHECK(report.contains((std::filesystem::path("Bin") / "Debug" / TargetOutputPath(*freeBsd) / "App").string()));
     CHECK(report.contains((std::filesystem::path("Bin") / "Debug" / TargetOutputPath(*linux)).string()));
     CHECK_FALSE(report.contains("Workspace"));
@@ -170,7 +176,7 @@ TEST_CASE("Successful build matrix uses the canonical completed summary and sing
                                               .stats = {},
                                               .elapsed = std::chrono::milliseconds(1230)}};
 
-    const auto report = FormatBuildMatrixReport(cells, {}, false, false);
+    const auto report = FormatBuildMatrixReport("App", cells, {}, false, false);
     CHECK(report.contains("Built 1 cell in 1.23 s (1 succeeded, 0 failed)"));
 }
 
@@ -199,7 +205,7 @@ TEST_CASE("Build matrix stats report includes per-cell and aggregate values with
                                               .stats = stats,
                                               .elapsed = std::chrono::milliseconds(25)}};
 
-    const auto report = FormatBuildMatrixReport(cells, {}, true, true);
+    const auto report = FormatBuildMatrixReport("App", cells, {}, true, true);
 
     CHECK(report.contains("Files"));
     CHECK(report.contains("LOC"));

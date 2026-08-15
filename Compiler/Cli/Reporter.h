@@ -50,6 +50,7 @@ public:
     void Success(std::string_view primary, std::string_view detail = {}) const;
     void Detail(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Verbose(std::string_view text) const;
+    void Write(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Table(std::span<const TableRow> rows, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Summary(std::string_view title, std::span<const TableRow> rows) const;
 

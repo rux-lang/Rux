@@ -1,17 +1,18 @@
 // `rux run` — build the package, then execute the resulting binary.
 
 #include "Cli/Cli.h"
+#include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
-#include "Cli/TerminalStyle.h"
+#include "Cli/Reporter.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "System/Process.h"
 
-#include <cstdio>
+#include <chrono>
 #include <filesystem>
+#include <format>
 #include <map>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -24,6 +25,7 @@ using namespace Driver;
 using namespace System;
 
 int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const Reporter tool(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     bool isRelease = false;
     std::vector<std::string_view> runArgs;
     std::map<std::string, std::string> defines;
@@ -45,7 +47,7 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
         if (arg == "--define" && i + 1 < args.size()) {
             std::string error;
             if (!AddCompileTimeDefine(args[++i], defines, error)) {
-                std::print(stderr, "error: {}\n", error);
+                tool.Error(error);
                 return 1;
             }
             continue;
@@ -65,24 +67,29 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
-    // Reject artifact-producing libraries before spending a build on them.
-    // SourceLibrary is rejected by the driver itself because it has no artifact.
-    if (manifest->package.type == ManifestPackageType::SharedLibrary ||
-        manifest->package.type == ManifestPackageType::StaticLibrary) {
-        std::print(stderr, "error: cannot run a {} package; only an Executable package has an entry point\n",
-                   ToString(manifest->package.type));
+    const std::string packageName(manifest->package.name.Text());
+    if (manifest->package.type != ManifestPackageType::Executable) {
+        if (manifest->package.type == ManifestPackageType::SourceLibrary) {
+            tool.Error(std::format("package '{}' is a source library and cannot be run", packageName));
+            tool.Note("source libraries are compiled into packages that depend on them");
+            tool.Help("check it with 'rux check'");
+        }
+        else {
+            const std::string_view kind =
+                manifest->package.type == ManifestPackageType::SharedLibrary ? "shared library" : "static library";
+            tool.Error(std::format("package '{}' produces a {} and cannot be run", packageName, kind));
+            tool.Note("only executable packages have an entry point");
+            tool.Help(std::format("build it with 'rux build{}'", isRelease ? " --release" : ""));
+        }
         return 1;
     }
     // Build first (quiet unless verbose)
     const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
-    const std::string_view profileName = ToString(profile);
     const std::string targetName = HostTargetTriple();
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
-        const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
-        std::print(stderr, "{}{}Compiling{} {}{}{} v{} [{}{}{}]\n", style.Cyan(), style.Bold(), style.Reset(),
-                   style.Bold(), manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(),
-                   style.Cyan(), manifestPath->parent_path().string(), style.Reset());
+        tool.Progress("Compiling", std::format("{} v{} ({}, {})", packageName, manifest->package.version.Text(),
+                                               profile == BuildProfile::Release ? "release" : "debug", targetName));
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
@@ -90,43 +97,46 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     copts.target = Target::TargetTriple::Host();
     copts.profile = profile;
     copts.defines = std::move(defines);
-    copts.quiet = buildQuiet;
-    copts.verbose = opts.verbose;
+    if (opts.verbose) {
+        copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(tool, progress); };
+    }
     CompilerDriver driver(std::move(copts));
     const CompileResult result = driver.Compile();
     if (!result.ok) {
         return 1;
     }
     if (!buildQuiet) {
-        const auto report =
-            FormatBuildSummary(result.primaryArtifactPath, manifestPath->parent_path(), profileName, targetName,
-                               result.stats, ColorEnabled(opts.color, OutputStream::Stderr));
-        std::fwrite(report.data(), sizeof(char), report.size(), stderr);
+        tool.Write(FormatBuildSummary(packageName, result.primaryArtifactPath, manifestPath->parent_path(), profile,
+                                      targetName, result.stats, tool.Style().enabled));
     }
     auto exePath = result.primaryArtifactPath;
     if (!std::filesystem::exists(exePath)) {
-        std::print(stderr, "error: executable not found: '{}'\n", exePath.string());
+        tool.Error(std::format("built executable '{}' is missing", exePath.string()));
+        tool.Help(std::format("rebuild it with 'rux build{}'", isRelease ? " --release" : ""));
         return 1;
     }
     if (opts.verbose && !opts.quiet) {
-        std::string commandLine = exePath.string();
+        std::string commandLine = "'" + exePath.string() + "'";
         for (const auto argument : runArgs) {
-            commandLine += ' ';
+            commandLine += " '";
             commandLine += argument;
+            commandLine += '\'';
         }
-        std::print("Running `{}`\n", commandLine);
+        tool.Progress("Running", packageName);
+        tool.Verbose("Command: " + commandLine);
     }
+    const auto started = std::chrono::steady_clock::now();
     std::error_code launchError;
     const auto exitCode = RunInherited(exePath, runArgs, &launchError);
     if (!exitCode) {
+        tool.Error(std::format("could not launch executable '{}'", exePath.string()));
         if (launchError) {
-            std::print(stderr, "error: failed to launch '{}': {} (system error {})\n", exePath.string(),
-                       launchError.message(), launchError.value());
+            tool.Note(std::format("system error {}: {}", launchError.value(), launchError.message()));
         }
-        else {
-            std::print(stderr, "error: failed to launch '{}'\n", exePath.string());
-        }
+        tool.Help("check that the output exists and is executable on this host");
         return 1;
     }
+    tool.Verbose(
+        std::format("Process exited with code {} in {}", *exitCode, Reporting::FormatDuration(ElapsedMs(started))));
     return *exitCode;
 }

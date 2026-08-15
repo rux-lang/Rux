@@ -25,6 +25,26 @@
 #include <vector>
 
 namespace Rux::Driver {
+enum class CompilePhase {
+    Lexing,
+    Parsing,
+    LoadingDependency,
+    Analyzing,
+    LoweringToHir,
+    LoweringToLir,
+    EmittingAssembly,
+    EmittingObjects,
+    Linking,
+};
+
+struct CompileProgress {
+    CompilePhase phase;
+    std::string_view subject;
+    std::filesystem::path path;
+};
+
+[[nodiscard]] std::string_view CompilePhaseName(CompilePhase phase) noexcept;
+
 struct CompileOptions {
     std::filesystem::path manifestPath; // resolved path to Rux.toml
     Manifest manifest;                  // parsed manifest for manifestPath
@@ -39,8 +59,6 @@ struct CompileOptions {
     std::map<std::string, std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
 
-    bool quiet = false;
-    bool verbose = false; // print per-phase progress lines to stdout
     bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
     // frontend errors so all diagnostics are reported
@@ -63,6 +81,9 @@ struct CompileOptions {
     // carry their own "error: " prefix and newline) go. Defaults to printing
     // the line to stderr as-is.
     std::function<void(std::string_view)> emitError;
+    // Optional semantic progress events. The CLI owns visibility, styling, and
+    // stream selection; the reusable driver never writes progress itself.
+    std::function<void(const CompileProgress &)> emitProgress;
 };
 
 struct CompileResult {
@@ -81,6 +102,7 @@ public:
 private:
     void Emit(const Diagnostic &diag) const;
     void EmitErrorLine(std::string_view line) const;
+    void EmitProgress(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {}) const;
     // Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags) const;
     void RememberSources(std::span<const SourceFile> sources);

@@ -87,6 +87,12 @@ void Reporter::Verbose(const std::string_view text) const {
     }
 }
 
+void Reporter::Write(const std::string_view text, const MessageVisibility visibility) const {
+    if (Visible(visibility)) {
+        std::print(output_, "{}", text);
+    }
+}
+
 void Reporter::Table(const std::span<const TableRow> rows, const MessageVisibility visibility) const {
     if (!Visible(visibility) || rows.empty()) {
         return;

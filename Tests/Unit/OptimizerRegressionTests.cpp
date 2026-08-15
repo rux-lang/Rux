@@ -104,7 +104,6 @@ module OptimizerFixture::Support {
         options.manifest = manifest;
         options.target = *Target::TargetTriple::Parse(targetName);
         options.profile = profile;
-        options.quiet = true;
         options.dumpRcu = true;
         options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
             diagnostics.push_back(diagnostic);

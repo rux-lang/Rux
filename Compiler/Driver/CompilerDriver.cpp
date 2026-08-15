@@ -36,6 +36,13 @@ namespace Rux::Driver {
 using namespace Target;
 using namespace System;
 
+std::string_view CompilePhaseName(const CompilePhase phase) noexcept {
+    static constexpr std::string_view names[]{
+        "Lexing",          "Parsing",           "Loading dependency",   "Analyzing", "Lowering to HIR",
+        "Lowering to LIR", "Emitting assembly", "Emitting RCU objects", "Linking"};
+    return names[std::to_underlying(phase)];
+}
+
 CompilerDriver::CompilerDriver(CompileOptions options)
     : opts(std::move(options)) {
     root = opts.manifestPath.parent_path();
@@ -99,6 +106,13 @@ void CompilerDriver::EmitErrorLine(const std::string_view line) const {
     }
     else {
         std::print(stderr, "{}", line);
+    }
+}
+
+void CompilerDriver::EmitProgress(const CompilePhase phase, const std::string_view subject,
+                                  const std::filesystem::path &path) const {
+    if (opts.emitProgress) {
+        opts.emitProgress({.phase = phase, .subject = subject, .path = path});
     }
 }
 
@@ -222,9 +236,7 @@ bool CompilerDriver::LexAndParseSources() {
     lexResults.reserve(loadResult.files.size());
     const auto lexingStart = std::chrono::steady_clock::now();
     for (const auto &file : loadResult.files) {
-        if (opts.verbose) {
-            std::print("Lexing {}\n", file.path.string());
-        }
+        EmitProgress(CompilePhase::Lexing, file.path.string());
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
         stats.localTokens += CountTokens(lexResult);
@@ -255,9 +267,7 @@ bool CompilerDriver::LexAndParseSources() {
     const auto parsingStart = std::chrono::steady_clock::now();
     for (std::size_t fileIndex = 0; fileIndex < loadResult.files.size(); ++fileIndex) {
         const auto &file = loadResult.files[fileIndex];
-        if (opts.verbose) {
-            std::print("Parsing {}\n", file.path.string());
-        }
+        EmitProgress(CompilePhase::Parsing, file.path.string());
         auto &lexResult = lexResults[fileIndex];
         if (lexResult.HasErrors()) {
             continue;
@@ -420,9 +430,7 @@ bool CompilerDriver::LoadDependencies() {
         // A dependency's `when` conditions are written against the import names
         // its own manifest chose, which need not match the root's.
         compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
-        if (opts.verbose) {
-            std::print("Loading package {} from {}\n", packageName, pendingRoot.string());
-        }
+        EmitProgress(CompilePhase::LoadingDependency, packageName, pendingRoot);
         auto depLoadResult = SourceLoader::Load(pendingRoot);
         RememberSources(depLoadResult.files);
         stats.dependencyFiles += depLoadResult.files.size();
@@ -487,9 +495,7 @@ bool CompilerDriver::LoadDependencies() {
 
 bool CompilerDriver::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("Analyzing {}\n", opts.manifest.package.name.Text());
-    }
+    EmitProgress(CompilePhase::Analyzing, opts.manifest.package.name.Text());
     std::vector<Module *> userModules;
     userModules.reserve(parseResults.size());
     for (auto &pr : parseResults) {
@@ -529,9 +535,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                                       std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("Lowering {}\n", opts.manifest.package.name.Text());
-    }
+    EmitProgress(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
     AstToHirLowering hirLowering(*semanticModel);
     auto hirPackage = hirLowering.Generate();
     if (opts.dumpHir) {
@@ -552,9 +556,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
 
     // LIR
     const auto lirStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("Emitting LIR for {}\n", opts.manifest.package.name.Text());
-    }
+    EmitProgress(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     auto lirPackage = lirLowering.Generate();
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
@@ -584,18 +586,14 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     // Assembly dump (optional). AssemblyPrinter prints x86-64; the AArch64 back
     // end has no printer of its own yet.
     if (opts.dumpAsm && !isAArch64) {
-        if (opts.verbose) {
-            std::print("Emitting assembly for {}\n", opts.manifest.package.name.Text());
-        }
+        EmitProgress(CompilePhase::EmittingAssembly, opts.manifest.package.name.Text());
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
         AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm", compileTimeContext.target.os);
     }
 
     // RCU object generation
-    if (opts.verbose) {
-        std::print("Emitting RCU objects for {}\n", opts.manifest.package.name.Text());
-    }
+    EmitProgress(CompilePhase::EmittingObjects, opts.manifest.package.name.Text());
     std::vector<RcuFile> rcuFiles;
     std::vector<Diagnostic> codegenDiagnostics;
     if (isAArch64) {
@@ -637,9 +635,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
 
     // Link
     const auto linkingStart = std::chrono::steady_clock::now();
-    if (opts.verbose) {
-        std::print("Linking {}\n", opts.manifest.package.name.Text());
-    }
+    EmitProgress(CompilePhase::Linking, opts.manifest.package.name.Text());
     const auto binDir = opts.isTest ? ResolveTestOutputDir(root, opts.manifest, opts.target)
                                     : ResolveArtifactOutputDir(root, opts.manifest, opts.profile, opts.target);
     const OS targetOs = opts.target.Os();

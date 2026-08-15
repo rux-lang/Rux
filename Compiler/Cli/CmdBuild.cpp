@@ -1,18 +1,18 @@
 // `rux build` and `rux clean`.
 
 #include "Cli/Cli.h"
+#include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
-#include "Cli/TerminalStyle.h"
+#include "Cli/Reporter.h"
 #include "Driver/BuildPlan.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 
 #include <chrono>
-#include <cstdio>
 #include <filesystem>
+#include <format>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -25,6 +25,9 @@ using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const ReporterOptions reporterOptions{.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose};
+    const Reporter output(stdout, reporterOptions);
+    const Reporter diagnostics(stderr, reporterOptions);
     bool buildAll = false;
     bool isRelease = false;
     bool isDebug = false;
@@ -82,17 +85,16 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
                 else if (value == "rcu")
                     dumpRcu = true;
                 else {
-                    std::println(
-                        stderr,
-                        "error: unsupported --emit value '{}'; expected tokens, ast, sema, hir, lir, asm, or rcu",
-                        value);
+                    diagnostics.Error(std::format("value '{}' is not supported by option '--emit'", value));
+                    diagnostics.Note("supported emission kinds are 'tokens', 'ast', 'sema', 'hir', 'lir', 'asm', and "
+                                     "'rcu'");
                     return 2;
                 }
                 if (comma == std::string_view::npos)
                     break;
                 values.remove_prefix(comma + 1);
                 if (values.empty()) {
-                    std::println(stderr, "error: --emit contains an empty value");
+                    diagnostics.Error("option '--emit' contains an empty emission kind");
                     return 2;
                 }
             }
@@ -105,7 +107,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         if (arg == "--define" && i + 1 < args.size()) {
             std::string error;
             if (!AddCompileTimeDefine(args[++i], defines, error)) {
-                std::print(stderr, "error: {}\n", error);
+                diagnostics.Error(error);
                 return 2;
             }
             continue;
@@ -118,14 +120,14 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (isDebug && isRelease) {
-        std::println(stderr, "error: options '--debug' and '--release' cannot be used together");
+        diagnostics.Error("options '--debug' and '--release' cannot be used together");
         return 2;
     }
     const auto targetTriple =
         target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
     if (!targetTriple) {
-        std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
-                   SupportedTargetTriples());
+        diagnostics.Error(std::format("target '{}' is not supported", target));
+        diagnostics.Note("supported targets are " + SupportedTargetTriples());
         return 1;
     }
     const std::string targetName(targetTriple->CanonicalName());
@@ -137,32 +139,31 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     if (!manifest) {
         return 1;
     }
+    const std::string packageName(manifest->package.name.Text());
     const auto packageRoot = manifestPath->parent_path();
     if (buildAll) {
         const auto matrix = GenerateBuildMatrix(packageRoot, *manifest);
         if (!opts.quiet && !showStats) {
-            const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
-            std::print(stderr, "{} {}{}{} v{} [{}{}{}] across {} build cells\n",
-                       Reporting::RenderStatus(Reporting::StatusVerb::Compiling, style), style.Bold(),
-                       manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(), style.Cyan(),
-                       manifestPath->parent_path().string(), style.Reset(), matrix.size());
+            diagnostics.Progress("Compiling", std::format("{} v{} ({} build cells)", packageName,
+                                                          manifest->package.version.Text(), matrix.size()));
         }
 
         std::vector<BuildCellReport> reports;
         reports.reserve(matrix.size());
         bool allSucceeded = true;
         for (const auto &cell : matrix) {
-            if (opts.verbose) {
-                std::println("Building {} for {}", ToString(cell.profile), cell.target.CanonicalName());
-            }
+            output.Verbose(std::format("Compiling '{}' ({}, {})", packageName,
+                                       cell.profile == BuildProfile::Release ? "release" : "debug",
+                                       cell.target.CanonicalName()));
             CompileOptions copts;
             copts.manifestPath = *manifestPath;
             copts.manifest = *manifest;
             copts.target = cell.target;
             copts.profile = cell.profile;
             copts.defines = defines;
-            copts.quiet = opts.quiet;
-            copts.verbose = opts.verbose;
+            if (opts.verbose) {
+                copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
+            }
 
             const auto started = std::chrono::steady_clock::now();
             CompilerDriver driver(std::move(copts));
@@ -178,18 +179,14 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             allSucceeded &= result.ok;
         }
 
-        if (!opts.quiet) {
-            PrintBuildMatrixReport(reports, packageRoot, showStats, ColorEnabled(opts.color, OutputStream::Stdout));
-        }
+        output.Write(FormatBuildMatrixReport(packageName, reports, packageRoot, showStats, output.Style().enabled));
         return allSucceeded ? 0 : 1;
     }
     const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
-    const std::string_view profileName = ToString(profile);
     if (!opts.quiet && !showStats) {
-        const AnsiStyle style{ColorEnabled(opts.color, OutputStream::Stderr)};
-        std::print(stderr, "{} {}{}{} v{} [{}{}{}]\n", Reporting::RenderStatus(Reporting::StatusVerb::Compiling, style),
-                   style.Bold(), manifest->package.name.Text(), style.Reset(), manifest->package.version.Text(),
-                   style.Cyan(), manifestPath->parent_path().string(), style.Reset());
+        diagnostics.Progress("Compiling",
+                             std::format("{} v{} ({}, {})", packageName, manifest->package.version.Text(),
+                                         profile == BuildProfile::Release ? "release" : "debug", targetName));
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
@@ -197,8 +194,9 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.target = *targetTriple;
     copts.profile = profile;
     copts.defines = std::move(defines);
-    copts.quiet = opts.quiet;
-    copts.verbose = opts.verbose;
+    if (opts.verbose) {
+        copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
+    }
     copts.dumpTokens = dumpTokens;
     copts.dumpAst = dumpAst;
     copts.dumpSema = dumpSema;
@@ -212,18 +210,19 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (!opts.quiet && showStats) {
-        PrintBuildStats(result.primaryArtifactPath, packageRoot, profileName, targetName, result.stats,
-                        ColorEnabled(opts.color, OutputStream::Stdout));
+        output.Write(FormatBuildStats(packageName, result.primaryArtifactPath, packageRoot, profile, targetName,
+                                      result.stats, output.Style().enabled));
         return 0;
     }
-    if (!opts.quiet) {
-        PrintBuildSummary(result.primaryArtifactPath, packageRoot, profileName, targetName, result.stats,
-                          ColorEnabled(opts.color, OutputStream::Stdout));
-    }
+    output.Write(FormatBuildSummary(packageName, result.primaryArtifactPath, packageRoot, profile, targetName,
+                                    result.stats, output.Style().enabled));
     return 0;
 }
 
 int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const ReporterOptions reporterOptions{.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose};
+    const Reporter output(stdout, reporterOptions);
+    const Reporter diagnostics(stderr, reporterOptions);
     bool tempOnly = false;
     for (auto &arg : args) {
         if (arg == "--temp") {
@@ -247,19 +246,21 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &o
     }
     const auto root = manifestPath->parent_path();
     const auto outputDir = ResolveRawOutputRoot(root, *manifest);
+    const auto started = std::chrono::steady_clock::now();
+    std::vector<std::filesystem::path> removed;
     auto removeDir = [&](const std::filesystem::path &dir) -> bool {
         std::error_code ec;
         if (!std::filesystem::exists(dir)) {
+            output.Verbose(std::format("Nothing to remove at '{}'", DisplayPath(dir, root)));
             return true;
         }
         std::filesystem::remove_all(dir, ec);
         if (ec) {
-            std::print(stderr, "error: failed to remove '{}': {}\n", dir.string(), ec.message());
+            diagnostics.Error(std::format("could not remove directory '{}'", dir.string()));
+            diagnostics.Note(std::format("system error {}: {}", ec.value(), ec.message()));
             return false;
         }
-        if (!opts.quiet) {
-            std::print("Removed {}\n", dir.string());
-        }
+        removed.push_back(dir);
         return true;
     };
     bool ok = true;
@@ -267,5 +268,12 @@ int Cli::RunClean(std::span<const std::string_view> args, const GlobalOptions &o
         ok &= removeDir(outputDir);
     }
     ok &= removeDir(root / "Temp");
+    if (ok) {
+        output.Success("Removed", std::format("{} in {}", Reporting::FormatCount(removed.size(), "directory"),
+                                              Reporting::FormatDuration(ElapsedMs(started))));
+        for (const auto &dir : removed) {
+            output.Detail("Path: " + DisplayPath(dir, root));
+        }
+    }
     return ok ? 0 : 1;
 }

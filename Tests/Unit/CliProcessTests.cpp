@@ -482,11 +482,11 @@ func Main() -> int {
     CHECK(reported.exitCode == 1);
     CHECK(CountOccurrences(reported.output, "'imul' is an x86-64 instruction") == 8);
     CHECK(reported.output.contains("Build matrix"));
-    CHECK(reported.output.contains("Status  Profile  Target           Time"));
-    CHECK(reported.output.contains("Built   Debug    FreeBSD x86-64"));
-    CHECK(reported.output.contains("Failed  Debug    FreeBSD AArch64"));
-    CHECK(reported.output.contains("Built   Release  Windows x86-64"));
-    CHECK(reported.output.contains("Failed  Release  Windows AArch64"));
+    CHECK(reported.output.contains("Status  Profile  Target              Time"));
+    CHECK(reported.output.contains("Built   debug    freebsd-x86_64"));
+    CHECK(reported.output.contains("Failed  debug    freebsd-aarch64"));
+    CHECK(reported.output.contains("Built   release  windows-x86_64"));
+    CHECK(reported.output.contains("Failed  release  windows-aarch64"));
     CHECK(reported.output.contains("Failed 16 cells in "));
     CHECK(reported.output.contains("(8 succeeded, 8 failed)"));
     CHECK(reported.output.contains("Aggregate statistics:"));
@@ -545,9 +545,18 @@ Output = "Artifacts"
     REQUIRE(sentinel);
 
     const auto manifest = manifestPath.string();
+    const auto tempOnly =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "clean", "--temp"});
+    CHECK(tempOnly.exitCode == 0);
+    CHECK(tempOnly.output.contains("Removed 1 directory in "));
+    CHECK(tempOnly.output.contains("Path: Temp"));
+    CHECK(std::filesystem::exists(root / "Artifacts"));
+    CHECK_FALSE(std::filesystem::exists(root / "Temp"));
+
     const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "clean", "--quiet"});
 
     CHECK(result.exitCode == 0);
+    CHECK(result.output.empty());
     CHECK_FALSE(std::filesystem::exists(root / "Artifacts"));
     CHECK_FALSE(std::filesystem::exists(root / "Temp"));
     CHECK(std::filesystem::is_regular_file(root / "Keep" / "sentinel"));
@@ -614,7 +623,8 @@ TEST_CASE("run is host-only while build and test accept a target") {
     CHECK(Run(std::array<std::string_view, 2>{"run", "--target"}).exitCode == 2);
     const auto rejected = Run(std::array<std::string_view, 3>{"run", "--target", "linux-aarch64"});
     CHECK(rejected.exitCode == 2);
-    CHECK(rejected.output.contains("unknown option '--target' for command 'run'"));
+    CHECK(rejected.output.contains("command 'run' cannot execute target 'linux-aarch64'"));
+    CHECK(rejected.output.contains("rux build --target linux-aarch64"));
 
     // An unknown triple is rejected by commands that still select targets.
     const auto manifest = ArithmeticManifest();
@@ -622,7 +632,7 @@ TEST_CASE("run is host-only while build and test accept a target") {
         const auto unknown =
             Run(std::array<std::string_view, 5>{"--manifest", manifest, command, "--target", "plan9-x86_64"});
         CHECK(unknown.exitCode == 1);
-        CHECK(unknown.output.contains("unsupported target 'plan9-x86_64'"));
+        CHECK(unknown.output.contains("target 'plan9-x86_64'"));
     }
 }
 
@@ -632,7 +642,7 @@ TEST_CASE("invalid target input is rejected before manifest discovery") {
         Run(std::array<std::string_view, 5>{"--manifest", missing, "build", "--target", "plan9-x86_64"});
 
     CHECK(result.exitCode == 1);
-    CHECK(result.output.contains("unsupported target 'plan9-x86_64'"));
+    CHECK(result.output.contains("target 'plan9-x86_64' is not supported"));
     CHECK_FALSE(result.output.contains("manifest"));
 }
 
@@ -737,7 +747,7 @@ TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its 
 
     const auto rejected = Run(std::array<std::string_view, 3>{"run", "--target", "macos-aarch64"});
     CHECK(rejected.exitCode == 2);
-    CHECK(rejected.output.contains("unknown option '--target' for command 'run'"));
+    CHECK(rejected.output.contains("command 'run' cannot execute target 'macos-aarch64'"));
 }
 
 TEST_CASE("CLI checks and builds the canonical FreeBSD AArch64 target through its ARM64 alias") {

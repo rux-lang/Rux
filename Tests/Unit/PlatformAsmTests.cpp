@@ -297,7 +297,6 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     options.manifest = std::move(*loaded.manifest);
     options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
     options.profile = BuildProfile::Release;
-    options.quiet = true;
     options.isTest = true;
     options.checkOnly = true;
     options.emitDiagnostic = [&diagnostics](const Diagnostic &diagnostic, const SourceLineLookup &) {

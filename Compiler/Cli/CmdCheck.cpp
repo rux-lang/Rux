@@ -1,7 +1,9 @@
 // `rux check` — frontend-only compile with text or JSON diagnostics.
 
 #include "Cli/Cli.h"
+#include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
@@ -26,6 +28,7 @@ using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const Reporter progress(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     const bool jsonOutput = std::ranges::find(args, "--json") != args.end();
     const bool diagnosticColor = !jsonOutput && ColorEnabled(opts.color, OutputStream::Stderr);
     std::string_view target;
@@ -124,8 +127,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
         copts.localDependenciesOnly = localDependenciesOnly;
-        copts.quiet = opts.quiet;
-        copts.verbose = opts.verbose && !jsonOutput;
+        if (opts.verbose && !jsonOutput) {
+            copts.emitProgress = [&](const CompileProgress &event) { ReportCompileProgress(progress, event); };
+        }
         copts.checkOnly = true;
         copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
             EmitDiag(diagnostic, sourceLineLookup);

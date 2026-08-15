@@ -295,7 +295,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.localPackageRoots = localPackageRoots;
         copts.localDependenciesOnly = true;
         copts.isTest = true;
-        copts.quiet = true;
         CompilerDriver driver(std::move(copts));
         const CompileResult result = driver.Compile();
         if (!result.ok) {

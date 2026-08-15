@@ -85,24 +85,15 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 // an empty `packageRoot` disables shortening altogether.
 [[nodiscard]] std::string DisplayPath(const std::filesystem::path &path, const std::filesystem::path &packageRoot);
 
-// `targetTriple` is the "os-arch" triple the artifact was built for. The
-// detailed report always names it; the one-line summary mentions it only when
-// it is not the host, so an ordinary build reads as it always has.
-[[nodiscard]] std::string FormatBuildStats(const std::filesystem::path &exePath,
-                                           const std::filesystem::path &packageRoot, std::string_view profileName,
+// Every report names the package, normalized profile, and canonical target;
+// summaries put the artifact on a separate indented `Output:` line.
+[[nodiscard]] std::string FormatBuildStats(std::string_view packageName, const std::filesystem::path &artifactPath,
+                                           const std::filesystem::path &packageRoot, BuildProfile profile,
                                            std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
-[[nodiscard]] std::string FormatBuildSummary(const std::filesystem::path &exePath,
-                                             const std::filesystem::path &packageRoot, std::string_view profileName,
+[[nodiscard]] std::string FormatBuildSummary(std::string_view packageName, const std::filesystem::path &artifactPath,
+                                             const std::filesystem::path &packageRoot, BuildProfile profile,
                                              std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
-[[nodiscard]] std::string FormatBuildMatrixReport(std::span<const BuildCellReport> cells,
+[[nodiscard]] std::string FormatBuildMatrixReport(std::string_view packageName, std::span<const BuildCellReport> cells,
                                                   const std::filesystem::path &packageRoot, bool includeStats,
                                                   bool colorEnabled);
-void PrintBuildStats(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                     std::string_view profileName, std::string_view targetTriple, const BuildStats &stats,
-                     bool colorEnabled);
-void PrintBuildSummary(const std::filesystem::path &exePath, const std::filesystem::path &packageRoot,
-                       std::string_view profileName, std::string_view targetTriple, const BuildStats &stats,
-                       bool colorEnabled);
-void PrintBuildMatrixReport(std::span<const BuildCellReport> cells, const std::filesystem::path &packageRoot,
-                            bool includeStats, bool colorEnabled);
 } // namespace Rux::Driver
