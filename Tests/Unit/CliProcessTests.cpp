@@ -1,5 +1,6 @@
 #include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/Credentials.h"
 #include "ElfReader.h"
 #include "MachOReader.h"
 #include "System/Os.h"
@@ -90,6 +91,27 @@ public:
 private:
     std::optional<std::filesystem::path> savedHome_;
     std::filesystem::path root_;
+};
+
+class ScopedEnvironmentValue {
+public:
+    explicit ScopedEnvironmentValue(const std::string_view name)
+        : name_(name)
+        , saved_(System::GetEnv(name_.c_str())) {
+    }
+
+    ~ScopedEnvironmentValue() {
+        if (saved_) {
+            static_cast<void>(System::SetEnv(name_.c_str(), *saved_));
+        }
+        else {
+            static_cast<void>(System::UnsetEnv(name_.c_str()));
+        }
+    }
+
+private:
+    std::string name_;
+    std::optional<std::string> saved_;
 };
 
 std::filesystem::path WriteCachedPackage(const std::string_view packageNamespace, const std::string_view packageName,
@@ -693,6 +715,109 @@ Output = "Artifacts"
     CHECK_FALSE(std::filesystem::exists(root / "Artifacts" / "Release"));
     std::error_code error;
     std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("pack and publish tell one publication story and keep failures actionable") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-publication-report-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Package" / "Rux.toml";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Acme"
+Name = "Widget"
+Version = "1.2.3"
+Type = "SourceLibrary"
+)");
+    WriteTextFile(root / "Package" / "Src" / "Widget.rux", "module Widget {}\n");
+    const std::string manifest = manifestPath.string();
+
+    const auto archive = root / "packed" / "Widget.ruxpkg";
+    const std::string archiveText = archive.string();
+    const auto packed = Run(std::array<std::string_view, 7>{"--manifest", manifest, "--color=never", "pack", "--output",
+                                                            archiveText, "--verbose"});
+    CAPTURE(packed.output);
+    CHECK(packed.exitCode == 0);
+    CHECK(packed.output.contains("Packing Acme/Widget 1.2.3"));
+    CHECK(packed.output.contains("Packed Acme/Widget 1.2.3 in "));
+    CHECK(packed.output.contains("Files: 2 ("));
+    CHECK(packed.output.contains("Output: '" + archiveText + "'"));
+    CHECK(std::filesystem::is_regular_file(archive));
+
+    const auto dryRun = Run(
+        std::array<std::string_view, 6>{"--manifest", manifest, "--color=never", "publish", "--dry-run", "--verbose"});
+    CAPTURE(dryRun.output);
+    CHECK(dryRun.exitCode == 0);
+    CHECK(dryRun.output.contains("Packed Acme/Widget 1.2.3 (2 files, "));
+    CHECK(dryRun.output.contains("Validated Acme/Widget 1.2.3 for publication in "));
+    CHECK(dryRun.output.contains("Dry run: the package was not uploaded"));
+    CHECK_FALSE(dryRun.output.contains("Uploading"));
+
+    const auto quietArchive = root / "quiet.ruxpkg";
+    const std::string quietArchiveText = quietArchive.string();
+    const auto quiet = Run(std::array<std::string_view, 7>{"--quiet", "--manifest", manifest, "pack", "--output",
+                                                           quietArchiveText, "--color=never"});
+    CHECK(quiet.exitCode == 0);
+    CHECK(quiet.output.empty());
+    CHECK(std::filesystem::is_regular_file(quietArchive));
+
+    const std::string rootText = root.string();
+    const auto writeFailure =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "pack", "--output", rootText, "--color=never"});
+    CHECK(writeFailure.exitCode == 1);
+    CHECK(writeFailure.output.contains("error: could not write package archive"));
+    CHECK(writeFailure.output.contains("help: choose a writable archive path"));
+
+    WriteTextFile(root / "Rux.toml", "[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = [\"Package\"]\n");
+    const std::string workspaceManifest = (root / "Rux.toml").string();
+    const auto workspace =
+        Run(std::array<std::string_view, 4>{"--manifest", workspaceManifest, "pack", "--color=never"});
+    CHECK(workspace.exitCode == 1);
+    CHECK(workspace.output.contains("workspace manifest '"));
+    CHECK(workspace.output.contains("publication requires the manifest of one workspace member package"));
+    CHECK(workspace.output.contains("--manifest"));
+
+    WriteTextFile(root / "Invalid.toml", R"([Manifest]
+Version = 1
+
+[Package]
+Name = "Invalid"
+Version = "1.0.0"
+Type = "Executable"
+
+[Dependencies]
+Local = { Path = "Local" }
+)");
+    const std::string invalidManifest = (root / "Invalid.toml").string();
+    const auto invalid =
+        Run(std::array<std::string_view, 4>{"--manifest", invalidManifest, "publish", "--color=never"});
+    CHECK(invalid.exitCode == 1);
+    CHECK(CountOccurrences(invalid.output, "error:") == 1);
+    CHECK(invalid.output.contains("does not meet publication requirements"));
+    CHECK(CountOccurrences(invalid.output, "note:") == 4);
+    CHECK(invalid.output.contains("help: update '"));
+
+    const ScopedCliPackageCache cache;
+    const ScopedEnvironmentValue token(Driver::kCredentialVariable);
+    REQUIRE(System::UnsetEnv(Driver::kCredentialVariable));
+    const auto missingCredential = Run(std::array<std::string_view, 6>{"--manifest", manifest, "publish", "--registry",
+                                                                       "http://127.0.0.1:1", "--color=never"});
+    CHECK(missingCredential.exitCode == 1);
+    CHECK(missingCredential.output.contains("no publication credential was found"));
+    CHECK(missingCredential.output.contains("rux login --registry http://127.0.0.1:1"));
+
+    REQUIRE(System::SetEnv(Driver::kCredentialVariable, "bad token"));
+    const auto invalidCredential = Run(std::array<std::string_view, 6>{"--manifest", manifest, "publish", "--registry",
+                                                                       "http://127.0.0.1:1", "--color=never"});
+    CHECK(invalidCredential.exitCode == 1);
+    CHECK(invalidCredential.output.contains("publication credential from 'RUX_TOKEN' is invalid"));
+    CHECK(invalidCredential.output.contains("tokens cannot contain whitespace"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    CHECK(!error);
 }
 
 TEST_CASE("lint and format report examined files, outcomes, and elapsed time") {

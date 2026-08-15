@@ -75,6 +75,7 @@ if (WIN32)
 endif ()
 
 rux_add_component(RuxCliReporting
+    Cli/PublicationProblem.cpp
     Cli/Reporter.cpp
     Cli/TerminalStyle.cpp)
 target_link_libraries(RuxCliReporting PUBLIC RuxReporting PRIVATE RuxSystem)

@@ -1,17 +1,20 @@
 // Publication commands: pack builds the .ruxpkg archive, publish uploads it.
 
 #include "Cli/Cli.h"
-#include "Cli/TerminalStyle.h"
+#include "Cli/PublicationProblem.h"
+#include "Cli/Reporter.h"
+#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
 #include "Package/Artifact.h"
 #include "Package/Manifest.h"
 #include "Package/PublicationValidation.h"
-#include "System/Json.h"
+#include "Reporting/Reporting.h"
 #include "System/Os.h"
 #include "System/Process.h"
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -35,7 +38,9 @@ namespace {
  * A workspace groups packages but is not one itself, so it is rejected here
  * rather than after an archive has been built.
  */
-std::optional<std::pair<std::filesystem::path, Manifest>> LoadPackageManifest(const GlobalOptions &opts) {
+std::optional<std::pair<std::filesystem::path, Manifest>> LoadPackageManifest(const GlobalOptions &opts,
+                                                                              const std::string_view command,
+                                                                              const CliSupport::Reporter &diagnostics) {
     auto manifestPath = RequireManifest(opts.manifest);
     if (!manifestPath) {
         return std::nullopt;
@@ -45,19 +50,38 @@ std::optional<std::pair<std::filesystem::path, Manifest>> LoadPackageManifest(co
         return std::nullopt;
     }
     if (manifest->IsWorkspace()) {
-        std::print(stderr, "error: '{}' is a workspace manifest; run this from a member package\n",
-                   manifestPath->generic_string());
+        diagnostics.Error(std::format("workspace manifest '{}' cannot be {}", manifestPath->string(),
+                                      command == "pack" ? "packed" : "published"));
+        diagnostics.Note("publication requires the manifest of one workspace member package");
+        if (!manifest->workspace.packages.empty()) {
+            const auto memberManifest =
+                (*manifestPath).parent_path() / manifest->workspace.packages.front() / "Rux.toml";
+            diagnostics.Help(std::format("run 'rux --manifest \"{}\" {}'", memberManifest.string(), command));
+        }
+        else {
+            diagnostics.Help("add a package to [Workspace].Packages, then select its Rux.toml with '--manifest'");
+        }
         return std::nullopt;
     }
     return std::pair{std::move(*manifestPath), std::move(*manifest)};
 }
 
-/// Print every publication-profile rejection against the manifest that carries it.
-void ReportPublicationRejections(const std::filesystem::path &manifestPath,
-                                 const std::vector<std::string> &rejections) {
+/// The display identity of a package, `Namespace/Name`.
+std::string QualifiedName(const Manifest &manifest) {
+    const std::string &name = manifest.package.name.Text();
+    return manifest.package.ns ? std::format("{}/{}", manifest.package.ns->Text(), name) : name;
+}
+
+/// Group every publication-profile rejection under the package that carries it.
+void ReportPublicationRejections(const std::filesystem::path &manifestPath, const Manifest &manifest,
+                                 const std::vector<std::string> &rejections, const std::string_view command,
+                                 const CliSupport::Reporter &diagnostics) {
+    diagnostics.Error(std::format("{} {} does not meet publication requirements", QualifiedName(manifest),
+                                  manifest.package.version.Text()));
     for (const auto &rejection : rejections) {
-        std::print(stderr, "error: {}: {}\n", manifestPath.generic_string(), rejection);
+        diagnostics.Note(rejection);
     }
+    diagnostics.Help(std::format("update '{}', then run 'rux {}' again", manifestPath.string(), command));
 }
 
 /// Render a byte count the way the build reports sizes.
@@ -71,71 +95,22 @@ std::string FormatBytes(const std::size_t bytes) {
     return std::format("{:.1f} MiB", static_cast<double>(bytes) / (1024.0 * 1024.0));
 }
 
-/// The display identity of a package, `Namespace/Name`.
-std::string QualifiedName(const Manifest &manifest) {
-    const std::string &name = manifest.package.name.Text();
-    return manifest.package.ns ? std::format("{}/{}", manifest.package.ns->Text(), name) : name;
-}
-
-/**
- * @brief Explain a failed publication from its problem document.
- *
- * The registry answers with RFC 9457 problem details, whose `code` is stable
- * and machine-readable. Codes a user can act on get a specific message; the
- * rest fall back to the server's own `detail`.
- *
- * Credential problems name `credentialSource` rather than a fixed variable,
- * because the token may equally have come from RUX_TOKEN or from the file
- * `rux login` wrote.
- */
 void ReportPublicationProblem(const HttpResponse &response, const Manifest &manifest, const std::string_view base,
-                              const std::string_view credentialSource) {
-    const std::string code = JsonLookupString(response.body, "code");
-    const std::string detail = JsonLookupString(response.body, "detail");
-    const std::string identity = QualifiedName(manifest);
-
-    if (code == "version_conflict") {
-        std::print(stderr,
-                   "error: version {} of {} is already published; published versions are immutable, so publish a new "
-                   "version\n",
-                   manifest.package.version.Text(), identity);
+                              const std::string_view credentialSource, const CliSupport::Reporter &diagnostics) {
+    const auto problem = DescribePublicationProblem(
+        response.status, response.body, QualifiedName(manifest), manifest.package.version.Text(),
+        manifest.package.ns ? manifest.package.ns->Text() : std::string_view{}, base, credentialSource);
+    diagnostics.Error(problem.error);
+    for (const auto &note : problem.notes) {
+        diagnostics.Note(note);
     }
-    else if (code == "namespace_not_found") {
-        std::print(stderr, "error: namespace '{}' is not claimed on {}\n",
-                   manifest.package.ns ? manifest.package.ns->Text() : std::string{}, base);
-    }
-    else if (code == "publication_forbidden") {
-        std::print(stderr, "error: the credential in {} does not own or maintain namespace '{}'\n", credentialSource,
-                   manifest.package.ns ? manifest.package.ns->Text() : std::string{});
-    }
-    else if (code == "insufficient_scope") {
-        std::print(stderr, "error: the credential in {} lacks the 'publish' scope\n", credentialSource);
-    }
-    else if (code == "authentication_required") {
-        std::print(stderr, "error: {} rejected the credential in {}\n", base, credentialSource);
-    }
-    else if (code == "rate_limited") {
-        std::print(stderr, "error: {} is rate-limiting publication; retry shortly\n", base);
-    }
-    else if (!detail.empty()) {
-        std::print(stderr, "error: {}\n", detail);
-    }
-    else {
-        std::print(stderr, "error: the registry rejected the publication with status {}\n", response.status);
-    }
-
-    for (const auto &entry : JsonFindProblemErrors(response.body)) {
-        if (entry.detail.empty()) {
-            std::print(stderr, "{}{}\n", errorContinuation, entry.code);
-        }
-        else {
-            std::print(stderr, "{}{}: {}\n", errorContinuation, entry.code, entry.detail);
-        }
-    }
+    diagnostics.Help(problem.help);
 }
 } // namespace
 
 int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const Reporter result(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view outputArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -145,7 +120,8 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
         }
         if (arg == "--output" || arg == "-o") {
             if (i + 1 >= args.size()) {
-                std::print(stderr, "error: '{}' requires an argument\n", arg);
+                diagnostics.Error(std::format("option '{}' requires an archive path", arg));
+                diagnostics.Help("try 'rux pack --output Bin/Package.ruxpkg'");
                 return 1;
             }
             outputArg = args[++i];
@@ -155,20 +131,25 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
         return 1;
     }
 
-    auto target = LoadPackageManifest(opts);
+    auto target = LoadPackageManifest(opts, "pack", diagnostics);
     if (!target) {
         return 1;
     }
     const auto &[manifestPath, manifest] = *target;
 
     if (const auto rejections = ValidateForPublication(manifest); !rejections.empty()) {
-        ReportPublicationRejections(manifestPath, rejections);
+        ReportPublicationRejections(manifestPath, manifest, rejections, "pack", diagnostics);
         return 1;
     }
 
+    const auto started = std::chrono::steady_clock::now();
+    result.Progress("Packing", std::format("{} {}", QualifiedName(manifest), manifest.package.version.Text()));
     auto artifact = BuildPackageArtifact(manifestPath, manifest);
     if (!artifact) {
-        std::print(stderr, "error: {}\n", artifact.error());
+        diagnostics.Error(
+            std::format("could not pack {} {}", QualifiedName(manifest), manifest.package.version.Text()));
+        diagnostics.Note(artifact.error());
+        diagnostics.Help("correct the package files, then run 'rux pack' again");
         return 1;
     }
 
@@ -184,21 +165,29 @@ int Cli::RunPack(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::error_code ec;
     std::filesystem::create_directories(output.parent_path(), ec);
+    if (ec) {
+        diagnostics.Error(std::format("could not create archive directory '{}'", output.parent_path().string()));
+        diagnostics.Note(ec.message());
+        diagnostics.Help("choose a writable archive path with '--output'");
+        return 1;
+    }
     std::ofstream file(output, std::ios::binary);
-    if (!file.write(artifact->archive.data(), static_cast<std::streamsize>(artifact->archive.size()))) {
-        std::print(stderr, "error: failed to write '{}'\n", output.generic_string());
+    if (!file || !file.write(artifact->archive.data(), static_cast<std::streamsize>(artifact->archive.size()))) {
+        diagnostics.Error(std::format("could not write package archive '{}'", output.string()));
+        diagnostics.Help("choose a writable archive path with '--output'");
         return 1;
     }
 
-    if (!opts.quiet) {
-        std::print("Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
-                   artifact->fileCount, FormatBytes(artifact->archive.size()));
-        std::print("Written {}\n", output.generic_string());
-    }
+    result.Success("Packed", std::format("{} {} in {}", QualifiedName(manifest), manifest.package.version.Text(),
+                                         Reporting::FormatDuration(ElapsedMs(started))));
+    result.Detail(std::format("Files: {} ({})", artifact->fileCount, FormatBytes(artifact->archive.size())));
+    result.Detail(std::format("Output: '{}'", output.string()));
     return 0;
 }
 
 int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view registryArg;
     bool dryRun = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -213,7 +202,8 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
         }
         if (arg == "--registry") {
             if (i + 1 >= args.size()) {
-                std::print(stderr, "error: '--registry' requires an argument\n");
+                diagnostics.Error("option '--registry' requires a registry URL");
+                diagnostics.Help("try 'rux publish --registry https://registry.example'");
                 return 1;
             }
             registryArg = args[++i];
@@ -223,14 +213,14 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
         return 1;
     }
 
-    auto target = LoadPackageManifest(opts);
+    auto target = LoadPackageManifest(opts, "publish", diagnostics);
     if (!target) {
         return 1;
     }
     const auto &[manifestPath, manifest] = *target;
 
     if (const auto rejections = ValidateForPublication(manifest); !rejections.empty()) {
-        ReportPublicationRejections(manifestPath, rejections);
+        ReportPublicationRejections(manifestPath, manifest, rejections, "publish", diagnostics);
         return 1;
     }
 
@@ -241,33 +231,42 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     if (!dryRun) {
         auto resolved = ResolveCredential(base);
         if (!resolved) {
-            std::print(stderr,
-                       "error: no credential for {}; run 'rux login' or set {} to a token with the 'publish' "
-                       "scope\n",
-                       base, kCredentialVariable);
+            diagnostics.Error(std::format("no publication credential was found for '{}'", base));
+            diagnostics.Note(std::format("'rux publish' requires a token with the 'publish' scope from {} or the "
+                                         "credentials file",
+                                         kCredentialVariable));
+            diagnostics.Help(std::format("run 'rux login --registry {}'", base));
             return 1;
         }
         credential = std::move(*resolved);
         if (credential.token.find_first_of(" \t\r\n") != std::string::npos) {
-            std::print(stderr, "error: the credential in {} contains whitespace\n", credential.source);
+            diagnostics.Error(std::format("the publication credential from '{}' is invalid", credential.source));
+            diagnostics.Note("registry tokens cannot contain whitespace");
+            diagnostics.Help(std::format("run 'rux login --registry {}' with only the token value", base));
             return 1;
         }
+        output.Verbose(std::format("Credentials: '{}'", credential.source));
     }
 
+    const auto started = std::chrono::steady_clock::now();
+    output.Progress("Packing", std::format("{} {}", QualifiedName(manifest), manifest.package.version.Text()));
     auto artifact = BuildPackageArtifact(manifestPath, manifest);
     if (!artifact) {
-        std::print(stderr, "error: {}\n", artifact.error());
+        diagnostics.Error(
+            std::format("could not pack {} {}", QualifiedName(manifest), manifest.package.version.Text()));
+        diagnostics.Note(artifact.error());
+        diagnostics.Help("correct the package files, then run 'rux publish' again");
         return 1;
     }
 
-    if (!opts.quiet) {
-        std::print("Packed {} {} ({} files, {})\n", QualifiedName(manifest), manifest.package.version.Text(),
-                   artifact->fileCount, FormatBytes(artifact->archive.size()));
-    }
+    output.Success("Packed",
+                   std::format("{} {} ({} files, {})", QualifiedName(manifest), manifest.package.version.Text(),
+                               artifact->fileCount, FormatBytes(artifact->archive.size())));
     if (dryRun) {
-        if (!opts.quiet) {
-            std::print("Dry run: the package is publishable and was not uploaded\n");
-        }
+        output.Success("Validated",
+                       std::format("{} {} for publication in {}", QualifiedName(manifest),
+                                   manifest.package.version.Text(), Reporting::FormatDuration(ElapsedMs(started))));
+        output.Detail("Dry run: the package was not uploaded");
         return 0;
     }
 
@@ -277,29 +276,30 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     };
     auto body = BuildMultipartBody(parts);
     if (!body) {
-        std::print(stderr, "error: failed to encode the publication request\n");
+        diagnostics.Error("could not encode the publication request");
+        diagnostics.Help("retry 'rux publish'; report the package if encoding fails again");
         return 1;
     }
 
-    if (!opts.quiet) {
-        std::print("Uploading to {}\n", base);
-    }
+    output.Progress("Uploading",
+                    std::format("{} {} to '{}'", QualifiedName(manifest), manifest.package.version.Text(), base));
     auto response = HttpSend({.method = "POST",
                               .url = base + "/v1/packages",
                               .headers = {{.name = "Authorization", .value = "Bearer " + credential.token},
                                           {.name = "Content-Type", .value = body->contentType}},
                               .body = std::move(body->body)});
     if (!response) {
-        std::print(stderr, "error: failed to reach the registry at {}\n", base);
+        diagnostics.Error(std::format("could not reach the registry at '{}'", base));
+        diagnostics.Help("check the registry URL and network connection, then retry 'rux publish'");
         return 1;
     }
     if (response->status != 201) {
-        ReportPublicationProblem(*response, manifest, base, credential.source);
+        ReportPublicationProblem(*response, manifest, base, credential.source, diagnostics);
         return 1;
     }
 
-    if (!opts.quiet) {
-        std::print("Published {} {}\n", QualifiedName(manifest), manifest.package.version.Text());
-    }
+    output.Success("Published", std::format("{} {} in {}", QualifiedName(manifest), manifest.package.version.Text(),
+                                            Reporting::FormatDuration(ElapsedMs(started))));
+    output.Detail(std::format("Registry: '{}'", base));
     return 0;
 }
