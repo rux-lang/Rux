@@ -47,7 +47,12 @@ protected:
     bool Define(Symbol symbol) const;
 
     void CheckBlock(const Block &block);
+    void CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType);
+    void CheckBooleanCondition(const TypeRef &type, SourceLocation location, std::string_view construct) const;
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
+    void ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
+    void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
+    [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
     [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
     [[nodiscard]] std::optional<TypeRef> CheckAggregateExpression(const Expr &expression);

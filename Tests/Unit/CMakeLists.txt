@@ -76,6 +76,7 @@ set(RUX_TEST_SOURCES
     RcuTests.cpp
     RegistryTests.cpp
     SemanticProgramIndexTests.cpp
+    SemanticControlFlowDiagnosticsTests.cpp
     SemanticNameDiagnosticsTests.cpp
     SemanticOperatorAssignmentDiagnosticsTests.cpp
     SemanticTypeCallDiagnosticsTests.cpp

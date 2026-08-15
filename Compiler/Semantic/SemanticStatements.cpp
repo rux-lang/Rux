@@ -3,10 +3,74 @@
 #include <algorithm>
 #include <cassert>
 #include <format>
+#include <functional>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
 namespace Rux::SemanticDetail {
+namespace {
+std::string PatternKey(const Pattern &pattern) {
+    if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        return "literal:" + literal->value.text;
+    }
+    if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+        return "_";
+    }
+    if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+        return "range:" + PatternKey(*range->lo) + (range->inclusive ? "..=" : "..") + PatternKey(*range->hi);
+    }
+    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        std::string key = "tuple:(";
+        for (const auto &element : tuple->elements) {
+            key += PatternKey(*element) + ",";
+        }
+        return key + ")";
+    }
+    if (const auto *enumerator = dynamic_cast<const EnumPattern *>(&pattern)) {
+        std::string key = "enum:";
+        for (const auto &segment : enumerator->path) {
+            key += segment + "::";
+        }
+        key += "(";
+        for (const auto &argument : enumerator->args) {
+            const std::string argumentKey = PatternKey(*argument);
+            if (argumentKey.empty()) {
+                return {};
+            }
+            key += argumentKey + ",";
+        }
+        for (const auto &argument : enumerator->namedArgs) {
+            const std::string argumentKey = PatternKey(*argument.pattern);
+            if (argumentKey.empty()) {
+                return {};
+            }
+            key += argument.name + ":" + argumentKey + ",";
+        }
+        key += ")";
+        return key;
+    }
+    return {};
+}
+
+bool PatternMatchesEveryValue(const Pattern &pattern) {
+    return dynamic_cast<const WildcardPattern *>(&pattern) != nullptr ||
+           dynamic_cast<const IdentPattern *>(&pattern) != nullptr;
+}
+
+bool EnumPatternCoversVariant(const EnumPattern &pattern, const EnumDecl::Variant &variant) {
+    const std::size_t fieldCount = variant.fields.size() + variant.namedFields.size();
+    if (pattern.args.size() + pattern.namedArgs.size() < fieldCount) {
+        return false;
+    }
+    return std::ranges::all_of(pattern.args,
+                               [](const auto &argument) { return PatternMatchesEveryValue(*argument); }) &&
+           std::ranges::all_of(pattern.namedArgs,
+                               [](const auto &argument) { return PatternMatchesEveryValue(*argument.pattern); });
+}
+
+} // namespace
+
 void SemanticAnalyzerContext::EmitError(const SourceLocation location, std::string message,
                                         std::vector<std::string> notes, std::optional<std::string> help) const {
     diags.push_back({SemanticDiagnostic::Severity::Error,
@@ -49,6 +113,24 @@ void SemanticAnalyzerContext::CheckBlock(const Block &block) {
         CheckStatement(*statement);
     }
     PopScope();
+}
+
+void SemanticAnalyzerContext::CheckFunctionBody(const Block &block, const FuncDecl &function,
+                                                const TypeRef &returnType) {
+    CheckBlock(block);
+    if (!returnType.IsUnknown() && !returnType.IsOpaque() && !function.isNoReturn && !BlockDefinitelyReturns(block)) {
+        EmitError(function.location,
+                  std::format("function '{}' must return a value of type '{}' on every control-flow path",
+                              function.name, returnType.ToString()));
+    }
+}
+
+void SemanticAnalyzerContext::CheckBooleanCondition(const TypeRef &type, const SourceLocation location,
+                                                    const std::string_view construct) const {
+    if (!type.IsUnknown() && !type.IsBool()) {
+        EmitError(location,
+                  std::format("condition for '{}' must have type 'bool', but found '{}'", construct, type.ToString()));
+    }
 }
 
 void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
@@ -102,13 +184,16 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
     else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
         TypeRef condition = CheckExpr(*ifStatement->condition);
         if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(ifStatement->condition->location, "if condition must be 'bool'");
+            EmitError(ifStatement->condition->location,
+                      std::format("condition for 'if' must have type 'bool', but found '{}'", condition.ToString()));
         }
         CheckBlock(*ifStatement->thenBlock);
         for (const auto &elseIf : ifStatement->elseIfs) {
             TypeRef elseIfCondition = CheckExpr(*elseIf.condition);
             if (!elseIfCondition.IsUnknown() && !elseIfCondition.IsBool()) {
-                EmitError(elseIf.condition->location, "if condition must be 'bool'");
+                EmitError(elseIf.condition->location,
+                          std::format("condition for 'else if' must have type 'bool', but found '{}'",
+                                      elseIfCondition.ToString()));
             }
             CheckBlock(*elseIf.block);
         }
@@ -123,7 +208,8 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
 
         TypeRef condition = CheckExpr(*whileStatement->condition);
         if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(whileStatement->condition->location, "while condition must be 'bool'");
+            EmitError(whileStatement->condition->location,
+                      std::format("condition for 'while' must have type 'bool', but found '{}'", condition.ToString()));
         }
 
         ++loopDepth;
@@ -144,7 +230,9 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
 
         TypeRef condition = CheckExpr(*doWhileStatement->condition);
         if (!condition.IsUnknown() && !condition.IsBool()) {
-            EmitError(doWhileStatement->condition->location, "do-while condition must be 'bool'");
+            EmitError(
+                doWhileStatement->condition->location,
+                std::format("condition for 'do-while' must have type 'bool', but found '{}'", condition.ToString()));
         }
 
         if (!doWhileStatement->label.empty()) {
@@ -207,46 +295,55 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
         const TypeRef subjectType = CheckExpr(*matchStatement->subject);
+        std::vector<const Pattern *> patterns;
+        patterns.reserve(matchStatement->arms.size());
         for (const auto &arm : matchStatement->arms) {
+            patterns.push_back(arm.pattern.get());
             PushScope();
             CheckPattern(*arm.pattern, subjectType);
             CheckExpr(*arm.body);
             PopScope();
         }
+        ValidateMatchPatterns(patterns, subjectType);
     }
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
         if (currentFunctionNoReturn) {
             EmitError(returnStatement->location, "return is not allowed in a '#NoReturn' function");
         }
         if (returnStatement->value) {
-            if (TypeRef valueType = CheckExpr(**returnStatement->value);
-                !valueType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
-                !CanAssignExprTo(**returnStatement->value, valueType, currentReturnType)) {
+            TypeRef valueType = CheckExpr(**returnStatement->value);
+            if (currentReturnType.IsOpaque()) {
+                EmitError(returnStatement->location, "'return' cannot have a value in a function with no return type");
+            }
+            else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
+                     !CanAssignExprTo(**returnStatement->value, valueType, currentReturnType)) {
                 EmitError(returnStatement->location,
                           AssignmentErrorMessage(**returnStatement->value, currentReturnType,
-                                                 std::format("return type mismatch: expected '{}', found '{}'",
+                                                 std::format("'return' value must have type '{}', but found '{}'",
                                                              currentReturnType.ToString(), valueType.ToString())));
             }
         }
         else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
             EmitError(returnStatement->location,
-                      std::format("missing return value; expected '{}'", currentReturnType.ToString()));
+                      std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
         }
     }
     else if (const auto *breakStatement = dynamic_cast<const BreakStmt *>(&statement)) {
         if (loopDepth == 0) {
-            EmitError(statement.location, "'break' outside of a loop");
+            EmitError(statement.location, "'break' can only be used inside 'while', 'for', or 'loop'");
         }
         else if (!breakStatement->label.empty() && !activeLabels.contains(breakStatement->label)) {
-            EmitError(statement.location, std::format("unknown loop label '{}'", breakStatement->label));
+            EmitError(statement.location,
+                      std::format("'break' refers to unknown loop label '{}'", breakStatement->label));
         }
     }
     else if (const auto *continueStatement = dynamic_cast<const ContinueStmt *>(&statement)) {
         if (loopDepth == 0) {
-            EmitError(statement.location, "'continue' outside of a loop");
+            EmitError(statement.location, "'continue' can only be used inside 'while', 'for', or 'loop'");
         }
         else if (!continueStatement->label.empty() && !activeLabels.contains(continueStatement->label)) {
-            EmitError(statement.location, std::format("unknown loop label '{}'", continueStatement->label));
+            EmitError(statement.location,
+                      std::format("'continue' refers to unknown loop label '{}'", continueStatement->label));
         }
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
@@ -315,15 +412,42 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
         symbol.isMut = false;
         Define(std::move(symbol));
     }
+    else if (const auto *literalPattern = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        const TypeRef literalType = LiteralType(literalPattern->value);
+        const bool compatibleNumeric = literalType.IsNumeric() && subjectType.IsNumeric();
+        if (!literalType.IsUnknown() && !subjectType.IsUnknown() && !compatibleNumeric &&
+            !literalType.IsAssignableTo(subjectType)) {
+            EmitError(literalPattern->location,
+                      std::format("pattern has type '{}', but the matched value has type '{}'", literalType.ToString(),
+                                  subjectType.ToString()));
+        }
+    }
     else if (const auto *guardedPattern = dynamic_cast<const GuardedPattern *>(&pattern)) {
         CheckPattern(*guardedPattern->inner, subjectType);
-        CheckExpr(*guardedPattern->guard);
+        const TypeRef guardType = CheckExpr(*guardedPattern->guard);
+        if (!guardType.IsUnknown() && !guardType.IsBool()) {
+            EmitError(guardedPattern->guard->location,
+                      std::format("pattern guard must have type 'bool', but found '{}'", guardType.ToString()));
+        }
     }
     else if (const auto *rangePattern = dynamic_cast<const RangePattern *>(&pattern)) {
-        CheckPattern(*rangePattern->lo);
-        CheckPattern(*rangePattern->hi);
+        if (!subjectType.IsUnknown() && !subjectType.IsNumeric()) {
+            EmitError(rangePattern->location,
+                      std::format("range pattern cannot match value of type '{}'", subjectType.ToString()));
+        }
+        CheckPattern(*rangePattern->lo, subjectType);
+        CheckPattern(*rangePattern->hi, subjectType);
     }
     else if (const auto *tuplePattern = dynamic_cast<const TuplePattern *>(&pattern)) {
+        if (!subjectType.IsUnknown() && subjectType.kind != TypeRef::Kind::Tuple) {
+            EmitError(tuplePattern->location,
+                      std::format("tuple pattern cannot match value of type '{}'", subjectType.ToString()));
+        }
+        else if (subjectType.kind == TypeRef::Kind::Tuple &&
+                 tuplePattern->elements.size() != subjectType.inner.size()) {
+            EmitError(tuplePattern->location, std::format("tuple pattern has {} elements, but matched tuple has {}",
+                                                          tuplePattern->elements.size(), subjectType.inner.size()));
+        }
         for (std::size_t index = 0; index < tuplePattern->elements.size(); ++index) {
             const TypeRef elementType = subjectType.kind == TypeRef::Kind::Tuple && index < subjectType.inner.size()
                                           ? subjectType.inner[index]
@@ -332,12 +456,33 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
         }
     }
     else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
-        if (!currentScope->Lookup(structPattern->typeName)) {
+        const auto declaration = structDecls.find(structPattern->typeName);
+        if (!currentScope->Lookup(structPattern->typeName) || declaration == structDecls.end()) {
             EmitError(structPattern->location,
                       std::format("unknown type '{}' in struct pattern", structPattern->typeName));
         }
+        else if (!subjectType.IsUnknown() && (subjectType.kind != TypeRef::Kind::Named ||
+                                              BaseTypeName(subjectType.name) != structPattern->typeName)) {
+            EmitError(structPattern->location, std::format("struct pattern '{}' cannot match value of type '{}'",
+                                                           structPattern->typeName, subjectType.ToString()));
+        }
+        std::unordered_set<std::string> fieldNames;
         for (const auto &field : structPattern->fields) {
-            CheckPattern(*field.pattern);
+            if (!fieldNames.insert(field.name).second) {
+                EmitError(field.location, std::format("duplicate field '{}' in struct pattern", field.name));
+            }
+            const StructDecl::Field *matchedField = nullptr;
+            if (declaration != structDecls.end()) {
+                const auto found = std::ranges::find(declaration->second->fields, field.name, &StructDecl::Field::name);
+                if (found != declaration->second->fields.end()) {
+                    matchedField = &*found;
+                }
+                else {
+                    EmitError(field.location,
+                              std::format("struct '{}' has no field '{}'", structPattern->typeName, field.name));
+                }
+            }
+            CheckPattern(*field.pattern, matchedField ? ResolveType(*matchedField->type) : TypeRef::MakeUnknown());
         }
     }
     else if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {
@@ -378,6 +523,15 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             enumName.empty() || variantName.empty() ? nullptr : LookupEnumVariant(enumName, variantName);
         if (enumDeclaration && !variant) {
             EmitError(enumPattern->location, std::format("enum '{}' has no variant '{}'", enumName, variantName));
+        }
+        if (variant) {
+            const std::size_t expectedFields = variant->fields.size() + variant->namedFields.size();
+            const std::size_t actualFields = enumPattern->args.size() + enumPattern->namedArgs.size();
+            if (actualFields != expectedFields) {
+                EmitError(enumPattern->location,
+                          std::format("pattern for '{}::{}' expects {} field{}, but found {}", enumName, variantName,
+                                      expectedFields, expectedFields == 1 ? "" : "s", actualFields));
+            }
         }
 
         std::unordered_map<std::string, TypeRef> substitutions;
@@ -432,6 +586,217 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             }
         }
     }
+}
+
+void SemanticAnalyzerContext::ValidateMatchPatterns(const std::vector<const Pattern *> &patterns,
+                                                    const TypeRef &subjectType) {
+    std::unordered_set<std::string> seen;
+    std::unordered_set<std::string> coveredVariants;
+    bool coveredAll = false;
+    for (const Pattern *pattern : patterns) {
+        if (!pattern) {
+            continue;
+        }
+        if (coveredAll) {
+            EmitError(pattern->location, "match arm is unreachable because an earlier pattern matches every value");
+            continue;
+        }
+        const std::string key = PatternKey(*pattern);
+        if (!key.empty() && !seen.insert(key).second) {
+            EmitError(pattern->location, "duplicate pattern in match");
+        }
+        if (const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
+            enumerator && !enumerator->path.empty()) {
+            const std::string &variantName = enumerator->path.back();
+            if (const auto *variant = LookupEnumVariant(BaseTypeName(subjectType.name), variantName);
+                variant && EnumPatternCoversVariant(*enumerator, *variant)) {
+                coveredVariants.insert(variantName);
+            }
+        }
+        coveredAll = PatternMatchesEveryValue(*pattern);
+    }
+
+    if (coveredAll || subjectType.kind != TypeRef::Kind::Named) {
+        return;
+    }
+    const std::string enumName = BaseTypeName(subjectType.name);
+    const auto declaration = enumDecls.find(enumName);
+    if (declaration == enumDecls.end()) {
+        return;
+    }
+    std::vector<std::string> missing;
+    for (const auto &variant : declaration->second->variants) {
+        if (!coveredVariants.contains(variant.name)) {
+            missing.push_back(enumName + "::" + variant.name);
+        }
+    }
+    if (!missing.empty()) {
+        std::string names;
+        for (const auto &name : missing) {
+            names += (names.empty() ? "" : ", ") + name;
+        }
+        EmitError(patterns.empty() ? SourceLocation{} : patterns.back()->location,
+                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), names));
+    }
+}
+
+void SemanticAnalyzerContext::ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType) {
+    std::vector<const Pattern *> patterns;
+    patterns.reserve(expression.arms.size());
+    for (const auto &arm : expression.arms) {
+        patterns.push_back(arm.pattern.get());
+    }
+    ValidateMatchPatterns(patterns, subjectType);
+}
+
+bool SemanticAnalyzerContext::BlockDefinitelyReturns(const Block &block) const {
+    std::function<bool(const Block &)> blockReturns;
+    std::function<bool(const Expr &)> expressionReturns;
+    std::function<bool(const Stmt &)> statementReturns;
+    std::function<bool(const Block &, std::string_view, bool)> containsBreak;
+    const auto matchIsExhaustive = [&](const std::vector<const Pattern *> &patterns) {
+        if (std::ranges::any_of(patterns,
+                                [](const Pattern *pattern) { return pattern && PatternMatchesEveryValue(*pattern); })) {
+            return true;
+        }
+        if (patterns.empty()) {
+            return false;
+        }
+        const auto type = patternTypes.find(patterns.front());
+        if (type == patternTypes.end()) {
+            return false;
+        }
+        if (type->second.IsBool()) {
+            bool hasTrue = false;
+            bool hasFalse = false;
+            for (const Pattern *pattern : patterns) {
+                const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
+                hasTrue = hasTrue || (literal && literal->value.text == "true");
+                hasFalse = hasFalse || (literal && literal->value.text == "false");
+            }
+            return hasTrue && hasFalse;
+        }
+        if (type->second.kind != TypeRef::Kind::Named) {
+            return false;
+        }
+        const auto declaration = enumDecls.find(BaseTypeName(type->second.name));
+        if (declaration == enumDecls.end()) {
+            return false;
+        }
+        std::unordered_set<std::string> covered;
+        for (const Pattern *pattern : patterns) {
+            const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
+            if (enumerator && !enumerator->path.empty()) {
+                const std::string &variantName = enumerator->path.back();
+                if (const auto *variant = LookupEnumVariant(BaseTypeName(type->second.name), variantName);
+                    variant && EnumPatternCoversVariant(*enumerator, *variant)) {
+                    covered.insert(variantName);
+                }
+            }
+        }
+        return std::ranges::all_of(declaration->second->variants,
+                                   [&](const auto &variant) { return covered.contains(variant.name); });
+    };
+    expressionReturns = [&](const Expr &expression) {
+        const auto *blockExpression = dynamic_cast<const BlockExpr *>(&expression);
+        return blockExpression && blockReturns(*blockExpression->block);
+    };
+    containsBreak = [&](const Block &candidate, const std::string_view label, const bool allowUnlabeled) {
+        for (const auto &inner : candidate.stmts) {
+            if (const auto *exit = dynamic_cast<const BreakStmt *>(inner.get())) {
+                if ((allowUnlabeled && exit->label.empty()) || (!label.empty() && exit->label == label)) {
+                    return true;
+                }
+            }
+            else if (const auto *conditional = dynamic_cast<const IfStmt *>(inner.get())) {
+                if (containsBreak(*conditional->thenBlock, label, allowUnlabeled) ||
+                    (conditional->elseBlock && containsBreak(*conditional->elseBlock, label, allowUnlabeled)) ||
+                    std::ranges::any_of(conditional->elseIfs, [&](const auto &branch) {
+                        return branch.block && containsBreak(*branch.block, label, allowUnlabeled);
+                    })) {
+                    return true;
+                }
+            }
+            else if (const auto *match = dynamic_cast<const MatchStmt *>(inner.get())) {
+                if (std::ranges::any_of(match->arms, [&](const auto &arm) {
+                        const auto *body = dynamic_cast<const BlockExpr *>(arm.body.get());
+                        return body && containsBreak(*body->block, label, allowUnlabeled);
+                    })) {
+                    return true;
+                }
+            }
+            else if (const auto *nestedWhile = dynamic_cast<const WhileStmt *>(inner.get())) {
+                if (containsBreak(*nestedWhile->body, label, false)) {
+                    return true;
+                }
+            }
+            else if (const auto *nestedDo = dynamic_cast<const DoWhileStmt *>(inner.get())) {
+                if (containsBreak(*nestedDo->body, label, false)) {
+                    return true;
+                }
+            }
+            else if (const auto *nestedLoop = dynamic_cast<const LoopStmt *>(inner.get())) {
+                if (containsBreak(*nestedLoop->body, label, false)) {
+                    return true;
+                }
+            }
+            else if (const auto *nestedFor = dynamic_cast<const ForStmt *>(inner.get())) {
+                if (containsBreak(*nestedFor->body, label, false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    statementReturns = [&](const Stmt &statement) {
+        if (dynamic_cast<const ReturnStmt *>(&statement)) {
+            return true;
+        }
+        if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {
+            const auto *call = dynamic_cast<const CallExpr *>(expression->expr.get());
+            const auto *callee = call ? dynamic_cast<const IdentExpr *>(call->callee.get()) : nullptr;
+            const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
+            return symbol && (symbol->intrinsicName == "Panic" ||
+                              std::ranges::any_of(symbol->funcOverloads,
+                                                  [](const FuncDecl *function) { return function->isNoReturn; }));
+        }
+        if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
+            if (!ifStatement->elseBlock || !blockReturns(*ifStatement->thenBlock) ||
+                !blockReturns(*ifStatement->elseBlock)) {
+                return false;
+            }
+            return std::ranges::all_of(ifStatement->elseIfs,
+                                       [&](const auto &branch) { return branch.block && blockReturns(*branch.block); });
+        }
+        if (const auto *match = dynamic_cast<const MatchStmt *>(&statement)) {
+            std::vector<const Pattern *> patterns;
+            patterns.reserve(match->arms.size());
+            for (const auto &arm : match->arms) {
+                patterns.push_back(arm.pattern.get());
+            }
+            return matchIsExhaustive(patterns) &&
+                   std::ranges::all_of(match->arms, [&](const auto &arm) { return expressionReturns(*arm.body); });
+        }
+        if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
+            const auto *condition = dynamic_cast<const LiteralExpr *>(whileStatement->condition.get());
+            return condition && condition->token.kind == TokenKind::BoolLiteral && condition->token.text == "true" &&
+                   !containsBreak(*whileStatement->body, whileStatement->label, true);
+        }
+        if (const auto *doWhileStatement = dynamic_cast<const DoWhileStmt *>(&statement)) {
+            const auto *condition = dynamic_cast<const LiteralExpr *>(doWhileStatement->condition.get());
+            return condition && condition->token.kind == TokenKind::BoolLiteral && condition->token.text == "true" &&
+                   !containsBreak(*doWhileStatement->body, doWhileStatement->label, true);
+        }
+        if (const auto *loop = dynamic_cast<const LoopStmt *>(&statement)) {
+            return !containsBreak(*loop->body, loop->label, true);
+        }
+        return false;
+    };
+    blockReturns = [&](const Block &candidate) {
+        return std::ranges::any_of(candidate.stmts,
+                                   [&](const auto &statement) { return statement && statementReturns(*statement); });
+    };
+    return blockReturns(block);
 }
 
 const EnumDecl::Variant *SemanticAnalyzerContext::LookupEnumVariant(const std::string &enumName,

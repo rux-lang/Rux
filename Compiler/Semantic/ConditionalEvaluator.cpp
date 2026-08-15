@@ -223,7 +223,9 @@ std::optional<Value> ParseIntLiteral(std::string_view text) {
         }
         value = value * static_cast<std::uint64_t>(base) + digit;
     }
-    if (value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+    const std::string_view suffix = text.substr(i);
+    const bool isUnsigned = suffix == "u" || suffix == "u8" || suffix == "u16" || suffix == "u32" || suffix == "u64";
+    if (!isUnsigned && value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
         return Value{static_cast<std::int64_t>(value)};
     }
     return Value{value};
@@ -403,6 +405,14 @@ void ConditionalEvaluator::Impl::RegisterConstantImpl(const ConstDecl &decl) {
         constSignedIntegerWidths.emplace(decl.name, 32);
     else if (named->name == "int64" || named->name == "int")
         constSignedIntegerWidths.emplace(decl.name, named->name == "int64" ? 64 : context.target.pointer_size * 8);
+    else if (named->name == "uint8")
+        constUnsignedIntegerWidths.emplace(decl.name, 8);
+    else if (named->name == "uint16")
+        constUnsignedIntegerWidths.emplace(decl.name, 16);
+    else if (named->name == "uint32")
+        constUnsignedIntegerWidths.emplace(decl.name, 32);
+    else if (named->name == "uint64" || named->name == "uint")
+        constUnsignedIntegerWidths.emplace(decl.name, named->name == "uint64" ? 64 : context.target.pointer_size * 8);
 }
 
 void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclPtr> &decls) {
@@ -550,9 +560,9 @@ std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(co
     return std::nullopt;
 }
 
-std::optional<CompileTimeValue>
-ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root, const std::string_view field,
-                                                   const SourceLocation location) const {
+std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root,
+                                                                                   const std::string_view field,
+                                                                                   const SourceLocation location) {
     if (root == "Target") {
         if (field == "os") {
             if (const auto variant = OsVariantFor(ToString(context.target.os)))
@@ -620,6 +630,12 @@ ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root, 
         if (field == "module")
             return Value{currentModulePath};
     }
+    const std::string_view owner = root == "Target" ? "#target"
+                                 : root == "Build"  ? "#build"
+                                 : root == "Source" ? "#source"
+                                                    : "#compiler";
+    EmitError(location, std::format("unknown compile-time field '{}.{}'", owner, field));
+    reportedError = true;
     return std::nullopt;
 }
 
@@ -770,6 +786,10 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             if (const auto value = ParseIntLiteral(e->token.text)) {
                 return *value;
             }
+            EmitError(
+                e->location,
+                std::format("compile-time integer literal '{}' is outside the supported 64-bit range", e->token.text));
+            reportedError = true;
             return std::nullopt;
         case TokenKind::FloatLiteral:
             if (const auto value = ParseFloatValue(e->token.text)) {
@@ -787,18 +807,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
     }
 
     if (const auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
-        const auto it = constExprs.find(e->name);
-        if (it == constExprs.end()) {
-            return std::nullopt;
-        }
-        // A constant defined in terms of itself has no value; refuse to
-        // recurse forever.
-        if (!constsInProgress.insert(e->name).second) {
-            return std::nullopt;
-        }
-        auto value = Eval(*it->second);
-        constsInProgress.erase(e->name);
-        return value;
+        return EvalConstantReference(*e);
     }
 
     if (const auto *e = dynamic_cast<const FieldExpr *>(&expr)) {
@@ -1004,6 +1013,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             if (const auto *b = std::get_if<bool>(&*operand)) {
                 return Value{!*b};
             }
+            EmitError(e->location, "compile-time operator '!' requires an operand of type 'bool'");
+            reportedError = true;
             return std::nullopt;
         case TokenKind::Minus:
             if (const auto *i = std::get_if<std::int64_t>(&*operand)) {
@@ -1018,6 +1029,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             if (const auto *f = std::get_if<double>(&*operand)) {
                 return Value{-*f};
             }
+            EmitError(e->location, "compile-time unary operator '-' requires a signed numeric operand");
+            reportedError = true;
             return std::nullopt;
         case TokenKind::Plus:
             return operand;
@@ -1028,6 +1041,8 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             if (const auto *u = std::get_if<std::uint64_t>(&*operand)) {
                 return Value{~*u};
             }
+            EmitError(e->location, "compile-time operator '~' requires an integer operand");
+            reportedError = true;
             return std::nullopt;
         default:
             return std::nullopt;
@@ -1083,43 +1098,6 @@ ConditionalEvaluator::Impl::EvalEnumComparison(const BinaryExpr &e, const EnumVa
         return std::nullopt;
     }
     return Value{e.op == TokenKind::Equal ? *equal : !*equal};
-}
-
-std::optional<std::uint32_t> ConditionalEvaluator::Impl::SignedIntegerWidth(const Expr &expr) const {
-    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
-        if (literal->token.kind != TokenKind::IntLiteral) {
-            return std::nullopt;
-        }
-        const std::string_view text = literal->token.text;
-        if (text.ends_with("u8") || text.ends_with("u16") || text.ends_with("u32") || text.ends_with("u64") ||
-            text.ends_with('u')) {
-            return std::nullopt;
-        }
-        if (text.ends_with("i8"))
-            return 8;
-        if (text.ends_with("i16"))
-            return 16;
-        if (text.ends_with("i32"))
-            return 32;
-        if (text.ends_with("i64"))
-            return 64;
-        return context.target.pointer_size * 8;
-    }
-    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expr)) {
-        return SignedIntegerWidth(*unary->operand);
-    }
-    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expr)) {
-        return SignedIntegerWidth(*binary->left);
-    }
-    if (const auto *ident = dynamic_cast<const IdentExpr *>(&expr)) {
-        if (const auto width = constSignedIntegerWidths.find(ident->name); width != constSignedIntegerWidths.end()) {
-            return width->second;
-        }
-        if (const auto value = constExprs.find(ident->name); value != constExprs.end()) {
-            return SignedIntegerWidth(*value->second);
-        }
-    }
-    return std::nullopt;
 }
 
 // Alphabetical, so a reader scanning the list for the name they meant to

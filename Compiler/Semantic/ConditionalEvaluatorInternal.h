@@ -42,6 +42,7 @@ private:
     std::string currentModulePath;
     std::unordered_map<std::string, const Expr *> constExprs;
     std::unordered_map<std::string, std::uint32_t> constSignedIntegerWidths;
+    std::unordered_map<std::string, std::uint32_t> constUnsignedIntegerWidths;
     std::unordered_map<std::string, std::vector<std::string>> enumVariants;
     std::unordered_set<std::string> constsInProgress;
     std::unordered_set<std::string> builtinEnumNames;
@@ -64,21 +65,24 @@ private:
     [[nodiscard]] bool TargetHasFeature(std::string_view name) const;
     [[nodiscard]] static std::optional<std::string_view> CompilerParamRoot(const Expr &expr);
     [[nodiscard]] std::optional<Value> EvalCompilerParamField(std::string_view root, std::string_view field,
-                                                              SourceLocation location) const;
+                                                              SourceLocation location);
     [[nodiscard]] std::optional<ParsedSemanticVersion> EvalSemanticVersion(const Expr &expr);
     [[nodiscard]] std::optional<Value> EvalCompilerParamCall(std::string_view root, std::string_view member,
                                                              const CallExpr &call);
+    [[nodiscard]] std::optional<Value> EvalConstantReference(const IdentExpr &expr);
     [[nodiscard]] std::optional<Value> Eval(const Expr &expr);
     [[nodiscard]] std::optional<bool> EnumEquals(const EnumValue &left, const EnumValue &right,
                                                  SourceLocation location);
     [[nodiscard]] std::optional<Value> EvalEnumComparison(const BinaryExpr &expr, const EnumValue &left,
                                                           const EnumValue &right);
     [[nodiscard]] std::optional<std::uint32_t> SignedIntegerWidth(const Expr &expr) const;
+    [[nodiscard]] std::optional<std::uint32_t> UnsignedIntegerWidth(const Expr &expr) const;
     [[nodiscard]] static std::string JoinVariants(const std::vector<std::string> &variants);
     [[nodiscard]] std::optional<Value> EvalBinary(const BinaryExpr &expr);
     [[nodiscard]] bool EvalCondition(const Expr *condition, SourceLocation location);
     [[nodiscard]] static std::string FormatValue(const Value &value);
-    [[nodiscard]] std::optional<bool> ArmMatches(const Value &subject, const Expr &pattern, SourceLocation location);
+    [[nodiscard]] std::optional<bool> ArmMatches(const Value &subject, const Expr &pattern, SourceLocation location,
+                                                 Value *evaluatedPattern = nullptr);
     [[nodiscard]] int SelectMatchArmImpl(const Expr &subject, const std::vector<std::vector<const Expr *>> &arms,
                                          SourceLocation location);
 };

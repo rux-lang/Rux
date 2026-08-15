@@ -2224,7 +2224,7 @@ private:
             }
         }
         else {
-            CheckBlock(*d.body);
+            CheckFunctionBody(*d.body, d, retType);
         }
 
         PopScope();
@@ -3218,9 +3218,7 @@ private:
 
         if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
             TypeRef cond = CheckExpr(*e->condition);
-            if (!cond.IsUnknown() && !cond.IsBool()) {
-                EmitError(e->condition->location, "ternary condition must be 'bool'");
-            }
+            CheckBooleanCondition(cond, e->condition->location, "?:");
             TypeRef thenT = CheckExpr(*e->thenExpr);
             TypeRef elseT = CheckExpr(*e->elseExpr);
             return thenT.IsUnknown() ? elseT : thenT;
@@ -3293,6 +3291,7 @@ private:
                                                                  resultType.ToString(), armType.ToString())));
                 }
             }
+            ValidateMatchPatterns(*e, subjectType);
             return resultType;
         }
 

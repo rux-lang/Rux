@@ -785,7 +785,7 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'when' condition must be a compile-time constant expression");
+    CHECK(model.diagnostics[0].message == "'runtime' is not a compile-time constant");
 }
 
 TEST_CASE("a when condition that is not a bool is an error") {
@@ -801,7 +801,52 @@ func Do() -> int {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'when' condition must be of type 'bool'");
+    CHECK(model.diagnostics[0].message == "'when' condition must have type 'bool', but found 'signed integer'");
+}
+
+TEST_CASE("compile-time evaluation distinguishes fields operand types values overflow and duplicate branches") {
+    const std::string prefix = "import Core::{ #target };\nfunc Do() -> int {\n";
+    const std::string suffix = "return 0;\n}\n";
+
+    auto field = ParseSource(prefix + "when #target.cpu { return 1; }\n" + suffix);
+    CHECK(Analyze(field.module).diagnostics[0].message == "unknown compile-time field '#target.cpu'");
+
+    auto operand = ParseSource(prefix + "when 1 && true { return 1; }\n" + suffix);
+    CHECK(Analyze(operand.module).diagnostics[0].message ==
+          "compile-time operator '&&' requires 'bool' operands, but the left operand has type 'signed integer'");
+
+    auto zero = ParseSource(prefix + "when 4 / 0 == 0 { return 1; }\n" + suffix);
+    CHECK(Analyze(zero.module).diagnostics[0].message == "compile-time operator '/' cannot divide by zero");
+
+    auto overflow = ParseSource(prefix + "when 127i8 + 1i8 == 0 { return 1; }\n" + suffix);
+    CHECK(Analyze(overflow.module).diagnostics[0].message ==
+          "compile-time evaluation of '+' overflows a signed 8-bit integer");
+
+    auto typedOverflow =
+        ParseSource("const TooLarge: uint8 = 256;\n" + prefix + "when TooLarge == 0u8 { return 1; }\n" + suffix);
+    CHECK(Analyze(typedOverflow.module).diagnostics[0].message ==
+          "compile-time constant 'TooLarge' overflows its unsigned 8-bit type");
+
+    auto duplicate =
+        ParseSource(prefix + "when 1 { 1 => { return 1; } 1 => { return 2; } else => { return 3; } }\n" + suffix);
+    CHECK(std::ranges::any_of(Analyze(duplicate.module).diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "duplicate compile-time 'when' pattern 1";
+    }));
+}
+
+TEST_CASE("compile-time warning and error directives preserve the authored message text") {
+    auto parsed = ParseSource(R"(
+        import Core::{ #Error, #Warn };
+        func Do() {
+            #Warn("user text: keep 'quotes' and punctuation!");
+            #Error("line one\nline two");
+        }
+    )");
+    const auto model = Analyze(parsed.module);
+    const auto &diagnostics = model.diagnostics;
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "user text: keep 'quotes' and punctuation!");
+    CHECK_EQ(diagnostics[1].message, "line one\nline two");
 }
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
