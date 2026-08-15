@@ -6,15 +6,18 @@
 // contacting the registry.
 
 #include "Cli/Cli.h"
-#include "Cli/TerminalStyle.h"
+#include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
+#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/Credentials.h"
 #include "Driver/PackageResolution.h"
 #include "Driver/Registry.h"
 #include "Package/Manifest.h"
+#include "Reporting/Reporting.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -28,7 +31,6 @@
 
 using namespace Rux;
 using namespace Driver;
-using namespace CliSupport;
 
 namespace {
 std::string Qualified(const IdentitySegment &ns, const IdentitySegment &package) {
@@ -58,15 +60,18 @@ struct SpecRequirement {
 };
 
 /// Turn a command-line spec into one requirement, or explain why it cannot be.
-std::optional<SpecRequirement> RequirementFromSpec(const std::string_view spec, const std::string_view command) {
+std::optional<SpecRequirement> RequirementFromSpec(const std::string_view spec, const std::string_view command,
+                                                   const CliSupport::Reporter &diagnostics) {
     const auto parsed = ParsePackageSpec(spec);
     if (!parsed) {
-        std::print(stderr, "error: {}\n", parsed.error());
+        diagnostics.Error(std::format("package specification '{}' is invalid", spec));
+        diagnostics.Note(parsed.error());
+        diagnostics.Help("use '[namespace]/[package]@[requirement]'");
         return std::nullopt;
     }
     if (!parsed->ns) {
-        std::print(stderr, "error: a registry package needs a namespace; write 'rux {} Namespace/{}'\n", command,
-                   parsed->name.Text());
+        diagnostics.Error(std::format("registry package '{}' must include a namespace", spec));
+        diagnostics.Help(std::format("use 'rux {} Namespace/{}'", command, parsed->name.Text()));
         return std::nullopt;
     }
     // An omitted requirement accepts any stable release, matching `rux add`.
@@ -115,19 +120,49 @@ std::vector<std::pair<IdentitySegment, IdentitySegment>> CachedPackages() {
 
 /// Read `--registry <url>`, leaving `index` on its value. Returns false on a
 /// missing operand, which every caller reports the same way.
-bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_t &index,
-                        std::string_view &registryArg) {
+bool ReadRegistryOption(const std::span<const std::string_view> args, std::size_t &index, std::string_view &registryArg,
+                        const CliSupport::Reporter &diagnostics) {
     if (index + 1 >= args.size()) {
-        std::print(stderr, "error: '--registry' requires an argument\n");
+        diagnostics.Error("option '--registry' requires a registry URL");
+        diagnostics.Help("try 'rux info Namespace/Package --registry https://registry.example'");
         return false;
     }
     registryArg = args[++index];
     return true;
 }
 
+std::string InstallCommand(const IdentitySegment &ns, const IdentitySegment &package, const VersionRange &range) {
+    const std::string identity = Qualified(ns, package);
+    return range.Text() == "*" ? std::format("rux install {}", identity)
+                               : std::format("rux install {}@{}", identity, range.Text());
+}
+
+void PrintDependency(const ManifestDependency &dependency, const CliSupport::Reporter &output) {
+    if (dependency.IsPath()) {
+        output.Write(std::format("  Path {} at '{}'{}\n", dependency.importName.Text(), dependency.Path(),
+                                 TargetSuffix(dependency)));
+        return;
+    }
+    const auto *registry = dependency.Registry();
+    const std::string identity = Qualified(registry->ns, dependency.package);
+    const auto installed = FindInstalledPackage(registry->ns, dependency.package, registry->version);
+    if (installed) {
+        output.Write(std::format("  Resolved {} @ {}{} to {}\n", identity, registry->version.Text(),
+                                 TargetSuffix(dependency), installed->version.Text()));
+        return;
+    }
+    output.Write(std::format("  Missing {} @ {}{}\n", identity, registry->version.Text(), TargetSuffix(dependency)));
+    if (output.Visible(CliSupport::MessageVisibility::Normal)) {
+        output.Help(
+            std::format("install it with '{}'", InstallCommand(registry->ns, dependency.package, registry->version)));
+    }
+}
+
 } // namespace
 
 int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const CliSupport::Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view packageSpec;
     bool global = false;
     for (auto arg : args) {
@@ -147,14 +182,18 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
         return 1;
     }
     if (global && !packageSpec.empty()) {
-        std::print(stderr, "error: '--global' cannot be combined with a package name\n");
+        diagnostics.Error("option '--global' cannot be combined with a package name");
+        diagnostics.Help(std::format("use 'rux uninstall {}' or 'rux uninstall --global'", packageSpec));
         return 1;
     }
 
+    const auto started = std::chrono::steady_clock::now();
+    const auto cacheDir = RegistryPackagesDir();
+
     /// Remove every installed version of one package, or just the ones a
     /// requirement selects, and report what went.
-    const auto removeVersions = [&opts](const IdentitySegment &ns, const IdentitySegment &name,
-                                        const std::optional<VersionRange> &range, int &removed) -> bool {
+    const auto removeVersions = [&](const IdentitySegment &ns, const IdentitySegment &name,
+                                    const std::optional<VersionRange> &range, int &removed) -> bool {
         for (const auto &installed : InstalledVersions(ns, name)) {
             if (range && !range->Matches(installed.version)) {
                 continue;
@@ -162,19 +201,18 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             std::error_code ec;
             std::filesystem::remove_all(installed.root, ec);
             if (ec) {
-                std::print(stderr, "error: failed to remove '{}': {}\n", installed.root.generic_string(), ec.message());
+                diagnostics.Error(std::format("could not remove cached package at '{}'", installed.root.string()));
+                diagnostics.Note(ec.message());
+                diagnostics.Help("check the cache directory's permissions, then retry");
                 return false;
             }
-            if (!opts.quiet) {
-                std::print("Uninstalled {} {}\n", QualifiedIdentity(ns, name), installed.version.Text());
-            }
+            output.Success("Removed", std::format("{} {}", QualifiedIdentity(ns, name), installed.version.Text()));
             ++removed;
         }
         return true;
     };
 
     if (global) {
-        const auto cacheDir = RegistryPackagesDir();
         int removed = 0;
         for (const auto &[ns, name] : CachedPackages()) {
             if (!removeVersions(ns, name, std::nullopt, removed)) {
@@ -182,19 +220,19 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             }
         }
         if (removed == 0) {
-            if (!opts.quiet) {
-                std::print("  Global cache is empty ({})\n", cacheDir.string());
-            }
+            output.Success("Empty", "global package cache");
+            output.Detail(std::format("Cache: '{}'", cacheDir.string()));
             return 0;
         }
-        if (!opts.quiet) {
-            std::print("Summary: {} uninstalled\n", removed);
-        }
+        output.Success("Removed", std::format("{} from the global package cache in {}",
+                                              Reporting::FormatCount(removed, "package version"),
+                                              Reporting::FormatDuration(ElapsedMs(started))));
+        output.Detail(std::format("Cache: '{}'", cacheDir.string()));
         return 0;
     }
 
     if (!packageSpec.empty()) {
-        auto spec = RequirementFromSpec(packageSpec, "uninstall");
+        auto spec = RequirementFromSpec(packageSpec, "uninstall", diagnostics);
         if (!spec) {
             return 1;
         }
@@ -207,10 +245,17 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             return 1;
         }
         if (removed == 0) {
-            std::print(stderr, "error: no installed version of '{}' matches\n",
-                       Qualified(requirement.ns, requirement.package));
+            const std::string identity = Qualified(requirement.ns, requirement.package);
+            diagnostics.Error(
+                std::format("no installed version of '{}' matches '{}'", identity, requirement.range.Text()));
+            diagnostics.Note(std::format("global package cache: '{}'", cacheDir.string()));
+            diagnostics.Help(std::format("run '{}' to install a matching version",
+                                         InstallCommand(requirement.ns, requirement.package, requirement.range)));
             return 1;
         }
+        output.Success("Removed", std::format("{} in {}", Reporting::FormatCount(removed, "package version"),
+                                              Reporting::FormatDuration(ElapsedMs(started))));
+        output.Detail(std::format("Cache: '{}'", cacheDir.string()));
         return 0;
     }
 
@@ -224,9 +269,9 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
     }
     const std::vector<PackageRequirement> declared = CollectPackageRequirements(*manifest);
     if (declared.empty()) {
-        if (!opts.quiet) {
-            std::print("  No registry dependencies to uninstall.\n");
-        }
+        output.Success("Unchanged", "global package cache; the project declares no registry dependencies");
+        output.Detail(std::format("Manifest: '{}'", manifestPath->string()));
+        output.Detail(std::format("Cache: '{}'", cacheDir.string()));
         return 0;
     }
     int removed = 0;
@@ -237,19 +282,23 @@ int Cli::RunUninstall(std::span<const std::string_view> args, const GlobalOption
             return 1;
         }
         if (removed == before) {
-            if (!opts.quiet) {
-                std::print("Not installed {}\n", Qualified(requirement.ns, requirement.package));
+            output.Write(std::format("Missing {}\n", Qualified(requirement.ns, requirement.package)));
+            if (output.Visible(CliSupport::MessageVisibility::Normal)) {
+                output.Help(std::format("install it with '{}'",
+                                        InstallCommand(requirement.ns, requirement.package, requirement.range)));
             }
             ++notFound;
         }
     }
-    if (!opts.quiet) {
-        std::print("Summary: {} uninstalled, {} not installed\n", removed, notFound);
-    }
+    output.Success("Finished", std::format("project uninstall in {} ({} removed, {} missing)",
+                                           Reporting::FormatDuration(ElapsedMs(started)), removed, notFound));
+    output.Detail(std::format("Manifest: '{}'", manifestPath->string()));
+    output.Detail(std::format("Cache: '{}'", cacheDir.string()));
     return 0;
 }
 
 int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     bool global = false;
     for (auto arg : args) {
         if (arg == "--global") {
@@ -275,15 +324,14 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
             }
         }
         if (lines.empty()) {
-            if (!opts.quiet) {
-                std::print("  Global cache is empty ({})\n", cacheDir.string());
-            }
+            output.Success("Empty", "global package cache");
+            output.Detail(std::format("Cache: '{}'", cacheDir.string()));
             return 0;
         }
-        std::print("Global cache ({} version{} at {}):\n", lines.size(), lines.size() == 1 ? "" : "s",
-                   cacheDir.string());
+        output.Write(std::format("Global package cache ({}):\n", Reporting::FormatCount(lines.size(), "version")));
+        output.Detail(std::format("Cache: '{}'", cacheDir.string()));
         for (const auto &line : lines) {
-            std::print("  {}\n", line);
+            output.Write(std::format("  Installed {}\n", line));
         }
         return 0;
     }
@@ -296,35 +344,23 @@ int Cli::RunList(std::span<const std::string_view> args, const GlobalOptions &op
         return 1;
     }
     if (manifest->dependencies.empty()) {
-        if (!opts.quiet) {
-            std::print("  No dependencies.\n");
-        }
+        output.Success("Empty", "project dependency list");
+        output.Detail(std::format("Manifest: '{}'", manifestPath->string()));
         return 0;
     }
-    std::print("Dependencies ({}):\n", manifest->dependencies.size());
+    output.Write(std::format("Project dependencies ({}):\n",
+                             Reporting::FormatCount(manifest->dependencies.size(), "dependency", "dependencies")));
+    output.Detail(std::format("Manifest: '{}'", manifestPath->string()));
     for (const auto &dep : manifest->dependencies) {
-        if (dep.IsPath()) {
-            std::print("  {} (path: {}){}\n", dep.importName.Text(), dep.Path(), TargetSuffix(dep));
-            continue;
-        }
-        const auto *registry = dep.Registry();
-        // Naming the version a build would actually use turns the requirement
-        // into something checkable without running the build.
-        const auto installed = FindInstalledPackage(registry->ns, dep.package, registry->version);
-        if (installed) {
-            std::print("  {}/{} @ {}{} (installed {})\n", registry->ns.Text(), dep.package.Text(),
-                       registry->version.Text(), TargetSuffix(dep), installed->version.Text());
-        }
-        else {
-            std::print("  {}/{} @ {}{} (not installed)\n", registry->ns.Text(), dep.package.Text(),
-                       registry->version.Text(), TargetSuffix(dep));
-        }
+        PrintDependency(dep, output);
     }
     return 0;
 }
 
 // TODO: Extend Package manifest metadata support
 int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const CliSupport::Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view packageSpec;
     std::string_view registryArg;
     const bool jsonOutput = std::ranges::find(args, "--json") != args.end();
@@ -344,7 +380,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             continue;
         }
         if (arg == "--registry") {
-            if (!ReadRegistryOption(args, i, registryArg)) {
+            if (!ReadRegistryOption(args, i, registryArg, diagnostics)) {
                 return JsonFailure("--registry requires an argument");
             }
             continue;
@@ -357,26 +393,31 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         return 1;
     }
     std::filesystem::path manifestPath;
+    std::optional<SpecRequirement> selectedRequirement;
+    std::optional<InstalledPackage> selectedInstallation;
     if (!opts.manifest.empty()) {
         manifestPath = opts.manifest;
         if (!std::filesystem::exists(manifestPath)) {
-            std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath.string());
+            diagnostics.Error(std::format("specified manifest '{}' was not found", manifestPath.string()));
+            diagnostics.Help("check the path passed to '--manifest'");
             return JsonFailure("the specified manifest was not found");
         }
     }
     else if (packageSpec.empty()) {
         auto localManifestOpt = Manifest::Find(std::filesystem::current_path());
         if (!localManifestOpt) {
-            std::print(stderr, "error: missing package name, and no Rux.toml found in current directory\n");
+            diagnostics.Error("package name is required because no 'Rux.toml' was found in the current directory");
+            diagnostics.Help("pass 'Namespace/Package' or run the command from a Rux project");
             return JsonFailure("missing package name and no Rux.toml was found");
         }
         manifestPath = *localManifestOpt;
     }
     else {
-        auto spec = RequirementFromSpec(packageSpec, "info");
+        auto spec = RequirementFromSpec(packageSpec, "info", diagnostics);
         if (!spec) {
             return JsonFailure("invalid package identity or version requirement");
         }
+        selectedRequirement = *spec;
         const PackageRequirement &requirement = spec->requirement;
         const auto installed = FindInstalledPackage(requirement.ns, requirement.package, requirement.range);
         if (!installed) {
@@ -386,14 +427,19 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             const std::string identity = Qualified(requirement.ns, requirement.package);
             auto entry = FetchPackageIndex(base, requirement.ns, requirement.package);
             if (!entry) {
-                std::print(stderr, "error: {}\n", Describe(entry.error(), base, identity));
+                diagnostics.Error(Describe(entry.error(), base, identity));
+                diagnostics.Help(std::format("check the registry URL, then retry 'rux info {}'", packageSpec));
                 return JsonFailure("the registry lookup failed");
             }
-            std::print(stderr, "error: no installed version of {} matches '{}'; run 'rux install {}'\n", identity,
-                       requirement.range.Text(), packageSpec);
-            std::print(stderr, "{}{} publishes {}\n", errorContinuation, base, DescribeAvailableVersions(*entry));
+            diagnostics.Error(
+                std::format("package '{}' has no installed version matching '{}'", identity, requirement.range.Text()));
+            diagnostics.Note(std::format("registry '{}': {}", base, DescribeAvailableVersions(*entry)));
+            diagnostics.Note(std::format("global package cache: '{}'", RegistryPackagesDir().string()));
+            diagnostics.Help(std::format("install it with '{}'",
+                                         InstallCommand(requirement.ns, requirement.package, requirement.range)));
             return JsonFailure("no installed package version matches the requirement");
         }
+        selectedInstallation = installed;
         manifestPath = installed->root / "Rux.toml";
     }
     auto infoResult = Manifest::Load(manifestPath);
@@ -469,54 +515,61 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
         std::print("{}\n", "}");
     }
     else {
-        if (manifest->package.ns) {
-            std::print("Namespace:   {}\n", manifest->package.ns->Text());
+        if (selectedRequirement && selectedInstallation) {
+            const auto &requirement = selectedRequirement->requirement;
+            output.Write(std::format("Installed package '{}' selected by requirement '{}':\n",
+                                     Qualified(requirement.ns, requirement.package), requirement.range.Text()));
+            output.Detail(std::format("Cache: '{}'", selectedInstallation->root.string()));
         }
-        std::print("Name:        {}\n"
-                   "Version:     {}\n"
-                   "Type:        {}\n",
-                   manifest->package.name.Text(), manifest->package.version.Text(), ToString(manifest->package.type));
+        else {
+            output.Write(std::format("Project package from '{}':\n", manifestPath.string()));
+        }
+        if (manifest->package.ns) {
+            output.Write(std::format("  Namespace:   {}\n", manifest->package.ns->Text()));
+        }
+        output.Write(std::format("  Name:        {}\n"
+                                 "  Version:     {}\n"
+                                 "  Type:        {}\n",
+                                 manifest->package.name.Text(), manifest->package.version.Text(),
+                                 ToString(manifest->package.type)));
         if (!manifest->package.keywords.empty()) {
-            std::print("Keywords:    ");
+            std::string keywords;
             for (std::size_t i = 0; i < manifest->package.keywords.size(); ++i) {
-                std::print("{}{}", i == 0 ? "" : ", ", manifest->package.keywords[i].Text());
+                keywords += i == 0 ? "" : ", ";
+                keywords += manifest->package.keywords[i].Text();
             }
-            std::print("\n");
+            output.Write(std::format("  Keywords:    {}\n", keywords));
         }
         if (!manifest->package.description.empty()) {
-            std::print("Description: {}\n", manifest->package.description);
+            output.Write(std::format("  Description: {}\n", manifest->package.description));
         }
         if (!manifest->package.authors.empty()) {
-            std::print("Authors:     ");
+            std::string authors;
             for (std::size_t i = 0; i < manifest->package.authors.size(); ++i) {
-                std::print("{}{}", i == 0 ? "" : ", ", manifest->package.authors[i]);
+                authors += i == 0 ? "" : ", ";
+                authors += manifest->package.authors[i];
             }
-            std::print("\n");
+            output.Write(std::format("  Authors:     {}\n", authors));
         }
         if (!manifest->package.license.empty()) {
-            std::print("License:     {}\n", manifest->package.license);
+            output.Write(std::format("  License:     {}\n", manifest->package.license));
         }
         if (!manifest->package.licenseFile.empty()) {
-            std::print("LicenseFile: {}\n", manifest->package.licenseFile);
+            output.Write(std::format("  LicenseFile: {}\n", manifest->package.licenseFile));
         }
         if (!manifest->package.repository.empty()) {
-            std::print("Repository:  {}\n", manifest->package.repository);
+            output.Write(std::format("  Repository:  {}\n", manifest->package.repository));
         }
         if (!manifest->package.homepage.empty()) {
-            std::print("Homepage:    {}\n", manifest->package.homepage);
+            output.Write(std::format("  Homepage:    {}\n", manifest->package.homepage));
         }
-        if (!manifest->dependencies.empty()) {
-            std::print("\nDependencies:\n");
-            for (const auto &dep : manifest->dependencies) {
-                if (dep.IsPath()) {
-                    std::print("  - {} (path: {}){}\n", dep.importName.Text(), dep.Path(), TargetSuffix(dep));
-                }
-                else {
-                    const auto *registry = dep.Registry();
-                    std::print("  - {}/{} @ {}{}\n", registry->ns.Text(), dep.package.Text(), registry->version.Text(),
-                               TargetSuffix(dep));
-                }
-            }
+        output.Write(std::format("\nPackage dependencies ({}):\n",
+                                 Reporting::FormatCount(manifest->dependencies.size(), "dependency", "dependencies")));
+        if (manifest->dependencies.empty()) {
+            output.Detail("None");
+        }
+        for (const auto &dep : manifest->dependencies) {
+            PrintDependency(dep, output);
         }
     }
     return 0;

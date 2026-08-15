@@ -404,16 +404,17 @@ Type = "SourceLibrary"
     std::filesystem::remove_all(root, error);
 }
 
-TEST_CASE("list and info preserve cache inspection output contracts") {
+TEST_CASE("list and info label the global cache and selected installed version") {
     const ScopedCliPackageCache cache;
     WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
     WriteCachedPackage("rux", "my-pkg", "2.0.0", "second release");
 
     const auto listed = Run(std::array<std::string_view, 2>{"list", "--global"});
     REQUIRE(listed.exitCode == 0);
-    CHECK(listed.output.contains("Global cache (2 versions"));
-    CHECK(listed.output.contains("rux/my-pkg 1.0.0"));
-    CHECK(listed.output.contains("rux/my-pkg 2.0.0"));
+    CHECK(listed.output.contains("Global package cache (2 versions):"));
+    CHECK(listed.output.contains("Cache: '"));
+    CHECK(listed.output.contains("Installed rux/my-pkg 1.0.0"));
+    CHECK(listed.output.contains("Installed rux/my-pkg 2.0.0"));
 
     // The requested spelling normalizes to the spelling on disk, while the
     // explicit version still selects that exact cached manifest.
@@ -425,16 +426,22 @@ TEST_CASE("list and info preserve cache inspection output contracts") {
     CHECK(json.output.contains("\"version\": \"1.0.0\""));
     CHECK(json.output.contains("\"description\": \"first release\""));
     CHECK_FALSE(json.output.contains("second release"));
+    CHECK_FALSE(json.output.contains("Installed package"));
+    CHECK_FALSE(json.output.contains("Cache:"));
 
     const auto text = Run(std::array<std::string_view, 2>{"info", "RUX/MY-PKG@2.0.0"});
     REQUIRE(text.exitCode == 0);
+    CHECK(text.output.contains("Installed package 'RUX/MY-PKG' selected by requirement '2.0.0':"));
+    CHECK(text.output.contains("Cache: '"));
     CHECK(text.output.contains("Namespace:   rux"));
     CHECK(text.output.contains("Name:        my-pkg"));
     CHECK(text.output.contains("Version:     2.0.0"));
     CHECK(text.output.contains("Description: second release"));
+    CHECK(text.output.contains("Package dependencies (0 dependencies):"));
+    CHECK(text.output.contains("None"));
 }
 
-TEST_CASE("uninstall removes only selected installed versions") {
+TEST_CASE("uninstall reports selected, project, and global cache removal results") {
     const ScopedCliPackageCache cache;
     const auto first = WriteCachedPackage("rux", "my-pkg", "1.0.0", "first release");
     const auto second = WriteCachedPackage("rux", "my-pkg", "2.0.0", "second release");
@@ -444,7 +451,9 @@ TEST_CASE("uninstall removes only selected installed versions") {
 
     const auto removed = Run(std::array<std::string_view, 2>{"uninstall", "Rux/My_Pkg@1.0.0"});
     REQUIRE(removed.exitCode == 0);
-    CHECK(removed.output.contains("Uninstalled Rux/My_Pkg 1.0.0"));
+    CHECK(removed.output.contains("Removed Rux/My_Pkg 1.0.0"));
+    CHECK(removed.output.contains("Removed 1 package version in "));
+    CHECK(removed.output.contains("Cache: '"));
     CHECK_FALSE(std::filesystem::exists(first));
     CHECK(std::filesystem::exists(second));
     CHECK(std::filesystem::exists(unrelated));
@@ -452,17 +461,48 @@ TEST_CASE("uninstall removes only selected installed versions") {
 
     const auto missing = Run(std::array<std::string_view, 2>{"uninstall", "rux/my-pkg@9.0.0"});
     CHECK(missing.exitCode == 1);
-    CHECK(missing.output.contains("no installed version of 'rux/my-pkg' matches"));
+    CHECK(missing.output.contains("no installed version of 'rux/my-pkg' matches '9.0.0'"));
+    CHECK(missing.output.contains("global package cache: '"));
+    CHECK(missing.output.contains("run 'rux install rux/my-pkg@9.0.0'"));
     CHECK(std::filesystem::exists(second));
     CHECK(std::filesystem::exists(unrelated));
     CHECK(std::filesystem::exists(stray));
 
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-cli-project-uninstall-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+
+[Package]
+Name = "UninstallFixture"
+Version = "0.1.0"
+Type = "SourceLibrary"
+
+[Dependencies]
+My_Pkg = { Namespace = "Rux", Version = "^2.0.0" }
+Missing = { Namespace = "Acme", Version = "1.0.0" }
+)");
+    const auto manifest = manifestPath.string();
+    const auto project = Run(std::array<std::string_view, 3>{"--manifest", manifest, "uninstall"});
+    REQUIRE(project.exitCode == 0);
+    CHECK(project.output.contains("Removed Rux/My_Pkg 2.0.0"));
+    CHECK(project.output.contains("Missing Acme/Missing"));
+    CHECK(project.output.contains("help: install it with 'rux install Acme/Missing@1.0.0'"));
+    CHECK(project.output.contains("Finished project uninstall in "));
+    CHECK(project.output.contains("(1 removed, 1 missing)"));
+    CHECK(project.output.contains("Manifest: '" + manifest + "'"));
+    CHECK_FALSE(std::filesystem::exists(second));
+
     const auto global = Run(std::array<std::string_view, 2>{"uninstall", "--global"});
     REQUIRE(global.exitCode == 0);
-    CHECK(global.output.contains("Summary: 2 uninstalled"));
-    CHECK_FALSE(std::filesystem::exists(second));
+    CHECK(global.output.contains("Removed 1 package version from the global package cache in "));
+    CHECK(global.output.contains("Cache: '"));
     CHECK_FALSE(std::filesystem::exists(unrelated));
     CHECK(std::filesystem::exists(stray));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
 }
 
 TEST_CASE("build help publishes the all-target matrix option") {
