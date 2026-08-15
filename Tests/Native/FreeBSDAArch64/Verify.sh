@@ -5,8 +5,8 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 rux=${1:-"$repo_root/Bin/rux"}
-output_dir="$repo_root/Bin/Tests/Native/Release"
-syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/Syscall"
+output_dir="$repo_root/Bin/Tests/Native/Release/FreeBSD/AArch64"
+syscall_output="$repo_root/Bin/Tests/Packages/FreeBSD/Release/FreeBSD/AArch64/Syscall"
 
 fail() {
     echo "FreeBSD AArch64 fixture failure: $*" >&2

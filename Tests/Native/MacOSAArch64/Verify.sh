@@ -17,16 +17,12 @@ fail() {
 [ -f "$rux" ] || fail "compiler '$rux' does not exist"
 
 case "$compiler_arch" in
-    aarch64)
-        output_dir="$repo_root/Bin/Tests/Native/Release"
-        ;;
-    x86_64)
-        output_dir="$repo_root/Bin/Tests/Native/Release/macOS/AArch64"
-        ;;
+    aarch64 | x86_64) ;;
     *)
         fail "unknown compiler architecture '$compiler_arch'"
         ;;
 esac
+output_dir="$repo_root/Bin/Tests/Native/Release/macOS/AArch64"
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/rux-macos-aarch64-fixtures.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM

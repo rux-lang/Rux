@@ -10,9 +10,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to build the Windows AArch64 exit-code fixture"
 }
 
-$nativeExecutable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/WindowsAArch64ExitCode.exe"
-$crossExecutable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/Windows/AArch64/WindowsAArch64ExitCode.exe"
-$executable = if (Test-Path $nativeExecutable) { $nativeExecutable } else { $crossExecutable }
+$executable = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/Windows/AArch64/WindowsAArch64ExitCode.exe"
 
 & $executable
 if ($LASTEXITCODE -ne 73) {

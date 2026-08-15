@@ -53,12 +53,12 @@ fi
 [ ! -s "$syscall_log" ] || fail "the BSD syscall fixture produced unexpected build output"
 
 case "$output_dir" in
-    */freebsd-aarch64) ;;
-    *) fail "fixture output path does not contain the canonical target" ;;
+    */FreeBSD/AArch64) ;;
+    *) fail "fixture output path does not contain the target components" ;;
 esac
 case "$syscall_output" in
-    */freebsd-aarch64/*) ;;
-    *) fail "syscall output path does not contain the canonical target" ;;
+    */FreeBSD/AArch64/*) ;;
+    *) fail "syscall output path does not contain the target components" ;;
 esac
 
 staging="$work_dir/payload"

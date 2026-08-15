@@ -33,8 +33,8 @@ verify_elf_header() {
     [ $(( ${19} | (${20} << 8) )) -eq 183 ] || fail "'$artifact' is not AArch64"
 }
 
-case "$executable" in */freebsd-aarch64/*) ;; *) fail "executable path is not target-separated" ;; esac
-case "$archive" in */freebsd-aarch64/*) ;; *) fail "archive path is not target-separated" ;; esac
+case "$executable" in */FreeBSD/AArch64/*) ;; *) fail "executable path is not target-separated" ;; esac
+case "$archive" in */FreeBSD/AArch64/*) ;; *) fail "archive path is not target-separated" ;; esac
 verify_elf_header "$executable" 2 0
 
 [ "$(dd if="$archive" bs=1 count=8 2>/dev/null)" = '!<arch>' ] || fail "static library has no archive magic"

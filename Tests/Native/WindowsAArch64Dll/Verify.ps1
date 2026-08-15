@@ -15,13 +15,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to build the Windows AArch64 DLL loader fixture"
 }
 
-$nativeDirectory = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release"
-$crossDirectory = Join-Path $nativeDirectory "windows-aarch64"
-$directory = if (Test-Path (Join-Path $nativeDirectory "WindowsAArch64DllLoader.exe")) {
-    $nativeDirectory
-} else {
-    $crossDirectory
-}
+$directory = Join-Path $PSScriptRoot "../../../Bin/Tests/Native/Release/Windows/AArch64"
 $library = Join-Path $directory "WindowsAArch64Dll.dll"
 $importLibrary = Join-Path $directory "WindowsAArch64Dll.lib"
 $loader = Join-Path $directory "WindowsAArch64DllLoader.exe"
