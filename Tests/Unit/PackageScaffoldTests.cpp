@@ -134,7 +134,10 @@ TEST_CASE("scaffolding records an optional namespace") {
 TEST_CASE("scaffolding rejects a name that is not an identity segment") {
     const ScaffoldFixture fixture;
 
-    CHECK_FALSE(ScaffoldPackage({.root = fixture.Package("dotted"), .name = "My.Pkg"}));
+    const auto dotted = ScaffoldPackage({.root = fixture.Package("dotted"), .name = "My.Pkg"});
+    REQUIRE_FALSE(dotted);
+    CHECK(dotted.error().kind == ScaffoldErrorKind::InvalidName);
+    CHECK(dotted.error().detail.contains("allows only ASCII"));
     CHECK_FALSE(ScaffoldPackage({.root = fixture.Package("adjacent"), .name = "My__Pkg"}));
     CHECK_FALSE(ScaffoldPackage({.root = fixture.Package("empty"), .name = ""}));
     // A rejected name leaves nothing behind.
@@ -146,8 +149,27 @@ TEST_CASE("scaffolding refuses an existing directory unless initializing") {
     const auto packageRoot = fixture.Package("App");
     std::filesystem::create_directories(packageRoot);
 
-    CHECK_FALSE(ScaffoldPackage({.root = packageRoot, .name = "App"}));
+    const auto existing = ScaffoldPackage({.root = packageRoot, .name = "App"});
+    REQUIRE_FALSE(existing);
+    CHECK(existing.error().kind == ScaffoldErrorKind::ExistingDestination);
+    CHECK(existing.error().path == packageRoot);
     CHECK(ScaffoldPackage({.root = packageRoot, .name = "App", .initMode = true}));
+}
+
+TEST_CASE("scaffolding returns partial changes when a package file cannot be written") {
+    const ScaffoldFixture fixture;
+    const auto packageRoot = fixture.Package("App");
+    std::filesystem::create_directories(packageRoot / ".gitignore");
+
+    const auto result = ScaffoldPackage({.root = packageRoot, .name = "App", .initMode = true});
+
+    REQUIRE_FALSE(result);
+    CHECK(result.error().kind == ScaffoldErrorKind::WriteFile);
+    CHECK(result.error().path == packageRoot / ".gitignore");
+    CHECK(result.error().detail.contains("not a regular file"));
+    CHECK(result.error().partialChanges.filesWritten == 2);
+    CHECK(std::filesystem::is_regular_file(packageRoot / "Rux.toml"));
+    CHECK(std::filesystem::is_regular_file(packageRoot / "Src" / "Main.rux"));
 }
 
 TEST_CASE("initializing preserves an existing manifest and sources") {

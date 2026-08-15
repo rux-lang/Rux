@@ -21,6 +21,9 @@ constexpr std::array add_usage = {"[namespace]/[package]"sv, "[namespace]/[packa
 constexpr std::array add_opts = {
     OptionDoc{.flags = "--path <path>"sv, .desc = "Add a local path-based dependency"sv},
     OptionDoc{.flags = "--registry <url>"sv, .desc = "Registry API base URL to check the package against"sv}};
+constexpr std::array add_conflicts = {
+    OptionConflict{.left = "--path"sv, .right = "--registry"sv},
+};
 constexpr std::array add_exs = {"Rux/Io"sv, "Rux/Io@^0.1.0"sv, "Json --path ../Json"sv};
 
 // Build
@@ -229,7 +232,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .footer = "This command updates Rux.toml accordingly."sv,
                .examples = Data::add_exs,
                .options = Data::add_opts,
-               .conflicts = {}},
+               .conflicts = Data::add_conflicts},
 
     CommandDoc{.name = "build"sv,
                .shortDesc = "Build the current package"sv,

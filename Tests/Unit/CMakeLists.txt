@@ -33,6 +33,7 @@ set(RUX_TEST_SOURCES
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp
+    CliScaffoldProcessTests.cpp
     CompilerDriverTests.cpp
     ConstantEvaluatorTests.cpp
     ConditionalCompilationTestSupport.cpp

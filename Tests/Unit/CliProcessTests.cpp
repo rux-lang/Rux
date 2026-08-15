@@ -140,6 +140,7 @@ std::string NormalizeNewlines(std::string text) {
     std::erase(text, '\r');
     return text;
 }
+
 } // namespace
 
 TEST_CASE("help JSON publishes the stable 0.4 command contract") {
@@ -294,7 +295,9 @@ Output = "Artifacts"
     const auto manifest = manifestPath.string();
     const auto added = Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Json", "--path", "../Json"});
     REQUIRE(added.exitCode == 0);
-    CHECK(added.output.contains("Added Json @ path '../Json'"));
+    CHECK(added.output.contains("Added path dependency 'Json' in "));
+    CHECK(added.output.contains("Path: ../Json"));
+    CHECK(added.output.contains("Manifest: "));
 
     const std::string afterAdd = ReadTextFile(manifestPath);
     CHECK(afterAdd == R"([Manifest]
@@ -316,21 +319,28 @@ Output = "Artifacts"
     const auto duplicate =
         Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Json", "--path", "../Json"});
     REQUIRE(duplicate.exitCode == 0);
-    CHECK(duplicate.output.contains("Up-to-date Json @ path '../Json'"));
+    CHECK(duplicate.output.contains("Unchanged path dependency 'Json' in "));
+    CHECK(ReadTextFile(manifestPath) == afterAdd);
+
+    const auto quiet =
+        Run(std::array<std::string_view, 7>{"--quiet", "--manifest", manifest, "add", "Json", "--path", "../Json"});
+    REQUIRE(quiet.exitCode == 0);
+    CHECK(quiet.output.empty());
     CHECK(ReadTextFile(manifestPath) == afterAdd);
 
     // Import-name matching is normalized, including when the manifest entry
     // aliases a differently named registry package.
     const auto removed = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "alias"});
     REQUIRE(removed.exitCode == 0);
-    CHECK(removed.output.contains("Removed alias"));
+    CHECK(removed.output.contains("Removed dependency 'alias' in "));
     const std::string afterRemove = ReadTextFile(manifestPath);
     CHECK_FALSE(afterRemove.contains("Alias ="));
     CHECK(afterRemove.contains("Json = { Path = \"../Json\" }"));
 
     const auto missing = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "Alias"});
     CHECK(missing.exitCode == 1);
-    CHECK(missing.output.contains("package 'Alias' is not a dependency"));
+    CHECK(missing.output.contains("dependency 'Alias' was not found"));
+    CHECK(missing.output.contains("help: run 'rux list'"));
     CHECK(ReadTextFile(manifestPath) == afterRemove);
 
     std::error_code error;
@@ -359,18 +369,35 @@ Type = "SourceLibrary"
 
     const auto unqualified = Run(std::array<std::string_view, 4>{"--manifest", manifest, "add", "Json"});
     CHECK(unqualified.exitCode == 1);
-    CHECK(unqualified.output.contains("a registry dependency needs a namespace"));
+    CHECK(unqualified.output.contains("registry dependency 'Json' must include a namespace"));
+    CHECK(unqualified.output.contains("help: use 'rux add Namespace/Json'"));
     CHECK(ReadTextFile(manifestPath) == original);
 
     const auto qualifiedPath =
         Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Rux/Json", "--path", "../Json"});
     CHECK(qualifiedPath.exitCode == 1);
-    CHECK(qualifiedPath.output.contains("a path dependency cannot name a registry namespace"));
+    CHECK(qualifiedPath.output.contains("path dependency 'Rux/Json' cannot include a registry namespace"));
+    CHECK(qualifiedPath.output.contains("help: use 'rux add Json --path ../Json'"));
+    CHECK(ReadTextFile(manifestPath) == original);
+
+    const auto versionedPath =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "add", "Json@1.0.0", "--path", "../Json"});
+    CHECK(versionedPath.exitCode == 1);
+    CHECK(versionedPath.output.contains("path dependency 'Json@1.0.0' cannot include a version requirement"));
+    CHECK(versionedPath.output.contains("help: use 'rux add Json --path ../Json'"));
+    CHECK(ReadTextFile(manifestPath) == original);
+
+    const auto sourceConflict = Run(std::array<std::string_view, 8>{"--manifest", manifest, "add", "Json", "--path",
+                                                                    "../Json", "--registry", "http://localhost"});
+    CHECK(sourceConflict.exitCode == 2);
+    CHECK(sourceConflict.output.contains("options '--path' and '--registry' cannot be used together"));
+    CHECK_FALSE(sourceConflict.output.contains(" ms"));
     CHECK(ReadTextFile(manifestPath) == original);
 
     const auto invalidName = Run(std::array<std::string_view, 4>{"--manifest", manifest, "remove", "Rux/Json"});
     CHECK(invalidName.exitCode == 1);
-    CHECK(invalidName.output.contains("is not a valid import name"));
+    CHECK(invalidName.output.contains("dependency name 'Rux/Json' is invalid"));
+    CHECK(invalidName.output.contains("help: pass the dependency's unqualified import name"));
     CHECK(ReadTextFile(manifestPath) == original);
 
     std::error_code error;

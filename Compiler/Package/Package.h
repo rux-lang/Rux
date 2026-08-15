@@ -2,6 +2,8 @@
 
 #include "Package/Manifest.h"
 
+#include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,6 +23,28 @@ struct ScaffoldOptions {
     bool initMode = false;                                      ///< Do not fail when the directory already exists.
 };
 
+enum class ScaffoldErrorKind {
+    ExistingDestination,
+    InvalidName,
+    CreateDirectory,
+    WriteFile,
+};
+
+struct ScaffoldChanges {
+    std::size_t directoryTreesCreated = 0;
+    std::size_t filesWritten = 0;
+    std::size_t filesPreserved = 0;
+};
+
+struct ScaffoldError {
+    ScaffoldErrorKind kind;
+    std::filesystem::path path;
+    std::string detail;
+    ScaffoldChanges partialChanges;
+};
+
+using ScaffoldResult = std::expected<ScaffoldChanges, ScaffoldError>;
+
 /**
  * @brief Scaffolds a new Rux package structure.
  *
@@ -29,7 +53,8 @@ struct ScaffoldOptions {
  *
  * @param options Package location, identity and kind
  *
- * @return true on success, false on failure
+ * @return Counts of filesystem changes, or a structured failure. This package
+ * layer never writes diagnostics; the caller owns presentation.
  */
-bool ScaffoldPackage(const ScaffoldOptions &options);
+[[nodiscard]] ScaffoldResult ScaffoldPackage(const ScaffoldOptions &options);
 } // namespace Rux
