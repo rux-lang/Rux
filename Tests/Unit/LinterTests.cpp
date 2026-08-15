@@ -49,6 +49,7 @@ TEST_CASE("linter warns on bad function name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "function name 'bad_name' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadName'");
 }
 
 TEST_CASE("linter accepts symbolic operator function names") {
@@ -68,6 +69,7 @@ TEST_CASE("linter warns on bad function parameter name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "parameter name 'BadParam' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badParam'");
 }
 
 TEST_CASE("linter warns on bad struct name") {
@@ -75,6 +77,7 @@ TEST_CASE("linter warns on bad struct name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "struct name 'badStruct' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadStruct'");
 }
 
 TEST_CASE("linter warns on bad struct field name") {
@@ -82,6 +85,7 @@ TEST_CASE("linter warns on bad struct field name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "struct field name 'BadField' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badField'");
 }
 
 TEST_CASE("linter warns on bad enum name") {
@@ -89,6 +93,7 @@ TEST_CASE("linter warns on bad enum name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "enum name 'badEnum' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadEnum'");
 }
 
 TEST_CASE("linter warns on bad enum variant name") {
@@ -96,6 +101,7 @@ TEST_CASE("linter warns on bad enum variant name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "enum variant name 'badVariant' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadVariant'");
 }
 
 TEST_CASE("linter warns on bad enum variant field name") {
@@ -103,6 +109,7 @@ TEST_CASE("linter warns on bad enum variant field name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "enum variant field name 'BadField' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badField'");
 }
 
 TEST_CASE("linter warns on bad union name") {
@@ -110,6 +117,7 @@ TEST_CASE("linter warns on bad union name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "union name 'badUnion' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadUnion'");
 }
 
 TEST_CASE("linter warns on bad union field name") {
@@ -117,6 +125,7 @@ TEST_CASE("linter warns on bad union field name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "union field name 'BadField' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badField'");
 }
 
 TEST_CASE("linter warns on bad interface name") {
@@ -124,6 +133,7 @@ TEST_CASE("linter warns on bad interface name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "interface name 'badInterface' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadInterface'");
 }
 
 TEST_CASE("linter warns on bad module name") {
@@ -131,6 +141,7 @@ TEST_CASE("linter warns on bad module name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "module name 'bad_module' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadModule'");
 }
 
 TEST_CASE("linter warns on bad constant name") {
@@ -138,6 +149,7 @@ TEST_CASE("linter warns on bad constant name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "constant name 'badConst' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadConst'");
 }
 
 TEST_CASE("linter warns on bad type alias name") {
@@ -145,6 +157,7 @@ TEST_CASE("linter warns on bad type alias name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "type alias name 'badAlias' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadAlias'");
 }
 
 TEST_CASE("naming.type allows foreign type and member names") {
@@ -188,7 +201,8 @@ TEST_CASE("linter warns on bad local variable name") {
     auto result = Rux::Linting::Lint("func Test() { let BadVar = 10; }", "local_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
-    CHECK(result.diagnostics[0].message == "variable name 'BadVar' should be camelCase");
+    CHECK(result.diagnostics[0].message == "local variable name 'BadVar' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badVar'");
 }
 
 TEST_CASE("linter warns on bad loop variable name") {
@@ -196,11 +210,61 @@ TEST_CASE("linter warns on bad loop variable name") {
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "loop variable name 'BadVar' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badVar'");
 }
 
 TEST_CASE("linter warns on bad pattern binding name") {
     auto result = Rux::Linting::Lint("func Test() { let (x, BadVar) = (1, 2); }", "pattern_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
-    CHECK(result.diagnostics[0].message == "variable binding 'BadVar' should be camelCase");
+    CHECK(result.diagnostics[0].message == "pattern binding name 'BadVar' should be camelCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'badVar'");
+}
+
+TEST_CASE("linter normalizes acronyms digits and leading underscores") {
+    auto result = Rux::Linting::Lint("func _HTTP_2_handler(HTTP_2_VALUE: int) {}", "normalization.rux");
+    REQUIRE(result.diagnostics.size() == 2);
+    CHECK(result.diagnostics[0].help == "rename it to 'Http2Handler'");
+    CHECK(result.diagnostics[1].help == "rename it to 'http2Value'");
+}
+
+TEST_CASE("linter accepts valid names containing acronyms and digits") {
+    auto result = Rux::Linting::Lint("func HTTP2Server(http2Value: int) {}", "acronyms.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
+TEST_CASE("linter omits naming help when the normalized name collides") {
+    auto declarations = Rux::Linting::Lint(R"(
+        func bad_name() {}
+        func BadName() {}
+    )",
+                                           "declaration_collision.rux");
+    REQUIRE(declarations.diagnostics.size() == 1);
+    CHECK_FALSE(declarations.diagnostics[0].help.has_value());
+
+    auto members = Rux::Linting::Lint(R"(
+        struct Example {
+            BadField: int;
+            badField: int;
+        }
+    )",
+                                      "member_collision.rux");
+    REQUIRE(members.diagnostics.size() == 1);
+    CHECK_FALSE(members.diagnostics[0].help.has_value());
+
+    auto locals = Rux::Linting::Lint("func Example(badVar: int) { let BadVar = 1; }", "local_collision.rux");
+    REQUIRE(locals.diagnostics.size() == 1);
+    CHECK_FALSE(locals.diagnostics[0].help.has_value());
+}
+
+TEST_CASE("linter preserves source locations and warning counts for naming diagnostics") {
+    auto result = Rux::Linting::Lint("func bad_name(BadParam: int) {}", "warning_count.rux");
+    REQUIRE(result.diagnostics.size() == 2);
+    CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
+    CHECK(result.diagnostics[0].location.line == 1);
+    CHECK(result.diagnostics[0].location.column == 1);
+    CHECK(result.diagnostics[1].severity == Diagnostic::Severity::Warning);
+    CHECK(result.diagnostics[1].location.line == 1);
+    CHECK(result.diagnostics[1].location.column == 15);
 }

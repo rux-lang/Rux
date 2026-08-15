@@ -846,6 +846,7 @@ Type = "Executable"
     const auto warned = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "lint"});
     CHECK(warned.exitCode == 0);
     CHECK(warned.output.contains("warning: function name 'bad_name' should be PascalCase"));
+    CHECK(warned.output.contains("help: rename it to 'BadName'"));
     CHECK(warned.output.contains("1 file, 1 warning, 0 errors"));
 
     WriteTextFile(sourcePath, "func Main(\n");

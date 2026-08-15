@@ -7,7 +7,10 @@
 #include <cctype>
 #include <format>
 #include <iterator>
+#include <optional>
+#include <span>
 #include <string_view>
+#include <vector>
 
 namespace Rux::Linting {
 namespace {
@@ -48,6 +51,205 @@ bool IsCamelCase(std::string_view name) {
     return true;
 }
 
+enum class NamingConvention {
+    PascalCase,
+    CamelCase,
+};
+
+bool IsWordBoundary(const std::string_view name, const std::size_t index) {
+    if (index == 0 || name[index - 1] == '_') {
+        return true;
+    }
+
+    const auto previous = static_cast<unsigned char>(name[index - 1]);
+    const auto current = static_cast<unsigned char>(name[index]);
+    if (std::islower(previous) && std::isupper(current)) {
+        return true;
+    }
+
+    return std::isupper(previous) && std::isupper(current) && index + 1 < name.size() &&
+           std::islower(static_cast<unsigned char>(name[index + 1]));
+}
+
+std::optional<std::string> NormalizeName(const std::string_view name, const NamingConvention convention) {
+    std::vector<std::string> words;
+    for (std::size_t index = 0; index < name.size();) {
+        while (index < name.size() && name[index] == '_') {
+            ++index;
+        }
+        if (index == name.size()) {
+            break;
+        }
+
+        std::string word;
+        do {
+            const auto value = static_cast<unsigned char>(name[index]);
+            word.push_back(static_cast<char>(std::tolower(value)));
+            ++index;
+        }
+        while (index < name.size() && name[index] != '_' && !IsWordBoundary(name, index));
+        words.push_back(std::move(word));
+    }
+
+    if (words.empty()) {
+        return std::nullopt;
+    }
+
+    std::string normalized;
+    for (std::size_t index = 0; index < words.size(); ++index) {
+        auto &word = words[index];
+        if (index != 0 || convention == NamingConvention::PascalCase) {
+            word.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(word.front())));
+        }
+        normalized += word;
+    }
+
+    const bool valid = convention == NamingConvention::PascalCase ? IsPascalCase(normalized) : IsCamelCase(normalized);
+    if (!valid || normalized == name) {
+        return std::nullopt;
+    }
+    return normalized;
+}
+
+std::string_view ConventionName(const NamingConvention convention) {
+    return convention == NamingConvention::PascalCase ? "PascalCase" : "camelCase";
+}
+
+std::optional<std::string> DeclName(const Decl &decl) {
+    if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
+        return function->name;
+    }
+    if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+        return structure->name;
+    }
+    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+        return enumeration->name;
+    }
+    if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
+        return unionDecl->name;
+    }
+    if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
+        return interfaceDecl->name;
+    }
+    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+        return module->name;
+    }
+    if (const auto *constant = dynamic_cast<const ConstDecl *>(&decl)) {
+        return constant->name;
+    }
+    if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+        return alias->name;
+    }
+    if (const auto *function = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+        return function->name;
+    }
+    if (const auto *variable = dynamic_cast<const ExternVarDecl *>(&decl)) {
+        return variable->name;
+    }
+    return std::nullopt;
+}
+
+std::vector<std::string> DeclNames(const std::span<const DeclPtr> declarations) {
+    std::vector<std::string> names;
+    for (const auto &declaration : declarations) {
+        if (declaration) {
+            if (auto name = DeclName(*declaration)) {
+                names.push_back(std::move(*name));
+            }
+        }
+    }
+    return names;
+}
+
+template <typename T>
+std::vector<std::string> Names(const std::vector<T> &items) {
+    std::vector<std::string> names;
+    names.reserve(items.size());
+    for (const auto &item : items) {
+        names.push_back(item.name);
+    }
+    return names;
+}
+
+void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names) {
+    if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
+        if (!identifier->name.empty()) {
+            names.push_back(identifier->name);
+        }
+    }
+    else if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
+        if (range->lo) {
+            AppendPatternNames(*range->lo, names);
+        }
+        if (range->hi) {
+            AppendPatternNames(*range->hi, names);
+        }
+    }
+    else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        for (const auto &argument : enumeration->args) {
+            if (argument) {
+                AppendPatternNames(*argument, names);
+            }
+        }
+        for (const auto &argument : enumeration->namedArgs) {
+            if (argument.pattern) {
+                AppendPatternNames(*argument.pattern, names);
+            }
+        }
+    }
+    else if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        for (const auto &field : structure->fields) {
+            if (field.pattern) {
+                AppendPatternNames(*field.pattern, names);
+            }
+        }
+    }
+    else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        for (const auto &element : tuple->elements) {
+            if (element) {
+                AppendPatternNames(*element, names);
+            }
+        }
+    }
+    else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+        if (guarded->inner) {
+            AppendPatternNames(*guarded->inner, names);
+        }
+    }
+}
+
+std::vector<std::string> BlockBindingNames(const Block &block, const std::span<const std::string> inheritedNames) {
+    std::vector<std::string> names(inheritedNames.begin(), inheritedNames.end());
+    for (const auto &statement : block.stmts) {
+        if (const auto *binding = dynamic_cast<const LetStmt *>(statement.get())) {
+            if (!binding->name.empty()) {
+                names.push_back(binding->name);
+            }
+            if (binding->pattern) {
+                AppendPatternNames(*binding->pattern, names);
+            }
+        }
+    }
+    return names;
+}
+
+bool SuggestionCollides(const std::string_view original, const std::string_view suggestion,
+                        const NamingConvention convention, const std::span<const std::string> names) {
+    bool skippedOriginal = false;
+    for (const auto &name : names) {
+        if (!skippedOriginal && name == original) {
+            skippedOriginal = true;
+            continue;
+        }
+
+        const auto normalized = NormalizeName(name, convention);
+        if ((normalized && *normalized == suggestion) || (!normalized && name == suggestion)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Allows(const Decl &decl, const std::string_view rule) {
     return std::ranges::find(decl.allowedLints, rule) != decl.allowedLints.end();
 }
@@ -68,9 +270,10 @@ public:
     std::vector<Diagnostic> diagnostics;
 
     void VisitModule(const Module &module) {
+        const auto names = DeclNames(module.items);
         for (const auto &item : module.items) {
             if (item) {
-                VisitDecl(*item);
+                VisitDecl(*item, names);
             }
         }
     }
@@ -78,52 +281,72 @@ public:
 private:
     std::string sourceName;
 
-    void Warn(SourceLocation loc, std::string message) {
+    void Warn(SourceLocation loc, std::string message, std::optional<std::string> help = std::nullopt) {
         Diagnostic d;
         d.severity = Diagnostic::Severity::Warning;
         d.sourceName = sourceName;
         d.location = loc;
         d.message = std::move(message);
+        d.help = std::move(help);
         diagnostics.push_back(std::move(d));
     }
 
-    void VisitDecl(const Decl &decl) {
+    void WarnNaming(const SourceLocation loc, const std::string_view description, const std::string_view name,
+                    const NamingConvention convention, const std::span<const std::string> names) {
+        auto suggestion = NormalizeName(name, convention);
+        if (suggestion && SuggestionCollides(name, *suggestion, convention, names)) {
+            suggestion.reset();
+        }
+
+        std::optional<std::string> help;
+        if (suggestion) {
+            help = std::format("rename it to '{}'", *suggestion);
+        }
+        Warn(loc, std::format("{} '{}' should be {}", description, name, ConventionName(convention)), std::move(help));
+    }
+
+    void VisitDecl(const Decl &decl, const std::span<const std::string> siblingNames) {
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
-                Warn(fn->location, std::format("function name '{}' should be PascalCase", fn->name));
+                WarnNaming(fn->location, "function name", fn->name, NamingConvention::PascalCase, siblingNames);
             }
+            const auto parameterNames = Names(fn->params);
             for (const auto &p : fn->params) {
                 if (!IsCamelCase(p.name)) {
-                    Warn(p.location, std::format("parameter name '{}' should be camelCase", p.name));
+                    WarnNaming(p.location, "parameter name", p.name, NamingConvention::CamelCase, parameterNames);
                 }
             }
             if (fn->body) {
-                VisitBlock(*fn->body);
+                VisitBlock(*fn->body, parameterNames);
             }
         }
         else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(st->name)) {
-                Warn(st->location, std::format("struct name '{}' should be PascalCase", st->name));
+                WarnNaming(st->location, "struct name", st->name, NamingConvention::PascalCase, siblingNames);
             }
+            const auto fieldNames = Names(st->fields);
             for (const auto &f : st->fields) {
                 if (!allowTypeNaming && !IsCamelCase(f.name)) {
-                    Warn(f.location, std::format("struct field name '{}' should be camelCase", f.name));
+                    WarnNaming(f.location, "struct field name", f.name, NamingConvention::CamelCase, fieldNames);
                 }
             }
         }
         else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(en->name)) {
-                Warn(en->location, std::format("enum name '{}' should be PascalCase", en->name));
+                WarnNaming(en->location, "enum name", en->name, NamingConvention::PascalCase, siblingNames);
             }
+            const auto variantNames = Names(en->variants);
             for (const auto &v : en->variants) {
                 if (!allowTypeNaming && !IsPascalCase(v.name)) {
-                    Warn(v.location, std::format("enum variant name '{}' should be PascalCase", v.name));
+                    WarnNaming(v.location, "enum variant name", v.name, NamingConvention::PascalCase, variantNames);
                 }
+                const auto fieldNames = Names(v.namedFields);
                 for (const auto &nf : v.namedFields) {
                     if (!allowTypeNaming && !IsCamelCase(nf.name)) {
-                        Warn(nf.location, std::format("enum variant field name '{}' should be camelCase", nf.name));
+                        WarnNaming(nf.location, "enum variant field name", nf.name, NamingConvention::CamelCase,
+                                   fieldNames);
                     }
                 }
             }
@@ -131,44 +354,60 @@ private:
         else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(un->name)) {
-                Warn(un->location, std::format("union name '{}' should be PascalCase", un->name));
+                WarnNaming(un->location, "union name", un->name, NamingConvention::PascalCase, siblingNames);
             }
+            const auto fieldNames = Names(un->fields);
             for (const auto &f : un->fields) {
                 if (!allowTypeNaming && !IsCamelCase(f.name)) {
-                    Warn(f.location, std::format("union field name '{}' should be camelCase", f.name));
+                    WarnNaming(f.location, "union field name", f.name, NamingConvention::CamelCase, fieldNames);
                 }
             }
         }
         else if (const auto *iface = dynamic_cast<const InterfaceDecl *>(&decl)) {
             if (!IsPascalCase(iface->name)) {
-                Warn(iface->location, std::format("interface name '{}' should be PascalCase", iface->name));
+                WarnNaming(iface->location, "interface name", iface->name, NamingConvention::PascalCase, siblingNames);
+            }
+            std::vector<std::string> methodNames;
+            methodNames.reserve(iface->methods.size());
+            for (const auto &method : iface->methods) {
+                if (method) {
+                    methodNames.push_back(method->name);
+                }
             }
             for (const auto &m : iface->methods) {
                 if (m) {
-                    VisitDecl(*m);
+                    VisitDecl(*m, methodNames);
                 }
             }
         }
         else if (const auto *impl = dynamic_cast<const ImplDecl *>(&decl)) {
+            std::vector<std::string> methodNames;
+            methodNames.reserve(impl->methods.size());
+            for (const auto &method : impl->methods) {
+                if (method) {
+                    methodNames.push_back(method->name);
+                }
+            }
             for (const auto &m : impl->methods) {
                 if (m) {
-                    VisitDecl(*m);
+                    VisitDecl(*m, methodNames);
                 }
             }
         }
         else if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
             if (!IsPascalCase(mod->name)) {
-                Warn(mod->location, std::format("module name '{}' should be PascalCase", mod->name));
+                WarnNaming(mod->location, "module name", mod->name, NamingConvention::PascalCase, siblingNames);
             }
+            const auto itemNames = DeclNames(mod->items);
             for (const auto &item : mod->items) {
                 if (item) {
-                    VisitDecl(*item);
+                    VisitDecl(*item, itemNames);
                 }
             }
         }
         else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
             if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name)) {
-                Warn(cnst->location, std::format("constant name '{}' should be PascalCase", cnst->name));
+                WarnNaming(cnst->location, "constant name", cnst->name, NamingConvention::PascalCase, siblingNames);
             }
             if (cnst->value) {
                 VisitExpr(*cnst->value);
@@ -176,27 +415,29 @@ private:
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
-                Warn(alias->location, std::format("type alias name '{}' should be PascalCase", alias->name));
+                WarnNaming(alias->location, "type alias name", alias->name, NamingConvention::PascalCase, siblingNames);
             }
         }
         else if (const auto *extBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+            const auto itemNames = DeclNames(extBlock->items);
             for (const auto &item : extBlock->items) {
                 if (item) {
-                    VisitDecl(*item);
+                    VisitDecl(*item, itemNames);
                 }
             }
         }
     }
 
-    void VisitBlock(const Block &block) {
+    void VisitBlock(const Block &block, const std::span<const std::string> inheritedNames = {}) {
+        const auto names = BlockBindingNames(block, inheritedNames);
         for (const auto &stmt : block.stmts) {
             if (stmt) {
-                VisitStmt(*stmt);
+                VisitStmt(*stmt, names);
             }
         }
     }
 
-    void VisitStmt(const Stmt &stmt) {
+    void VisitStmt(const Stmt &stmt, const std::span<const std::string> scopeNames) {
         if (const auto *exprStmt = dynamic_cast<const ExprStmt *>(&stmt)) {
             if (exprStmt->expr) {
                 VisitExpr(*exprStmt->expr);
@@ -204,10 +445,11 @@ private:
         }
         else if (const auto *letStmt = dynamic_cast<const LetStmt *>(&stmt)) {
             if (!letStmt->name.empty() && !IsCamelCase(letStmt->name)) {
-                Warn(letStmt->location, std::format("variable name '{}' should be camelCase", letStmt->name));
+                WarnNaming(letStmt->location, "local variable name", letStmt->name, NamingConvention::CamelCase,
+                           scopeNames);
             }
             if (letStmt->pattern) {
-                VisitPattern(*letStmt->pattern);
+                VisitPattern(*letStmt->pattern, scopeNames);
             }
             if (letStmt->init) {
                 VisitExpr(*letStmt->init);
@@ -218,18 +460,18 @@ private:
                 VisitExpr(*ifStmt->condition);
             }
             if (ifStmt->thenBlock) {
-                VisitBlock(*ifStmt->thenBlock);
+                VisitBlock(*ifStmt->thenBlock, scopeNames);
             }
             for (const auto &elif : ifStmt->elseIfs) {
                 if (elif.condition) {
                     VisitExpr(*elif.condition);
                 }
                 if (elif.block) {
-                    VisitBlock(*elif.block);
+                    VisitBlock(*elif.block, scopeNames);
                 }
             }
             if (ifStmt->elseBlock) {
-                VisitBlock(*ifStmt->elseBlock);
+                VisitBlock(*ifStmt->elseBlock, scopeNames);
             }
         }
         else if (const auto *whileStmt = dynamic_cast<const WhileStmt *>(&stmt)) {
@@ -237,12 +479,12 @@ private:
                 VisitExpr(*whileStmt->condition);
             }
             if (whileStmt->body) {
-                VisitBlock(*whileStmt->body);
+                VisitBlock(*whileStmt->body, scopeNames);
             }
         }
         else if (const auto *doWhileStmt = dynamic_cast<const DoWhileStmt *>(&stmt)) {
             if (doWhileStmt->body) {
-                VisitBlock(*doWhileStmt->body);
+                VisitBlock(*doWhileStmt->body, scopeNames);
             }
             if (doWhileStmt->condition) {
                 VisitExpr(*doWhileStmt->condition);
@@ -250,18 +492,21 @@ private:
         }
         else if (const auto *loopStmt = dynamic_cast<const LoopStmt *>(&stmt)) {
             if (loopStmt->body) {
-                VisitBlock(*loopStmt->body);
+                VisitBlock(*loopStmt->body, scopeNames);
             }
         }
         else if (const auto *forStmt = dynamic_cast<const ForStmt *>(&stmt)) {
+            std::vector loopNames(scopeNames.begin(), scopeNames.end());
+            loopNames.push_back(forStmt->variable);
             if (!forStmt->variable.empty() && !IsCamelCase(forStmt->variable)) {
-                Warn(forStmt->location, std::format("loop variable name '{}' should be camelCase", forStmt->variable));
+                WarnNaming(forStmt->location, "loop variable name", forStmt->variable, NamingConvention::CamelCase,
+                           loopNames);
             }
             if (forStmt->iterable) {
                 VisitExpr(*forStmt->iterable);
             }
             if (forStmt->body) {
-                VisitBlock(*forStmt->body);
+                VisitBlock(*forStmt->body, loopNames);
             }
         }
         else if (const auto *matchStmt = dynamic_cast<const MatchStmt *>(&stmt)) {
@@ -270,7 +515,9 @@ private:
             }
             for (const auto &arm : matchStmt->arms) {
                 if (arm.pattern) {
-                    VisitPattern(*arm.pattern);
+                    std::vector armNames(scopeNames.begin(), scopeNames.end());
+                    AppendPatternNames(*arm.pattern, armNames);
+                    VisitPattern(*arm.pattern, armNames);
                 }
                 if (arm.body) {
                     VisitExpr(*arm.body);
@@ -284,54 +531,59 @@ private:
         }
         else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
-                VisitDecl(*declStmt->decl);
+                std::vector<std::string> name;
+                if (auto declarationName = DeclName(*declStmt->decl)) {
+                    name.push_back(std::move(*declarationName));
+                }
+                VisitDecl(*declStmt->decl, name);
             }
         }
     }
 
-    void VisitPattern(const Pattern &pattern) {
+    void VisitPattern(const Pattern &pattern, const std::span<const std::string> scopeNames) {
         if (const auto *idPat = dynamic_cast<const IdentPattern *>(&pattern)) {
             if (!idPat->name.empty() && !IsCamelCase(idPat->name)) {
-                Warn(idPat->location, std::format("variable binding '{}' should be camelCase", idPat->name));
+                WarnNaming(idPat->location, "pattern binding name", idPat->name, NamingConvention::CamelCase,
+                           scopeNames);
             }
         }
         else if (const auto *rangePat = dynamic_cast<const RangePattern *>(&pattern)) {
             if (rangePat->lo) {
-                VisitPattern(*rangePat->lo);
+                VisitPattern(*rangePat->lo, scopeNames);
             }
             if (rangePat->hi) {
-                VisitPattern(*rangePat->hi);
+                VisitPattern(*rangePat->hi, scopeNames);
             }
         }
         else if (const auto *enumPat = dynamic_cast<const EnumPattern *>(&pattern)) {
             for (const auto &arg : enumPat->args) {
                 if (arg) {
-                    VisitPattern(*arg);
+                    VisitPattern(*arg, scopeNames);
                 }
             }
             for (const auto &narg : enumPat->namedArgs) {
                 if (narg.pattern) {
-                    VisitPattern(*narg.pattern);
+                    VisitPattern(*narg.pattern, scopeNames);
                 }
             }
         }
         else if (const auto *structPat = dynamic_cast<const StructPattern *>(&pattern)) {
             for (const auto &f : structPat->fields) {
                 if (f.pattern) {
-                    VisitPattern(*f.pattern);
+                    VisitPattern(*f.pattern, scopeNames);
                 }
             }
         }
         else if (const auto *tuplePat = dynamic_cast<const TuplePattern *>(&pattern)) {
             for (const auto &el : tuplePat->elements) {
                 if (el) {
-                    VisitPattern(*el);
+                    VisitPattern(*el, scopeNames);
                 }
             }
         }
         else if (const auto *guardedPat = dynamic_cast<const GuardedPattern *>(&pattern)) {
             if (guardedPat->inner) {
-                VisitPattern(*guardedPat->inner);
+                VisitPattern(*guardedPat->inner, scopeNames);
             }
             if (guardedPat->guard) {
                 VisitExpr(*guardedPat->guard);
@@ -455,7 +707,9 @@ private:
             }
             for (const auto &arm : matchExpr->arms) {
                 if (arm.pattern) {
-                    VisitPattern(*arm.pattern);
+                    std::vector<std::string> names;
+                    AppendPatternNames(*arm.pattern, names);
+                    VisitPattern(*arm.pattern, names);
                 }
                 if (arm.body) {
                     VisitExpr(*arm.body);
