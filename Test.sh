@@ -154,6 +154,8 @@ run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Test.sh
 run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Check.sh
 run_checked ScriptMessages sh Tests/Policy/ScriptMessages/Check.sh
 run_checked InstallerMessages sh Tests/Policy/InstallerMessages/Check.sh
+run_checked UserMessages sh Tests/Policy/UserMessages/Test.sh
+run_checked UserMessages sh Tests/Policy/UserMessages/Check.sh
 
 if [ "$skip_build" = false ]; then
     if [ -n "$compiler" ]; then
@@ -168,7 +170,7 @@ if [ "$skip_build" = false ]; then
     fi
 else
     step "Skipping compiler build"
-    printf "  Note: using the existing build in '%s'\n" "$build_path"
+    printf "  note: using the existing build in '%s'\n" "$build_path"
 fi
 
 [ -f "$rux_path" ] || die "rux executable '$rux_path' was not found; build it first or pass --rux-executable"

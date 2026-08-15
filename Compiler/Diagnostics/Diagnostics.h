@@ -69,17 +69,7 @@ struct Diagnostic {
 [[nodiscard]] std::string RenderDiagnostic(const Diagnostic &diag, bool color = false,
                                            const SourceLineLookup &sourceLineLookup = {});
 
-// Print the plain canonical human form to stderr.
-void PrintDiagnostic(const Diagnostic &diag, const SourceLineLookup &sourceLineLookup = {});
-
-// Print every diagnostic to stderr. Returns true if any is an error.
-bool PrintDiagnostics(std::span<const Diagnostic> diags);
-
 // Render the stable `rux check --json` envelope. Supplemental human context is
 // intentionally excluded to preserve the existing five-key diagnostic schema.
 [[nodiscard]] std::string RenderDiagnosticsJson(std::span<const Diagnostic> diags, bool success);
-
-// Print the JSON envelope to stdout:
-//   { "success": ..., "diagnostics": [ {"file": ..., "line": ..., ...} ] }
-void PrintDiagnosticsJson(std::span<const Diagnostic> diags, bool success);
 } // namespace Rux

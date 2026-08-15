@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <format>
 #include <limits>
-#include <print>
 #include <utility>
 #include <vector>
 
@@ -316,19 +315,6 @@ std::string RenderDiagnostic(const Diagnostic &diag, const bool color, const Sou
     return out;
 }
 
-void PrintDiagnostic(const Diagnostic &diag, const SourceLineLookup &sourceLineLookup) {
-    std::print(stderr, "{}", RenderDiagnostic(diag, false, sourceLineLookup));
-}
-
-bool PrintDiagnostics(std::span<const Diagnostic> diags) {
-    bool hasErrors = false;
-    for (const auto &diag : diags) {
-        PrintDiagnostic(diag);
-        hasErrors |= diag.IsError();
-    }
-    return hasErrors;
-}
-
 std::string RenderDiagnosticsJson(const std::span<const Diagnostic> diags, const bool success) {
     std::string out = std::format("{{\n  \"success\": {},\n  \"diagnostics\": [\n", success ? "true" : "false");
     for (std::size_t i = 0; i < diags.size(); ++i) {
@@ -343,7 +329,4 @@ std::string RenderDiagnosticsJson(const std::span<const Diagnostic> diags, const
     return out;
 }
 
-void PrintDiagnosticsJson(const std::span<const Diagnostic> diags, const bool success) {
-    std::print("{}", RenderDiagnosticsJson(diags, success));
-}
 } // namespace Rux

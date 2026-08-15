@@ -121,13 +121,19 @@ Supporting layers around the pipeline:
   API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tests/Policy/PlatformIsolation/Check.sh`.
 - **No external toolchain** — the compiler assembles, links, and signs its own artifacts, so nothing under `Compiler/` may name or launch an assembler, C compiler,
   linker, archiver, or signing tool. `Tests/Policy/NoExternalToolchain/Check.sh` enforces that, with the remaining exceptions listed at the top of the script.
+- **User-message ownership** — reusable compiler/package code returns failures and diagnostics; `Compiler/Cli/` owns
+  process streams, `CliSupport::Reporter` owns semantic human presentation, and `Reporting::FormatDuration` owns C++
+  duration grammar. `Tests/Policy/UserMessages/Check.sh` names the file, line, rule, approved helper, and remediation for
+  raw printing outside those owners, ad hoc duration text, obsolete `/docs/cli/` links, ANSI-capable JSON owners,
+  capitalized severity prefixes, and external-toolchain suggestions. Its reasoned allowlist covers only stable
+  inspection, machine, generated, and relayed user-program output.
 - **Bounded implementation files** — C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` have a 1,200-line architecture guideline. `Tests/Policy/OversizedFiles/Check.sh` reports every larger file and rejects unreviewed paths or growth beyond a reviewed path-specific ceiling. A cohesive owner, dense vector table, generated source, or vendored dependency may keep its locality when the exception records why a split would make the ownership or data harder to audit.
 
 ## 5. Testing
 
 There are two broad suites: Rux-language/package tests (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`). Target-specific native fixtures supplement them where a complete OS interaction needs a dedicated driver script.
 
-`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points. `Tests/Policy/InstallerMessages/Check.sh` covers native-architecture selection, explicit/latest releases, download and extraction failures, PATH/profile handling, Windows user-PATH ownership, MSI downgrade recovery, and timed success output.
+`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points. `Tests/Policy/InstallerMessages/Check.sh` covers native-architecture selection, explicit/latest releases, download and extraction failures, PATH/profile handling, Windows user-PATH ownership, MSI downgrade recovery, and timed success output. The user-message policy has seeded passing and failing fixtures for each rule, including the requirement that every compatibility exception state its category and reason.
 
 ### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 

@@ -150,6 +150,15 @@ policy combines that stream's host interactivity from `RuxSystem` with `--color`
 the host-independent styles in `RuxReporting`. Commands retain responsibility for their wording and for selecting stdout
 or stderr, which makes reporter capture independent of process-wide stream replacement.
 
+Reusable compiler, package, system, and runtime components never write user-facing messages to process streams. They
+return structured failures or `Diagnostic` values; `RuxDiagnostics` renders but does not print them. `Compiler/Cli/` is
+the process-stream owner and routes ordinary human output through `CliSupport::Reporter`. Direct writes are limited to
+interactive prompts and stable machine formats. Deterministic token/AST/semantic/HIR/LIR/assembly/RCU inspection,
+generated documentation, and relayed test-program output remain compatibility payloads rather than semantic messages.
+`Tests/Policy/UserMessages/Allowlist.txt` records every such family with a reason, and the adjacent policy rejects direct
+printing elsewhere, ad hoc durations, stale CLI routes, ANSI-capable JSON owners, inconsistent severity labels, and
+external-toolchain recovery suggestions.
+
 Formatter and linter are internal compiler components exposed through the single `rux` application:
 
 ```text

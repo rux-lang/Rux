@@ -18,7 +18,6 @@
 #include <format>
 #include <map>
 #include <optional>
-#include <print>
 #include <span>
 #include <string>
 #include <string_view>
@@ -55,7 +54,8 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             std::string error;
             if (!AddCompileTimeDefine(args[++i], defines, error)) {
                 if (jsonOutput) {
-                    PrintDiagnosticsJson(std::array{ErrorDiagnostic(error)}, false);
+                    output.Write(RenderDiagnosticsJson(std::array{ErrorDiagnostic(error)}, false),
+                                 MessageVisibility::Always);
                 }
                 else {
                     diagnostics.Error(error);
@@ -78,7 +78,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             jsonDiags.push_back(std::move(diag));
         }
         else {
-            std::print(stderr, "{}", RenderDiagnostic(diag, diagnosticColor, sourceLineLookup));
+            diagnostics.Write(RenderDiagnostic(diag, diagnosticColor, sourceLineLookup), MessageVisibility::Always);
         }
     };
     auto EmitFatal = [&](std::string message) {
@@ -100,8 +100,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         hadErrors = true;
     };
     auto Finish = [&](const int exitCode) {
-        if (jsonOutput)
-            PrintDiagnosticsJson(jsonDiags, exitCode == 0);
+        if (jsonOutput) {
+            output.Write(RenderDiagnosticsJson(jsonDiags, exitCode == 0), MessageVisibility::Always);
+        }
         return exitCode;
     };
     const auto targetTriple =

@@ -87,6 +87,7 @@ set(RUX_TEST_SOURCES
     SemanticTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
+    UserMessageProcessTests.cpp
     X86_64AssemblyControlFlowPrinterTests.cpp
     X86_64AssemblyInstructionPrinterTests.cpp
     X86_64AssemblyModulePrinterTests.cpp

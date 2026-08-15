@@ -195,6 +195,8 @@ try {
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Check.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/ScriptMessages/Check.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/InstallerMessages/Check.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/UserMessages/Test.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/UserMessages/Check.sh")
 
     if (-not $SkipBuild) {
         & (Join-Path $repositoryRoot "Build.ps1") `
@@ -203,7 +205,7 @@ try {
     }
     else {
         Write-Step "Skipping compiler build"
-        Write-Host "  Note: using the existing build in '$buildPath'"
+        Write-Host "  note: using the existing build in '$buildPath'"
     }
 
     $runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
