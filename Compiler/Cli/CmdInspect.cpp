@@ -429,8 +429,13 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
             const std::string identity = Qualified(requirement.ns, requirement.package);
             auto entry = FetchPackageIndex(base, requirement.ns, requirement.package);
             if (!entry) {
-                diagnostics.Error(Describe(entry.error(), base, identity));
-                diagnostics.Help(std::format("check the registry URL, then retry 'rux info {}'", packageSpec));
+                const auto problem = Describe(entry.error(), base, identity);
+                diagnostics.Error(problem.message);
+                for (const auto &note : problem.notes) {
+                    diagnostics.Note(note);
+                }
+                diagnostics.Help(problem.help.value_or(
+                    std::format("check the registry URL, then retry 'rux info {}'", packageSpec)));
                 return JsonFailure("the registry lookup failed");
             }
             diagnostics.Error(

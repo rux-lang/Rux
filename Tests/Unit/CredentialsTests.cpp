@@ -78,15 +78,27 @@ private:
 
 constexpr const char *official = "https://api.rux-lang.dev";
 constexpr const char *local = "http://localhost:8080";
+
+std::optional<Credential> Loaded(const std::string_view registry) {
+    auto result = LoadCredential(registry);
+    REQUIRE(result.has_value());
+    return *result;
+}
+
+std::optional<Credential> Resolved(const std::string_view registry) {
+    auto result = ResolveCredential(registry);
+    REQUIRE(result.has_value());
+    return *result;
+}
 } // namespace
 
 TEST_CASE("a stored credential is read back with the file as its source") {
     const ScopedUserDataDir sandbox;
 
-    CHECK_FALSE(LoadCredential(official).has_value());
+    CHECK_FALSE(Loaded(official).has_value());
     REQUIRE(StoreCredential(official, "rux_pat_one").has_value());
 
-    const auto loaded = LoadCredential(official);
+    const auto loaded = Loaded(official);
     REQUIRE(loaded.has_value());
     CHECK(loaded->token == "rux_pat_one");
     CHECK(loaded->source == CredentialsPath().generic_string());
@@ -97,17 +109,17 @@ TEST_CASE("each registry keeps its own token") {
 
     REQUIRE(StoreCredential(official, "official-token").has_value());
     REQUIRE(StoreCredential(local, "local-token").has_value());
-    REQUIRE(LoadCredential(official).has_value());
-    REQUIRE(LoadCredential(local).has_value());
-    CHECK(LoadCredential(official)->token == "official-token");
-    CHECK(LoadCredential(local)->token == "local-token");
+    REQUIRE(Loaded(official).has_value());
+    REQUIRE(Loaded(local).has_value());
+    CHECK(Loaded(official)->token == "official-token");
+    CHECK(Loaded(local)->token == "local-token");
 
     // Replacing one entry must leave every other registry's alone: this is what
     // stops a local test registry from being handed the official credential.
     REQUIRE(StoreCredential(local, "local-token-2").has_value());
-    CHECK(LoadCredential(official)->token == "official-token");
-    CHECK(LoadCredential(local)->token == "local-token-2");
-    CHECK_FALSE(LoadCredential("https://registry.example").has_value());
+    CHECK(Loaded(official)->token == "official-token");
+    CHECK(Loaded(local)->token == "local-token-2");
+    CHECK_FALSE(Loaded("https://registry.example").has_value());
 }
 
 TEST_CASE("trailing slashes name the same registry") {
@@ -117,17 +129,17 @@ TEST_CASE("trailing slashes name the same registry") {
     CHECK(NormalizeRegistryBase("  https://api.rux-lang.dev/  ") == official);
 
     REQUIRE(StoreCredential("https://api.rux-lang.dev/", "token").has_value());
-    REQUIRE(LoadCredential(official).has_value());
-    CHECK(LoadCredential(official)->token == "token");
+    REQUIRE(Loaded(official).has_value());
+    CHECK(Loaded(official)->token == "token");
 
     // The slashed and unslashed forms address one entry, not two.
     REQUIRE(StoreCredential(official, "replacement").has_value());
-    REQUIRE(LoadCredential("https://api.rux-lang.dev/").has_value());
-    CHECK(LoadCredential("https://api.rux-lang.dev/")->token == "replacement");
+    REQUIRE(Loaded("https://api.rux-lang.dev/").has_value());
+    CHECK(Loaded("https://api.rux-lang.dev/")->token == "replacement");
     const auto erased = EraseCredential("https://api.rux-lang.dev//");
     REQUIRE(erased.has_value());
     CHECK(*erased);
-    CHECK_FALSE(LoadCredential(official).has_value());
+    CHECK_FALSE(Loaded(official).has_value());
 }
 
 TEST_CASE("RUX_TOKEN outranks the stored token") {
@@ -136,26 +148,26 @@ TEST_CASE("RUX_TOKEN outranks the stored token") {
     REQUIRE(StoreCredential(official, "stored-token").has_value());
     REQUIRE(SetEnv(kCredentialVariable, "env-token"));
 
-    const auto resolved = ResolveCredential(official);
+    const auto resolved = Resolved(official);
     REQUIRE(resolved.has_value());
     CHECK(resolved->token == "env-token");
     CHECK(resolved->source == kCredentialVariable);
 
     // The environment only shadows the file; it does not replace it.
-    REQUIRE(LoadCredential(official).has_value());
-    CHECK(LoadCredential(official)->token == "stored-token");
+    REQUIRE(Loaded(official).has_value());
+    CHECK(Loaded(official)->token == "stored-token");
 
     // An unset variable falls through to the stored token, and so does an empty
     // one -- an exported-but-blank RUX_TOKEN must not lock publishing out.
     REQUIRE(SetEnv(kCredentialVariable, ""));
-    REQUIRE(ResolveCredential(official).has_value());
-    CHECK(ResolveCredential(official)->token == "stored-token");
+    REQUIRE(Resolved(official).has_value());
+    CHECK(Resolved(official)->token == "stored-token");
 
     REQUIRE(UnsetEnv(kCredentialVariable));
-    REQUIRE(ResolveCredential(official).has_value());
-    CHECK(ResolveCredential(official)->token == "stored-token");
-    CHECK(ResolveCredential(official)->source == CredentialsPath().generic_string());
-    CHECK_FALSE(ResolveCredential(local).has_value());
+    REQUIRE(Resolved(official).has_value());
+    CHECK(Resolved(official)->token == "stored-token");
+    CHECK(Resolved(official)->source == CredentialsPath().generic_string());
+    CHECK_FALSE(Resolved(local).has_value());
 }
 
 TEST_CASE("erasing removes one registry and reports whether it was there") {
@@ -167,8 +179,8 @@ TEST_CASE("erasing removes one registry and reports whether it was there") {
     const auto first = EraseCredential(official);
     REQUIRE(first.has_value());
     CHECK(*first);
-    CHECK_FALSE(LoadCredential(official).has_value());
-    CHECK(LoadCredential(local).has_value());
+    CHECK_FALSE(Loaded(official).has_value());
+    CHECK(Loaded(local).has_value());
 
     // Logging out twice is not an error, it just has nothing left to do.
     const auto again = EraseCredential(official);
@@ -180,10 +192,10 @@ TEST_CASE("erasing removes one registry and reports whether it was there") {
     CHECK_FALSE(std::filesystem::exists(CredentialsPath()));
 }
 
-TEST_CASE("a missing or malformed credentials file yields no credential") {
+TEST_CASE("a missing credentials file is empty and a malformed file reports its path") {
     const ScopedUserDataDir sandbox;
 
-    CHECK_FALSE(LoadCredential(official).has_value());
+    CHECK_FALSE(Loaded(official).has_value());
 
     std::error_code ec;
     std::filesystem::create_directories(CredentialsPath().parent_path(), ec);
@@ -196,14 +208,12 @@ TEST_CASE("a missing or malformed credentials file yields no credential") {
              << "[Registry.\"https://api.rux-lang.dev\"]\n"
              << "Nonsense\n";
     }
-    // A corrupt file reads as "no credential" rather than throwing, so publish
-    // fails with its own actionable message instead of an unexplained crash.
-    CHECK_FALSE(LoadCredential(official).has_value());
+    const auto malformed = LoadCredential(official);
+    REQUIRE_FALSE(malformed.has_value());
+    CHECK(malformed.error().contains("could not parse credentials file"));
+    CHECK(malformed.error().contains(CredentialsPath().generic_string()));
 
-    // And it is recoverable: `rux login` rewrites the file wholesale.
-    REQUIRE(StoreCredential(official, "fresh").has_value());
-    REQUIRE(LoadCredential(official).has_value());
-    CHECK(LoadCredential(official)->token == "fresh");
+    CHECK_FALSE(StoreCredential(official, "fresh").has_value());
 }
 
 TEST_CASE("the credentials file is restricted to its owner") {

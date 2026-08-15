@@ -71,13 +71,19 @@ std::optional<std::string_view> ParseTokenValue(const std::string_view line) {
 
 /// Every entry the credentials file holds, in file order.
 ///
-/// A missing, unreadable or malformed file reads as no entries rather than an
-/// error. A corrupt file must not wedge `publish` into an unexplainable
-/// failure, and `rux login` rewrites the file wholesale anyway.
-std::vector<Entry> ReadEntries() {
-    std::ifstream file(CredentialsPath(), std::ios::binary);
+std::expected<std::vector<Entry>, std::string> ReadEntries() {
+    const std::filesystem::path path = CredentialsPath();
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) {
+        if (ec) {
+            return std::unexpected(
+                std::format("could not inspect credentials file '{}': {}", path.generic_string(), ec.message()));
+        }
+        return std::vector<Entry>{};
+    }
+    std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return {};
+        return std::unexpected(std::format("could not read credentials file '{}'", path.generic_string()));
     }
 
     std::vector<Entry> entries;
@@ -91,8 +97,12 @@ std::vector<Entry> ReadEntries() {
         }
         if (trimmed.starts_with('[')) {
             const auto section = ParseSectionRegistry(trimmed);
-            inSection = section.has_value();
-            registry = inSection ? std::string(*section) : std::string{};
+            if (!section) {
+                return std::unexpected(std::format("could not parse credentials file '{}': invalid section header",
+                                                   path.generic_string()));
+            }
+            inSection = true;
+            registry = std::string(*section);
             continue;
         }
         if (!inSection) {
@@ -100,6 +110,10 @@ std::vector<Entry> ReadEntries() {
         }
         if (const auto token = ParseTokenValue(trimmed); token && !registry.empty()) {
             entries.push_back({.registry = registry, .token = std::string(*token)});
+        }
+        else {
+            return std::unexpected(
+                std::format("could not parse credentials file '{}': invalid token entry", path.generic_string()));
         }
     }
     return entries;
@@ -165,7 +179,7 @@ std::expected<void, std::string> WriteEntries(const std::vector<Entry> &entries)
 } // namespace
 
 std::string NormalizeRegistryBase(const std::string_view base) {
-    std::string normalized(Trim(base));
+    std::string normalized = SanitizeUrl(Trim(base));
     while (normalized.ends_with('/')) {
         normalized.pop_back();
     }
@@ -184,28 +198,36 @@ std::filesystem::path CredentialsPath() {
     return UserDataDir() / (HostOS == OS::Windows ? "Credentials.toml" : "credentials.toml");
 }
 
-std::optional<Credential> LoadCredential(const std::string_view registryBase) {
+std::expected<std::optional<Credential>, std::string> LoadCredential(const std::string_view registryBase) {
     const std::string key = NormalizeRegistryBase(registryBase);
-    for (const auto &entry : ReadEntries()) {
+    auto entries = ReadEntries();
+    if (!entries) {
+        return std::unexpected(std::move(entries.error()));
+    }
+    for (const auto &entry : *entries) {
         if (entry.registry == key && !entry.token.empty()) {
-            return Credential{.token = entry.token, .source = CredentialsPath().generic_string()};
+            return std::optional(Credential{.token = entry.token, .source = CredentialsPath().generic_string()});
         }
     }
-    return std::nullopt;
+    return std::optional<Credential>{};
 }
 
-std::optional<Credential> ResolveCredential(const std::string_view registryBase) {
+std::expected<std::optional<Credential>, std::string> ResolveCredential(const std::string_view registryBase) {
     // The environment wins: a CI job must not be shadowed by a file left on a
     // self-hosted runner.
     if (const auto fromEnv = GetEnv(kCredentialVariable); fromEnv && !fromEnv->empty()) {
-        return Credential{.token = *fromEnv, .source = kCredentialVariable};
+        return std::optional(Credential{.token = *fromEnv, .source = kCredentialVariable});
     }
     return LoadCredential(registryBase);
 }
 
 std::expected<void, std::string> StoreCredential(const std::string_view registryBase, const std::string_view token) {
     const std::string key = NormalizeRegistryBase(registryBase);
-    auto entries = ReadEntries();
+    auto entriesResult = ReadEntries();
+    if (!entriesResult) {
+        return std::unexpected(std::move(entriesResult.error()));
+    }
+    auto entries = std::move(*entriesResult);
     const auto existing = std::ranges::find(entries, key, &Entry::registry);
     if (existing != entries.end()) {
         existing->token = std::string(token);
@@ -218,7 +240,11 @@ std::expected<void, std::string> StoreCredential(const std::string_view registry
 
 std::expected<bool, std::string> EraseCredential(const std::string_view registryBase) {
     const std::string key = NormalizeRegistryBase(registryBase);
-    auto entries = ReadEntries();
+    auto entriesResult = ReadEntries();
+    if (!entriesResult) {
+        return std::unexpected(std::move(entriesResult.error()));
+    }
+    auto entries = std::move(*entriesResult);
     const auto removed = std::erase_if(entries, [&key](const Entry &entry) { return entry.registry == key; });
     if (removed == 0) {
         return false;
@@ -276,12 +302,17 @@ CredentialVerification DecodeCredentialVerification(const unsigned status, const
 }
 
 CredentialVerification VerifyCredential(const std::string_view registryBase, const std::string_view token) {
+    std::string failureDetail;
     auto response = HttpSend({.method = "GET",
                               .url = std::string(registryBase) + "/v1/me",
                               .headers = {{.name = "Authorization", .value = "Bearer " + std::string(token)}},
-                              .body = {}});
+                              .body = {}},
+                             &failureDetail);
     if (!response) {
-        return {.kind = CredentialVerificationKind::Unreachable, .status = 0, .identity = {}, .detail = {}};
+        return {.kind = CredentialVerificationKind::Unreachable,
+                .status = 0,
+                .identity = {},
+                .detail = std::move(failureDetail)};
     }
     return DecodeCredentialVerification(response->status, response->body);
 }

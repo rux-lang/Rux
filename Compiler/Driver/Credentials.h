@@ -65,12 +65,11 @@ struct CredentialVerification {
 [[nodiscard]] std::filesystem::path CredentialsPath();
 
 /// The stored credential for `registryBase`, ignoring the environment. Returns
-/// nullopt when the file is absent, unreadable, or holds no matching entry.
-[[nodiscard]] std::optional<Credential> LoadCredential(std::string_view registryBase);
+[[nodiscard]] std::expected<std::optional<Credential>, std::string> LoadCredential(std::string_view registryBase);
 
 /// The credential to authenticate to `registryBase` with: RUX_TOKEN when set,
 /// otherwise the stored entry.
-[[nodiscard]] std::optional<Credential> ResolveCredential(std::string_view registryBase);
+[[nodiscard]] std::expected<std::optional<Credential>, std::string> ResolveCredential(std::string_view registryBase);
 
 /// Store `token` for `registryBase`, replacing any entry it already has and
 /// preserving every other registry's. The file is written through a temporary

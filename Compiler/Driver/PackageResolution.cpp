@@ -49,8 +49,7 @@ std::expected<const RegistryIndexEntry *, ResolutionFailure> PackageResolver::Ge
 
     auto fetched = fetchIndex(base, ns, package);
     if (!fetched) {
-        return std::unexpected(ResolutionFailure{
-            .message = Describe(fetched.error(), base, QualifiedIdentity(ns, package)), .details = {}});
+        return std::unexpected(Describe(fetched.error(), base, QualifiedIdentity(ns, package)));
     }
     return &entries.emplace(key, std::move(*fetched)).first->second;
 }

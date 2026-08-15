@@ -236,6 +236,12 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
     if (!dryRun) {
         auto resolved = ResolveCredential(base);
         if (!resolved) {
+            diagnostics.Error(std::format("could not read publication credentials for '{}'", base));
+            diagnostics.Note(resolved.error());
+            diagnostics.Help("check the credentials file permissions, then retry 'rux publish'");
+            return 1;
+        }
+        if (!*resolved) {
             diagnostics.Error(std::format("no publication credential was found for '{}'", base));
             diagnostics.Note(std::format("'rux publish' requires a token with the 'publish' scope from {} or the "
                                          "credentials file",
@@ -243,7 +249,7 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
             diagnostics.Help(std::format("run 'rux login --registry {}'", base));
             return 1;
         }
-        credential = std::move(*resolved);
+        credential = std::move(**resolved);
         if (credential.token.find_first_of(" \t\r\n") != std::string::npos) {
             diagnostics.Error(std::format("the publication credential from '{}' is invalid", credential.source));
             diagnostics.Note("registry tokens cannot contain whitespace");
@@ -290,13 +296,18 @@ int Cli::RunPublish(std::span<const std::string_view> args, const GlobalOptions 
 
     output.Progress("Uploading",
                     std::format("{} {} to '{}'", QualifiedName(manifest), manifest.package.version.Text(), base));
+    std::string failureDetail;
     auto response = HttpSend({.method = "POST",
                               .url = base + "/v1/packages",
                               .headers = {{.name = "Authorization", .value = "Bearer " + credential.token},
                                           {.name = "Content-Type", .value = body->contentType}},
-                              .body = std::move(body->body)});
+                              .body = std::move(body->body)},
+                             &failureDetail);
     if (!response) {
-        diagnostics.Error(std::format("could not reach the registry at '{}'", base));
+        diagnostics.Error(std::format("could not connect to registry '{}'", base));
+        if (!failureDetail.empty()) {
+            diagnostics.Note(failureDetail);
+        }
         diagnostics.Help("check the registry URL and network connection, then retry 'rux publish'");
         return 1;
     }

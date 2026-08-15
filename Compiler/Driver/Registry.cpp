@@ -6,6 +6,7 @@
 #include "System/Process.h"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <ranges>
 #include <span>
@@ -45,10 +46,11 @@ std::optional<IdentitySegment> ReadSegment(const JsonValue &object, const std::s
  * same thing by them.
  */
 std::expected<std::string, RegistryError> GetRoute(const std::string_view url) {
-    auto response = HttpSend({.method = "GET", .url = std::string(url), .headers = {}, .body = {}});
+    std::string failureDetail;
+    auto response = HttpSend({.method = "GET", .url = std::string(url), .headers = {}, .body = {}}, &failureDetail);
     if (!response) {
-        return std::unexpected(
-            RegistryError{.kind = RegistryErrorKind::Unreachable, .status = 0, .code = {}, .detail = {}});
+        return std::unexpected(RegistryError{
+            .kind = RegistryErrorKind::Unreachable, .status = 0, .code = {}, .detail = std::move(failureDetail)});
     }
     if (response->status >= 200 && response->status < 300) {
         return std::move(response->body);
@@ -76,28 +78,52 @@ RegistryError DecodeProblem(const std::string_view body, const unsigned status) 
         return error;
     }
     error.code = document->StringAt("code");
-    error.detail = document->StringAt("detail");
+    if (error.code.size() > 64 || !std::ranges::all_of(error.code, [](const unsigned char ch) {
+            return std::isalnum(ch) != 0 || ch == '_' || ch == '-';
+        })) {
+        error.code.clear();
+    }
     return error;
 }
 
-std::string Describe(const RegistryError &error, const std::string_view base, const std::string_view identity) {
+ResolutionFailure Describe(const RegistryError &error, const std::string_view base, const std::string_view identity) {
+    const std::string registry = SanitizeUrl(base);
+    ResolutionFailure failure;
     switch (error.kind) {
     case RegistryErrorKind::Unreachable:
-        return std::format("failed to reach the registry at {}", base);
+        failure.message = std::format("could not connect to registry '{}'", registry);
+        if (!error.detail.empty()) {
+            failure.notes.push_back(error.detail);
+        }
+        failure.help = "check the registry URL and network connection, then retry";
+        return failure;
     case RegistryErrorKind::NotFound:
-        return std::format("{} is not published on {}", identity, base);
+        failure.message = std::format("package '{}' is not available from registry '{}'", identity, registry);
+        failure.notes.push_back(std::format("registry response status: {}", error.status));
+        failure.help = "check the package identity and requested registry";
+        return failure;
     case RegistryErrorKind::Malformed:
-        return std::format("{} sent a response for {} that could not be read: {}", base, identity, error.detail);
+        failure.message =
+            std::format("registry '{}' returned an invalid response for package '{}'", registry, identity);
+        if (!error.detail.empty()) {
+            failure.notes.push_back("response decoding failed: " + error.detail);
+        }
+        failure.help = "retry the request; contact the registry operator if the response remains invalid";
+        return failure;
     case RegistryErrorKind::Rejected:
         break;
     }
+    failure.message = std::format("registry '{}' rejected the request for package '{}'", registry, identity);
+    if (error.status != 0) {
+        failure.notes.push_back(std::format("registry response status: {}", error.status));
+    }
     if (error.code == "rate_limited") {
-        return std::format("{} is rate-limiting requests; retry shortly", base);
+        failure.help = "wait briefly, then retry the request";
     }
-    if (!error.detail.empty()) {
-        return error.detail;
+    else {
+        failure.help = "check the registry status and retry the request";
     }
-    return std::format("{} answered with status {} for {}", base, error.status, identity);
+    return failure;
 }
 
 std::expected<RegistryIndexEntry, RegistryError> DecodePackageIndex(const std::string_view body) {
@@ -304,26 +330,31 @@ ResolutionFailure DescribeResolutionFailure(const RegistryIndexEntry &entry, con
     /// One excluded version, phrased to stand on its own.
     const auto reason = [&identity, &compiler](const RegistryVersion &candidate) {
         if (candidate.yanked) {
-            return std::format("{} {} has been yanked", identity, candidate.version.Text());
+            return std::format("package '{}' version '{}' has been yanked", identity, candidate.version.Text());
         }
-        return std::format("{} {} needs Rux {} or newer, but this is Rux {}", identity, candidate.version.Text(),
-                           candidate.minRux->Text(), compiler.Text());
+        return std::format("package '{}' version '{}' requires Rux '{}' or newer, but this is Rux '{}'", identity,
+                           candidate.version.Text(), candidate.minRux->Text(), compiler.Text());
     };
 
     if (excluded.size() == 1) {
         // The single excluded version is the whole story: leading with the
         // requirement would only delay it by a line.
-        return ResolutionFailure{.message = reason(*excluded.front()), .details = {}};
+        return ResolutionFailure{.message = reason(*excluded.front()),
+                                 .notes = {},
+                                 .help = "select a version that is eligible for this compiler"};
     }
 
-    ResolutionFailure failure{.message = std::format("no version of {} satisfies {}", identity, DescribeRanges(ranges)),
-                              .details = {}};
+    ResolutionFailure failure{.message =
+                                  std::format("no version of '{}' satisfies {}", identity, DescribeRanges(ranges)),
+                              .notes = {},
+                              .help = "change the dependency requirements to select a compatible published version"};
     if (excluded.empty()) {
-        failure.details.push_back(std::format("{} publishes {}", base, DescribeAvailableVersions(entry)));
+        failure.notes.push_back(
+            std::format("registry '{}' publishes {}", SanitizeUrl(base), DescribeAvailableVersions(entry)));
         return failure;
     }
     for (const RegistryVersion *candidate : excluded) {
-        failure.details.push_back(reason(*candidate));
+        failure.notes.push_back(reason(*candidate));
     }
     return failure;
 }

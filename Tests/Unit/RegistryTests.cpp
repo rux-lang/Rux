@@ -165,7 +165,7 @@ TEST_CASE("DecodeProblem reads the RFC 9457 members") {
     CHECK(error.kind == RegistryErrorKind::Rejected);
     CHECK(error.status == 429);
     CHECK(error.code == "rate_limited");
-    CHECK(error.detail == "Retry shortly.");
+    CHECK(error.detail.empty());
 }
 
 TEST_CASE("SelectVersion takes the highest match") {
@@ -262,13 +262,15 @@ TEST_CASE("A single excluded version is the whole message, with nothing below it
     // for, so the reason stands alone.
     const std::array<VersionRange, 1> tooNew{Range("=0.3.0")};
     const auto compilerFailure = DescribeResolutionFailure(*entry, tooNew, Version("0.4.0"), "https://example.test");
-    CHECK(compilerFailure.message == "Rux/Io 0.3.0 needs Rux 9.0.0 or newer, but this is Rux 0.4.0");
-    CHECK(compilerFailure.details.empty());
+    CHECK(compilerFailure.message ==
+          "package 'Rux/Io' version '0.3.0' requires Rux '9.0.0' or newer, but this is Rux '0.4.0'");
+    CHECK(compilerFailure.notes.empty());
+    CHECK(compilerFailure.help.has_value());
 
     const std::array<VersionRange, 1> yanked{Range("=0.4.0")};
     const auto yankedFailure = DescribeResolutionFailure(*entry, yanked, Version("0.4.0"), "https://example.test");
-    CHECK(yankedFailure.message == "Rux/Io 0.4.0 has been yanked");
-    CHECK(yankedFailure.details.empty());
+    CHECK(yankedFailure.message == "package 'Rux/Io' version '0.4.0' has been yanked");
+    CHECK(yankedFailure.notes.empty());
 }
 
 TEST_CASE("Several excluded versions lead with the requirement and list the reasons, highest first") {
@@ -277,10 +279,11 @@ TEST_CASE("Several excluded versions lead with the requirement and list the reas
     const std::array<VersionRange, 1> any{Range(">=0.3.0")};
 
     const auto failure = DescribeResolutionFailure(*entry, any, Version("0.4.0"), "https://example.test");
-    CHECK(failure.message == "no version of Rux/Io satisfies '>=0.3.0'");
-    REQUIRE(failure.details.size() == 2);
-    CHECK(failure.details[0] == "Rux/Io 0.4.0 has been yanked");
-    CHECK(failure.details[1] == "Rux/Io 0.3.0 needs Rux 9.0.0 or newer, but this is Rux 0.4.0");
+    CHECK(failure.message == "no version of 'Rux/Io' satisfies '>=0.3.0'");
+    REQUIRE(failure.notes.size() == 2);
+    CHECK(failure.notes[0] == "package 'Rux/Io' version '0.4.0' has been yanked");
+    CHECK(failure.notes[1] ==
+          "package 'Rux/Io' version '0.3.0' requires Rux '9.0.0' or newer, but this is Rux '0.4.0'");
 }
 
 TEST_CASE("A requirement nothing matched falls back to the published list") {
@@ -289,9 +292,9 @@ TEST_CASE("A requirement nothing matched falls back to the published list") {
     const std::array<VersionRange, 1> unmet{Range("^2.0.0")};
 
     const auto failure = DescribeResolutionFailure(*entry, unmet, Version("0.4.0"), "https://example.test");
-    CHECK(failure.message == "no version of Rux/Io satisfies '^2.0.0'");
-    REQUIRE(failure.details.size() == 1);
-    CHECK(failure.details[0] == "https://example.test publishes 0.1.0, 0.2.0, 0.3.0, 0.4.0 (yanked)");
+    CHECK(failure.message == "no version of 'Rux/Io' satisfies '^2.0.0'");
+    REQUIRE(failure.notes.size() == 1);
+    CHECK(failure.notes[0] == "registry 'https://example.test' publishes 0.1.0, 0.2.0, 0.3.0, 0.4.0 (yanked)");
 }
 
 TEST_CASE("Conflicting requirements are all named in the message") {
@@ -300,7 +303,7 @@ TEST_CASE("Conflicting requirements are all named in the message") {
     const std::array<VersionRange, 2> disjoint{Range("^0.1.0"), Range("^0.2.0")};
 
     const auto failure = DescribeResolutionFailure(*entry, disjoint, Version("0.4.0"), "https://example.test");
-    CHECK(failure.message == "no version of Rux/Io satisfies '^0.1.0', '^0.2.0'");
+    CHECK(failure.message == "no version of 'Rux/Io' satisfies '^0.1.0', '^0.2.0'");
 }
 
 TEST_CASE("DescribeRanges quotes each requirement") {
@@ -327,22 +330,33 @@ TEST_CASE("QualifiedIdentity uses display spelling") {
 
 TEST_CASE("Describe explains each failure against the registry it came from") {
     const std::string base = "https://api.rux-lang.dev";
-    CHECK(Describe(RegistryError{.kind = RegistryErrorKind::Unreachable, .status = 0, .code = {}, .detail = {}}, base,
-                   "Rux/Io") == "failed to reach the registry at https://api.rux-lang.dev");
-    CHECK(Describe(
-              RegistryError{
-                  .kind = RegistryErrorKind::NotFound, .status = 404, .code = "package_not_found", .detail = {}},
-              base, "Rux/Io") == "Rux/Io is not published on https://api.rux-lang.dev");
-    CHECK(Describe(RegistryError{.kind = RegistryErrorKind::Rejected,
-                                 .status = 429,
-                                 .code = "rate_limited",
-                                 .detail = "Retry shortly."},
-                   base, "Rux/Io") == "https://api.rux-lang.dev is rate-limiting requests; retry shortly");
-    CHECK(Describe(RegistryError{.kind = RegistryErrorKind::Rejected,
-                                 .status = 503,
-                                 .code = "resolver_index_unavailable",
-                                 .detail = "The index is unavailable."},
-                   base, "Rux/Io") == "The index is unavailable.");
+    const auto unreachable = Describe(RegistryError{.kind = RegistryErrorKind::Unreachable,
+                                                    .status = 0,
+                                                    .code = {},
+                                                    .detail = "system error 7: connection refused"},
+                                      base, "Rux/Io");
+    CHECK(unreachable.message == "could not connect to registry 'https://api.rux-lang.dev'");
+    CHECK(unreachable.notes == std::vector<std::string>{"system error 7: connection refused"});
+    CHECK(unreachable.help.has_value());
+
+    const auto missing = Describe(
+        RegistryError{.kind = RegistryErrorKind::NotFound, .status = 404, .code = "package_not_found", .detail = {}},
+        base, "Rux/Io");
+    CHECK(missing.message == "package 'Rux/Io' is not available from registry 'https://api.rux-lang.dev'");
+    CHECK(missing.notes == std::vector<std::string>{"registry response status: 404"});
+
+    const auto rejected = Describe(
+        RegistryError{
+            .kind = RegistryErrorKind::Rejected, .status = 429, .code = "rate_limited", .detail = "reflected-secret"},
+        "https://user:password@api.rux-lang.dev?token=secret", "Rux/Io");
+    CHECK(rejected.message == "registry 'https://api.rux-lang.dev' rejected the request for package 'Rux/Io'");
+    CHECK(rejected.notes == std::vector<std::string>{"registry response status: 429"});
+}
+
+TEST_CASE("DecodeProblem rejects unsafe problem codes and never retains response detail") {
+    const auto reflected = DecodeProblem(R"({"code":"token=secret value","detail":"Bearer rux_pat_secret"})", 500);
+    CHECK(reflected.code.empty());
+    CHECK(reflected.detail.empty());
 }
 
 TEST_CASE("CompilerVersion reports a usable release") {

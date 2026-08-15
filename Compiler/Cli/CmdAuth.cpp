@@ -60,6 +60,9 @@ bool ReportVerification(const CredentialVerification &verification, const std::s
         return false;
     case CredentialVerificationKind::Unreachable:
         diagnostics.Warning(std::format("could not reach the registry at '{}'; the token was stored unverified", base));
+        if (!verification.detail.empty()) {
+            diagnostics.Note(verification.detail);
+        }
         diagnostics.Help("check the registry URL and network, then run 'rux login' again to verify it");
         return true;
     case CredentialVerificationKind::Unsupported:

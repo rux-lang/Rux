@@ -129,7 +129,7 @@ TEST_CASE("Publication problem documents become labeled context and actionable g
     }
 }
 
-TEST_CASE("Publication problem fallback retains unknown details as notes") {
+TEST_CASE("Publication problem fallback does not reproduce unknown response fields") {
     const auto problem = CliSupport::DescribePublicationProblem(
         503, R"({"detail":"temporarily unavailable","errors":[{"code":"archive","detail":"too large"},
              {"code":"policy"}]})",
@@ -138,9 +138,9 @@ TEST_CASE("Publication problem fallback retains unknown details as notes") {
     CHECK(problem.error == "the registry rejected Rux/Json 1.2.0");
     CHECK(std::ranges::find(problem.notes, "registry: 'https://registry.example'") != problem.notes.end());
     CHECK(std::ranges::find(problem.notes, "registry response status: 503") != problem.notes.end());
-    CHECK(std::ranges::find(problem.notes, "registry detail: temporarily unavailable") != problem.notes.end());
-    CHECK(std::ranges::find(problem.notes, "registry detail [archive]: too large") != problem.notes.end());
-    CHECK(std::ranges::find(problem.notes, "registry detail: policy") != problem.notes.end());
+    CHECK(std::ranges::none_of(problem.notes, [](const std::string &note) {
+        return note.contains("temporarily unavailable") || note.contains("too large") || note.contains("policy");
+    }));
     CHECK(problem.help.contains("review the registry details"));
 
     const auto empty = CliSupport::DescribePublicationProblem(500, {}, "Rux/Json", "1.2.0", "Rux",

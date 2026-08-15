@@ -29,6 +29,11 @@ TEST_CASE("UrlEncode escapes non-ASCII bytes") {
     CHECK(UrlEncode("\xC3\xA9") == "%C3%A9");
 }
 
+TEST_CASE("SanitizeUrl removes credentials, queries, and fragments") {
+    CHECK(SanitizeUrl("https://user:secret@example.test/api?token=hidden#part") == "https://example.test/api");
+    CHECK(SanitizeUrl("http://example.test:8080/path") == "http://example.test:8080/path");
+}
+
 TEST_CASE("BuildMultipartBody frames every part with the same boundary") {
     const std::array<MultipartPart, 2> parts{MultipartPart{.name = "manifest", .content = "[Manifest]\n"},
                                              MultipartPart{.name = "package", .content = "PK\x03\x04"}};

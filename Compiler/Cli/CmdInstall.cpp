@@ -294,17 +294,25 @@ bool InstallResolved(const PackageResolver &resolver, const std::vector<Resolved
                                    resolution.version.Text()));
         auto digest = FetchArtifactChecksum(resolver.Base(), resolution.ns, resolution.package, resolution.version);
         if (!digest) {
+            const auto problem = Describe(digest.error(), resolver.Base(), identity);
             diagnostics.Error(
                 std::format("could not fetch checksum metadata for {} {}", identity, resolution.version.Text()));
-            diagnostics.Note(Describe(digest.error(), resolver.Base(), identity));
-            diagnostics.Help("check the registry URL and network, then retry the installation");
+            diagnostics.Note(problem.message);
+            for (const auto &note : problem.notes) {
+                diagnostics.Note(note);
+            }
+            diagnostics.Help(problem.help.value_or("check the registry URL and network, then retry the installation"));
             return false;
         }
         auto archive = DownloadArtifact(resolver.Base(), resolution.ns, resolution.package, resolution.version);
         if (!archive) {
+            const auto problem = Describe(archive.error(), resolver.Base(), identity);
             diagnostics.Error(std::format("could not download {} {}", identity, resolution.version.Text()));
-            diagnostics.Note(Describe(archive.error(), resolver.Base(), identity));
-            diagnostics.Help("check the registry URL and network, then retry the installation");
+            diagnostics.Note(problem.message);
+            for (const auto &note : problem.notes) {
+                diagnostics.Note(note);
+            }
+            diagnostics.Help(problem.help.value_or("check the registry URL and network, then retry the installation"));
             return false;
         }
         if (const std::string actual = Sha256Hex(*archive); !DigestsEqual(actual, *digest)) {
@@ -390,12 +398,12 @@ bool InstallResolved(const PackageResolver &resolver, const std::vector<Resolved
 
 void ReportResolutionFailure(const ResolutionFailure &failure, const CliSupport::Reporter &diagnostics) {
     diagnostics.Error(failure.message);
-    for (const auto &detail : failure.details) {
-        diagnostics.Note(detail);
+    for (const auto &note : failure.notes) {
+        diagnostics.Note(note);
     }
-    diagnostics.Help(failure.message.starts_with("failed to reach")
-                         ? "check the registry URL and network, then retry"
-                         : "review the dependency requirements and select compatible package versions");
+    if (failure.help) {
+        diagnostics.Help(*failure.help);
+    }
 }
 
 int ResolveAndInstall(const InstallCommand command, const std::vector<PackageRequirement> &seeds,

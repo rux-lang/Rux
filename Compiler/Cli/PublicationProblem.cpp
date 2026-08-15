@@ -15,19 +15,6 @@ PublicationProblem DescribePublicationProblem(const unsigned status, const std::
         .help = {},
     };
     const std::string code = System::JsonLookupString(body, "code");
-    const std::string detail = System::JsonLookupString(body, "detail");
-    if (!code.empty()) {
-        problem.notes.emplace_back(std::format("registry code: {}", code));
-    }
-    if (!detail.empty()) {
-        problem.notes.emplace_back(std::format("registry detail: {}", detail));
-    }
-    for (const auto &entry : System::JsonFindProblemErrors(body)) {
-        problem.notes.emplace_back(entry.detail.empty()
-                                       ? std::format("registry detail: {}", entry.code)
-                                       : std::format("registry detail [{}]: {}", entry.code, entry.detail));
-    }
-
     if (code == "version_conflict") {
         problem.notes.emplace_back("published versions are immutable");
         problem.help = "increment [Package].Version, then run 'rux publish' again";

@@ -145,8 +145,9 @@ TEST_CASE("PackageResolver returns registry and selection failures as values") {
     const std::vector missingSeeds = {RequirePackage("Missing")};
     const auto missingResult = missing.Resolve(missingSeeds, Triple("linux-x86_64"), Version("1.0.0"));
     REQUIRE_FALSE(missingResult.has_value());
-    CHECK(missingResult.error().message == "Acme/Missing is not published on https://example.test");
-    CHECK(missingResult.error().details.empty());
+    CHECK(missingResult.error().message ==
+          "package 'Acme/Missing' is not available from registry 'https://example.test'");
+    CHECK(missingResult.error().notes == std::vector<std::string>{"registry response status: 404"});
 
     PackageResolver incompatible("https://example.test",
                                  [](std::string_view, const IdentitySegment &,
@@ -156,7 +157,7 @@ TEST_CASE("PackageResolver returns registry and selection failures as values") {
     const std::vector incompatibleSeeds = {RequirePackage("Library", "^2.0.0")};
     const auto incompatibleResult = incompatible.Resolve(incompatibleSeeds, Triple("linux-x86_64"), Version("1.0.0"));
     REQUIRE_FALSE(incompatibleResult.has_value());
-    CHECK(incompatibleResult.error().message == "no version of Acme/Library satisfies '^2.0.0'");
-    REQUIRE(incompatibleResult.error().details.size() == 1);
-    CHECK(incompatibleResult.error().details[0] == "https://example.test publishes 1.0.0");
+    CHECK(incompatibleResult.error().message == "no version of 'Acme/Library' satisfies '^2.0.0'");
+    REQUIRE(incompatibleResult.error().notes.size() == 1);
+    CHECK(incompatibleResult.error().notes[0] == "registry 'https://example.test' publishes 1.0.0");
 }

@@ -25,6 +25,20 @@
 #endif
 
 namespace Rux::System {
+std::string SanitizeUrl(const std::string_view url) {
+    std::string sanitized(url.substr(0, url.find_first_of("?#")));
+    const std::size_t scheme = sanitized.find("://");
+    if (scheme != std::string::npos) {
+        const std::size_t authority = scheme + 3;
+        const std::size_t end = sanitized.find('/', authority);
+        const std::size_t at = sanitized.find('@', authority);
+        if (at != std::string::npos && (end == std::string::npos || at < end)) {
+            sanitized.erase(authority, at - authority + 1);
+        }
+    }
+    return sanitized;
+}
+
 std::string UrlEncode(const std::string_view text, const bool preserveSlashes) {
     static constexpr std::string_view digits = "0123456789ABCDEF";
     std::string encoded;
@@ -154,10 +168,17 @@ std::wstring Utf8ToWide(const std::string_view text) {
 
 } // namespace
 
-std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
+std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *failureDetail) {
+    const auto Fail = [failureDetail](const DWORD error) -> std::optional<HttpResponse> {
+        if (failureDetail != nullptr) {
+            const std::error_code code(static_cast<int>(error), std::system_category());
+            *failureDetail = std::format("system error {}: {}", code.value(), code.message());
+        }
+        return std::nullopt;
+    };
     const std::wstring wideUrl = Utf8ToWide(request.url);
     if (wideUrl.empty()) {
-        return std::nullopt;
+        return Fail(ERROR_INVALID_PARAMETER);
     }
 
     URL_COMPONENTSW components{};
@@ -167,7 +188,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     components.dwExtraInfoLength = static_cast<DWORD>(-1);
     if (!WinHttpCrackUrl(wideUrl.c_str(), 0, 0, &components) ||
         (components.nScheme != INTERNET_SCHEME_HTTP && components.nScheme != INTERNET_SCHEME_HTTPS)) {
-        return std::nullopt;
+        return Fail(ERROR_INVALID_PARAMETER);
     }
 
     const std::wstring host(components.lpszHostName, components.dwHostNameLength);
@@ -182,7 +203,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     WinHttpHandle session(WinHttpOpen(L"Rux package manager", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session.Get()) {
-        return std::nullopt;
+        return Fail(GetLastError());
     }
     // The send and receive budgets cover a publication upload, which the
     // registry allows up to two minutes to complete.
@@ -190,7 +211,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
 
     WinHttpHandle connection(WinHttpConnect(session.Get(), host.c_str(), components.nPort, 0));
     if (!connection.Get()) {
-        return std::nullopt;
+        return Fail(GetLastError());
     }
     const DWORD flags = components.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
     const wchar_t *acceptTypes[] = {L"application/json", L"application/problem+json", L"text/plain", L"*/*", nullptr};
@@ -198,14 +219,14 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     WinHttpHandle handle(WinHttpOpenRequest(connection.Get(), method.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER,
                                             acceptTypes, flags));
     if (!handle.Get()) {
-        return std::nullopt;
+        return Fail(GetLastError());
     }
 
     for (const auto &header : request.headers) {
         const std::wstring line = Utf8ToWide(header.name + ": " + header.value);
         if (line.empty() || !WinHttpAddRequestHeaders(handle.Get(), line.c_str(), static_cast<DWORD>(-1),
                                                       WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE)) {
-            return std::nullopt;
+            return Fail(GetLastError());
         }
     }
 
@@ -214,14 +235,14 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
                                           : const_cast<void *>(static_cast<const void *>(request.body.data()));
     if (!WinHttpSendRequest(handle.Get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, bodyData, bodySize, bodySize, 0) ||
         !WinHttpReceiveResponse(handle.Get(), nullptr)) {
-        return std::nullopt;
+        return Fail(GetLastError());
     }
 
     DWORD status = 0;
     DWORD statusSize = sizeof(status);
     if (!WinHttpQueryHeaders(handle.Get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
                              WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX)) {
-        return std::nullopt;
+        return Fail(GetLastError());
     }
 
     constexpr std::size_t maxResponseSize = 128 * 1024 * 1024;
@@ -229,19 +250,19 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     while (true) {
         DWORD available = 0;
         if (!WinHttpQueryDataAvailable(handle.Get(), &available)) {
-            return std::nullopt;
+            return Fail(GetLastError());
         }
         if (available == 0) {
             break;
         }
         if (available > maxResponseSize - result.size()) {
-            return std::nullopt;
+            return Fail(ERROR_INSUFFICIENT_BUFFER);
         }
         const std::size_t offset = result.size();
         result.resize(offset + available);
         DWORD read = 0;
         if (!WinHttpReadData(handle.Get(), result.data() + offset, available, &read)) {
-            return std::nullopt;
+            return Fail(GetLastError());
         }
         result.resize(offset + read);
     }
@@ -437,18 +458,24 @@ struct TemporaryDirectory {
 };
 } // namespace
 
-std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
+std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *failureDetail) {
+    const auto Fail = [failureDetail](std::string detail) -> std::optional<HttpResponse> {
+        if (failureDetail != nullptr) {
+            *failureDetail = std::move(detail);
+        }
+        return std::nullopt;
+    };
     // curl carries the credential and the body in files rather than in argv,
     // so neither reaches the process list.
     std::error_code ec;
     static std::atomic<unsigned> counter{0};
     const std::filesystem::path tempRoot = std::filesystem::temp_directory_path(ec);
     if (ec) {
-        return std::nullopt;
+        return Fail(std::format("temporary-directory error: {}", ec.message()));
     }
     const TemporaryDirectory workspace{tempRoot / std::format("rux-http-{}-{}", ::getpid(), counter.fetch_add(1))};
     if (!std::filesystem::create_directories(workspace.path, ec) || ec) {
-        return std::nullopt;
+        return Fail(std::format("temporary-directory error: {}", ec.message()));
     }
     std::filesystem::permissions(workspace.path, std::filesystem::perms::owner_all, ec);
 
@@ -457,6 +484,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     const std::filesystem::path responsePath = workspace.path / "response.body";
 
     std::string config;
+    config += "--silent\n";
     config += "--request " + CurlConfigQuote(request.method) + "\n";
     config += "--url " + CurlConfigQuote(request.url) + "\n";
     config += "--silent\n--show-error\n--location\n";
@@ -468,27 +496,26 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     }
     if (!request.body.empty()) {
         if (!WritePrivateFile(bodyPath, request.body)) {
-            return std::nullopt;
+            return Fail("could not prepare the private HTTP request body");
         }
         config += "--data-binary " + CurlConfigQuote("@" + bodyPath.string()) + "\n";
     }
     if (!WritePrivateFile(configPath, config)) {
-        return std::nullopt;
+        return Fail("could not prepare the private HTTP request configuration");
     }
 
-    // curl exits 0 for a 4xx or 5xx unless --fail is given, so a non-zero exit
-    // here means no response arrived at all. Its stderr is left attached so a
-    // transport failure still explains itself, as it did before.
-    auto status = RunCommandCapture("curl --config " + ShellQuote(configPath.string()));
+    // curl exits 0 for a 4xx or 5xx unless --fail is given. Suppress its
+    // unstructured stderr; callers receive the transport detail below.
+    auto status = RunCommandCapture("curl --config " + ShellQuote(configPath.string()) + " 2>/dev/null");
     if (!status) {
         // A plain read can still succeed through wget where curl is absent.
         // Anything richer than that needs curl.
         if (request.method != "GET" || !request.headers.empty() || !request.body.empty()) {
-            return std::nullopt;
+            return Fail("the HTTP client did not receive a response");
         }
         auto body = RunCommandCapture("wget -qO- " + ShellQuote(request.url));
         if (!body) {
-            return std::nullopt;
+            return Fail("the HTTP client did not receive a response");
         }
         return HttpResponse{.status = 200, .body = std::move(*body)};
     }
@@ -496,7 +523,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request) {
     unsigned code = 0;
     const auto digits = std::string_view(*status);
     if (std::from_chars(digits.data(), digits.data() + digits.size(), code).ec != std::errc{}) {
-        return std::nullopt;
+        return Fail("the HTTP client returned an invalid status code");
     }
     return HttpResponse{.status = code, .body = ReadWholeFile(responsePath).value_or(std::string{})};
 }

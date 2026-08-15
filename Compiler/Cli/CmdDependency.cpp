@@ -138,8 +138,13 @@ int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opt
     const std::string base = ResolveRegistryBase(registryArg);
     output.Progress("Resolving", std::format("registry dependency '{}' from {}", spec, base));
     if (auto entry = FetchPackageIndex(base, *parsedSpec->ns, parsedSpec->name); !entry) {
-        diagnostics.Error(Describe(entry.error(), base, QualifiedIdentity(*parsedSpec->ns, parsedSpec->name)));
-        diagnostics.Help(std::format("verify '{}' exists in the registry or choose another '--registry' URL", spec));
+        const auto problem = Describe(entry.error(), base, QualifiedIdentity(*parsedSpec->ns, parsedSpec->name));
+        diagnostics.Error(problem.message);
+        for (const auto &note : problem.notes) {
+            diagnostics.Note(note);
+        }
+        diagnostics.Help(problem.help.value_or(
+            std::format("verify '{}' exists in the registry or choose another '--registry' URL", spec)));
         output.Failure("Failed", std::format("to add registry dependency '{}' in {}", spec,
                                              Reporting::FormatDuration(ElapsedMs(started))));
         return 1;

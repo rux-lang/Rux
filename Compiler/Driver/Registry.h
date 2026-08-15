@@ -85,8 +85,13 @@ struct RegistryError {
     std::string detail;
 };
 
-/// Render a failure as one CLI error line, naming the registry and package.
-[[nodiscard]] std::string Describe(const RegistryError &error, std::string_view base, std::string_view identity);
+struct ResolutionFailure {
+    std::string message;
+    std::vector<std::string> notes;
+    std::optional<std::string> help;
+};
+
+[[nodiscard]] ResolutionFailure Describe(const RegistryError &error, std::string_view base, std::string_view identity);
 
 /// `Namespace/Name` in display spelling, for diagnostics.
 [[nodiscard]] std::string QualifiedIdentity(const IdentitySegment &ns, const IdentitySegment &package);
@@ -160,16 +165,6 @@ SelectVersion(const RegistryIndexEntry &entry, std::span<const VersionRange> ran
 /// Convenience overload for a single requirement.
 [[nodiscard]] const RegistryVersion *SelectVersion(const RegistryIndexEntry &entry, const VersionRange &range,
                                                    const SemanticVersion &compiler);
-
-/// A failed resolution, split into the `error:` line and what follows it.
-struct ResolutionFailure {
-    /// The headline, already specific enough to stand alone where it can be.
-    std::string message;
-
-    /// Extra lines, indented under the headline. Empty when the headline said
-    /// everything there was to say.
-    std::vector<std::string> details;
-};
 
 /**
  * @brief Explain why no version of `entry` could be selected.

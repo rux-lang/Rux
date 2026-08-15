@@ -40,6 +40,8 @@ inline constexpr std::string_view kRegistryApiBase = "https://api.rux-lang.dev";
 // is left alone so a whole path can be encoded in one call.
 [[nodiscard]] std::string UrlEncode(std::string_view text, bool preserveSlashes = false);
 
+[[nodiscard]] std::string SanitizeUrl(std::string_view url);
+
 struct HttpHeader {
     std::string name;
     std::string value;
@@ -63,7 +65,7 @@ struct HttpResponse {
 // route that answers 307 with a CDN location returns the final body. Returns
 // nullopt only when no response arrived at all, for example a DNS, connection
 // or TLS failure.
-[[nodiscard]] std::optional<HttpResponse> HttpSend(const HttpRequest &request);
+[[nodiscard]] std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *failureDetail = nullptr);
 
 // Fetch the body of a URL. Returns nullopt on failure or a non-2xx status.
 [[nodiscard]] std::optional<std::string> FetchUrl(const std::string &url);
