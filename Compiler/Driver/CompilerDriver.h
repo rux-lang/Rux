@@ -10,6 +10,7 @@
 #include "Driver/BuildReport.h"
 #include "Package/Manifest.h"
 #include "Semantic/SemanticModel.h"
+#include "SourceModel/SourceFile.h"
 #include "Syntax/Parser/Parser.h"
 #include "Target/TargetTriple.h"
 
@@ -20,6 +21,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Rux::Driver {
@@ -53,8 +55,10 @@ struct CompileOptions {
     bool dumpAsm = false;
     bool dumpRcu = false;
 
-    // Where diagnostics go. Defaults to PrintDiagnostic (text on stderr).
-    std::function<void(const Diagnostic &)> emitDiagnostic;
+    // Where diagnostics go. The driver supplies a lookup over source text it
+    // already loaded, allowing CLI owners to render context without rereading
+    // files. Defaults to PrintDiagnostic (text on stderr).
+    std::function<void(const Diagnostic &, const SourceLineLookup &)> emitDiagnostic;
     // Where pre-formatted error lines (e.g. source-loader failures, which
     // carry their own "error: " prefix and newline) go. Defaults to printing
     // the line to stderr as-is.
@@ -79,6 +83,9 @@ private:
     void EmitErrorLine(std::string_view line) const;
     // Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags) const;
+    void RememberSources(std::span<const SourceFile> sources);
+    [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
+                                                                   std::size_t lineNumber) const;
 
     // The operating system of the build target, named exactly ("FreeBSD", not
     // the "BSD" family). This is what `#target.os` reports.
@@ -103,6 +110,7 @@ private:
     std::vector<ParseResult> depParseResults;   // dependency modules
     std::vector<std::string> loadedPackages;    // parallel: package name per dep entry
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
+    std::unordered_map<std::string, std::string> loadedSourceTexts;
     std::optional<SemanticModel> semanticModel;
 };
 } // namespace Rux::Driver

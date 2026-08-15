@@ -65,9 +65,19 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
             return outcome;
         }
         const auto sources = SourceLoader::Load(packageManifestPath.parent_path());
+        const SourceLineLookup sourceLineLookup = [&](const std::string_view sourceName,
+                                                      const std::size_t lineNumber) -> std::optional<std::string_view> {
+            const auto source = std::ranges::find_if(
+                sources.files, [&](const SourceFile &file) { return file.path.string() == sourceName; });
+            if (source == sources.files.end()) {
+                return std::nullopt;
+            }
+            return FindSourceLine(source->source, lineNumber);
+        };
+        const bool diagnosticColor = ColorEnabled(opts.color, OutputStream::Stderr);
         outcome.files = sources.files.size();
         for (const auto &diagnostic : sources.diagnostics) {
-            PrintDiagnostic(diagnostic);
+            std::print(stderr, "{}", RenderDiagnostic(diagnostic, diagnosticColor, sourceLineLookup));
             if (diagnostic.IsError()) {
                 ++outcome.errors;
             }
@@ -81,7 +91,7 @@ int Cli::RunLint(std::span<const std::string_view> args, const GlobalOptions &op
             }
             auto result = Linting::Lint(file.source, file.path.string());
             for (const auto &diagnostic : result.diagnostics) {
-                PrintDiagnostic(diagnostic);
+                std::print(stderr, "{}", RenderDiagnostic(diagnostic, diagnosticColor, sourceLineLookup));
                 if (diagnostic.IsError()) {
                     ++outcome.errors;
                 }

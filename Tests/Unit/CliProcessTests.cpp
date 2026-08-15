@@ -581,6 +581,57 @@ TEST_CASE("check renders unsupported targets as structured diagnostics without c
     CHECK_FALSE(json.output.contains("rux-lang.dev"));
 }
 
+TEST_CASE("check and lint render source frames while check JSON remains frame-free") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-source-frame-test-" + std::to_string(nonce));
+    const auto sourceDir = root / "Src";
+    const auto manifestPath = root / "Rux.toml";
+    const auto sourcePath = sourceDir / "Main.rux";
+    std::error_code error;
+    std::filesystem::create_directories(sourceDir, error);
+    REQUIRE(!error);
+    {
+        std::ofstream manifest(manifestPath, std::ios::binary);
+        manifest << "[Manifest]\nVersion = 1\n\n[Package]\nName = \"FrameTest\"\nVersion = \"0.1.0\"\n"
+                    "Type = \"Executable\"\n";
+        REQUIRE(manifest.good());
+    }
+    {
+        std::ofstream source(sourcePath, std::ios::binary);
+        source << "func Main() -> int {\n    return Missing;\n}\n";
+        REQUIRE(source.good());
+    }
+
+    const auto manifest = manifestPath.string();
+    const auto check =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "check", "--quiet", "--color=never"});
+    CAPTURE(check.output);
+    CHECK(check.exitCode == 1);
+    CHECK(check.output.contains("  2 |     return Missing;"));
+    CHECK(check.output.contains("    |            ^"));
+
+    const auto json = Run(std::array<std::string_view, 5>{"--manifest", manifest, "check", "--quiet", "--json"});
+    CHECK(json.exitCode == 1);
+    CHECK(json.output.contains("\"line\":2"));
+    CHECK_FALSE(json.output.contains("return Missing"));
+    CHECK_FALSE(json.output.contains('|'));
+    CHECK_FALSE(json.output.contains('^'));
+
+    {
+        std::ofstream source(sourcePath, std::ios::binary | std::ios::trunc);
+        source << "func bad_name() {}\n";
+        REQUIRE(source.good());
+    }
+    const auto lint = Run(std::array<std::string_view, 5>{"--manifest", manifest, "lint", "--quiet", "--color=never"});
+    CAPTURE(lint.output);
+    CHECK(lint.exitCode == 0);
+    CHECK(lint.output.contains("  1 | func bad_name() {}"));
+    CHECK(lint.output.contains("    | ^"));
+
+    std::filesystem::remove_all(root, error);
+    CHECK(!error);
+}
+
 TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its ARM64 alias") {
     const auto manifest = ArithmeticManifest();
     const auto check =

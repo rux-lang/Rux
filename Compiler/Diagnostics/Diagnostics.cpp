@@ -7,6 +7,7 @@
 #include <limits>
 #include <print>
 #include <utility>
+#include <vector>
 
 namespace Rux {
 namespace {
@@ -58,6 +59,126 @@ void AppendLabel(std::string &out, const std::string_view label, const std::stri
     out += ':';
     out += style.Reset();
 }
+
+constexpr std::size_t tabWidth = 4;
+constexpr std::size_t sourceFrameWidth = 120;
+constexpr std::size_t clippingMarkerWidth = 3;
+
+struct ExpandedSourceLine {
+    std::vector<std::string> cells;
+    std::size_t caret = 0;
+};
+
+std::size_t Utf8CodePointSize(const std::string_view text, const std::size_t offset) {
+    const auto lead = static_cast<unsigned char>(text[offset]);
+    std::size_t size = 1;
+    if ((lead & 0xe0U) == 0xc0U) {
+        size = 2;
+    }
+    else if ((lead & 0xf0U) == 0xe0U) {
+        size = 3;
+    }
+    else if ((lead & 0xf8U) == 0xf0U) {
+        size = 4;
+    }
+    if (offset + size > text.size()) {
+        return 1;
+    }
+    for (std::size_t index = 1; index < size; ++index) {
+        if ((static_cast<unsigned char>(text[offset + index]) & 0xc0U) != 0x80U) {
+            return 1;
+        }
+    }
+    return size;
+}
+
+void AppendEscapedSourceByte(std::vector<std::string> &cells, const unsigned char value) {
+    const auto escaped = std::format("\\x{:02x}", value);
+    for (const char ch : escaped) {
+        cells.emplace_back(1, ch);
+    }
+}
+
+ExpandedSourceLine ExpandSourceLine(const std::string_view line, const std::size_t column) {
+    ExpandedSourceLine expanded;
+    const std::size_t caretByte = std::min(column > 0 ? column - 1 : 0, line.size());
+    std::size_t offset = 0;
+    while (offset < line.size()) {
+        const auto value = static_cast<unsigned char>(line[offset]);
+        if (value == '\t') {
+            const auto spaces = tabWidth - (expanded.cells.size() % tabWidth);
+            for (std::size_t index = 0; index < spaces; ++index) {
+                expanded.cells.emplace_back(" ");
+            }
+            ++offset;
+            if (offset <= caretByte) {
+                expanded.caret = expanded.cells.size();
+            }
+            continue;
+        }
+        if (value < 0x20 || value == 0x7f) {
+            AppendEscapedSourceByte(expanded.cells, value);
+            ++offset;
+            if (offset <= caretByte) {
+                expanded.caret = expanded.cells.size();
+            }
+            continue;
+        }
+        const auto codePointSize = Utf8CodePointSize(line, offset);
+        expanded.cells.emplace_back(line.substr(offset, codePointSize));
+        offset += codePointSize;
+        if (offset <= caretByte) {
+            expanded.caret = expanded.cells.size();
+        }
+    }
+    if (caretByte >= offset) {
+        expanded.caret = expanded.cells.size();
+    }
+    return expanded;
+}
+
+void AppendSourceFrame(std::string &out, const Diagnostic &diag, const std::string_view line,
+                       const Reporting::Style &style) {
+    auto expanded = ExpandSourceLine(line, diag.location.column);
+    const std::size_t contentCapacity = sourceFrameWidth - (2 * clippingMarkerWidth);
+    std::size_t begin = expanded.caret > contentCapacity / 2 ? expanded.caret - contentCapacity / 2 : 0;
+    std::size_t end = std::min(expanded.cells.size(), begin + contentCapacity);
+    if (end == expanded.cells.size() && end > contentCapacity) {
+        begin = end - contentCapacity;
+    }
+    const bool clippedLeft = begin > 0;
+    const bool clippedRight = end < expanded.cells.size();
+    const std::size_t renderedCaret = (clippedLeft ? clippingMarkerWidth : 0) + expanded.caret - begin;
+    const auto gutterWidth = std::to_string(diag.location.line).size();
+
+    out += style.Dim();
+    out += "  ";
+    out += std::to_string(diag.location.line);
+    out += " |";
+    out += style.Reset();
+    out += ' ';
+    if (clippedLeft) {
+        out += "...";
+    }
+    for (std::size_t index = begin; index < end; ++index) {
+        out += expanded.cells[index];
+    }
+    if (clippedRight) {
+        out += "...";
+    }
+    out += '\n';
+
+    out += style.Dim();
+    out.append(gutterWidth + 2, ' ');
+    out += " |";
+    out += style.Reset();
+    out += ' ';
+    out.append(renderedCaret, ' ');
+    out += diag.severity == Diagnostic::Severity::Error ? style.Red() : style.Yellow();
+    out += '^';
+    out += style.Reset();
+    out += '\n';
+}
 } // namespace
 
 std::string EscapeJson(std::string_view s) {
@@ -105,6 +226,30 @@ std::string EscapeJson(std::string_view s) {
     return out;
 }
 
+std::optional<std::string_view> FindSourceLine(const std::string_view source, const std::size_t lineNumber) {
+    if (lineNumber == 0) {
+        return std::nullopt;
+    }
+    std::size_t currentLine = 1;
+    std::size_t begin = 0;
+    while (currentLine < lineNumber) {
+        const auto newline = source.find('\n', begin);
+        if (newline == std::string_view::npos) {
+            return std::nullopt;
+        }
+        begin = newline + 1;
+        ++currentLine;
+    }
+    auto end = source.find('\n', begin);
+    if (end == std::string_view::npos) {
+        end = source.size();
+    }
+    if (end > begin && source[end - 1] == '\r') {
+        --end;
+    }
+    return source.substr(begin, end - begin);
+}
+
 Diagnostic ErrorDiagnostic(std::string message, std::vector<std::string> notes, std::optional<std::string> help,
                            std::optional<std::string> documentationUrl) {
     return {Diagnostic::Severity::Error,
@@ -120,7 +265,7 @@ std::string_view SeverityName(const Diagnostic::Severity severity) noexcept {
     return severity == Diagnostic::Severity::Error ? "error" : "warning";
 }
 
-std::string RenderDiagnostic(const Diagnostic &diag, const bool color) {
+std::string RenderDiagnostic(const Diagnostic &diag, const bool color, const SourceLineLookup &sourceLineLookup) {
     const Reporting::Style style{color};
     std::string out;
     out.reserve(diag.sourceName.size() + diag.message.size() + 64);
@@ -135,6 +280,12 @@ std::string RenderDiagnostic(const Diagnostic &diag, const bool color) {
     out += ' ';
     AppendHumanText(out, diag.message);
     out += '\n';
+
+    if (sourceLineLookup && !diag.sourceName.empty() && diag.location.line > 0 && diag.location.column > 0) {
+        if (const auto sourceLine = sourceLineLookup(diag.sourceName, diag.location.line)) {
+            AppendSourceFrame(out, diag, *sourceLine, style);
+        }
+    }
 
     for (const auto &note : diag.notes) {
         if (note.empty()) {
@@ -165,8 +316,8 @@ std::string RenderDiagnostic(const Diagnostic &diag, const bool color) {
     return out;
 }
 
-void PrintDiagnostic(const Diagnostic &diag) {
-    std::print(stderr, "{}", RenderDiagnostic(diag));
+void PrintDiagnostic(const Diagnostic &diag, const SourceLineLookup &sourceLineLookup) {
+    std::print(stderr, "{}", RenderDiagnostic(diag, false, sourceLineLookup));
 }
 
 bool PrintDiagnostics(std::span<const Diagnostic> diags) {

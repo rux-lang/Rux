@@ -7,6 +7,7 @@
 
 #include "SourceModel/SourceLocation.h"
 
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -14,6 +15,12 @@
 #include <vector>
 
 namespace Rux {
+// A human-output owner supplies source text through this narrow lookup. The
+// renderer asks for one one-based line and never performs filesystem access.
+// The returned view only needs to remain valid for the duration of the call.
+using SourceLineLookup =
+    std::function<std::optional<std::string_view>(std::string_view sourceName, std::size_t lineNumber)>;
+
 struct Diagnostic {
     enum class Severity {
         Warning,
@@ -49,15 +56,21 @@ struct Diagnostic {
 // encoded according to RFC 8259.
 [[nodiscard]] std::string EscapeJson(std::string_view value);
 
+// Return one line from an in-memory source buffer. Both LF and CRLF input are
+// accepted; the line terminator is excluded, and an empty line is returned as
+// an engaged optional. Line numbers are one-based.
+[[nodiscard]] std::optional<std::string_view> FindSourceLine(std::string_view source, std::size_t lineNumber);
+
 // Render the canonical human form. Supplemental fields are indented below the
 // primary line in note/help/docs order. Empty supplemental values are omitted,
 // and embedded control bytes are escaped so they cannot forge terminal lines.
 // Color is a resolved policy supplied by the caller; this component performs
 // no terminal or environment detection.
-[[nodiscard]] std::string RenderDiagnostic(const Diagnostic &diag, bool color = false);
+[[nodiscard]] std::string RenderDiagnostic(const Diagnostic &diag, bool color = false,
+                                           const SourceLineLookup &sourceLineLookup = {});
 
 // Print the plain canonical human form to stderr.
-void PrintDiagnostic(const Diagnostic &diag);
+void PrintDiagnostic(const Diagnostic &diag, const SourceLineLookup &sourceLineLookup = {});
 
 // Print every diagnostic to stderr. Returns true if any is an error.
 bool PrintDiagnostics(std::span<const Diagnostic> diags);

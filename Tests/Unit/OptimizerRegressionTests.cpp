@@ -106,7 +106,9 @@ module OptimizerFixture::Support {
         options.profile = profile;
         options.quiet = true;
         options.dumpRcu = true;
-        options.emitDiagnostic = [&](const Diagnostic &diagnostic) { diagnostics.push_back(diagnostic); };
+        options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
+            diagnostics.push_back(diagnostic);
+        };
         options.emitError = [&](const std::string_view message) {
             diagnostics.push_back(ErrorDiagnostic(std::string(message)));
         };

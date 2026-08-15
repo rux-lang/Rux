@@ -300,7 +300,9 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     options.quiet = true;
     options.isTest = true;
     options.checkOnly = true;
-    options.emitDiagnostic = [&diagnostics](const Diagnostic &diagnostic) { diagnostics.push_back(diagnostic); };
+    options.emitDiagnostic = [&diagnostics](const Diagnostic &diagnostic, const SourceLineLookup &) {
+        diagnostics.push_back(diagnostic);
+    };
     options.emitError = [&errors](const std::string_view error) { errors.emplace_back(error); };
 
     const Driver::CompileResult result = Driver::CompilerDriver(std::move(options)).Compile();

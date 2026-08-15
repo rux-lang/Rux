@@ -67,12 +67,12 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     std::vector<Diagnostic> jsonDiags;
     bool hadErrors = false;
-    auto EmitDiag = [&](Diagnostic diag) {
+    auto EmitDiag = [&](Diagnostic diag, const SourceLineLookup &sourceLineLookup = {}) {
         if (jsonOutput) {
             jsonDiags.push_back(std::move(diag));
         }
         else {
-            std::print(stderr, "{}", RenderDiagnostic(diag, diagnosticColor));
+            std::print(stderr, "{}", RenderDiagnostic(diag, diagnosticColor, sourceLineLookup));
         }
     };
     auto EmitFatal = [&](std::string message) {
@@ -127,7 +127,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.quiet = opts.quiet;
         copts.verbose = opts.verbose && !jsonOutput;
         copts.checkOnly = true;
-        copts.emitDiagnostic = EmitDiag;
+        copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
+            EmitDiag(diagnostic, sourceLineLookup);
+        };
         copts.emitError = [&](std::string_view line) {
             if (jsonOutput) {
                 EmitDiag(ErrorDiagnostic(std::string(line)));

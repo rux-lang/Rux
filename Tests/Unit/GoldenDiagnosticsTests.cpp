@@ -128,7 +128,7 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
 
 } // namespace
 
-TEST_CASE("Golden diagnostic serialization omits supplemental human context") {
+TEST_CASE("Golden inspection serialization omits supplemental human context and source frames") {
     Diagnostic diagnostic{
         Diagnostic::Severity::Error, "Case.rux", {.line = 4, .column = 2}, "primary message", {}, {}, {}};
     diagnostic.notes = {"supporting note"};
@@ -138,6 +138,9 @@ TEST_CASE("Golden diagnostic serialization omits supplemental human context") {
     std::string output;
     AppendDiagnostics(output, std::array{diagnostic});
     CHECK(output == "4:2: error: primary message\n");
+    CHECK_FALSE(output.contains("Case.rux"));
+    CHECK_FALSE(output.contains('|'));
+    CHECK_FALSE(output.contains('^'));
 }
 
 TEST_CASE("Golden diagnostics match the expected files") {

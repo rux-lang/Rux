@@ -196,7 +196,9 @@ module Api {
         options.target = Target::TargetTriple::Host();
         options.quiet = true;
         options.checkOnly = checkOnly;
-        options.emitDiagnostic = [&](const Diagnostic &diagnostic) { diagnostics.push_back(diagnostic); };
+        options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
+            diagnostics.push_back(diagnostic);
+        };
         options.emitError = [&](const std::string_view message) {
             diagnostics.push_back(ErrorDiagnostic(std::string(message)));
         };
@@ -479,6 +481,25 @@ TEST_CASE("compiler driver loads path dependencies when checking") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+}
+
+TEST_CASE("compiler driver exposes already-loaded source text while emitting semantic diagnostics") {
+    DependencyFixture fixture;
+    fixture.SetApplicationSource("func Main() -> int {\n    return Missing;\n}\n");
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    std::string rendered;
+    options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
+        diagnostics.push_back(diagnostic);
+        rendered += RenderDiagnostic(diagnostic, false, sourceLineLookup);
+    };
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(rendered.contains("  2 |     return Missing;\n"));
+    CHECK(rendered.contains("    |            ^\n"));
 }
 
 TEST_CASE("compiler driver enforces TargetOS on an active dependency import") {

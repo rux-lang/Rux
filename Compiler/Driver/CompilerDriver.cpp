@@ -82,11 +82,14 @@ void CompilerDriver::InitializeCompileTimeContext() {
 }
 
 void CompilerDriver::Emit(const Diagnostic &diag) const {
+    const SourceLineLookup sourceLineLookup = [this](const std::string_view sourceName, const std::size_t lineNumber) {
+        return LookupSourceLine(sourceName, lineNumber);
+    };
     if (opts.emitDiagnostic) {
-        opts.emitDiagnostic(diag);
+        opts.emitDiagnostic(diag, sourceLineLookup);
     }
     else {
-        PrintDiagnostic(diag);
+        PrintDiagnostic(diag, sourceLineLookup);
     }
 }
 
@@ -106,6 +109,21 @@ bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) const {
         hasErrors |= diag.IsError();
     }
     return hasErrors;
+}
+
+void CompilerDriver::RememberSources(const std::span<const SourceFile> sources) {
+    for (const auto &source : sources) {
+        loadedSourceTexts.insert_or_assign(source.path.string(), source.source);
+    }
+}
+
+std::optional<std::string_view> CompilerDriver::LookupSourceLine(const std::string_view sourceName,
+                                                                 const std::size_t lineNumber) const {
+    const auto found = loadedSourceTexts.find(std::string(sourceName));
+    if (found == loadedSourceTexts.end()) {
+        return std::nullopt;
+    }
+    return FindSourceLine(found->second, lineNumber);
 }
 
 std::string CompilerDriver::TargetSystemName() const {
@@ -185,6 +203,7 @@ CompileResult CompilerDriver::Compile() {
 
 bool CompilerDriver::LexAndParseSources() {
     auto loadResult = SourceLoader::Load(root);
+    RememberSources(loadResult.files);
     stats.localFiles = loadResult.files.size();
     for (const auto &file : loadResult.files) {
         stats.localLines += CountLines(file.source);
@@ -405,6 +424,7 @@ bool CompilerDriver::LoadDependencies() {
             std::print("Loading package {} from {}\n", packageName, pendingRoot.string());
         }
         auto depLoadResult = SourceLoader::Load(pendingRoot);
+        RememberSources(depLoadResult.files);
         stats.dependencyFiles += depLoadResult.files.size();
         for (const auto &depFile : depLoadResult.files) {
             stats.dependencyLines += CountLines(depFile.source);
