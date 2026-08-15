@@ -8,6 +8,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
+#include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/Assembler.h"
 #include "CodeGen/X86_64/CallAndTerminatorEmitter.h"
 #include "CodeGen/X86_64/Encoder.h"
@@ -684,11 +685,9 @@ private:
             }
 
             const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
-            const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
-            const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
-            const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
-            const std::string suffix =
-                std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
+            const RuntimeFailureLayout layout =
+                BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
+                                          instr.sourceFunction, instr.sourceFile, instr.sourceLine, instr.sourceColumn);
 
             if (targetOs == Target::OS::Windows) {
                 const uint32_t getStdHandle = GetOrAddExtern("GetStdHandle", RcuSymKind::ExternFunc, "KERNEL32.DLL");
@@ -722,7 +721,7 @@ private:
                     AddTextReloc(writeReloc, writeFile);
                 };
 
-                writeStatic(prefix);
+                writeStatic(layout.prefix);
 
                 prepareWrite();
                 LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
@@ -733,7 +732,7 @@ private:
                 enc.Call(messageWriteReloc);
                 AddTextReloc(messageWriteReloc, writeFile);
 
-                writeStatic(suffix);
+                writeStatic(layout.location);
             }
             else {
                 const int syscallNumber = targetOs == Target::OS::Linux ? 1
@@ -751,7 +750,7 @@ private:
                     enc.Syscall();
                 };
 
-                writeStatic(prefix);
+                writeStatic(layout.prefix);
                 LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
                 enc.MovR10Rax();
                 enc.MovRsiR10Load();
@@ -759,7 +758,7 @@ private:
                 enc.MovEdiImm32(2);
                 enc.MovEaxImm32(syscallNumber);
                 enc.Syscall();
-                writeStatic(suffix);
+                writeStatic(layout.location);
             }
 
             enc.Ud2();

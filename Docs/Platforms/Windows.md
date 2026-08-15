@@ -132,5 +132,7 @@ On AArch64 Windows, reproduce the CI cross-target coverage with an x86-64 or nat
 .\Bin\rux.exe check --target windows-aarch64
 .\Bin\rux.exe test --release --target windows-aarch64
 .\Tests\Native\WindowsAArch64ExitCode\Verify.ps1 -Rux .\Bin\rux.exe
+.\Tests\Native\WindowsAArch64Assert\Verify.ps1 -Rux .\Bin\rux.exe
+.\Tests\Native\WindowsAArch64Panic\Verify.ps1 -Rux .\Bin\rux.exe
 .\Tests\Native\WindowsAArch64Dll\Verify.ps1 -Rux .\Bin\rux.exe
 ```

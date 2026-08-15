@@ -189,7 +189,8 @@ target_link_libraries(RuxObjectRcu PUBLIC RuxBuildInfo RuxTarget)
 
 rux_add_component(RuxCodeGenCommon
     CodeGen/Layout.cpp
-    CodeGen/RcuModuleBuilder.cpp)
+    CodeGen/RcuModuleBuilder.cpp
+    CodeGen/RuntimeFailure.cpp)
 target_link_libraries(RuxCodeGenCommon PUBLIC RuxLir RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxCodeGenX86_64

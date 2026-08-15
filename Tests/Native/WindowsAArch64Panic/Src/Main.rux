@@ -1,0 +1,5 @@
+import Core::Panic;
+
+func Main() {
+    Panic("native Windows ARM64 panic fixture");
+}

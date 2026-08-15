@@ -1,5 +1,6 @@
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 
+#include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 
@@ -160,11 +161,9 @@ private:
             }
 
             const LirReg messageRegister = instruction.srcs[isAssertion ? 1 : 0];
-            const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
-            const std::string function = instruction.sourceFunction.empty() ? "<unknown>" : instruction.sourceFunction;
-            const std::string file = instruction.sourceFile.empty() ? "<unknown>" : instruction.sourceFile;
-            const std::string suffix =
-                std::format("\n  at {} ({}:{}:{})\n", function, file, instruction.sourceLine, instruction.sourceColumn);
+            const RuntimeFailureLayout layout = BuildRuntimeFailureLayout(
+                isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic, instruction.sourceFunction,
+                instruction.sourceFile, instruction.sourceLine, instruction.sourceColumn);
 
             if (instructionPrinter.IsWin64Convention(CallingConvention::Default)) {
                 NeedExtern("GetStdHandle");
@@ -186,14 +185,14 @@ private:
                     TI("call    WriteFile");
                 };
 
-                writeStatic(prefix);
+                writeStatic(layout.prefix);
                 prepareWrite();
                 instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
                 TI("mov     r10, rax");
                 TI("mov     rdx, [r10]");
                 TI("mov     r8, [r10 + 8]");
                 TI("call    WriteFile");
-                writeStatic(suffix);
+                writeStatic(layout.location);
             }
             else {
                 const int syscallNumber = targetOs == Target::OS::MacOS ? 0x0200'0004
@@ -208,7 +207,7 @@ private:
                     TI("syscall");
                 };
 
-                writeStatic(prefix);
+                writeStatic(layout.prefix);
                 instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
                 TI("mov     r10, rax");
                 TI("mov     rsi, [r10]");
@@ -216,7 +215,7 @@ private:
                 TI("mov     edi, 2");
                 TI(std::format("{:<8}eax, {}", "mov", syscallNumber));
                 TI("syscall");
-                writeStatic(suffix);
+                writeStatic(layout.location);
             }
 
             TI("ud2");

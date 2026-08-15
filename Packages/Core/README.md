@@ -20,6 +20,15 @@ rux add Rux/Core
 - **Slices** and `SemanticVersion`.
 - **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for every integer, floating-point, boolean, and character width.
 
+`Assert` and `Panic` failures have the same UTF-8, LF-terminated layout on every supported target:
+
+```text
+Assertion failed: message
+  at Function (path:line:column)
+```
+
+`Panic` uses `Panic: message` on the first line. The location uses a package-relative path when the source belongs to the package root, and qualified method or module names are retained.
+
 ## Example
 
 ```rux

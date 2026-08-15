@@ -15,6 +15,7 @@
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
 #include "CodeGen/RcuModuleBuilder.h"
+#include "CodeGen/RuntimeFailure.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <algorithm>
@@ -1064,11 +1065,9 @@ private:
             heldBranch = terminatorEmitter.EmitBranchOverNonZero(A64::Xn(kTemp));
         }
 
-        const std::string function = instr.sourceFunction.empty() ? "<unknown>" : instr.sourceFunction;
-        const std::string file = instr.sourceFile.empty() ? "<unknown>" : instr.sourceFile;
-        const std::string prefix = isAssertion ? "Assertion failed: " : "Panic: ";
-        const std::string suffix =
-            std::format("\n  at {} ({}:{}:{})\n", function, file, instr.sourceLine, instr.sourceColumn);
+        const RuntimeFailureLayout layout =
+            BuildRuntimeFailureLayout(isAssertion ? RuntimeFailureKind::Assertion : RuntimeFailureKind::Panic,
+                                      instr.sourceFunction, instr.sourceFile, instr.sourceLine, instr.sourceColumn);
 
         if (isWindows) {
             const std::uint32_t getStdHandle =
@@ -1079,7 +1078,7 @@ private:
             // lpNumberOfBytesWritten. The failure path ends at BRK, so it never
             // has to close this area; a held assertion branches over it.
             Must(enc.FrameAdjust(-16), "the assertion write area");
-            EmitWindowsWriteStatic(getStdHandle, writeFile, prefix);
+            EmitWindowsWriteStatic(getStdHandle, writeFile, layout.prefix);
 
             const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];
             PrepareWindowsWrite(getStdHandle);
@@ -1087,10 +1086,10 @@ private:
             Must(enc.Ldp(A64::Xn(1), A64::Xn(2), A64::Xn(kAddr), 0), "an assertion message");
             EmitWindowsCall(writeFile, "a call to WriteFile");
 
-            EmitWindowsWriteStatic(getStdHandle, writeFile, suffix);
+            EmitWindowsWriteStatic(getStdHandle, writeFile, layout.location);
         }
         else {
-            EmitWriteStatic(*syscall, prefix);
+            EmitWriteStatic(*syscall, layout.prefix);
 
             // The message is a `Slice<char8>` the caller built, so what the
             // operand holds is its address and the two doublewords behind it
@@ -1101,7 +1100,7 @@ private:
             Must(enc.LoadImm64(A64::Xn(0), kStandardError), "the standard error descriptor");
             EmitWriteSyscall(*syscall);
 
-            EmitWriteStatic(*syscall, suffix);
+            EmitWriteStatic(*syscall, layout.location);
         }
 
         Must(enc.Brk(1), "an assertion trap");

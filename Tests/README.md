@@ -57,6 +57,10 @@ Both scripts reject non-Apple-Silicon hosts. Their Mach-O preflight reads the
 ARM64 header and ad-hoc signature bytes itself; it does not invoke an assembler,
 linker, signing tool, emulator, or Apple inspection utility.
 
+On Windows AArch64, the `WindowsAArch64Assert` and `WindowsAArch64Panic`
+PowerShell verifiers build and launch each failure path, require non-success
+termination, and compare the complete LF-terminated stderr layout.
+
 On native FreeBSD AArch64, run the freestanding, libc ABI, assertion, panic,
 BSD syscall, and shared-library fixtures with:
 
