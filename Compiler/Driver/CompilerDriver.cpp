@@ -316,7 +316,7 @@ bool CompilerDriver::LoadDependencies() {
         if (dep->IsPath()) {
             depRoot = (ownerRoot / dep->Path()).lexically_normal();
         }
-        else if (const auto local = opts.localPackageRoots.find(DependencyPackageName(*dep));
+        else if (const auto local = opts.localPackageRoots.find(dep->package.Normalized());
                  local != opts.localPackageRoots.end()) {
             depRoot = local->second;
         }

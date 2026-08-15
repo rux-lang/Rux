@@ -171,6 +171,7 @@ module Api {
 
         REQUIRE(dependency.AddRegistryDependency(*IdentitySegment::Parse("Transitive"), *IdentitySegment::Parse("Rux"),
                                                  *VersionRange::Parse("*")));
+        dependency.dependencies.back().package = *IdentitySegment::Parse("transitive");
         REQUIRE(dependency.Save(depRoot / "Rux.toml"));
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
 import Transitive::Api::Value;
@@ -184,7 +185,7 @@ module Api {
     }
 
     void ConfigureLocalWorkspace(CompileOptions &options) const {
-        options.localPackageRoots.emplace("Transitive", transitiveRoot);
+        options.localPackageRoots.emplace("transitive", transitiveRoot);
         options.localDependenciesOnly = true;
     }
 
@@ -992,7 +993,7 @@ TEST_CASE("compiler driver checks a SourceLibrary package but refuses to build i
     CHECK(buildDiagnostics[0].message.contains("Type = \"SourceLibrary\""));
 }
 
-TEST_CASE("compiler driver resolves transitive dependencies from local workspace members") {
+TEST_CASE("compiler driver resolves transitive workspace dependencies by normalized package identity") {
     DependencyFixture fixture;
     fixture.UseRegistryDeclaredTransitiveDependency();
     std::vector<Diagnostic> diagnostics;

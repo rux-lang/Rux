@@ -26,7 +26,7 @@ rux add Rux/Core
 import Core::{ #target, #Error };
 
 when #target.os {
-    .Windows, .Linux, .MacOS => {},
+    .Windows, .Linux, .macOS => {},
     else => #Error("Unsupported operating system")
 }
 ```

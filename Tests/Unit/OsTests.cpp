@@ -87,9 +87,11 @@ TEST_CASE("workspace platform package names match their target triples") {
     using namespace Rux::Driver;
 
     CHECK(IsPlatformPackageName("Linux"));
+    CHECK(IsPlatformPackageName("macOS"));
     CHECK(IsPlatformPackageName("MacOS"));
     CHECK(IsPlatformPackageName("FreeBSD"));
     CHECK(PlatformPackageMatchesTarget("Linux", *TargetTriple::Parse("linux-x86_64")));
+    CHECK(PlatformPackageMatchesTarget("macOS", *TargetTriple::Parse("macos-aarch64")));
     CHECK(PlatformPackageMatchesTarget("MacOS", *TargetTriple::Parse("macos-aarch64")));
     CHECK(PlatformPackageMatchesTarget("FreeBSD", *TargetTriple::Parse("freebsd-x86_64")));
     CHECK_FALSE(PlatformPackageMatchesTarget("Illumos", *TargetTriple::Parse("linux-x86_64")));

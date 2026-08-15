@@ -25,7 +25,7 @@ Packages marked **Planned** reserve their package names and source layout but do
 
 ## Target-Specific Packages
 
-The `FreeBSD`, `Linux`, `MacOS`, and `Windows` packages provide operating-system bindings. SourceLibrary packages can conditionally import these packages according to the compilation target.
+The `FreeBSD`, `Linux`, `macOS`, and `Windows` packages provide operating-system bindings. SourceLibrary packages can conditionally import these packages according to the compilation target.
 
 ## Package Layout and Tests
 

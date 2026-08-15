@@ -212,7 +212,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
             auto memberManifest = LoadManifest(memberPath);
             if (!memberManifest || memberManifest->IsWorkspace())
                 return 1;
-            localPackages.emplace(memberManifest->package.name.Text(), memberPath.parent_path());
+            localPackages.emplace(memberManifest->package.name.Normalized(), memberPath.parent_path());
         }
     }
 

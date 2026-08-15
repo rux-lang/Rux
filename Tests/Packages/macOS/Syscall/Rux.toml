@@ -5,11 +5,11 @@ Version = 1
 Name = "Syscall"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for MacOS: Syscall"
+Description = "Package test for macOS: Syscall"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
-MacOS = { Path = "../../../../Packages/MacOS" }
+macOS = { Path = "../../../../Packages/macOS" }
 
 [Build]
-Output = "../../../../Bin/Tests/Packages/MacOS"
+Output = "../../../../Bin/Tests/Packages/macOS"

@@ -6,7 +6,7 @@ import Text::String;
 when #target.os {
     .FreeBSD => import FreeBSD::{ StdOut, Write },
     .Linux => import Linux::{ StdOut, Write },
-    .MacOS => import MacOS::{ StdOut, Write },
+    .macOS => import macOS::{ StdOut, Write },
     .Windows => import Windows::{
         CodePage,
         GetConsoleMode,

@@ -7,7 +7,7 @@ when #target.os {
     .Linux => import Linux::{
         IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
     },
-    .MacOS => import MacOS::{
+    .macOS => import macOS::{
         IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
     },
     .Windows => import Windows::{
@@ -19,7 +19,7 @@ when #target.os {
 // https://rux-lang.dev/api/memory/alloc
 func Alloc(size: uint) -> *var opaque {
     when #target.os {
-        .FreeBSD, .Linux, .MacOS => {
+        .FreeBSD, .Linux, .macOS => {
             // Two machine words keep the returned address aligned to 16 bytes.
             const HeaderSize: uint = 16;
             let total = size + HeaderSize;

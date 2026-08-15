@@ -390,7 +390,7 @@ func Do() -> int {
     const auto model = Analyze(parsed.module, "Windows");
     REQUIRE(model.HasErrors());
     CHECK(model.diagnostics[0].message == "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: "
-                                          ".FreeBSD, .Linux, .MacOS, .Windows");
+                                          ".FreeBSD, .Linux, .macOS, .Windows");
 }
 
 TEST_CASE("#Error in a taken branch emits its message as a compile-time error") {
@@ -499,7 +499,7 @@ func Do() -> int {
 
     // No arm names macOS, so the `else` arm is taken.
     auto mac = ParseSource(source);
-    CHECK_FALSE(Analyze(mac.module, "MacOS").HasErrors());
+    CHECK_FALSE(Analyze(mac.module, "macOS").HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(mac.module, "Do")) == "3");
 }
 
@@ -510,7 +510,7 @@ import Core::{ #target };
 func Do() -> int {
     when #target.os {
         .Windows, .Linux => { return 1; }
-        .MacOS => { return 2; }
+        .macOS => { return 2; }
         else => { return 3; }
     }
 }
@@ -525,7 +525,7 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "1");
 
     auto mac = ParseSource(source);
-    CHECK_FALSE(Analyze(mac.module, "MacOS").HasErrors());
+    CHECK_FALSE(Analyze(mac.module, "macOS").HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(mac.module, "Do")) == "2");
 
     auto freebsd = ParseSource(source);
@@ -561,7 +561,7 @@ import Core::{ #target };
 func Do() -> int {
     when #target.os {
         .Linux => { return 1; }
-        .MacOS => { return 2; }
+        .macOS => { return 2; }
     }
     return 0;
 }
@@ -612,7 +612,7 @@ when #target.os {
 
     // A target named by no pattern falls to the else directive.
     auto mac = ParseSource(source);
-    const auto macModel = Analyze(mac.module, "MacOS");
+    const auto macModel = Analyze(mac.module, "macOS");
     REQUIRE(macModel.HasErrors());
     CHECK(macModel.diagnostics[0].message == "unsupported");
 }
@@ -714,7 +714,7 @@ func Do() -> int {
         return 1;
     } else when #target.os == OperatingSystem::Linux {
         return 2;
-    } else when #target.os == OperatingSystem::MacOS {
+    } else when #target.os == OperatingSystem::macOS {
         return 3;
     } else {
         return 4;
@@ -730,7 +730,6 @@ func Do() -> int {
     CHECK_FALSE(Analyze(linux.module, "Linux").HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(linux.module, "Do")) == "2");
 
-    // The host spelling of macOS is "macOS"; the variant is "MacOS".
     auto macos = ParseSource(source);
     CHECK_FALSE(Analyze(macos.module, "macOS").HasErrors());
     CHECK(ReturnedLiteral(*FindFunc(macos.module, "Do")) == "3");
@@ -754,7 +753,24 @@ func Do() -> int {
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
     CHECK(model.diagnostics[0].message == "'.Wndows' is not a variant of 'OperatingSystem'; the variants are: "
-                                          ".FreeBSD, .Linux, .MacOS, .Windows");
+                                          ".FreeBSD, .Linux, .macOS, .Windows");
+}
+
+TEST_CASE("the former MacOS spelling is not an OperatingSystem variant") {
+    auto parsed = ParseSource(R"(
+import Core::{ #target, OperatingSystem };
+
+func Do() -> int {
+    when #target.os == OperatingSystem::MacOS {
+        return 1;
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module, "macOS");
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message == "'.MacOS' is not a variant of 'OperatingSystem'; the variants are: "
+                                          ".FreeBSD, .Linux, .macOS, .Windows");
 }
 
 TEST_CASE("a when condition that is not a compile-time constant is an error") {

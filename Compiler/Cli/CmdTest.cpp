@@ -128,7 +128,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     return 1;
                 }
                 const std::string &memberName = memberResult.manifest->package.name.Text();
-                const auto [existing, inserted] = localPackageRoots.emplace(memberName, memberDir);
+                const auto [existing, inserted] =
+                    localPackageRoots.emplace(memberResult.manifest->package.name.Normalized(), memberDir);
                 if (!inserted && existing->second != memberDir) {
                     std::print(stderr, "error: duplicate workspace package name '{}'\n", memberName);
                     return 1;

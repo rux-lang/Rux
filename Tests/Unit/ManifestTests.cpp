@@ -435,7 +435,7 @@ TEST_CASE("Dependency entries follow the documented rules") {
     SUBCASE("target operating systems are exact non-empty allow-lists") {
         const Manifest manifest = Accepted(
             WithPackage("\n[Dependencies]\nPlatform = { Path = \"../Platform\", TargetOS = [\"Windows\", \"Linux\", "
-                        "\"MacOS\"] }\n"));
+                        "\"macOS\"] }\n"));
         const auto &dependency = manifest.dependencies.front();
         CHECK(dependency.targetOS.size() == 3);
         CHECK(dependency.MatchesTarget(Target::OS::Windows));
@@ -447,7 +447,7 @@ TEST_CASE("Dependency entries follow the documented rules") {
         CHECK(Rejected(
                   WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"Windows\", \"Windows\"] }\n"))
                   .message.find("duplicate TargetOS") != std::string::npos);
-        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"macOS\"] }\n"))
+        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"MacOS\"] }\n"))
                   .message.find("not a supported TargetOS") != std::string::npos);
         CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = \"Windows\" }\n"))
                   .message.find("must be an array") != std::string::npos);
@@ -467,6 +467,7 @@ Type = "SourceLibrary"
 
 [Dependencies]
 Local = { Path = "../Local", TargetOS = ["Linux"] }
+macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
 Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }
 )";
     const Manifest manifest = Accepted(source);

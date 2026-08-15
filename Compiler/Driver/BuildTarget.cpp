@@ -68,16 +68,12 @@ bool CanExecuteTargetDirectly(const OS hostOs, const HostArchitectureInfo hostAr
 }
 
 bool IsPlatformPackageName(const std::string_view name) {
-    return name == "FreeBSD" || name == "Linux" || name == "macOS" || name == "MacOS" || name == "Windows";
+    const std::string normalized = NormalizeIdentity(name);
+    return normalized == "freebsd" || normalized == "linux" || normalized == "macos" || normalized == "windows";
 }
 
 bool PlatformPackageMatchesTarget(const std::string_view name, const Target::TargetTriple target) {
-    const auto targetOs = TargetOsName(target);
-    // The package is spelled `MacOS`; the canonical target OS name is `macOS`.
-    if (name == "MacOS") {
-        return targetOs == "macOS";
-    }
-    return name == targetOs;
+    return NormalizeIdentity(name) == NormalizeIdentity(TargetOsName(target));
 }
 
 const std::string &DependencyPackageName(const ManifestDependency &dep) {

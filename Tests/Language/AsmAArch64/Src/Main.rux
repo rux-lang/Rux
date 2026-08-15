@@ -254,7 +254,7 @@ when #target.arch {
                     ret
                 }
             },
-            .MacOS => {
+            .macOS => {
                 asm func RawGetPid() -> int64 {
                     mov x16, #20
                     svc #0x80
@@ -354,7 +354,7 @@ when #target.arch {
 
             // System calls, on the targets that have one
             when #target.os {
-                .FreeBSD, .Linux, .MacOS => {
+                .FreeBSD, .Linux, .macOS => {
                     if RawGetPid() <= 0i64 {
                         return 22;
                     }

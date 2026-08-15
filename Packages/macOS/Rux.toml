@@ -4,12 +4,12 @@ MinRux = "0.4.0"
 
 [Package]
 Namespace = "Rux"
-Name = "MacOS"
+Name = "macOS"
 Version = "0.1.0"
 Type = "SourceLibrary"
 Description = "macOS platform bindings"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["MacOS", "Darwin", "Platform", "Bindings", "Ffi"]
+Keywords = ["macOS", "Darwin", "Platform", "Bindings", "Ffi"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"

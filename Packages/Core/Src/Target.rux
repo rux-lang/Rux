@@ -1,9 +1,10 @@
 // Operating systems that can be selected by compile-time target values
+#Allow("naming.type")
 enum OperatingSystem: uint8 {
     Unknown = 0,
     FreeBSD = 1,
     Linux = 2,
-    MacOS = 3,
+    macOS = 3,
     Windows = 4
 }
 

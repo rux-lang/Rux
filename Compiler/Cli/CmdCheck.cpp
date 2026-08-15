@@ -183,7 +183,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 continue;
             }
             const auto [existing, inserted] =
-                localPackageRoots.emplace(memberManifest->package.name.Text(), memberManifestPath.parent_path());
+                localPackageRoots.emplace(memberManifest->package.name.Normalized(), memberManifestPath.parent_path());
             if (!inserted && existing->second != memberManifestPath.parent_path()) {
                 EmitFatal("duplicate workspace package name '" + memberManifest->package.name.Text() + "'");
                 jobs.push_back({memberManifestPath, label, std::nullopt});

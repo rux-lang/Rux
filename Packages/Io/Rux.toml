@@ -21,7 +21,7 @@ Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
 Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
-MacOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["MacOS"] }
+macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

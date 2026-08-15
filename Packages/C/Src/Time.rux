@@ -57,7 +57,7 @@ struct timespec {
 when #target.os {
     .FreeBSD => const TimeLib = "libc.so.7";
     .Linux => const TimeLib = "libc.so.6";
-    .MacOS => const TimeLib = "libSystem.B.dylib";
+    .macOS => const TimeLib = "libSystem.B.dylib";
     .Windows => const TimeLib = "msvcrt.dll";
     else => #Error("Unsupported operating system")
 }

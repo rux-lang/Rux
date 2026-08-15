@@ -1,11 +1,11 @@
-# MacOS
+# macOS
 
 macOS platform bindings: the raw Darwin syscall interface, with no libSystem in between.
 
 ## Installation
 
 ```sh
-rux add Rux/MacOS
+rux add Rux/macOS
 ```
 
 ## What it provides
@@ -24,8 +24,8 @@ macOS only. Guard use behind a compile-time check, so a build for another target
 ```rux
 import Core::#target;
 
-when #target.os == .MacOS {
-    import MacOS::{ StdOut, Write };
+when #target.os == .macOS {
+    import macOS::{ StdOut, Write };
 }
 ```
 

@@ -47,7 +47,7 @@ std::string_view ManifestTargetOSName(const Target::OS os) noexcept {
     case Target::OS::Linux:
         return "Linux";
     case Target::OS::MacOS:
-        return "MacOS";
+        return "macOS";
     case Target::OS::Windows:
         return "Windows";
     default:

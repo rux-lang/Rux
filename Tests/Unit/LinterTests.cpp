@@ -157,6 +157,11 @@ TEST_CASE("naming.type allows foreign type and member names") {
             tv_sec: time_t;
             tv_nsec: int64;
         }
+
+        #Allow("naming.type")
+        enum OperatingSystem {
+            macOS
+        }
     )",
                                      "foreign_types.rux");
     CHECK_FALSE(result.HasErrors());

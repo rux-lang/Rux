@@ -8,7 +8,7 @@ when #target.os == .Windows {
 // https://rux-lang.dev/api/memory/realloc
 func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
-        .FreeBSD, .Linux, .MacOS => {
+        .FreeBSD, .Linux, .macOS => {
             if ptr == null {
                 return Alloc(size);
             }

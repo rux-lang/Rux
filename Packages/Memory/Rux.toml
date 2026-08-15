@@ -20,5 +20,5 @@ ReadmeFile = "README.md"
 Core = { Namespace = "Rux", Version = "0.1.0" }
 FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
 Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
-MacOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["MacOS"] }
+macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
 Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

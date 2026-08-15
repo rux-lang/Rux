@@ -14,7 +14,7 @@ Packages = [
     "Packages/Io",
     "Packages/Json",
     "Packages/Linux",
-    "Packages/MacOS",
+    "Packages/macOS",
     "Packages/Math",
     "Packages/Memory",
     "Packages/Random",

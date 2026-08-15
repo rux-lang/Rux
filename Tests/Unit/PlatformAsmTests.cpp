@@ -219,7 +219,7 @@ void CheckWrappers(const AssembledSource &source, const std::uint32_t numberMove
     if (package == "FreeBSD") {
         return "freebsd";
     }
-    if (package == "MacOS") {
+    if (package == "macOS") {
         return "macos";
     }
     if (package == "Windows") {
@@ -239,7 +239,7 @@ TEST_CASE("Linux AArch64 system-call wrappers trap through x8 and return the ker
 }
 
 TEST_CASE("macOS AArch64 system-call wrappers trap through x16 and normalize a carry error") {
-    const AssembledSource macos = AssembleSourceFor(PackageSource("MacOS", "MacOS.rux"), "macos-aarch64");
+    const AssembledSource macos = AssembleSourceFor(PackageSource("macOS", "MacOS.rux"), "macos-aarch64");
     CHECK(macos.diagnostics.empty());
     CheckWrappers(macos, MovX16FromX0, Svc0x80, /*carryMeansError=*/true);
 }

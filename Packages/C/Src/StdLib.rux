@@ -4,7 +4,7 @@ import Core::{ #target, #Error };
 when #target.os {
     .FreeBSD => const StdLib = "libc.so.7";
     .Linux => const StdLib = "libc.so.6";
-    .MacOS => const StdLib = "libSystem.B.dylib";
+    .macOS => const StdLib = "libSystem.B.dylib";
     .Windows => const StdLib = "ucrtbase.dll";
     else => #Error("Unsupported operating system")
 }

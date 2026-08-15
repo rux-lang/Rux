@@ -4,7 +4,7 @@ import Text::{ String, StringBuilder };
 when #target.os {
     .FreeBSD => import FreeBSD::{ Read, StdIn },
     .Linux => import Linux::{ Read, StdIn },
-    .MacOS => import MacOS::{ Read, StdIn },
+    .macOS => import macOS::{ Read, StdIn },
     .Windows => import Windows::{ GetStdHandle, ReadFile, StdInputHandle }
 }
 

@@ -27,14 +27,14 @@ namespace Rux {
 namespace {
 // The operating systems `#target.os` can name. Each is one a build can
 // produce, so naming one is never a branch that quietly never runs.
-constexpr std::array OsVariants{"FreeBSD", "Linux", "MacOS", "Windows"};
+constexpr std::array OsVariants{"FreeBSD", "Linux", "macOS", "Windows"};
 
 // Spellings of an OS that are not the variant name: what the host reports, or
 // what a target triple is called.
 constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
-    {"macos", "MacOS"},
-    {"osx", "MacOS"},
-    {"darwin", "MacOS"},
+    {"macos", "macOS"},
+    {"osx", "macOS"},
+    {"darwin", "macOS"},
 };
 
 using EnumValue = CompileTimeEnumValue;
@@ -46,8 +46,8 @@ bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
     });
 }
 
-// The `OS` variant an OS name denotes, however it is spelled ("macOS", "Darwin"
-// and "MacOS" are all `.MacOS`).
+// The `OS` variant an OS name denotes, however it is spelled ("macOS" and
+// "Darwin" are both `.macOS`).
 std::optional<std::string> OsVariantFor(const std::string_view name) {
     for (const std::string_view variant : OsVariants) {
         if (EqualsIgnoringCase(name, variant)) {

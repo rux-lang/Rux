@@ -30,7 +30,7 @@ struct CompileOptions {
     BuildProfile profile = BuildProfile::Debug;
     std::map<std::string, std::string> defines; // --define overrides
 
-    // Workspace members that override registry dependencies by package name.
+    // Workspace members that override registry dependencies by normalized package name.
     // Repository checks and tests use this map to compile against the local
     // source tree while publishable package manifests retain version-based
     // dependencies.

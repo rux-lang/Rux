@@ -1,8 +1,8 @@
 import Core::{ Architecture, OperatingSystem, #target };
 
-when #target.os == OperatingSystem::MacOS &&
+when #target.os == OperatingSystem::macOS &&
      #target.arch == Architecture::X86_64 {
-    import MacOS::{
+    import macOS::{
         Errno,
         GetPid,
         GetTimeOfDay,

@@ -144,7 +144,7 @@ Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }
 
 A registry dependency requires `Namespace` and `Version`. A path dependency requires `Path` and cannot carry `Namespace` or `Version`. Either form may set `Package` to name a package whose spelling differs from the import name; `Package` defaults to the import name.
 
-Either form may also declare a non-empty `TargetOS` allow-list. The dependency participates in builds and package resolution only when the selected target operating system appears in the list; omitting `TargetOS` makes it unconditional. The accepted values are `FreeBSD`, `Linux`, `MacOS` and `Windows`. Values are exact and cannot repeat. A dependency used only on FreeBSD therefore declares `TargetOS = ["FreeBSD"]`.
+Either form may also declare a non-empty `TargetOS` allow-list. The dependency participates in builds and package resolution only when the selected target operating system appears in the list; omitting `TargetOS` makes it unconditional. The accepted values are `FreeBSD`, `Linux`, `macOS` and `Windows`. Values are exact and cannot repeat. A dependency used only on macOS therefore declares `TargetOS = ["macOS"]`.
 
 The import name is an identity segment, and two dependencies cannot produce the same import name after normalization. Path dependencies are valid for local builds but make a manifest unpublishable.
 

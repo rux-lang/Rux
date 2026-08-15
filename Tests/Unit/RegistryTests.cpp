@@ -24,7 +24,7 @@ constexpr const char *kIndexBody = R"({
         "yanked": false,
         "dependencies": [
           { "alias": "Json", "target_namespace": "Rux", "target_package": "Json", "version_range": "^1" },
-          { "alias": "Mem", "target_namespace": "Rux", "target_package": "Memory", "version_range": ">=0.1.0, <0.3.0", "target_os": ["Windows", "Linux"] }
+          { "alias": "Mem", "target_namespace": "Rux", "target_package": "Memory", "version_range": ">=0.1.0, <0.3.0", "target_os": ["Windows", "macOS"] }
         ]
       },
       { "version": "0.3.0", "min_rux": "9.0.0", "yanked": false, "dependencies": [] },
@@ -76,9 +76,10 @@ TEST_CASE("DecodePackageIndex reads identity, versions and dependency edges") {
     CHECK(entry->versions[1].dependencies[1].package.Text() == "Memory");
     CHECK(entry->versions[1].dependencies[1].range.Text() == ">=0.1.0, <0.3.0");
     CHECK(entry->versions[1].dependencies[1].targetOS ==
-          std::vector<Target::OS>{Target::OS::Windows, Target::OS::Linux});
+          std::vector<Target::OS>{Target::OS::Windows, Target::OS::MacOS});
     CHECK(entry->versions[1].dependencies[1].MatchesTarget(Target::OS::Windows));
-    CHECK_FALSE(entry->versions[1].dependencies[1].MatchesTarget(Target::OS::MacOS));
+    CHECK(entry->versions[1].dependencies[1].MatchesTarget(Target::OS::MacOS));
+    CHECK_FALSE(entry->versions[1].dependencies[1].MatchesTarget(Target::OS::Linux));
 
     CHECK(entry->versions[3].yanked);
 }
@@ -127,7 +128,7 @@ TEST_CASE("DecodePackageIndex rejects documents it cannot trust") {
     constexpr std::string_view edgeSuffix = R"( } ] } ] }
     })";
     CHECK_FALSE(DecodePackageIndex(std::string(edgePrefix) + "[]" + std::string(edgeSuffix)).has_value());
-    CHECK_FALSE(DecodePackageIndex(std::string(edgePrefix) + "[\"macOS\"]" + std::string(edgeSuffix)).has_value());
+    CHECK_FALSE(DecodePackageIndex(std::string(edgePrefix) + "[\"MacOS\"]" + std::string(edgeSuffix)).has_value());
     CHECK_FALSE(DecodePackageIndex(std::string(edgePrefix) + "[\"Windows\", \"Windows\"]" + std::string(edgeSuffix))
                     .has_value());
     CHECK_FALSE(DecodePackageIndex(std::string(edgePrefix) + "\"Windows\"" + std::string(edgeSuffix)).has_value());
