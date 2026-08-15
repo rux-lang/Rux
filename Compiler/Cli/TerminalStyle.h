@@ -5,6 +5,7 @@
 #include "Cli/Cli.h"
 #include "Reporting/Reporting.h"
 
+#include <cstdio>
 #include <string_view>
 
 namespace Rux::CliSupport {
@@ -20,6 +21,12 @@ enum class OutputStream {
     Stderr
 };
 [[nodiscard]] bool ColorEnabled(ColorMode mode, OutputStream stream = OutputStream::Stdout);
+[[nodiscard]] bool ColorEnabled(ColorMode mode, std::FILE *output);
+
+// Pure policy seam used by terminal detection and its tests. Explicit color
+// wins; automatic color requires an interactive stream and honors both
+// NO_COLOR (even when empty) and TERM=dumb.
+[[nodiscard]] bool ResolveColor(ColorMode mode, bool interactive, bool noColor, bool dumbTerminal);
 
 // Progress lines print their verb at column 0 with no padding, so a run of them
 // shares one left edge. Nothing right-aligns a verb; a helper that did was

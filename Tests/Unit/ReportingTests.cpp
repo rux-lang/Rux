@@ -71,5 +71,6 @@ TEST_CASE("reporting remains a narrow dependency in the CMake component graph") 
 
     CHECK(cmake.contains("PRIVATE RuxReporting"));
     CHECK(cmake.contains("RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics RuxReporting"));
-    CHECK(cmake.contains("RuxCliContract RuxCliHelp RuxReporting"));
+    CHECK(cmake.contains("RuxCliContract RuxCliHelp RuxCliReporting RuxReporting"));
+    CHECK(cmake.contains("RuxCliReporting PUBLIC RuxReporting PRIVATE RuxSystem"));
 }

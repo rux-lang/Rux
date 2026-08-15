@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -47,6 +48,12 @@ namespace Rux::System {
 [[nodiscard]] bool UnsetEnv(const char *name);
 
 // ---- Console ------------------------------------------------------------------
+
+// True when `output` is an interactive terminal. On Windows a positive answer
+// also enables virtual-terminal processing on that handle. This accepts an
+// explicit stream so CLI reporters can be captured without replacing stdout or
+// stderr process-wide.
+[[nodiscard]] bool OutputIsInteractive(std::FILE *output);
 
 // True when stdout is an interactive terminal (not redirected to a file or
 // pipe). On Windows a positive answer also enables virtual-terminal processing

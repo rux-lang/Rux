@@ -74,6 +74,11 @@ if (WIN32)
     target_link_libraries(RuxSystem PRIVATE winhttp)
 endif ()
 
+rux_add_component(RuxCliReporting
+    Cli/Reporter.cpp
+    Cli/TerminalStyle.cpp)
+target_link_libraries(RuxCliReporting PUBLIC RuxReporting PRIVATE RuxSystem)
+
 rux_add_component(RuxCrypto
     Crypto/Sha256.cpp)
 
@@ -265,7 +270,6 @@ add_executable(rux
     Main.cpp
     Cli/Cli.cpp
     Cli/CliHelp.cpp
-    Cli/TerminalStyle.cpp
     Cli/CmdAuth.cpp
     Cli/CmdBuild.cpp
     Cli/CmdCheck.cpp
@@ -281,7 +285,7 @@ add_executable(rux
 )
 
 target_link_libraries(rux PRIVATE
-    RuxCore RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxReporting)
+    RuxCore RuxFormatter RuxLinter RuxDocumentation RuxCliContract RuxCliHelp RuxCliReporting RuxReporting)
 
 # Emit the compiler directly to Bin/ in the source tree while keeping CMake
 # intermediates in the build directory. Configuration-specific properties keep
@@ -294,7 +298,8 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
 
 if (WIN32)
-    set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxReporting RuxSource RuxSystem RuxCrypto
+    set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxCliReporting RuxReporting RuxSource
+        RuxSystem RuxCrypto
         RuxPackage
         RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive

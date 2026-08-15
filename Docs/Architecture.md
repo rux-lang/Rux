@@ -57,6 +57,7 @@ These are maintained contracts, not a one-time migration record. Changes to them
 | `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                 |
 | `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                 |
 | `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics           |
+| `CliReporting`         | Stream-scoped CLI messages, suppression, tables, summaries, and terminal color policy                     | Reporting and System                  |
 | `Diagnostics`          | Structured diagnostic values plus canonical human and JSON rendering                                      | SourceModel and Reporting             |
 | `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs   |
@@ -143,6 +144,11 @@ HIR-to-LIR implementation files share private state through `HirToLirDetail::Hir
 `RuxCore` is convenient for the unit-test executable and embedders, but compiler components must link to their actual dependencies. It must not become a shortcut that introduces cycles between stages.
 
 ## CLI and Package Flows
+
+`RuxCliReporting` owns semantic CLI messages and quiet/verbose suppression against a caller-provided stream. Its color
+policy combines that stream's host interactivity from `RuxSystem` with `--color`, `NO_COLOR`, and `TERM=dumb`, then uses
+the host-independent styles in `RuxReporting`. Commands retain responsibility for their wording and for selecting stdout
+or stderr, which makes reporter capture independent of process-wide stream replacement.
 
 Formatter and linter are internal compiler components exposed through the single `rux` application:
 

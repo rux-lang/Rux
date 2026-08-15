@@ -11,6 +11,7 @@
 #include <vector>
 
 #if RUX_OS_WINDOWS
+    #include <io.h>
     #include <psapi.h>
     #include <shellapi.h>
 #else
@@ -134,9 +135,16 @@ bool UnsetEnv(const char *name) {
 
 // ---- Console ------------------------------------------------------------------
 
-bool StdoutIsInteractive() {
+bool OutputIsInteractive(std::FILE *output) {
+    if (output == nullptr) {
+        return false;
+    }
 #if RUX_OS_WINDOWS
-    HANDLE const handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    const int descriptor = _fileno(output);
+    if (descriptor < 0) {
+        return false;
+    }
+    HANDLE const handle = reinterpret_cast<HANDLE>(_get_osfhandle(descriptor));
     if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
         return false;
     }
@@ -150,25 +158,16 @@ bool StdoutIsInteractive() {
     SetConsoleMode(handle, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     return true;
 #else
-    return isatty(fileno(stdout)) != 0;
+    return isatty(fileno(output)) != 0;
 #endif
 }
 
+bool StdoutIsInteractive() {
+    return OutputIsInteractive(stdout);
+}
+
 bool StderrIsInteractive() {
-#if RUX_OS_WINDOWS
-    HANDLE const handle = GetStdHandle(STD_ERROR_HANDLE);
-    if (handle == nullptr || handle == INVALID_HANDLE_VALUE || GetFileType(handle) != FILE_TYPE_CHAR) {
-        return false;
-    }
-    DWORD consoleMode = 0;
-    if (!GetConsoleMode(handle, &consoleMode)) {
-        return false;
-    }
-    SetConsoleMode(handle, consoleMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    return true;
-#else
-    return isatty(fileno(stderr)) != 0;
-#endif
+    return OutputIsInteractive(stderr);
 }
 
 bool StdinIsInteractive() {
