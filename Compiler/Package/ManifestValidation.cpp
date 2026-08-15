@@ -13,72 +13,129 @@ public:
         : tables(std::move(input.tables)) {
     }
 
-    Manifest Run() {
+    ValidationResult Run() {
         Manifest manifest;
         for (const auto &table : tables) {
             static constexpr std::string_view known[] = {"Manifest",     "Package", "Workspace",
                                                          "Dependencies", "Build",   "Build.Defines"};
             if (std::ranges::find(known, table.name) == std::ranges::end(known)) {
-                FailAt(table.location, std::format("unknown section '[{}]'", table.name));
+                AddUnknown(table.location, "section", table.name, known, true);
             }
             for (const auto &other : tables) {
                 if (&other != &table && other.name == table.name && Before(other.location, table.location)) {
-                    FailAt(table.location, std::format("duplicate section '[{}]'", table.name));
+                    Add(table.location, std::format("duplicate section '[{}]'", table.name),
+                        "remove the repeated section or merge its fields into the first one");
                 }
             }
         }
 
         const Table *header = Find("Manifest");
         if (header == nullptr) {
-            FailAt({1, 1}, "manifest must start with a '[Manifest]' section declaring 'Version = 1'");
+            Add({1, 1}, "manifest must start with a '[Manifest]' section declaring 'Version = 1'",
+                "add '[Manifest]' followed by 'Version = 1'");
         }
-        ReadHeader(*header, manifest.header);
+        else {
+            ReadHeader(*header, manifest.header);
+        }
 
         const Table *packageTable = Find("Package");
         const Table *workspaceTable = Find("Workspace");
         if (packageTable != nullptr && workspaceTable != nullptr) {
-            FailAt(workspaceTable->location, "'[Package]' and '[Workspace]' are mutually exclusive");
+            Add(workspaceTable->location, "'[Package]' and '[Workspace]' are mutually exclusive",
+                "remove one section; a manifest describes either one package or one workspace");
         }
         if (packageTable == nullptr && workspaceTable == nullptr) {
-            FailAt(header->location, "manifest must declare either '[Package]' or '[Workspace]'");
+            Add(header != nullptr ? header->location : Location{1, 1},
+                "manifest must declare either '[Package]' or '[Workspace]'",
+                "add the section that describes this manifest");
         }
 
-        if (workspaceTable != nullptr) {
+        if (workspaceTable != nullptr && packageTable == nullptr) {
             ReadWorkspace(*workspaceTable, manifest.workspace);
             if (const Table *deps = Find("Dependencies")) {
-                FailAt(deps->location, "a workspace cannot declare dependencies");
+                Add(deps->location, "a workspace cannot declare dependencies in '[Dependencies]'",
+                    "move dependencies into a workspace member package");
             }
             if (const Table *build = Find("Build")) {
-                FailAt(build->location, "a workspace cannot declare build settings");
+                Add(build->location, "a workspace cannot declare build settings in '[Build]'",
+                    "move build settings into a workspace member package");
             }
             if (const Table *defines = Find("Build.Defines")) {
-                FailAt(defines->location, "a workspace cannot declare build settings");
+                Add(defines->location, "a workspace cannot declare build settings in '[Build.Defines]'",
+                    "move build settings into a workspace member package");
             }
-            return manifest;
+        }
+        else if (packageTable != nullptr) {
+            ReadPackage(*packageTable, manifest.package);
+            if (const Table *deps = Find("Dependencies")) {
+                ReadDependencies(*deps, manifest.dependencies);
+            }
+            if (const Table *build = Find("Build")) {
+                ReadBuild(*build, manifest.build);
+            }
+            if (const Table *defines = Find("Build.Defines")) {
+                ReadDefines(*defines, manifest.build.defines);
+            }
         }
 
-        ReadPackage(*packageTable, manifest.package);
-        if (const Table *deps = Find("Dependencies")) {
-            ReadDependencies(*deps, manifest.dependencies);
+        std::ranges::stable_sort(errors, [](const ValidationError &left, const ValidationError &right) {
+            return Before(left.location, right.location);
+        });
+        if (!errors.empty()) {
+            return {std::nullopt, std::move(errors)};
         }
-        if (const Table *build = Find("Build")) {
-            ReadBuild(*build, manifest.build);
-        }
-        if (const Table *defines = Find("Build.Defines")) {
-            ReadDefines(*defines, manifest.build.defines);
-        }
-        return manifest;
+        return {std::move(manifest), {}};
     }
 
 private:
     std::vector<Table> tables;
+    std::vector<ValidationError> errors;
 
     static bool Before(const Location left, const Location right) noexcept {
         return left.line < right.line || (left.line == right.line && left.column < right.column);
     }
 
-    [[noreturn]] static void FailAt(const Location location, std::string message) {
-        throw ValidationError{location, std::move(message)};
+    [[noreturn]] static void FailAt(const Location location, std::string message,
+                                    std::optional<std::string> help = {}) {
+        throw ValidationError{location, std::move(message), std::move(help), std::string(manifestDocumentationUrl)};
+    }
+
+    void Add(const Location location, std::string message, std::optional<std::string> help = {}) {
+        errors.push_back({location, std::move(message), std::move(help), std::string(manifestDocumentationUrl)});
+    }
+
+    template <typename Function>
+    void Try(Function &&function) {
+        try {
+            function();
+        }
+        catch (ValidationError &failure) {
+            errors.push_back(std::move(failure));
+        }
+    }
+
+    static bool EqualIgnoringCase(const std::string_view left, const std::string_view right) {
+        return left.size() == right.size() && std::ranges::equal(left, right, [](const char a, const char b) {
+                   const auto Lower = [](const char value) {
+                       return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;
+                   };
+                   return Lower(a) == Lower(b);
+               });
+    }
+
+    void AddUnknown(const Location location, const std::string_view kind, const std::string_view actual,
+                    const std::span<const std::string_view> known, const bool section = false) {
+        std::optional<std::string> help;
+        for (const auto expected : known) {
+            if (EqualIgnoringCase(actual, expected)) {
+                help = section ? std::format("section names are case-sensitive; use '[{}]'", expected)
+                               : std::format("field names are case-sensitive; use '{}'", expected);
+                break;
+            }
+        }
+        Add(location,
+            section ? std::format("unknown section '[{}]'", actual) : std::format("unknown {} '{}'", kind, actual),
+            std::move(help));
     }
 
     [[nodiscard]] const Table *Find(const std::string_view name) const {
@@ -91,10 +148,18 @@ private:
         return found == table.entries.end() ? nullptr : found->value.get();
     }
 
-    static void RejectUnknownKeys(const Table &table, const std::span<const std::string_view> known) {
+    void RejectUnknownKeys(const Table &table, const std::span<const std::string_view> known) {
         for (const auto &entry : table.entries) {
             if (std::ranges::find(known, entry.key) == known.end()) {
-                FailAt(entry.keyLocation, std::format("unknown field '{}' in '[{}]'", entry.key, table.name));
+                std::optional<std::string> help;
+                for (const auto expected : known) {
+                    if (EqualIgnoringCase(entry.key, expected)) {
+                        help = std::format("field names are case-sensitive; use '{}'", expected);
+                        break;
+                    }
+                }
+                Add(entry.keyLocation, std::format("unknown field '{}' in [{}]", entry.key, table.name),
+                    std::move(help));
             }
         }
     }
@@ -193,261 +258,338 @@ private:
         return text;
     }
 
-    static void ReadHeader(const Table &table, ManifestHeader &header) {
+    void ReadHeader(const Table &table, ManifestHeader &header) {
         static constexpr std::string_view known[] = {"Version", "MinRux"};
         RejectUnknownKeys(table, known);
 
         const Value *version = Lookup(table, "Version");
         if (version == nullptr) {
-            FailAt(table.location, "'[Manifest]' must declare 'Version'");
+            Add(table.location, "[Manifest] must declare 'Version'", "add 'Version = 1' to [Manifest]");
         }
-        Typed(*version, Value::Kind::Integer, "Version");
-        if (version->integer != manifestSchemaVersion) {
-            FailAt(version->location, std::format("unsupported manifest version {}; this compiler accepts version {}",
-                                                  version->integer, manifestSchemaVersion));
+        else {
+            Try([&] {
+                Typed(*version, Value::Kind::Integer, "[Manifest].Version");
+                if (version->integer != manifestSchemaVersion) {
+                    FailAt(version->location,
+                           std::format("unsupported manifest version {} in [Manifest].Version; this compiler accepts "
+                                       "version {}",
+                                       version->integer, manifestSchemaVersion),
+                           "set '[Manifest].Version = 1'");
+                }
+                header.schemaVersion = manifestSchemaVersion;
+            });
         }
-        header.schemaVersion = manifestSchemaVersion;
 
         if (const Value *minRux = Lookup(table, "MinRux")) {
-            header.minRux = ReadVersion(*minRux, "MinRux");
+            Try([&] { header.minRux = ReadVersion(*minRux, "[Manifest].MinRux"); });
         }
     }
 
-    static void ReadPackage(const Table &table, Package &package) {
+    void ReadPackage(const Table &table, Package &package) {
         static constexpr std::string_view known[] = {"Namespace",   "Name",       "Version",  "Type",
                                                      "Description", "Authors",    "Keywords", "License",
                                                      "LicenseFile", "Repository", "Homepage", "ReadmeFile"};
         RejectUnknownKeys(table, known);
 
         if (const Value *ns = Lookup(table, "Namespace")) {
-            package.ns = ReadIdentity(*ns, "Namespace");
+            Try([&] { package.ns = ReadIdentity(*ns, "[Package].Namespace"); });
         }
         const Value *name = Lookup(table, "Name");
         if (name == nullptr) {
-            FailAt(table.location, "'[Package]' must declare 'Name'");
+            Add(table.location, "[Package] must declare 'Name'", "add a package identity such as 'Name = \"App\"'");
         }
-        package.name = ReadIdentity(*name, "Name");
+        else {
+            Try([&] { package.name = ReadIdentity(*name, "[Package].Name"); });
+        }
 
         const Value *version = Lookup(table, "Version");
         if (version == nullptr) {
-            FailAt(table.location, "'[Package]' must declare 'Version'");
+            Add(table.location, "[Package] must declare 'Version'",
+                "add a semantic version such as 'Version = \"0.1.0\"'");
         }
-        package.version = ReadVersion(*version, "Version");
+        else {
+            Try([&] { package.version = ReadVersion(*version, "[Package].Version"); });
+        }
 
         const Value *type = Lookup(table, "Type");
         if (type == nullptr) {
-            FailAt(table.location, "'[Package]' must declare 'Type'");
+            Add(table.location, "[Package] must declare 'Type'",
+                "use 'Executable', 'SharedLibrary', 'StaticLibrary' or 'SourceLibrary'");
         }
-        const auto parsedType = ParseManifestPackageType(Typed(*type, Value::Kind::String, "Type").text);
-        if (!parsedType) {
-            FailAt(type->location,
-                   std::format("'Type' must be 'Executable', 'SharedLibrary', 'StaticLibrary' or 'SourceLibrary', "
-                               "found '{}'",
-                               type->text));
+        else {
+            Try([&] {
+                const auto parsedType =
+                    ParseManifestPackageType(Typed(*type, Value::Kind::String, "[Package].Type").text);
+                if (!parsedType) {
+                    std::optional<std::string> help;
+                    static constexpr std::string_view allowed[] = {"Executable", "SharedLibrary", "StaticLibrary",
+                                                                   "SourceLibrary"};
+                    for (const auto expected : allowed) {
+                        if (EqualIgnoringCase(type->text, expected)) {
+                            help = std::format("enum values are case-sensitive; use '{}'", expected);
+                            break;
+                        }
+                    }
+                    FailAt(type->location,
+                           std::format("[Package].Type must be 'Executable', 'SharedLibrary', 'StaticLibrary' or "
+                                       "'SourceLibrary', found '{}'",
+                                       type->text),
+                           std::move(help));
+                }
+                package.type = *parsedType;
+            });
         }
-        package.type = *parsedType;
 
         if (const Value *description = Lookup(table, "Description")) {
-            package.description = Typed(*description, Value::Kind::String, "Description").text;
+            Try([&] { package.description = Typed(*description, Value::Kind::String, "[Package].Description").text; });
         }
         if (const Value *authors = Lookup(table, "Authors")) {
-            Typed(*authors, Value::Kind::Array, "Authors");
-            if (authors->array.size() > manifestMaxAuthors) {
-                FailAt(authors->location, std::format("at most {} authors are allowed", manifestMaxAuthors));
-            }
-            for (const auto &author : authors->array) {
-                package.authors.push_back(Typed(*author, Value::Kind::String, "Authors").text);
-            }
+            Try([&] {
+                Typed(*authors, Value::Kind::Array, "[Package].Authors");
+                if (authors->array.size() > manifestMaxAuthors) {
+                    FailAt(authors->location,
+                           std::format("[Package].Authors allows at most {} entries", manifestMaxAuthors));
+                }
+                for (const auto &author : authors->array) {
+                    package.authors.push_back(Typed(*author, Value::Kind::String, "[Package].Authors item").text);
+                }
+            });
         }
         if (const Value *keywords = Lookup(table, "Keywords")) {
-            Typed(*keywords, Value::Kind::Array, "Keywords");
-            if (keywords->array.size() > manifestMaxKeywords) {
-                FailAt(keywords->location, std::format("at most {} keywords are allowed", manifestMaxKeywords));
-            }
-            for (const auto &keyword : keywords->array) {
-                auto segment = ReadIdentity(*keyword, "Keywords");
-                for (const auto &existing : package.keywords) {
-                    if (existing == segment) {
-                        FailAt(keyword->location, std::format("keyword '{}' collides with '{}' after normalization",
-                                                              segment.Text(), existing.Text()));
-                    }
+            Try([&] {
+                Typed(*keywords, Value::Kind::Array, "[Package].Keywords");
+                if (keywords->array.size() > manifestMaxKeywords) {
+                    FailAt(keywords->location,
+                           std::format("[Package].Keywords allows at most {} entries", manifestMaxKeywords));
                 }
-                package.keywords.push_back(std::move(segment));
-            }
+                for (const auto &keyword : keywords->array) {
+                    auto segment = ReadIdentity(*keyword, "[Package].Keywords item");
+                    for (const auto &existing : package.keywords) {
+                        if (existing == segment) {
+                            FailAt(keyword->location,
+                                   std::format("[Package].Keywords entry '{}' collides with '{}' after normalization",
+                                               segment.Text(), existing.Text()));
+                        }
+                    }
+                    package.keywords.push_back(std::move(segment));
+                }
+            });
         }
         if (const Value *license = Lookup(table, "License")) {
-            package.license = Typed(*license, Value::Kind::String, "License").text;
+            Try([&] { package.license = Typed(*license, Value::Kind::String, "[Package].License").text; });
         }
         if (const Value *licenseFile = Lookup(table, "LicenseFile")) {
-            package.licenseFile = ReadPath(*licenseFile, "LicenseFile", false);
+            Try([&] { package.licenseFile = ReadPath(*licenseFile, "[Package].LicenseFile", false); });
         }
         if (const Value *repository = Lookup(table, "Repository")) {
-            package.repository = ReadUrl(*repository, "Repository");
+            Try([&] { package.repository = ReadUrl(*repository, "[Package].Repository"); });
         }
         if (const Value *homepage = Lookup(table, "Homepage")) {
-            package.homepage = ReadUrl(*homepage, "Homepage");
+            Try([&] { package.homepage = ReadUrl(*homepage, "[Package].Homepage"); });
         }
         if (const Value *readmeFile = Lookup(table, "ReadmeFile")) {
-            package.readmeFile = ReadPath(*readmeFile, "ReadmeFile", false);
+            Try([&] { package.readmeFile = ReadPath(*readmeFile, "[Package].ReadmeFile", false); });
         }
     }
 
-    static void ReadWorkspace(const Table &table, Workspace &workspace) {
+    void ReadWorkspace(const Table &table, Workspace &workspace) {
         static constexpr std::string_view known[] = {"Packages"};
         RejectUnknownKeys(table, known);
         const Value *packages = Lookup(table, "Packages");
         if (packages == nullptr) {
-            FailAt(table.location, "'[Workspace]' must declare 'Packages'");
+            Add(table.location, "[Workspace] must declare 'Packages'", "add a non-empty array of package paths");
+            return;
         }
-        Typed(*packages, Value::Kind::Array, "Packages");
+        Try([&] { Typed(*packages, Value::Kind::Array, "[Workspace].Packages"); });
+        if (packages->kind != Value::Kind::Array) {
+            return;
+        }
         if (packages->array.empty()) {
-            FailAt(packages->location, "'Packages' cannot be empty");
+            Add(packages->location, "[Workspace].Packages cannot be empty", "list at least one package path");
         }
         if (packages->array.size() > manifestMaxWorkspacePackages) {
-            FailAt(packages->location,
-                   std::format("at most {} workspace packages are allowed", manifestMaxWorkspacePackages));
+            Add(packages->location,
+                std::format("[Workspace].Packages allows at most {} entries", manifestMaxWorkspacePackages));
         }
         for (const auto &member : packages->array) {
-            auto path = ReadPath(*member, "Packages", false);
-            if (std::ranges::find(workspace.packages, path) != workspace.packages.end()) {
-                FailAt(member->location, std::format("duplicate workspace package '{}'", path));
-            }
-            workspace.packages.push_back(std::move(path));
+            Try([&] {
+                auto path = ReadPath(*member, "[Workspace].Packages item", false);
+                if (std::ranges::find(workspace.packages, path) != workspace.packages.end()) {
+                    FailAt(member->location,
+                           std::format("duplicate workspace package '{}' in [Workspace].Packages", path));
+                }
+                workspace.packages.push_back(std::move(path));
+            });
         }
     }
 
-    static void ReadDependencies(const Table &table, std::vector<ManifestDependency> &dependencies) {
+    const KeyValue *DependencyField(const Value &value, const std::string_view name) const {
+        const auto found = std::ranges::find(value.table, name, &KeyValue::key);
+        return found == value.table.end() ? nullptr : &*found;
+    }
+
+    void ReadDependency(const KeyValue &entry, std::vector<ManifestDependency> &dependencies) {
+        ManifestDependency dependency;
+        auto importName = IdentitySegment::Parse(entry.key);
+        if (!importName) {
+            FailAt(entry.keyLocation, std::format("[Dependencies] import name '{}' is invalid: {}", entry.key,
+                                                  Describe(importName.error())));
+        }
+        dependency.importName = *importName;
+
+        const Value &value = *entry.value;
+        Typed(value, Value::Kind::InlineTable, std::format("[Dependencies].{}", entry.key));
+        static constexpr std::string_view known[] = {"Namespace", "Package", "Version", "Path", "TargetOS"};
+        for (const auto &field : value.table) {
+            if (std::ranges::find(known, field.key) == std::ranges::end(known)) {
+                std::optional<std::string> help;
+                for (const auto expected : known) {
+                    if (EqualIgnoringCase(field.key, expected)) {
+                        help = std::format("field names are case-sensitive; use '{}'", expected);
+                        break;
+                    }
+                }
+                Add(field.keyLocation, std::format("unknown dependency field '{}' in '{}'", field.key, entry.key),
+                    std::move(help));
+            }
+        }
+
+        const KeyValue *ns = DependencyField(value, "Namespace");
+        const KeyValue *requirement = DependencyField(value, "Version");
+        const KeyValue *path = DependencyField(value, "Path");
+        const KeyValue *targetOS = DependencyField(value, "TargetOS");
+
+        dependency.package = dependency.importName;
+        if (const KeyValue *alias = DependencyField(value, "Package")) {
+            dependency.package = ReadIdentity(*alias->value, std::format("dependency '{}'.Package", entry.key));
+        }
+        if (path != nullptr) {
+            if (ns != nullptr || requirement != nullptr) {
+                FailAt(path->keyLocation,
+                       std::format("path dependency '{}' cannot also declare 'Namespace' or 'Version'", entry.key),
+                       "remove 'Path' or remove both registry source fields");
+            }
+            dependency.source =
+                PathDependencySource{ReadPath(*path->value, std::format("dependency '{}'.Path", entry.key), true)};
+        }
+        else {
+            if (ns == nullptr) {
+                FailAt(entry.keyLocation, std::format("registry dependency '{}' must declare 'Namespace'", entry.key));
+            }
+            if (requirement == nullptr) {
+                FailAt(entry.keyLocation, std::format("registry dependency '{}' must declare 'Version'", entry.key));
+            }
+            const std::string &text =
+                Typed(*requirement->value, Value::Kind::String, std::format("dependency '{}'.Version", entry.key)).text;
+            auto range = VersionRange::Parse(text);
+            if (!range) {
+                FailAt(requirement->value->location,
+                       std::format("dependency '{}'.Version is not a valid requirement: {}", entry.key,
+                                   Describe(range.error())));
+            }
+            dependency.source = RegistryDependencySource{
+                ReadIdentity(*ns->value, std::format("dependency '{}'.Namespace", entry.key)), *range};
+        }
+
+        if (targetOS != nullptr) {
+            Typed(*targetOS->value, Value::Kind::Array, std::format("dependency '{}'.TargetOS", entry.key));
+            if (targetOS->value->array.empty()) {
+                FailAt(targetOS->value->location, std::format("dependency '{}'.TargetOS cannot be empty", entry.key),
+                       "omit 'TargetOS' to match every target");
+            }
+            for (const auto &item : targetOS->value->array) {
+                const std::string &name =
+                    Typed(*item, Value::Kind::String, std::format("dependency '{}'.TargetOS item", entry.key)).text;
+                const auto os = ParseManifestTargetOS(name);
+                if (!os) {
+                    std::optional<std::string> help;
+                    static constexpr std::string_view allowed[] = {"FreeBSD", "Linux", "macOS", "Windows"};
+                    for (const auto expected : allowed) {
+                        if (EqualIgnoringCase(name, expected)) {
+                            help = std::format("enum values are case-sensitive; use '{}'", expected);
+                            break;
+                        }
+                    }
+                    FailAt(item->location,
+                           std::format("'{}' is not a supported TargetOS for dependency '{}'; allowed values are "
+                                       "'FreeBSD', 'Linux', 'macOS' and 'Windows'",
+                                       name, entry.key),
+                           std::move(help));
+                }
+                if (std::ranges::contains(dependency.targetOS, *os)) {
+                    FailAt(item->location, std::format("duplicate TargetOS '{}' in dependency '{}'", name, entry.key));
+                }
+                dependency.targetOS.push_back(*os);
+            }
+        }
+
+        for (const auto &existing : dependencies) {
+            if (existing.importName == dependency.importName) {
+                FailAt(entry.keyLocation,
+                       std::format("[Dependencies] import name '{}' collides with '{}' after normalization", entry.key,
+                                   existing.importName.Text()));
+            }
+        }
+        dependencies.push_back(std::move(dependency));
+    }
+
+    void ReadDependencies(const Table &table, std::vector<ManifestDependency> &dependencies) {
         if (table.entries.size() > manifestMaxDependencies) {
-            FailAt(table.location, std::format("at most {} dependencies are allowed", manifestMaxDependencies));
+            Add(table.location, std::format("[Dependencies] allows at most {} entries", manifestMaxDependencies));
         }
         for (const auto &entry : table.entries) {
-            ManifestDependency dependency;
-            auto importName = IdentitySegment::Parse(entry.key);
-            if (!importName) {
-                FailAt(entry.keyLocation,
-                       std::format("'{}' is not a valid import name: {}", entry.key, Describe(importName.error())));
-            }
-            dependency.importName = *importName;
-
-            const Value &value = *entry.value;
-            Typed(value, Value::Kind::InlineTable, entry.key);
-            static constexpr std::string_view known[] = {"Namespace", "Package", "Version", "Path", "TargetOS"};
-            for (const auto &field : value.table) {
-                if (std::ranges::find(known, field.key) == std::ranges::end(known)) {
-                    FailAt(field.keyLocation,
-                           std::format("unknown dependency field '{}' in '{}'", field.key, entry.key));
-                }
-            }
-
-            const auto field = [&](const std::string_view name) -> const KeyValue * {
-                const auto found = std::ranges::find(value.table, name, &KeyValue::key);
-                return found == value.table.end() ? nullptr : &*found;
-            };
-            const KeyValue *ns = field("Namespace");
-            const KeyValue *requirement = field("Version");
-            const KeyValue *path = field("Path");
-            const KeyValue *targetOS = field("TargetOS");
-
-            dependency.package = dependency.importName;
-            if (const KeyValue *alias = field("Package")) {
-                dependency.package = ReadIdentity(*alias->value, "Package");
-            }
-            if (path != nullptr) {
-                if (ns != nullptr || requirement != nullptr) {
-                    FailAt(path->keyLocation,
-                           std::format("path dependency '{}' cannot also declare 'Namespace' or 'Version'", entry.key));
-                }
-                dependency.source = PathDependencySource{ReadPath(*path->value, "Path", true)};
-            }
-            else {
-                if (ns == nullptr) {
-                    FailAt(entry.keyLocation,
-                           std::format("registry dependency '{}' must declare 'Namespace'", entry.key));
-                }
-                if (requirement == nullptr) {
-                    FailAt(entry.keyLocation,
-                           std::format("registry dependency '{}' must declare 'Version'", entry.key));
-                }
-                const std::string &text = Typed(*requirement->value, Value::Kind::String, "Version").text;
-                auto range = VersionRange::Parse(text);
-                if (!range) {
-                    FailAt(requirement->value->location,
-                           std::format("'Version' is not a valid requirement: {}", Describe(range.error())));
-                }
-                dependency.source = RegistryDependencySource{ReadIdentity(*ns->value, "Namespace"), *range};
-            }
-
-            if (targetOS != nullptr) {
-                Typed(*targetOS->value, Value::Kind::Array, "TargetOS");
-                if (targetOS->value->array.empty()) {
-                    FailAt(targetOS->value->location, "'TargetOS' cannot be empty; omit it to match every target");
-                }
-                for (const auto &item : targetOS->value->array) {
-                    const std::string &name = Typed(*item, Value::Kind::String, "TargetOS").text;
-                    const auto os = ParseManifestTargetOS(name);
-                    if (!os) {
-                        FailAt(item->location, std::format("'{}' is not a supported TargetOS", name));
-                    }
-                    if (std::ranges::contains(dependency.targetOS, *os)) {
-                        FailAt(item->location, std::format("duplicate TargetOS '{}'", name));
-                    }
-                    dependency.targetOS.push_back(*os);
-                }
-            }
-
-            for (const auto &existing : dependencies) {
-                if (existing.importName == dependency.importName) {
-                    FailAt(entry.keyLocation, std::format("import name '{}' collides with '{}' after normalization",
-                                                          entry.key, existing.importName.Text()));
-                }
-            }
-            dependencies.push_back(std::move(dependency));
+            Try([&] { ReadDependency(entry, dependencies); });
         }
     }
 
-    static void ReadBuild(const Table &table, Build &build) {
+    void ReadBuild(const Table &table, Build &build) {
         static constexpr std::string_view known[] = {"Output"};
         RejectUnknownKeys(table, known);
         if (const Value *output = Lookup(table, "Output")) {
-            build.output = ReadPath(*output, "Output", true);
+            Try([&] { build.output = ReadPath(*output, "[Build].Output", true); });
         }
     }
 
-    static void ReadDefines(const Table &table, std::map<std::string, DefineValue> &defines) {
+    void ReadDefines(const Table &table, std::map<std::string, DefineValue> &defines) {
         if (table.entries.size() > manifestMaxDefines) {
-            FailAt(table.location, std::format("at most {} defines are allowed", manifestMaxDefines));
+            Add(table.location, std::format("[Build.Defines] allows at most {} entries", manifestMaxDefines));
         }
         for (const auto &entry : table.entries) {
-            DefineValue define;
-            switch (entry.value->kind) {
-            case Value::Kind::String:
-                define.kind = DefineValue::Kind::String;
-                define.text = entry.value->text;
-                break;
-            case Value::Kind::Boolean:
-                define.kind = DefineValue::Kind::Boolean;
-                define.text = entry.value->boolean ? "true" : "false";
-                break;
-            case Value::Kind::Integer:
-                define.kind = DefineValue::Kind::Integer;
-                define.text = std::to_string(entry.value->integer);
-                break;
-            default:
-                FailAt(entry.value->location,
-                       std::format("define '{}' must be a string, boolean or integer", entry.key));
-            }
-            defines.emplace(entry.key, std::move(define));
+            Try([&] {
+                DefineValue define;
+                switch (entry.value->kind) {
+                case Value::Kind::String:
+                    define.kind = DefineValue::Kind::String;
+                    define.text = entry.value->text;
+                    break;
+                case Value::Kind::Boolean:
+                    define.kind = DefineValue::Kind::Boolean;
+                    define.text = entry.value->boolean ? "true" : "false";
+                    break;
+                case Value::Kind::Integer:
+                    define.kind = DefineValue::Kind::Integer;
+                    define.text = std::to_string(entry.value->integer);
+                    break;
+                default:
+                    FailAt(entry.value->location,
+                           std::format("[Build.Defines].{} must be a string, boolean or integer", entry.key));
+                }
+                defines.emplace(entry.key, std::move(define));
+            });
         }
     }
 };
 } // namespace
 
 std::expected<Manifest, ValidationError> ValidateManifestV1(Document document) {
-    try {
-        return Validator(std::move(document)).Run();
+    auto result = ValidateManifestV1All(std::move(document));
+    if (!result.Ok()) {
+        return std::unexpected(std::move(result.diagnostics.front()));
     }
-    catch (ValidationError &failure) {
-        return std::unexpected(std::move(failure));
-    }
+    return std::move(*result.manifest);
+}
+
+ValidationResult ValidateManifestV1All(Document document) {
+    return Validator(std::move(document)).Run();
 }
 } // namespace Rux::ManifestDetail

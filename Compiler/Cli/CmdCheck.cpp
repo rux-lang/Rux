@@ -84,6 +84,20 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         EmitDiag(ErrorDiagnostic(std::move(message)));
         hadErrors = true;
     };
+    auto EmitManifestDiagnostic = [&](const ManifestDiagnostic &diagnostic) {
+        Diagnostic converted{Diagnostic::Severity::Error,
+                             diagnostic.path.string(),
+                             {.line = diagnostic.line, .column = diagnostic.column, .offset = 0},
+                             diagnostic.message,
+                             diagnostic.notes,
+                             diagnostic.help,
+                             diagnostic.documentationUrl};
+        const auto sourceLine = diagnostic.sourceLine;
+        EmitDiag(std::move(converted), [sourceLine](std::string_view, std::size_t) -> std::optional<std::string_view> {
+            return sourceLine ? std::optional<std::string_view>(*sourceLine) : std::nullopt;
+        });
+        hadErrors = true;
+    };
     auto Finish = [&](const int exitCode) {
         if (jsonOutput)
             PrintDiagnosticsJson(jsonDiags, exitCode == 0);
@@ -119,7 +133,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     auto rootResult = Manifest::Load(*manifestPath);
     if (!rootResult.Ok()) {
         for (const auto &diagnostic : rootResult.diagnostics) {
-            EmitFatal(diagnostic.Format());
+            EmitManifestDiagnostic(diagnostic);
         }
         return Finish(1);
     }
@@ -186,7 +200,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             auto memberResult = Manifest::Load(memberManifestPath);
             if (!memberResult.Ok()) {
                 for (const auto &diagnostic : memberResult.diagnostics) {
-                    EmitFatal(diagnostic.Format());
+                    EmitManifestDiagnostic(diagnostic);
                 }
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;

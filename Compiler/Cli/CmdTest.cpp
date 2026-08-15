@@ -108,7 +108,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         auto manifestResult = Manifest::Load(*manifestPath);
         if (!manifestResult.Ok()) {
             for (const auto &diagnostic : manifestResult.diagnostics) {
-                diagnostics.Error(diagnostic.Format());
+                diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
             }
             return 1;
         }
@@ -134,7 +134,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                 auto memberResult = Manifest::Load(memberManifestPath);
                 if (!memberResult.Ok() || memberResult.manifest->package.name.Empty()) {
                     for (const auto &diagnostic : memberResult.diagnostics) {
-                        diagnostics.Error(diagnostic.Format());
+                        diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
                     }
                     diagnostics.Error(std::format("workspace member '{}' is not a package", member));
                     return 1;
@@ -198,6 +198,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::vector<TestPackage> testPackages;
     bool anyRootExists = false;
+    bool invalidTestManifest = false;
     {
         std::error_code ec;
         constexpr int maxGroupDepth = 3;
@@ -224,6 +225,10 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     }
                     auto pkgManifest = Manifest::Load(toml);
                     if (!pkgManifest.Ok()) {
+                        for (const auto &diagnostic : pkgManifest.diagnostics) {
+                            diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
+                        }
+                        invalidTestManifest = true;
                         continue;
                     }
                     // Only an Executable package has an entry point to run.
@@ -240,6 +245,9 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
         std::sort(testPackages.begin(), testPackages.end(),
                   [](const TestPackage &a, const TestPackage &b) { return a.label < b.label; });
+    }
+    if (invalidTestManifest) {
+        return 1;
     }
     if (!anyRootExists) {
         output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
@@ -284,7 +292,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         auto pkgResult = Manifest::Load(pkgDir / "Rux.toml");
         if (!pkgResult.Ok()) {
             for (const auto &diagnostic : pkgResult.diagnostics) {
-                outcome.diagnostics += std::format("error: {}\n", diagnostic.Format());
+                outcome.diagnostics += diagnostic.Render();
             }
             outcome.status = TestStatus::BuildError;
             return Finish();

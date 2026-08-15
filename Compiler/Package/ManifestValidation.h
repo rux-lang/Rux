@@ -10,6 +10,17 @@ namespace Rux::ManifestDetail {
 struct ValidationError {
     Location location;
     std::string message;
+    std::optional<std::string> help;
+    std::optional<std::string> documentationUrl;
+};
+
+struct ValidationResult {
+    std::optional<Manifest> manifest;
+    std::vector<ValidationError> diagnostics;
+
+    [[nodiscard]] bool Ok() const noexcept {
+        return manifest.has_value();
+    }
 };
 
 /**
@@ -20,4 +31,7 @@ struct ValidationError {
  * schema diagnostics.
  */
 [[nodiscard]] std::expected<Manifest, ValidationError> ValidateManifestV1(Document document);
+
+/// Validate while retaining every independent schema failure in source order.
+[[nodiscard]] ValidationResult ValidateManifestV1All(Document document);
 } // namespace Rux::ManifestDetail

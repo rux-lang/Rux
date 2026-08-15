@@ -103,7 +103,8 @@ TEST_CASE("Manifest Version 1 field and section names are exact") {
         const ValidationError error = Rejected(PackageWith("name = \"Other\"\n"));
         CHECK(error.location.line == 8);
         CHECK(error.location.column == 1);
-        CHECK(error.message == "unknown field 'name' in '[Package]'");
+        CHECK(error.message == "unknown field 'name' in [Package]");
+        CHECK(error.help == "field names are case-sensitive; use 'Name'");
     }
 }
 
@@ -124,7 +125,7 @@ Packages = ["Packages/Core"]
 Mode = "Debug"
 )");
         CHECK(error.location.line == 5);
-        CHECK(error.message == "a workspace cannot declare build settings");
+        CHECK(error.message == "a workspace cannot declare build settings in '[Build.Defines]'");
     }
 }
 
@@ -132,26 +133,26 @@ TEST_CASE("Manifest Version 1 path diagnostics retain value locations") {
     const ValidationError error = Rejected(PackageWith("\n[Build]\nOutput = \"Artifacts\\\\Release\"\n"));
     CHECK(error.location.line == 10);
     CHECK(error.location.column == 10);
-    CHECK(error.message == "'Output' must use '/' separators");
+    CHECK(error.message == "'[Build].Output' must use '/' separators");
 }
 
 TEST_CASE("Manifest Version 1 enforces collection limits") {
     SUBCASE("authors") {
         const ValidationError error =
             Rejected(PackageWith("Authors = " + StringArray("Author", manifestMaxAuthors + 1) + "\n"));
-        CHECK(error.message == "at most 32 authors are allowed");
+        CHECK(error.message == "[Package].Authors allows at most 32 entries");
     }
 
     SUBCASE("keywords") {
         const ValidationError error =
             Rejected(PackageWith("Keywords = " + StringArray("Keyword", manifestMaxKeywords + 1) + "\n"));
-        CHECK(error.message == "at most 32 keywords are allowed");
+        CHECK(error.message == "[Package].Keywords allows at most 32 entries");
     }
 
     SUBCASE("workspace packages") {
         const ValidationError error = Rejected("[Manifest]\nVersion = 1\n[Workspace]\nPackages = " +
                                                StringArray("Package", manifestMaxWorkspacePackages + 1) + "\n");
-        CHECK(error.message == "at most 256 workspace packages are allowed");
+        CHECK(error.message == "[Workspace].Packages allows at most 256 entries");
     }
 
     SUBCASE("dependencies") {
@@ -160,7 +161,7 @@ TEST_CASE("Manifest Version 1 enforces collection limits") {
             dependencies += "Dep" + std::to_string(i) + " = { Path = \"../Dep" + std::to_string(i) + "\" }\n";
         }
         const ValidationError error = Rejected(PackageWith(dependencies));
-        CHECK(error.message == "at most 256 dependencies are allowed");
+        CHECK(error.message == "[Dependencies] allows at most 256 entries");
     }
 
     SUBCASE("defines") {
@@ -169,6 +170,6 @@ TEST_CASE("Manifest Version 1 enforces collection limits") {
             defines += "Value" + std::to_string(i) + " = " + std::to_string(i) + '\n';
         }
         const ValidationError error = Rejected(PackageWith(defines));
-        CHECK(error.message == "at most 128 defines are allowed");
+        CHECK(error.message == "[Build.Defines] allows at most 128 entries");
     }
 }

@@ -133,7 +133,7 @@ std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path
 
 void ReportManifestDiagnostics(const ManifestResult &result) {
     for (const auto &diagnostic : result.diagnostics) {
-        std::print(stderr, "error: {}\n", diagnostic.Format());
+        std::print(stderr, "{}", diagnostic.Render());
     }
 }
 

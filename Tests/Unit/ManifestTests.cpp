@@ -215,8 +215,53 @@ Type = "Executable"
     CHECK(diagnostic.path == std::filesystem::path("Rux.toml"));
     CHECK(diagnostic.line == 6);
     CHECK(diagnostic.column == 11);
-    CHECK(diagnostic.message.find("'Version' is not a valid version") != std::string::npos);
+    CHECK(diagnostic.message.find("'[Package].Version' is not a valid version") != std::string::npos);
     CHECK(diagnostic.Format().starts_with("Rux.toml:6:11: "));
+    CHECK(diagnostic.Render().starts_with("Rux.toml:6:11: error: "));
+    CHECK(diagnostic.Render().contains("6 | Version = \"not a version\""));
+    CHECK(diagnostic.Render().contains("docs: https://rux-lang.dev/docs/manifest"));
+}
+
+TEST_CASE("Manifest validation accumulates independent failures in source order") {
+    const auto result = Manifest::Parse(R"([Manifest]
+Version = "1"
+
+[Package]
+name = "App"
+Version = false
+Type = "executable"
+Description = 7
+
+[Build]
+output = "Bin"
+)",
+                                        "Rux.toml");
+
+    REQUIRE_FALSE(result.Ok());
+    REQUIRE(result.diagnostics.size() == 7);
+    CHECK(result.diagnostics[0].message.contains("[Manifest].Version"));
+    CHECK(result.diagnostics[1].message == "[Package] must declare 'Name'");
+    CHECK(result.diagnostics[2].message == "unknown field 'name' in [Package]");
+    CHECK(result.diagnostics[2].help == "field names are case-sensitive; use 'Name'");
+    CHECK(result.diagnostics[3].message.contains("[Package].Version"));
+    CHECK(result.diagnostics[4].help == "enum values are case-sensitive; use 'Executable'");
+    CHECK(result.diagnostics[5].message.contains("[Package].Description"));
+    CHECK(result.diagnostics[6].help == "field names are case-sensitive; use 'Output'");
+}
+
+TEST_CASE("Manifest input must be valid UTF-8") {
+    std::string source = WithPackage("Description = \"");
+    source.push_back(static_cast<char>(0xFF));
+    source += "\"\n";
+
+    auto result = Manifest::Parse(source, "Rux.toml");
+    REQUIRE_FALSE(result.Ok());
+    REQUIRE(result.diagnostics.size() == 1);
+    const auto &diagnostic = result.diagnostics.front();
+    CHECK(diagnostic.line == 8);
+    CHECK(diagnostic.column == 16);
+    CHECK(diagnostic.message == "manifest contains invalid UTF-8");
+    CHECK(diagnostic.help == "save the manifest as valid UTF-8");
 }
 
 TEST_CASE("The schema version is required and pinned") {
@@ -366,9 +411,11 @@ TEST_CASE("Metadata URLs must be absolute, hosted and free of credentials") {
               std::string::npos);
     }
     SUBCASE("repository and homepage are named in their own diagnostics") {
-        CHECK(Rejected(WithPackage("Repository = \"github.com/rux-lang/Rux\"\n")).message.find("'Repository'") !=
+        CHECK(
+            Rejected(WithPackage("Repository = \"github.com/rux-lang/Rux\"\n")).message.find("[Package].Repository") !=
+            std::string::npos);
+        CHECK(Rejected(WithPackage("Homepage = \"rux-lang.dev\"\n")).message.find("[Package].Homepage") !=
               std::string::npos);
-        CHECK(Rejected(WithPackage("Homepage = \"rux-lang.dev\"\n")).message.find("'Homepage'") != std::string::npos);
     }
 }
 
@@ -447,8 +494,10 @@ TEST_CASE("Dependency entries follow the documented rules") {
         CHECK(Rejected(
                   WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"Windows\", \"Windows\"] }\n"))
                   .message.find("duplicate TargetOS") != std::string::npos);
-        CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"MacOS\"] }\n"))
-                  .message.find("not a supported TargetOS") != std::string::npos);
+        const auto targetCase =
+            Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [\"MacOS\"] }\n"));
+        CHECK(targetCase.message.find("not a supported TargetOS") != std::string::npos);
+        CHECK(targetCase.help == "enum values are case-sensitive; use 'macOS'");
         CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = \"Windows\" }\n"))
                   .message.find("must be an array") != std::string::npos);
         CHECK(Rejected(WithPackage("\n[Dependencies]\nIo = { Path = \"../Io\", TargetOS = [1] }\n"))

@@ -377,7 +377,13 @@ bool CompilerDriver::LoadDependencies() {
         auto depManifest = Manifest::Load(depRoot / "Rux.toml");
         if (!depManifest.Ok()) {
             for (const auto &diagnostic : depManifest.diagnostics) {
-                Emit(ErrorDiagnostic(diagnostic.Format()));
+                Emit({Diagnostic::Severity::Error,
+                      diagnostic.path.string(),
+                      {.line = diagnostic.line, .column = diagnostic.column, .offset = 0},
+                      diagnostic.message,
+                      diagnostic.notes,
+                      diagnostic.help,
+                      diagnostic.documentationUrl});
             }
             Emit(ErrorDiagnostic("dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'"));
             return false;

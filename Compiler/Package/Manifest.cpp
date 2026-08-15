@@ -10,6 +10,84 @@
 #include <sstream>
 
 namespace Rux {
+namespace {
+std::optional<ManifestDetail::Location> InvalidUtf8Location(const std::string_view text) {
+    ManifestDetail::Location location;
+    for (std::size_t offset = 0; offset < text.size();) {
+        const auto lead = static_cast<unsigned char>(text[offset]);
+        std::size_t width = 1;
+        std::uint32_t codePoint = lead;
+        std::uint32_t minimum = 0;
+        if (lead < 0x80) {
+            if (lead == '\n') {
+                ++location.line;
+                location.column = 1;
+            }
+            else {
+                ++location.column;
+            }
+            ++offset;
+            continue;
+        }
+        if ((lead & 0xE0U) == 0xC0U) {
+            width = 2;
+            codePoint = lead & 0x1FU;
+            minimum = 0x80;
+        }
+        else if ((lead & 0xF0U) == 0xE0U) {
+            width = 3;
+            codePoint = lead & 0x0FU;
+            minimum = 0x800;
+        }
+        else if ((lead & 0xF8U) == 0xF0U) {
+            width = 4;
+            codePoint = lead & 0x07U;
+            minimum = 0x10000;
+        }
+        else {
+            return location;
+        }
+        if (offset + width > text.size()) {
+            return location;
+        }
+        for (std::size_t index = 1; index < width; ++index) {
+            const auto continuation = static_cast<unsigned char>(text[offset + index]);
+            if ((continuation & 0xC0U) != 0x80U) {
+                return location;
+            }
+            codePoint = (codePoint << 6U) | (continuation & 0x3FU);
+        }
+        if (codePoint < minimum || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+            return location;
+        }
+        offset += width;
+        location.column += static_cast<std::uint32_t>(width);
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> SourceLineAt(const std::string_view text, const std::uint32_t wantedLine) {
+    std::uint32_t line = 1;
+    std::size_t begin = 0;
+    while (line < wantedLine) {
+        const auto newline = text.find('\n', begin);
+        if (newline == std::string_view::npos) {
+            return std::nullopt;
+        }
+        begin = newline + 1;
+        ++line;
+    }
+    auto end = text.find('\n', begin);
+    if (end == std::string_view::npos) {
+        end = text.size();
+    }
+    if (end > begin && text[end - 1] == '\r') {
+        --end;
+    }
+    return std::string(text.substr(begin, end - begin));
+}
+} // namespace
+
 std::string_view ToString(const ManifestPackageType type) noexcept {
     switch (type) {
     case ManifestPackageType::Executable:
@@ -69,6 +147,25 @@ std::string ManifestDiagnostic::Format() const {
     return std::format("{}:{}:{}: {}", path.string(), line, column, message);
 }
 
+std::string ManifestDiagnostic::Render() const {
+    std::string rendered = std::format("{}:{}:{}: error: {}\n", path.string(), line, column, message);
+    if (sourceLine) {
+        const std::size_t caret = std::min<std::size_t>(column > 0 ? column - 1 : 0, sourceLine->size());
+        rendered += std::format("  {} | {}\n", line, *sourceLine);
+        rendered += std::string(std::to_string(line).size() + 5 + caret, ' ') + "^\n";
+    }
+    for (const auto &note : notes) {
+        rendered += "  note: " + note + '\n';
+    }
+    if (help) {
+        rendered += "  help: " + *help + '\n';
+    }
+    if (documentationUrl) {
+        rendered += "  docs: " + *documentationUrl + '\n';
+    }
+    return rendered;
+}
+
 const std::string &ManifestDependency::Path() const noexcept {
     static const std::string none;
     if (const auto *local = std::get_if<PathDependencySource>(&source)) {
@@ -92,24 +189,57 @@ std::map<std::string, std::string> Build::ConfigValues() const {
 ManifestResult Manifest::Parse(const std::string_view text, const std::filesystem::path &path) {
     ManifestResult result;
     if (text.size() > manifestMaxBytes) {
-        result.diagnostics.push_back({path, 1, 1, std::format("manifest is larger than {} bytes", manifestMaxBytes)});
+        result.diagnostics.push_back({path,
+                                      1,
+                                      1,
+                                      std::format("manifest is larger than {} bytes", manifestMaxBytes),
+                                      {},
+                                      "reduce the manifest size",
+                                      std::string(manifestDocumentationUrl),
+                                      {}});
+        return result;
+    }
+
+    if (const auto invalid = InvalidUtf8Location(text)) {
+        result.diagnostics.push_back({path,
+                                      invalid->line,
+                                      invalid->column,
+                                      "manifest contains invalid UTF-8",
+                                      {},
+                                      "save the manifest as valid UTF-8",
+                                      std::string(manifestDocumentationUrl),
+                                      SourceLineAt(text, invalid->line)});
         return result;
     }
 
     auto syntax = ManifestDetail::ParseManifestSyntax(text);
     if (!syntax) {
-        result.diagnostics.push_back(
-            {path, syntax.error().location.line, syntax.error().location.column, syntax.error().message});
+        result.diagnostics.push_back({path,
+                                      syntax.error().location.line,
+                                      syntax.error().location.column,
+                                      syntax.error().message,
+                                      {},
+                                      "use the supported TOML syntax described in the manifest reference",
+                                      std::string(manifestDocumentationUrl),
+                                      SourceLineAt(text, syntax.error().location.line)});
         return result;
     }
 
-    auto validation = ManifestDetail::ValidateManifestV1(std::move(*syntax));
-    if (!validation) {
-        result.diagnostics.push_back(
-            {path, validation.error().location.line, validation.error().location.column, validation.error().message});
+    auto validation = ManifestDetail::ValidateManifestV1All(std::move(*syntax));
+    if (!validation.Ok()) {
+        for (auto &diagnostic : validation.diagnostics) {
+            result.diagnostics.push_back({path,
+                                          diagnostic.location.line,
+                                          diagnostic.location.column,
+                                          std::move(diagnostic.message),
+                                          {},
+                                          std::move(diagnostic.help),
+                                          std::move(diagnostic.documentationUrl),
+                                          SourceLineAt(text, diagnostic.location.line)});
+        }
         return result;
     }
-    result.manifest = std::move(*validation);
+    result.manifest = std::move(*validation.manifest);
     return result;
 }
 
@@ -117,7 +247,8 @@ ManifestResult Manifest::Load(const std::filesystem::path &path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         ManifestResult result;
-        result.diagnostics.push_back({path, 1, 1, "could not open the manifest"});
+        result.diagnostics.push_back(
+            {path, 1, 1, "could not open the manifest", {}, "check that the path exists and is readable", {}, {}});
         return result;
     }
     std::ostringstream contents;

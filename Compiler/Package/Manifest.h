@@ -30,6 +30,9 @@ inline constexpr std::size_t manifestMaxDefines = 128;
 inline constexpr std::size_t manifestMaxAuthors = 32;
 inline constexpr std::size_t manifestMaxKeywords = 32;
 
+/// Stable reference for the Version 1 manifest contract.
+inline constexpr std::string_view manifestDocumentationUrl = "https://rux-lang.dev/docs/manifest";
+
 /**
  * @brief What a package builds.
  */
@@ -72,8 +75,19 @@ struct ManifestDiagnostic {
 
     std::string message;
 
-    /// Render as `path:line:column: message`.
+    /// Corrective context and the stable schema reference, when applicable.
+    std::vector<std::string> notes;
+    std::optional<std::string> help;
+    std::optional<std::string> documentationUrl;
+
+    /// The source line containing the rejected token, retained for human rendering.
+    std::optional<std::string> sourceLine;
+
+    /// Render the legacy location-and-message form used by programmatic callers.
     [[nodiscard]] std::string Format() const;
+
+    /// Render the complete human diagnostic, including a source frame and corrective context.
+    [[nodiscard]] std::string Render() const;
 };
 
 /**
@@ -286,8 +300,8 @@ struct Manifest {
  * @brief The outcome of loading or parsing a manifest.
  *
  * A failed load carries at least one diagnostic and no manifest. A successful
- * load carries a manifest and no diagnostics; the parser stops at the first
- * rejected construct rather than guessing how to continue.
+ * load carries a manifest and no diagnostics. Syntax failures stop parsing;
+ * schema validation accumulates independent failures in source order.
  */
 struct ManifestResult {
     std::optional<Manifest> manifest;

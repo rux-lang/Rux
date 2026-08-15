@@ -184,7 +184,12 @@ Manifest paths are UTF-8, relative and `/`-separated. Backslashes, absolute root
 
 Manifest URLs are absolute `http` or `https`, carry a host, and reject credentials, whitespace and control characters.
 
-Diagnostics identify the manifest path, line and column and explain the rejected field or syntax. Ordinary manifest failures do not throw through compiler or CLI boundaries.
+Diagnostics use `path:line:column: error: message`, retain the rejected source line, and name the owning table and field
+for schema failures. Independent schema failures are reported together in source order; malformed TOML stops syntax
+parsing at the first point where continuing would require guessing. Case-only mistakes include the canonical spelling,
+type failures name the expected TOML type, and enum failures list their allowed values. Stable schema diagnostics link
+back to this manifest reference. Manifest input must be valid UTF-8. Ordinary manifest failures do not throw through
+compiler or CLI boundaries.
 
 ## Limits
 
