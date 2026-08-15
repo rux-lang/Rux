@@ -1,5 +1,6 @@
 #include "Driver/Credentials.h"
 
+#include "System/Json.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "Target/Target.h"
@@ -226,5 +227,62 @@ std::expected<bool, std::string> EraseCredential(const std::string_view registry
         return std::unexpected(std::move(written.error()));
     }
     return true;
+}
+
+CredentialVerification DecodeCredentialVerification(const unsigned status, const std::string_view body) {
+    if (status == 404 || status == 405 || status == 501) {
+        return {.kind = CredentialVerificationKind::Unsupported, .status = status, .identity = {}, .detail = {}};
+    }
+    if (status == 401 || status == 403) {
+        const std::string code = JsonLookupString(body, "code");
+        return {.kind = code == "insufficient_scope" ? CredentialVerificationKind::MissingPublishScope
+                                                     : CredentialVerificationKind::Rejected,
+                .status = status,
+                .identity = {},
+                .detail = {}};
+    }
+    if (status != 200) {
+        return {.kind = CredentialVerificationKind::Rejected, .status = status, .identity = {}, .detail = {}};
+    }
+
+    const auto document = ParseJson(body);
+    if (!document || !document->IsObject()) {
+        return {.kind = CredentialVerificationKind::Malformed,
+                .status = status,
+                .identity = {},
+                .detail = document ? "the response is not a JSON object" : document.error().message};
+    }
+    const JsonValue *data = document->Find("data");
+    if (data == nullptr || !data->IsObject()) {
+        return {.kind = CredentialVerificationKind::Malformed,
+                .status = status,
+                .identity = {},
+                .detail = "the response has no 'data' object"};
+    }
+    const std::string identity = data->StringAt("github_login");
+    const JsonValue *scopes = data->Find("scopes");
+    if (identity.empty() || scopes == nullptr || !scopes->IsArray()) {
+        return {.kind = CredentialVerificationKind::Malformed,
+                .status = status,
+                .identity = {},
+                .detail = "the response does not contain an identity and scopes array"};
+    }
+    const bool canPublish =
+        std::ranges::any_of(scopes->Elements(), [](const JsonValue &scope) { return scope.AsString() == "publish"; });
+    return {.kind = canPublish ? CredentialVerificationKind::Accepted : CredentialVerificationKind::MissingPublishScope,
+            .status = status,
+            .identity = identity,
+            .detail = {}};
+}
+
+CredentialVerification VerifyCredential(const std::string_view registryBase, const std::string_view token) {
+    auto response = HttpSend({.method = "GET",
+                              .url = std::string(registryBase) + "/v1/me",
+                              .headers = {{.name = "Authorization", .value = "Bearer " + std::string(token)}},
+                              .body = {}});
+    if (!response) {
+        return {.kind = CredentialVerificationKind::Unreachable, .status = 0, .identity = {}, .detail = {}};
+    }
+    return DecodeCredentialVerification(response->status, response->body);
 }
 } // namespace Rux::Driver

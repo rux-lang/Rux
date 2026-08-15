@@ -240,3 +240,25 @@ TEST_CASE("the registry base falls back from the flag to the environment") {
     REQUIRE(UnsetEnv(kRegistryVariable));
     CHECK(ResolveRegistryBase("") == official);
 }
+
+TEST_CASE("credential verification responses remain structured and never carry the token") {
+    const auto accepted =
+        DecodeCredentialVerification(200, R"({"data":{"github_login":"octocat","scopes":["read","publish"]}})");
+    CHECK(accepted.kind == CredentialVerificationKind::Accepted);
+    CHECK(accepted.identity == "octocat");
+
+    const auto missing = DecodeCredentialVerification(200, R"({"data":{"github_login":"octocat","scopes":["read"]}})");
+    CHECK(missing.kind == CredentialVerificationKind::MissingPublishScope);
+    CHECK(missing.identity == "octocat");
+
+    const auto rejected = DecodeCredentialVerification(401, R"({"detail":"reflected-token"})");
+    CHECK(rejected.kind == CredentialVerificationKind::Rejected);
+    CHECK(rejected.detail.empty());
+    CHECK(DecodeCredentialVerification(403, R"({"code":"insufficient_scope"})").kind ==
+          CredentialVerificationKind::MissingPublishScope);
+
+    CHECK(DecodeCredentialVerification(404, "").kind == CredentialVerificationKind::Unsupported);
+    CHECK(DecodeCredentialVerification(200, "not json").kind == CredentialVerificationKind::Malformed);
+    CHECK(DecodeCredentialVerification(200, R"({"data":{}})").kind == CredentialVerificationKind::Malformed);
+    CHECK(DecodeCredentialVerification(500, "").kind == CredentialVerificationKind::Rejected);
+}

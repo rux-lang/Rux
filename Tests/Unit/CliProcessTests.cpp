@@ -158,6 +158,19 @@ TEST_CASE("help JSON publishes the stable 0.4 command contract") {
     CHECK_FALSE(result.output.contains("buildTime"));
 }
 
+TEST_CASE("login rejects empty stdin and an empty update is timed and quiet-aware") {
+    const auto login = Run(std::array<std::string_view, 3>{"login", "--registry", "http://127.0.0.1:1"});
+    CHECK(login.exitCode == 1);
+    CHECK(login.output.contains("error: no token was supplied on stdin"));
+    CHECK_FALSE(login.output.contains("Token for"));
+
+    const auto updated = Run(std::array<std::string_view, 3>{"--manifest", ArithmeticManifest(), "update"});
+    CHECK(updated.exitCode == 0);
+    CHECK(updated.output.contains("Up-to-date project dependencies in "));
+    CHECK(updated.output.contains("(0 packages)"));
+    CHECK(Run(std::array<std::string_view, 4>{"--quiet", "--manifest", ArithmeticManifest(), "update"}).output.empty());
+}
+
 TEST_CASE("CLI usage failures return 2 and suggest close matches") {
     const auto unknown = Run(std::array<std::string_view, 1>{"bild"});
     CHECK(unknown.exitCode == 2);

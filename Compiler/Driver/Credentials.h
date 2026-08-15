@@ -37,6 +37,26 @@ struct Credential {
     std::string source; ///< "RUX_TOKEN", or the credentials file path.
 };
 
+enum class CredentialVerificationKind {
+    Accepted,
+    MissingPublishScope,
+    Rejected,
+    Unreachable,
+    Unsupported,
+    Malformed,
+};
+
+struct CredentialVerification {
+    CredentialVerificationKind kind = CredentialVerificationKind::Unreachable;
+    unsigned status = 0;
+    std::string identity;
+    std::string detail;
+};
+
+[[nodiscard]] CredentialVerification DecodeCredentialVerification(unsigned status, std::string_view body);
+
+[[nodiscard]] CredentialVerification VerifyCredential(std::string_view registryBase, std::string_view token);
+
 /// Registry base URL in the form used as a credentials-file key: trailing
 /// slashes trimmed, so `https://host/` and `https://host` are one registry.
 [[nodiscard]] std::string NormalizeRegistryBase(std::string_view base);

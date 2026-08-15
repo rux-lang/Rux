@@ -6,12 +6,15 @@
 // free of a --token flag.
 
 #include "Cli/Cli.h"
+#include "Cli/Reporter.h"
+#include "Driver/BuildReport.h"
 #include "Driver/Credentials.h"
-#include "System/Json.h"
+#include "Reporting/Reporting.h"
 #include "System/Os.h"
-#include "System/Process.h"
 
+#include <chrono>
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <print>
 #include <span>
@@ -33,77 +36,52 @@ std::optional<std::string> ReadToken(const std::string_view base) {
     return ReadSecretLine();
 }
 
-/// Outcome of checking a token against the registry before it is stored.
-enum class Verification {
-    Accepted, ///< The registry confirmed the token.
-    Rejected, ///< The registry refused it; it must not be stored.
-    Unknown,  ///< No usable answer; store it, but say so.
-};
-
-/// Whether the identity document lists the `publish` scope.
-///
-/// The scopes are a JSON array, so the flat string lookup does not reach them;
-/// the search is confined to the bracketed value to keep a scope name appearing
-/// elsewhere in the document from counting.
-bool GrantsPublish(const std::string_view body) {
-    const auto key = body.find("\"scopes\"");
-    if (key == std::string_view::npos) {
+bool ReportVerification(const CredentialVerification &verification, const std::string_view base,
+                        const CliSupport::Reporter &diagnostics) {
+    switch (verification.kind) {
+    case CredentialVerificationKind::Accepted:
+        return true;
+    case CredentialVerificationKind::MissingPublishScope:
+        if (verification.status == 200) {
+            diagnostics.Warning("the registry accepted the token, but it cannot publish packages");
+            diagnostics.Help("create a token with the 'publish' scope");
+            return true;
+        }
+        diagnostics.Error(
+            std::format("the registry at '{}' rejected the token because it cannot publish packages", base));
+        diagnostics.Help("create a token with the 'publish' scope, then run 'rux login' again");
         return false;
-    }
-    const auto open = body.find('[', key);
-    if (open == std::string_view::npos) {
+    case CredentialVerificationKind::Rejected:
+        diagnostics.Error(std::format("the registry at '{}' rejected the token", base));
+        if (verification.status != 0) {
+            diagnostics.Note(std::format("registry response status: {}", verification.status));
+        }
+        diagnostics.Help("check that the token is current, then run 'rux login' again");
         return false;
-    }
-    const auto close = body.find(']', open);
-    if (close == std::string_view::npos) {
-        return false;
-    }
-    return body.substr(open, close - open).find("\"publish\"") != std::string_view::npos;
-}
-
-/// Check `token` against the registry's identity endpoint.
-///
-/// A registry that does not implement the endpoint answers 404, and an offline
-/// user gets no answer at all. Neither is a reason to refuse a login, so both
-/// fall through to Unknown and the token is stored unverified.
-Verification VerifyToken(const std::string_view base, const std::string_view token, std::string &identity) {
-    auto response = HttpSend({.method = "GET",
-                              .url = std::string(base) + "/v1/me",
-                              .headers = {{.name = "Authorization", .value = "Bearer " + std::string(token)}},
-                              .body = {}});
-    if (!response) {
-        std::print(stderr, "warning: {} could not be reached; the token was not verified\n", base);
-        return Verification::Unknown;
-    }
-    if (response->status == 200) {
-        identity = JsonLookupString(response->body, "github_login");
-        // A token without 'publish' is still worth storing -- it may be a yank
-        // or namespace token -- but publishing with it would fail later.
-        if (!GrantsPublish(response->body)) {
-            std::print(stderr, "warning: that token lacks the 'publish' scope\n");
+    case CredentialVerificationKind::Unreachable:
+        diagnostics.Warning(std::format("could not reach the registry at '{}'; the token was stored unverified", base));
+        diagnostics.Help("check the registry URL and network, then run 'rux login' again to verify it");
+        return true;
+    case CredentialVerificationKind::Unsupported:
+        diagnostics.Warning(std::format("the registry at '{}' does not support token verification", base));
+        diagnostics.Note("the token was stored unverified");
+        return true;
+    case CredentialVerificationKind::Malformed:
+        diagnostics.Warning(std::format("the registry at '{}' returned a malformed verification response", base));
+        if (!verification.detail.empty()) {
+            diagnostics.Note(verification.detail);
         }
-        return Verification::Accepted;
+        diagnostics.Note("the token was stored unverified");
+        diagnostics.Help("retry 'rux login'; contact the registry operator if the response remains malformed");
+        return true;
     }
-    if (response->status == 401 || response->status == 403) {
-        const std::string code = JsonLookupString(response->body, "code");
-        const std::string detail = JsonLookupString(response->body, "detail");
-        if (code == "insufficient_scope") {
-            std::print(stderr, "error: that token lacks the 'publish' scope\n");
-        }
-        else if (!detail.empty()) {
-            std::print(stderr, "error: {}\n", detail);
-        }
-        else {
-            std::print(stderr, "error: {} rejected that token\n", base);
-        }
-        return Verification::Rejected;
-    }
-    std::print(stderr, "warning: {} did not verify the token (status {})\n", base, response->status);
-    return Verification::Unknown;
+    return false;
 }
 } // namespace
 
 int Cli::RunLogin(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const CliSupport::Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view registryArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -113,7 +91,8 @@ int Cli::RunLogin(std::span<const std::string_view> args, const GlobalOptions &o
         }
         if (arg == "--registry") {
             if (i + 1 >= args.size()) {
-                std::print(stderr, "error: '--registry' requires an argument\n");
+                diagnostics.Error("option '--registry' requires a registry URL");
+                diagnostics.Help("try 'rux login --registry https://registry.example'");
                 return 1;
             }
             registryArg = args[++i];
@@ -126,46 +105,56 @@ int Cli::RunLogin(std::span<const std::string_view> args, const GlobalOptions &o
     const std::string base = ResolveRegistryBase(registryArg);
     const auto token = ReadToken(base);
     if (!token) {
-        std::print(stderr, "error: no token was supplied on stdin\n");
+        diagnostics.Error("no token was supplied on stdin");
+        diagnostics.Help("pipe one token line to 'rux login' or run it in an interactive terminal");
         return 1;
     }
     if (token->empty()) {
-        std::print(stderr, "error: the token is empty\n");
+        diagnostics.Error("the supplied token is empty");
+        diagnostics.Help("supply a non-empty registry token");
         return 1;
     }
     if (token->find_first_of(" \t\r\n") != std::string::npos) {
-        std::print(stderr, "error: the token contains whitespace\n");
+        diagnostics.Error("the supplied token contains whitespace");
+        diagnostics.Help("copy only the token value, without spaces or extra lines");
         return 1;
     }
 
-    std::string identity;
-    if (VerifyToken(base, *token, identity) == Verification::Rejected) {
+    const auto started = std::chrono::steady_clock::now();
+    const CredentialVerification verification = VerifyCredential(base, *token);
+    if ((verification.kind == CredentialVerificationKind::Rejected ||
+         (verification.kind == CredentialVerificationKind::MissingPublishScope && verification.status != 200)) &&
+        !ReportVerification(verification, base, diagnostics)) {
         return 1;
     }
 
     if (auto stored = StoreCredential(base, *token); !stored) {
-        std::print(stderr, "error: {}\n", stored.error());
+        diagnostics.Error("could not store the registry token");
+        diagnostics.Note(stored.error());
+        diagnostics.Help("check the credentials directory permissions, then run 'rux login' again");
         return 1;
     }
-
-    if (!opts.quiet) {
-        if (identity.empty()) {
-            std::print("Logged in to {}\n", base);
-        }
-        else {
-            std::print("Logged in to {} as {}\n", base, identity);
-        }
-        std::print("Stored {}\n", CredentialsPath().generic_string());
+    if (verification.kind != CredentialVerificationKind::Accepted) {
+        static_cast<void>(ReportVerification(verification, base, diagnostics));
     }
+
+    output.Success("Logged in", verification.identity.empty()
+                                    ? std::format("to '{}' in {}", base, Reporting::FormatDuration(ElapsedMs(started)))
+                                    : std::format("to '{}' as '{}' in {}", base, verification.identity,
+                                                  Reporting::FormatDuration(ElapsedMs(started))));
+    output.Detail(std::format("Credentials: '{}'", CredentialsPath().string()));
     // A set RUX_TOKEN outranks what was just stored, so silently storing a token
     // that will not be used would be the confusing outcome.
     if (HasEnv(kCredentialVariable)) {
-        std::print(stderr, "warning: {} is set and takes precedence over the stored token\n", kCredentialVariable);
+        diagnostics.Warning(std::format("{} is set and takes precedence over the stored token", kCredentialVariable));
+        diagnostics.Help(std::format("unset {} to use the token stored by 'rux login'", kCredentialVariable));
     }
     return 0;
 }
 
 int Cli::RunLogout(std::span<const std::string_view> args, const GlobalOptions &opts) {
+    const CliSupport::Reporter output(stdout, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
+    const CliSupport::Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     std::string_view registryArg;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const std::string_view arg = args[i];
@@ -175,7 +164,8 @@ int Cli::RunLogout(std::span<const std::string_view> args, const GlobalOptions &
         }
         if (arg == "--registry") {
             if (i + 1 >= args.size()) {
-                std::print(stderr, "error: '--registry' requires an argument\n");
+                diagnostics.Error("option '--registry' requires a registry URL");
+                diagnostics.Help("try 'rux logout --registry https://registry.example'");
                 return 1;
             }
             registryArg = args[++i];
@@ -186,19 +176,26 @@ int Cli::RunLogout(std::span<const std::string_view> args, const GlobalOptions &
     }
 
     const std::string base = ResolveRegistryBase(registryArg);
+    const auto started = std::chrono::steady_clock::now();
     const auto erased = EraseCredential(base);
     if (!erased) {
-        std::print(stderr, "error: {}\n", erased.error());
+        diagnostics.Error(std::format("could not remove the stored token for '{}'", base));
+        diagnostics.Note(erased.error());
+        diagnostics.Help("check the credentials directory permissions, then run 'rux logout' again");
         return 1;
     }
 
-    if (!opts.quiet) {
-        if (*erased) {
-            std::print("Logged out of {}\n", base);
-        }
-        else {
-            std::print("No stored token for {}\n", base);
-        }
+    if (*erased) {
+        output.Success("Logged out", std::format("of '{}' in {}", base, Reporting::FormatDuration(ElapsedMs(started))));
+        output.Detail(std::format("Credentials: '{}'", CredentialsPath().string()));
+    }
+    else {
+        output.Success("Unchanged", std::format("no stored token for '{}'", base));
+    }
+    if (HasEnv(kCredentialVariable)) {
+        diagnostics.Warning(
+            std::format("{} remains set and will still authenticate registry requests", kCredentialVariable));
+        diagnostics.Help(std::format("unset {} to finish logging out", kCredentialVariable));
     }
     return 0;
 }
