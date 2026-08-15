@@ -3,6 +3,7 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include <format>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -95,6 +96,71 @@ std::string_view OpStr(TokenKind op) {
 
 namespace Rux::AstToHirDetail {
 
+namespace {
+std::string_view ExpressionKind(const Expr &expression) {
+    if (dynamic_cast<const LiteralExpr *>(&expression))
+        return "literal";
+    if (dynamic_cast<const IdentExpr *>(&expression))
+        return "identifier";
+    if (dynamic_cast<const SelfExpr *>(&expression))
+        return "self";
+    if (dynamic_cast<const PathExpr *>(&expression))
+        return "path";
+    if (dynamic_cast<const SizeOfExpr *>(&expression))
+        return "sizeof";
+    if (dynamic_cast<const EnumShorthandExpr *>(&expression))
+        return "enum shorthand";
+    if (dynamic_cast<const IntrinsicExpr *>(&expression))
+        return "intrinsic";
+    if (dynamic_cast<const UnaryExpr *>(&expression))
+        return "unary";
+    if (dynamic_cast<const PostfixExpr *>(&expression))
+        return "postfix";
+    if (dynamic_cast<const BinaryExpr *>(&expression))
+        return "binary";
+    if (dynamic_cast<const AssignExpr *>(&expression))
+        return "assignment";
+    if (dynamic_cast<const TernaryExpr *>(&expression))
+        return "ternary";
+    if (dynamic_cast<const RangeExpr *>(&expression))
+        return "range";
+    if (dynamic_cast<const CallExpr *>(&expression))
+        return "call";
+    if (dynamic_cast<const IndexExpr *>(&expression))
+        return "index";
+    if (dynamic_cast<const FieldExpr *>(&expression))
+        return "field";
+    if (dynamic_cast<const StructInitExpr *>(&expression))
+        return "struct initializer";
+    if (dynamic_cast<const ArrayExpr *>(&expression))
+        return "array";
+    if (dynamic_cast<const SpreadExpr *>(&expression))
+        return "spread";
+    if (dynamic_cast<const TupleExpr *>(&expression))
+        return "tuple";
+    if (dynamic_cast<const CastExpr *>(&expression))
+        return "cast";
+    if (dynamic_cast<const IsExpr *>(&expression))
+        return "type check";
+    if (dynamic_cast<const BlockExpr *>(&expression))
+        return "block";
+    if (dynamic_cast<const MatchExpr *>(&expression))
+        return "match";
+    return "unknown";
+}
+} // namespace
+
+void AstToHirContext::ReportUnsupportedExpression(const Expr &expression) {
+    diagnostics.push_back({Diagnostic::Severity::Error,
+                           currentFile,
+                           expression.location,
+                           std::format("cannot lower '{}' expression to HIR", ExpressionKind(expression)),
+                           {"this is an internal compiler limitation; semantic analysis accepted an expression that "
+                            "AST-to-HIR lowering does not support"},
+                           "please report this compiler limitation with a minimal source example",
+                           {}});
+}
+
 HirExprPtr AstToHirContext::TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
                                                      HirExprPtr &right) {
     const std::string opName = std::string(OpStr(expression.op));
@@ -164,7 +230,9 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         return LowerExpr(*e->operand);
     }
 
-    // Fallback for unrecognized expression kinds
+    // Keep a poison value so a failed result remains safe to inspect. The
+    // driver stops before optimization when the diagnostic is present.
+    ReportUnsupportedExpression(expr);
     auto he = std::make_unique<HirLiteralExpr>();
     he->location = expr.location;
     he->value = "<expr>";
@@ -179,7 +247,13 @@ AstToHirLowering::AstToHirLowering(const SemanticModel &model)
 }
 
 HirPackage AstToHirLowering::Generate() {
-    AstToHirDetail::AstToHirContext lowering(semanticModel_, semanticModel_.modules, semanticModel_.compileTimeContext);
+    diagnostics_.clear();
+    AstToHirDetail::AstToHirContext lowering(semanticModel_, semanticModel_.modules, semanticModel_.compileTimeContext,
+                                             diagnostics_);
     return lowering.Run();
+}
+
+const std::vector<Diagnostic> &AstToHirLowering::Diagnostics() const noexcept {
+    return diagnostics_;
 }
 } // namespace Rux

@@ -1,6 +1,7 @@
 // Publication commands: pack builds the .ruxpkg archive, publish uploads it.
 
 #include "Cli/Cli.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/PublicationProblem.h"
 #include "Cli/Reporter.h"
 #include "Driver/BuildReport.h"

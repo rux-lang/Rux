@@ -3,14 +3,15 @@
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Lowering/HirToLir/HirToLirContext.h"
 
-#include <cassert>
+#include <algorithm>
 #include <format>
 #include <utility>
 
 namespace Rux::HirToLirDetail {
 
-HirToLirContext::HirToLirContext(const TargetContext &target)
-    : targetContext(target) {
+HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics)
+    : targetContext(target)
+    , diagnostics(outputDiagnostics) {
 }
 
 LirPackage HirToLirContext::Run(const HirPackage &hir) {
@@ -122,20 +123,18 @@ LirReg HirToLirContext::NewReg() {
     return builder->AllocateRegister();
 }
 
-[[noreturn]] void HirToLirContext::BuilderFailure() {
-    assert(false && "checked LIR builder rejected lowering output");
-    std::unreachable();
-}
-
-void HirToLirContext::Require(const bool accepted) {
-    if (!accepted) {
-        BuilderFailure();
-    }
+void HirToLirContext::BuilderFailure(std::string detail) const {
+    diagnostics.push_back(ErrorDiagnostic(
+        std::format("invalid internal LIR while lowering function '{}': {}",
+                    currentFunction.empty() ? "<unknown>" : currentFunction, std::move(detail)),
+        {"HIR-to-LIR lowering generated an instruction or control-flow edge rejected by the checked builder"},
+        "please report this compiler bug with a minimal source example"));
 }
 
 [[nodiscard]] LirOpcode HirToLirContext::RequireOpcode(const std::optional<LirOpcode> opcode) {
     if (!opcode) {
-        BuilderFailure();
+        BuilderFailure("source operator has no LIR opcode mapping");
+        return LirOpcode::Add;
     }
     return *opcode;
 }
@@ -145,7 +144,9 @@ void HirToLirContext::Require(const bool accepted) {
 }
 
 void HirToLirContext::SetBlock(const std::uint32_t idx) {
-    Require(builder->SelectBlock(idx));
+    if (!builder->SelectBlock(idx)) {
+        BuilderFailure(std::format("cannot select block {}: {}", idx, builder->FailureReason()));
+    }
 }
 
 [[nodiscard]] bool HirToLirContext::IsTerminated() const {
@@ -154,11 +155,15 @@ void HirToLirContext::SetBlock(const std::uint32_t idx) {
 
 // Instruction emission
 void HirToLirContext::Emit(LirInstr i) const {
-    Require(builder->Insert(std::move(i)));
+    if (!builder->Insert(std::move(i))) {
+        BuilderFailure("cannot insert instruction into the current block: " + std::string(builder->FailureReason()));
+    }
 }
 
 void HirToLirContext::Terminate(LirTerminator t) const {
-    Require(builder->Terminate(std::move(t)));
+    if (!builder->Terminate(std::move(t))) {
+        BuilderFailure("cannot terminate the current block: " + std::string(builder->FailureReason()));
+    }
 }
 
 void HirToLirContext::Jump(std::uint32_t target) const {
@@ -466,8 +471,10 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         lm.funcs.push_back(LowerFunc(f));
     }
     for (const auto &impl : mod.impls) {
-        assert(impl.methods.size() == impl.methodLinkerNames.size());
-        for (std::size_t i = 0; i < impl.methods.size(); ++i) {
+        if (impl.methods.size() != impl.methodLinkerNames.size()) {
+            BuilderFailure("implementation method and linker-name tables have different sizes");
+        }
+        for (std::size_t i = 0; i < std::min(impl.methods.size(), impl.methodLinkerNames.size()); ++i) {
             lm.funcs.push_back(LowerFunc(impl.methods[i], impl.methodLinkerNames[i]));
         }
         if (!impl.vtableLabel.empty()) {
@@ -549,6 +556,7 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
 
 // Function lowering
 LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nameOverride) {
+    currentFunction = nameOverride.empty() ? hf.name : std::string(nameOverride);
     locals.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
@@ -632,7 +640,12 @@ HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target)
 }
 
 LirPackage HirToLirLowering::Generate() {
-    HirToLirDetail::HirToLirContext lowering(target_);
+    diagnostics_.clear();
+    HirToLirDetail::HirToLirContext lowering(target_, diagnostics_);
     return lowering.Run(hir_);
+}
+
+const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {
+    return diagnostics_;
 }
 } // namespace Rux

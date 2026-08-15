@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Documentation/Generator.h"
 #include "Driver/BuildReport.h"
@@ -24,6 +25,7 @@
 #include <vector>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunFmt(std::span<const std::string_view> args, const GlobalOptions &opts) {
@@ -290,6 +292,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         compileOptions.defines = defines;
         compileOptions.localPackageRoots = localPackages;
         compileOptions.localDependenciesOnly = rootManifest->IsWorkspace();
+        CliSupport::ConfigureCompileDiagnostics(compileOptions, diagnostics);
         if (opts.verbose) {
             compileOptions.emitProgress = [&](const CompileProgress &event) {
                 CliSupport::ReportCompileProgress(diagnostics, event);

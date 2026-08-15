@@ -10,8 +10,8 @@
 
 namespace Rux::Optimization {
 OptimizationPipeline::OptimizationPipeline(const BuildProfile profile, const std::size_t fixedPointLimit)
-    : hir_(profile, fixedPointLimit)
-    , lir_(profile, fixedPointLimit) {
+    : hir_(profile, fixedPointLimit, "HIR")
+    , lir_(profile, fixedPointLimit, "LIR") {
 }
 
 OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile, const std::size_t fixedPointLimit) {

@@ -76,17 +76,6 @@ namespace Rux::Driver {
 
 // ---- Workspace / registry locations -----------------------------------------
 
-// Locate the nearest Rux.toml, printing an error if none is found.
-// When manifestPath is non-empty, use that path directly instead of searching.
-[[nodiscard]] std::optional<std::filesystem::path> RequireManifest();
-[[nodiscard]] std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath);
-
-// Parse a manifest, printing its source-located diagnostics on failure.
-[[nodiscard]] std::optional<Manifest> LoadManifest(const std::filesystem::path &path);
-
-// Print manifest diagnostics in the standard `path:line:column: error:` form.
-void ReportManifestDiagnostics(const ManifestResult &result);
-
 // Resolve the configured raw output root, defaulting to <package root>/Bin.
 // Target-independent products such as documentation and source archives are
 // placed relative to this path rather than in a machine-artifact directory.

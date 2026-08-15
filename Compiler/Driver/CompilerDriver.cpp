@@ -26,8 +26,8 @@
 
 #include <charconv>
 #include <chrono>
+#include <format>
 #include <limits>
-#include <print>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -38,8 +38,9 @@ using namespace System;
 
 std::string_view CompilePhaseName(const CompilePhase phase) noexcept {
     static constexpr std::string_view names[]{
-        "Lexing",          "Parsing",           "Loading dependency",   "Analyzing", "Lowering to HIR",
-        "Lowering to LIR", "Emitting assembly", "Emitting RCU objects", "Linking"};
+        "Configuring",       "Loading sources",      "Lexing",         "Parsing",         "Loading dependency",
+        "Analyzing",         "Lowering to HIR",      "Optimizing HIR", "Lowering to LIR", "Optimizing LIR",
+        "Emitting assembly", "Emitting RCU objects", "Linking"};
     return names[std::to_underlying(phase)];
 }
 
@@ -88,25 +89,24 @@ void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.buildInfo = BuildInfo(std::string(CompilerBuild::compilerVersion), buildTimestamp);
 }
 
-void CompilerDriver::Emit(const Diagnostic &diag) const {
+void CompilerDriver::Emit(const Diagnostic &diag) {
+    Diagnostic contextual = diag;
+    if (currentPhase) {
+        contextual.notes.push_back("compiler phase: " + std::string(CompilePhaseName(*currentPhase)));
+    }
+    diagnostics.push_back(contextual);
     const SourceLineLookup sourceLineLookup = [this](const std::string_view sourceName, const std::size_t lineNumber) {
         return LookupSourceLine(sourceName, lineNumber);
     };
     if (opts.emitDiagnostic) {
-        opts.emitDiagnostic(diag, sourceLineLookup);
-    }
-    else {
-        PrintDiagnostic(diag, sourceLineLookup);
+        opts.emitDiagnostic(contextual, sourceLineLookup);
     }
 }
 
-void CompilerDriver::EmitErrorLine(const std::string_view line) const {
-    if (opts.emitError) {
-        opts.emitError(line);
-    }
-    else {
-        std::print(stderr, "{}", line);
-    }
+void CompilerDriver::BeginPhase(const CompilePhase phase, const std::string_view subject,
+                                const std::filesystem::path &path) {
+    currentPhase = phase;
+    EmitProgress(phase, subject, path);
 }
 
 void CompilerDriver::EmitProgress(const CompilePhase phase, const std::string_view subject,
@@ -116,7 +116,7 @@ void CompilerDriver::EmitProgress(const CompilePhase phase, const std::string_vi
     }
 }
 
-bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) const {
+bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) {
     bool hasErrors = false;
     for (const auto &diag : diags) {
         Emit(diag);
@@ -153,9 +153,16 @@ CompileResult CompilerDriver::Compile() {
         stats.totalSeconds = ElapsedSeconds(t0, buildEnd);
         stats.peakMemoryBytes = PeakMemoryBytes();
         result.stats = stats;
+        result.diagnostics = diagnostics;
     };
+    BeginPhase(CompilePhase::Configuring, opts.manifest.package.name.Text(), opts.manifestPath);
     if (invalidSourceDateEpoch) {
-        Emit(ErrorDiagnostic("SOURCE_DATE_EPOCH must be a non-negative integer number of seconds"));
+        const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH");
+        Emit(ErrorDiagnostic(
+            std::format("invalid SOURCE_DATE_EPOCH value '{}': expected a non-negative integer number of seconds",
+                        epoch.value_or("")),
+            {"SOURCE_DATE_EPOCH controls the reproducible build timestamp embedded in generated objects"},
+            "unset SOURCE_DATE_EPOCH or set it to a Unix timestamp"));
         finish();
         return result;
     }
@@ -216,6 +223,7 @@ CompileResult CompilerDriver::Compile() {
 }
 
 bool CompilerDriver::LexAndParseSources() {
+    BeginPhase(CompilePhase::LoadingSources, opts.manifest.package.name.Text(), root / "Src");
     auto loadResult = SourceLoader::Load(root);
     RememberSources(loadResult.files);
     stats.localFiles = loadResult.files.size();
@@ -236,7 +244,7 @@ bool CompilerDriver::LexAndParseSources() {
     lexResults.reserve(loadResult.files.size());
     const auto lexingStart = std::chrono::steady_clock::now();
     for (const auto &file : loadResult.files) {
-        EmitProgress(CompilePhase::Lexing, file.path.string());
+        BeginPhase(CompilePhase::Lexing, file.path.string(), file.path);
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
         stats.localTokens += CountTokens(lexResult);
@@ -267,7 +275,7 @@ bool CompilerDriver::LexAndParseSources() {
     const auto parsingStart = std::chrono::steady_clock::now();
     for (std::size_t fileIndex = 0; fileIndex < loadResult.files.size(); ++fileIndex) {
         const auto &file = loadResult.files[fileIndex];
-        EmitProgress(CompilePhase::Parsing, file.path.string());
+        BeginPhase(CompilePhase::Parsing, file.path.string(), file.path);
         auto &lexResult = lexResults[fileIndex];
         if (lexResult.HasErrors()) {
             continue;
@@ -310,6 +318,8 @@ bool CompilerDriver::LexAndParseSources() {
 }
 
 bool CompilerDriver::LoadDependencies() {
+    BeginPhase(CompilePhase::LoadingDependency, opts.manifest.package.name.Text(), root);
+
     struct PendingPackage {
         std::string name;
         std::filesystem::path root;
@@ -332,13 +342,17 @@ bool CompilerDriver::LoadDependencies() {
         }
         if (!dep) {
             Emit(ErrorDiagnostic("package '" + pkgName + "' is not listed in [Dependencies] of '" +
-                                 (ownerRoot / "Rux.toml").string() + "'"));
+                                     (ownerRoot / "Rux.toml").string() + "'",
+                                 {"the import requires a package dependency with the same import name"},
+                                 "add the package under [Dependencies] or correct the import path"));
             return false;
         }
         if (!dep->MatchesTarget(opts.target.Os())) {
-            Emit(ErrorDiagnostic("dependency '" + pkgName + "' is not available for target '" +
-                                 std::string(opts.target.CanonicalName()) + "' according to TargetOS in '" +
-                                 (ownerRoot / "Rux.toml").string() + "'"));
+            Emit(ErrorDiagnostic(
+                "dependency '" + pkgName + "' is not available for target '" +
+                    std::string(opts.target.CanonicalName()) + "'",
+                {"TargetOS in '" + (ownerRoot / "Rux.toml").string() + "' excludes " + TargetSystemName()},
+                "select an available target or include the target OS in the dependency's TargetOS list"));
             return false;
         }
         std::filesystem::path depRoot;
@@ -351,8 +365,11 @@ bool CompilerDriver::LoadDependencies() {
         }
         else {
             if (opts.localDependenciesOnly) {
-                Emit(ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
-                                     "' is not a local workspace member; registry dependencies are disabled"));
+                Emit(
+                    ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
+                                        "' is not a local workspace member; registry dependencies are disabled",
+                                    {"workspace checks resolve registry declarations only from matching local members"},
+                                    "add the package to [Workspace].Packages or use a local Path dependency"));
                 return false;
             }
             // The cache holds every installed version side by side, so the
@@ -368,8 +385,10 @@ bool CompilerDriver::LoadDependencies() {
                     listed += (listed.empty() ? "" : ", ") + candidate.version.Text();
                 }
                 Emit(ErrorDiagnostic("no installed version of '" + identity + "' satisfies '" +
-                                     registry->version.Text() + "'" +
-                                     (listed.empty() ? "" : " (installed: " + listed + ")") + " — run 'rux install'"));
+                                         registry->version.Text() + "'",
+                                     listed.empty() ? std::vector<std::string>{"no versions are installed"}
+                                                    : std::vector<std::string>{"installed versions: " + listed},
+                                     "run 'rux install' to resolve and cache the dependency"));
                 return false;
             }
             depRoot = installed->root;
@@ -385,7 +404,9 @@ bool CompilerDriver::LoadDependencies() {
                       diagnostic.help,
                       diagnostic.documentationUrl});
             }
-            Emit(ErrorDiagnostic("dependency package '" + pkgName + "' was not found at '" + depRoot.string() + "'"));
+            Emit(ErrorDiagnostic("cannot load dependency package '" + pkgName + "' from '" + depRoot.string() + "'",
+                                 {"the dependency manifest is missing or invalid"},
+                                 "check the dependency path and its Rux.toml manifest"));
             return false;
         }
         queuedPackageNames.insert(pkgName);
@@ -436,7 +457,7 @@ bool CompilerDriver::LoadDependencies() {
         // A dependency's `when` conditions are written against the import names
         // its own manifest chose, which need not match the root's.
         compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
-        EmitProgress(CompilePhase::LoadingDependency, packageName, pendingRoot);
+        BeginPhase(CompilePhase::LoadingDependency, packageName, pendingRoot);
         auto depLoadResult = SourceLoader::Load(pendingRoot);
         RememberSources(depLoadResult.files);
         stats.dependencyFiles += depLoadResult.files.size();
@@ -501,7 +522,7 @@ bool CompilerDriver::LoadDependencies() {
 
 bool CompilerDriver::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
-    EmitProgress(CompilePhase::Analyzing, opts.manifest.package.name.Text());
+    BeginPhase(CompilePhase::Analyzing, opts.manifest.package.name.Text());
     std::vector<Module *> userModules;
     userModules.reserve(parseResults.size());
     for (auto &pr : parseResults) {
@@ -541,9 +562,12 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                                       std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
-    EmitProgress(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
+    BeginPhase(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
     AstToHirLowering hirLowering(*semanticModel);
     auto hirPackage = hirLowering.Generate();
+    if (EmitAll(hirLowering.Diagnostics())) {
+        return false;
+    }
     if (opts.dumpHir) {
         auto hirDir = root / "Temp" / "Hir";
         std::filesystem::create_directories(hirDir);
@@ -552,26 +576,27 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     auto optimizationPipeline =
         Optimization::OptimizationPipeline::ForProfile(compileTimeContext.profile, artifactKind);
+    BeginPhase(CompilePhase::OptimizingHir, opts.manifest.package.name.Text());
     const auto hirOptimization = optimizationPipeline.RunHir(hirPackage);
-    if (!hirOptimization.reachedFixedPoint) {
-        Emit(ErrorDiagnostic("HIR optimization did not reach a fixed point after " +
-                             std::to_string(hirOptimization.iterations) + " iterations"));
+    if (EmitAll(hirOptimization.diagnostics) || !hirOptimization.reachedFixedPoint) {
         return false;
     }
     stats.hir = ElapsedMs(hirStart);
 
     // LIR
     const auto lirStart = std::chrono::steady_clock::now();
-    EmitProgress(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
+    BeginPhase(CompilePhase::LoweringToLir, opts.manifest.package.name.Text());
     HirToLirLowering lirLowering(std::move(hirPackage), compileTimeContext.target);
     auto lirPackage = lirLowering.Generate();
+    if (EmitAll(lirLowering.Diagnostics())) {
+        return false;
+    }
+    BeginPhase(CompilePhase::OptimizingLir, opts.manifest.package.name.Text());
     const auto lirOptimization = optimizationPipeline.RunLir(lirPackage);
     if (EmitAll(lirOptimization.diagnostics)) {
         return false;
     }
     if (!lirOptimization.reachedFixedPoint) {
-        Emit(ErrorDiagnostic("LIR optimization did not reach a fixed point after " +
-                             std::to_string(lirOptimization.iterations) + " iterations"));
         return false;
     }
     stats.prunedFunctionDefinitions = lirOptimization.lirPruning.functionDefinitions;
@@ -592,14 +617,14 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     // Assembly dump (optional). AssemblyPrinter prints x86-64; the AArch64 back
     // end has no printer of its own yet.
     if (opts.dumpAsm && !isAArch64) {
-        EmitProgress(CompilePhase::EmittingAssembly, opts.manifest.package.name.Text());
+        BeginPhase(CompilePhase::EmittingAssembly, opts.manifest.package.name.Text());
         auto asmDir = root / "Temp" / "Asm";
         std::filesystem::create_directories(asmDir);
         AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm", compileTimeContext.target.os);
     }
 
     // RCU object generation
-    EmitProgress(CompilePhase::EmittingObjects, opts.manifest.package.name.Text());
+    BeginPhase(CompilePhase::EmittingObjects, opts.manifest.package.name.Text());
     std::vector<RcuFile> rcuFiles;
     std::vector<Diagnostic> codegenDiagnostics;
     if (isAArch64) {
@@ -641,12 +666,21 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
 
     // Link
     const auto linkingStart = std::chrono::steady_clock::now();
-    EmitProgress(CompilePhase::Linking, opts.manifest.package.name.Text());
+    BeginPhase(CompilePhase::Linking, opts.manifest.package.name.Text());
     const auto binDir = opts.isTest ? ResolveTestOutputDir(root, opts.manifest, opts.target)
                                     : ResolveArtifactOutputDir(root, opts.manifest, opts.profile, opts.target);
     const OS targetOs = opts.target.Os();
     const Arch targetArch = opts.target.Architecture();
     artifactPath = binDir / OutputFileName(opts.manifest.package.name.Text(), artifactKind, targetOs);
+    std::error_code outputDirectoryError;
+    std::filesystem::create_directories(binDir, outputDirectoryError);
+    if (outputDirectoryError) {
+        Emit(ErrorDiagnostic(
+            std::format("cannot prepare artifact output directory '{}'", binDir.string()),
+            {std::format("system error {}: {}", outputDirectoryError.value(), outputDirectoryError.message())},
+            "check that the output path is writable and is not an existing file"));
+        return false;
+    }
     Linker linker(std::move(rcuFiles), std::string(opts.manifest.package.name.Text()), {root}, artifactKind, targetOs,
                   targetArch);
     if (!linker.Link(artifactPath)) {

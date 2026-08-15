@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
 #include "Lowering/HirToLir/CheckedLirBuilder.h"
@@ -19,7 +20,7 @@ namespace Rux::HirToLirDetail {
 // aggregate lowering implementations.
 class HirToLirContext {
 public:
-    explicit HirToLirContext(const TargetContext &target);
+    HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);
 
     [[nodiscard]] LirPackage Run(const HirPackage &hir);
 
@@ -48,15 +49,16 @@ private:
     std::unordered_set<std::string> funcNames;
     std::unordered_map<std::string, std::uint32_t> cVariadicFixedParamCounts;
     std::unordered_map<std::string, std::string> externSymbols;
+    std::vector<Diagnostic> &diagnostics;
+    std::string currentFunction;
 
     [[nodiscard]] const std::string &SymbolFor(const std::string &name) const;
     [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type);
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr);
 
     [[nodiscard]] LirReg NewReg();
-    [[noreturn]] static void BuilderFailure();
-    static void Require(bool accepted);
-    [[nodiscard]] static LirOpcode RequireOpcode(std::optional<LirOpcode> opcode);
+    void BuilderFailure(std::string detail) const;
+    [[nodiscard]] LirOpcode RequireOpcode(std::optional<LirOpcode> opcode);
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const;
     void SetBlock(std::uint32_t idx);
     [[nodiscard]] bool IsTerminated() const;

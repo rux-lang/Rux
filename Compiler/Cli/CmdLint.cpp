@@ -1,6 +1,7 @@
 // `rux lint`: run source-level lint checks for the current package.
 
 #include "Cli/Cli.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"

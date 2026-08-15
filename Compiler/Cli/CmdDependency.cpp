@@ -5,6 +5,7 @@
 // in Package/Manifest.
 
 #include "Cli/Cli.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
@@ -24,6 +25,7 @@
 #include <utility>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 
 int Cli::RunAdd(std::span<const std::string_view> args, const GlobalOptions &opts) {

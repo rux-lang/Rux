@@ -4,6 +4,7 @@
 #include "Optimization/Pass.h"
 
 #include <algorithm>
+#include <format>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -13,9 +14,10 @@ namespace Rux::Optimization {
 template <typename Ir>
 class PassPipeline {
 public:
-    explicit PassPipeline(const BuildProfile profile, const std::size_t fixedPointLimit = 8)
+    explicit PassPipeline(const BuildProfile profile, const std::size_t fixedPointLimit = 8, std::string irName = "IR")
         : profile_(profile)
-        , fixedPointLimit_(std::max<std::size_t>(fixedPointLimit, 1)) {
+        , fixedPointLimit_(std::max<std::size_t>(fixedPointLimit, 1))
+        , irName_(std::move(irName)) {
     }
 
     void Add(std::unique_ptr<Pass<Ir>> pass) {
@@ -42,9 +44,15 @@ public:
             PassChange iterationChange = PassChange::None;
             const PassContext context{profile_, iteration, fixedPointLimit_, &report.diagnostics, &report.lirPruning};
             for (const auto &pass : passes_) {
+                const std::size_t diagnosticStart = report.diagnostics.size();
                 if (pass->Run(ir, context) == PassChange::Changed) {
                     iterationChange = PassChange::Changed;
                     report.change = PassChange::Changed;
+                }
+                for (std::size_t i = diagnosticStart; i < report.diagnostics.size(); ++i) {
+                    report.diagnostics[i].notes.push_back(
+                        std::format("while running {} optimization pass '{}' (iteration {})", irName_, pass->Name(),
+                                    iteration + 1));
                 }
                 if (report.HasErrors()) {
                     ++report.iterations;
@@ -58,12 +66,20 @@ public:
                 break;
             }
         }
+        if (!report.reachedFixedPoint) {
+            report.diagnostics.push_back(
+                ErrorDiagnostic(std::format("{} optimization did not reach a fixed point after {} iterations", irName_,
+                                            report.iterations),
+                                {std::format("the optimization limit is {} iterations", fixedPointLimit_)},
+                                "simplify the input or report a compiler optimization bug"));
+        }
         return report;
     }
 
 private:
     BuildProfile profile_;
     std::size_t fixedPointLimit_;
+    std::string irName_;
     std::vector<std::unique_ptr<Pass<Ir>>> passes_;
 };
 

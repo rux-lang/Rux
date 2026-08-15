@@ -35,12 +35,14 @@ HirScope *HirScope::Parent() const {
 }
 
 AstToHirContext::AstToHirContext(const SemanticModel &inputModel, const std::vector<const Module *> &inputModules,
-                                 const CompileTimeContext &inputCompileTimeContext)
+                                 const CompileTimeContext &inputCompileTimeContext,
+                                 std::vector<Diagnostic> &outputDiagnostics)
     : model(inputModel)
     , modules(inputModules)
     , context(inputCompileTimeContext)
     , globalScope(nullptr)
-    , currentScope(&globalScope) {
+    , currentScope(&globalScope)
+    , diagnostics(outputDiagnostics) {
 }
 
 AstToHirContext::~AstToHirContext() = default;

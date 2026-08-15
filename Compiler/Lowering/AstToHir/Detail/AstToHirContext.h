@@ -49,7 +49,7 @@ private:
 class AstToHirContext {
 public:
     AstToHirContext(const SemanticModel &inputModel, const std::vector<const Module *> &inputModules,
-                    const CompileTimeContext &inputCompileTimeContext);
+                    const CompileTimeContext &inputCompileTimeContext, std::vector<Diagnostic> &outputDiagnostics);
     ~AstToHirContext();
 
     AstToHirContext(const AstToHirContext &) = delete;
@@ -83,6 +83,7 @@ protected:
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
     std::string declModulePath;
+    std::vector<Diagnostic> &diagnostics;
 
     void PushScope();
     void PopScope();
@@ -173,6 +174,7 @@ private:
     [[nodiscard]] HirExternVar LowerExternVar(const ExternVarDecl &decl);
     [[nodiscard]] HirTypeAlias LowerTypeAlias(const TypeAliasDecl &decl);
     [[nodiscard]] HirExprPtr LowerExpr(const Expr &expression);
+    void ReportUnsupportedExpression(const Expr &expression);
     [[nodiscard]] bool UnsuffixedIntegerLiteralFits(const Expr &expression, const TypeRef &targetType) const;
     [[nodiscard]] std::optional<TypeRef> SliceElementType(const TypeRef &type) const;
     [[nodiscard]] std::string LowerLiteralValue(const LiteralExpr &expression) const;

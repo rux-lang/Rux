@@ -28,6 +28,7 @@ public:
 
 private:
     // Collect all *.rux paths under a directory tree (recursive).
-    static std::vector<std::filesystem::path> CollectSourcePaths(const std::filesystem::path &srcDir);
+    static std::vector<std::filesystem::path> CollectSourcePaths(const std::filesystem::path &srcDir,
+                                                                 std::vector<Diagnostic> &diagnostics);
 };
 } // namespace Rux

@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Driver/BuildPlan.h"
 #include "Driver/BuildReport.h"
@@ -161,6 +162,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
             copts.target = cell.target;
             copts.profile = cell.profile;
             copts.defines = defines;
+            ConfigureCompileDiagnostics(copts, diagnostics);
             if (opts.verbose) {
                 copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
             }
@@ -194,6 +196,7 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.target = *targetTriple;
     copts.profile = profile;
     copts.defines = std::move(defines);
+    ConfigureCompileDiagnostics(copts, diagnostics);
     if (opts.verbose) {
         copts.emitProgress = [&](const CompileProgress &progress) { ReportCompileProgress(output, progress); };
     }

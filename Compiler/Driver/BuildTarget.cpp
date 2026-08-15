@@ -5,7 +5,6 @@
 #include "Target/Target.h"
 
 #include <algorithm>
-#include <print>
 
 namespace Rux::Driver {
 using namespace Target;
@@ -104,43 +103,6 @@ std::set<std::string> IntrinsicsAliases(const Manifest &manifest, const std::fil
         }
     }
     return aliases;
-}
-
-std::optional<std::filesystem::path> RequireManifest() {
-    auto path = Manifest::Find();
-    if (!path) {
-        std::print(stderr,
-                   "error: could not find 'Rux.toml' in '{}' or any parent "
-                   "directory\n",
-                   std::filesystem::current_path().string());
-    }
-    return path;
-}
-
-std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath) {
-    // When no explicit path is given, fall back to directory-walking discovery.
-    if (manifestPath.empty()) {
-        return RequireManifest();
-    }
-    // Validate that the explicitly-provided manifest exists.
-    std::error_code ec;
-    if (!std::filesystem::exists(manifestPath, ec)) {
-        std::print(stderr, "error: specified manifest '{}' not found\n", manifestPath.string());
-        return std::nullopt;
-    }
-    return manifestPath;
-}
-
-void ReportManifestDiagnostics(const ManifestResult &result) {
-    for (const auto &diagnostic : result.diagnostics) {
-        std::print(stderr, "{}", diagnostic.Render());
-    }
-}
-
-std::optional<Manifest> LoadManifest(const std::filesystem::path &path) {
-    auto result = Manifest::Load(path);
-    ReportManifestDiagnostics(result);
-    return std::move(result.manifest);
 }
 
 std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, const Manifest &manifest) {

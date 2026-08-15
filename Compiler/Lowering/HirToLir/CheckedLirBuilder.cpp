@@ -26,10 +26,12 @@ CheckedLirBuilder::BlockIndex CheckedLirBuilder::CreateBlock(std::string label) 
     return static_cast<BlockIndex>(function_->blocks.size() - 1);
 }
 
-bool CheckedLirBuilder::SelectBlock(const BlockIndex index) noexcept {
+bool CheckedLirBuilder::SelectBlock(const BlockIndex index) {
     if (index >= function_->blocks.size()) {
+        failureReason_ = "block index is out of range";
         return false;
     }
+    failureReason_.clear();
     currentBlock_ = index;
     return true;
 }
@@ -47,6 +49,10 @@ CheckedLirBuilder::BlockIndex CheckedLirBuilder::CurrentBlock() const noexcept {
 
 LirFunc &CheckedLirBuilder::Function() const noexcept {
     return *function_;
+}
+
+std::string_view CheckedLirBuilder::FailureReason() const noexcept {
+    return failureReason_;
 }
 
 bool CheckedLirBuilder::IsDefined(const LirReg reg) const noexcept {
@@ -107,25 +113,50 @@ bool CheckedLirBuilder::HasValidTargets(const LirTerminator &terminator) const n
 }
 
 bool CheckedLirBuilder::Insert(LirInstr instruction) {
-    if (!currentBlock_ || IsTerminated() || !HasValidSources(instruction)) {
+    if (!currentBlock_) {
+        failureReason_ = "no current block is selected";
+        return false;
+    }
+    if (IsTerminated()) {
+        failureReason_ = "the current block already has a terminator";
+        return false;
+    }
+    if (!HasValidSources(instruction)) {
+        failureReason_ = "the instruction uses an undefined register";
         return false;
     }
     if (instruction.dst != LirNoReg &&
         (instruction.dst >= nextRegister_ || definedRegisters_.contains(instruction.dst))) {
+        failureReason_ = "the instruction defines an invalid or previously defined register";
         return false;
     }
     if (instruction.dst != LirNoReg) {
         definedRegisters_.insert(instruction.dst);
     }
     function_->blocks[*currentBlock_].instrs.push_back(std::move(instruction));
+    failureReason_.clear();
     return true;
 }
 
 bool CheckedLirBuilder::Terminate(LirTerminator terminator) {
-    if (!currentBlock_ || IsTerminated() || !HasValidSources(terminator) || !HasValidTargets(terminator)) {
+    if (!currentBlock_) {
+        failureReason_ = "no current block is selected";
+        return false;
+    }
+    if (IsTerminated()) {
+        failureReason_ = "the current block already has a terminator";
+        return false;
+    }
+    if (!HasValidSources(terminator)) {
+        failureReason_ = "the terminator uses an undefined register";
+        return false;
+    }
+    if (!HasValidTargets(terminator)) {
+        failureReason_ = "the terminator targets an invalid block";
         return false;
     }
     function_->blocks[*currentBlock_].term = std::move(terminator);
+    failureReason_.clear();
     return true;
 }
 

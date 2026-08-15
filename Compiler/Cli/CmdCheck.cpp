@@ -3,6 +3,7 @@
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
@@ -158,14 +159,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.checkOnly = true;
         copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
             EmitDiag(diagnostic, sourceLineLookup);
-        };
-        copts.emitError = [&](std::string_view line) {
-            if (jsonOutput) {
-                EmitDiag(ErrorDiagnostic(std::string(line)));
-            }
-            else {
-                std::print(stderr, "{}", line);
-            }
         };
         CompilerDriver driver(std::move(copts));
         const bool passed = driver.Compile().ok;

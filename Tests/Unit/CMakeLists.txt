@@ -36,6 +36,7 @@ set(RUX_TEST_SOURCES
     CliScaffoldProcessTests.cpp
     CmdInspectProcessTests.cpp
     CompilerDriverTests.cpp
+    CompilerPipelineDiagnosticTests.cpp
     ConstantEvaluatorTests.cpp
     ConditionalCompilationTestSupport.cpp
     ConditionalEvaluationTests.cpp

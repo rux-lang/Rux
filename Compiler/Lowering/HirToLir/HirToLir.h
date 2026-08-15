@@ -1,8 +1,11 @@
 #pragma once
 
+#include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
+
+#include <vector>
 
 namespace Rux {
 class HirToLirLowering {
@@ -12,9 +15,11 @@ public:
     // host: a cross-build must record the target architecture's convention.
     HirToLirLowering(HirPackage package, TargetContext target);
     [[nodiscard]] LirPackage Generate();
+    [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const noexcept;
 
 private:
     HirPackage hir_;
     TargetContext target_;
+    std::vector<Diagnostic> diagnostics_;
 };
 } // namespace Rux

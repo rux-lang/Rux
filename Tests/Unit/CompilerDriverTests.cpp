@@ -198,9 +198,6 @@ module Api {
         options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
             diagnostics.push_back(diagnostic);
         };
-        options.emitError = [&](const std::string_view message) {
-            diagnostics.push_back(ErrorDiagnostic(std::string(message)));
-        };
         return options;
     }
 
@@ -512,7 +509,8 @@ TEST_CASE("compiler driver enforces TargetOS on an active dependency import") {
     CHECK_FALSE(result.ok);
     REQUIRE(diagnostics.size() == 1);
     CHECK(diagnostics.front().message.contains("not available for target"));
-    CHECK(diagnostics.front().message.contains("TargetOS"));
+    CHECK(std::ranges::any_of(diagnostics.front().notes,
+                              [](const std::string &note) { return note.contains("TargetOS"); }));
 }
 
 TEST_CASE("compiler driver ignores a TargetOS dependency imported only by a removed branch") {
@@ -691,9 +689,11 @@ TEST_CASE("compiler driver builds a signed macOS AArch64 executable with target 
     CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
     REQUIRE(result.ok);
     CHECK(diagnostics.empty());
-    CHECK(phases == std::vector{CompilePhase::Lexing, CompilePhase::Parsing, CompilePhase::LoadingDependency,
-                                CompilePhase::Analyzing, CompilePhase::LoweringToHir, CompilePhase::LoweringToLir,
-                                CompilePhase::EmittingObjects, CompilePhase::Linking});
+    CHECK(phases == std::vector{CompilePhase::Configuring, CompilePhase::LoadingSources, CompilePhase::Lexing,
+                                CompilePhase::Parsing, CompilePhase::LoadingDependency, CompilePhase::LoadingDependency,
+                                CompilePhase::Analyzing, CompilePhase::LoweringToHir, CompilePhase::OptimizingHir,
+                                CompilePhase::LoweringToLir, CompilePhase::OptimizingLir, CompilePhase::EmittingObjects,
+                                CompilePhase::Linking});
     CHECK(result.stats.dependencyFiles == 1);
     CHECK(result.primaryArtifactPath.filename() == "App");
     CHECK(ArtifactTargetPath(result.primaryArtifactPath) ==
@@ -795,7 +795,8 @@ TEST_CASE("compiler driver target dependency errors name macOS AArch64 rather th
     CHECK_FALSE(result.ok);
     REQUIRE(diagnostics.size() == 1);
     CHECK(diagnostics.front().message.contains("macos-aarch64"));
-    CHECK(diagnostics.front().message.contains("TargetOS"));
+    CHECK(std::ranges::any_of(diagnostics.front().notes,
+                              [](const std::string &note) { return note.contains("TargetOS"); }));
 }
 
 TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-conditioned dependencies") {
@@ -926,7 +927,8 @@ TEST_CASE("compiler driver checks FreeBSD AArch64 source libraries and reports m
         CHECK_FALSE(result.ok);
         REQUIRE(diagnostics.size() == 1);
         CHECK(diagnostics.front().message.contains("freebsd-aarch64"));
-        CHECK(diagnostics.front().message.contains("TargetOS"));
+        CHECK(std::ranges::any_of(diagnostics.front().notes,
+                                  [](const std::string &note) { return note.contains("TargetOS"); }));
     }
 }
 
@@ -1017,6 +1019,10 @@ TEST_CASE("compiler driver checks a SourceLibrary package but refuses to build i
     REQUIRE(buildDiagnostics.size() == 1);
     CHECK(buildDiagnostics[0].IsError());
     CHECK(buildDiagnostics[0].message.contains("Type = \"SourceLibrary\""));
+    REQUIRE(build.diagnostics.size() == buildDiagnostics.size());
+    CHECK(build.diagnostics[0].message == buildDiagnostics[0].message);
+    REQUIRE(buildDiagnostics[0].notes.size() == 1);
+    CHECK(buildDiagnostics[0].notes[0] == "compiler phase: Configuring");
 }
 
 TEST_CASE("compiler driver resolves transitive workspace dependencies by normalized package identity") {

@@ -108,9 +108,6 @@ module OptimizerFixture::Support {
         options.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &) {
             diagnostics.push_back(diagnostic);
         };
-        options.emitError = [&](const std::string_view message) {
-            diagnostics.push_back(ErrorDiagnostic(std::string(message)));
-        };
 
         ControlledBuild build;
         build.result = CompilerDriver(std::move(options)).Compile();

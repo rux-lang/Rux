@@ -18,10 +18,11 @@ public:
     [[nodiscard]] LirReg AllocateRegister();
     [[nodiscard]] LirReg DefineParameter();
     [[nodiscard]] BlockIndex CreateBlock(std::string label = {});
-    [[nodiscard]] bool SelectBlock(BlockIndex index) noexcept;
+    [[nodiscard]] bool SelectBlock(BlockIndex index);
     [[nodiscard]] bool IsTerminated() const noexcept;
     [[nodiscard]] BlockIndex CurrentBlock() const noexcept;
     [[nodiscard]] LirFunc &Function() const noexcept;
+    [[nodiscard]] std::string_view FailureReason() const noexcept;
 
     [[nodiscard]] bool Insert(LirInstr instruction);
     [[nodiscard]] bool Terminate(LirTerminator terminator);
@@ -39,5 +40,6 @@ private:
     std::optional<BlockIndex> currentBlock_;
     LirReg nextRegister_ = 0;
     std::unordered_set<LirReg> definedRegisters_;
+    std::string failureReason_;
 };
 } // namespace Rux

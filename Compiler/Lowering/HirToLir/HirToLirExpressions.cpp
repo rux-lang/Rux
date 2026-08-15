@@ -141,6 +141,9 @@ LirReg HirToLirContext::LowerExpr(const HirExpr &expr) {
     }
     if (auto *e = dynamic_cast<const HirBlockExpr *>(&expr)) {
         LowerBlock(e->block);
+        if (IsTerminated()) {
+            return LirNoReg;
+        }
         return EmitConst("0", e->type);
     }
     if (auto *e = dynamic_cast<const HirRangeExpr *>(&expr)) {
@@ -160,7 +163,7 @@ LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
             delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
         }
     }
-    LirOpcode op;
+    LirOpcode op = LirOpcode::Add;
     switch (e.op) {
     case TokenKind::PlusPlus:
         op = LirOpcode::Add;
@@ -169,7 +172,8 @@ LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
         op = LirOpcode::Sub;
         break;
     default:
-        BuilderFailure();
+        BuilderFailure("postfix operator has no LIR opcode mapping");
+        break;
     }
     const LirReg new_val = EmitBinary(op, old_val, delta, e.type);
     EmitStore(new_val, ptr, e.type);
@@ -212,7 +216,8 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
         return new_val;
     }
     default:
-        BuilderFailure();
+        BuilderFailure("unary operator has no LIR opcode mapping");
+        return LirNoReg;
     }
 }
 

@@ -5,6 +5,7 @@
 // cache installation path.
 
 #include "Cli/Cli.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
@@ -31,6 +32,7 @@
 #include <vector>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 using namespace System;
 

@@ -26,12 +26,16 @@
 
 namespace Rux::Driver {
 enum class CompilePhase {
+    Configuring,
+    LoadingSources,
     Lexing,
     Parsing,
     LoadingDependency,
     Analyzing,
     LoweringToHir,
+    OptimizingHir,
     LoweringToLir,
+    OptimizingLir,
     EmittingAssembly,
     EmittingObjects,
     Linking,
@@ -73,14 +77,10 @@ struct CompileOptions {
     bool dumpAsm = false;
     bool dumpRcu = false;
 
-    // Where diagnostics go. The driver supplies a lookup over source text it
-    // already loaded, allowing CLI owners to render context without rereading
-    // files. Defaults to PrintDiagnostic (text on stderr).
+    // Optional presentation hook. The driver always retains diagnostics in
+    // CompileResult and supplies already-loaded source text to a callback so a
+    // CLI can render context without rereading files.
     std::function<void(const Diagnostic &, const SourceLineLookup &)> emitDiagnostic;
-    // Where pre-formatted error lines (e.g. source-loader failures, which
-    // carry their own "error: " prefix and newline) go. Defaults to printing
-    // the line to stderr as-is.
-    std::function<void(std::string_view)> emitError;
     // Optional semantic progress events. The CLI owns visibility, styling, and
     // stream selection; the reusable driver never writes progress itself.
     std::function<void(const CompileProgress &)> emitProgress;
@@ -91,6 +91,7 @@ struct CompileResult {
     std::filesystem::path primaryArtifactPath; // empty in checkOnly mode or on failure
     std::vector<std::filesystem::path> secondaryArtifactPaths;
     BuildStats stats;
+    std::vector<Diagnostic> diagnostics;
     std::vector<ParseResult> modules; // populated when captureFrontend succeeds
 };
 
@@ -100,11 +101,11 @@ public:
     [[nodiscard]] CompileResult Compile();
 
 private:
-    void Emit(const Diagnostic &diag) const;
-    void EmitErrorLine(std::string_view line) const;
+    void Emit(const Diagnostic &diag);
+    void BeginPhase(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {});
     void EmitProgress(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {}) const;
     // Emit every diagnostic; returns true if any is an error.
-    bool EmitAll(std::span<const Diagnostic> diags) const;
+    bool EmitAll(std::span<const Diagnostic> diags);
     void RememberSources(std::span<const SourceFile> sources);
     [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
                                                                    std::size_t lineNumber) const;
@@ -126,6 +127,8 @@ private:
     BuildStats stats;
     bool hadErrors = false; // frontend errors accumulated in checkOnly mode
     bool invalidSourceDateEpoch = false;
+    std::optional<CompilePhase> currentPhase;
+    std::vector<Diagnostic> diagnostics;
     CompileTimeContext compileTimeContext;
 
     std::vector<ParseResult> parseResults;      // user modules

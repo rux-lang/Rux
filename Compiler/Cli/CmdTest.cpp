@@ -2,6 +2,7 @@
 
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
@@ -324,7 +325,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
             outcome.diagnostics += RenderDiagnostic(diagnostic, diagnostics.Style().enabled, sourceLineLookup);
         };
-        copts.emitError = [&](const std::string_view line) { outcome.diagnostics += line; };
         CompilerDriver driver(std::move(copts));
         const CompileResult result = driver.Compile();
         if (!result.ok) {

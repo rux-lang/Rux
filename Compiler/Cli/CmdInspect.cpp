@@ -6,6 +6,7 @@
 // contacting the registry.
 
 #include "Cli/Cli.h"
+#include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
@@ -30,6 +31,7 @@
 #include <vector>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Driver;
 
 namespace {

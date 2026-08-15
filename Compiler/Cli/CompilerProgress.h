@@ -9,6 +9,13 @@
 #include <format>
 
 namespace Rux::CliSupport {
+inline void ConfigureCompileDiagnostics(Driver::CompileOptions &options, const Reporter &reporter) {
+    options.emitDiagnostic = [&reporter](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
+        reporter.Write(RenderDiagnostic(diagnostic, reporter.Style().enabled, sourceLineLookup),
+                       MessageVisibility::Always);
+    };
+}
+
 inline void ReportCompileProgress(const Reporter &reporter, const Driver::CompileProgress &progress) {
     if (progress.phase == Driver::CompilePhase::LoadingDependency) {
         reporter.Verbose(std::format("{} '{}' from '{}'", Driver::CompilePhaseName(progress.phase), progress.subject,

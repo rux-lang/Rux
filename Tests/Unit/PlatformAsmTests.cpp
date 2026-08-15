@@ -290,7 +290,6 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     REQUIRE_MESSAGE(loaded.Ok(), manifestPath.string());
 
     std::vector<Diagnostic> diagnostics;
-    std::vector<std::string> errors;
 
     Driver::CompileOptions options;
     options.manifestPath = manifestPath;
@@ -302,19 +301,14 @@ TEST_CASE("FreeBSD AArch64 BSD package checks both target conditions through the
     options.emitDiagnostic = [&diagnostics](const Diagnostic &diagnostic, const SourceLineLookup &) {
         diagnostics.push_back(diagnostic);
     };
-    options.emitError = [&errors](const std::string_view error) { errors.emplace_back(error); };
 
     const Driver::CompileResult result = Driver::CompilerDriver(std::move(options)).Compile();
     std::string reports;
     for (const auto &diagnostic : diagnostics) {
         reports += (reports.empty() ? "" : " | ") + diagnostic.message;
     }
-    for (const auto &error : errors) {
-        reports += (reports.empty() ? "" : " | ") + error;
-    }
     CHECK_MESSAGE(result.ok, "the FreeBSD/AArch64-conditioned BSD package did not check: ", reports);
     CHECK(diagnostics.empty());
-    CHECK(errors.empty());
     CHECK(result.primaryArtifactPath.empty());
 
     // The exact inline bodies were assembled to AArch64 bytes above, and the
