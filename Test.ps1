@@ -67,6 +67,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Scripts/RepositoryMessages.ps1")
 
 function Find-Tool {
     param(
@@ -91,11 +92,11 @@ function Find-Tool {
         }
     }
 
-    $message = "Required tool not found: $($Name -join ' or ')"
+    $message = "required tool '$($Name -join "' or '")' was not found"
     if ($Hint) {
-        $message += ". $Hint"
+        $message += "; $Hint"
     }
-    throw $message
+    Stop-Script $message
 }
 
 function Get-PosixShellCandidate {
@@ -132,31 +133,6 @@ function Get-PosixShellCandidate {
     }
 
     return @($candidates)
-}
-
-function Invoke-Checked {
-    param(
-        [Parameter(Mandatory)]
-        [string]$FilePath,
-
-        [Parameter()]
-        [string[]]$ArgumentList = @()
-    )
-
-    & $FilePath @ArgumentList
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
-    }
-}
-
-function Write-Step {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message
-    )
-
-    Write-Host ""
-    Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
 function Get-ManifestlessCheckScopes {
@@ -202,7 +178,7 @@ $shell = Find-Tool -Name "sh" `
     -FallbackPath (Get-PosixShellCandidate) `
     -Hint "Install Git for Windows, or add a POSIX shell to PATH."
 if ($ClangTidy -and $PSVersionTable.PSVersion.Major -lt 7) {
-    throw "-ClangTidy requires PowerShell 7 or newer."
+    Stop-Script "option '-ClangTidy' requires PowerShell 7 or newer"
 }
 $clangTidyExecutable = if ($ClangTidy) {
     Find-Tool -Name @("clang-tidy-22", "clang-tidy")
@@ -217,11 +193,16 @@ try {
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/NoExternalToolchain/Check.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Test.sh")
     Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/OversizedFiles/Check.sh")
+    Invoke-Checked -FilePath $shell -ArgumentList @("-lc", "sh Tests/Policy/ScriptMessages/Check.sh")
 
     if (-not $SkipBuild) {
         & (Join-Path $repositoryRoot "Build.ps1") `
             -Configuration $Configuration `
             -BuildDirectory $BuildDirectory
+    }
+    else {
+        Write-Step "Skipping compiler build"
+        Write-Host "  Note: using the existing build in '$buildPath'"
     }
 
     $runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
@@ -239,7 +220,7 @@ try {
     }
 
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        throw "Rux executable not found at '$rux'. Build it first or pass -RuxExecutable."
+        Stop-Script "rux executable '$rux' was not found; build it first or pass -RuxExecutable"
     }
 
     $formatParameters = @{
@@ -253,7 +234,7 @@ try {
     if ($ClangTidy) {
         $compileCommands = Join-Path $buildPath "compile_commands.json"
         if (-not (Test-Path -LiteralPath $compileCommands -PathType Leaf)) {
-            throw "Compilation database not found at '$compileCommands'. Run Test.ps1 without -SkipBuild first."
+            Stop-Script "compilation database '$compileCommands' was not found; run Test.ps1 without -SkipBuild first"
         }
 
         $compilerRoot = (Join-Path $repositoryRoot "Compiler") + [System.IO.Path]::DirectorySeparatorChar
@@ -304,16 +285,15 @@ try {
             }
         }
 
-        $clangTidyElapsed = ((Get-Date) - $clangTidyStartedAt).TotalSeconds
-        $clangTidyElapsedText = $clangTidyElapsed.ToString("F1", [System.Globalization.CultureInfo]::InvariantCulture)
+        $clangTidyElapsed = Format-Duration -Duration ((Get-Date) - $clangTidyStartedAt)
         if ($clangTidyFailures.Count -ne 0) {
             Write-Host "[FAILED]" -ForegroundColor Red -NoNewline
-            Write-Host (" clang-tidy ({0}/{1} files failed, {2}s)" -f `
-                    $clangTidyFailures.Count, $clangTidySources.Count, $clangTidyElapsedText)
-            throw "clang-tidy failed for $($clangTidyFailures.Count) source file(s)."
+            Write-Host (" clang-tidy ({0}/{1} files failed) in {2}" -f `
+                    $clangTidyFailures.Count, $clangTidySources.Count, $clangTidyElapsed)
+            Stop-Script "clang-tidy failed for $($clangTidyFailures.Count) files"
         }
         Write-Host "[PASSED]" -ForegroundColor Green -NoNewline
-        Write-Host (" clang-tidy ({0} files, {1}s)" -f $clangTidySources.Count, $clangTidyElapsedText)
+        Write-Host (" clang-tidy ({0} files) in {1}" -f $clangTidySources.Count, $clangTidyElapsed)
     }
 
     Write-Step "Running C++ unit tests"
@@ -338,7 +318,7 @@ try {
     else {
         $checkScopes = @(Get-ManifestlessCheckScopes -Root $repositoryRoot)
         if ($checkScopes.Count -eq 0) {
-            throw "No Rux manifests found to check or lint."
+            Stop-Script "no Rux manifests were found to check or lint"
         }
 
         Write-Step "Checking all discovered Rux packages"
@@ -360,9 +340,9 @@ try {
     $testArguments += $targetArguments
     Invoke-Checked -FilePath $rux -ArgumentList $testArguments
 
-    $elapsed = (Get-Date) - $startedAt
+    $elapsed = Format-Duration -Duration ((Get-Date) - $startedAt)
     Write-Host ""
-    Write-Host ("Test workflow passed in {0:mm\:ss}." -f $elapsed) -ForegroundColor Green
+    Write-Host "Finished test workflow in $elapsed" -ForegroundColor Green
 }
 finally {
     Pop-Location

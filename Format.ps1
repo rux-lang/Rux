@@ -30,6 +30,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Scripts/RepositoryMessages.ps1")
 
 function Find-Tool {
     param(
@@ -44,42 +45,7 @@ function Find-Tool {
         }
     }
 
-    throw "Required tool not found: $($Name -join ' or ')"
-}
-
-function Invoke-Checked {
-    param(
-        [Parameter(Mandatory)]
-        [string]$FilePath,
-
-        [Parameter()]
-        [string[]]$ArgumentList = @()
-    )
-
-    & $FilePath @ArgumentList
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
-    }
-}
-
-function Write-Step {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message
-    )
-
-    Write-Host ""
-    Write-Host "==> $Message" -ForegroundColor Cyan
-}
-
-function Write-Passed {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message
-    )
-
-    Write-Host "[PASSED]" -ForegroundColor Green -NoNewline
-    Write-Host " $Message"
+    Stop-Script "required tool '$($Name -join "' or '")' was not found; install it and ensure it is available on PATH"
 }
 
 $repositoryRoot = $PSScriptRoot
@@ -100,7 +66,7 @@ else {
 }
 
 if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-    throw "Rux executable not found at '$rux'. Build it first or pass -RuxExecutable."
+    Stop-Script "rux executable '$rux' was not found; build it first or pass -RuxExecutable"
 }
 
 $cppFiles = @(
@@ -114,7 +80,7 @@ $cppFiles = @(
 )
 
 if ($cppFiles.Count -eq 0) {
-    throw "No maintained C++ files found."
+    Stop-Script "no maintained C++ files were found"
 }
 
 $manifests = @(
@@ -124,7 +90,7 @@ $manifests = @(
 )
 
 if ($manifests.Count -eq 0) {
-    throw "No Rux package or test manifests found."
+    Stop-Script "no Rux package or test manifests were found"
 }
 
 $startedAt = Get-Date
@@ -157,10 +123,14 @@ try {
         Write-Passed "Rux formatting ($($manifests.Count) packages)"
     }
 
-    $elapsed = (Get-Date) - $startedAt
-    $verb = if ($Check) { "check" } else { "formatting" }
+    $elapsed = Format-Duration -Duration ((Get-Date) - $startedAt)
     Write-Host ""
-    Write-Host ("Source {0} passed in {1:mm\:ss}." -f $verb, $elapsed) -ForegroundColor Green
+    if ($Check) {
+        Write-Host "Finished format check in $elapsed" -ForegroundColor Green
+    }
+    else {
+        Write-Host "Finished source formatting in $elapsed" -ForegroundColor Green
+    }
 }
 finally {
     Pop-Location

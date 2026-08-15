@@ -5,6 +5,9 @@
 
 set -eu
 
+script_directory=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+. "$script_directory/Scripts/RepositoryMessages.sh"
+
 check=false
 rux_executable=
 
@@ -18,25 +21,8 @@ usage() {
         '  -h, --help             Show this help'
 }
 
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
-}
-
 require_value() {
     [ "$#" -ge 2 ] || die "option '$1' requires a value"
-}
-
-step() {
-    printf '\n==> %s\n' "$1"
-}
-
-passed() {
-    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-        printf '\033[32m[PASSED]\033[0m %s\n' "$1"
-    else
-        printf '[PASSED] %s\n' "$1"
-    fi
 }
 
 while [ "$#" -gt 0 ]; do
@@ -60,7 +46,6 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-script_directory=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 repository_root=$script_directory
 
 if [ -z "$rux_executable" ]; then
@@ -72,7 +57,7 @@ else
     esac
 fi
 
-[ -f "$rux_path" ] || die "Rux executable not found at '$rux_path'"
+[ -f "$rux_path" ] || die "rux executable '$rux_path' was not found; build it first or pass --rux-executable"
 
 clang_format=
 for candidate in clang-format-22 clang-format22 \
@@ -83,7 +68,7 @@ for candidate in clang-format-22 clang-format22 \
     fi
     clang_format=
 done
-[ -n "$clang_format" ] || die "required tool not found: clang-format 22"
+[ -n "$clang_format" ] || die "required tool 'clang-format 22' was not found; install it and ensure it is available on PATH"
 
 started_at=$(date +%s)
 cd "$repository_root"
@@ -92,34 +77,40 @@ cpp_file_count=$(find Compiler Tests/Unit -type f \( -name '*.cpp' -o -name '*.h
     ! -path '*/ThirdParty/*' -print | wc -l | tr -d '[:space:]')
 manifest_count=$(find Packages Tests -type f -name Rux.toml -print | wc -l | tr -d '[:space:]')
 
+[ "$cpp_file_count" -gt 0 ] || die "no maintained C++ files were found"
+[ "$manifest_count" -gt 0 ] || die "no Rux package or test manifests were found"
+
 if [ "$check" = true ]; then
     step "Checking C++ formatting ($cpp_file_count files)"
-    find Compiler Tests/Unit -type f \( -name '*.cpp' -o -name '*.h' \) \
-        ! -path '*/ThirdParty/*' -exec "$clang_format" --dry-run -Werror {} +
+    if ! find Compiler Tests/Unit -type f \( -name '*.cpp' -o -name '*.h' \) ! -path '*/ThirdParty/*' -print0 |
+        xargs -0 "$clang_format" --dry-run -Werror; then
+        die "command 'clang-format' failed"
+    fi
     passed "C++ formatting ($cpp_file_count files)"
 
     step "Checking Rux formatting ($manifest_count packages)"
     find Packages Tests -type f -name Rux.toml -print | while IFS= read -r manifest; do
-        "$rux_path" --manifest "$manifest" fmt --check
+        run_checked rux "$rux_path" --manifest "$manifest" fmt --check
     done
     passed "Rux formatting ($manifest_count packages)"
 else
     step "Formatting C++ sources ($cpp_file_count files)"
-    find Compiler Tests/Unit -type f \( -name '*.cpp' -o -name '*.h' \) \
-        ! -path '*/ThirdParty/*' -exec "$clang_format" -i {} +
+    if ! find Compiler Tests/Unit -type f \( -name '*.cpp' -o -name '*.h' \) ! -path '*/ThirdParty/*' -print0 |
+        xargs -0 "$clang_format" -i; then
+        die "command 'clang-format' failed"
+    fi
     passed "C++ formatting ($cpp_file_count files)"
 
     step "Formatting Rux sources ($manifest_count packages)"
     find Packages Tests -type f -name Rux.toml -print | while IFS= read -r manifest; do
-        "$rux_path" --manifest "$manifest" fmt
+        run_checked rux "$rux_path" --manifest "$manifest" fmt
     done
     passed "Rux formatting ($manifest_count packages)"
 fi
 
 elapsed=$(( $(date +%s) - started_at ))
 if [ "$check" = true ]; then
-    action=check
+    printf '\nFinished format check in %s\n' "$(format_duration "$elapsed")"
 else
-    action=formatting
+    printf '\nFinished source formatting in %s\n' "$(format_duration "$elapsed")"
 fi
-printf '\nSource %s passed in %02d:%02d.\n' "$action" "$((elapsed / 60))" "$((elapsed % 60))"

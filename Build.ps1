@@ -25,6 +25,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Scripts/RepositoryMessages.ps1")
 
 function Find-Tool {
     param(
@@ -37,32 +38,7 @@ function Find-Tool {
         return $command.Source
     }
 
-    throw "Required tool not found: $Name"
-}
-
-function Invoke-Checked {
-    param(
-        [Parameter(Mandatory)]
-        [string]$FilePath,
-
-        [Parameter()]
-        [string[]]$ArgumentList = @()
-    )
-
-    & $FilePath @ArgumentList
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
-    }
-}
-
-function Write-Step {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Message
-    )
-
-    Write-Host ""
-    Write-Host "==> $Message" -ForegroundColor Cyan
+    Stop-Script "required tool '$Name' was not found; install it and ensure it is available on PATH"
 }
 
 $repositoryRoot = $PSScriptRoot
@@ -74,10 +50,12 @@ else {
 }
 
 $cmake = Find-Tool -Name "cmake"
+$null = Find-Tool -Name "ninja"
+$compiler = Find-Tool -Name "clang++"
 $compilerTarget = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
     ([System.Runtime.InteropServices.Architecture]::X64) { "x86_64-pc-windows-msvc" }
     ([System.Runtime.InteropServices.Architecture]::Arm64) { "aarch64-pc-windows-msvc" }
-    default { throw "Unsupported Windows architecture: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)" }
+    default { Stop-Script "Windows architecture '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' is not supported" }
 }
 $startedAt = Get-Date
 
@@ -89,7 +67,7 @@ try {
         "-B", $buildPath,
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=$Configuration",
-        "-DCMAKE_CXX_COMPILER=clang++",
+        "-DCMAKE_CXX_COMPILER=$compiler",
         "-DCMAKE_CXX_COMPILER_TARGET=$compilerTarget",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DRUX_WERROR=ON",
@@ -103,12 +81,13 @@ try {
     $ruxFileName = if ($runningOnWindows) { "rux.exe" } else { "rux" }
     $rux = Join-Path $repositoryRoot "Bin/$ruxFileName"
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        throw "Build completed without producing the expected compiler at '$rux'."
+        Stop-Script "build completed without producing the expected compiler at '$rux'"
     }
 
-    $elapsed = (Get-Date) - $startedAt
+    $elapsed = Format-Duration -Duration ((Get-Date) - $startedAt)
     Write-Host ""
-    Write-Host ("Build passed in {0:mm\:ss}: {1}" -f $elapsed, $rux) -ForegroundColor Green
+    Write-Host "Finished build in $elapsed" -ForegroundColor Green
+    Write-Host "  Output: '$rux'"
 }
 finally {
     Pop-Location

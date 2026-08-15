@@ -5,6 +5,9 @@
 
 set -eu
 
+script_directory=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+. "$script_directory/Scripts/RepositoryMessages.sh"
+
 configuration=Release
 build_directory=Build
 compiler=${CXX:-}
@@ -18,11 +21,6 @@ usage() {
         '  --build-directory PATH         CMake build directory (default: Build)' \
         '  --compiler PATH                Clang C++ compiler (default: $CXX or detected Clang)' \
         '  -h, --help                     Show this help'
-}
-
-die() {
-    printf 'error: %s\n' "$*" >&2
-    exit 1
 }
 
 require_value() {
@@ -61,7 +59,6 @@ Debug | Release) ;;
 *) die "configuration must be Debug or Release" ;;
 esac
 
-script_directory=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 repository_root=$script_directory
 
 case "$build_directory" in
@@ -69,12 +66,12 @@ case "$build_directory" in
 *) build_path=$repository_root/$build_directory ;;
 esac
 
-command -v cmake >/dev/null 2>&1 || die "required tool not found: cmake"
-command -v ninja >/dev/null 2>&1 || die "required tool not found: ninja"
+command -v cmake >/dev/null 2>&1 || die "required tool 'cmake' was not found; install it and ensure it is available on PATH"
+command -v ninja >/dev/null 2>&1 || die "required tool 'ninja' was not found; install it and ensure it is available on PATH"
 
 if [ -n "$compiler" ]; then
     compiler_path=$(command -v "$compiler" 2>/dev/null || true)
-    [ -n "$compiler_path" ] || die "C++ compiler not found: $compiler"
+    [ -n "$compiler_path" ] || die "C++ compiler '$compiler' was not found; install Clang 22 or pass --compiler PATH"
 else
     for candidate in clang++-22 clang++22 \
         /opt/homebrew/opt/llvm@22/bin/clang++ /usr/local/opt/llvm@22/bin/clang++ \
@@ -84,13 +81,13 @@ else
         fi
         compiler_path=
     done
-    [ -n "$compiler_path" ] || die "Clang not found; install Clang 22 or set CXX"
+    [ -n "$compiler_path" ] || die "Clang 22 was not found; install it or pass --compiler PATH"
 fi
 
 started_at=$(date +%s)
 
 printf '\n==> Configuring %s build\n' "$configuration"
-cmake \
+run_checked cmake cmake \
     -S "$repository_root" \
     -B "$build_path" \
     -G Ninja \
@@ -101,10 +98,11 @@ cmake \
     -DRUX_BUILD_TESTS=ON
 
 printf '\n==> Building compiler and unit tests\n'
-cmake --build "$build_path" --config "$configuration"
+run_checked cmake cmake --build "$build_path" --config "$configuration"
 
 rux_executable=$repository_root/Bin/rux
 [ -f "$rux_executable" ] || die "build completed without producing '$rux_executable'"
 
 elapsed=$(( $(date +%s) - started_at ))
-printf '\nBuild passed in %02d:%02d: %s\n' "$((elapsed / 60))" "$((elapsed % 60))" "$rux_executable"
+printf '\nFinished build in %s\n' "$(format_duration "$elapsed")"
+printf "  Output: '%s'\n" "$rux_executable"
