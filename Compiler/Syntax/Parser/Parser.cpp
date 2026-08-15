@@ -3,6 +3,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <cassert>
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
@@ -112,6 +113,23 @@ const Token &Parser::Expect(const TokenKind kind, const std::string_view message
     }
     EmitError(CurrentLocation(), std::string(message));
     return Peek(); // return without advancing
+}
+
+const Token &Parser::ExpectBefore(const TokenKind kind, const std::string_view expected,
+                                  std::optional<std::string> help) {
+    if (Check(kind)) {
+        return Advance();
+    }
+    EmitExpected(CurrentLocation(), expected, std::move(help));
+    return Peek();
+}
+
+bool Parser::ConsumeBodyStart(const std::string_view role) {
+    if (Match(TokenKind::LeftBrace)) {
+        return true;
+    }
+    EmitExpected(CurrentLocation(), std::format("'{{' to start {}", role));
+    return false;
 }
 
 bool Parser::IsAtEnd() const noexcept {
@@ -266,6 +284,18 @@ bool Parser::IsTypeArgListAhead() const noexcept {
 void Parser::EmitError(const SourceLocation loc, std::string message) {
     diagnostics.push_back(
         ParserDiagnostic{ParserDiagnostic::Severity::Error, sourceName, loc, std::move(message), {}, {}, {}});
+}
+
+void Parser::EmitExpected(const SourceLocation loc, const std::string_view expected, std::optional<std::string> help) {
+    const std::string unexpected = IsAtEnd() ? "end of file" : std::format("'{}'", Peek().text);
+    Diagnostic diagnostic{ParserDiagnostic::Severity::Error,
+                          sourceName,
+                          loc,
+                          std::format("expected {} before {}", expected, unexpected),
+                          {},
+                          std::move(help),
+                          {}};
+    diagnostics.push_back(std::move(diagnostic));
 }
 
 void Parser::EmitWarning(const SourceLocation loc, std::string message) {

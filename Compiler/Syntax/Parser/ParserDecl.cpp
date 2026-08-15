@@ -11,8 +11,9 @@
 #include <vector>
 
 namespace Rux {
-// Canonical string key for a type used as an intrinsic's binding name; defined below.
-static std::string ImplTypeName(const TypeExpr &type);
+// Canonical string key owned by the type parser and used for intrinsic and
+// extension binding names.
+std::string ImplTypeName(const TypeExpr &type);
 
 // Attribute parsing
 static std::string DecodeStringLiteralText(const std::string &text) {
@@ -100,12 +101,12 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
-            Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+            ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
         }
         return;
     }
 
-    Expect(TokenKind::LeftParen, std::format("expected '(' after '#{}'", name));
+    ExpectBefore(TokenKind::LeftParen, std::format("'(' after '#{}'", name));
     if (name == "NoReturn") {
         if (attrs.usedNoReturn) {
             EmitError(nameLoc, "duplicate '#NoReturn' attribute");
@@ -118,7 +119,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
                 Advance();
             }
         }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
         return;
     }
 
@@ -129,14 +130,14 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         attrs.usedAbi = true;
         attrs.abiLocation = attributeLoc;
 
-        Expect(TokenKind::Dot, "expected '.' before an ABI");
+        ExpectBefore(TokenKind::Dot, "'.' before the ABI name", "write the ABI as '.C', '.SysV', or '.Win64'");
         const SourceLocation variantLoc = CurrentLocation();
         std::string variant;
         if (Check(TokenKind::Ident)) {
             variant = Advance().text;
         }
         else {
-            EmitError(variantLoc, "expected an ABI name");
+            EmitExpected(variantLoc, "an ABI name after '.'", "use '.C', '.SysV', or '.Win64'");
         }
 
         if (variant == "C") {
@@ -158,14 +159,14 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
                 Advance();
             }
         }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
         return;
     }
 
     if (name == "Allow") {
         attrs.allowLocation = attributeLoc;
         if (!Check(TokenKind::StringLiteral)) {
-            EmitError(CurrentLocation(), "'#Allow' takes a lint rule string");
+            EmitExpected(CurrentLocation(), "a lint rule string in '#Allow'", "use '#Allow(\"naming.type\")'");
         }
         else {
             std::string rule = DecodeStringLiteralText(Advance().text);
@@ -186,7 +187,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
                 Advance();
             }
         }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
         return;
     }
 
@@ -211,11 +212,12 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
             libraryConst = Advance().text;
         }
         else {
-            EmitError(CurrentLocation(), "'#Link' requires a library name string or compile-time string constant");
+            EmitExpected(CurrentLocation(), "a library string or compile-time string constant in '#Link'",
+                         "use '#Link(\"library\")' or '#Link(LibraryName)'");
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 Advance();
             }
-            Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+            ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
             return;
         }
 
@@ -229,7 +231,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
                 symbolConst = Advance().text;
             }
             else {
-                EmitError(CurrentLocation(), "'#Link' symbol name must be a string or compile-time string constant");
+                EmitExpected(CurrentLocation(), "a symbol string or compile-time string constant after ',' in '#Link'");
             }
             if (Match(TokenKind::Comma)) {
                 EmitError(Previous().location, "'#Link' accepts at most two arguments");
@@ -238,7 +240,7 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
                 }
             }
         }
-        Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+        ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
 
         if (!duplicate && !mixed) {
             attrs.importLib = std::move(library);
@@ -284,9 +286,9 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         else if (name == "Symbol") {
             argument = "imported symbol name";
         }
-        EmitError(CurrentLocation(), std::format("'#{}' takes a {} string", name, argument));
+        EmitExpected(CurrentLocation(), std::format("a {} string in '#{}'", argument, name));
     }
-    Expect(TokenKind::RightParen, "expected ')' to close the attribute call");
+    ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
 }
 
 // Parses the attributes that precede a declaration. A declaration may carry
@@ -303,13 +305,17 @@ Parser::ParsedAttrs Parser::ParseAttrs() {
             continue;
         }
 
-        const SourceLocation metadataLoc = Previous().location;
-        Expect(TokenKind::LeftBrace, "expected an attribute name after '#'");
-        EmitError(metadataLoc, "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
+        const SourceLocation hashLoc = Previous().location;
+        if (!Match(TokenKind::LeftBrace)) {
+            EmitExpected(CurrentLocation(), "an attribute name after '#'",
+                         "write attributes as '#Name(...)', for example '#Abi(.Win64)'");
+            continue;
+        }
+        EmitError(hashLoc, "metadata blocks '#{...}' are unsupported; use attribute calls such as '#Abi(.Win64)'");
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
             Advance();
         }
-        Expect(TokenKind::RightBrace, "expected '}' to close the removed metadata block");
+        ExpectBefore(TokenKind::RightBrace, "'}' to close the removed metadata block");
     }
     return attrs;
 }
@@ -377,15 +383,16 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         decl->isPublic = isPublic;
         decl->name = "#" + Advance().text;
         if (Match(TokenKind::Colon)) {
-            decl->type = ParseType();
+            decl->type = ParseType("add the intrinsic value type after ':'");
+        }
+        else {
+            EmitExpected(CurrentLocation(), "':' after the intrinsic value name",
+                         "write intrinsic values as 'intrinsic #name: Type;'");
         }
         if (decl->type) {
             decl->intrinsicName = ImplTypeName(**decl->type);
         }
-        else {
-            EmitError(decl->location, "'intrinsic' value requires an explicit type, which names the intrinsic");
-        }
-        Expect(TokenKind::Semicolon, "expected ';'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic value declaration");
         return ApplyAttrs(std::move(decl), attrs);
     }
     if (Check(TokenKind::FuncKeyword)) {
@@ -398,56 +405,29 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         }
         return ApplyAttrs(std::move(func), attrs);
     }
-    EmitError(intrinsicLoc, "'intrinsic' can only be applied to a '#'-prefixed value or a function");
+    EmitExpected(CurrentLocation(), "a '#'-prefixed value or 'func' after 'intrinsic'",
+                 "write 'intrinsic #name: Type;' or 'intrinsic func Name(...);'");
     Recover();
     return nullptr;
-}
-
-// Shared declaration helpers
-std::vector<std::string> Parser::ParseTypeParams() {
-    // <T, U, ...>
-    std::vector<std::string> params;
-    Expect(TokenKind::Less, "expected '<'");
-    while (!Check(TokenKind::Greater) && !IsAtEnd()) {
-        auto &t = Expect(TokenKind::Ident, "expected type parameter name");
-        params.push_back(t.text);
-        if (!Match(TokenKind::Comma)) {
-            break;
-        }
-    }
-    Expect(TokenKind::Greater, "expected '>'");
-    return params;
-}
-
-std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
-    // <int32, T[], ...>
-    std::vector<TypeExprPtr> args;
-    Expect(TokenKind::Less, "expected '<'");
-    while (!Check(TokenKind::Greater) && !IsAtEnd()) {
-        args.push_back(ParseType());
-        if (!Match(TokenKind::Comma)) {
-            break;
-        }
-    }
-    Expect(TokenKind::Greater, "expected '>'");
-    return args;
 }
 
 // struct
 std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::StructKeyword, "expected 'struct'");
+    ExpectBefore(TokenKind::StructKeyword, "'struct' to start the structure declaration");
 
     auto decl = std::make_unique<StructDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected struct name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "a structure name after 'struct'").text;
 
     if (Check(TokenKind::Less)) {
         decl->typeParams = ParseTypeParams();
     }
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!ConsumeBodyStart("the structure body")) {
+        return decl;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         StructDecl::Field field;
         field.documentation = ParseDocumentation();
@@ -457,63 +437,109 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
             field.isPublic = true;
         }
 
+        if (!Check(TokenKind::Ident) && !Check(TokenKind::ModuleKeyword)) {
+            EmitExpected(CurrentLocation(), "a structure field name");
+            while (!CheckAny({TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+            Match(TokenKind::Semicolon);
+            continue;
+        }
+
         // Keywords are contextual after a field declaration starts. This lets
         // ordinary package APIs expose members such as `#source.module`.
-        field.name =
-            Check(TokenKind::ModuleKeyword) ? Advance().text : Expect(TokenKind::Ident, "expected field name").text;
-        Expect(TokenKind::Colon, "expected ':'");
-        field.type = ParseType();
-        Expect(TokenKind::Semicolon, "expected ';' after field");
+        field.name = Check(TokenKind::ModuleKeyword) ? Advance().text
+                                                     : ExpectBefore(TokenKind::Ident, "a structure field name").text;
+        ExpectBefore(TokenKind::Colon, "':' after the field name", "write fields as 'name: Type;'");
+        field.type = ParseType("add the field type after ':'");
+        if (field.type) {
+            ExpectBefore(TokenKind::Semicolon, "';' after the structure field");
+        }
         decl->fields.push_back(std::move(field));
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the structure body");
     return decl;
 }
 
 // enum
 std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::EnumKeyword, "expected 'enum'");
+    ExpectBefore(TokenKind::EnumKeyword, "'enum' to start the enum declaration");
 
     auto decl = std::make_unique<EnumDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected enum name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "an enum name after 'enum'").text;
     if (Check(TokenKind::Less)) {
         decl->typeParams = ParseTypeParams();
     }
     if (Match(TokenKind::Colon)) {
-        decl->baseType = ParseType();
+        decl->baseType = ParseType("add the enum base type after ':'");
     }
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!ConsumeBodyStart("the enum body")) {
+        return decl;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         EnumDecl::Variant variant;
         variant.documentation = ParseDocumentation();
         variant.location = CurrentLocation();
-        variant.name = Expect(TokenKind::Ident, "expected variant name").text;
+        if (!Check(TokenKind::Ident)) {
+            EmitExpected(CurrentLocation(), "an enum variant name");
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+            Match(TokenKind::Comma);
+            continue;
+        }
+        variant.name = Advance().text;
 
         if (Match(TokenKind::LeftParen)) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                variant.fields.push_back(ParseType());
-                if (!Match(TokenKind::Comma)) {
+                auto fieldType = ParseType("add the enum variant field type after '(' or ','");
+                if (!fieldType) {
+                    while (!CheckAny({TokenKind::Comma, TokenKind::RightParen, TokenKind::RightBrace}) && !IsAtEnd()) {
+                        Advance();
+                    }
+                    if (Match(TokenKind::Comma)) {
+                        continue;
+                    }
                     break;
                 }
+                variant.fields.push_back(std::move(fieldType));
+                if (Match(TokenKind::Comma)) {
+                    continue;
+                }
+                if (Check(TokenKind::RightParen) || IsAtEnd()) {
+                    break;
+                }
+                EmitExpected(CurrentLocation(), "',' between enum variant field types");
             }
-            Expect(TokenKind::RightParen, "expected ')'");
+            ExpectBefore(TokenKind::RightParen, "')' to close the enum variant fields");
         }
         else if (Match(TokenKind::LeftBrace)) {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumDecl::Variant::NamedField field;
                 field.documentation = ParseDocumentation();
                 field.location = CurrentLocation();
-                field.name = Expect(TokenKind::Ident, "expected variant field name").text;
-                Expect(TokenKind::Colon, "expected ':'");
-                field.type = ParseType();
-                Expect(TokenKind::Semicolon, "expected ';' after variant field");
+                if (!Check(TokenKind::Ident)) {
+                    EmitExpected(CurrentLocation(), "an enum variant field name");
+                    while (!CheckAny({TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
+                        Advance();
+                    }
+                    Match(TokenKind::Semicolon);
+                    continue;
+                }
+                field.name = Advance().text;
+                ExpectBefore(TokenKind::Colon, "':' after the variant field name",
+                             "write named variant fields as 'name: Type;'");
+                field.type = ParseType("add the variant field type after ':'");
+                if (field.type) {
+                    ExpectBefore(TokenKind::Semicolon, "';' after the enum variant field");
+                }
                 variant.namedFields.push_back(std::move(field));
             }
-            Expect(TokenKind::RightBrace, "expected '}'");
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the enum variant fields");
         }
 
         if (Match(TokenKind::Assign)) {
@@ -521,7 +547,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
             if (Match(TokenKind::Minus)) {
                 value = "-";
             }
-            value += Expect(TokenKind::IntLiteral, "expected integer enum discriminant").text;
+            value += ExpectBefore(TokenKind::IntLiteral, "an integer enum discriminant after '='").text;
             variant.discriminant = std::move(value);
         }
 
@@ -531,56 +557,75 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
                 EmitError(Previous().location, "trailing comma is not allowed in enum declarations");
             }
         }
-        else {
+        else if (Check(TokenKind::RightBrace) || IsAtEnd()) {
             break;
         }
+        else {
+            EmitExpected(CurrentLocation(), "',' between enum variants", "separate adjacent enum variants with ','");
+        }
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the enum body");
     return decl;
 }
 
 // union
 std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::UnionKeyword, "expected 'union'");
+    ExpectBefore(TokenKind::UnionKeyword, "'union' to start the union declaration");
 
     auto decl = std::make_unique<UnionDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected union name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "a union name after 'union'").text;
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!ConsumeBodyStart("the union body")) {
+        return decl;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         UnionDecl::Field field;
         field.documentation = ParseDocumentation();
         field.location = CurrentLocation();
-        field.name = Expect(TokenKind::Ident, "expected field name").text;
-        Expect(TokenKind::Colon, "expected ':'");
-        field.type = ParseType();
+        if (!Check(TokenKind::Ident)) {
+            EmitExpected(CurrentLocation(), "a union field name");
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+            Match(TokenKind::Comma);
+            continue;
+        }
+        field.name = Advance().text;
+        ExpectBefore(TokenKind::Colon, "':' after the union field name", "write fields as 'name: Type'");
+        field.type = ParseType("add the union field type after ':'");
         decl->fields.push_back(std::move(field));
-        if (!Match(TokenKind::Comma)) {
+        if (Match(TokenKind::Comma)) {
+            continue;
+        }
+        if (Check(TokenKind::RightBrace) || IsAtEnd()) {
             break;
         }
+        EmitExpected(CurrentLocation(), "',' between union fields", "separate adjacent union fields with ','");
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the union body");
     return decl;
 }
 
 // interface
 std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::InterfaceKeyword, "expected 'interface'");
+    ExpectBefore(TokenKind::InterfaceKeyword, "'interface' to start the interface declaration");
 
     auto decl = std::make_unique<InterfaceDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected interface name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "an interface name after 'interface'").text;
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!ConsumeBodyStart("the interface body")) {
+        return decl;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         std::string documentation = ParseDocumentation();
         if (!Check(TokenKind::FuncKeyword)) {
-            EmitError(CurrentLocation(), "expected 'func' in interface body");
+            EmitExpected(CurrentLocation(), "'func' to start an interface method");
             Recover();
             continue;
         }
@@ -589,70 +634,14 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
             decl->methods.push_back(std::move(method));
         }
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the interface body");
     return decl;
-}
-
-// Language aliases that ResolveType normalizes; mirror them here so the
-// canonical key produced from the type expression matches the resolved
-// receiver type's spelling (e.g. `bool[]` and a `bool8[]` receiver agree).
-static std::string NormalizePrimitiveName(const std::string &name) {
-    if (name == "bool") {
-        return "bool8";
-    }
-    if (name == "byte") {
-        return "uint8";
-    }
-    if (name == "char") {
-        return "char32";
-    }
-    if (name == "float") {
-        return "float64";
-    }
-    return name;
-}
-
-// Canonical string key for an `extend` target. Named types keep their bare name
-// (generic-agnostic, matching struct behaviour); arrays retain their source
-// spelling and are validated semantically.
-static std::string ImplTypeName(const TypeExpr &type) {
-    if (const auto *n = dynamic_cast<const NamedTypeExpr *>(&type)) {
-        std::string result = NormalizePrimitiveName(n->name);
-        if (!n->typeArgs.empty()) {
-            result += "<";
-            for (std::size_t i = 0; i < n->typeArgs.size(); ++i) {
-                if (i) {
-                    result += ", ";
-                }
-                result += ImplTypeName(*n->typeArgs[i]);
-            }
-            result += ">";
-        }
-        return result;
-    }
-    if (const auto *s = dynamic_cast<const ArrayTypeExpr *>(&type)) {
-        return ImplTypeName(*s->element) + (s->size ? "[N]" : "[]");
-    }
-    if (const auto *p = dynamic_cast<const PointerTypeExpr *>(&type)) {
-        return "*" + ImplTypeName(*p->pointee);
-    }
-    if (const auto *pt = dynamic_cast<const PathTypeExpr *>(&type)) {
-        std::string result;
-        for (std::size_t i = 0; i < pt->segments.size(); ++i) {
-            if (i) {
-                result += "::";
-            }
-            result += pt->segments[i];
-        }
-        return result;
-    }
-    return "?";
 }
 
 // extend
 std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::ExtendKeyword, "expected 'extend'");
+    ExpectBefore(TokenKind::ExtendKeyword, "'extend' to start the extension declaration");
 
     auto decl = std::make_unique<ImplDecl>();
     decl->location = loc;
@@ -660,16 +649,16 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
     // extend Type  or  extend Type : InterfaceName  or  extend InterfaceName
     // for Type. The leading item is parsed as a full type expression so that
     // compound receivers such as `int[]` are supported.
-    TypeExprPtr firstType = ParseType();
+    TypeExprPtr firstType = ParseType("add the extended type after 'extend'");
     const std::string firstName = firstType ? ImplTypeName(*firstType) : "?";
     if (Match(TokenKind::Colon)) {
         decl->extendedType = std::move(firstType);
         decl->typeName = firstName;
-        decl->interfaceName = Expect(TokenKind::Ident, "expected interface name after ':'").text;
+        decl->interfaceName = ExpectBefore(TokenKind::Ident, "an interface name after ':' in the extension").text;
     }
     else if (Match(TokenKind::ForKeyword)) {
         decl->interfaceName = firstName;
-        decl->extendedType = ParseType();
+        decl->extendedType = ParseType("add the extended type after 'for'");
         decl->typeName = decl->extendedType ? ImplTypeName(*decl->extendedType) : "?";
     }
     else {
@@ -677,7 +666,9 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         decl->typeName = firstName;
     }
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!ConsumeBodyStart("the extension body")) {
+        return decl;
+    }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         std::string documentation = ParseDocumentation();
         // Methods can be conditionally compiled like any other declaration.
@@ -695,8 +686,8 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         const bool isIntrinsic = Match(TokenKind::IntrinsicKeyword);
         const auto intrinsicLoc = Previous().location;
         if (!Check(TokenKind::FuncKeyword)) {
-            EmitError(CurrentLocation(), isIntrinsic ? "expected 'func' after 'intrinsic' in extend body"
-                                                     : "expected 'func' in extend body");
+            EmitExpected(CurrentLocation(), isIntrinsic ? "'func' after 'intrinsic' in the extension body"
+                                                        : "'func' to start a method in the extension body");
             Recover();
             continue;
         }
@@ -716,22 +707,29 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
             decl->methods.emplace_back(methodDecl);
         }
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the extension body");
     return decl;
 }
 
 // module
 std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::ModuleKeyword, "expected 'module'");
+    ExpectBefore(TokenKind::ModuleKeyword, "'module' to start the module declaration");
 
     std::vector<std::string> path;
-    path.push_back(Expect(TokenKind::Ident, "expected module name").text);
+    path.push_back(ExpectBefore(TokenKind::Ident, "a module name after 'module'").text);
     while (Match(TokenKind::ColonColon)) {
-        path.push_back(Expect(TokenKind::Ident, "expected module name").text);
+        path.push_back(ExpectBefore(TokenKind::Ident, "a module name after '::'").text);
     }
 
-    Expect(TokenKind::LeftBrace, "expected '{'");
+    if (!Match(TokenKind::LeftBrace)) {
+        EmitExpected(CurrentLocation(), "'{' to start the module body");
+        auto module = std::make_unique<ModuleDecl>();
+        module->location = loc;
+        module->isPublic = isPublic;
+        module->name = std::move(path.back());
+        return module;
+    }
     std::vector<DeclPtr> items;
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         if (auto item = ParseDecl()) {
@@ -741,7 +739,7 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
             Recover();
         }
     }
-    Expect(TokenKind::RightBrace, "expected '}'");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the module body");
 
     auto nested = std::make_unique<ModuleDecl>();
     nested->location = loc;
@@ -763,13 +761,13 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
 // import
 std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::ImportKeyword, "expected 'import'");
+    ExpectBefore(TokenKind::ImportKeyword, "'import' to start the import declaration");
 
     auto decl = std::make_unique<UseDecl>();
     decl->location = loc;
 
     // Parse path segments separated by '.' or '::'
-    decl->path.push_back(Expect(TokenKind::Ident, "expected module path").text);
+    decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path after 'import'").text);
 
     while (!IsAtEnd()) {
         if (Match(TokenKind::Dot)) {
@@ -778,7 +776,7 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }
-            decl->path.push_back(Expect(TokenKind::Ident, "expected identifier").text);
+            decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path segment after '.'").text);
         }
         else if (Match(TokenKind::ColonColon)) {
             if (Check(TokenKind::LeftBrace)) {
@@ -792,20 +790,35 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
                         decl->names.push_back("#" + Advance().text);
                     }
                     else {
-                        decl->names.push_back(Expect(TokenKind::Ident, "expected name").text);
+                        if (!Check(TokenKind::Ident)) {
+                            EmitExpected(CurrentLocation(), "an imported name");
+                            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                                Advance();
+                            }
+                            if (Match(TokenKind::Comma)) {
+                                continue;
+                            }
+                            break;
+                        }
+                        decl->names.push_back(Advance().text);
                     }
-                    if (!Match(TokenKind::Comma)) {
+                    if (Match(TokenKind::Comma)) {
+                        continue;
+                    }
+                    if (Check(TokenKind::RightBrace) || IsAtEnd()) {
                         break;
                     }
+                    EmitExpected(CurrentLocation(), "',' between imported names",
+                                 "separate adjacent imported names with ','");
                 }
-                Expect(TokenKind::RightBrace, "expected '}'");
+                ExpectBefore(TokenKind::RightBrace, "'}' to close the imported name list");
                 break;
             }
             if (Match(TokenKind::Star)) {
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }
-            decl->path.push_back(Expect(TokenKind::Ident, "expected identifier").text);
+            decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path segment after '::'").text);
         }
         else {
             break;
@@ -815,7 +828,7 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
     // As a compile-time match arm body (`.Linux => import Linux::{...}`) the
     // trailing ';' is optional, since the arm is delimited by the next pattern.
     if (requireSemicolon) {
-        Expect(TokenKind::Semicolon, "expected ';'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the import declaration");
     }
     else {
         Match(TokenKind::Semicolon);
@@ -826,21 +839,21 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
 // const
 std::unique_ptr<ConstDecl> Parser::ParseConstDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::ConstKeyword, "expected 'const'");
+    ExpectBefore(TokenKind::ConstKeyword, "'const' to start the constant declaration");
 
     auto decl = std::make_unique<ConstDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected constant name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "a constant name after 'const'").text;
 
     if (Match(TokenKind::Colon)) {
-        decl->type = ParseType();
+        decl->type = ParseType("add the constant type after ':'");
     }
 
-    Expect(TokenKind::Assign, "expected '='");
+    ExpectBefore(TokenKind::Assign, "'=' before the constant value");
     decl->value = ParseExpr();
 
-    Expect(TokenKind::Semicolon, "expected ';'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the constant declaration");
     return decl;
 }
 
@@ -995,24 +1008,24 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
 // type alias
 std::unique_ptr<TypeAliasDecl> Parser::ParseTypeAliasDecl(bool isPublic) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::TypeKeyword, "expected 'type'");
+    ExpectBefore(TokenKind::TypeKeyword, "'type' to start the type alias declaration");
 
     auto decl = std::make_unique<TypeAliasDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected type alias name").text;
+    decl->name = ExpectBefore(TokenKind::Ident, "a type alias name after 'type'").text;
 
-    Expect(TokenKind::Assign, "expected '='");
-    decl->type = ParseType();
+    ExpectBefore(TokenKind::Assign, "'=' after the type alias name", "write type aliases as 'type Name = Type;'");
+    decl->type = ParseType("add the aliased type after '='");
 
-    Expect(TokenKind::Semicolon, "expected ';'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the type alias declaration");
     return decl;
 }
 
 // extern
 DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::ExternKeyword, "expected 'extern'");
+    ExpectBefore(TokenKind::ExternKeyword, "'extern' to start the external declaration");
 
     if (Check(TokenKind::LeftBrace)) {
         // #Link(...) [#Abi(...)] extern { func ...; ... }
@@ -1045,24 +1058,22 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 fd->dll = attrs.importLib;
                 fd->dllConst = attrs.importLibConst;
                 fd->callConv = attrs.callConv;
-                fd->name = Expect(TokenKind::Ident, "expected function name").text;
-                Expect(TokenKind::LeftParen, "expected '('");
-                while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                    if (Check(TokenKind::DotDotDot)) {
-                        Advance();
+                fd->name = ExpectBefore(TokenKind::Ident, "a function name after 'func'").text;
+                if (Match(TokenKind::LeftParen)) {
+                    fd->params = ParseParamList(true);
+                    if (!fd->params.empty() && fd->params.back().name == "...") {
                         fd->isVariadic = true;
-                        break;
+                        fd->params.pop_back();
                     }
-                    fd->params.push_back(ParseParam(true));
-                    if (!Match(TokenKind::Comma)) {
-                        break;
-                    }
+                    ExpectBefore(TokenKind::RightParen, "')' to close the external function parameter list");
                 }
-                Expect(TokenKind::RightParen, "expected ')'");
+                else {
+                    EmitExpected(CurrentLocation(), "'(' after the external function name");
+                }
                 if (Match(TokenKind::Arrow)) {
-                    fd->returnType = ParseType();
+                    fd->returnType = ParseType("add the external function return type after '->'");
                 }
-                Expect(TokenKind::Semicolon, "expected ';'");
+                ExpectBefore(TokenKind::Semicolon, "';' after the external function declaration");
                 block->items.push_back(std::move(fd));
             }
             else if (Check(TokenKind::Ident)) {
@@ -1070,18 +1081,18 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 vd->location = CurrentLocation();
                 vd->isPublic = isPublic;
                 vd->name = Advance().text;
-                Expect(TokenKind::Colon, "expected ':'");
-                vd->type = ParseType();
-                Expect(TokenKind::Semicolon, "expected ';'");
+                ExpectBefore(TokenKind::Colon, "':' after the external variable name",
+                             "write external variables as 'Name: Type;'");
+                vd->type = ParseType("add the external variable type after ':'");
+                ExpectBefore(TokenKind::Semicolon, "';' after the external variable declaration");
                 block->items.push_back(std::move(vd));
             }
             else {
-                EmitError(CurrentLocation(), "expected 'func' or variable declaration in "
-                                             "extern block");
+                EmitExpected(CurrentLocation(), "'func' or a variable declaration in the external block");
                 Recover();
             }
         }
-        Expect(TokenKind::RightBrace, "expected '}'");
+        ExpectBefore(TokenKind::RightBrace, "'}' to close the external block");
         return block;
     }
 
@@ -1097,40 +1108,46 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         decl->symbolName = std::move(attrs.importSymbol);
         decl->symbolNameConst = std::move(attrs.importSymbolConst);
         decl->callConv = attrs.callConv;
-        decl->name = Expect(TokenKind::Ident, "expected function name").text;
+        decl->name = ExpectBefore(TokenKind::Ident, "a function name after 'extern func'").text;
 
-        Expect(TokenKind::LeftParen, "expected '('");
-        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-            if (Check(TokenKind::DotDotDot)) {
-                Advance();
+        if (Match(TokenKind::LeftParen)) {
+            decl->params = ParseParamList(true);
+            if (!decl->params.empty() && decl->params.back().name == "...") {
                 decl->isVariadic = true;
-                break;
+                decl->params.pop_back();
             }
-            decl->params.push_back(ParseParam(true));
-            if (!Match(TokenKind::Comma)) {
-                break;
-            }
+            ExpectBefore(TokenKind::RightParen, "')' to close the external function parameter list");
         }
-        Expect(TokenKind::RightParen, "expected ')'");
+        else {
+            EmitExpected(CurrentLocation(), "'(' after the external function name");
+        }
 
         if (Match(TokenKind::Arrow)) {
-            decl->returnType = ParseType();
+            decl->returnType = ParseType("add the external function return type after '->'");
         }
 
-        Expect(TokenKind::Semicolon, "expected ';'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the external function declaration");
         return decl;
+    }
+
+    if (!Check(TokenKind::Ident)) {
+        EmitExpected(CurrentLocation(), "a function, variable name, or '{' after 'extern'",
+                     "write 'extern func Name(...);', 'extern Name: Type;', or 'extern { ... }'");
+        Recover();
+        return nullptr;
     }
 
     // extern Name: Type;
     auto decl = std::make_unique<ExternVarDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = Expect(TokenKind::Ident, "expected variable name").text;
+    decl->name = Advance().text;
 
-    Expect(TokenKind::Colon, "expected ':'");
-    decl->type = ParseType();
+    ExpectBefore(TokenKind::Colon, "':' after the external variable name",
+                 "write external variables as 'extern Name: Type;'");
+    decl->type = ParseType("add the external variable type after ':'");
 
-    Expect(TokenKind::Semicolon, "expected ';'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the external variable declaration");
     return decl;
 }
 } // namespace Rux

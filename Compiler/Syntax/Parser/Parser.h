@@ -5,6 +5,7 @@
 #include "Syntax/Ast/Ast.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,11 @@ private:
     [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
     bool Match(TokenKind kind) noexcept;
     const Token &Expect(TokenKind kind, std::string_view message);
+    // Declaration/type diagnostics name both the grammar role and the token
+    // that prevented it from being parsed. The general expression/statement
+    // parser keeps using Expect until its diagnostics are handled by MSG-017.
+    const Token &ExpectBefore(TokenKind kind, std::string_view expected, std::optional<std::string> help = {});
+    bool ConsumeBodyStart(std::string_view role);
     [[nodiscard]] bool IsAtEnd() const noexcept;
     [[nodiscard]] const Token &Previous() const noexcept;
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
@@ -65,6 +71,7 @@ private:
 
     // Diagnostics
     void EmitError(SourceLocation loc, std::string message);
+    void EmitExpected(SourceLocation loc, std::string_view expected, std::optional<std::string> help = {});
     void EmitWarning(SourceLocation loc, std::string message);
 
     // Skip tokens until a safe recovery point (statement/declaration
@@ -140,9 +147,9 @@ private:
     std::vector<TypeExprPtr> ParseTypeArgs();   // <int32, T[], ...>
 
     // Type expressions
-    TypeExprPtr ParseType();
-    TypeExprPtr ParseBaseType();     // named, path, pointer, tuple, self
-    TypeExprPtr ParseFunctionType(); // func(params) -> T
+    TypeExprPtr ParseType(std::optional<std::string> help = {});
+    TypeExprPtr ParseBaseType(std::optional<std::string> help = {}); // named, path, pointer, tuple, self
+    TypeExprPtr ParseFunctionType();                                 // func(params) -> T
 
     // Blocks and statements
     std::unique_ptr<Block> ParseBlock();

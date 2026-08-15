@@ -77,6 +77,7 @@ DeclPtr Parser::ParseDecl() {
         return AttachDocumentation(ParseIntrinsicDecl(pub, rest, loc));
     }
 
+    const bool hadAttrs = Check(TokenKind::Hash);
     ParsedAttrs attrs = ParseAttrs();
 
     bool isPublic = false;
@@ -130,7 +131,16 @@ DeclPtr Parser::ParseDecl() {
         return AttachDocumentation(ApplyAttrs(ParseExternDecl(isPublic, attrs), attrs));
     }
 
-    EmitError(loc, std::format("unexpected token '{}', expected a declaration", Peek().text));
+    std::string expected = "a declaration";
+    if (isPublic) {
+        expected += " after 'pub'";
+    }
+    else if (hadAttrs) {
+        expected += " after the attributes";
+    }
+    EmitExpected(CurrentLocation(), expected,
+                 "start a declaration with 'func', 'struct', 'enum', 'union', 'interface', 'extend', 'module', "
+                 "'import', 'const', 'type', 'extern', or 'intrinsic'");
     return nullptr;
 }
 
@@ -154,9 +164,9 @@ Param Parser::ParseParam(const bool allowVariadic) {
     }
 
     parameter.isMut = Match(TokenKind::VarKeyword);
-    parameter.name = Expect(TokenKind::Ident, "expected parameter name").text;
-    Expect(TokenKind::Colon, "expected ':'");
-    parameter.type = ParseType();
+    parameter.name = ExpectBefore(TokenKind::Ident, "a parameter name").text;
+    ExpectBefore(TokenKind::Colon, "':' after the parameter name", "write parameters as 'name: Type'");
+    parameter.type = ParseType("add the parameter type after ':'");
     if (allowVariadic && Match(TokenKind::DotDotDot)) {
         parameter.isVariadic = true;
     }
@@ -169,10 +179,26 @@ Param Parser::ParseParam(const bool allowVariadic) {
 std::vector<Param> Parser::ParseParamList(const bool allowVariadic) {
     std::vector<Param> params;
     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+        const std::size_t parameterStart = pos;
         params.push_back(ParseParam(allowVariadic));
-        if (!Match(TokenKind::Comma)) {
+        if (pos == parameterStart) {
+            params.pop_back();
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightParen, TokenKind::Semicolon, TokenKind::LeftBrace}) &&
+                   !IsAtEnd()) {
+                Advance();
+            }
+            if (Match(TokenKind::Comma)) {
+                continue;
+            }
             break;
         }
+        if (Match(TokenKind::Comma)) {
+            continue;
+        }
+        if (Check(TokenKind::RightParen) || IsAtEnd()) {
+            break;
+        }
+        EmitExpected(CurrentLocation(), "',' between parameters", "separate adjacent parameters with ','");
     }
     return params;
 }
@@ -180,7 +206,7 @@ std::vector<Param> Parser::ParseParamList(const bool allowVariadic) {
 std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool isAsm,
                                                 const CallingConvention callConv) {
     const auto loc = CurrentLocation();
-    Expect(TokenKind::FuncKeyword, "expected 'func'");
+    ExpectBefore(TokenKind::FuncKeyword, "'func' to start the function declaration");
 
     auto decl = std::make_unique<FuncDecl>();
     decl->location = loc;
@@ -197,31 +223,40 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         decl->name = Advance().text;
     }
     else {
-        decl->name = Expect(TokenKind::Ident, "expected function name").text;
+        decl->name = ExpectBefore(TokenKind::Ident, "a function name after 'func'").text;
     }
 
     if (Check(TokenKind::Less)) {
         decl->typeParams = ParseTypeParams();
     }
 
-    Expect(TokenKind::LeftParen, "expected '('");
-    decl->params = ParseParamList(true);
-    Expect(TokenKind::RightParen, "expected ')'");
+    if (Match(TokenKind::LeftParen)) {
+        decl->params = ParseParamList(true);
+        ExpectBefore(TokenKind::RightParen, "')' to close the function parameter list");
+    }
+    else {
+        EmitExpected(CurrentLocation(), "'(' after the function name",
+                     "write the function's parameters inside parentheses");
+    }
 
     if (Match(TokenKind::Arrow)) {
-        decl->returnType = ParseType();
+        decl->returnType = ParseType("add the function return type after '->'");
     }
 
     if (isAsm) {
-        Expect(TokenKind::LeftBrace, "expected '{'");
-        decl->asmBody = ParseAsmBody();
-        Expect(TokenKind::RightBrace, "expected '}'");
+        if (Match(TokenKind::LeftBrace)) {
+            decl->asmBody = ParseAsmBody();
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the assembly function body");
+        }
+        else {
+            EmitExpected(CurrentLocation(), "'{' to start the assembly function body");
+        }
     }
     else if (Check(TokenKind::LeftBrace)) {
         decl->body = ParseBlock();
     }
     else {
-        Expect(TokenKind::Semicolon, "expected '{' or ';'");
+        ExpectBefore(TokenKind::Semicolon, "'{' for a function body or ';' for a signature");
     }
 
     return decl;

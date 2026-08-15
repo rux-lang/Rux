@@ -1,0 +1,4 @@
+struct Broken {
+    value: }
+type Callback = func(int bool);
+import Core::{One Two};
