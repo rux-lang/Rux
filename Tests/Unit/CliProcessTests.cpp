@@ -615,6 +615,110 @@ Output = "Artifacts"
     std::filesystem::remove_all(root, error);
 }
 
+TEST_CASE("lint and format report examined files, outcomes, and elapsed time") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-lint-format-report-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    const auto sourcePath = root / "Src" / "Main.rux";
+    WriteTextFile(manifestPath, R"([Manifest]
+Version = 1
+
+[Package]
+Name = "ReportTest"
+Version = "0.1.0"
+Type = "Executable"
+)");
+    WriteTextFile(sourcePath, "func Main() -> int { return 0; }\n");
+    const auto manifest = manifestPath.string();
+
+    const auto passed = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "lint"});
+    CHECK(passed.exitCode == 0);
+    CHECK(passed.output.contains("Linting ReportTest v0.1.0"));
+    CHECK(passed.output.contains("Linted ReportTest in "));
+    CHECK(passed.output.contains("1 file, 0 warnings, 0 errors"));
+
+    WriteTextFile(sourcePath, "func bad_name() {}\n");
+    const auto warned = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "lint"});
+    CHECK(warned.exitCode == 0);
+    CHECK(warned.output.contains("warning: function name 'bad_name' should be PascalCase"));
+    CHECK(warned.output.contains("1 file, 1 warning, 0 errors"));
+
+    WriteTextFile(sourcePath, "func Main(\n");
+    const auto failed =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "lint", "--quiet"});
+    CHECK(failed.exitCode == 1);
+    CHECK(failed.output.contains("error:"));
+    CHECK(failed.output.contains("Failed ReportTest in "));
+
+    WriteTextFile(sourcePath, "func Main() -> int { return 0; }  \r\n");
+    const auto check = Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "fmt", "--check"});
+    CHECK(check.exitCode == 1);
+    CHECK(check.output.contains("source file '" + sourcePath.string() + "' is not formatted"));
+    CHECK(check.output.contains("2 files"));
+    CHECK(check.output.contains("1 formatted, 1 need formatting"));
+
+    const auto changed = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "fmt"});
+    CHECK(changed.exitCode == 0);
+    CHECK(changed.output.contains("Formatted 2 files in "));
+    CHECK(changed.output.contains("1 changed, 1 unchanged"));
+    const auto unchanged = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "fmt"});
+    CHECK(unchanged.exitCode == 0);
+    CHECK(unchanged.output.contains("0 changed, 2 unchanged"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root / "Src", error);
+    REQUIRE(!error);
+    const auto missing =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "fmt", "--source-only"});
+    CHECK(missing.exitCode == 0);
+    CHECK(missing.output.contains("no source files were examined"));
+    CHECK(missing.output.contains("Formatted 0 files in "));
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("documentation reports package and workspace output without replacing unmanaged directories") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-doc-report-test-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    WriteTextFile(manifestPath, "[Manifest]\nVersion = 1\n\n[Workspace]\nPackages = [\"Alpha\", \"Beta\"]\n");
+    for (const std::string_view package : {"Alpha", "Beta"}) {
+        const auto packageRoot = root / package;
+        WriteTextFile(packageRoot / "Rux.toml",
+                      std::format("[Manifest]\nVersion = 1\n\n[Package]\nName = \"{}\"\nVersion = \"0.1.0\"\n"
+                                  "Type = \"SourceLibrary\"\n",
+                                  package));
+        WriteTextFile(packageRoot / "Src" / (std::string(package) + ".rux"),
+                      std::format("module {} {{\n    pub func Visible() {{}}\n    func Hidden() {{}}\n}}\n", package));
+    }
+    const auto manifest = manifestPath.string();
+    const auto output = root / "GeneratedDocs";
+    const auto outputText = output.string();
+    const auto generated = Run(std::array<std::string_view, 7>{"--manifest", manifest, "--color=never", "doc",
+                                                               "--document-private-items", "--output", outputText});
+    CHECK(generated.exitCode == 0);
+    CHECK(generated.output.contains("Generating documentation for workspace"));
+    CHECK(generated.output.contains("Generated documentation for 2 packages in "));
+    CHECK(generated.output.contains("Output: " + (output / "index.html").string()));
+    CHECK(std::filesystem::is_regular_file(output / "Alpha" / "index.html"));
+    CHECK(ReadTextFile(output / "Alpha" / "index.html").contains("Hidden"));
+
+    const auto unmanaged = root / "Unmanaged";
+    WriteTextFile(unmanaged / "sentinel.txt", "keep\n");
+    const auto unmanagedText = unmanaged.string();
+    const auto protectedOutput =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "doc", "--output", unmanagedText, "--color=never"});
+    CHECK(protectedOutput.exitCode == 1);
+    CHECK(protectedOutput.output.contains("refusing to replace non-empty unmarked directory"));
+    CHECK(std::filesystem::is_regular_file(unmanaged / "sentinel.txt"));
+
+    const auto quiet = Run(std::array<std::string_view, 7>{"--manifest", manifest, "--quiet", "doc", "--output",
+                                                           outputText, "--document-private-items"});
+    CHECK(quiet.exitCode == 0);
+    CHECK(quiet.output.empty());
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("command help accepts equals options and reports one command") {
     const auto result = Run(std::array<std::string_view, 3>{"help", "build", "--json"});
     CHECK(result.exitCode == 0);
