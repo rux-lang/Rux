@@ -44,11 +44,11 @@ private:
     }
 
     void EmitError(const SourceLocation location, std::string message) {
-        diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message)});
+        diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message), {}, {}, {}});
     }
 
     void EmitWarning(const SourceLocation location, std::string message) {
-        diags.push_back({Diagnostic::Severity::Warning, currentFile, location, std::move(message)});
+        diags.push_back({Diagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
     }
 
     bool EvalCondition(const Expr *condition, const SourceLocation location) {

@@ -57,7 +57,7 @@ These are maintained contracts, not a one-time migration record. Changes to them
 | `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                 |
 | `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                 |
 | `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics           |
-| `Diagnostics`          | Diagnostic values and rendering primitives                                                                | SourceModel                           |
+| `Diagnostics`          | Structured diagnostic values plus canonical human and JSON rendering                                      | SourceModel and Reporting             |
 | `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics           |
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs   |
 | `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                           |

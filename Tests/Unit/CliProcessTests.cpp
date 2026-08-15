@@ -561,6 +561,26 @@ TEST_CASE("invalid target input is rejected before manifest discovery") {
     CHECK_FALSE(result.output.contains("manifest"));
 }
 
+TEST_CASE("check renders unsupported targets as structured diagnostics without changing JSON schema") {
+    const auto missing = (std::filesystem::path(RUX_ROOT_DIR) / "Tests" / "missing-Rux.toml").string();
+    const auto human = Run(std::array<std::string_view, 5>{"--manifest", missing, "check", "--target", "plan9-x86_64"});
+
+    CHECK(human.exitCode == 1);
+    CHECK(human.output.contains("error: target 'plan9-x86_64' is not supported"));
+    CHECK(human.output.contains("  note: supported targets are "));
+    CHECK(human.output.contains("  help: try 'rux check --target linux-x86_64'"));
+    CHECK(human.output.contains("  docs: https://rux-lang.dev/cli/"));
+    CHECK_FALSE(human.output.contains("manifest"));
+
+    const auto json =
+        Run(std::array<std::string_view, 6>{"--manifest", missing, "check", "--json", "--target", "plan9-x86_64"});
+    CHECK(json.exitCode == 1);
+    CHECK(json.output.contains("\"message\":\"target 'plan9-x86_64' is not supported\""));
+    CHECK_FALSE(json.output.contains("supported targets are"));
+    CHECK_FALSE(json.output.contains("documentationUrl"));
+    CHECK_FALSE(json.output.contains("rux-lang.dev"));
+}
+
 TEST_CASE("CLI checks and builds the canonical macOS AArch64 target through its ARM64 alias") {
     const auto manifest = ArithmeticManifest();
     const auto check =

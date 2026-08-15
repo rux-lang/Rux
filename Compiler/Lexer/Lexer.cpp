@@ -897,10 +897,12 @@ Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const s
 }
 
 void Lexer::EmitError(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Error, sourceName, loc, std::move(message)});
+    diagnostics.push_back(
+        LexerDiagnostic{LexerDiagnostic::Severity::Error, sourceName, loc, std::move(message), {}, {}, {}});
 }
 
 void Lexer::EmitWarning(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Warning, sourceName, loc, std::move(message)});
+    diagnostics.push_back(
+        LexerDiagnostic{LexerDiagnostic::Severity::Warning, sourceName, loc, std::move(message), {}, {}, {}});
 }
 } // namespace Rux

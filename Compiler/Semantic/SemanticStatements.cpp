@@ -8,11 +8,11 @@
 
 namespace Rux::SemanticDetail {
 void SemanticAnalyzerContext::EmitError(const SourceLocation location, std::string message) const {
-    diags.push_back({SemanticDiagnostic::Severity::Error, currentFile, location, std::move(message)});
+    diags.push_back({SemanticDiagnostic::Severity::Error, currentFile, location, std::move(message), {}, {}, {}});
 }
 
 void SemanticAnalyzerContext::EmitWarning(const SourceLocation location, std::string message) const {
-    diags.push_back({SemanticDiagnostic::Severity::Warning, currentFile, location, std::move(message)});
+    diags.push_back({SemanticDiagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
 }
 
 void SemanticAnalyzerContext::PushScope() {

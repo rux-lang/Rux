@@ -51,7 +51,7 @@ target_link_libraries(RuxTarget PUBLIC RuxSourceModel)
 
 rux_add_component(RuxDiagnostics
     Diagnostics/Diagnostics.cpp)
-target_link_libraries(RuxDiagnostics PUBLIC RuxSourceModel)
+target_link_libraries(RuxDiagnostics PUBLIC RuxSourceModel PRIVATE RuxReporting)
 
 rux_add_component(RuxCliContract
     Cli/CliSpec.cpp)

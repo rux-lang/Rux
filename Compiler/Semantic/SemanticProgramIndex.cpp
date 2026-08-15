@@ -32,9 +32,14 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
             }
             return true;
         }
-        diagnostics.push_back({SemanticDiagnostic::Severity::Error, sourceName, symbol.location,
+        diagnostics.push_back({SemanticDiagnostic::Severity::Error,
+                               sourceName,
+                               symbol.location,
                                std::format("'{}' is already defined (first defined at {}:{})", symbol.name,
-                                           iterator->second.location.line, iterator->second.location.column)});
+                                           iterator->second.location.line, iterator->second.location.column),
+                               {},
+                               {},
+                               {}});
         return false;
     }
     table.emplace(symbol.name, std::move(symbol));

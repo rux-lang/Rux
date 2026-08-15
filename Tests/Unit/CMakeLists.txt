@@ -39,6 +39,7 @@ set(RUX_TEST_SOURCES
     ConditionalEvaluationTests.cpp
     ConditionalFoldingTests.cpp
     CredentialsTests.cpp
+    DiagnosticsTests.cpp
     DocumentationTests.cpp
     GoldenDiagnosticsTests.cpp
     JsonTests.cpp

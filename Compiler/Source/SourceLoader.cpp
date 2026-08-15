@@ -27,7 +27,10 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
         result.diagnostics.push_back({Diagnostic::Severity::Warning,
                                       {},
                                       {.line = 0, .column = 0, .offset = 0},
-                                      std::format("no *.rux files found under '{}'", srcDir.string())});
+                                      std::format("no *.rux files found under '{}'", srcDir.string()),
+                                      {},
+                                      {},
+                                      {}});
     }
     for (const auto &path : paths) {
         auto file = LoadFile(path);

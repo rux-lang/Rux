@@ -3,7 +3,8 @@
 // Every Tests/Unit/Golden/<Case>.rux file is compiled through the frontend
 // (lex -> parse -> sema, mirroring `rux check`), its diagnostics are rendered
 // one per line as "line:column: severity: message", and the result is compared
-// against the sibling <Case>.expected file.
+// against the sibling <Case>.expected file. Supplemental notes, help and docs
+// are deliberately excluded: these files pin only the stable primary line.
 //
 // A case compiled for AArch64 goes one stage further: every `asm func` a clean
 // frontend leaves behind is handed to the AArch64 assembler, so a case can pin
@@ -24,6 +25,7 @@
 #include "System/Os.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <doctest.h>
 #include <filesystem>
@@ -125,6 +127,18 @@ std::string FrontendDiagnostics(std::string source, const std::string &sourceNam
 }
 
 } // namespace
+
+TEST_CASE("Golden diagnostic serialization omits supplemental human context") {
+    Diagnostic diagnostic{
+        Diagnostic::Severity::Error, "Case.rux", {.line = 4, .column = 2}, "primary message", {}, {}, {}};
+    diagnostic.notes = {"supporting note"};
+    diagnostic.help = "corrective help";
+    diagnostic.documentationUrl = "https://example.invalid/docs";
+
+    std::string output;
+    AppendDiagnostics(output, std::array{diagnostic});
+    CHECK(output == "4:2: error: primary message\n");
+}
 
 TEST_CASE("Golden diagnostics match the expected files") {
     const std::filesystem::path goldenDir = RUX_GOLDEN_DIR;

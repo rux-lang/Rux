@@ -375,11 +375,11 @@ std::vector<Diagnostic> ConditionalEvaluator::Impl::TakeDiagnostics() {
 }
 
 void ConditionalEvaluator::Impl::EmitError(const SourceLocation location, std::string message) {
-    diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message)});
+    diags.push_back({Diagnostic::Severity::Error, currentFile, location, std::move(message), {}, {}, {}});
 }
 
 void ConditionalEvaluator::Impl::EmitWarning(const SourceLocation location, std::string message) {
-    diags.push_back({Diagnostic::Severity::Warning, currentFile, location, std::move(message)});
+    diags.push_back({Diagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
 }
 
 // What a condition can name: constants and enums

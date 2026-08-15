@@ -27,6 +27,7 @@ using namespace Driver;
 
 int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &opts) {
     const bool jsonOutput = std::ranges::find(args, "--json") != args.end();
+    const bool diagnosticColor = !jsonOutput && ColorEnabled(opts.color, OutputStream::Stderr);
     std::string_view target;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -71,7 +72,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             jsonDiags.push_back(std::move(diag));
         }
         else {
-            PrintDiagnostic(diag);
+            std::print(stderr, "{}", RenderDiagnostic(diag, diagnosticColor));
         }
     };
     auto EmitFatal = [&](std::string message) {
@@ -86,13 +87,10 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     const auto targetTriple =
         target.empty() ? std::optional{Target::TargetTriple::Host()} : Target::TargetTriple::Parse(target);
     if (!targetTriple) {
-        if (jsonOutput) {
-            EmitFatal("unsupported target '" + std::string(target) + "'");
-        }
-        else {
-            std::print(stderr, "error: unsupported target '{}'; supported targets are {}\n", target,
-                       SupportedTargetTriples());
-        }
+        EmitDiag(ErrorDiagnostic("target '" + std::string(target) + "' is not supported",
+                                 {"supported targets are " + SupportedTargetTriples()},
+                                 "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/cli/"));
+        hadErrors = true;
         return Finish(1);
     }
     const std::string targetName(targetTriple->CanonicalName());
