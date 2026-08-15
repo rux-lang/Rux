@@ -428,7 +428,10 @@ TEST_CASE("PE linker preserves the missing x86-64 entry diagnostic") {
                   Target::Arch::X86_64);
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
-    CHECK(linker.Errors().front().message == "undefined symbol 'Main' — no entry point found");
+    CHECK(linker.Errors().front().message ==
+          "cannot link PE/COFF executable 'PeBaseline': entry point symbol 'Main' is undefined");
+    REQUIRE(linker.Errors().front().notes.size() == 1);
+    CHECK(linker.Errors().front().notes.front().contains("requires one global 'Main'"));
     CHECK_FALSE(std::filesystem::exists(output));
 }
 
@@ -902,13 +905,17 @@ TEST_CASE("PE linker diagnoses invalid Windows AArch64 relocations") {
                   Target::Arch::AArch64);
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
-    if (linker.Errors().front().message.starts_with("AARCH64_CALL26")) {
-        CHECK(linker.Errors().front().message.contains("out of range"));
-        CHECK(linker.Errors().front().message.contains("128 MB"));
+    if (linker.Errors().front().message.contains("AArch64 branch")) {
+        CHECK(linker.Errors().front().message ==
+              "cannot link PE/COFF executable 'Invalid': AArch64 branch relocation to 'Main' is out of range");
+        REQUIRE(linker.Errors().front().notes.size() == 2);
+        CHECK(linker.Errors().front().notes[0].contains("Invalid.rux', source section '.text', offset 0"));
+        CHECK(linker.Errors().front().notes[1].contains("-134217728 to 134217724 bytes"));
     }
     else {
         CHECK(linker.Errors().front().message ==
-              "relocation REL_32 against 'Main' is not supported by the PE32+ writer");
+              "cannot link PE/COFF executable 'Invalid': relocation REL_32 against 'Main' is not supported by the "
+              "PE32+ writer");
     }
     CHECK_FALSE(std::filesystem::exists(output));
 }

@@ -121,26 +121,40 @@ static void AppendX86_64ImportThunk(PeStubs &stubs) {
 static bool ApplyX86_64PeRelocation(Buf &buffer, const size_t patchAt, const uint64_t siteVa, const uint64_t targetVa,
                                     const int64_t addend, const uint16_t type, const std::string_view symbolName,
                                     std::string &error) {
+    uint64_t value = 0;
+    if (!AddSignedAddress(targetVa, addend, value)) {
+        error = std::format("relocation to '{}' overflows the 64-bit target address", symbolName);
+        return false;
+    }
     if (type == RcuRelType::Rel32) {
         if (patchAt + 4 > buffer.size()) {
             return false;
         }
-        const auto displacement = static_cast<int32_t>(targetVa + addend - (siteVa + 4));
-        Patch32(buffer, patchAt, static_cast<uint32_t>(displacement));
+        int64_t displacement = 0;
+        if (!SignedAddressDelta(value, siteVa + 4, displacement) ||
+            displacement < std::numeric_limits<int32_t>::min() || displacement > std::numeric_limits<int32_t>::max()) {
+            error = std::format("x86-64 PC-relative relocation to '{}' is out of range", symbolName);
+            return false;
+        }
+        Patch32(buffer, patchAt, static_cast<uint32_t>(static_cast<int32_t>(displacement)));
         return true;
     }
     if (type == RcuRelType::Abs64) {
         if (patchAt + 8 > buffer.size()) {
             return false;
         }
-        Patch64(buffer, patchAt, targetVa + static_cast<uint64_t>(addend));
+        Patch64(buffer, patchAt, value);
         return true;
     }
     if (type == RcuRelType::Abs32) {
         if (patchAt + 4 > buffer.size()) {
             return false;
         }
-        Patch32(buffer, patchAt, static_cast<uint32_t>(targetVa + addend));
+        if (value > std::numeric_limits<uint32_t>::max()) {
+            error = std::format("ABS_32 relocation to '{}' does not fit in 32 bits", symbolName);
+            return false;
+        }
+        Patch32(buffer, patchAt, static_cast<uint32_t>(value));
         return true;
     }
     error = std::format("relocation {} against '{}' is not supported by the PE32+ writer", RcuRelTypeName(type),
@@ -882,7 +896,8 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
         if (!architecture->applyRelocation(*buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
                                            *targetAddress, relocation.addend, relocation.type, symbol.name,
                                            relocationError)) {
-            Error(std::move(relocationError));
+            auto notes = RelocationNotes(reference, relocationError);
+            Error(std::move(relocationError), std::move(notes));
         }
     }
 

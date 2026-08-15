@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace Rux {
@@ -72,6 +73,40 @@ inline void Patch64(Buf &b, size_t off, uint64_t v) {
     for (int i = 0; i < 8; ++i) {
         b[off + i] = static_cast<uint8_t>(v >> (i * 8));
     }
+}
+
+[[nodiscard]] inline bool AddSignedAddress(const uint64_t value, const int64_t addend, uint64_t &result) noexcept {
+    if (addend >= 0) {
+        const auto positive = static_cast<uint64_t>(addend);
+        if (value > std::numeric_limits<uint64_t>::max() - positive) {
+            return false;
+        }
+        result = value + positive;
+        return true;
+    }
+    const auto magnitude = static_cast<uint64_t>(-(addend + 1)) + 1;
+    if (value < magnitude) {
+        return false;
+    }
+    result = value - magnitude;
+    return true;
+}
+
+[[nodiscard]] inline bool SignedAddressDelta(const uint64_t value, const uint64_t base, int64_t &result) noexcept {
+    if (value >= base) {
+        const uint64_t magnitude = value - base;
+        if (magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+            return false;
+        }
+        result = static_cast<int64_t>(magnitude);
+        return true;
+    }
+    const uint64_t magnitude = base - value;
+    if (magnitude > uint64_t{1} << 63U) {
+        return false;
+    }
+    result = magnitude == uint64_t{1} << 63U ? std::numeric_limits<int64_t>::min() : -static_cast<int64_t>(magnitude);
+    return true;
 }
 
 // The log2 of the number of bytes an unsigned-offset AArch64 load or store

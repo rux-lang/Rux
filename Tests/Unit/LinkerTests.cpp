@@ -220,7 +220,9 @@ TEST_CASE("ELF linker rejects a target without an explicit profile") {
                   Target::Arch::AArch64);
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
-    CHECK(linker.Errors().front().message == "ELF writer does not implement the complete target 'unknown-aarch64'");
+    CHECK(linker.Errors().front().message ==
+          "cannot link ELF executable 'LinkerTest': ELF writer does not implement the complete target "
+          "'unknown-aarch64'");
     CHECK_FALSE(std::filesystem::exists(output));
 }
 
@@ -286,7 +288,9 @@ TEST_CASE("Linker rejects an object built for another architecture") {
     Linker linker({foreign}, "LinkerTest", {}, ArtifactKind::Executable, Target::OS::Linux, Target::Arch::X86_64);
     CHECK_FALSE(linker.Link(output));
     REQUIRE(linker.Errors().size() == 1);
-    CHECK(linker.Errors().front().message == "object Main.rux was compiled for AArch64, but the link target is x86-64");
+    CHECK(linker.Errors().front().message ==
+          "cannot link ELF executable 'LinkerTest': RCU object 'Main.rux' was compiled for AArch64, but the link "
+          "target is x86-64");
     CHECK_FALSE(std::filesystem::exists(output));
 
     // Task 9 enables the lower-level PE executable writer while the compiler
@@ -298,6 +302,41 @@ TEST_CASE("Linker rejects an object built for another architecture") {
     CHECK(std::filesystem::exists(output));
 
     std::filesystem::remove(output, ec);
+}
+
+TEST_CASE("link diagnostics name every image format artifact and corrupt RCU owner") {
+    struct Case {
+        Target::OS os;
+        ArtifactKind artifact;
+        std::string_view prefix;
+    };
+
+    constexpr std::array cases = {
+        Case{Target::OS::Linux, ArtifactKind::Executable, "cannot link ELF executable 'Broken': "},
+        Case{Target::OS::Windows, ArtifactKind::SharedLibrary, "cannot link PE/COFF shared library 'Broken': "},
+        Case{Target::OS::MacOS, ArtifactKind::StaticLibrary, "cannot link Mach-O static library 'Broken': "},
+    };
+
+    for (const auto &[os, artifact, prefix] : cases) {
+        CAPTURE(prefix);
+        RcuFile object;
+        object.sourcePath = "Broken.rcu";
+        RcuSection text;
+        text.name = ".text";
+        text.type = RcuSecType::Text;
+        text.alignment = 0;
+        object.sections.push_back(std::move(text));
+
+        Linker linker({std::move(object)}, "Broken", {}, artifact, os, Target::Arch::X86_64);
+        CHECK_FALSE(linker.Link(std::filesystem::temp_directory_path() / "rux-broken-link-diagnostic"));
+        REQUIRE(linker.Errors().size() == 1);
+        CHECK(linker.Errors().front().message ==
+              std::string(prefix) + "RCU object 'Broken.rcu' has invalid alignment for section '.text'");
+        CHECK(linker.Errors().front().notes ==
+              std::vector<std::string>{"alignment: 0 bytes", "section alignment must be a non-zero power of two"});
+        CHECK_FALSE(linker.Errors().front().message.contains("external linker"));
+        CHECK_FALSE(linker.Errors().front().message.contains("toolchain"));
+    }
 }
 
 namespace {

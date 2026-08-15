@@ -266,7 +266,8 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                              Target::Arch::AArch64);
         CHECK_FALSE(missingLinker.Link(output));
         REQUIRE(missingLinker.Errors().size() == 1);
-        CHECK(missingLinker.Errors().front().message == "undefined symbol 'Main' — no entry point found");
+        CHECK(missingLinker.Errors().front().message ==
+              "cannot link ELF executable 'Missing': entry point symbol 'Main' is undefined");
         CHECK_FALSE(std::filesystem::exists(output));
 
         RcuFile first = MainObject();
@@ -275,7 +276,9 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                                Target::OS::FreeBSD, Target::Arch::AArch64);
         CHECK_FALSE(duplicateLinker.Link(output));
         REQUIRE(duplicateLinker.Errors().size() == 1);
-        CHECK(duplicateLinker.Errors().front().message == "duplicate symbol 'Main'");
+        CHECK(duplicateLinker.Errors().front().message ==
+              "cannot link ELF executable 'Duplicate': duplicate symbol 'Main'");
+        REQUIRE(duplicateLinker.Errors().front().notes.size() == 2);
         CHECK_FALSE(std::filesystem::exists(output));
     }
 
@@ -296,7 +299,7 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
         branch.sections.front().data = {0x00, 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6};
         branch.sections.front().relocs.push_back(
             {0, 0, RcuRelType::AArch64Call26, std::numeric_limits<std::int32_t>::max()});
-        checkFailure(std::move(branch), "a branch reaches 128 MB either way");
+        checkFailure(std::move(branch), "AArch64 branch relocation to 'Main' is out of range");
 
         RcuFile low12 = MainObject();
         low12.sections.front().data = {0x01, 0x00, 0x40, 0xF9, 0xC0, 0x03, 0x5F, 0xD6}; // ldr x1, [x0] / ret
@@ -306,11 +309,11 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
                                          RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
                                          std::vector<std::uint8_t>(8)));
         low12.symbols.push_back({"Value", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
-        checkFailure(std::move(low12), "the symbol is not aligned to the access width");
+        checkFailure(std::move(low12), "is not aligned to its access width");
 
         RcuFile bounds = MainObject();
         bounds.sections.front().relocs.push_back({8, 0, RcuRelType::AArch64Call26, 0});
-        checkFailure(std::move(bounds), "exceeds section '.text'");
+        checkFailure(std::move(bounds), "outside section '.text'");
     }
 } // TEST_SUITE
 
@@ -593,7 +596,8 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
                           Target::Arch::AArch64);
             CHECK_FALSE(linker.Link(output));
             REQUIRE(linker.Errors().size() == 1);
-            CHECK(linker.Errors().front().message == message);
+            CHECK(linker.Errors().front().message.starts_with("cannot link ELF executable 'DynamicError': "));
+            CHECK(linker.Errors().front().message.ends_with(message));
             CHECK_FALSE(std::filesystem::exists(output));
         };
 
@@ -614,7 +618,7 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
 
         RcuFile missingMain = ImportingMain({{"puts", ""}});
         missingMain.symbols.front().name = "NotMain";
-        checkFailure({std::move(missingMain)}, "undefined symbol 'Main' — no entry point found");
+        checkFailure({std::move(missingMain)}, "entry point symbol 'Main' is undefined");
     }
 } // TEST_SUITE
 
@@ -815,7 +819,8 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
                           Target::Arch::AArch64);
             CHECK_FALSE(linker.Link(output));
             REQUIRE(linker.Errors().size() == 1);
-            CHECK(linker.Errors().front().message == message);
+            CHECK(linker.Errors().front().message.starts_with("cannot link ELF shared library 'SharedError': "));
+            CHECK(linker.Errors().front().message.ends_with(message));
             CHECK_FALSE(std::filesystem::exists(output));
         };
 
@@ -838,16 +843,16 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
 
         RcuFile malformed = MainObject();
         malformed.sections.front().relocs.push_back({4, 99, RcuRelType::AArch64Call26, 0});
-        checkFailure({std::move(malformed)}, "relocation at offset 4 in section '.text' has invalid symbol index 99");
+        checkFailure({std::move(malformed)}, "has a relocation in section '.text' with an invalid symbol index");
 
         RcuFile outOfBounds = MainObject();
         outOfBounds.sections.front().relocs.push_back({8, 0, RcuRelType::AArch64Call26, 0});
         checkFailure({std::move(outOfBounds)},
-                     "AARCH64_CALL26 relocation against 'Main' at offset 8 exceeds section '.text'");
+                     "has relocation 'AARCH64_CALL26' to symbol 'Main' outside section '.text'");
 
         RcuFile unsupported = MainObject();
         unsupported.sections.front().relocs.push_back({0, 0, 999, 0});
-        checkFailure({std::move(unsupported)}, "relocation ? against 'Main' is not supported by the ELF writer");
+        checkFailure({std::move(unsupported)}, "has an unknown relocation to symbol 'Main'");
 
         RcuFile importedData = MainObject();
         importedData.sections.front().relocs.push_back({0, 1, RcuRelType::AArch64AdrPrelPgHi21, 0});

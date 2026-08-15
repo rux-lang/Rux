@@ -685,7 +685,7 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
                   targetArch);
     if (!linker.Link(artifactPath)) {
         for (const auto &err : linker.Errors()) {
-            Emit(ErrorDiagnostic(err.message));
+            Emit(ErrorDiagnostic(err.message, err.notes));
         }
         return false;
     }

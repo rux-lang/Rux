@@ -148,48 +148,46 @@ TEST_CASE("AArch64 relocation applier rejects every out-of-range field") {
     struct Case {
         uint16_t type;
         uint64_t targetVA;
-        const char *description;
+        const char *form;
     };
 
     constexpr std::array cases = {
-        Case{RcuRelType::AArch64Call26, uint64_t{1} << 27U, "a branch reaches 128 MB either way"},
-        Case{RcuRelType::AArch64Jump26, uint64_t{1} << 27U, "a branch reaches 128 MB either way"},
-        Case{RcuRelType::AArch64CondBr19, uint64_t{1} << 20U, "a conditional branch reaches 1 MB either way"},
-        Case{RcuRelType::AArch64TstBr14, uint64_t{1} << 15U, "a test-and-branch reaches 32 KB either way"},
-        Case{RcuRelType::AArch64AdrPrelPgHi21, uint64_t{1} << 32U, "an ADRP reaches 4 GB either way"},
-        Case{RcuRelType::AArch64Prel32, uint64_t{1} << 31U, "the displacement does not fit in 32 bits"},
+        Case{RcuRelType::AArch64Call26, uint64_t{1} << 27U, "branch"},
+        Case{RcuRelType::AArch64Jump26, uint64_t{1} << 27U, "branch"},
+        Case{RcuRelType::AArch64CondBr19, uint64_t{1} << 20U, "conditional branch"},
+        Case{RcuRelType::AArch64TstBr14, uint64_t{1} << 15U, "test-and-branch"},
+        Case{RcuRelType::AArch64AdrPrelPgHi21, uint64_t{1} << 32U, "page-address"},
+        Case{RcuRelType::AArch64Prel32, uint64_t{1} << 31U, "32-bit PC-relative"},
     };
 
-    for (const auto &[type, targetVA, description] : cases) {
+    for (const auto &[type, targetVA, form] : cases) {
         CAPTURE(type);
         Buf buf(8);
         std::string error;
         CHECK_FALSE(Apply(buf, type, targetVA, 0, 0, error));
-        CHECK(error ==
-              std::string(RcuRelTypeName(type)) + " relocation against 'Target' is out of range: " + description);
+        CHECK(error == "AArch64 " + std::string(form) + " relocation to 'Target' is out of range");
     }
 }
 
 TEST_CASE("AArch64 relocation applier rejects every unaligned branch field") {
     struct Case {
         uint16_t type;
-        const char *description;
+        const char *form;
     };
 
     constexpr std::array cases = {
-        Case{RcuRelType::AArch64Call26, "a branch reaches 128 MB either way"},
-        Case{RcuRelType::AArch64Jump26, "a branch reaches 128 MB either way"},
-        Case{RcuRelType::AArch64CondBr19, "a conditional branch reaches 1 MB either way"},
-        Case{RcuRelType::AArch64TstBr14, "a test-and-branch reaches 32 KB either way"},
+        Case{RcuRelType::AArch64Call26, "branch"},
+        Case{RcuRelType::AArch64Jump26, "branch"},
+        Case{RcuRelType::AArch64CondBr19, "conditional branch"},
+        Case{RcuRelType::AArch64TstBr14, "test-and-branch"},
     };
 
-    for (const auto &[type, description] : cases) {
+    for (const auto &[type, form] : cases) {
         CAPTURE(type);
         Buf buf(4);
         std::string error;
         CHECK_FALSE(Apply(buf, type, 2, 0, 0, error));
-        CHECK(error ==
-              std::string(RcuRelTypeName(type)) + " relocation against 'Target' is out of range: " + description);
+        CHECK(error == "AArch64 " + std::string(form) + " relocation to 'Target' is out of range");
     }
 }
 
@@ -207,8 +205,7 @@ TEST_CASE("AArch64 relocation applier enforces every load-store access alignment
         WriteU32(buf, instruction);
         std::string error;
         CHECK_FALSE(Apply(buf, RcuRelType::AArch64LdstAbsLo12Nc, 1, 0, 0, error));
-        CHECK(error == "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' is out of range: the symbol is not "
-                       "aligned to the access width");
+        CHECK(error == "AArch64 load/store relocation to 'Target' is not aligned to its access width");
         CHECK(ReadWord(buf) == instruction);
     }
 }

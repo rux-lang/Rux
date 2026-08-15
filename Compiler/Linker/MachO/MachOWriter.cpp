@@ -600,7 +600,8 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
         std::string relocationError;
         if (!ApplyMachORelocation(*architecture, *buffer, static_cast<size_t>(sitePlacement->offset), *siteAddress,
                                   *targetAddress, relocation.addend, relocation.type, symbol.name, relocationError)) {
-            Error(std::move(relocationError));
+            auto notes = RelocationNotes(reference, relocationError);
+            Error(std::move(relocationError), std::move(notes));
         }
     }
     if (!errors.empty()) {

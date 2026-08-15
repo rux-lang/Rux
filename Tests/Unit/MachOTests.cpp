@@ -331,10 +331,14 @@ TEST_CASE("Mach-O architecture profile diagnoses invalid relocation patches") {
         return linker.Errors().front().message;
     };
 
-    CHECK(link(4, RcuRelType::Rel32) == "REL_32 relocation against 'Main' is outside its Mach-O section");
+    CHECK(link(4, RcuRelType::Rel32) ==
+          "cannot link Mach-O executable 'MachOTest': RCU object 'MachOTest[0]' has relocation 'REL_32' to symbol "
+          "'Main' outside section '.text'");
     CHECK(link(0, RcuRelType::AArch64Call26) ==
-          "relocation AARCH64_CALL26 against 'Main' is not supported by the Mach-O x86-64 profile");
-    CHECK(link(0, RcuRelType::Abs32) == "ABS_32 relocation against 'Main' does not fit in 32 bits");
+          "cannot link Mach-O executable 'MachOTest': RCU object 'MachOTest[0]' uses AArch64 relocation "
+          "'AARCH64_CALL26' for x86-64 symbol 'Main'");
+    CHECK(link(0, RcuRelType::Abs32) ==
+          "cannot link Mach-O executable 'MachOTest': ABS_32 relocation against 'Main' does not fit in 32 bits");
 }
 
 TEST_CASE("Mach-O reader identifies AArch64 and validates the code-signature range") {
@@ -859,7 +863,7 @@ TEST_CASE("Mach-O AArch64 dylib diagnostics reject duplicate and unresolved defi
         first.symbols.push_back({"Answer", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         RcuFile second = first;
         CHECK(linkError({std::move(first), std::move(second)}, "duplicate") ==
-              "duplicate definition of symbol 'Answer'");
+              "cannot link Mach-O shared library 'MachOTest': duplicate definition of symbol 'Answer'");
     }
 
     SUBCASE("unresolved definition") {
@@ -869,7 +873,8 @@ TEST_CASE("Mach-O AArch64 dylib diagnostics reject duplicate and unresolved defi
         text.relocs.push_back({0, 0, RcuRelType::AArch64Call26, 0});
         library.sections.push_back(std::move(text));
         library.symbols.push_back({"Missing", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::Func, RcuSymVis::Global});
-        CHECK(linkError({std::move(library)}, "unresolved") == "undefined symbol 'Missing'");
+        CHECK(linkError({std::move(library)}, "unresolved") ==
+              "cannot link Mach-O shared library 'MachOTest': undefined symbol 'Missing'");
     }
 }
 
@@ -887,20 +892,20 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         RcuFile program;
         program.arch = RcuArch::AArch64;
         program.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
-        CHECK(linkError(std::move(program), "entry").contains("no entry point found"));
+        CHECK(linkError(std::move(program), "entry").contains("entry point symbol 'Main' is undefined"));
     }
     SUBCASE("imported data") {
         RcuFile program;
         program.arch = RcuArch::AArch64;
-        auto text = TextSection({0, 0, 0, 0});
+        auto text = TextSection({0, 0, 0, 0, 0, 0, 0, 0});
         text.relocs.push_back({0, 1, RcuRelType::Abs64, 0});
         program.sections.push_back(std::move(text));
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         program.symbols.push_back(
             {"errno", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "data-import") ==
-              "external data symbol 'errno' cannot be imported by the Mach-O AArch64 linker because GOT-aware "
-              "lowering is not implemented");
+              "cannot link Mach-O executable 'MachOTest': external data symbol 'errno' cannot be imported by the "
+              "Mach-O AArch64 linker because GOT-aware lowering is not implemented");
     }
     SUBCASE("out-of-range branch") {
         RcuFile program;
@@ -910,7 +915,7 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.sections.push_back(std::move(text));
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "branch-range")
-                  .contains("AARCH64_CALL26 relocation against 'Main' is out of range"));
+                  .contains("AArch64 branch relocation to 'Main' is out of range"));
     }
     SUBCASE("absolute 32-bit overflow") {
         RcuFile program;
@@ -920,7 +925,7 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.sections.push_back(std::move(text));
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         CHECK(linkError(std::move(program), "abs32-overflow") ==
-              "ABS_32 relocation against 'Main' does not fit in 32 bits");
+              "cannot link Mach-O executable 'MachOTest': ABS_32 relocation against 'Main' does not fit in 32 bits");
     }
     SUBCASE("misaligned low12 access") {
         RcuFile program;
@@ -934,6 +939,6 @@ TEST_CASE("Mach-O AArch64 executable diagnostics reject unsupported or invalid i
         program.sections.push_back(std::move(data));
         program.symbols.push_back({"Main", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
         program.symbols.push_back({"Value", "", 1, 1, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Local});
-        CHECK(linkError(std::move(program), "low12-alignment").contains("symbol is not aligned to the access width"));
+        CHECK(linkError(std::move(program), "low12-alignment").contains("is not aligned to its access width"));
     }
 }

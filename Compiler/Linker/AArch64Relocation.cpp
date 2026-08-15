@@ -31,8 +31,24 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
                             const std::string_view writerName, std::string &error) {
     const uint64_t value = targetVA + static_cast<uint64_t>(addend);
     const auto delta = static_cast<int64_t>(value - siteVA);
-    const auto fail = [&](const std::string_view what) {
-        error = std::format("{} relocation against '{}' is out of range: {}", RcuRelTypeName(type), symbolName, what);
+    const auto fail = [&] {
+        std::string_view form = "address";
+        if (type == RcuRelType::AArch64Call26 || type == RcuRelType::AArch64Jump26) {
+            form = "branch";
+        }
+        else if (type == RcuRelType::AArch64CondBr19) {
+            form = "conditional branch";
+        }
+        else if (type == RcuRelType::AArch64TstBr14) {
+            form = "test-and-branch";
+        }
+        else if (type == RcuRelType::AArch64AdrPrelPgHi21) {
+            form = "page-address";
+        }
+        else if (type == RcuRelType::AArch64Prel32) {
+            form = "32-bit PC-relative";
+        }
+        error = std::format("AArch64 {} relocation to '{}' is out of range", form, symbolName);
         return false;
     };
 
@@ -48,7 +64,7 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
             return true;
         }
         if (type == RcuRelType::AArch64Prel32 && !FitsSigned(delta, 32)) {
-            return fail("the displacement does not fit in 32 bits");
+            return fail();
         }
         Patch32(buf, patchAt, type == RcuRelType::Abs32 ? static_cast<uint32_t>(value) : static_cast<uint32_t>(delta));
         return true;
@@ -66,17 +82,17 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
     case RcuRelType::AArch64Call26:
     case RcuRelType::AArch64Jump26:
         if (delta % 4 != 0 || !FitsSigned(delta >> 2, 26)) {
-            return fail("a branch reaches 128 MB either way");
+            return fail();
         }
         return patch(WithField(word, 0, 26, static_cast<uint32_t>(delta >> 2)));
     case RcuRelType::AArch64CondBr19:
         if (delta % 4 != 0 || !FitsSigned(delta >> 2, 19)) {
-            return fail("a conditional branch reaches 1 MB either way");
+            return fail();
         }
         return patch(WithField(word, 5, 19, static_cast<uint32_t>(delta >> 2)));
     case RcuRelType::AArch64TstBr14:
         if (delta % 4 != 0 || !FitsSigned(delta >> 2, 14)) {
-            return fail("a test-and-branch reaches 32 KB either way");
+            return fail();
         }
         return patch(WithField(word, 5, 14, static_cast<uint32_t>(delta >> 2)));
     case RcuRelType::AArch64AdrPrelPgHi21: {
@@ -86,7 +102,7 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
         const int64_t pages =
             (static_cast<int64_t>(value & ~0xFFFull) - static_cast<int64_t>(siteVA & ~0xFFFull)) >> 12;
         if (!FitsSigned(pages, 21)) {
-            return fail("an ADRP reaches 4 GB either way");
+            return fail();
         }
         const auto immediate = static_cast<uint32_t>(pages) & 0x1FFFFFU;
         return patch(WithField(WithField(word, 29, 2, immediate & 3U), 5, 19, immediate >> 2U));
@@ -96,7 +112,8 @@ bool ApplyAArch64Relocation(Buf &buf, const size_t patchAt, const uint16_t type,
     case RcuRelType::AArch64LdstAbsLo12Nc: {
         const unsigned scale = AArch64LoadStoreScale(word);
         if ((value & ((1ull << scale) - 1)) != 0) {
-            return fail("the symbol is not aligned to the access width");
+            error = std::format("AArch64 load/store relocation to '{}' is not aligned to its access width", symbolName);
+            return false;
         }
         return patch(WithField(word, 10, 12, static_cast<uint32_t>((value & 0xFFFU) >> scale)));
     }

@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <format>
 #include <fstream>
+#include <limits>
 #include <ranges>
 #include <string>
 #include <unordered_map>
@@ -335,16 +336,33 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
             const size_t patchAt = static_cast<size_t>(sitePlacement->offset);
             if (!aarch64 && relocation.type == RcuRelType::Rel32) {
-                const auto displacement = static_cast<int32_t>(*targetAddress + relocation.addend - (*siteAddress + 4));
-                Patch32(*buffer, patchAt, static_cast<uint32_t>(displacement));
+                uint64_t value = 0;
+                int64_t displacement = 0;
+                if (!AddSignedAddress(*targetAddress, relocation.addend, value) ||
+                    !SignedAddressDelta(value, *siteAddress + 4, displacement) ||
+                    displacement < std::numeric_limits<int32_t>::min() ||
+                    displacement > std::numeric_limits<int32_t>::max()) {
+                    const std::string error =
+                        std::format("x86-64 PC-relative relocation to '{}' is out of range", symbol.name);
+                    Error(error, RelocationNotes(reference, error));
+                    continue;
+                }
+                Patch32(*buffer, patchAt, static_cast<uint32_t>(static_cast<int32_t>(displacement)));
             }
             else if (relocation.type == RcuRelType::Abs64) {
-                const uint64_t value = *targetAddress + static_cast<uint64_t>(relocation.addend);
+                uint64_t value = 0;
+                if (!AddSignedAddress(*targetAddress, relocation.addend, value)) {
+                    const std::string error =
+                        std::format("relocation to '{}' overflows the 64-bit target address", symbol.name);
+                    Error(error, RelocationNotes(reference, error));
+                    continue;
+                }
                 if (aarch64) {
                     std::string error;
                     if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
                                                 *siteAddress, symbol.name, "ELF writer", error)) {
-                        Error(std::move(error));
+                        auto notes = RelocationNotes(reference, error);
+                        Error(std::move(error), std::move(notes));
                     }
                 }
                 else {
@@ -362,13 +380,22 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
                 }
             }
             else if (!aarch64 && relocation.type == RcuRelType::Abs32) {
-                Patch32(*buffer, patchAt, static_cast<uint32_t>(*targetAddress + relocation.addend));
+                uint64_t value = 0;
+                if (!AddSignedAddress(*targetAddress, relocation.addend, value) ||
+                    value > std::numeric_limits<uint32_t>::max()) {
+                    const std::string error =
+                        std::format("ABS_32 relocation to '{}' does not fit in 32 bits", symbol.name);
+                    Error(error, RelocationNotes(reference, error));
+                    continue;
+                }
+                Patch32(*buffer, patchAt, static_cast<uint32_t>(value));
             }
             else {
                 std::string error;
                 if (!ApplyAArch64Relocation(*buffer, patchAt, relocation.type, *targetAddress, relocation.addend,
                                             *siteAddress, symbol.name, "ELF writer", error)) {
-                    Error(std::move(error));
+                    auto notes = RelocationNotes(reference, error);
+                    Error(std::move(error), std::move(notes));
                 }
             }
         }

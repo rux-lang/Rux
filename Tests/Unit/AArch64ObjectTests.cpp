@@ -1121,10 +1121,9 @@ TEST_CASE("AArch64 COFF objects validate instruction inline addends") {
     };
 
     CHECK(write(0x94000000, RcuRelType::AArch64Call26, std::numeric_limits<std::int32_t>::max()) ==
-          "AARCH64_CALL26 relocation against 'Target' is out of range: a branch reaches 128 MB either way");
+          "AArch64 branch relocation to 'Target' is out of range");
     CHECK(write(0xF9400000, RcuRelType::AArch64LdstAbsLo12Nc, 3) ==
-          "AARCH64_LDST_ABS_LO12_NC relocation against 'Target' is out of range: the symbol is not aligned to the "
-          "access width");
+          "AArch64 load/store relocation to 'Target' is not aligned to its access width");
     CHECK(write(0x90000000, RcuRelType::AArch64AdrPrelPgHi21, std::numeric_limits<std::int32_t>::max()) ==
           "AARCH64_ADR_PREL_PG_HI21 relocation against 'Target' has an inline addend that does not fit in the signed "
           "21-bit COFF field");

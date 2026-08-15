@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <format>
+#include <string_view>
 #include <utility>
 
 namespace Rux {
@@ -22,8 +23,76 @@ Linker::Linker(std::vector<RcuFile> inputObjects, std::string inputPackageName,
     , targetArch(inputTargetArch) {
 }
 
-void Linker::Error(std::string msg) {
-    errors.push_back({std::move(msg)});
+namespace {
+[[nodiscard]] constexpr std::string_view FormatName(const Target::OS os) noexcept {
+    switch (os) {
+    case Target::OS::Windows:
+        return "PE/COFF";
+    case Target::OS::MacOS:
+        return "Mach-O";
+    case Target::OS::FreeBSD:
+    case Target::OS::Linux:
+    case Target::OS::Unknown:
+        return "ELF";
+    default:
+        return "unknown-format";
+    }
+}
+
+[[nodiscard]] constexpr std::string_view ArtifactName(const ArtifactKind kind) noexcept {
+    switch (kind) {
+    case ArtifactKind::Executable:
+        return "executable";
+    case ArtifactKind::SharedLibrary:
+        return "shared library";
+    case ArtifactKind::StaticLibrary:
+        return "static library";
+    }
+    return "artifact";
+}
+
+[[nodiscard]] constexpr std::string_view RelocationRangeNote(const std::uint16_t type) noexcept {
+    switch (type) {
+    case RcuRelType::AArch64Call26:
+    case RcuRelType::AArch64Jump26:
+        return "supported range: -134217728 to 134217724 bytes, aligned to 4 bytes";
+    case RcuRelType::AArch64CondBr19:
+        return "supported range: -1048576 to 1048572 bytes, aligned to 4 bytes";
+    case RcuRelType::AArch64TstBr14:
+        return "supported range: -32768 to 32764 bytes, aligned to 4 bytes";
+    case RcuRelType::AArch64AdrPrelPgHi21:
+        return "supported range: -4294967296 to 4294963200 bytes, aligned to 4096 bytes";
+    case RcuRelType::AArch64Prel32:
+    case RcuRelType::Rel32:
+        return "supported range: -2147483648 to 2147483647 bytes";
+    case RcuRelType::Abs32:
+        return "supported range: 0 to 4294967295";
+    default:
+        return {};
+    }
+}
+} // namespace
+
+void Linker::Error(std::string msg, std::vector<std::string> notes) {
+    errors.push_back(
+        {std::format("cannot link {} {} '{}': {}", FormatName(targetOs), ArtifactName(artifactKind), packageName, msg),
+         std::move(notes)});
+}
+
+std::vector<std::string> Linker::RelocationNotes(const RcuLinkReference &reference,
+                                                 const std::string_view error) const {
+    const RcuFile &object = objects[reference.objectIndex];
+    const RcuSection &section = object.sections[reference.sectionIndex];
+    const RcuReloc &relocation = section.relocs[reference.relocationIndex];
+    const std::string objectName = object.sourcePath.empty() ? packageName : object.sourcePath;
+    std::vector<std::string> notes{std::format("RCU object '{}', source section '{}', offset {}", objectName,
+                                               section.name, relocation.sectionOffset)};
+    if (error.contains("out of range") || error.contains("does not fit")) {
+        if (const std::string_view range = RelocationRangeNote(relocation.type); !range.empty()) {
+            notes.emplace_back(range);
+        }
+    }
+    return notes;
 }
 
 bool Linker::BuildGraph() {
@@ -35,21 +104,28 @@ bool Linker::BuildGraph() {
                               Target::ToDisplayString(targetArch)));
             break;
         case RcuLinkDiagnosticKind::ArchitectureMismatch:
-            Error(std::format("object {} was compiled for {}, but the link target is {}", diagnostic.objectName,
+            Error(std::format("RCU object '{}' was compiled for {}, but the link target is {}", diagnostic.objectName,
                               RcuArchName(diagnostic.actualArchitecture),
                               RcuArchName(diagnostic.expectedArchitecture)));
             break;
+        case RcuLinkDiagnosticKind::InvalidObject:
+            Error(diagnostic.message, diagnostic.notes);
+            break;
         case RcuLinkDiagnosticKind::DuplicateDefinition:
             Error(targetOs == Target::OS::MacOS ? "duplicate definition of symbol '" + diagnostic.symbol + "'"
-                                                : "duplicate symbol '" + diagnostic.symbol + "'");
+                                                : "duplicate symbol '" + diagnostic.symbol + "'",
+                  {std::format("first defined by RCU object '{}'", diagnostic.objectName),
+                   std::format("also defined by RCU object '{}'", diagnostic.relatedObjectName)});
             break;
         case RcuLinkDiagnosticKind::UndefinedSymbol:
             Error(targetOs == Target::OS::MacOS
                       ? "undefined symbol '" + diagnostic.symbol + "'"
-                      : "undefined symbol '" + diagnostic.symbol + "' — no definition or external import was found");
+                      : "undefined symbol '" + diagnostic.symbol + "' — no definition or external import was found",
+                  diagnostic.notes);
             break;
         case RcuLinkDiagnosticKind::MissingEntryPoint:
-            Error("undefined symbol 'Main' — no entry point found");
+            Error("entry point symbol 'Main' is undefined",
+                  {"an executable artifact requires one global 'Main' definition"});
             break;
         }
     }

@@ -122,3 +122,58 @@ TEST_CASE("RCU link graph returns architecture and missing-entry diagnostics as 
     REQUIRE(missing.Diagnostics().size() == 1);
     CHECK(missing.Diagnostics()[0].kind == RcuLinkDiagnosticKind::MissingEntryPoint);
 }
+
+TEST_CASE("RCU link graph diagnoses corrupt sections symbols and relocations deterministically") {
+    RcuFile corrupt;
+    corrupt.sourcePath = "Corrupt.rcu";
+    RcuSection text = Text({{14, 2, RcuRelType::Abs64, 0}});
+    text.alignment = 3;
+    corrupt.sections.push_back(std::move(text));
+    corrupt.symbols.push_back(Function("Outside"));
+    corrupt.symbols.front().value = 15;
+    corrupt.symbols.front().size = 4;
+
+    const std::array objects = {corrupt};
+    const RcuLinkGraph first =
+        RcuLinkGraph::Build(objects, "CorruptPackage", ArtifactKind::SharedLibrary, Target::Arch::X86_64);
+    const RcuLinkGraph second =
+        RcuLinkGraph::Build(objects, "CorruptPackage", ArtifactKind::SharedLibrary, Target::Arch::X86_64);
+
+    REQUIRE(first.Diagnostics().size() == 3);
+    REQUIRE(second.Diagnostics().size() == first.Diagnostics().size());
+    CHECK(first.Diagnostics()[0].message == "RCU object 'Corrupt.rcu' has invalid alignment for section '.text'");
+    CHECK(first.Diagnostics()[0].notes ==
+          std::vector<std::string>{"alignment: 3 bytes", "section alignment must be a non-zero power of two"});
+    CHECK(first.Diagnostics()[1].message == "RCU object 'Corrupt.rcu' places symbol 'Outside' outside section '.text'");
+    CHECK(first.Diagnostics()[1].notes[0] == "symbol offset: 15; symbol size: 4 bytes");
+    CHECK(first.Diagnostics()[2].message ==
+          "RCU object 'Corrupt.rcu' has a relocation in section '.text' with an invalid symbol index");
+    CHECK(first.Diagnostics()[2].notes[0] == "source offset: 14; symbol index: 2; symbol count: 1");
+    for (std::size_t index = 0; index < first.Diagnostics().size(); ++index) {
+        CHECK(second.Diagnostics()[index].message == first.Diagnostics()[index].message);
+        CHECK(second.Diagnostics()[index].notes == first.Diagnostics()[index].notes);
+    }
+}
+
+TEST_CASE("RCU link graph attributes duplicate and undefined symbols to their objects and sections") {
+    RcuFile first;
+    first.sourcePath = "First.rux";
+    first.sections.push_back(Text({{0, 1, RcuRelType::Rel32, 0}}));
+    first.symbols = {Function("Duplicate"), Function("Missing", RCU_SEC_EXTERNAL)};
+
+    RcuFile second;
+    second.sourcePath = "Second.rux";
+    second.sections.push_back(Text());
+    second.symbols = {Function("Duplicate")};
+
+    const std::array objects = {first, second};
+    const RcuLinkGraph graph =
+        RcuLinkGraph::Build(objects, "Symbols", ArtifactKind::SharedLibrary, Target::Arch::X86_64);
+    REQUIRE(graph.Diagnostics().size() == 2);
+    CHECK(graph.Diagnostics()[0].kind == RcuLinkDiagnosticKind::DuplicateDefinition);
+    CHECK(graph.Diagnostics()[0].objectName == "First.rux");
+    CHECK(graph.Diagnostics()[0].relatedObjectName == "Second.rux");
+    CHECK(graph.Diagnostics()[1].kind == RcuLinkDiagnosticKind::UndefinedSymbol);
+    CHECK(graph.Diagnostics()[1].notes ==
+          std::vector<std::string>{"referenced by RCU object 'First.rux', section '.text', offset 0"});
+}

@@ -8,11 +8,13 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Rux {
 struct LinkerError {
     std::string message;
+    std::vector<std::string> notes;
 };
 
 // Links one or more RcuFile objects into a native executable, choosing the
@@ -48,7 +50,10 @@ private:
     Target::Arch targetArch = Target::HostArch;
     std::optional<RcuLinkGraph> graph;
 
-    void Error(std::string msg);
+    void Error(std::string msg, std::vector<std::string> notes = {});
+
+    [[nodiscard]] std::vector<std::string> RelocationNotes(const RcuLinkReference &reference,
+                                                           std::string_view error) const;
 
     [[nodiscard]] bool BuildGraph();
     [[nodiscard]] std::vector<std::string> WindowsExportNames() const;

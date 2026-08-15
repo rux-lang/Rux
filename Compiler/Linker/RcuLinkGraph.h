@@ -50,6 +50,7 @@ struct RcuReferencedExternal {
 enum class RcuLinkDiagnosticKind {
     UnsupportedArchitecture,
     ArchitectureMismatch,
+    InvalidObject,
     DuplicateDefinition,
     UndefinedSymbol,
     MissingEntryPoint,
@@ -59,6 +60,9 @@ struct RcuLinkDiagnostic {
     RcuLinkDiagnosticKind kind = RcuLinkDiagnosticKind::UndefinedSymbol;
     std::string symbol;
     std::string objectName;
+    std::string relatedObjectName;
+    std::string message;
+    std::vector<std::string> notes;
     std::uint8_t actualArchitecture = RcuArch::Unknown;
     std::uint8_t expectedArchitecture = RcuArch::Unknown;
 };
