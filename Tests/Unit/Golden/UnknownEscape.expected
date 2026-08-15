@@ -1,1 +1,1 @@
-2:14: error: unknown escape sequence '\q'
+2:14: error: escape sequence '\q' is not recognized

@@ -23,6 +23,13 @@ TEST_CASE("Lexer tokenizes a simple function") {
     CHECK(result.tokens.back().IsEof());
 }
 
+TEST_CASE("Lexer returns source-file open failures as diagnostics") {
+    const auto result = Lexer::FromFile("rux-lexer-test-file-that-does-not-exist.rux");
+    REQUIRE_EQ(result.diagnostics.size(), 1);
+    CHECK_EQ(result.diagnostics[0].message, "cannot open source file 'rux-lexer-test-file-that-does-not-exist.rux'");
+    CHECK(result.diagnostics[0].help->contains("readable"));
+}
+
 TEST_CASE("Lexer keeps the original source spelling in token text") {
     const auto result = Lex("let x = 0xFF;");
     REQUIRE(result.diagnostics.empty());
@@ -131,7 +138,85 @@ TEST_CASE("Lexer accepts every control escape sequence") {
 TEST_CASE("Lexer rejects unknown escape sequences") {
     const auto result = Lex(R"(let s = "\q";)");
     REQUIRE(result.HasErrors());
-    CHECK(result.diagnostics.front().message == "unknown escape sequence '\\q'");
+    CHECK(result.diagnostics.front().message == "escape sequence '\\q' is not recognized");
+    CHECK(result.diagnostics.front().help->contains("'\\n'"));
+    CHECK(result.diagnostics.front().documentationUrl == "https://rux-lang.dev/docs/");
+}
+
+TEST_CASE("Lexer accepts numeric bases, separators, exponents, and every suffix") {
+    static constexpr std::string_view literals[] = {
+        "0b1010_0101", "0o7_52", "0xFF_FF", "1_000", "1.25_00", "1e1_000", "1.5e+2", "1i",   "1i8",  "1i16",
+        "1i32",        "1i64",   "1u",      "1u8",   "1u16",    "1u32",    "1u64",   "1f32", "1f64",
+    };
+    for (const auto literal : literals) {
+        CAPTURE(literal);
+        CHECK_FALSE(Lex(std::string(literal)).HasErrors());
+    }
+}
+
+TEST_CASE("Lexer identifies the precise numeric-literal failure") {
+    struct Case {
+        std::string_view source;
+        std::string_view message;
+        std::string_view help;
+    };
+
+    static constexpr Case cases[] = {
+        {"0x", "hexadecimal literal requires at least one digit after '0x'", "0x2A"},
+        {"0b", "binary literal requires at least one digit after '0b'", "0b101010"},
+        {"0o", "octal literal requires at least one digit after '0o'", "0o52"},
+        {"0b102", "digit '2' is not valid in a binary literal", "'0' and '1'"},
+        {"0o78", "digit '8' is not valid in an octal literal", "'0' through '7'"},
+        {"12_", "numeric separator '_' must appear between digits", "1_000"},
+        {"1__2", "numeric separator '_' must appear between digits", "1_000"},
+        {"1.2__5", "numeric separator '_' must appear between digits", "1.25_00"},
+        {"1e+", "exponent requires at least one digit after 'e'", "1.5e+2"},
+        {"12wat", "numeric literal suffix 'wat' is not recognized", "'i8'"},
+    };
+    for (const auto &test : cases) {
+        CAPTURE(test.source);
+        const auto result = Lex(std::string(test.source));
+        REQUIRE_EQ(result.diagnostics.size(), 1);
+        CHECK_EQ(result.diagnostics[0].message, test.message);
+        REQUIRE(result.diagnostics[0].help.has_value());
+        CHECK(result.diagnostics[0].help->contains(test.help));
+    }
+}
+
+TEST_CASE("Lexer diagnoses comments, strings, characters, and Unicode escapes without cascades") {
+    static constexpr std::pair<std::string_view, std::string_view> cases[] = {
+        {"/* open", "block comment is not terminated"},
+        {"\"open", "string literal is not terminated before the end of the file"},
+        {"\"open\n", "string literal is not terminated before the end of the line"},
+        {"\"open\\", "escape sequence is not complete before the end of the file"},
+        {"''", "character literal is empty"},
+        {"'ab'", "character literal contains more than one character"},
+        {"'a", "character literal is not terminated before the end of the file"},
+        {"'\\", "escape sequence is not complete before the end of the file"},
+        {R"("\u";)", "Unicode escape requires '{' after '\\u'"},
+        {R"("\u{}";)", "Unicode escape requires at least one hexadecimal digit"},
+        {R"("\u{XYZ}";)", "Unicode escape contains a non-hexadecimal digit"},
+        {R"("\u{D800}";)", "Unicode escape U+D800 is a surrogate, not a scalar value"},
+        {R"("\u{110000}";)", "Unicode escape U+110000 is above the maximum scalar value U+10FFFF"},
+        {R"("\u{)", "Unicode escape is not terminated before the end of the file"},
+    };
+    for (const auto &[source, message] : cases) {
+        CAPTURE(source);
+        const auto result = Lex(std::string(source));
+        REQUIRE_EQ(result.diagnostics.size(), 1);
+        CHECK_EQ(result.diagnostics.front().message, message);
+    }
+}
+
+TEST_CASE("Lexer reports invalid UTF-8 and unexpected Unicode as one lexical cause") {
+    const auto invalid = Lex(std::string("let x = ") + static_cast<char>(0xFF));
+    REQUIRE_EQ(invalid.diagnostics.size(), 1);
+    CHECK_EQ(invalid.diagnostics[0].message, "source contains invalid UTF-8 byte 0xFF");
+    CHECK_EQ(invalid.diagnostics[0].location.column, 9);
+
+    const auto unexpected = Lex("©");
+    REQUIRE_EQ(unexpected.diagnostics.size(), 1);
+    CHECK_EQ(unexpected.diagnostics[0].message, "unexpected character '©' (U+00A9)");
 }
 
 TEST_CASE("Lexer reports the location of a lexical error") {

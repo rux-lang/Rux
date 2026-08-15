@@ -23,9 +23,9 @@ public:
     // `sourceName` is used only for diagnostic messages (e.g. file path).
     explicit Lexer(std::string inputSource, std::string inputSourceName = "<input>");
 
-    // Convenience: read file from disk and lex it.
-    // Returns std::nullopt if the file cannot be read.
-    [[nodiscard]] static std::optional<LexerResult> FromFile(const std::filesystem::path &path);
+    // Convenience: read a file and lex it. Open and read failures are returned
+    // as diagnostics; reusable compiler code never prints them directly.
+    [[nodiscard]] static LexerResult FromFile(const std::filesystem::path &path);
 
     // Run the full lexer pass and return all tokens + diagnostics.
     [[nodiscard]] LexerResult Tokenize();
@@ -89,7 +89,8 @@ private:
 
     // Emit helpers
     [[nodiscard]] Token MakeToken(TokenKind kind, SourceLocation start, std::size_t tokenStart) const;
-    void EmitError(SourceLocation loc, std::string message);
+    void EmitError(SourceLocation loc, std::string message, std::optional<std::string> help = {},
+                   std::optional<std::string> documentationUrl = {});
     void EmitWarning(SourceLocation loc, std::string message);
 };
 } // namespace Rux

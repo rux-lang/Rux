@@ -1,1 +1,1 @@
-5:11: error: '$' is no longer part of a declaration; write 'intrinsic #name: Type;'
+5:11: error: '$' declarations are no longer supported

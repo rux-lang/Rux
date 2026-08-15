@@ -3,13 +3,22 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <format>
 #include <fstream>
 #include <ostream>
 #include <print>
 #include <sstream>
 
 namespace Rux {
-static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
+namespace {
+struct DecodedUtf8 {
+    std::uint32_t codePoint;
+    std::size_t width;
+};
+
+constexpr std::string_view LiteralDocumentation = "https://rux-lang.dev/docs/";
+
+std::optional<DecodedUtf8> DecodeUtf8(std::string_view text) {
     if (text.empty()) {
         return std::nullopt;
     }
@@ -53,7 +62,7 @@ static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
         return std::nullopt;
     }
 
-    if (text.size() != width) {
+    if (text.size() < width) {
         return std::nullopt;
     }
     for (std::size_t i = 1; i < width; ++i) {
@@ -63,11 +72,40 @@ static std::optional<std::uint32_t> DecodeUtf8CodePoint(std::string_view text) {
         }
         codePoint = (codePoint << 6) | *byte;
     }
-    if (codePoint < minValue || codePoint > 0x10FFFF) {
+    if (codePoint < minValue || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
         return std::nullopt;
     }
-    return codePoint;
+    return DecodedUtf8{codePoint, width};
 }
+
+std::optional<std::uint32_t> DecodeUtf8CodePoint(const std::string_view text) {
+    const auto decoded = DecodeUtf8(text);
+    if (!decoded || decoded->width != text.size()) {
+        return std::nullopt;
+    }
+    return decoded->codePoint;
+}
+
+bool IsDigitForBase(const char c, const int base) {
+    if (c >= '0' && c <= '9') {
+        return c - '0' < base;
+    }
+    return base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+}
+
+std::string_view BaseName(const int base) {
+    switch (base) {
+    case 2:
+        return "binary";
+    case 8:
+        return "octal";
+    case 16:
+        return "hexadecimal";
+    default:
+        return "decimal";
+    }
+}
+} // namespace
 
 bool LexerResult::HasErrors() const noexcept {
     for (const auto &d : diagnostics) {
@@ -83,17 +121,19 @@ Lexer::Lexer(std::string inputSource, std::string inputSourceName)
     , sourceName(std::move(inputSourceName)) {
 }
 
-std::optional<LexerResult> Lexer::FromFile(const std::filesystem::path &path) {
+LexerResult Lexer::FromFile(const std::filesystem::path &path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
-        std::print(stderr, "error: cannot open '{}'\n", path.string());
-        return std::nullopt;
+        return {{},
+                {ErrorDiagnostic(std::format("cannot open source file '{}'", path.string()), {},
+                                 "check that the path exists and the file is readable")}};
     }
     std::ostringstream ss;
     ss << f.rdbuf();
     if (!f && !f.eof()) {
-        std::print(stderr, "error: failed to read '{}'\n", path.string());
-        return std::nullopt;
+        return {{},
+                {ErrorDiagnostic(std::format("failed to read source file '{}'", path.string()), {},
+                                 "check the file and retry")}};
     }
     Lexer lex(ss.str(), path.string());
     return lex.Tokenize();
@@ -105,6 +145,35 @@ LexerResult Lexer::Tokenize() {
     pos = 0;
     line = 1;
     col = 1;
+    // Reject malformed encoding before tokenization. This prevents one bad
+    // byte from becoming an unexpected-character error followed by parser
+    // recovery noise.
+    std::uint32_t utf8Line = 1;
+    std::uint32_t utf8Column = 1;
+    for (std::size_t offset = 0; offset < source.size();) {
+        const auto byte = static_cast<unsigned char>(source[offset]);
+        if (byte < 0x80) {
+            if (byte == '\n') {
+                ++utf8Line;
+                utf8Column = 1;
+            }
+            else {
+                ++utf8Column;
+            }
+            ++offset;
+            continue;
+        }
+        const auto decoded = DecodeUtf8(std::string_view(source).substr(offset));
+        if (!decoded) {
+            EmitError({utf8Line, utf8Column, static_cast<std::uint32_t>(offset)},
+                      std::format("source contains invalid UTF-8 byte 0x{:02X}", byte),
+                      "save the source file as valid UTF-8");
+            tokens.push_back(Token{TokenKind::EndOfFile, {}, CurrentLocation()});
+            return LexerResult{std::move(tokens), std::move(diagnostics)};
+        }
+        offset += decoded->width;
+        utf8Column += static_cast<std::uint32_t>(decoded->width);
+    }
     ScanAll();
     // Always append a synthetic EOF token
     tokens.push_back(Token{TokenKind::EndOfFile, {}, CurrentLocation()});
@@ -396,6 +465,7 @@ void Lexer::SkipLineComment() {
 }
 
 void Lexer::SkipBlockComment() {
+    const SourceLocation start = CurrentLocation();
     // Consume opening  /*
     Advance();
     Advance();
@@ -416,7 +486,7 @@ void Lexer::SkipBlockComment() {
         }
     }
     if (depth > 0) {
-        EmitError(CurrentLocation(), "unterminated block comment");
+        EmitError(start, "block comment is not terminated", "close the comment with '*/'");
     }
 }
 
@@ -455,20 +525,21 @@ Token Lexer::ScanNumber(SourceLocation start) {
             return ScanIntLiteral(start, tokenStart);
         }
     }
-    // Decimal integer digits
-    while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek()))) {
+    bool invalidSeparator = false;
+    bool previousWasDigit = false;
+    while (!IsAtEnd() && (std::isdigit(static_cast<unsigned char>(Peek())) || Peek() == '_')) {
+        if (Peek() == '_') {
+            invalidSeparator |= !previousWasDigit || !std::isdigit(static_cast<unsigned char>(Peek(1)));
+            previousWasDigit = false;
+        }
+        else {
+            previousWasDigit = true;
+        }
         Advance();
     }
-    if (Peek() == '_') {
-        while (!IsAtEnd()) {
-            const char c = Peek();
-            if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
-                break;
-            }
-            Advance();
-        }
-        EmitError(start, "invalid numeric literal");
-        return MakeToken(TokenKind::IntLiteral, start, tokenStart);
+    if (invalidSeparator) {
+        EmitError(start, "numeric separator '_' must appear between digits", "write digit separators like '1_000'",
+                  std::string(LiteralDocumentation));
     }
     // Check for floating-point  .  or  e/E
     const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
@@ -503,33 +574,51 @@ Token Lexer::ScanIntLiteral(SourceLocation start, std::size_t tokenStart) {
     // (e.g. 0xFFu) can follow, exactly like the decimal literal path in
     // ScanNumber.
     std::size_t digitCount = 0;
-    bool hasUnderscore = false;
+    bool invalidSeparator = false;
+    bool previousWasDigit = false;
     while (!IsAtEnd()) {
         const char c = Peek();
-        bool valid = false;
-        if (c >= '0' && c <= '9') {
-            valid = c - '0' < base;
-        }
-        else if (base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            valid = true;
-        }
-        else if (c == '_') {
-            valid = true;
-            hasUnderscore = true;
-        }
-        if (!valid) {
+        if (!IsDigitForBase(c, base) && c != '_') {
             break;
         }
-        if (c != '_') {
+        if (c == '_') {
+            invalidSeparator |= !previousWasDigit || !IsDigitForBase(Peek(1), base);
+            previousWasDigit = false;
+        }
+        else {
             ++digitCount;
+            previousWasDigit = true;
         }
         Advance();
     }
     if (digitCount == 0) {
-        EmitError(start, "expected digits after base prefix");
+        while (!IsAtEnd() && (std::isalnum(static_cast<unsigned char>(Peek())) || Peek() == '_')) {
+            Advance();
+        }
+        const std::string_view prefix(source.data() + tokenStart, 2);
+        EmitError(start, std::format("{} literal requires at least one digit after '{}'", BaseName(base), prefix),
+                  base == 16  ? "write a hexadecimal literal like '0x2A'"
+                  : base == 8 ? "write an octal literal like '0o52'"
+                              : "write a binary literal like '0b101010'",
+                  std::string(LiteralDocumentation));
+        return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
-    if (hasUnderscore) {
-        EmitError(start, "invalid numeric literal");
+    if (invalidSeparator) {
+        EmitError(start, "numeric separator '_' must appear between digits", "write separators like '0xFF_FF'",
+                  std::string(LiteralDocumentation));
+    }
+    if (std::isdigit(static_cast<unsigned char>(Peek()))) {
+        const char invalidDigit = Peek();
+        while (!IsAtEnd() && (std::isalnum(static_cast<unsigned char>(Peek())) || Peek() == '_')) {
+            Advance();
+        }
+        EmitError(
+            start,
+            std::format("digit '{}' is not valid in {} {} literal", invalidDigit, base == 8 ? "an" : "a",
+                        BaseName(base)),
+            std::format("use only {} digits after the base prefix", base == 2 ? "'0' and '1'" : "'0' through '7'"),
+            std::string(LiteralDocumentation));
+        return MakeToken(TokenKind::IntLiteral, start, tokenStart);
     }
     ConsumeNumberSuffix(start);
     return MakeToken(TokenKind::IntLiteral, start, tokenStart);
@@ -539,22 +628,50 @@ Token Lexer::ScanFloatSuffix(SourceLocation start, std::size_t tokenStart) {
     // Fractional part
     if (Peek() == '.') {
         Advance(); // consume  .
-        while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek()))) {
+        bool previousWasDigit = false;
+        bool invalidSeparator = false;
+        while (!IsAtEnd() && (std::isdigit(static_cast<unsigned char>(Peek())) || Peek() == '_')) {
+            if (Peek() == '_') {
+                invalidSeparator |= !previousWasDigit || !std::isdigit(static_cast<unsigned char>(Peek(1)));
+                previousWasDigit = false;
+            }
+            else {
+                previousWasDigit = true;
+            }
             Advance();
+        }
+        if (invalidSeparator) {
+            EmitError(start, "numeric separator '_' must appear between digits", "write a fraction like '1.25_00'",
+                      std::string(LiteralDocumentation));
         }
     }
     // Exponent part  e[+-]digits
     if (Peek() == 'e' || Peek() == 'E') {
-        Advance();
+        const SourceLocation exponent = CurrentLocation();
+        const char marker = Advance();
         if (Peek() == '+' || Peek() == '-') {
             Advance();
         }
         if (!std::isdigit(static_cast<unsigned char>(Peek()))) {
-            EmitError(start, "expected digits after exponent");
+            EmitError(exponent, std::format("exponent requires at least one digit after '{}'", marker),
+                      "write an exponent like '1.5e+2'", std::string(LiteralDocumentation));
         }
         else {
-            while (!IsAtEnd() && std::isdigit(static_cast<unsigned char>(Peek()))) {
+            bool invalidSeparator = false;
+            bool previousWasDigit = false;
+            while (!IsAtEnd() && (std::isdigit(static_cast<unsigned char>(Peek())) || Peek() == '_')) {
+                if (Peek() == '_') {
+                    invalidSeparator |= !previousWasDigit || !std::isdigit(static_cast<unsigned char>(Peek(1)));
+                    previousWasDigit = false;
+                }
+                else {
+                    previousWasDigit = true;
+                }
                 Advance();
+            }
+            if (invalidSeparator) {
+                EmitError(exponent, "numeric separator '_' must appear between exponent digits",
+                          "write an exponent like '1e1_000'", std::string(LiteralDocumentation));
             }
         }
     }
@@ -579,7 +696,9 @@ void Lexer::ConsumeNumberSuffix(const SourceLocation start) {
         "i", "i8", "i16", "i32", "i64", "u", "u8", "u16", "u32", "u64", "f32", "f64",
     };
     if (std::find(std::begin(validSuffixes), std::end(validSuffixes), suffix) == std::end(validSuffixes)) {
-        EmitError(start, "invalid numeric literal");
+        EmitError(start, std::format("numeric literal suffix '{}' is not recognized", suffix),
+                  "use 'i', 'i8', 'i16', 'i32', 'i64', 'u', 'u8', 'u16', 'u32', 'u64', 'f32', or 'f64'",
+                  std::string(LiteralDocumentation));
     }
 }
 
@@ -592,11 +711,22 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
     std::string value;
     while (!IsAtEnd() && Peek() != '"') {
         if (Peek() == '\n') {
-            EmitError(start, "unterminated string literal");
-            break;
+            EmitError(start, "string literal is not terminated before the end of the line",
+                      "add a closing '\"' before the line ends", std::string(LiteralDocumentation));
+            return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
         }
         if (Peek() == '\\') {
+            const bool incomplete = Peek(1) == '\0' || Peek(1) == '\n';
+            const std::size_t diagnosticCount = diagnostics.size();
             value += ScanEscapeSequence();
+            if (incomplete || (diagnostics.size() != diagnosticCount && (IsAtEnd() || Peek() == '\n'))) {
+                return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
+            }
+        }
+        else if (static_cast<unsigned char>(Peek()) < 0x20) {
+            const auto control = static_cast<unsigned char>(Advance());
+            EmitError(start, std::format("string literal contains unescaped control byte 0x{:02X}", control),
+                      "use a supported escape sequence instead", std::string(LiteralDocumentation));
         }
         else {
             value += Advance();
@@ -604,7 +734,8 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
     }
 
     if (IsAtEnd()) {
-        EmitError(start, "unterminated string literal");
+        EmitError(start, "string literal is not terminated before the end of the file", "add a closing '\"'",
+                  std::string(LiteralDocumentation));
     }
     else {
         Advance(); // consume closing  "
@@ -621,17 +752,53 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
         Advance();
     }
     Advance(); // consume opening  '
-    if (IsAtEnd() || Peek() == '\'') {
-        EmitError(start, "empty character literal");
+    if (IsAtEnd()) {
+        EmitError(start, "character literal is not terminated before the end of the file", "add a character and '\''",
+                  std::string(LiteralDocumentation));
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
     }
-    else if (Peek() == '\\') {
+    if (Peek() == '\'') {
+        Advance();
+        EmitError(start, "character literal is empty", "put exactly one character between the quotes",
+                  std::string(LiteralDocumentation));
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+    }
+    if (Peek() == '\n') {
+        EmitError(start, "character literal is not terminated before the end of the line", "add a closing '\''",
+                  std::string(LiteralDocumentation));
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+    }
+    if (Peek() == '\\') {
+        const std::size_t diagnosticCount = diagnostics.size();
         ScanEscapeSequence();
+        if (diagnostics.size() != diagnosticCount) {
+            while (!IsAtEnd() && Peek() != '\n' && Peek() != '\'') {
+                AdvanceUtf8CodePoint();
+            }
+            Match('\'');
+            return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        }
     }
     else {
         AdvanceUtf8CodePoint();
     }
-    if (!Match('\'')) {
-        EmitError(start, "unterminated character literal");
+    if (Match('\'')) {
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+    }
+
+    while (!IsAtEnd() && Peek() != '\n' && Peek() != '\'') {
+        AdvanceUtf8CodePoint();
+    }
+    if (Match('\'')) {
+        EmitError(start, "character literal contains more than one character",
+                  "use a string literal for text or keep exactly one character between the quotes",
+                  std::string(LiteralDocumentation));
+    }
+    else {
+        EmitError(start,
+                  IsAtEnd() ? "character literal is not terminated before the end of the file"
+                            : "character literal is not terminated before the end of the line",
+                  "add a closing '\''", std::string(LiteralDocumentation));
     }
     return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
 }
@@ -642,7 +809,13 @@ std::string Lexer::ScanEscapeSequence() {
     const SourceLocation loc = CurrentLocation();
     Advance(); // consume backslash
     if (IsAtEnd()) {
-        EmitError(loc, "unexpected end of file in escape sequence");
+        EmitError(loc, "escape sequence is not complete before the end of the file",
+                  "write a supported escape such as '\\n' or '\\u{1F600}'", std::string(LiteralDocumentation));
+        return {};
+    }
+    if (Peek() == '\n') {
+        EmitError(loc, "escape sequence is not complete before the end of the line",
+                  "write a supported escape such as '\\n'", std::string(LiteralDocumentation));
         return {};
     }
     const char c = Advance();
@@ -672,12 +845,20 @@ std::string Lexer::ScanEscapeSequence() {
     case 'u': {
         // Unicode escape  \u{XXXX}  or  \u{XXXXXXXX}
         if (!Match('{')) {
-            EmitError(loc, "expected '{' after '\\u'");
+            EmitError(loc, "Unicode escape requires '{' after '\\u'", "write the escape like '\\u{1F600}'",
+                      std::string(LiteralDocumentation));
             return {};
         }
-        unsigned int codepoint = 0;
+        std::uint32_t codepoint = 0;
         int digits = 0;
+        bool invalidDigit = false;
+        bool tooManyDigits = false;
         while (!IsAtEnd() && Peek() != '}') {
+            if (Peek() == '\n') {
+                EmitError(loc, "Unicode escape is not terminated before the end of the line",
+                          "close the escape with '}'", std::string(LiteralDocumentation));
+                return {};
+            }
             const char h = Advance();
             int val = -1;
             if (h >= '0' && h <= '9') {
@@ -690,23 +871,46 @@ std::string Lexer::ScanEscapeSequence() {
                 val = h - 'A' + 10;
             }
             else {
-                EmitError(loc, std::string("invalid hex digit '") + h + "' in Unicode escape");
-                return {};
+                invalidDigit = true;
+                continue;
             }
-            // Limit to 8 hex digits (32-bit codepoint max)
             if (digits >= 8) {
-                EmitError(loc, "Unicode codepoint value too large (max 8 hex digits)");
-                return {};
+                tooManyDigits = true;
+                continue;
             }
             codepoint = (codepoint << 4) | val;
             ++digits;
         }
         if (!Match('}')) {
-            EmitError(loc, "expected '}' after Unicode codepoint");
+            EmitError(loc, "Unicode escape is not terminated before the end of the file", "close the escape with '}'",
+                      std::string(LiteralDocumentation));
+            return {};
+        }
+        if (invalidDigit) {
+            EmitError(loc, "Unicode escape contains a non-hexadecimal digit",
+                      "use only digits '0'-'9', 'a'-'f', or 'A'-'F'", std::string(LiteralDocumentation));
+            return {};
+        }
+        if (digits == 0) {
+            EmitError(loc, "Unicode escape requires at least one hexadecimal digit", "write the escape like '\\u{41}'",
+                      std::string(LiteralDocumentation));
+            return {};
+        }
+        if (tooManyDigits) {
+            EmitError(loc, "Unicode escape contains more than eight hexadecimal digits",
+                      "use a Unicode scalar value from '\\u{0}' through '\\u{10FFFF}'",
+                      std::string(LiteralDocumentation));
             return {};
         }
         if (codepoint > 0x10FFFF) {
-            EmitError(loc, "Unicode codepoint value out of range (max 0x10FFFF)");
+            EmitError(loc, std::format("Unicode escape U+{:X} is above the maximum scalar value U+10FFFF", codepoint),
+                      "use a value from '\\u{0}' through '\\u{10FFFF}'", std::string(LiteralDocumentation));
+            return {};
+        }
+        if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
+            EmitError(loc, std::format("Unicode escape U+{:04X} is a surrogate, not a scalar value", codepoint),
+                      "use the scalar value for the character instead of a UTF-16 surrogate",
+                      std::string(LiteralDocumentation));
             return {};
         }
         // Encode as UTF-8
@@ -732,7 +936,9 @@ std::string Lexer::ScanEscapeSequence() {
         return result;
     }
     default:
-        EmitError(loc, std::string("unknown escape sequence '\\") + c + "'");
+        EmitError(loc, std::format("escape sequence '\\{}' is not recognized", c),
+                  R"(use '\n', '\t', '\r', '\a', '\b', '\f', '\v', '\0', '\\', '\'', '\"', or '\u{...}')",
+                  std::string(LiteralDocumentation));
         return {};
     }
 }
@@ -884,21 +1090,46 @@ Token Lexer::ScanUnknown(const SourceLocation start) {
     // '$' used to mark a compiler-initialized constant, so point at its
     // replacement rather than report it as line noise.
     if (source[tokenStart] == '$') {
-        EmitError(start, "'$' is no longer part of a declaration; write 'intrinsic #name: Type;'");
+        EmitError(start, "'$' declarations are no longer supported",
+                  "replace 'const $name: Type;' with 'intrinsic #name: Type;'");
     }
     else {
-        EmitError(start, std::string("unexpected character '") + source[tokenStart] + "'");
+        const auto byte = static_cast<unsigned char>(source[tokenStart]);
+        if (byte >= 0x80) {
+            const auto decoded = DecodeUtf8(std::string_view(source).substr(tokenStart));
+            assert(decoded.has_value());
+            for (std::size_t i = 1; i < decoded->width; ++i) {
+                Advance();
+            }
+            const std::string fragment = source.substr(tokenStart, decoded->width);
+            EmitError(start, std::format("unexpected character '{}' (U+{:04X})", fragment, decoded->codePoint),
+                      "remove the character or replace it with a valid Rux token");
+        }
+        else if (std::iscntrl(byte)) {
+            EmitError(start, std::format("unexpected control byte 0x{:02X}", byte),
+                      "remove the control byte or use whitespace accepted by Rux");
+        }
+        else {
+            EmitError(start, std::format("unexpected character '{}'", source[tokenStart]),
+                      "remove the character or replace it with a valid Rux token");
+        }
     }
-    return Token{TokenKind::Unknown, source.substr(tokenStart, 1), start};
+    return Token{TokenKind::Unknown, source.substr(tokenStart, pos - tokenStart), start};
 }
 
 Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
     return Token{kind, source.substr(tokenStart, pos - tokenStart), start};
 }
 
-void Lexer::EmitError(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(
-        LexerDiagnostic{LexerDiagnostic::Severity::Error, sourceName, loc, std::move(message), {}, {}, {}});
+void Lexer::EmitError(const SourceLocation loc, std::string message, std::optional<std::string> help,
+                      std::optional<std::string> documentationUrl) {
+    diagnostics.push_back(LexerDiagnostic{LexerDiagnostic::Severity::Error,
+                                          sourceName,
+                                          loc,
+                                          std::move(message),
+                                          {},
+                                          std::move(help),
+                                          std::move(documentationUrl)});
 }
 
 void Lexer::EmitWarning(const SourceLocation loc, std::string message) {

@@ -15,11 +15,14 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
     const auto srcDir = manifestDir / "Src";
     if (!std::filesystem::exists(srcDir)) {
         result.diagnostics.push_back(
-            ErrorDiagnostic(std::format("source directory '{}' does not exist", srcDir.string())));
+            ErrorDiagnostic(std::format("source directory '{}' does not exist", srcDir.string()), {},
+                            "create a 'Src' directory containing at least one '.rux' file"));
         return result;
     }
     if (!std::filesystem::is_directory(srcDir)) {
-        result.diagnostics.push_back(ErrorDiagnostic(std::format("'{}' is not a directory", srcDir.string())));
+        result.diagnostics.push_back(
+            ErrorDiagnostic(std::format("source path '{}' is not a directory", srcDir.string()), {},
+                            "replace it with a 'Src' directory"));
         return result;
     }
     const auto paths = CollectSourcePaths(srcDir);
@@ -35,7 +38,8 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
     for (const auto &path : paths) {
         auto file = LoadFile(path);
         if (!file) {
-            result.diagnostics.push_back(ErrorDiagnostic(std::format("cannot read source file '{}'", path.string())));
+            result.diagnostics.push_back(ErrorDiagnostic(std::format("cannot read source file '{}'", path.string()), {},
+                                                         "check that the file is readable"));
             continue;
         }
         result.files.push_back(std::move(*file));
@@ -44,7 +48,7 @@ SourceLoadResult SourceLoader::Load(const std::filesystem::path &manifestDir) {
 }
 
 std::optional<SourceFile> SourceLoader::LoadFile(const std::filesystem::path &path) {
-    std::ifstream stream(path);
+    std::ifstream stream(path, std::ios::binary);
     if (!stream) {
         return std::nullopt;
     }

@@ -55,6 +55,7 @@ TEST_CASE("source loader reports a missing source directory as a diagnostic") {
     CHECK_EQ(result.diagnostics.front().location.offset, 0);
     CHECK_EQ(result.diagnostics.front().message,
              "source directory '" + (fixture.root / "Src").string() + "' does not exist");
+    CHECK(result.diagnostics.front().help->contains("'.rux' file"));
 }
 
 TEST_CASE("source loader rejects a source path that is not a directory") {
@@ -65,7 +66,9 @@ TEST_CASE("source loader rejects a source path that is not a directory") {
     CHECK(result.files.empty());
     REQUIRE_EQ(result.diagnostics.size(), 1);
     CHECK(result.HasErrors());
-    CHECK_EQ(result.diagnostics.front().message, "'" + (fixture.root / "Src").string() + "' is not a directory");
+    CHECK_EQ(result.diagnostics.front().message,
+             "source path '" + (fixture.root / "Src").string() + "' is not a directory");
+    CHECK(result.diagnostics.front().help->contains("'Src' directory"));
 }
 
 TEST_CASE("source loader reports an empty source tree without failing") {
