@@ -209,6 +209,11 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
     copts.dumpRcu = dumpRcu;
     CompilerDriver driver(std::move(copts));
     const CompileResult result = driver.Compile();
+    for (const auto &inspection : result.inspectionOutputs) {
+        output.Success("Emitted", InspectionHeading(inspection.kind));
+        output.Detail(std::format("Description: {}", InspectionDescription(inspection.kind)));
+        output.Detail(std::format("Output: {}", DisplayPath(inspection.path, packageRoot)));
+    }
     if (!result.ok) {
         return 1;
     }

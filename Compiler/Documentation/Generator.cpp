@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -406,11 +407,22 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
 }
 
-bool WriteFile(const std::filesystem::path &path, const std::string_view value, std::string &error) {
+Diagnostic FilesystemFailure(std::string message, const std::error_code error, std::optional<std::string> help = {}) {
+    return ErrorDiagnostic(std::move(message), {std::format("filesystem error {}: {}", error.value(), error.message())},
+                           std::move(help));
+}
+
+bool WriteFile(const std::filesystem::path &path, const std::string_view value, Diagnostic &error) {
+    errno = 0;
     std::ofstream output(path, std::ios::binary | std::ios::trunc);
     output << value;
     if (!output) {
-        error = "failed to write '" + path.string() + "'";
+        std::error_code writeError(errno, std::generic_category());
+        if (!writeError) {
+            writeError = std::make_error_code(std::errc::io_error);
+        }
+        error = FilesystemFailure(std::format("could not write generated documentation file '{}'", path.string()),
+                                  writeError, "check that the output path is writable and has enough free space");
         return false;
     }
     return true;
@@ -418,24 +430,49 @@ bool WriteFile(const std::filesystem::path &path, const std::string_view value, 
 } // namespace
 
 bool Generate(const Manifest &manifest, const std::span<const ParseResult> modules, const GenerateOptions &options,
-              std::string &error) {
+              Diagnostic &error) {
     std::error_code ec;
     const auto output = std::filesystem::absolute(options.outputDirectory, ec).lexically_normal();
     if (ec) {
-        error = "failed to resolve the documentation output directory";
+        error = FilesystemFailure(
+            std::format("could not resolve documentation output directory '{}'", options.outputDirectory.string()), ec,
+            "choose a valid path with '--output <dir>'");
         return false;
     }
-    if (std::filesystem::exists(output, ec) && !std::filesystem::is_empty(output, ec) &&
-        !std::filesystem::exists(output / MarkerName, ec)) {
-        error = "refusing to replace non-empty unmarked directory '" + output.string() + "'";
+    const bool outputExists = std::filesystem::exists(output, ec);
+    if (ec) {
+        error = FilesystemFailure(std::format("could not inspect documentation output directory '{}'", output.string()),
+                                  ec);
         return false;
+    }
+    if (outputExists) {
+        const bool outputEmpty = std::filesystem::is_empty(output, ec);
+        if (ec) {
+            error = FilesystemFailure(
+                std::format("could not inspect documentation output directory '{}'", output.string()), ec);
+            return false;
+        }
+        const bool managed = outputEmpty || std::filesystem::exists(output / MarkerName, ec);
+        if (ec) {
+            error = FilesystemFailure(
+                std::format("could not inspect documentation marker '{}'", (output / MarkerName).string()), ec);
+            return false;
+        }
+        if (!managed) {
+            error =
+                ErrorDiagnostic(std::format("refusing to replace non-empty unmarked directory '{}'", output.string()),
+                                {}, "choose an empty output directory or remove its contents");
+            return false;
+        }
     }
 
     const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto temporary = output.parent_path() / std::format(".rux-docs-tmp-{}", nonce);
     std::filesystem::create_directories(temporary, ec);
     if (ec) {
-        error = "failed to create temporary documentation directory: " + ec.message();
+        error = FilesystemFailure(
+            std::format("could not create temporary documentation directory '{}'", temporary.string()), ec,
+            "check that the output directory's parent is writable");
         return false;
     }
 
@@ -504,15 +541,19 @@ bool Generate(const Manifest &manifest, const std::span<const ParseResult> modul
         std::filesystem::remove_all(temporary, ec);
         return false;
     }
-    if (std::filesystem::exists(output, ec))
+    if (std::filesystem::exists(output, ec)) {
         std::filesystem::remove_all(output, ec);
+    }
     if (ec) {
-        error = "failed to replace managed documentation directory: " + ec.message();
+        error =
+            FilesystemFailure(std::format("could not replace managed documentation directory '{}'", output.string()),
+                              ec, "close programs using the generated documentation and try again");
         return false;
     }
     std::filesystem::rename(temporary, output, ec);
     if (ec) {
-        error = "failed to install generated documentation: " + ec.message();
+        error = FilesystemFailure(std::format("could not install generated documentation at '{}'", output.string()), ec,
+                                  "check that the output directory's parent is writable");
         return false;
     }
     return true;

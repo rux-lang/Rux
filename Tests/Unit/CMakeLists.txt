@@ -46,6 +46,7 @@ set(RUX_TEST_SOURCES
     DiagnosticsTests.cpp
     DocumentationTests.cpp
     GoldenDiagnosticsTests.cpp
+    InspectionOutputTests.cpp
     JsonTests.cpp
     LexerTests.cpp
     LinearScanTests.cpp

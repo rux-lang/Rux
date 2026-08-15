@@ -24,6 +24,7 @@
 #include "Syntax/Ast/Ast.h"
 #include "System/Os.h"
 
+#include <cerrno>
 #include <charconv>
 #include <chrono>
 #include <format>
@@ -42,6 +43,30 @@ std::string_view CompilePhaseName(const CompilePhase phase) noexcept {
         "Analyzing",         "Lowering to HIR",      "Optimizing HIR", "Lowering to LIR", "Optimizing LIR",
         "Emitting assembly", "Emitting RCU objects", "Linking"};
     return names[std::to_underlying(phase)];
+}
+
+std::string_view InspectionHeading(const InspectionKind kind) noexcept {
+    static constexpr std::string_view headings[]{"token inspection output",
+                                                 "AST inspection output",
+                                                 "semantic inspection output",
+                                                 "HIR inspection output",
+                                                 "LIR inspection output",
+                                                 "assembly inspection output",
+                                                 "RCU object",
+                                                 "RCU inspection output"};
+    return headings[std::to_underlying(kind)];
+}
+
+std::string_view InspectionDescription(const InspectionKind kind) noexcept {
+    static constexpr std::string_view descriptions[]{"lexical tokens and source locations",
+                                                     "parsed abstract syntax tree",
+                                                     "resolved symbols and semantic diagnostics",
+                                                     "high-level intermediate representation",
+                                                     "low-level intermediate representation",
+                                                     "x86-64 textual assembly",
+                                                     "binary Rux Compiled Unit",
+                                                     "human-readable Rux Compiled Unit"};
+    return descriptions[std::to_underlying(kind)];
 }
 
 CompilerDriver::CompilerDriver(CompileOptions options)
@@ -131,6 +156,32 @@ void CompilerDriver::RememberSources(const std::span<const SourceFile> sources) 
     }
 }
 
+bool CompilerDriver::WriteInspectionOutput(const InspectionKind kind, const std::filesystem::path &path,
+                                           const std::function<bool()> &write) {
+    std::error_code directoryError;
+    std::filesystem::create_directories(path.parent_path(), directoryError);
+    if (directoryError) {
+        Emit(ErrorDiagnostic(std::format("could not write {} to '{}'", InspectionHeading(kind), path.string()),
+                             {std::format("filesystem error {}: {}", directoryError.value(), directoryError.message())},
+                             "check that the destination directory is writable and is not an existing file"));
+        return false;
+    }
+
+    errno = 0;
+    if (!write()) {
+        std::error_code writeError(errno, std::generic_category());
+        if (!writeError) {
+            writeError = std::make_error_code(std::errc::io_error);
+        }
+        Emit(ErrorDiagnostic(std::format("could not write {} to '{}'", InspectionHeading(kind), path.string()),
+                             {std::format("filesystem error {}: {}", writeError.value(), writeError.message())},
+                             "check that the destination path is writable and has enough free space"));
+        return false;
+    }
+    inspectionOutputs.push_back({kind, path});
+    return true;
+}
+
 std::optional<std::string_view> CompilerDriver::LookupSourceLine(const std::string_view sourceName,
                                                                  const std::size_t lineNumber) const {
     const auto found = loadedSourceTexts.find(std::string(sourceName));
@@ -154,6 +205,7 @@ CompileResult CompilerDriver::Compile() {
         stats.peakMemoryBytes = PeakMemoryBytes();
         result.stats = stats;
         result.diagnostics = diagnostics;
+        result.inspectionOutputs = inspectionOutputs;
     };
     BeginPhase(CompilePhase::Configuring, opts.manifest.package.name.Text(), opts.manifestPath);
     if (invalidSourceDateEpoch) {
@@ -240,6 +292,7 @@ bool CompilerDriver::LexAndParseSources() {
 
     // Lex
     bool lexErrors = false;
+    bool inspectionErrors = false;
     std::vector<LexerResult> lexResults;
     lexResults.reserve(loadResult.files.size());
     const auto lexingStart = std::chrono::steady_clock::now();
@@ -252,17 +305,16 @@ bool CompilerDriver::LexAndParseSources() {
             lexErrors = true;
         }
         if (opts.dumpTokens) {
-            auto tempDir = root / "Temp" / "Tokens";
-            std::filesystem::create_directories(tempDir);
             auto rel = std::filesystem::relative(file.path, root / "Src");
-            auto tokPath = tempDir / rel;
+            auto tokPath = root / "Temp" / "Tokens" / rel;
             tokPath.replace_extension(".tokens");
-            Lexer::DumpTokens(lexResult, tokPath);
+            inspectionErrors |= !WriteInspectionOutput(InspectionKind::Tokens, tokPath,
+                                                       [&] { return Lexer::DumpTokens(lexResult, tokPath); });
         }
         lexResults.push_back(std::move(lexResult));
     }
     stats.lexing += ElapsedMs(lexingStart);
-    if (lexErrors) {
+    if (lexErrors || inspectionErrors) {
         hadErrors = true;
         if (!opts.checkOnly) {
             return false;
@@ -299,16 +351,15 @@ bool CompilerDriver::LexAndParseSources() {
             }
         }
         if (opts.dumpAst) {
-            auto tempDir = root / "Temp" / "Ast";
-            std::filesystem::create_directories(tempDir);
             auto rel = std::filesystem::relative(file.path, root / "Src");
-            auto astPath = (tempDir / rel).replace_extension(".ast");
-            Parser::DumpAst(parseResult, astPath);
+            auto astPath = (root / "Temp" / "Ast" / rel).replace_extension(".ast");
+            inspectionErrors |= !WriteInspectionOutput(InspectionKind::Ast, astPath,
+                                                       [&] { return Parser::DumpAst(parseResult, astPath); });
         }
         parseResults.push_back(std::move(parseResult));
     }
     stats.parsing += ElapsedMs(parsingStart);
-    if (parseErrors) {
+    if (parseErrors || inspectionErrors) {
         hadErrors = true;
         if (!opts.checkOnly) {
             return false;
@@ -546,9 +597,11 @@ bool CompilerDriver::Analyze() {
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {
-        auto semaDir = root / "Temp" / "Sema";
-        std::filesystem::create_directories(semaDir);
-        SemanticPrinter::Dump(*semanticModel, semaDir / "sema.txt");
+        const auto semaPath = root / "Temp" / "Sema" / "sema.txt";
+        if (!WriteInspectionOutput(InspectionKind::Semantic, semaPath,
+                                   [&] { return SemanticPrinter::Dump(*semanticModel, semaPath); })) {
+            return false;
+        }
     }
     if (semanticModel->HasErrors()) {
         hadErrors = true;
@@ -569,9 +622,11 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         return false;
     }
     if (opts.dumpHir) {
-        auto hirDir = root / "Temp" / "Hir";
-        std::filesystem::create_directories(hirDir);
-        HirPrinter::Dump(hirPackage, hirDir / "hir.txt");
+        const auto hirPath = root / "Temp" / "Hir" / "hir.txt";
+        if (!WriteInspectionOutput(InspectionKind::Hir, hirPath,
+                                   [&] { return HirPrinter::Dump(hirPackage, hirPath); })) {
+            return false;
+        }
     }
     const ArtifactKind artifactKind = PackageArtifactKind(opts.manifest.package.type);
     auto optimizationPipeline =
@@ -605,9 +660,11 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     stats.prunedExternDeclarations = lirOptimization.lirPruning.externDeclarations;
     stats.estimatedLirNodesEliminated = lirOptimization.lirPruning.estimatedIrNodes;
     if (opts.dumpLir) {
-        auto lirDir = root / "Temp" / "Lir";
-        std::filesystem::create_directories(lirDir);
-        LirPrinter::Dump(lirPackage, lirDir / "lir.txt");
+        const auto lirPath = root / "Temp" / "Lir" / "lir.txt";
+        if (!WriteInspectionOutput(InspectionKind::Lir, lirPath,
+                                   [&] { return LirPrinter::Dump(lirPackage, lirPath); })) {
+            return false;
+        }
     }
     stats.lir = ElapsedMs(lirStart);
 
@@ -618,9 +675,20 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
     // end has no printer of its own yet.
     if (opts.dumpAsm && !isAArch64) {
         BeginPhase(CompilePhase::EmittingAssembly, opts.manifest.package.name.Text());
-        auto asmDir = root / "Temp" / "Asm";
-        std::filesystem::create_directories(asmDir);
-        AssemblyPrinter::Emit(lirPackage, asmDir / "out.asm", compileTimeContext.target.os);
+        const auto asmPath = root / "Temp" / "Asm" / "out.asm";
+        if (!WriteInspectionOutput(InspectionKind::Assembly, asmPath, [&] {
+                return AssemblyPrinter::Emit(lirPackage, asmPath, compileTimeContext.target.os);
+            })) {
+            return false;
+        }
+    }
+    else if (opts.dumpAsm) {
+        Diagnostic unavailable;
+        unavailable.severity = Diagnostic::Severity::Warning;
+        unavailable.message =
+            std::format("assembly inspection output is unavailable for target '{}'", opts.target.CanonicalName());
+        unavailable.notes.push_back("textual assembly inspection is currently supported only for x86-64 targets");
+        Emit(unavailable);
     }
 
     // RCU object generation
@@ -650,16 +718,19 @@ bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
         }
     }
     if (opts.dumpRcu) {
-        auto objDir = root / "Temp" / "Obj";
-        auto dumpDir = root / "Temp" / "Rcu";
-        std::filesystem::create_directories(objDir);
-        std::filesystem::create_directories(dumpDir);
-
+        bool inspectionErrors = false;
         for (const auto &rcuFile : rcuFiles) {
             std::filesystem::path stem = rcuFile.sourcePath.empty() ? std::filesystem::path("out")
                                                                     : std::filesystem::path(rcuFile.sourcePath).stem();
-            RcuWriter::Write(rcuFile, objDir / (stem.string() + ".rcu"));
-            RcuDumper::Dump(rcuFile, dumpDir / (stem.string() + ".rcu.txt"));
+            const auto objectPath = root / "Temp" / "Obj" / (stem.string() + ".rcu");
+            const auto dumpPath = root / "Temp" / "Rcu" / (stem.string() + ".rcu.txt");
+            inspectionErrors |= !WriteInspectionOutput(InspectionKind::RcuObject, objectPath,
+                                                       [&] { return RcuWriter::Write(rcuFile, objectPath); });
+            inspectionErrors |= !WriteInspectionOutput(InspectionKind::Rcu, dumpPath,
+                                                       [&] { return RcuDumper::Dump(rcuFile, dumpPath); });
+        }
+        if (inspectionErrors) {
+            return false;
         }
     }
     stats.codegen = ElapsedMs(codegenStart);

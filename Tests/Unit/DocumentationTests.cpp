@@ -61,7 +61,7 @@ TEST_CASE("documentation generator escapes content and protects unmanaged direct
     std::filesystem::create_directories(root, ec);
     REQUIRE_FALSE(ec);
     const auto output = root / "site";
-    std::string error;
+    Diagnostic error;
     const std::array modules{std::move(parsed)};
     REQUIRE(
         Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = output}, error));
@@ -83,7 +83,35 @@ TEST_CASE("documentation generator escapes content and protects unmanaged direct
     std::ofstream(unmanaged / "keep.txt") << "keep";
     CHECK_FALSE(
         Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = unmanaged}, error));
-    CHECK(error.contains("unmarked"));
+    CHECK(error.message.contains("unmarked"));
+    CHECK(error.help == "choose an empty output directory or remove its contents");
     CHECK(Read(unmanaged / "keep.txt") == "keep");
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("documentation generator reports destination paths and filesystem details") {
+    auto parsed = Parse("pub func Visible();\n");
+    auto loaded = Manifest::Parse("[Manifest]\nVersion = 1\n\n[Package]\nName = \"DocsFailure\"\n"
+                                  "Version = \"0.4.0\"\nType = \"SourceLibrary\"\n",
+                                  "Rux.toml");
+    REQUIRE(loaded.Ok());
+
+    const auto root = System::TempDirectory() / "rux-documentation-failure-unit";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    REQUIRE_FALSE(ec);
+    const auto blocked = root / "blocked";
+    std::ofstream(blocked) << "not a directory\n";
+
+    Diagnostic error;
+    const std::array modules{std::move(parsed)};
+    CHECK_FALSE(Documentation::Generate(*loaded.manifest, modules,
+                                        {.packageRoot = root, .outputDirectory = blocked / "site"}, error));
+    CHECK(error.message.contains("could not create temporary documentation directory"));
+    CHECK(error.message.contains(blocked.string()));
+    REQUIRE(error.notes.size() == 1);
+    CHECK(error.notes.front().starts_with("filesystem error "));
+    CHECK(error.help == "check that the output directory's parent is writable");
     std::filesystem::remove_all(root, ec);
 }

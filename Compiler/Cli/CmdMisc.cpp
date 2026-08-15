@@ -305,12 +305,12 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         if (!result.ok)
             return false;
 
-        std::string error;
+        Diagnostic error;
         const Documentation::GenerateOptions generateOptions{.packageRoot = packageManifestPath.parent_path(),
                                                              .outputDirectory = packageOutput,
                                                              .includePrivate = includePrivate};
         if (!Documentation::Generate(generatorManifest, result.modules, generateOptions, error)) {
-            diagnostics.Error(error);
+            diagnostics.Write(RenderDiagnostic(error, diagnostics.Style().enabled), MessageVisibility::Always);
             return false;
         }
         return true;

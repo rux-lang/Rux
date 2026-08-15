@@ -41,6 +41,25 @@ enum class CompilePhase {
     Linking,
 };
 
+enum class InspectionKind {
+    Tokens,
+    Ast,
+    Semantic,
+    Hir,
+    Lir,
+    Assembly,
+    RcuObject,
+    Rcu,
+};
+
+struct InspectionOutput {
+    InspectionKind kind;
+    std::filesystem::path path;
+};
+
+[[nodiscard]] std::string_view InspectionHeading(InspectionKind kind) noexcept;
+[[nodiscard]] std::string_view InspectionDescription(InspectionKind kind) noexcept;
+
 struct CompileProgress {
     CompilePhase phase;
     std::string_view subject;
@@ -93,6 +112,7 @@ struct CompileResult {
     BuildStats stats;
     std::vector<Diagnostic> diagnostics;
     std::vector<ParseResult> modules; // populated when captureFrontend succeeds
+    std::vector<InspectionOutput> inspectionOutputs;
 };
 
 class CompilerDriver {
@@ -107,6 +127,8 @@ private:
     // Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags);
     void RememberSources(std::span<const SourceFile> sources);
+    bool WriteInspectionOutput(InspectionKind kind, const std::filesystem::path &path,
+                               const std::function<bool()> &write);
     [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
                                                                    std::size_t lineNumber) const;
 
@@ -129,6 +151,7 @@ private:
     bool invalidSourceDateEpoch = false;
     std::optional<CompilePhase> currentPhase;
     std::vector<Diagnostic> diagnostics;
+    std::vector<InspectionOutput> inspectionOutputs;
     CompileTimeContext compileTimeContext;
 
     std::vector<ParseResult> parseResults;      // user modules
