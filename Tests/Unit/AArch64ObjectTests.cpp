@@ -878,7 +878,7 @@ TEST_CASE("AArch64 Mach-O objects encode symbol and section relocations with exp
     CHECK(localBranch.pcRelative);
     CHECK_FALSE(localBranch.external);
 
-    for (const auto [index, type, pcRelative] :
+    for (const auto &[index, type, pcRelative] :
          std::array{std::tuple{5U, 3U, true}, std::tuple{7U, 4U, false}, std::tuple{9U, 4U, false}}) {
         const auto record = object.Relocation(0, index);
         CHECK(record.symbol == 1);

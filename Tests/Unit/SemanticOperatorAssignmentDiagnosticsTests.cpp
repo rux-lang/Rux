@@ -225,3 +225,18 @@ TEST_CASE("cast and type-test diagnostics name source and target types") {
     CHECK_EQ(diagnostics[4].message, "cast from 'uint32' to 'char32' uses invalid surrogate code point U+D800");
     CHECK_EQ(diagnostics[5].message, "type test 'is Marker' is unavailable: interface checks are not implemented");
 }
+
+TEST_CASE("function values cast to and from pointers but not to scalars") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Load(address: *opaque) {
+            let callable = address as func() -> int;
+            let back = callable as *opaque;
+            let invalidTarget = 1 as func() -> int;
+            let invalidSource = callable as int;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'int' to 'func() -> int'");
+    CHECK_EQ(diagnostics[1].message, "cannot cast value of type 'func() -> int' to 'int'");
+}

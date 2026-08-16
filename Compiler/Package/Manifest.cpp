@@ -15,9 +15,6 @@ std::optional<ManifestDetail::Location> InvalidUtf8Location(const std::string_vi
     ManifestDetail::Location location;
     for (std::size_t offset = 0; offset < text.size();) {
         const auto lead = static_cast<unsigned char>(text[offset]);
-        std::size_t width = 1;
-        std::uint32_t codePoint = lead;
-        std::uint32_t minimum = 0;
         if (lead < 0x80) {
             if (lead == '\n') {
                 ++location.line;
@@ -29,6 +26,9 @@ std::optional<ManifestDetail::Location> InvalidUtf8Location(const std::string_vi
             ++offset;
             continue;
         }
+        std::size_t width = 0;
+        std::uint32_t codePoint = 0;
+        std::uint32_t minimum = 0;
         if ((lead & 0xE0U) == 0xC0U) {
             width = 2;
             codePoint = lead & 0x1FU;

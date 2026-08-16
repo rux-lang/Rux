@@ -1,9 +1,9 @@
 #include "Cli/PublicationProblem.h"
 #include "Package/PublicationValidation.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <format>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>

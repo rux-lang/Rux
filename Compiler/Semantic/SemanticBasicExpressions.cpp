@@ -155,6 +155,12 @@ bool IsAssignablePlace(const Expr &expression) noexcept {
     return unary && unary->op == TokenKind::Star;
 }
 
+// Addresses: a function value is the address of its entry point, so it converts
+// to and from pointers, but never to a numeric or character value.
+bool IsAddressValue(const TypeRef &type) noexcept {
+    return type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func;
+}
+
 bool IsCastValue(const TypeRef &type) noexcept {
     return type.IsNumeric() || type.IsBool() || IsCharacter(type) || type.kind == TypeRef::Kind::Pointer;
 }
@@ -222,8 +228,10 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
             const std::string typeName = NamedBaseTypeName(type);
             return !typeName.empty() && enumDecls.contains(typeName);
         };
-        if (!operandType.IsUnknown() && !targetType.IsUnknown() &&
-            (!isCastValue(operandType) || !isCastValue(targetType))) {
+        const bool involvesFunc = operandType.kind == TypeRef::Kind::Func || targetType.kind == TypeRef::Kind::Func;
+        const bool castable = involvesFunc ? IsAddressValue(operandType) && IsAddressValue(targetType)
+                                           : isCastValue(operandType) && isCastValue(targetType);
+        if (!operandType.IsUnknown() && !targetType.IsUnknown() && !castable) {
             EmitError(cast->location, std::format("cannot cast value of type '{}' to '{}'", operandType.ToString(),
                                                   targetType.ToString()));
         }
