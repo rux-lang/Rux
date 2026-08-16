@@ -660,6 +660,13 @@ bool Linker::LinkMachO64(const std::filesystem::path &outputPath) {
     image.insert(image.end(), codeSignature.begin(), codeSignature.end());
 
     std::filesystem::create_directories(outputPath.parent_path());
+    // Unlink before writing so the image lands on a fresh inode. The Darwin
+    // kernel caches code-signature validity per vnode: truncating a signed
+    // binary that has already been executed in place can leave the stale
+    // verdict attached, and the next exec of the rewritten file is then
+    // killed on arm64. Removing the old file first sidesteps the cache.
+    std::error_code removeError;
+    std::filesystem::remove(outputPath, removeError);
     std::ofstream output(outputPath, std::ios::binary | std::ios::trunc);
     if (!output) {
         Error("cannot open output file: " + outputPath.string());

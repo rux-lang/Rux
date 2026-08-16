@@ -606,9 +606,18 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std
     close(fds[1]);
     RunResult result;
     char buf[4096];
-    ssize_t n = 0;
-    while ((n = read(fds[0], buf, sizeof(buf))) > 0) {
-        result.output.append(buf, static_cast<std::size_t>(n));
+    // Drain until EOF; a signal delivered to this process must not truncate
+    // the captured output, so an EINTR-interrupted read is retried.
+    for (;;) {
+        const ssize_t n = read(fds[0], buf, sizeof(buf));
+        if (n > 0) {
+            result.output.append(buf, static_cast<std::size_t>(n));
+            continue;
+        }
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        break;
     }
     close(fds[0]);
     int status = 0;

@@ -182,9 +182,14 @@ Description = "preserve me"
     std::filesystem::create_directories(root / ".gitignore");
     {
         const ScopedCurrentDirectory current(root);
+        // init derives its root from the current directory, which the OS may
+        // report with symlinks resolved (macOS: /var -> /private/var), so the
+        // expected path must come from the resolved directory, not `root`.
+        const auto reportedRoot = std::filesystem::current_path();
         const auto failed = Run(std::array<std::string_view, 1>{"init"});
         CHECK(failed.exitCode == 1);
-        CHECK(failed.output.contains("error: could not write package file '" + (root / ".gitignore").string() + "'"));
+        CHECK(failed.output.contains("error: could not write package file '" + (reportedRoot / ".gitignore").string() +
+                                     "'"));
         CHECK(failed.output.contains("note: the path exists but is not a regular file"));
         CHECK(failed.output.contains("note: the destination contains"));
         CHECK(failed.output.contains("help: fix the reported path and run 'rux init' again"));

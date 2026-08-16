@@ -601,7 +601,10 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
     for (const auto &[dll, functions] : explicitImportsByDll) {
         auto dllPath = FindDllFile(dll, importSearchDirs, outputDir);
         if (!dllPath) {
-            Error("import DLL '" + dll + "' was not found");
+            // Export verification is best-effort: PE imports are resolved by
+            // name at load time, so the image links fine without the DLL. When
+            // cross-linking, target system DLLs (KERNEL32, ...) are legitimately
+            // absent from the host filesystem — a missing DLL is not an error.
             continue;
         }
 
