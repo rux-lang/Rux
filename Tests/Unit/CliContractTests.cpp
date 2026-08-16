@@ -102,7 +102,7 @@ TEST_CASE("CLI help uses only verified documentation routes") {
     constexpr std::array fallback = {"check", "info", "lint", "login", "logout", "pack", "publish"};
 
     for (const std::string_view command : dedicated) {
-        const auto expected = std::format("https://rux-lang.dev/cli/{}", command);
+        const auto expected = std::format("https://rux-lang.dev/docs/cli/{}", command);
         CHECK(DocumentationUrl(command) == expected);
         const auto *spec = FindCommand(command);
         REQUIRE(spec != nullptr);
@@ -110,12 +110,12 @@ TEST_CASE("CLI help uses only verified documentation routes") {
         CHECK(CliHelp::RenderJson("test-version", command).contains("\"documentationUrl\":\"" + expected + "\""));
     }
     for (const std::string_view command : fallback) {
-        CHECK(DocumentationUrl(command) == "https://rux-lang.dev/cli/");
+        CHECK(DocumentationUrl(command) == "https://rux-lang.dev/docs/cli");
         const auto *spec = FindCommand(command);
         REQUIRE(spec != nullptr);
-        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    https://rux-lang.dev/cli/\n"));
+        CHECK(CliHelp::RenderCommand(*spec, 48, false).contains("Documentation:\n    https://rux-lang.dev/docs/cli\n"));
         CHECK(CliHelp::RenderJson("test-version", command)
-                  .contains("\"documentationUrl\":\"https://rux-lang.dev/cli/\""));
+                  .contains("\"documentationUrl\":\"https://rux-lang.dev/docs/cli\""));
     }
 }
 

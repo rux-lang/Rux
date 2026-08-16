@@ -58,7 +58,7 @@ printf '%s\n' '#include <print>' 'void Leak() { std::print(stderr, "broken"); }'
 expect_failure direct-print
 
 reset_fixture
-printf '%s\n' 'const char *url = "https://rux-lang.dev/docs/cli/build";' \
+printf '%s\n' 'const char *url = "https://rux-lang.dev/cli/build";' \
     >"$fixture_root/Compiler/Feature/Message.cpp"
 expect_failure obsolete-cli-route
 

@@ -21,9 +21,9 @@ The compiler's package cache is stored separately under
 Documentation
 -------------
 Website:      https://rux-lang.dev
-Get started:  https://rux-lang.dev/start
-Reference:    https://rux-lang.dev/docs
-CLI:          https://rux-lang.dev/cli
+Get started:  https://rux-lang.dev/docs/start
+Reference:    https://rux-lang.dev/docs/lang
+CLI:          https://rux-lang.dev/docs/cli
 Issues:       https://github.com/rux-lang/Rux/issues
 
 License

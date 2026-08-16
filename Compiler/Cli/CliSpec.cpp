@@ -587,19 +587,19 @@ std::string_view DocumentationUrl(const std::string_view command) {
     static constexpr std::array dedicated = {"add"sv,  "build"sv,     "clean"sv,  "doc"sv,    "fmt"sv,    "help"sv,
                                              "init"sv, "install"sv,   "list"sv,   "new"sv,    "remove"sv, "run"sv,
                                              "test"sv, "uninstall"sv, "update"sv, "version"sv};
-    static constexpr auto fallback = "https://rux-lang.dev/cli/"sv;
+    static constexpr auto fallback = "https://rux-lang.dev/docs/cli"sv;
     if (std::ranges::find(dedicated, command) == dedicated.end()) {
         return fallback;
     }
     static constexpr std::array routes = {
-        "https://rux-lang.dev/cli/add"sv,    "https://rux-lang.dev/cli/build"sv,
-        "https://rux-lang.dev/cli/clean"sv,  "https://rux-lang.dev/cli/doc"sv,
-        "https://rux-lang.dev/cli/fmt"sv,    "https://rux-lang.dev/cli/help"sv,
-        "https://rux-lang.dev/cli/init"sv,   "https://rux-lang.dev/cli/install"sv,
-        "https://rux-lang.dev/cli/list"sv,   "https://rux-lang.dev/cli/new"sv,
-        "https://rux-lang.dev/cli/remove"sv, "https://rux-lang.dev/cli/run"sv,
-        "https://rux-lang.dev/cli/test"sv,   "https://rux-lang.dev/cli/uninstall"sv,
-        "https://rux-lang.dev/cli/update"sv, "https://rux-lang.dev/cli/version"sv,
+        "https://rux-lang.dev/docs/cli/add"sv,    "https://rux-lang.dev/docs/cli/build"sv,
+        "https://rux-lang.dev/docs/cli/clean"sv,  "https://rux-lang.dev/docs/cli/doc"sv,
+        "https://rux-lang.dev/docs/cli/fmt"sv,    "https://rux-lang.dev/docs/cli/help"sv,
+        "https://rux-lang.dev/docs/cli/init"sv,   "https://rux-lang.dev/docs/cli/install"sv,
+        "https://rux-lang.dev/docs/cli/list"sv,   "https://rux-lang.dev/docs/cli/new"sv,
+        "https://rux-lang.dev/docs/cli/remove"sv, "https://rux-lang.dev/docs/cli/run"sv,
+        "https://rux-lang.dev/docs/cli/test"sv,   "https://rux-lang.dev/docs/cli/uninstall"sv,
+        "https://rux-lang.dev/docs/cli/update"sv, "https://rux-lang.dev/docs/cli/version"sv,
     };
     const auto index = static_cast<std::size_t>(std::ranges::find(dedicated, command) - dedicated.begin());
     return routes[index];

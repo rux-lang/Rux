@@ -39,12 +39,12 @@ TEST_CASE("diagnostics retain four-field aggregate initialization") {
 TEST_CASE("plain diagnostics render structured supplemental context") {
     const auto diagnostic = ErrorDiagnostic("target 'plan9-x86_64' is not supported",
                                             {"supported targets are linux-x86_64 and windows-x86_64", ""},
-                                            "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/cli/");
+                                            "try 'rux check --target linux-x86_64'", "https://rux-lang.dev/docs/cli");
 
     CHECK(RenderDiagnostic(diagnostic) == "error: target 'plan9-x86_64' is not supported\n"
                                           "  note: supported targets are linux-x86_64 and windows-x86_64\n"
                                           "  help: try 'rux check --target linux-x86_64'\n"
-                                          "  docs: https://rux-lang.dev/cli/\n");
+                                          "  docs: https://rux-lang.dev/docs/cli\n");
     CHECK(RenderDiagnostic(ErrorDiagnostic("failed"), true) == "\033[31m\033[1merror:\033[0m failed\n");
 }
 

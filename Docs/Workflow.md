@@ -46,13 +46,7 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
 
 The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. `Scripts/RepositoryMessages.ps1` and `Scripts/RepositoryMessages.sh` keep each shell family's progress verbs, pass/fail labels, child-command handling, and duration formatting in one place; the two families expose the same user-facing vocabulary, file/package counts, quoted paths, and canonical duration units (`ms`, `s`, or `min` plus `s`). A failed child command identifies the command and retains its failure status. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build; the scripts report the selected existing build directory. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `rux run` is host-only and has no `--target` option. A `-Target` / `--target` test run is allowed only for the host OS and an architecture the compiler process or native OS can execute directly. This supports an x86-64 compiler process on AArch64 Windows and under Rosetta on Apple Silicon; a physical x86-64 host should use `rux build --target` and `rux check --target`, then test the output on its native machine.
 
-The same rule applies to FreeBSD AArch64. Every supported host can build or
-check `freebsd-aarch64`; Release output lands below
-`Bin/Release/FreeBSD/AArch64/`. Only FreeBSD with an AArch64 compiler process or
-native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use
-`Tests/Native/FreeBSDAArch64/BuildTransfer.sh` on x86-64 FreeBSD and
-`VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and
-target-runtime boundaries stay explicit.
+The same rule applies to FreeBSD AArch64. Every supported host can build or check `freebsd-aarch64`; Release output lands below `Bin/Release/FreeBSD/AArch64/`. Only FreeBSD with an AArch64 compiler process or native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use `Tests/Native/FreeBSDAArch64/BuildTransfer.sh` on x86-64 FreeBSD and `VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and target-runtime boundaries stay explicit.
 
 For package profile and target selection, ordinary artifact paths, and the complete `rux build --all` contract, see [Package Builds and the Target Matrix](Builds.md).
 
@@ -71,7 +65,7 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 | `Compiler/Diagnostics/` | Diagnostic values, severities, and rendering primitives                         |
 | `Compiler/Driver/`      | Compilation orchestration, targets, and build reports                           |
 | `Compiler/SourceModel/` | Source locations and loaded-file identity values                                |
-| `Compiler/Source/`      | Source discovery and loading                                                     |
+| `Compiler/Source/`      | Source discovery and loading                                                    |
 | `Compiler/Lexer/`       | Tokens and lexical analysis                                                     |
 | `Compiler/Syntax/`      | AST and parser                                                                  |
 | `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model                     |
@@ -121,13 +115,32 @@ Supporting layers around the pipeline:
   API calls (`getenv`, `<windows.h>`, `fork`, ...) are allowed only in `System/`; CI enforces this with `Tests/Policy/PlatformIsolation/Check.sh`.
 - **No external toolchain** — the compiler assembles, links, and signs its own artifacts, so nothing under `Compiler/` may name or launch an assembler, C compiler,
   linker, archiver, or signing tool. `Tests/Policy/NoExternalToolchain/Check.sh` enforces that, with the remaining exceptions listed at the top of the script.
-- **User-message ownership** — reusable compiler/package code returns failures and diagnostics; `Compiler/Cli/` owns
-  process streams, `CliSupport::Reporter` owns semantic human presentation, and `Reporting::FormatDuration` owns C++
-  duration grammar. `Tests/Policy/UserMessages/Check.sh` names the file, line, rule, approved helper, and remediation for
-  raw printing outside those owners, ad hoc duration text, obsolete `/docs/cli/` links, ANSI-capable JSON owners,
-  capitalized severity prefixes, and external-toolchain suggestions. Its reasoned allowlist covers only stable
-  inspection, machine, generated, and relayed user-program output.
+- **User-message ownership** — reusable compiler/package code returns failures and diagnostics; `Compiler/Cli/` owns process streams, `CliSupport::Reporter` owns semantic human presentation, and `Reporting::FormatDuration` owns C++ duration grammar. `Tests/Policy/UserMessages/Check.sh` names the file, line, rule, approved helper, and remediation for raw printing outside those owners, ad hoc duration text, obsolete CLI-documentation links, ANSI-capable JSON owners, capitalized severity prefixes, and external-toolchain suggestions. Its reasoned allowlist covers only stable inspection, machine, generated, and relayed user-program output.
 - **Bounded implementation files** — C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` have a 1,200-line architecture guideline. `Tests/Policy/OversizedFiles/Check.sh` reports every larger file and rejects unreviewed paths or growth beyond a reviewed path-specific ceiling. A cohesive owner, dense vector table, generated source, or vendored dependency may keep its locality when the exception records why a split would make the ownership or data harder to audit.
+
+### User-Facing Message Contract
+
+The CLI owns user-facing toolchain messages. Reusable compiler, package, system, and runtime components return structured failures or diagnostics; they do not print. Use `CliSupport::Reporter` for semantic command output, `RenderDiagnostic` for source diagnostics, and `Reporting::FormatDuration` for elapsed time.
+
+Canonical diagnostics use this shape:
+
+```text
+Src/Main.rux:12:9: error: cannot assign a string to 'count', which has type 'int'
+  note: 'count' was declared as 'int' on line 4
+  help: convert the value to 'int' or change the declared type
+  docs: https://rux-lang.dev/docs/variables/
+```
+
+When adding or changing messages:
+
+- Start with the subject and cause. Put corrective action in `help:`, supporting context in `note:`, and verified documentation in `docs:`.
+- Spell `error:`, `warning:`, `note:`, `help:`, and `docs:` in lowercase; start their text in lowercase and omit a final period on a single-line message. Quote user-provided names, paths, options, targets, versions, and commands with single quotes.
+- Use present participles for progress (`Compiling`, `Checking`, `Downloading`) and concise past tense for outcomes (`Built`, `Checked`, `Installed`, `Removed`). Format elapsed time as `25 ms`, `1.25 s`, or `1 min 5.2 s`.
+- Green indicates success, yellow a warning, red an error or failure, cyan progress or links, and dim text supporting detail. Honor `--color`, `NO_COLOR`, `TERM=dumb`, and terminal detection.
+- `--quiet` suppresses progress, success, tips, and summaries, but never errors. `--verbose` adds phase and path detail without repeating the normal summary.
+- JSON modes write only their compatible JSON schema to stdout and never include ANSI styling. Diagnostics and warnings remain on stderr. Commands that launch user programs keep toolchain status off the program's stdout.
+- Dedicated CLI pages exist below `https://rux-lang.dev/docs/cli/<command>` for `add`, `build`, `clean`, `doc`, `fmt`, `help`, `init`, `install`, `list`, `new`, `remove`, `run`, `test`, `uninstall`, `update`, and `version`. Use `https://rux-lang.dev/docs/cli` for `check`, `info`, `lint`, `login`, `logout`, `pack`, and `publish` until dedicated pages exist. Do not invent a route.
+- Preserve token, AST, semantic, HIR, LIR, assembly, RCU, generated-documentation, and relayed user-program formats. Add a narrowly matched entry with a reason to `Tests/Policy/UserMessages/Allowlist.txt` when a stable compatibility payload needs direct output.
 
 ## 5. Testing
 

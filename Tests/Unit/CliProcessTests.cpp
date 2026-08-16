@@ -975,7 +975,7 @@ TEST_CASE("check renders unsupported targets as structured diagnostics without c
     CHECK(human.output.contains("error: target 'plan9-x86_64' is not supported"));
     CHECK(human.output.contains("  note: supported targets are "));
     CHECK(human.output.contains("  help: try 'rux check --target linux-x86_64'"));
-    CHECK(human.output.contains("  docs: https://rux-lang.dev/cli/"));
+    CHECK(human.output.contains("  docs: https://rux-lang.dev/docs/cli"));
     CHECK_FALSE(human.output.contains("manifest"));
 
     const auto json =

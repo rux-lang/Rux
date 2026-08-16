@@ -52,7 +52,7 @@ TEST_CASE("CLI reporter renders every semantic message family consistently") {
     reporter.Warning("the cache is stale");
     reporter.Note("the manifest selected release mode");
     reporter.Help("run 'rux update'");
-    reporter.Link("https://rux-lang.dev/cli/update");
+    reporter.Link("https://rux-lang.dev/docs/cli/update");
     reporter.Progress("Compiling", "App v0.4.0");
     reporter.Success("Built", "App in 25 ms");
     reporter.Failure("Failed", "Tests in 30 ms");
@@ -65,7 +65,7 @@ TEST_CASE("CLI reporter renders every semantic message family consistently") {
                                 "warning: the cache is stale\n"
                                 "  note: the manifest selected release mode\n"
                                 "  help: run 'rux update'\n"
-                                "  docs: https://rux-lang.dev/cli/update\n"
+                                "  docs: https://rux-lang.dev/docs/cli/update\n"
                                 "Compiling App v0.4.0\n"
                                 "Built App in 25 ms\n"
                                 "Failed Tests in 30 ms\n"
@@ -85,7 +85,7 @@ TEST_CASE("CLI reporter applies quiet and verbose policy by message visibility")
         reporter.Warning("unsafe");
         reporter.Note("context");
         reporter.Help("fix it");
-        reporter.Link("https://rux-lang.dev/cli/");
+        reporter.Link("https://rux-lang.dev/docs/cli");
         reporter.Progress("Checking", "App");
         reporter.Success("Checked", "App");
         reporter.Failure("Failed", "App");
@@ -99,7 +99,7 @@ TEST_CASE("CLI reporter applies quiet and verbose policy by message visibility")
                                     "warning: unsafe\n"
                                     "  note: context\n"
                                     "  help: fix it\n"
-                                    "  docs: https://rux-lang.dev/cli/\n"
+                                    "  docs: https://rux-lang.dev/docs/cli\n"
                                     "Failed App\n");
     }
 
@@ -153,11 +153,11 @@ TEST_CASE("CLI reporter emits complete ANSI styles only when forced") {
     Reporter colored(coloredOutput.get(), {.color = ColorMode::On});
     colored.Error("broken");
     colored.Progress("Compiling", "App");
-    colored.Link("https://rux-lang.dev/cli/build");
+    colored.Link("https://rux-lang.dev/docs/cli/build");
     const auto styled = Read(coloredOutput.get());
     CHECK(styled == "\033[31m\033[1merror:\033[0m broken\n"
                     "\033[36m\033[1mCompiling\033[0m App\n"
-                    "  \033[36m\033[1mdocs:\033[0m \033[36mhttps://rux-lang.dev/cli/build\033[0m\n");
+                    "  \033[36m\033[1mdocs:\033[0m \033[36mhttps://rux-lang.dev/docs/cli/build\033[0m\n");
 
     auto plainOutput = Capture();
     Reporter plain(plainOutput.get(), {.color = ColorMode::Off});

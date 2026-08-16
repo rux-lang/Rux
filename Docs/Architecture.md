@@ -145,19 +145,9 @@ HIR-to-LIR implementation files share private state through `HirToLirDetail::Hir
 
 ## CLI and Package Flows
 
-`RuxCliReporting` owns semantic CLI messages and quiet/verbose suppression against a caller-provided stream. Its color
-policy combines that stream's host interactivity from `RuxSystem` with `--color`, `NO_COLOR`, and `TERM=dumb`, then uses
-the host-independent styles in `RuxReporting`. Commands retain responsibility for their wording and for selecting stdout
-or stderr, which makes reporter capture independent of process-wide stream replacement.
+`RuxCliReporting` owns semantic CLI messages and quiet/verbose suppression against a caller-provided stream. Its color policy combines that stream's host interactivity from `RuxSystem` with `--color`, `NO_COLOR`, and `TERM=dumb`, then uses the host-independent styles in `RuxReporting`. Commands retain responsibility for their wording and for selecting stdout or stderr, which makes reporter capture independent of process-wide stream replacement.
 
-Reusable compiler, package, system, and runtime components never write user-facing messages to process streams. They
-return structured failures or `Diagnostic` values; `RuxDiagnostics` renders but does not print them. `Compiler/Cli/` is
-the process-stream owner and routes ordinary human output through `CliSupport::Reporter`. Direct writes are limited to
-interactive prompts and stable machine formats. Deterministic token/AST/semantic/HIR/LIR/assembly/RCU inspection,
-generated documentation, and relayed test-program output remain compatibility payloads rather than semantic messages.
-`Tests/Policy/UserMessages/Allowlist.txt` records every such family with a reason, and the adjacent policy rejects direct
-printing elsewhere, ad hoc durations, stale CLI routes, ANSI-capable JSON owners, inconsistent severity labels, and
-external-toolchain recovery suggestions.
+Reusable compiler, package, system, and runtime components never write user-facing messages to process streams. They return structured failures or `Diagnostic` values; `RuxDiagnostics` renders but does not print them. `Compiler/Cli/` is the process-stream owner and routes ordinary human output through `CliSupport::Reporter`. Direct writes are limited to interactive prompts and stable machine formats. Deterministic token/AST/semantic/HIR/LIR/assembly/RCU inspection, generated documentation, and relayed test-program output remain compatibility payloads rather than semantic messages. `Tests/Policy/UserMessages/Allowlist.txt` records every such family with a reason, and the adjacent policy rejects direct printing elsewhere, ad hoc durations, stale CLI routes, ANSI-capable JSON owners, inconsistent severity labels, and external-toolchain recovery suggestions. The canonical wording, stream, styling, duration, and documentation-link rules are defined in the [user-facing message contract](Workflow.md#user-facing-message-contract).
 
 Formatter and linter are internal compiler components exposed through the single `rux` application:
 

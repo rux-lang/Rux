@@ -71,9 +71,9 @@ scan_direct_printing() {
 scan_one_message_file() {
     file=$1
     path=$(relative_path "$file")
-    grep -nF '/docs/cli/' "$file" 2>/dev/null | while IFS=: read -r line rest; do
+    grep -nF 'rux-lang.dev/cli' "$file" 2>/dev/null | while IFS=: read -r line rest; do
         fail "$path" "$line" "obsolete-cli-route" "CliContract::DocumentationUrl" \
-            "use a verified 'https://rux-lang.dev/cli/' route"
+            "use a verified 'https://rux-lang.dev/docs/cli' route"
     done
     grep -nE '"[^"]*(Error|Warning|Note|Help|Docs):[[:space:]]' "$file" 2>/dev/null |
         while IFS=: read -r line rest; do
@@ -85,7 +85,7 @@ scan_one_message_file() {
 scan_bad_routes_and_severity() {
     for area in Compiler Packages Packaging Scripts; do
         [ -d "$repository_root/$area" ] || continue
-        grep -rlE '/docs/cli/|"[^"]*(Error|Warning|Note|Help|Docs):[[:space:]]' "$repository_root/$area" \
+        grep -rlE 'rux-lang\.dev/cli|"[^"]*(Error|Warning|Note|Help|Docs):[[:space:]]' "$repository_root/$area" \
             --include='*.cpp' --include='*.h' --include='*.rux' --include='*.ps1' --include='*.sh' 2>/dev/null |
             while IFS= read -r file; do scan_one_message_file "$file"; done
     done
