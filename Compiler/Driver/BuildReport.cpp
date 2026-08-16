@@ -2,14 +2,18 @@
 
 #include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/CompilerDriver.h"
 #include "Reporting/Reporting.h"
 
 #include <algorithm>
-#include <cctype>
+#include <array>
 #include <cmath>
+#include <format>
 #include <iomanip>
 #include <optional>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 namespace Rux::Driver {
 namespace {
@@ -22,10 +26,128 @@ std::optional<Target::TargetTriple> ReportedTriple(const std::string_view target
     return Target::TargetTriple::Parse(targetTriple);
 }
 
-std::string ProfileName(const BuildProfile profile) {
-    std::string name(ToString(profile));
-    name.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
-    return name;
+// `Built App (Debug, Windows x86-64) in 22 ms`. Both the one-line summary and
+// the statistics report open with it, so `--stats` reads as that summary plus
+// its sections rather than as a second, differently shaped report.
+std::string FormatBuildStatusLine(const BuildReportInfo &info, const BuildStats &stats, const Reporting::Style &style) {
+    const auto triple = ReportedTriple(info.targetTriple);
+    const std::string context = triple ? FormatBuildContext(info.profile, *triple)
+                                       : std::format("({}, {})", ToString(info.profile), info.targetTriple);
+    return std::format("{} {} {} in {}", Reporting::RenderStatus(Reporting::StatusVerb::Built, style), info.packageName,
+                       context, Reporting::FormatDuration(stats.total));
+}
+
+// A label column followed by right-aligned value columns, under an optional
+// header row. Column widths come from the cells themselves, so no width is
+// written down anywhere and adding a row cannot break the alignment.
+std::string RenderGrid(const std::span<const std::string> headers,
+                       const std::span<const std::vector<std::string>> rows) {
+    std::size_t columns = headers.size() + 1;
+    for (const auto &row : rows) {
+        columns = std::max(columns, row.size());
+    }
+
+    std::vector<std::size_t> widths(columns, 0);
+    for (const auto &row : rows) {
+        for (std::size_t i = 0; i < row.size(); ++i) {
+            widths[i] = std::max(widths[i], row[i].size());
+        }
+    }
+    for (std::size_t i = 0; i < headers.size(); ++i) {
+        widths[i + 1] = std::max(widths[i + 1], headers[i].size());
+    }
+
+    // Value columns are separated by the standard indent, except the first,
+    // which the label column's `: ` already separates.
+    const auto gapBefore = [](const std::size_t column) {
+        return column == 1 ? std::size_t{0} : Reporting::indentation.size();
+    };
+
+    std::string rendered;
+    if (!headers.empty()) {
+        rendered.append(Reporting::indentation.size() + widths[0] + 2, ' ');
+        for (std::size_t i = 0; i < headers.size(); ++i) {
+            rendered.append(widths[i + 1] - headers[i].size() + gapBefore(i + 1), ' ');
+            rendered += headers[i];
+        }
+        rendered += '\n';
+    }
+
+    for (const auto &row : rows) {
+        rendered += Reporting::indentation;
+        rendered += row[0];
+        rendered += ':';
+        rendered.append(widths[0] - row[0].size() + 1, ' ');
+        for (std::size_t i = 1; i < row.size(); ++i) {
+            rendered.append(widths[i] - row[i].size() + gapBefore(i), ' ');
+            rendered += row[i];
+        }
+        rendered += '\n';
+    }
+    return rendered;
+}
+
+std::string RenderTimeSection(const BuildStats &stats, const Reporting::Style &style) {
+    using Phase = CompilePhase;
+    const std::array<std::pair<Phase, std::chrono::milliseconds>, 7> phases{{{Phase::Lexing, stats.lexing},
+                                                                             {Phase::Parsing, stats.parsing},
+                                                                             {Phase::Analyzing, stats.semantic},
+                                                                             {Phase::LoweringToHir, stats.hir},
+                                                                             {Phase::LoweringToLir, stats.lir},
+                                                                             {Phase::EmittingObjects, stats.codegen},
+                                                                             {Phase::Linking, stats.linking}}};
+
+    // `total` is wall clock while the phases are individual timers, so the
+    // difference is real work — resolving dependencies, reading manifests,
+    // touching the filesystem — that no phase timer covers. Naming it keeps
+    // the column an accounting of the whole build instead of a partial one.
+    std::chrono::milliseconds measured{0};
+    for (const auto &[phase, elapsed] : phases) {
+        measured += elapsed;
+    }
+    const auto other = std::max(stats.total - measured, std::chrono::milliseconds{0});
+    const double totalMs = static_cast<double>(stats.total.count());
+    // `part` is a share of the build, not a duration being formatted: the text
+    // still comes from Reporting::FormatDuration.
+    const auto share = [totalMs](const std::chrono::milliseconds part) {
+        return totalMs > 0.0 ? 100.0 * static_cast<double>(part.count()) / totalMs : 0.0;
+    };
+
+    std::vector<std::vector<std::string>> rows;
+    rows.reserve(phases.size() + 2);
+    for (const auto &[phase, elapsed] : phases) {
+        rows.push_back(
+            {std::string(CompilePhaseName(phase)), Reporting::FormatDuration(elapsed), FormatPercent(share(elapsed))});
+    }
+    rows.push_back({"Other", Reporting::FormatDuration(other), FormatPercent(share(other))});
+    rows.push_back({"Total", Reporting::FormatDuration(stats.total), FormatPercent(totalMs > 0.0 ? 100.0 : 0.0)});
+
+    std::string rendered(style.Bold());
+    rendered += "Time";
+    rendered += style.Reset();
+    rendered += ":\n";
+    rendered += RenderGrid({}, rows);
+    return rendered;
+}
+
+std::string RenderSourceSection(const BuildStats &stats, const Reporting::Style &style) {
+    const std::array<std::string, 3> headers{"Local", "Dependency", "Total"};
+    const std::vector<std::vector<std::string>> rows{
+        {"Files", FormatNumber(stats.localFiles), FormatNumber(stats.dependencyFiles),
+         FormatNumber(stats.localFiles + stats.dependencyFiles)},
+        {"Lines", FormatNumber(stats.localLines), FormatNumber(stats.dependencyLines),
+         FormatNumber(stats.localLines + stats.dependencyLines)},
+        {"Tokens", FormatNumber(stats.localTokens), FormatNumber(stats.dependencyTokens),
+         FormatNumber(stats.localTokens + stats.dependencyTokens)},
+        {"Size", FormatSize(stats.localSourceSize), FormatSize(stats.dependencySourceSize),
+         FormatSize(stats.localSourceSize + stats.dependencySourceSize)}};
+
+    std::string rendered(style.Bold());
+    rendered += "Source";
+    rendered += style.Reset();
+    rendered += ":\n";
+    rendered += RenderGrid(headers, rows);
+    return rendered;
 }
 } // namespace
 
@@ -90,15 +212,10 @@ std::string FormatCompactNumber(double value) {
     return FormatNumber(static_cast<std::uintmax_t>(std::llround(value)));
 }
 
-std::string FormatTokenThroughput(double tokensPerSecond) {
-    const double absValue = std::fabs(tokensPerSecond);
-    if (absValue >= 1'000'000.0) {
-        return FormatDecimal(tokensPerSecond / 1'000'000.0, 1) + " M tok/s";
-    }
-    if (absValue >= 1'000.0) {
-        return FormatDecimal(tokensPerSecond / 1'000.0, 1) + " K tok/s";
-    }
-    return FormatNumber(static_cast<std::uintmax_t>(std::llround(tokensPerSecond))) + " tok/s";
+std::string FormatPercent(double share) {
+    std::ostringstream output;
+    output << std::fixed << std::setprecision(1) << share << '%';
+    return output.str();
 }
 
 std::string FormatSize(std::uintmax_t bytes) {
@@ -122,87 +239,92 @@ std::string DisplayPath(const std::filesystem::path &path, const std::filesystem
     return text.empty() || text.starts_with("..") ? path.string() : text;
 }
 
-std::string FormatBuildStats(const std::string_view packageName, const std::filesystem::path &artifactPath,
-                             const std::filesystem::path &packageRoot, const BuildProfile profile,
-                             const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
+std::string FormatBuildContext(const BuildProfile profile, const Target::TargetTriple &target) {
+    return std::format("({}, {})", ToString(profile), target.DisplayName());
+}
+
+std::string FormatBuildContext(const Target::TargetTriple &target) {
+    return std::format("({})", target.DisplayName());
+}
+
+std::string FormatBuildStats(const BuildReportInfo &info, const BuildStats &stats, const bool colorEnabled) {
     const double seconds = stats.totalSeconds;
-    const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
     const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
     const std::uintmax_t totalSourceSize = stats.localSourceSize + stats.dependencySourceSize;
     const double tokenThroughput = seconds > 0.0 ? static_cast<double>(totalTokens) / seconds : 0.0;
     const double compileSpeed = seconds > 0.0 ? static_cast<double>(totalLines) / seconds : 0.0;
     const double throughput = seconds > 0.0 ? static_cast<double>(totalSourceSize) / 1024.0 / 1024.0 / seconds : 0.0;
-    const std::size_t prunedDeclarations =
-        stats.prunedFunctionDefinitions + stats.prunedConstants + stats.prunedVtables + stats.prunedExternDeclarations;
 
-    const auto triple = ReportedTriple(targetTriple);
-    const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
-    const std::string display = triple ? triple->DisplayName() : canonical;
-    const std::string profileName = ProfileName(profile);
     const Reporting::Style style{colorEnabled};
     std::ostringstream output;
-    output << style.Bold() << "Rux Compiler " << CompilerBuild::compilerVersion << style.Reset() << '\n'
-           << "Package: " << packageName << '\n'
-           << "Target: " << display << " (" << canonical << ")\n"
-           << "Profile: " << profileName << "\n\n"
-           << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << packageName << " (" << profileName
-           << ", " << canonical << ") in " << Reporting::FormatDuration(stats.total) << "\n\n"
-           << "Total build time:            " << style.Bold() << Reporting::FormatDuration(stats.total) << style.Reset()
-           << '\n'
-           << "  Lexing:                    " << Reporting::FormatDuration(stats.lexing) << '\n'
-           << "  Parsing:                   " << Reporting::FormatDuration(stats.parsing) << '\n'
-           << "  Semantic:                  " << Reporting::FormatDuration(stats.semantic) << '\n'
-           << "  HIR:                       " << Reporting::FormatDuration(stats.hir) << '\n'
-           << "  LIR:                       " << Reporting::FormatDuration(stats.lir) << '\n'
-           << "  Codegen:                   " << Reporting::FormatDuration(stats.codegen) << '\n'
-           << "  Linking:                   " << Reporting::FormatDuration(stats.linking) << "\n\n"
-           << "Total files:                 " << FormatNumber(totalFiles) << '\n'
-           << "  Local files:               " << FormatNumber(stats.localFiles) << '\n'
-           << "  Dependency files:          " << FormatNumber(stats.dependencyFiles) << "\n\n"
-           << "Total lines:                 " << FormatNumber(totalLines) << '\n'
-           << "  Local lines:               " << FormatNumber(stats.localLines) << '\n'
-           << "  Dependency lines:          " << FormatNumber(stats.dependencyLines) << "\n\n"
-           << "Total tokens:                " << FormatNumber(totalTokens) << '\n'
-           << "  Local tokens:              " << FormatNumber(stats.localTokens) << '\n'
-           << "  Dependency tokens:         " << FormatNumber(stats.dependencyTokens) << "\n\n"
-           << "Total source size:           " << FormatSize(totalSourceSize) << '\n'
-           << "  Local source size:         " << FormatSize(stats.localSourceSize) << '\n'
-           << "  Dependency source size:    " << FormatSize(stats.dependencySourceSize) << "\n\n"
-           << "LIR declarations pruned:     " << FormatNumber(prunedDeclarations) << '\n'
-           << "  Function definitions:      " << FormatNumber(stats.prunedFunctionDefinitions) << '\n'
-           << "  Constants:                 " << FormatNumber(stats.prunedConstants) << '\n'
-           << "  Vtables:                   " << FormatNumber(stats.prunedVtables) << '\n'
-           << "  Extern declarations:       " << FormatNumber(stats.prunedExternDeclarations) << '\n'
-           << "  Estimated IR eliminated:   " << FormatNumber(stats.estimatedLirNodesEliminated) << " nodes\n\n"
-           << style.Cyan() << style.Bold() << "Output:" << style.Reset() << '\n'
-           << "  Artifact:                  " << style.Cyan() << DisplayPath(artifactPath, packageRoot) << style.Reset()
-           << '\n'
-           << "  Artifact size:             " << FormatSize(stats.executableSize) << '\n'
-           << "  Peak memory:               " << FormatSize(stats.peakMemoryBytes) << "\n\n"
-           << style.Cyan() << style.Bold() << "Performance:" << style.Reset() << '\n'
-           << "  Compile speed:             " << FormatNumber(static_cast<std::uintmax_t>(std::llround(compileSpeed)))
-           << " LOC/s\n"
-           << "  Token throughput:          " << FormatTokenThroughput(tokenThroughput) << '\n'
-           << "  Total throughput:          " << FormatDecimal(throughput, 2) << " MB/s\n";
+    output << FormatBuildStatusLine(info, stats, style) << '\n';
+
+    // The status line already carries the profile and target, so these rows
+    // hold only what it does not.
+    const std::string version = std::format("{} v{}", info.packageName, info.packageVersion);
+    const std::string compiler = std::format("Rux {}", CompilerBuild::compilerVersion);
+    const std::string artifact =
+        std::format("{} ({})", DisplayPath(info.artifactPath, info.packageRoot), FormatSize(stats.executableSize));
+    const std::array identity{Reporting::TableRow{"Package", version}, Reporting::TableRow{"Compiler", compiler},
+                              Reporting::TableRow{"Output", artifact}};
+    output << Reporting::RenderRows(identity) << '\n';
+
+    output << RenderTimeSection(stats, style) << '\n';
+    output << RenderSourceSection(stats, style) << '\n';
+
+    // The four pruning counts sum to the total, so the total closes the list
+    // rather than heading it. The IR estimate is not one of the four, so it
+    // sits outside the sum and says that it is an estimate.
+    const std::size_t prunedDeclarations =
+        stats.prunedFunctionDefinitions + stats.prunedConstants + stats.prunedVtables + stats.prunedExternDeclarations;
+    const std::string functions = FormatNumber(stats.prunedFunctionDefinitions);
+    const std::string constants = FormatNumber(stats.prunedConstants);
+    const std::string vtables = FormatNumber(stats.prunedVtables);
+    const std::string externs = FormatNumber(stats.prunedExternDeclarations);
+    const std::string pruned = FormatNumber(prunedDeclarations);
+    // "Estimated" qualifies the row, not the number, so it stays in the label
+    // and leaves the value column holding bare counts that compare.
+    const std::string irNodes = FormatNumber(stats.estimatedLirNodesEliminated);
+    const std::array optimization{Reporting::TableRow{"Function definitions", functions},
+                                  Reporting::TableRow{"Constants", constants},
+                                  Reporting::TableRow{"Vtables", vtables},
+                                  Reporting::TableRow{"Extern declarations", externs},
+                                  Reporting::TableRow{"Declarations pruned", pruned},
+                                  Reporting::TableRow{"Estimated IR nodes", irNodes}};
+    output << Reporting::RenderSection("Optimization", optimization, style, Reporting::ValueAlign::Right) << '\n';
+
+    // Compact counts here match the one-line build summary, which already
+    // reports LOC/s and token totals that way. These four values carry four
+    // different units, so right alignment would square up nothing.
+    const std::string speed = FormatCompactNumber(compileSpeed) + " LOC/s";
+    const std::string tokens = FormatCompactNumber(tokenThroughput) + " tok/s";
+    const std::string source = FormatDecimal(throughput, 2) + " MB/s";
+    const std::string memory = FormatSize(stats.peakMemoryBytes);
+    const std::array performance{
+        Reporting::TableRow{"Compile speed", speed}, Reporting::TableRow{"Token throughput", tokens},
+        Reporting::TableRow{"Source throughput", source}, Reporting::TableRow{"Peak memory", memory}};
+    output << Reporting::RenderSection("Performance", performance, style);
     return output.str();
 }
 
 std::string FormatBuildSummary(const std::string_view packageName, const std::filesystem::path &artifactPath,
                                const std::filesystem::path &packageRoot, const BuildProfile profile,
                                const std::string_view targetTriple, const BuildStats &stats, const bool colorEnabled) {
-    const auto triple = ReportedTriple(targetTriple);
-    const std::string canonical = triple ? std::string(triple->CanonicalName()) : std::string(targetTriple);
-    const std::string profileName = ProfileName(profile);
     const std::size_t totalFiles = stats.localFiles + stats.dependencyFiles;
     const std::size_t totalLines = stats.localLines + stats.dependencyLines;
     const std::size_t totalTokens = stats.localTokens + stats.dependencyTokens;
     const double compileSpeed = stats.totalSeconds > 0.0 ? static_cast<double>(totalLines) / stats.totalSeconds : 0.0;
+    const BuildReportInfo info{.packageName = packageName,
+                               .packageVersion = {},
+                               .artifactPath = {},
+                               .packageRoot = {},
+                               .profile = profile,
+                               .targetTriple = targetTriple};
 
     const Reporting::Style style{colorEnabled};
     std::ostringstream output;
-    output << Reporting::RenderStatus(Reporting::StatusVerb::Built, style) << ' ' << packageName << " (" << profileName
-           << ", " << canonical << ") in " << Reporting::FormatDuration(stats.total) << '\n'
+    output << FormatBuildStatusLine(info, stats, style) << '\n'
            << Reporting::indentation << "Output: " << style.Cyan() << DisplayPath(artifactPath, packageRoot)
            << style.Reset() << '\n'
            << Reporting::indentation << style.Dim() << FormatNumber(totalFiles) << ' '
@@ -261,8 +383,8 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
         const auto status = cell.succeeded ? Reporting::StatusVerb::Built : Reporting::StatusVerb::Failed;
         const auto outputPath = cell.succeeded ? cell.artifactPath : cell.outputDirectory;
         output << style.Color(Reporting::KindOf(status)) << style.Bold() << std::left << std::setw(8)
-               << Reporting::StatusText(status) << style.Reset() << std::setw(9) << ProfileName(cell.profile)
-               << std::setw(20) << cell.target.CanonicalName() << std::setw(10)
+               << Reporting::StatusText(status) << style.Reset() << std::setw(9) << ToString(cell.profile)
+               << std::setw(20) << cell.target.DisplayName() << std::setw(10)
                << Reporting::FormatDuration(cell.elapsed);
         if (includeStats) {
             output << std::right << std::setw(8) << FormatNumber(cell.stats.localFiles + cell.stats.dependencyFiles)

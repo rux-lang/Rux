@@ -1,5 +1,6 @@
 #include "Reporting/Reporting.h"
 
+#include <array>
 #include <chrono>
 #include <doctest.h>
 #include <filesystem>
@@ -54,6 +55,36 @@ TEST_CASE("reporting helpers indent detail and pluralize labels") {
     CHECK(Pluralize(2, "diagnostic", "diagnoses") == "diagnoses");
     CHECK(FormatCount(1, "file") == "1 file");
     CHECK(FormatCount(3, "file") == "3 files");
+}
+
+TEST_CASE("reporting rows align their label column to the block that holds them") {
+    constexpr std::array rows = {TableRow{"Lexing", "0 ms"}, TableRow{"Emitting RCU objects", "1 ms"},
+                                 TableRow{"Total", "22 ms"}};
+
+    // The colon stays attached to its label and the padding follows it, so
+    // what lines up is the value column rather than a column of colons.
+    CHECK(RenderRows(rows) == "  Lexing:               0 ms\n"
+                              "  Emitting RCU objects: 1 ms\n"
+                              "  Total:                22 ms\n");
+
+    // Right alignment squares up the far edge so magnitudes compare.
+    CHECK(RenderRows(rows, ValueAlign::Right) == "  Lexing:                0 ms\n"
+                                                 "  Emitting RCU objects:  1 ms\n"
+                                                 "  Total:                22 ms\n");
+
+    CHECK(RenderRows({}).empty());
+}
+
+TEST_CASE("reporting sections title a block and style only the title") {
+    constexpr std::array rows = {TableRow{"Constants", "1"}};
+
+    CHECK(RenderSection("Optimization", rows, Style{false}) == "Optimization:\n"
+                                                               "  Constants: 1\n");
+    CHECK(RenderSection("Optimization", rows, Style{true}) == "\033[1mOptimization\033[0m:\n"
+                                                              "  Constants: 1\n");
+    // A section with nothing to report is its own heading and nothing else,
+    // so callers can decide to skip it rather than print an empty block.
+    CHECK(RenderSection("Optimization", {}, Style{false}) == "Optimization:\n");
 }
 
 TEST_CASE("reporting remains a narrow dependency in the CMake component graph") {

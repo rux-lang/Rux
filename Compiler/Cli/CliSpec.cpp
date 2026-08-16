@@ -37,7 +37,7 @@ constexpr std::array build_opts = {
     OptionDoc{.flags = "--emit <kind[,kind...]>"sv,
               .desc = "Additionally emit tokens, ast, sema, hir, lir, asm, or rcu inspection output"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile (optimized, no debug info)"sv},
-    OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, performance, and output statistics"sv},
+    OptionDoc{.flags = "--stats"sv, .desc = "Print build timing, source, optimization, and performance statistics"sv},
     OptionDoc{.flags = "--target <triple>"sv,
               .desc = "Build for the specified target platform (e.g. linux-x86_64, linux-aarch64)"sv},
     OptionDoc{.flags = "-q, --quiet"sv, .desc = "Suppress non-essential output (only errors are shown)"sv},

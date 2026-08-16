@@ -141,21 +141,22 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     const std::string packageName(manifest->package.name.Text());
+    // Captured before the manifest is moved into the compile options below.
+    const std::string packageVersion(manifest->package.version.Text());
     const auto packageRoot = manifestPath->parent_path();
     if (buildAll) {
         const auto matrix = GenerateBuildMatrix(packageRoot, *manifest);
-        if (!opts.quiet && !showStats) {
-            diagnostics.Progress("Compiling", std::format("{} v{} ({} build cells)", packageName,
-                                                          manifest->package.version.Text(), matrix.size()));
+        if (!opts.quiet) {
+            diagnostics.Progress("Compiling",
+                                 std::format("{} v{} ({} build cells)", packageName, packageVersion, matrix.size()));
         }
 
         std::vector<BuildCellReport> reports;
         reports.reserve(matrix.size());
         bool allSucceeded = true;
         for (const auto &cell : matrix) {
-            output.Verbose(std::format("Compiling '{}' ({}, {})", packageName,
-                                       cell.profile == BuildProfile::Release ? "release" : "debug",
-                                       cell.target.CanonicalName()));
+            output.Verbose(
+                std::format("Compiling '{}' {}", packageName, FormatBuildContext(cell.profile, cell.target)));
             CompileOptions copts;
             copts.manifestPath = *manifestPath;
             copts.manifest = *manifest;
@@ -185,10 +186,9 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return allSucceeded ? 0 : 1;
     }
     const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
-    if (!opts.quiet && !showStats) {
-        diagnostics.Progress("Compiling",
-                             std::format("{} v{} ({}, {})", packageName, manifest->package.version.Text(),
-                                         profile == BuildProfile::Release ? "release" : "debug", targetName));
+    if (!opts.quiet) {
+        diagnostics.Progress("Compiling", std::format("{} v{} {}", packageName, packageVersion,
+                                                      FormatBuildContext(profile, *targetTriple)));
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;
@@ -218,8 +218,13 @@ int Cli::RunBuild(std::span<const std::string_view> args, const GlobalOptions &o
         return 1;
     }
     if (!opts.quiet && showStats) {
-        output.Write(FormatBuildStats(packageName, result.primaryArtifactPath, packageRoot, profile, targetName,
-                                      result.stats, output.Style().enabled));
+        const BuildReportInfo info{.packageName = packageName,
+                                   .packageVersion = packageVersion,
+                                   .artifactPath = result.primaryArtifactPath,
+                                   .packageRoot = packageRoot,
+                                   .profile = profile,
+                                   .targetTriple = targetName};
+        output.Write(FormatBuildStats(info, result.stats, output.Style().enabled));
         return 0;
     }
     output.Write(FormatBuildSummary(packageName, result.primaryArtifactPath, packageRoot, profile, targetName,

@@ -53,6 +53,18 @@ struct BuildCellReport {
     std::chrono::milliseconds elapsed{0};
 };
 
+// Everything a report needs to identify the build it describes. A struct
+// rather than a parameter list: the fields are all strings and paths, so
+// positional arguments would be easy to transpose and impossible to notice.
+struct BuildReportInfo {
+    std::string_view packageName;
+    std::string_view packageVersion;
+    std::filesystem::path artifactPath;
+    std::filesystem::path packageRoot;
+    BuildProfile profile = BuildProfile::Debug;
+    std::string_view targetTriple;
+};
+
 inline std::chrono::milliseconds
 ElapsedMs(const std::chrono::steady_clock::time_point start,
           const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now()) {
@@ -74,7 +86,7 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 [[nodiscard]] std::string FormatNumber(std::uintmax_t value);
 [[nodiscard]] std::string FormatDecimal(double value, int decimals);
 [[nodiscard]] std::string FormatCompactNumber(double value);
-[[nodiscard]] std::string FormatTokenThroughput(double tokensPerSecond);
+[[nodiscard]] std::string FormatPercent(double share);
 [[nodiscard]] std::string FormatSize(std::uintmax_t bytes);
 
 // ---- Reporting --------------------------------------------------------------
@@ -85,11 +97,17 @@ inline double ElapsedSeconds(const std::chrono::steady_clock::time_point start,
 // an empty `packageRoot` disables shortening altogether.
 [[nodiscard]] std::string DisplayPath(const std::filesystem::path &path, const std::filesystem::path &packageRoot);
 
-// Every report names the package, normalized profile, and canonical target;
-// summaries put the artifact on a separate indented `Output:` line.
-[[nodiscard]] std::string FormatBuildStats(std::string_view packageName, const std::filesystem::path &artifactPath,
-                                           const std::filesystem::path &packageRoot, BuildProfile profile,
-                                           std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);
+// The `(Debug, Windows x86-64)` suffix every progress and outcome line carries.
+// Report prose uses display spellings; canonical target IDs are reserved for
+// text naming a value the reader could pass back on the command line.
+[[nodiscard]] std::string FormatBuildContext(BuildProfile profile, const Target::TargetTriple &target);
+[[nodiscard]] std::string FormatBuildContext(const Target::TargetTriple &target);
+
+// Every report opens with the same status line, so `--stats` is that summary
+// plus its sections rather than a second, differently shaped report. Each fact
+// appears once: the status line carries the profile and target, and the rows
+// below it carry only what it does not.
+[[nodiscard]] std::string FormatBuildStats(const BuildReportInfo &info, const BuildStats &stats, bool colorEnabled);
 [[nodiscard]] std::string FormatBuildSummary(std::string_view packageName, const std::filesystem::path &artifactPath,
                                              const std::filesystem::path &packageRoot, BuildProfile profile,
                                              std::string_view targetTriple, const BuildStats &stats, bool colorEnabled);

@@ -42,7 +42,7 @@ review_exception() {
         reviewed_reason='dense one-line instruction reference vectors whose locality makes coverage auditable'
         ;;
     Tests/Unit/CliProcessTests.cpp)
-        reviewed_limit=1322
+        reviewed_limit=1374
         reviewed_reason='end-to-end CLI stream, option, workspace, and process contracts sharing one filesystem fixture'
         ;;
     Tests/Unit/OptimizerTests.cpp)

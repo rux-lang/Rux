@@ -52,7 +52,7 @@ Use the canonical target or its `arm64` compatibility alias:
 ./Bin/rux build --release --target freebsd-arm64
 ```
 
-Every build uses a target-separated directory. With the default output, the example above writes `Bin/Release/FreeBSD/AArch64/Name` on both native and foreign compiler hosts. Build reports always identify the canonical `freebsd-aarch64` target.
+Every build uses a target-separated directory. With the default output, the example above writes `Bin/Release/FreeBSD/AArch64/Name` on both native and foreign compiler hosts. Build reports always identify the resolved target as FreeBSD AArch64, so the `arm64` alias is visibly normalized.
 
 `rux build --all` also produces both FreeBSD targets in Debug and Release; see the [matrix path and flag rules](../Builds.md#building-the-complete-matrix).
 

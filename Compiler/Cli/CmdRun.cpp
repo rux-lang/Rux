@@ -89,8 +89,8 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     const std::string targetName = HostTargetTriple();
     const bool buildQuiet = !opts.verbose || opts.quiet;
     if (!buildQuiet) {
-        tool.Progress("Compiling", std::format("{} v{} ({}, {})", packageName, manifest->package.version.Text(),
-                                               profile == BuildProfile::Release ? "release" : "debug", targetName));
+        tool.Progress("Compiling", std::format("{} v{} {}", packageName, manifest->package.version.Text(),
+                                               FormatBuildContext(profile, Target::TargetTriple::Host())));
     }
     CompileOptions copts;
     copts.manifestPath = *manifestPath;

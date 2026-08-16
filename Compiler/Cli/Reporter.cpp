@@ -2,7 +2,6 @@
 
 #include "Cli/TerminalStyle.h"
 
-#include <algorithm>
 #include <print>
 
 namespace Rux::CliSupport {
@@ -101,20 +100,13 @@ void Reporter::Table(const std::span<const TableRow> rows, const MessageVisibili
     if (!Visible(visibility) || rows.empty()) {
         return;
     }
-    std::size_t labelWidth = 0;
-    for (const auto &row : rows) {
-        labelWidth = std::max(labelWidth, row.label.size());
-    }
-    for (const auto &row : rows) {
-        std::print(output_, "{}{:<{}}: {}\n", Reporting::indentation, row.label, labelWidth, row.value);
-    }
+    std::print(output_, "{}", Reporting::RenderRows(rows));
 }
 
 void Reporter::Summary(const std::string_view title, const std::span<const TableRow> rows) const {
     if (!Visible(MessageVisibility::Normal)) {
         return;
     }
-    std::print(output_, "{}{}{}:\n", style_.Bold(), title, style_.Reset());
-    Table(rows);
+    std::print(output_, "{}", Reporting::RenderSection(title, rows, style_));
 }
 } // namespace Rux::CliSupport

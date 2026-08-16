@@ -596,10 +596,10 @@ func Main() -> int {
     CHECK(CountOccurrences(reported.output, "'imul' is an x86-64 instruction") == 8);
     CHECK(reported.output.contains("Build matrix"));
     CHECK(reported.output.contains("Status  Profile  Target              Time"));
-    CHECK(reported.output.contains("Built   debug    freebsd-x86_64"));
-    CHECK(reported.output.contains("Failed  debug    freebsd-aarch64"));
-    CHECK(reported.output.contains("Built   release  windows-x86_64"));
-    CHECK(reported.output.contains("Failed  release  windows-aarch64"));
+    CHECK(reported.output.contains("Built   Debug    FreeBSD x86-64"));
+    CHECK(reported.output.contains("Failed  Debug    FreeBSD AArch64"));
+    CHECK(reported.output.contains("Built   Release  Windows x86-64"));
+    CHECK(reported.output.contains("Failed  Release  Windows AArch64"));
     CHECK(reported.output.contains("Failed 16 cells in "));
     CHECK(reported.output.contains("(8 succeeded, 8 failed)"));
     CHECK(reported.output.contains("Aggregate statistics:"));
@@ -625,6 +625,56 @@ func Main() -> int {
     CHECK_FALSE(quiet.output.contains("Build matrix"));
     CHECK_FALSE(quiet.output.contains("Aggregate statistics:"));
     CHECK_FALSE(quiet.output.contains("Compiling"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("build --stats reports each section once and stays silent when quiet") {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto root = System::TempDirectory() / ("rux-build-stats-" + std::to_string(nonce));
+    const auto manifestPath = root / "Rux.toml";
+    const auto sourcePath = root / "Src" / "Main.rux";
+    std::filesystem::create_directories(sourcePath.parent_path());
+    std::ofstream manifestFile(manifestPath, std::ios::binary);
+    manifestFile << R"([Manifest]
+Version = 1
+
+[Package]
+Name = "StatsFixture"
+Version = "0.2.0"
+Type = "Executable"
+)";
+    manifestFile.close();
+    std::ofstream source(sourcePath, std::ios::binary);
+    source << "func Main() -> int { return 0; }\n";
+    source.close();
+    REQUIRE(manifestFile);
+    REQUIRE(source);
+
+    const auto manifest = manifestPath.string();
+    const auto reported =
+        Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "build", "--stats"});
+
+    CAPTURE(reported.output);
+    CHECK(reported.exitCode == 0);
+    // The report opens with the same progress and status lines a plain build
+    // prints: --stats adds sections, it does not replace the summary.
+    const auto host = Driver::TargetDisplayName(Rux::Target::TargetTriple::Host());
+    CHECK(reported.output.contains("Compiling StatsFixture v0.2.0 (Debug, " + host + ")"));
+    CHECK(reported.output.contains("Built StatsFixture (Debug, " + host + ") in "));
+    CHECK(reported.output.contains("  Package:  StatsFixture v0.2.0"));
+    CHECK(reported.output.contains("Time:"));
+    CHECK(reported.output.contains("Source:"));
+    CHECK(reported.output.contains("Optimization:"));
+    CHECK(reported.output.contains("Performance:"));
+    // Machine-facing IDs stay out of report prose.
+    CHECK_FALSE(reported.output.contains(Driver::HostTargetTriple()));
+
+    const auto quiet =
+        Run(std::array<std::string_view, 6>{"--manifest", manifest, "--color=never", "build", "--stats", "--quiet"});
+    CHECK(quiet.exitCode == 0);
+    CHECK(quiet.output.empty());
 
     std::error_code error;
     std::filesystem::remove_all(root, error);
@@ -1061,7 +1111,8 @@ Packages = ["Alpha", "Beta"]
     const auto human = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "check"});
     CAPTURE(human.output);
     CHECK(human.exitCode == 0);
-    CHECK(human.output.contains("Checking workspace (" + Driver::HostTargetTriple() + ")"));
+    CHECK(human.output.contains("Checking workspace (" + Driver::TargetDisplayName(Rux::Target::TargetTriple::Host()) +
+                                ")"));
     CHECK(human.output.contains("  Packages: 2"));
     CHECK(human.output.contains("Checked Alpha in "));
     CHECK(human.output.contains("Checked Beta in "));
@@ -1100,7 +1151,8 @@ Type = "Executable"
     const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "test"});
     CAPTURE(result.output);
     CHECK(result.exitCode == 0);
-    CHECK(result.output.contains("Testing EmptyTests v0.1.0 (debug, " + Driver::HostTargetTriple() + ")"));
+    CHECK(result.output.contains("Testing EmptyTests v0.1.0 (Debug, " +
+                                 Driver::TargetDisplayName(Rux::Target::TargetTriple::Host()) + ")"));
     CHECK(result.output.contains("Passed 0 tests in "));
     CHECK(result.output.contains("No test directory found at 'Tests/'"));
 

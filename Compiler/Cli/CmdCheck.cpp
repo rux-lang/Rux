@@ -179,7 +179,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
 
     if (manifest->IsWorkspace()) {
         if (!jsonOutput) {
-            output.Progress("Checking", std::format("workspace ({})", targetName));
+            output.Progress("Checking", std::format("workspace {}", FormatBuildContext(*targetTriple)));
         }
         const auto workspaceRoot = manifestPath->parent_path();
         for (const auto &member : manifest->workspace.packages) {
@@ -222,8 +222,9 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     else {
         if (!jsonOutput) {
-            output.Progress("Checking", std::format("{} v{} ({})", manifest->package.name.Text(),
-                                                    manifest->package.version.Text(), targetName));
+            output.Progress("Checking",
+                            std::format("{} v{} {}", manifest->package.name.Text(), manifest->package.version.Text(),
+                                        FormatBuildContext(*targetTriple)));
         }
         jobs.push_back({*manifestPath, manifest->package.name.Text(), std::move(*manifest)});
     }

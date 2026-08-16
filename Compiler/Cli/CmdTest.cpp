@@ -69,6 +69,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         return 1;
     }
     const std::string targetName(targetTriple->CanonicalName());
+    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
     // A test passes only by executing on this OS and either the compiler
     // process architecture or the native architecture underneath translation.
     if (!HostCanExecuteTarget(*targetTriple)) {
@@ -119,7 +120,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             // Workspace manifest: gather the root Tests/ (for centrally placed
             // tests) plus each declared member package's own Tests/, so a
             // member's tests read as "Member/...".
-            output.Progress("Testing", std::format("workspace ({}, {})", isRelease ? "release" : "debug", targetName));
+            output.Progress("Testing", std::format("workspace {}", FormatBuildContext(profile, *targetTriple)));
             std::error_code ec;
             if (std::filesystem::exists(projectRoot / "Tests", ec)) {
                 testRoots.push_back({projectRoot / "Tests", {}});
@@ -154,8 +155,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
         else {
             output.Progress("Testing",
-                            std::format("{} v{} ({}, {})", manifest->package.name.Text(),
-                                        manifest->package.version.Text(), isRelease ? "release" : "debug", targetName));
+                            std::format("{} v{} {}", manifest->package.name.Text(), manifest->package.version.Text(),
+                                        FormatBuildContext(profile, *targetTriple)));
             testRoots.push_back({projectRoot / "Tests", {}});
         }
     }
@@ -184,9 +185,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
             static_cast<void>(RequireManifest()); // Prints standard "Rux.toml not found" error
             return 1;
         }
-        output.Progress("Testing", std::format("workspace ({}, {})", isRelease ? "release" : "debug", targetName));
+        output.Progress("Testing", std::format("workspace {}", FormatBuildContext(profile, *targetTriple)));
     }
-    const BuildProfile profile = isRelease ? BuildProfile::Release : BuildProfile::Debug;
 
     // Collect test package directories: any directory under a test root that
     // contains a Rux.toml with Type = "Executable". A directory without a manifest

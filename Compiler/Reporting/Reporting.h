@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -61,6 +62,27 @@ inline constexpr std::string_view errorContinuation = "       ";
 [[nodiscard]] std::string_view StatusText(StatusVerb status);
 [[nodiscard]] StatusKind KindOf(StatusVerb status);
 [[nodiscard]] std::string RenderStatus(StatusVerb status, const Style &style);
+
+// One label and value per report row. Rows are rendered as a block, so the
+// label column is sized to the longest label in that block alone: a section
+// aligns with itself rather than with a width picked for the whole report.
+struct TableRow {
+    std::string_view label;
+    std::string_view value;
+};
+
+// Counts, sizes, and durations read as a column when their right edges line
+// up; names and paths read as a column when their left edges do.
+enum class ValueAlign {
+    Left,
+    Right,
+};
+
+[[nodiscard]] std::string RenderRows(std::span<const TableRow> rows, ValueAlign align = ValueAlign::Left);
+
+// A titled block: the title at column 0, its rows indented below it.
+[[nodiscard]] std::string RenderSection(std::string_view title, std::span<const TableRow> rows, const Style &style,
+                                        ValueAlign align = ValueAlign::Left);
 
 // Return just the correctly inflected label, or the count and label together.
 // An omitted plural uses the ordinary English `s` suffix.

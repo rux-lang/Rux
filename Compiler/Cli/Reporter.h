@@ -27,10 +27,10 @@ struct ReporterOptions {
     bool verbose = false;
 };
 
-struct TableRow {
-    std::string_view label;
-    std::string_view value;
-};
+// Report rows and their alignment policy are shared with reusable compiler
+// reports, which render the same blocks into strings rather than a stream.
+using TableRow = Reporting::TableRow;
+using ValueAlign = Reporting::ValueAlign;
 
 class Reporter {
 public:

@@ -128,6 +128,45 @@ std::string RenderStatus(const StatusVerb status, const Style &style) {
            std::string(style.Reset());
 }
 
+std::string RenderRows(const std::span<const TableRow> rows, const ValueAlign align) {
+    if (rows.empty()) {
+        return {};
+    }
+
+    std::size_t labelWidth = 0;
+    std::size_t valueWidth = 0;
+    for (const auto &row : rows) {
+        labelWidth = std::max(labelWidth, row.label.size());
+        valueWidth = std::max(valueWidth, row.value.size());
+    }
+
+    std::string rendered;
+    for (const auto &row : rows) {
+        // The colon belongs to the label, so padding goes after it and the
+        // value column is what lines up.
+        rendered += indentation;
+        rendered += row.label;
+        rendered += ':';
+        rendered.append(labelWidth - row.label.size() + 1, ' ');
+        if (align == ValueAlign::Right) {
+            rendered.append(valueWidth - row.value.size(), ' ');
+        }
+        rendered += row.value;
+        rendered += '\n';
+    }
+    return rendered;
+}
+
+std::string RenderSection(const std::string_view title, const std::span<const TableRow> rows, const Style &style,
+                          const ValueAlign align) {
+    std::string rendered(style.Bold());
+    rendered += title;
+    rendered += style.Reset();
+    rendered += ":\n";
+    rendered += RenderRows(rows, align);
+    return rendered;
+}
+
 std::string Pluralize(const std::size_t count, const std::string_view singular, const std::string_view plural) {
     if (count == 1) {
         return std::string(singular);

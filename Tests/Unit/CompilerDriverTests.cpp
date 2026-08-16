@@ -736,9 +736,15 @@ TEST_CASE("compiler driver canonicalizes the macOS ARM64 alias and builds a sign
     CHECK_FALSE(image.mainEntryOffset);
     CHECK_FALSE(image.threadEntryAddress);
 
-    const auto report = FormatBuildStats("App", result.primaryArtifactPath, {}, BuildProfile::Release, "macos-arm64",
-                                         result.stats, false);
-    CHECK(report.contains("Target: macOS AArch64 (macos-aarch64)\n"));
+    const BuildReportInfo info{.packageName = "App",
+                               .packageVersion = "0.1.0",
+                               .artifactPath = result.primaryArtifactPath,
+                               .packageRoot = {},
+                               .profile = BuildProfile::Release,
+                               .targetTriple = "macos-arm64"};
+    // The alias normalizes to AArch64, which the report states in its display
+    // spelling rather than repeating the canonical ID.
+    CHECK(FormatBuildStats(info, result.stats, false).contains("Built App (Release, macOS AArch64) in"));
 }
 
 TEST_CASE("compiler driver builds macOS AArch64 static libraries with relocatable object members") {
@@ -869,9 +875,13 @@ TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a s
     }));
 
     CHECK(CanonicalTargetTriple("freebsd-arm64") == "freebsd-aarch64");
-    const auto report = FormatBuildStats("App", result.primaryArtifactPath, {}, BuildProfile::Release, "freebsd-arm64",
-                                         result.stats, false);
-    CHECK(report.contains("Target: FreeBSD AArch64 (freebsd-aarch64)\n"));
+    const BuildReportInfo info{.packageName = "App",
+                               .packageVersion = "0.1.0",
+                               .artifactPath = result.primaryArtifactPath,
+                               .packageRoot = {},
+                               .profile = BuildProfile::Release,
+                               .targetTriple = "freebsd-arm64"};
+    CHECK(FormatBuildStats(info, result.stats, false).contains("Built App (Release, FreeBSD AArch64) in"));
 }
 
 TEST_CASE("compiler driver builds a FreeBSD AArch64 static library from relocatable ELF members") {

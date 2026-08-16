@@ -259,10 +259,11 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         output = ResolveRawOutputRoot(root, *rootManifest) / "Docs";
     }
     const std::size_t packageCount = rootManifest->IsWorkspace() ? rootManifest->workspace.packages.size() : 1;
-    const std::string subject = rootManifest->IsWorkspace()
-                                  ? std::format("workspace ({})", targetName)
-                                  : std::format("{} v{} ({})", rootManifest->package.name.Text(),
-                                                rootManifest->package.version.Text(), targetName);
+    const std::string subject =
+        rootManifest->IsWorkspace()
+            ? std::format("workspace {}", FormatBuildContext(*targetTriple))
+            : std::format("{} v{} {}", rootManifest->package.name.Text(), rootManifest->package.version.Text(),
+                          FormatBuildContext(*targetTriple));
     diagnostics.Progress("Generating", std::format("documentation for {}", subject));
     diagnostics.Verbose(std::format("Output directory: {}", output.string()));
     if (includePrivate) {
