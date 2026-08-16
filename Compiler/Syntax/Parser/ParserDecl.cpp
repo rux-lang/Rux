@@ -778,7 +778,20 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
             }
             decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path segment after '.'").text);
         }
-        else if (Match(TokenKind::ColonColon)) {
+        // A lone ':' here is a mistyped '::'. Falling through to the ordinary
+        // "expected ';'" would name the wrong token and leave the rest of the
+        // path to fail a second time as a stray declaration, so the separator
+        // is reported once and then parsed as if it had been written correctly.
+        else if (Check(TokenKind::ColonColon) || Check(TokenKind::Colon)) {
+            if (Check(TokenKind::Colon)) {
+                const auto &next = Peek(1);
+                std::string help = "separate import path segments with '::'";
+                if (next.Is(TokenKind::Ident)) {
+                    help += std::format(", as in '{}::{}'", decl->path.back(), next.text);
+                }
+                EmitExpected(CurrentLocation(), "'::' in the import path", std::move(help));
+            }
+            Advance();
             if (Check(TokenKind::LeftBrace)) {
                 // import Http::{ Request, Response };
                 Advance(); // consume '{'

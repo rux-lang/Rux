@@ -1,3 +1,5 @@
 2:12: error: expected a type before '}'
 3:26: error: expected ',' between function type parameters before 'bool'
 4:19: error: expected ',' between imported names before 'Two'
+5:10: error: expected '::' in the import path before ':'
+6:12: error: expected '::' in the import path before ':'
