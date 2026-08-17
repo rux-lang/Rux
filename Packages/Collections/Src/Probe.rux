@@ -1,0 +1,113 @@
+// The open-addressing kernel shared by HashMap and HashSet, so the probe
+// sequence, tombstone handling and wraparound exist once rather than twice.
+//
+// Occupancy lives in a separate byte per slot rather than in the key, so there
+// is no reserved or sentinel key value: every possible K is storable,
+// including zero and uint::Max and any struct bit pattern.
+//
+// Probing is linear with tombstones, over a power-of-two capacity. Linear
+// probing keeps a collision chain in consecutive cache lines, and the mask
+// replaces a division. Robin Hood hashing would remove the tombstones through
+// backward-shift deletion, but it needs either another byte array of probe
+// distances or a fresh call of the hash callback per shifted slot, and an
+// indirect call per slot is expensive precisely because Rux has no closures to
+// inline.
+//
+// Internal helpers; not part of the package API.
+
+// A slot that has never held a key. Reaching one ends a probe: no key can have
+// been placed past it on this chain.
+const SlotEmpty: uint8 = 0u8;
+
+// A slot holding a live key.
+const SlotOccupied: uint8 = 1u8;
+
+// A slot whose key was removed. It does not end a probe, because a key placed
+// past it while it was still occupied is still reachable, but it may be reused
+// by the next insertion that probes through it.
+const SlotTombstone: uint8 = 2u8;
+
+// Eight slots is where a table starts. Below that the load factor rounds away
+// to nothing useful.
+const MinimumTableCapacity: uint = 8;
+
+// Locates `key` in a table whose capacity is a nonzero power of two.
+//
+// When the key is present, `*found` is true and the returned slot holds it.
+// When it is absent, `*found` is false and the returned slot is where it
+// belongs: the first tombstone on the probe path if there was one, so a
+// remove-then-reinsert cycle reuses a slot rather than consuming a fresh one,
+// and otherwise the empty slot that ended the probe.
+//
+// The scan runs past a tombstone rather than stopping at it. Stopping would
+// report a key absent whenever it had been placed beyond a slot that was later
+// emptied, and inserting it again would leave the table holding it twice.
+func FindSlot<K>(keys: *K, states: *uint8, capacity: uint, key: K, hash: func(K) -> uint,
+                 equals: func(K, K) -> bool, found: *var bool) -> uint {
+    *found = false;
+
+    let mask = capacity - 1;
+    var index = hash(key) & mask;
+
+    // `capacity` is not a valid slot, so it doubles as "no tombstone seen".
+    var reusable = capacity;
+    var step: uint = 0;
+
+    while step < capacity {
+        let state = states[index];
+        if state == SlotEmpty {
+            if reusable < capacity {
+                return reusable;
+            }
+            return index;
+        }
+
+        if state == SlotOccupied {
+            if equals(keys[index], key) {
+                *found = true;
+                return index;
+            }
+        } else {
+            if reusable == capacity {
+                reusable = index;
+            }
+        }
+
+        index = (index + 1) & mask;
+        step++;
+    }
+
+    // Every slot is occupied or tombstoned. The load factor keeps at least a
+    // quarter of the table free, so a caller that maintains it never gets
+    // here; a tombstone is still the right slot to hand back if it does.
+    if reusable < capacity {
+        return reusable;
+    }
+    return index;
+}
+
+// The smallest power-of-two table capacity that holds `length` entries without
+// exceeding the three-quarters load factor.
+//
+// Because it is derived from the entry count rather than from the current
+// capacity, a table that is mostly tombstones rehashes at the same capacity or
+// a smaller one, which reclaims them without growing. That is what makes one
+// rule cover both growth and tombstone reclamation.
+func TableCapacity(length: uint, capacity: *var uint) -> CollectionError {
+    if length == 0 {
+        *capacity = MinimumTableCapacity;
+        return CollectionError::None;
+    }
+
+    // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the
+    // rounding term can wrap.
+    if length > (uint::Max - 2) / 4 {
+        return CollectionError::CapacityOverflow;
+    }
+
+    let required = (length * 4 + 2) / 3;
+
+    // An element size of one: this sizes slots, and each of the parallel
+    // arrays has its own byte size checked where it is allocated.
+    return PowerOfTwoCapacity(required, MinimumTableCapacity, 1, capacity);
+}
