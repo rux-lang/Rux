@@ -165,6 +165,10 @@ private:
     [[nodiscard]] virtual TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType,
                                                                        const FuncDecl &method) = 0;
+    /// The receiver the method declares, resolved for this call's receiver type. Empty for an associated function and
+    /// for a receiver still written as a bare `self`, neither of which constrains the call site.
+    [[nodiscard]] virtual std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType,
+                                                                           const FuncDecl &method) = 0;
     [[nodiscard]] virtual const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                                 const std::string &methodName) const = 0;
     [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) = 0;
@@ -223,5 +227,7 @@ private:
     [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                              std::string_view operatorName);
     void CheckMutability(const Expr &target);
+    void CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                                 const FuncDecl &method);
 };
 } // namespace Rux::SemanticDetail

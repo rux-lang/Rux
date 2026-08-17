@@ -1525,6 +1525,19 @@ private:
         return ret;
     }
 
+    std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method) override {
+        const Param *receiver = method.Receiver();
+        if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+            return std::nullopt;
+        }
+        TypeRef savedSelfType = currentSelfType;
+        currentSelfType =
+            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        TypeRef declared = ResolveTypeWithSubstitution(*receiver->type, MethodTypeSubstitutions(receiverType));
+        currentSelfType = savedSelfType;
+        return declared;
+    }
+
     std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =

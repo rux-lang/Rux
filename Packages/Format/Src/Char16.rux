@@ -18,6 +18,6 @@ extend char16 : Stringable {
 }
 
 // Appends the UTF-8 bytes of a char16 to a builder.
-func WriteChar(builder: *StringBuilder, value: char16) {
+func WriteChar(builder: *var StringBuilder, value: char16) {
     WriteUtf8(builder, value as uint32);
 }

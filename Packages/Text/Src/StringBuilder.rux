@@ -34,7 +34,7 @@ extend StringBuilder {
     // builder behind. Safe on a builder that owns nothing, so it can follow
     // an IntoString that already gave the block away, and the builder stays
     // usable afterwards.
-    func Free(self: *StringBuilder) {
+    func Free(self: *var StringBuilder) {
         Free(self.data);
         self.data = null;
         self.length = 0;
@@ -66,14 +66,14 @@ extend StringBuilder {
     // Makes room for `additional` more bytes on top of what is already
     // written. Capacity only ever grows, so this leaves a builder that is
     // already big enough alone; Shrink is what hands capacity back.
-    func Reserve(self: *StringBuilder, additional: uint) {
+    func Reserve(self: *var StringBuilder, additional: uint) {
         self.Grow(self.length + additional);
     }
 
     // Grows the block to hold at least `required` bytes. Doubling from a 16
     // byte floor is what makes a run of appends cost an amortized constant
     // rather than a reallocation each time.
-    func Grow(self: *StringBuilder, required: uint) {
+    func Grow(self: *var StringBuilder, required: uint) {
         if required <= self.capacity {
             return;
         }
@@ -95,7 +95,7 @@ extend StringBuilder {
     // Drops the capacity the builder is not using. IntoString leans on this
     // so the String it hands out owns a block sized to its contents rather
     // than to the builder's high-water mark.
-    func Shrink(self: *StringBuilder) {
+    func Shrink(self: *var StringBuilder) {
         if self.capacity == self.length {
             return;
         }
@@ -110,7 +110,7 @@ extend StringBuilder {
     }
 
     // Writes one byte, growing the block if it is full.
-    func Append(self: *StringBuilder, ch: char8) {
+    func Append(self: *var StringBuilder, ch: char8) {
         self.Grow(self.length + 1);
         self.data[self.length] = ch;
         self.length++;
@@ -118,7 +118,7 @@ extend StringBuilder {
 
     // Writes the bytes of a slice, so a literal can be appended without
     // wrapping it in a String first.
-    func Append(self: *StringBuilder, str: Slice<char8>) {
+    func Append(self: *var StringBuilder, str: Slice<char8>) {
         if str.length == 0 {
             return;
         }
@@ -130,7 +130,7 @@ extend StringBuilder {
 
     // Writes the bytes of a String. They are copied, so the String is left
     // untouched and is still the caller's to free.
-    func Append(self: *StringBuilder, str: String) {
+    func Append(self: *var StringBuilder, str: String) {
         if str.length == 0 {
             return;
         }
@@ -142,7 +142,7 @@ extend StringBuilder {
 
     // Forgets what was written but keeps the block, so the builder can be
     // filled again without a fresh allocation. Free is what releases it.
-    func Clear(self: *StringBuilder) {
+    func Clear(self: *var StringBuilder) {
         self.length = 0;
     }
 
@@ -156,7 +156,7 @@ extend StringBuilder {
     // Hands the block itself to the String, which costs no copy. The builder
     // is left empty and owning nothing, so only the String has to be freed.
     // Draining an empty builder yields the empty String.
-    func IntoString(self: *StringBuilder) -> String {
+    func IntoString(self: *var StringBuilder) -> String {
         self.Shrink();
 
         let result = String { data: self.data, length: self.length };

@@ -48,7 +48,7 @@ extend Array<T> {
 
     // Releases the allocation and leaves an empty Array behind. Calling Free
     // again is safe because Memory::Free accepts null.
-    func Free(self: *Array<T>) {
+    func Free(self: *var Array<T>) {
         Free(self.data);
         self.data = null;
         self.length = 0;

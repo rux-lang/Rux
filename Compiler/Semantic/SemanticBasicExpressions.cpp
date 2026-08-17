@@ -569,10 +569,14 @@ bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {
         }
         return symbol->kind == Symbol::Kind::Var && !symbol->isMut;
     }
+    // The receiver is a parameter like any other. A receiver taken by value is a copy the method may not rewrite unless
+    // it was declared `var self: T`; a receiver taken by reference is decided by what the reference points at, which
+    // the branches below read off the pointer.
+    if (dynamic_cast<const SelfExpr *>(&place)) {
+        const Symbol *symbol = currentScope->Lookup("self");
+        return symbol != nullptr && !symbol->isMut;
+    }
     if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
-        if (dynamic_cast<const SelfExpr *>(field->object.get())) {
-            return false;
-        }
         const TypeRef objectType = CheckExpr(*field->object);
         if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;
@@ -622,10 +626,13 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
                       std::format("cannot modify data through read-only pointer '{}'", pointer.ToString()));
         }
     }
-    else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
-        if (dynamic_cast<const SelfExpr *>(field->object.get())) {
-            return;
+    else if (dynamic_cast<const SelfExpr *>(&target)) {
+        if (const Symbol *symbol = currentScope->Lookup("self"); symbol && !symbol->isMut) {
+            EmitError(target.location, "cannot modify immutable receiver 'self'", {},
+                      "declare the receiver with 'var' to make it mutable");
         }
+    }
+    else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
         const TypeRef objectType = CheckExpr(*field->object);
         if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
