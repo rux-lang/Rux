@@ -1,0 +1,107 @@
+import Core::Assert;
+
+// An operator a struct does not declare is derived from one it does:
+//
+//   a != b  ->  !(a == b)
+//   a >  b  ->  b < a
+//
+// Both spellings below deliberately disagree with a comparison of the operands'
+// raw bytes, which is what these used to fall back to. `Keyed` orders and
+// compares on `key` alone, so two values sharing a key are equal and neither is
+// greater, however far apart their `origin` fields are.
+
+struct Keyed {
+    key: int32;
+    origin: int32;
+}
+
+extend Keyed {
+    func ==(self, other: Keyed) -> bool {
+        return self.key == other.key;
+    }
+
+    func <(self, other: Keyed) -> bool {
+        return self.key < other.key;
+    }
+}
+
+// A type that declares `!=` itself, to check the declaration wins over the
+// derivation. This one answers the opposite of `==` on purpose.
+struct Contrary {
+    value: int32;
+}
+
+extend Contrary {
+    func ==(self, other: Contrary) -> bool {
+        return self.value == other.value;
+    }
+
+    func !=(self, other: Contrary) -> bool {
+        return true;
+    }
+}
+
+func Differs<T>(a: T, b: T) -> bool {
+    return a != b;
+}
+
+func Exceeds<T>(a: T, b: T) -> bool {
+    return a > b;
+}
+
+// Counts how often it is called, so a derived operator can be shown to
+// evaluate each operand exactly once.
+func Count(counter: *var int32, value: int32) -> Keyed {
+    *counter += 1;
+    return Keyed { key: value, origin: 0 };
+}
+
+func Main() -> int {
+    let five = Keyed { key: 5, origin: 1 };
+    let alsoFive = Keyed { key: 5, origin: 2 };
+    let eight = Keyed { key: 8, origin: 0 };
+
+    // `!=` follows the declared `==`, so equal keys are not different even
+    // though the two values differ byte for byte.
+    Assert(!(five != alsoFive), "!= follows == for equal keys");
+    Assert(five != eight, "!= reports differing keys");
+    Assert(five == alsoFive, "== itself is unchanged");
+
+    // `>` follows the declared `<` with its operands reversed.
+    Assert(!(five > eight), "> is false for a smaller key");
+    Assert(eight > five, "> is true for a larger key");
+    Assert(!(five > alsoFive), "> is false for equal keys");
+    Assert(!(alsoFive > five), "> is false in the other direction too");
+
+    // The same through a generic, where the operands are type parameters.
+    Assert(!Differs<Keyed>(five, alsoFive), "derived != survives substitution");
+    Assert(Differs<Keyed>(five, eight), "derived != reports a difference after substitution");
+    Assert(Exceeds<Keyed>(eight, five), "derived > survives substitution");
+    Assert(!Exceeds<Keyed>(five, eight), "derived > is false after substitution");
+
+    // A declared operator wins over the derivation, even one that contradicts
+    // the `==` it would otherwise be derived from.
+    let one = Contrary { value: 1 };
+    let another = Contrary { value: 1 };
+    Assert(one == another, "declared == compares values");
+    Assert(one != another, "a declared != wins over the derived one");
+
+    // A derived operator names each operand once, so an operand with a side
+    // effect runs once.
+    var evaluations: int32 = 0;
+    let derived = Count(@evaluations, 1) != Count(@evaluations, 2);
+    Assert(derived, "derived != still answers correctly");
+    Assert(evaluations == 2, "derived != evaluates each operand exactly once");
+
+    evaluations = 0;
+    let ordered = Count(@evaluations, 9) > Count(@evaluations, 1);
+    Assert(ordered, "derived > still answers correctly");
+    Assert(evaluations == 2, "derived > evaluates each operand exactly once");
+
+    // Primitives are untouched by any of this.
+    Assert(1 != 2, "primitive != is unchanged");
+    Assert(2 > 1, "primitive > is unchanged");
+    Assert(1 <= 1 && 2 >= 2, "primitive <= and >= are unchanged");
+
+    return 0;
+}

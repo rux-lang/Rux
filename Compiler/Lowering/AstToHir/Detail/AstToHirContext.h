@@ -180,6 +180,8 @@ private:
     [[nodiscard]] std::string LowerLiteralValue(const LiteralExpr &expression) const;
     [[nodiscard]] HirExprPtr TryLowerOverloadedBinary(const BinaryExpr &expression, HirExprPtr &left,
                                                       HirExprPtr &right);
+    [[nodiscard]] HirExprPtr LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left,
+                                                       HirExprPtr &right, const FuncDecl &resolved);
     [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type) const;
     [[nodiscard]] TypeRef LiteralType(const Token &token) const;
     [[nodiscard]] std::string StripNumericLiteralSuffix(const std::string &text) const;
