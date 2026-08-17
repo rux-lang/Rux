@@ -24,6 +24,8 @@ The planned modules exist as placeholders so the package layout and its document
 
 Both available types own their storage through [`Rux/Memory`](../Memory) and are released explicitly.
 
+`AsSlice` and `AsMutableSlice` hand out a borrowed view of the elements without copying them — read-only and writable respectively — which is how a container reaches [`Rux/Algorithms`](../Algorithms). A `List` view covers its initialized elements only, never its spare capacity, and any view is invalidated by a growth that moves the storage.
+
 ## Example
 
 ```rux

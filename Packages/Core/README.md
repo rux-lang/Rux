@@ -17,7 +17,7 @@ rux add Rux/Core
 - **Assertions and panics** — `Assert`, `DebugAssert`, and `Panic`. Release builds remove `DebugAssert` checks without evaluating their arguments.
 - **`Result`** — the fallible-return enum.
 - **Ranges** — `Range`, `RangeFrom`, `RangeTo`, `RangeInclusive`, `RangeToInclusive`, and `RangeFull`.
-- **Slices** and `SemanticVersion`.
+- **Slices** — `Slice`, a read-only `{ *T, length }` view, and `MutableSlice`, the same view over `*var T`. Both borrow and never own; `MutableSlice::AsSlice` weakens one to the other, and `Sub` clamps rather than running past the end. `SemanticVersion` sits beside them.
 - **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for every integer, floating-point, boolean, and character width.
 
 `Assert` and `Panic` failures have the same UTF-8, LF-terminated layout on every supported target:
