@@ -27,6 +27,12 @@ TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string,
     return type;
 }
 
+/// A slice borrows its elements through the read-only `*T` in its `data` field, so writing one writes through that
+/// pointer whatever the binding itself is declared as. `MutableSlice` is the writable counterpart.
+bool IsSliceType(const TypeRef &type) {
+    return type.kind == TypeRef::Kind::Named && (type.name.starts_with("Slice<") || type.name == "Slice");
+}
+
 bool IsNullLiteral(const Expr &expression) {
     const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
     return literal && literal->token.kind == TokenKind::NullKeyword;
@@ -593,6 +599,13 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
                 EmitError(target.location,
                           std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
+        }
+        else if (IsSliceType(objectType)) {
+            // Checking the binding's own mutability would be the wrong question here: a slice reaches its elements
+            // through a read-only pointer, so declaring the slice `var` lets it be re-pointed, never rewritten.
+            EmitError(target.location,
+                      std::format("cannot modify elements through read-only slice '{}'", objectType.ToString()), {},
+                      "declare the sequence as a 'MutableSlice' from 'Rux/Core' to write through it");
         }
         else {
             CheckMutability(*index->object);
