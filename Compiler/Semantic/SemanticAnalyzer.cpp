@@ -1666,7 +1666,15 @@ private:
                         if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                             continue;
                         }
-                        if (exactOnly ? !(argTypes[i] == paramType) : !argTypes[i].IsAssignableTo(paramType)) {
+                        // An unsuffixed integer literal carries the default `int`, which is assignable to no other
+                        // integer width. The single-overload path above lets one reach any integer parameter anyway;
+                        // without the same allowance here, giving a name a second overload stopped every call that
+                        // passed a bare literal from resolving at all. Only the coercing pass grants it, so an exact
+                        // match still wins, and only `int` widens, so an explicitly typed argument is never silently
+                        // narrowed to a different width.
+                        const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
+                        const bool assignable = argTypes[i].IsAssignableTo(paramType) || literalToInteger;
+                        if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
                             match = false;
                             break;
                         }
