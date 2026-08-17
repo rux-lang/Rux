@@ -131,6 +131,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticStatements.cpp
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
+    Semantic/SemanticReceivers.cpp
     Semantic/SemanticPrinter.cpp)
 target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxSyntax RuxDiagnostics)
 

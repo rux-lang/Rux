@@ -1,0 +1,44 @@
+// A receiver is checked like any other place it could be written through: a
+// read-only receiver refuses a write, and a method that declares a writable one
+// refuses a call site that cannot hand it one.
+
+struct Counter {
+    value: int;
+}
+
+extend Counter {
+    func Read(self: *Counter) -> int {
+        return self.value;
+    }
+
+    // Writing through a read-only receiver, which is the same mistake as
+    // writing through any other read-only pointer.
+    func Bump(self: *Counter) {
+        self.value += 1;
+    }
+
+    func BumpBy(self: *var Counter, amount: int) {
+        self.value += amount;
+    }
+
+    // A copy the method does not own: a receiver taken by value is immutable
+    // until the declaration says `var`, like every other parameter.
+    func Doubled(self: Counter) -> Counter {
+        self.value *= 2;
+        return self;
+    }
+}
+
+// A read-only pointer cannot reach a method that writes through its receiver.
+func Observe(counter: *Counter) {
+    counter.BumpBy(1);
+}
+
+func Main() -> int {
+    let fixed = Counter { value: 1 };
+    fixed.BumpBy(1);
+
+    var counter = Counter { value: 1 };
+    counter.BumpBy(1);
+    return counter.Read();
+}

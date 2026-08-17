@@ -219,11 +219,13 @@ struct Record {
 }
 
 extend Record {
-    func ==(self, other: Record) -> bool {
+    func ==(self: Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }
 ```
+
+Both operands are values, so both are written the same way. A larger element can take its receiver by reference instead — `func ==(self: *Record, other: Record)` — but the other operand stays a value either way: only the receiver is addressed for you, so a `*Record` there would leave `a == b` with no operator to find.
 
 The planned ordering and search modules will require `func <` in the same way. A missing operator is reported where the algorithm is instantiated, not where it is declared.
 

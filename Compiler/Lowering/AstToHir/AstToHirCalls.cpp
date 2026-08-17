@@ -60,6 +60,47 @@ std::string AstToHirContext::LogicalCurrentFilePath() const {
     return path.generic_string();
 }
 
+/// Whether the method asked for a copy of its receiver rather than a reference to it. A pointer receiver is passed as
+/// it stands, and a slice receiver is a value the ABI still passes by address, so only a receiver written as a plain
+/// type travels the way an ordinary argument does.
+bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
+    const Param *receiver = method.Receiver();
+    if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        return false;
+    }
+    const TypeRef &declared = ResolvedType(*receiver->type);
+    return declared.kind != TypeRef::Kind::Pointer &&
+           !(declared.kind == TypeRef::Kind::Named && declared.name.starts_with("Slice<"));
+}
+
+/// The receiver as the callee actually takes it. Every call site has a value or a pointer in hand and the signature
+/// says which of those the method wants, so the difference is made up here rather than at each of the places a method
+/// can be reached from.
+HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver) {
+    const bool isPointer = receiver->type.kind == TypeRef::Kind::Pointer;
+    if (ReceiverIsByValue(method)) {
+        if (!isPointer) {
+            return receiver;
+        }
+        // A by-value receiver reached through a pointer is the value the pointer names, copied like any argument.
+        auto load = std::make_unique<HirUnaryExpr>();
+        load->location = receiver->location;
+        load->op = TokenKind::Star;
+        load->type = receiver->type.inner.front();
+        load->operand = std::move(receiver);
+        return load;
+    }
+    if (isPointer) {
+        return receiver;
+    }
+    auto address = std::make_unique<HirUnaryExpr>();
+    address->location = receiver->location;
+    address->op = TokenKind::At;
+    address->type = TypeRef::MakePointer(receiver->type);
+    address->operand = std::move(receiver);
+    return address;
+}
+
 ResolvedCallableBinding AstToHirContext::ResolvedCall(const CallExpr &call) const {
     return RequireSemanticFact(model.TryGetCallableBinding(call)).Instantiate(currentSubstitutions);
 }
@@ -211,30 +252,7 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
     callee->name = binding.linkerName;
 
     if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
-        HirExprPtr receiver = LowerExpr(*field->object);
-        const bool byValue = ReceiverIsByValue(method);
-        const bool isPointer = receiver->type.kind == TypeRef::Kind::Pointer;
-        HirExprPtr self;
-        if (byValue && isPointer) {
-            // A by-value receiver reached through a pointer is the value the pointer names, copied like any argument.
-            auto load = std::make_unique<HirUnaryExpr>();
-            load->location = receiver->location;
-            load->op = TokenKind::Star;
-            load->type = receiver->type.inner.front();
-            load->operand = std::move(receiver);
-            self = std::move(load);
-        }
-        else if (byValue || isPointer) {
-            self = std::move(receiver);
-        }
-        else {
-            auto address = std::make_unique<HirUnaryExpr>();
-            address->location = receiver->location;
-            address->op = TokenKind::At;
-            address->type = TypeRef::MakePointer(receiver->type);
-            address->operand = std::move(receiver);
-            self = std::move(address);
-        }
+        HirExprPtr self = LowerReceiverFor(method, LowerExpr(*field->object));
         callee->type = MethodType(self->type, method);
         lowered->args.push_back(std::move(self));
         std::vector<HirExprPtr> arguments = LowerBoundArguments(call, method, binding, callee->type, true);

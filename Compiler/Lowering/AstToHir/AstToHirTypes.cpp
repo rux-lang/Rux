@@ -51,7 +51,9 @@ TypeRef AstToHirContext::MakeFuncTypeWithSubstitution(const std::vector<Param> &
 
     std::vector<TypeRef> paramTypes;
     for (const auto &param : params) {
-        if (!param.isVariadic) {
+        // A receiver is not one of the arguments a call site writes: it reaches the function on its own, as the value
+        // to the left of the dot or, for an interface, as the data half of the fat pointer.
+        if (!param.isVariadic && !param.IsReceiver()) {
             paramTypes.push_back(ResolveType(*param.type));
         }
     }
@@ -900,19 +902,6 @@ std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitution
         substitutions.emplace(params[i], args[i]);
     }
     return substitutions;
-}
-
-/// Whether the method asked for a copy of its receiver rather than a reference to it. A pointer receiver is passed as
-/// it stands, and a slice receiver is a value the ABI still passes by address, so only a receiver written as a plain
-/// type travels the way an ordinary argument does.
-bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
-    const Param *receiver = method.Receiver();
-    if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
-        return false;
-    }
-    const TypeRef &declared = ResolvedType(*receiver->type);
-    return declared.kind != TypeRef::Kind::Pointer &&
-           !(declared.kind == TypeRef::Kind::Named && declared.name.starts_with("Slice<"));
 }
 
 TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl &method) {

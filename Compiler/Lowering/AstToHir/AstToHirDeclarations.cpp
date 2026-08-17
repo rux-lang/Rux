@@ -234,10 +234,13 @@ TypeRef AstToHirContext::LiteralType(const Token &tok) const {
     }
 }
 
-std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &params) {
+std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &params, const bool skipReceiver) {
     std::vector<HirParam> out;
     out.reserve(params.size());
     for (const auto &p : params) {
+        if (skipReceiver && p.IsReceiver()) {
+            continue;
+        }
         HirParam hp;
         hp.name = p.name;
         hp.isVariadic = p.isVariadic;
@@ -466,7 +469,9 @@ HirInterface AstToHirContext::LowerInterface(const InterfaceDecl &d) {
         hm.name = m->name;
         hm.location = m->location;
         hm.returnType = m->returnType ? ResolveType(**m->returnType) : TypeRef::MakeOpaque();
-        hm.params = LowerParams(m->params);
+        // A vtable slot is reached through the interface value, whose data half is the receiver, so the slot's written
+        // parameters are the ones after it.
+        hm.params = LowerParams(m->params, /*skipReceiver=*/true);
         hi.methods.push_back(std::move(hm));
     }
     return hi;
