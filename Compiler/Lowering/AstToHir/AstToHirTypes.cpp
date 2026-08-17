@@ -1,3 +1,6 @@
+// Type lowering: resolving written types to HIR types, and composing the names
+// generic instantiations are identified by.
+
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 

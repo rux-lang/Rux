@@ -6,12 +6,23 @@
 #include <string_view>
 
 namespace Rux {
+/// The numeric core of a semantic version, with any pre-release or build suffix already discarded.
+///
+/// Deliberately lighter than `Package/Version.h`, which models a full `SemanticVersion` including suffix ordering and
+/// is what package resolution compares. This one exists for compile-time `#if` conditions, which only ever ask about
+/// major/minor/patch and must not pull the package layer into the semantic analyzer.
 struct ParsedSemanticVersion {
     std::uint64_t major = 0;
     std::uint64_t minor = 0;
     std::uint64_t patch = 0;
 };
 
+/// Parse `major.minor.patch`, ignoring any `-pre` or `+build` suffix.
+///
+/// Strict about the core: exactly three components, no leading zeros, nothing but digits. A malformed version is
+/// rejected rather than coerced, so a typo in a `#if` condition fails instead of silently comparing as 0.0.0.
+///
+/// @return nullopt when the core is not three well-formed components
 inline std::optional<ParsedSemanticVersion> ParseSemanticVersion(const std::string_view text) {
     ParsedSemanticVersion version;
     const std::size_t suffix = text.find_first_of("-+");
@@ -42,6 +53,9 @@ inline std::optional<ParsedSemanticVersion> ParseSemanticVersion(const std::stri
     return version;
 }
 
+/// Order two versions by precedence.
+///
+/// @return -1, 0, or 1 as `left` orders before, with, or after `right`
 inline int CompareSemanticVersions(const ParsedSemanticVersion &left, const ParsedSemanticVersion &right) {
     if (left.major != right.major)
         return left.major < right.major ? -1 : 1;

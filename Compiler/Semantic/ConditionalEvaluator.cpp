@@ -1,3 +1,6 @@
+// Compile-time evaluation for `#if` conditions: the target, build and compiler
+// values a condition can name, and the constants it can compare against.
+
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/ConditionalEvaluatorInternal.h"
 #include "Semantic/PrimitiveConstants.h"
@@ -25,12 +28,11 @@
 
 namespace Rux {
 namespace {
-// The operating systems `#target.os` can name. Each is one a build can
-// produce, so naming one is never a branch that quietly never runs.
+/// The operating systems `#target.os` can name. Each is one a build can produce, so naming one is never a branch that
+/// quietly never runs.
 constexpr std::array OsVariants{"FreeBSD", "Linux", "macOS", "Windows"};
 
-// Spellings of an OS that are not the variant name: what the host reports, or
-// what a target triple is called.
+/// Spellings of an OS that are not the variant name: what the host reports, or what a target triple is called.
 constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
     {"macos", "macOS"},
     {"osx", "macOS"},
@@ -40,14 +42,15 @@ constexpr std::pair<std::string_view, std::string_view> OsAliases[] = {
 using EnumValue = CompileTimeEnumValue;
 using Value = CompileTimeValue;
 
+/// Case-insensitive comparison for the names a `#if` condition can test, so a target or feature written in either case
+/// matches.
 bool EqualsIgnoringCase(const std::string_view a, const std::string_view b) {
     return std::ranges::equal(a, b, [](const char x, const char y) {
         return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
     });
 }
 
-// The `OS` variant an OS name denotes, however it is spelled ("macOS" and
-// "Darwin" are both `.macOS`).
+/// The `OS` variant an OS name denotes, however it is spelled ("macOS" and "Darwin" are both `.macOS`).
 std::optional<std::string> OsVariantFor(const std::string_view name) {
     for (const std::string_view variant : OsVariants) {
         if (EqualsIgnoringCase(name, variant)) {
@@ -86,6 +89,8 @@ void RegisterVariants(std::unordered_map<std::string, std::vector<std::string>> 
     }
 }
 
+/// The spelling a compile-time condition matches an architecture by. Distinct from both the canonical target id and the
+/// display name, because this one is part of the language's surface and cannot change with report wording.
 std::string ArchVariant(const Target::Arch arch) {
     switch (arch) {
     case Target::Arch::AArch64:
@@ -134,6 +139,8 @@ std::string ObjectFormatVariant(const Target::ObjectFormat format) {
     }
 }
 
+/// A source path relative to the package root, so a `#if` testing the current file means the same thing wherever the
+/// package was checked out.
 std::string LogicalFilePath(const std::string &file, const std::filesystem::path &root) {
     const std::filesystem::path path(file);
     if (!root.empty()) {
@@ -166,6 +173,9 @@ std::string FormatTimestamp(const std::int64_t timestamp, const char *format) {
     return buffer;
 }
 
+/// Parse an integer literal for compile-time evaluation, in every base and suffix the language accepts.
+///
+/// @return nullopt when the text is not a literal this evaluator can represent
 std::optional<Value> ParseIntLiteral(std::string_view text) {
     // Strip a numeric suffix (12u8, 3i64) and the digit separators.
     std::string digits;
@@ -253,6 +263,7 @@ std::optional<double> ParseFloatValue(std::string_view text) {
     }
 }
 
+/// The value of a built-in constant such as a type's limit, so a `#if` can compare against it.
 std::optional<Value> PrimitiveValue(const PrimitiveConstant &constant) {
     if (constant.type.IsFloat()) {
         if (const auto value = ParseFloatValue(constant.value)) {
@@ -443,11 +454,9 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
     }
 }
 
-// Record which names the current file imports from the intrinsics package,
-// so a `when` condition can require its build intrinsics and enums to be
-// imported. The import name is whatever the owning manifest bound the
-// package to, so it is matched against the aliases the driver resolved
-// rather than against a fixed spelling.
+/// Record which names the current file imports from the intrinsics package, so a `when` condition can require its build
+/// intrinsics and enums to be imported. The import name is whatever the owning manifest bound the package to, so it is
+/// matched against the aliases the driver resolved rather than against a fixed spelling.
 void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     ruxImports.clear();
     ruxGlobImport = false;
@@ -481,7 +490,7 @@ void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &d
     }
 }
 
-// A Rux build intrinsic or enum named in a condition must be imported.
+/// A Rux build intrinsic or enum named in a condition must be imported.
 bool ConditionalEvaluator::Impl::RequireRuxImport(const std::string &name, const SourceLocation location) {
     if (ruxGlobImport || ruxImports.contains(name) || localIntrinsics.contains(name)) {
         return true;
@@ -1056,10 +1065,9 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
     return std::nullopt;
 }
 
-// Whether two enum values name the same variant. A shorthand such as
-// `.Windows` takes its enum from the value on the other side (`#target.os`,
-// which is `OperatingSystem`), and the variant is validated against it.
-// Returns nullopt when the comparison is ill-formed (an error is reported).
+/// Whether two enum values name the same variant. A shorthand such as `.Windows` takes its enum from the value on the
+/// other side (`#target.os`, which is `OperatingSystem`), and the variant is validated against it. Returns nullopt when
+/// the comparison is ill-formed (an error is reported).
 std::optional<bool> ConditionalEvaluator::Impl::EnumEquals(const EnumValue &left, const EnumValue &right,
                                                            const SourceLocation location) {
     if (!left.type.empty() && !right.type.empty() && left.type != right.type) {
@@ -1086,8 +1094,8 @@ std::optional<bool> ConditionalEvaluator::Impl::EnumEquals(const EnumValue &left
     return left.variant == right.variant;
 }
 
-// `#target.os == .Windows`. Enum values compare by variant, and only for equality;
-// a shorthand takes its enum from the value on the other side.
+/// `#target.os == .Windows`. Enum values compare by variant, and only for equality; a shorthand takes its enum from the
+/// value on the other side.
 std::optional<CompileTimeValue>
 ConditionalEvaluator::Impl::EvalEnumComparison(const BinaryExpr &e, const EnumValue &left, const EnumValue &right) {
     if (e.op != TokenKind::Equal && e.op != TokenKind::BangEqual) {
@@ -1100,9 +1108,8 @@ ConditionalEvaluator::Impl::EvalEnumComparison(const BinaryExpr &e, const EnumVa
     return Value{e.op == TokenKind::Equal ? *equal : !*equal};
 }
 
-// Alphabetical, so a reader scanning the list for the name they meant to
-// type can find it. Comparison is case-insensitive so technical initialisms
-// sort with the same rule as other names.
+/// Alphabetical, so a reader scanning the list for the name they meant to type can find it. Comparison is
+/// case-insensitive so technical initialisms sort with the same rule as other names.
 std::string ConditionalEvaluator::Impl::JoinVariants(const std::vector<std::string> &variants) {
     std::vector<std::string> sorted = variants;
     std::ranges::sort(sorted, [](const std::string_view a, const std::string_view b) {

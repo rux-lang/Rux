@@ -1,3 +1,6 @@
+// The analyzed model's accessors, and the identity substitution that turns a
+// generic declaration's recorded linker name into one instantiation's.
+
 #include "Semantic/SemanticModel.h"
 
 #include <algorithm>
@@ -12,6 +15,9 @@ bool IdentityCharacter(const char character) {
     return std::isalnum(static_cast<unsigned char>(character)) || character == '_';
 }
 
+/// Replace type parameters inside a recorded linker name with the concrete types of one instantiation. This is what
+/// turns a generic declaration's symbolic identity into the name a specific emitted instance links under, without
+/// re-running overload resolution or mangling.
 std::string SubstituteIdentityName(std::string name, const std::unordered_map<std::string, TypeRef> &substitutions) {
     for (const auto &[parameter, type] : substitutions) {
         std::size_t position = 0;
@@ -31,6 +37,8 @@ std::string SubstituteIdentityName(std::string name, const std::unordered_map<st
     return name;
 }
 
+/// Substitute type parameters throughout a type, including nested ones, so a generic argument is resolved wherever it
+/// appears.
 TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
         if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
@@ -46,6 +54,8 @@ TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::strin
     return type;
 }
 
+/// Encode a type into the form a linker name embeds, so two instantiations differing only by argument get distinct
+/// symbols.
 std::string MangleIdentityType(const TypeRef &type) {
     std::string name;
     for (const char character : type.ToString()) {

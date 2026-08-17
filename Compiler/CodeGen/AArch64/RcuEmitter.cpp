@@ -35,18 +35,16 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-// How a write is asked of a Unix kernel on this system: the number the call is
-// known by, the register that number travels in, and the immediate SVC carries.
-// A failed assertion prints its message before it traps, and that print is the
-// one thing in this back end that is a property of the operating system rather
-// than of the architecture — AAPCS64 settles everything else. Windows reaches
-// the same operation through KERNEL32 imports below rather than a kernel trap.
-//
-// The three answers are the three families of AArch64 kernel: Linux keeps its
-// own numbering and takes the number in X8, the BSDs share the historical UNIX
-// numbering and take it the same way, and Darwin takes it in X16 and is asked
-// through a trap of its own. An operating system with no entry has no assertion
-// message, which is a report rather than a wrong system call.
+/// How a write is asked of a Unix kernel on this system: the number the call is known by, the register that number
+/// travels in, and the immediate SVC carries. A failed assertion prints its message before it traps, and that print is
+/// the one thing in this back end that is a property of the operating system rather than of the architecture — AAPCS64
+/// settles everything else. Windows reaches the same operation through KERNEL32 imports below rather than a kernel
+/// trap.
+///
+/// The three answers are the three families of AArch64 kernel: Linux keeps its own numbering and takes the number in
+/// X8, the BSDs share the historical UNIX numbering and take it the same way, and Darwin takes it in X16 and is asked
+/// through a trap of its own. An operating system with no entry has no assertion message, which is a report rather than
+/// a wrong system call.
 struct WriteSyscall {
     std::uint64_t number = 64;
     unsigned numberReg = 8;
@@ -66,51 +64,46 @@ struct WriteSyscall {
     }
 }
 
-// The file descriptor a failed assertion writes to on Unix.
+/// The file descriptor a failed assertion writes to on Unix.
 constexpr std::uint64_t kStandardError = 2;
 
-// GetStdHandle's signed pseudo-handle for standard error, carried in X0 as the
-// two's-complement value the Windows API receives.
+/// GetStdHandle's signed pseudo-handle for standard error, carried in X0 as the two's-complement value the Windows API
+/// receives.
 constexpr std::uint64_t kStandardErrorHandle = static_cast<std::uint64_t>(static_cast<std::int64_t>(-12));
 constexpr std::string_view kKernel32 = "KERNEL32.DLL";
 
-// The frame record — the caller's frame pointer and the return address — that
-// every prologue stores and every epilogue restores.
+/// The frame record — the caller's frame pointer and the return address — that every prologue stores and every epilogue
+/// restores.
 constexpr std::int32_t kFrameRecordSize = 16;
 
-// The largest frame a single pre-indexed STP can open: its 7-bit immediate
-// counts pairs of doublewords, so it reaches 64 of them below the stack
-// pointer. A frame past this opens with FrameAdjust instead.
+/// The largest frame a single pre-indexed STP can open: its 7-bit immediate counts pairs of doublewords, so it reaches
+/// 64 of them below the stack pointer. A frame past this opens with FrameAdjust instead.
 constexpr std::int32_t kInlineFrameLimit = 512;
 
-// The register this generator computes in. AAPCS64 leaves X9 through X15 to the
-// caller, so nothing that has to survive a call lives here, and it is clear of
-// both the argument registers and the X16/X17 pair the encoder's composite
-// sequences take as scratch.
+/// The register this generator computes in. AAPCS64 leaves X9 through X15 to the caller, so nothing that has to survive
+/// a call lives here, and it is clear of both the argument registers and the X16/X17 pair the encoder's composite
+/// sequences take as scratch.
 constexpr unsigned kTemp = 9;
 
-// The register an address is computed in. A load reads through it and a store
-// writes through it, so it is never the register the value itself is in.
+/// The register an address is computed in. A load reads through it and a store writes through it, so it is never the
+/// register the value itself is in.
 constexpr unsigned kAddr = 10;
 
-// The second value register. LDP and STP move two registers at a time, and a
-// multiply by an element width needs somewhere to put the width.
+/// The second value register. LDP and STP move two registers at a time, and a multiply by an element width needs
+/// somewhere to put the width.
 constexpr unsigned kTemp2 = 12;
 
-// The register a caller puts the address of an indirect result in. It is
-// neither an argument register nor a result one — a callee returning something
-// too large for registers reads it and writes there, and returns nothing.
+/// The register a caller puts the address of an indirect result in. It is neither an argument register nor a result one
+/// — a callee returning something too large for registers reads it and writes there, and returns nothing.
 constexpr unsigned kIndirectResult = 8;
 
-// The vector register a floating-point value is computed in. AAPCS64 preserves
-// only the low half of V8 through V15 across a call, so the caller-saved half
-// of the file starts at V16 and nothing here has to be saved by a callee.
+/// The vector register a floating-point value is computed in. AAPCS64 preserves only the low half of V8 through V15
+/// across a call, so the caller-saved half of the file starts at V16 and nothing here has to be saved by a callee.
 constexpr unsigned kFpTemp = 16;
 
-// The access width a scalar of `size` bytes is moved at: the four widths a
-// load or store names, with anything else rounded up to a whole register. A
-// type with no size of its own — an opaque one — is a whole register too,
-// since that is what its stack slot was given.
+/// The access width a scalar of `size` bytes is moved at: the four widths a load or store names, with anything else
+/// rounded up to a whole register. A type with no size of its own — an opaque one — is a whole register too, since that
+/// is what its stack slot was given.
 [[nodiscard]] unsigned AccessWidth(const int size) {
     if (size <= 0) {
         return 8;
@@ -127,15 +120,14 @@ constexpr unsigned kFpTemp = 16;
     return 8;
 }
 
-// Whether LDP and STP of two doublewords reach `offset`. Their 7-bit immediate
-// counts pairs of doublewords, so it reaches 64 of them either way and cannot
-// name a displacement that is not a multiple of eight at all.
+/// Whether LDP and STP of two doublewords reach `offset`. Their 7-bit immediate counts pairs of doublewords, so it
+/// reaches 64 of them either way and cannot name a displacement that is not a multiple of eight at all.
 [[nodiscard]] bool InPairRange(const std::int64_t offset) {
     return offset % 8 == 0 && offset >= -512 && offset <= 504;
 }
 
-// No symbol at all, for a lazily declared runtime helper nothing has reached
-// yet. Index zero is a real symbol, so absence needs a value of its own.
+/// No symbol at all, for a lazily declared runtime helper nothing has reached yet. Index zero is a real symbol, so
+/// absence needs a value of its own.
 constexpr std::uint32_t kNoSymbol = ~0U;
 
 class AArch64CodeGen final : private AArch64FunctionEmitterHooks, private AArch64CallAndTerminatorHooks {

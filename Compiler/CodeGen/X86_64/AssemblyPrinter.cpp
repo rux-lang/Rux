@@ -1,3 +1,7 @@
+// Textual assembly output for x86-64, the entry point shared by the module,
+// instruction and control-flow printers beside it. The text is for reading;
+// nothing assembles it back.
+
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 
 #include "CodeGen/Layout.h"

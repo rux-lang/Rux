@@ -24,6 +24,8 @@ struct SearchEntry {
     std::string href;
 };
 
+/// Escape text for HTML. Documentation text comes from source comments, so it is author-controlled but not trusted
+/// markup: everything is escaped and only the inline forms below are re-introduced deliberately.
 std::string EscapeHtml(const std::string_view value) {
     std::string result;
     result.reserve(value.size());
@@ -52,6 +54,8 @@ std::string EscapeHtml(const std::string_view value) {
     return result;
 }
 
+/// Whether a link target may be emitted as an anchor. Restricted to schemes that cannot execute, so a doc comment
+/// cannot turn into script when the generated page is opened.
 bool SafeLink(const std::string_view link) {
     const auto colon = link.find(':');
     if (colon == std::string_view::npos)
@@ -61,6 +65,7 @@ bool SafeLink(const std::string_view link) {
     return scheme == "http" || scheme == "https" || scheme == "mailto";
 }
 
+/// Render the inline subset the generator supports — code spans, emphasis, links — over already-escaped text.
 std::string InlineMarkdown(const std::string_view source) {
     std::string result;
     for (std::size_t i = 0; i < source.size();) {
@@ -109,6 +114,7 @@ std::string InlineMarkdown(const std::string_view source) {
     return result;
 }
 
+/// Render a doc comment's block structure: paragraphs, lists, and fenced code.
 std::string RenderMarkdown(const std::string_view source) {
     std::istringstream input{std::string(source)};
     std::ostringstream output;
@@ -167,6 +173,8 @@ std::string RenderMarkdown(const std::string_view source) {
     return output.str();
 }
 
+/// Spell a type the way it was written in source, since documentation should show the reader the syntax they would type
+/// rather than an internal normal form.
 std::string TypeText(const TypeExpr *type) {
     if (!type)
         return "?";
@@ -336,6 +344,7 @@ std::string DeclSignature(const Decl &decl) {
     return DeclName(decl);
 }
 
+/// A stable URL fragment for a declaration, so a link into the generated page keeps working across rebuilds.
 std::string Anchor(std::string value) {
     for (char &c : value) {
         if (!std::isalnum(static_cast<unsigned char>(c)))
@@ -346,6 +355,7 @@ std::string Anchor(std::string value) {
     return value;
 }
 
+/// Whether a declaration belongs in the generated output, which by default is the package's public surface only.
 bool Visible(const Decl &decl, const bool includePrivate) {
     if (includePrivate || decl.isPublic)
         return true;
@@ -407,6 +417,8 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
 }
 
+/// Build an operational diagnostic that carries the system error, so a permission or disk-full failure says what
+/// actually went wrong rather than only that generation failed.
 Diagnostic FilesystemFailure(std::string message, const std::error_code error, std::optional<std::string> help = {}) {
     return ErrorDiagnostic(std::move(message), {std::format("filesystem error {}: {}", error.value(), error.message())},
                            std::move(help));

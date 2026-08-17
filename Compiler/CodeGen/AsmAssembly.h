@@ -15,11 +15,10 @@
 #include <vector>
 
 namespace Rux {
-// A reference the assembler could not resolve within the function. Offsets are
-// absolute positions inside the buffer the body was assembled into (i.e. they
-// already account for the function's start offset), and name the field to
-// patch on x86-64 and the whole instruction word on AArch64, which is what the
-// relocation kinds of each architecture are written in terms of.
+/// A reference the assembler could not resolve within the function. Offsets are absolute positions inside the buffer
+/// the body was assembled into (i.e. they already account for the function's start offset), and name the field to patch
+/// on x86-64 and the whole instruction word on AArch64, which is what the relocation kinds of each architecture are
+/// written in terms of.
 struct AsmFixup {
     std::uint32_t offset = 0;  // start of the field / instruction to patch
     std::string symbol;        // target symbol name

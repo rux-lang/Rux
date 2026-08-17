@@ -1,3 +1,6 @@
+// The conditional-compilation entry point: evaluates every `#if` and folds each
+// to its taken branch before any name is resolved.
+
 #include "Semantic/ConditionalCompilation.h"
 
 #include "Semantic/ConditionalFolding.h"
@@ -46,6 +49,9 @@ bool EqualsIgnoringCase(const std::string_view left, const std::string_view righ
     });
 }
 
+/// Map a target system name written in source to the target model.
+///
+/// @return nullopt for a name this compiler does not know, which the caller reports rather than treating as false
 std::optional<Target::OS> ParseTargetSystem(const std::string_view name) {
     if (name.empty()) {
         return Target::HostOS;
@@ -65,6 +71,8 @@ std::optional<Target::OS> ParseTargetSystem(const std::string_view name) {
     return std::nullopt;
 }
 
+/// Evaluate every `#if` in the given modules and fold each to its taken branch, rewriting the AST in place so later
+/// stages only ever see one version of the program.
 void Resolve(const std::vector<Module *> &modules, const CompileTimeContext &context, std::vector<Diagnostic> &diags) {
     ConditionalEvaluator evaluator(context, modules);
     ConditionalFolding::FoldDeclarations(modules, evaluator, diags);

@@ -139,8 +139,8 @@ void AssemblerContext::ResolveLocalTargets() {
     }
 }
 
-// ADR reaches a local label directly. ADRP names the page a symbol sits on,
-// which is a link-time quantity and therefore always a relocation.
+/// ADR reaches a local label directly. ADRP names the page a symbol sits on, which is a link-time quantity and
+/// therefore always a relocation.
 void BranchSystemAssemblerContext::EncodeAdr(const AsmInstr &in, const bool page) {
     Begin(in, page ? "Xd, symbol" : "Xd, label");
     if (!Operands(2)) {
@@ -238,7 +238,7 @@ void BranchSystemAssemblerContext::EncodeTestBranch(const AsmInstr &in, const Te
     RecordTarget(in, in.operands[2], at, TargetField::Imm14, RcuRelType::AArch64TstBr14);
 }
 
-// BR, BLR and RET, the last of which returns through X30 when omitted.
+/// BR, BLR and RET, the last of which returns through X30 when omitted.
 void BranchSystemAssemblerContext::EncodeBranchReg(const AsmInstr &in, const Reg1Fn fn, const bool optional) {
     Begin(in, optional ? "{Xn}" : "Xn");
     if (optional && in.operands.empty()) {

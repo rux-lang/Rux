@@ -1,3 +1,7 @@
+// Writing a manifest back out as TOML, for the commands that create or edit
+// one. Field order and omission are deliberate: a generated manifest should
+// read like a hand-written one.
+
 #include "Package/Manifest.h"
 
 #include <algorithm>
@@ -9,6 +13,8 @@
 
 namespace Rux {
 namespace {
+/// Escape a string for a TOML basic string, so a value containing a quote or backslash round-trips through a written
+/// manifest.
 std::string Escape(const std::string_view value) {
     std::string out;
     out.reserve(value.size() + 2);
@@ -51,6 +57,8 @@ std::string Quoted(const std::string_view value) {
     return std::format("\"{}\"", Escape(value));
 }
 
+/// Write a string array field, omitting it when empty so a generated manifest carries no noise the user did not ask
+/// for.
 void WriteStringArray(std::ostream &out, const std::string_view field, const std::vector<std::string> &values) {
     out << field << " = [";
     for (std::size_t i = 0; i < values.size(); ++i) {

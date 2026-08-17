@@ -8,9 +8,8 @@
 #include <string_view>
 
 namespace Rux {
-// A built-in constant associated with a primitive type. `value` uses the same
-// printable representation as HIR/LIR literals, so resolving one never creates
-// storage or a linker-visible symbol.
+/// A built-in constant associated with a primitive type. `value` uses the same printable representation as HIR/LIR
+/// literals, so resolving one never creates storage or a linker-visible symbol.
 struct PrimitiveConstant {
     TypeRef type;
     std::string value;

@@ -1,3 +1,5 @@
+// Checking for struct, enum, union, array, slice and index expressions.
+
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <algorithm>

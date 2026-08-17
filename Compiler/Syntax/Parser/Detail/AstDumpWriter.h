@@ -11,8 +11,8 @@ class DeclarationPrinter;
 class ExpressionPrinter;
 class StatementPrinter;
 
-// Private output and indentation state shared by the focused AST printers.
-// Parser::DumpAst remains the only public facade.
+/// Private output and indentation state shared by the focused AST printers. Parser::DumpAst remains the only public
+/// facade.
 class AstDumpWriter {
 public:
     explicit AstDumpWriter(std::ostream &output);

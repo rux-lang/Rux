@@ -67,9 +67,9 @@ struct RcuLinkDiagnostic {
     std::uint8_t expectedArchitecture = RcuArch::Unknown;
 };
 
-// A target-format-independent index of the symbol relationships in a set of
-// RCU objects. Locations are stable object/symbol indexes rather than pointers,
-// so the graph is an ordinary value and can be retained by the linker facade.
+/// A target-format-independent index of the symbol relationships in a set of RCU objects. Locations are stable
+/// object/symbol indexes rather than pointers, so the graph is an ordinary value and can be retained by the linker
+/// facade.
 class RcuLinkGraph {
 public:
     [[nodiscard]] static RcuLinkGraph Build(std::span<const RcuFile> objects, std::string_view packageName,

@@ -5,9 +5,8 @@
 #include <utility>
 
 namespace Rux {
-// Immutable compiler identity and timestamp shared by every stage of one
-// compilation. The driver composes the real values; focused embedders and
-// tests may provide their own deterministic values.
+/// Immutable compiler identity and timestamp shared by every stage of one compilation. The driver composes the real
+/// values; focused embedders and tests may provide their own deterministic values.
 class BuildInfo {
 public:
     BuildInfo() = default;
@@ -21,6 +20,9 @@ public:
         return compilerVersion;
     }
 
+    /// Seconds since the Unix epoch. Read by the compile-time `Build` values a source file can query and stamped into
+    /// RCU object metadata, so it is a build input rather than a log line: the driver honours `SOURCE_DATE_EPOCH` to
+    /// keep a rebuild byte-identical.
     [[nodiscard]] std::int64_t Timestamp() const noexcept {
         return timestamp;
     }

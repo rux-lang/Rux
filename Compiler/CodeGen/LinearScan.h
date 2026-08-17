@@ -23,55 +23,49 @@
 #include <vector>
 
 namespace Rux {
-// The span of the numbering over which one virtual register is live: the
-// instruction that first mentioned it and the one that last did, with the type
-// it holds, which is what decides the register file it could live in.
+/// The span of the numbering over which one virtual register is live: the instruction that first mentioned it and the
+/// one that last did, with the type it holds, which is what decides the register file it could live in.
 struct LiveInterval {
     LirReg reg = LirNoReg;
     int start = -1;
     int end = -1;
-    // How many times the function names this register, definitions and uses
-    // alike. A back end whose registers have to be saved and restored spends a
-    // fixed price for each one it takes and is paid back once per mention, so
-    // this is what says whether a particular value is worth taking one for.
+    /// How many times the function names this register, definitions and uses alike. A back end whose registers have to
+    /// be saved and restored spends a fixed price for each one it takes and is paid back once per mention, so this is
+    /// what says whether a particular value is worth taking one for.
     int mentions = 0;
     TypeRef type;
 };
 
-// The type each parameter is read at, which is the one thing about a function's
-// registers this pass cannot work out for itself: Win64 passes a large
-// composite as the address of the caller's copy, so the register holds a
-// pointer where the parameter's own type says otherwise.
+/// The type each parameter is read at, which is the one thing about a function's registers this pass cannot work out
+/// for itself: Win64 passes a large composite as the address of the caller's copy, so the register holds a pointer
+/// where the parameter's own type says otherwise.
 using ParamTypeMap = std::unordered_map<LirReg, TypeRef>;
 
-// Where each virtual register the allocation reached ended up: an index into
-// the caller's pool rather than a machine register number, since the pool is
-// the caller's to name. `usedPhysRegs` is ascending and holds each index once,
-// which is the order a prologue saves them in and an epilogue restores them.
+/// Where each virtual register the allocation reached ended up: an index into the caller's pool rather than a machine
+/// register number, since the pool is the caller's to name. `usedPhysRegs` is ascending and holds each index once,
+/// which is the order a prologue saves them in and an epilogue restores them.
 struct RegisterAssignment {
     std::unordered_map<LirReg, int> physRegs;
     std::vector<int> usedPhysRegs;
 };
 
-// Number every instruction and terminator of the function in the order they are
-// emitted, and report the interval each virtual register is live over.
-//
-// A mention is a definition or a use, and both ends move: the first mention
-// opens the interval and every later one extends it. A phi's incoming values
-// count as mentions at the phi itself, which is later than the edge that
-// carries them — deliberately, since a longer interval can only make the
-// allocation more conservative, and the edge is not a point in this numbering.
-//
-// The intervals come back sorted by where they open, and by register number
-// where two open together, so a function allocates the same way every time it
-// is compiled.
+/// Number every instruction and terminator of the function in the order they are emitted, and report the interval each
+/// virtual register is live over.
+///
+/// A mention is a definition or a use, and both ends move: the first mention opens the interval and every later one
+/// extends it. A phi's incoming values count as mentions at the phi itself, which is later than the edge that carries
+/// them — deliberately, since a longer interval can only make the allocation more conservative, and the edge is not a
+/// point in this numbering.
+///
+/// The intervals come back sorted by where they open, and by register number where two open together, so a function
+/// allocates the same way every time it is compiled.
 [[nodiscard]] inline std::vector<LiveInterval> ComputeLiveIntervals(const LirFunc &func,
                                                                     const ParamTypeMap &paramTypes) {
     std::unordered_map<LirReg, TypeRef> regTypes;
     std::unordered_map<LirReg, LiveInterval> intervals;
 
-    // A register mentioned before anything gave it a type is an integer, which
-    // is what a back end assumes of one as well.
+    /// A register mentioned before anything gave it a type is an integer, which is what a back end assumes of one as
+    /// well.
     const auto typeOf = [&](const LirReg reg) {
         const auto it = regTypes.find(reg);
         return it != regTypes.end() ? it->second : TypeRef::MakeInt64();
@@ -86,8 +80,8 @@ struct RegisterAssignment {
         ++it->second.mentions;
     };
 
-    // A parameter is live from the entry rather than from its first mention:
-    // the prologue writes it before any instruction has run.
+    /// A parameter is live from the entry rather than from its first mention: the prologue writes it before any
+    /// instruction has run.
     for (const auto &param : func.params) {
         const auto found = paramTypes.find(param.reg);
         regTypes[param.reg] = found != paramTypes.end() ? found->second : param.type;
@@ -97,8 +91,7 @@ struct RegisterAssignment {
     int index = 0;
     for (const auto &block : func.blocks) {
         for (const auto &instr : block.instrs) {
-            // An alloca's register holds the address of what it reserved rather
-            // than a value of the type it names.
+            /// An alloca's register holds the address of what it reserved rather than a value of the type it names.
             if (instr.dst != LirNoReg) {
                 regTypes[instr.dst] = instr.op == LirOpcode::Alloca ? TypeRef::MakePointer(instr.type) : instr.type;
             }
@@ -137,17 +130,14 @@ struct RegisterAssignment {
     return result;
 }
 
-// Hand out `poolSize` registers to as many of the candidate intervals as they
-// reach, in the order the intervals open.
-//
-// Each register remembers where the interval holding it ends, and the first one
-// free at an interval's start takes it. Preferring the lowest free index rather
-// than the least recently freed is what keeps a function that needs two
-// registers to two: the pool is saved and restored by the prologue, so an index
-// never handed out costs nothing at all.
-//
-// Nothing is evicted. An interval that finds every register busy keeps the
-// stack slot the caller gave it, and the back end reads it there.
+/// Hand out `poolSize` registers to as many of the candidate intervals as they reach, in the order the intervals open.
+///
+/// Each register remembers where the interval holding it ends, and the first one free at an interval's start takes it.
+/// Preferring the lowest free index rather than the least recently freed is what keeps a function that needs two
+/// registers to two: the pool is saved and restored by the prologue, so an index never handed out costs nothing at all.
+///
+/// Nothing is evicted. An interval that finds every register busy keeps the stack slot the caller gave it, and the back
+/// end reads it there.
 [[nodiscard]] inline RegisterAssignment AllocateRegisters(const std::vector<LiveInterval> &candidates,
                                                           const int poolSize) {
     RegisterAssignment assignment;

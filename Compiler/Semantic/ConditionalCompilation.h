@@ -46,9 +46,8 @@ struct CompileTimeMatchEvaluation {
     std::vector<Diagnostic> diagnostics;
 };
 
-// Evaluates compile-time expressions against an immutable view of the parsed
-// declarations. Evaluation never rewrites the AST; the conditional-compilation
-// folder below is the sole owner of branch selection and splicing.
+/// Evaluates compile-time expressions against an immutable view of the parsed declarations. Evaluation never rewrites
+/// the AST; the conditional-compilation folder below is the sole owner of branch selection and splicing.
 class ConditionalEvaluator {
 public:
     ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules);
@@ -75,13 +74,11 @@ private:
     std::unique_ptr<Impl> impl;
 };
 
-// Folds every `when` in `modules` in place using the same context later
-// consumed by semantic analysis and lowering.
+/// Folds every `when` in `modules` in place using the same context later consumed by semantic analysis and lowering.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
                                    std::vector<Diagnostic> &diags);
 
-// Compatibility overload used by embedders and focused tests which only need
-// to select an OS. Empty means the host.
+/// Compatibility overload used by embedders and focused tests which only need to select an OS. Empty means the host.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, std::string_view targetSystem,
                                    std::vector<Diagnostic> &diags);
 } // namespace Rux

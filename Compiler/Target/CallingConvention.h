@@ -5,8 +5,8 @@
 #include <string_view>
 
 namespace Rux {
-// Language-level calling convention carried from syntax through codegen.
-// Concrete register and stack rules are resolved by TargetInfo.
+/// Language-level calling convention carried from syntax through codegen. Concrete register and stack rules are
+/// resolved by TargetInfo.
 enum class CallingConvention {
     Default,
     C,       // #Abi(.C): whatever the target's C ABI is
@@ -15,8 +15,8 @@ enum class CallingConvention {
     AAPCS64, // AArch64 procedure call standard (x0-x7 and v0-v7)
 };
 
-// The C ABI of a target. AArch64 uses AAPCS64 on every currently modeled OS;
-// x86-64 uses Win64 on Windows and System V everywhere else.
+/// The C ABI of a target. AArch64 uses AAPCS64 on every currently modeled OS; x86-64 uses Win64 on Windows and System V
+/// everywhere else.
 constexpr CallingConvention PlatformCConvention(const Target::OS os, const Target::Arch arch) {
     if (arch == Target::Arch::AArch64) {
         return CallingConvention::AAPCS64;
@@ -24,10 +24,9 @@ constexpr CallingConvention PlatformCConvention(const Target::OS os, const Targe
     return os == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
 }
 
-// Rux functions use AAPCS64 on AArch64. On x86-64 they follow the same split as
-// the C ABI, because the internal ABI has to interoperate with the target's
-// register, shadow-space, and stack-alignment rules: Win64 on Windows, System V
-// on every other modeled system, macOS and FreeBSD included.
+/// Rux functions use AAPCS64 on AArch64. On x86-64 they follow the same split as the C ABI, because the internal ABI
+/// has to interoperate with the target's register, shadow-space, and stack-alignment rules: Win64 on Windows, System V
+/// on every other modeled system, macOS and FreeBSD included.
 constexpr CallingConvention PlatformDefaultConvention(const Target::OS os, const Target::Arch arch) {
     if (arch == Target::Arch::AArch64) {
         return CallingConvention::AAPCS64;
@@ -35,9 +34,8 @@ constexpr CallingConvention PlatformDefaultConvention(const Target::OS os, const
     return os == Target::OS::Windows ? CallingConvention::Win64 : CallingConvention::SysV;
 }
 
-// Host-defaulted wrappers, correct only when the target is the host. Anything
-// on a compilation path that can cross-compile must pass the target OS and
-// architecture from its TargetContext instead.
+/// Host-defaulted wrappers, correct only when the target is the host. Anything on a compilation path that can
+/// cross-compile must pass the target OS and architecture from its TargetContext instead.
 constexpr CallingConvention PlatformCConvention() {
     return PlatformCConvention(Target::HostOS, Target::HostArch);
 }
@@ -46,10 +44,9 @@ constexpr CallingConvention PlatformDefaultConvention() {
     return PlatformDefaultConvention(Target::HostOS, Target::HostArch);
 }
 
-// Collapses `.C` to the concrete convention it stands for; every other value is
-// already concrete. Resolving `Default` is left to the caller, because its
-// meaning depends on whether the declaration is extern (the C ABI) or a Rux
-// function (the internal ABI).
+/// Collapses `.C` to the concrete convention it stands for; every other value is already concrete. Resolving `Default`
+/// is left to the caller, because its meaning depends on whether the declaration is extern (the C ABI) or a Rux
+/// function (the internal ABI).
 constexpr CallingConvention ResolveCConvention(const CallingConvention c, const Target::OS os,
                                                const Target::Arch arch) {
     return c == CallingConvention::C ? PlatformCConvention(os, arch) : c;
@@ -59,8 +56,8 @@ constexpr CallingConvention ResolveCConvention(const CallingConvention c) {
     return ResolveCConvention(c, Target::HostOS, Target::HostArch);
 }
 
-// The `#Abi(...)` variant a convention was written as, for dumps. Empty for
-// Default, which is spelled by leaving the attribute out.
+/// The `#Abi(...)` variant a convention was written as, for dumps. Empty for Default, which is spelled by leaving the
+/// attribute out.
 constexpr std::string_view ConventionName(const CallingConvention c) {
     switch (c) {
     case CallingConvention::C:
@@ -74,8 +71,8 @@ constexpr std::string_view ConventionName(const CallingConvention c) {
     }
 }
 
-// Internal spelling used by IR dumps after target-dependent conventions have
-// been resolved. AAPCS64 intentionally has no source-level `#Abi` spelling.
+/// Internal spelling used by IR dumps after target-dependent conventions have been resolved. AAPCS64 intentionally has
+/// no source-level `#Abi` spelling.
 constexpr std::string_view ResolvedConventionName(const CallingConvention c) {
     switch (c) {
     case CallingConvention::Default:

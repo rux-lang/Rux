@@ -53,8 +53,8 @@ struct Style {
     [[nodiscard]] std::string_view Color(StatusKind kind) const;
 };
 
-// Two spaces are the canonical indent for supporting report detail. The wider
-// continuation aligns text below the message portion of an `error: ` line.
+/// Two spaces are the canonical indent for supporting report detail. The wider continuation aligns text below the
+/// message portion of an `error: ` line.
 inline constexpr std::string_view indentation = "  ";
 inline constexpr std::string_view errorContinuation = "       ";
 
@@ -63,16 +63,15 @@ inline constexpr std::string_view errorContinuation = "       ";
 [[nodiscard]] StatusKind KindOf(StatusVerb status);
 [[nodiscard]] std::string RenderStatus(StatusVerb status, const Style &style);
 
-// One label and value per report row. Rows are rendered as a block, so the
-// label column is sized to the longest label in that block alone: a section
-// aligns with itself rather than with a width picked for the whole report.
+/// One label and value per report row. Rows are rendered as a block, so the label column is sized to the longest label
+/// in that block alone: a section aligns with itself rather than with a width picked for the whole report.
 struct TableRow {
     std::string_view label;
     std::string_view value;
 };
 
-// Counts, sizes, and durations read as a column when their right edges line
-// up; names and paths read as a column when their left edges do.
+/// Counts, sizes, and durations read as a column when their right edges line up; names and paths read as a column when
+/// their left edges do.
 enum class ValueAlign {
     Left,
     Right,
@@ -80,16 +79,16 @@ enum class ValueAlign {
 
 [[nodiscard]] std::string RenderRows(std::span<const TableRow> rows, ValueAlign align = ValueAlign::Left);
 
-// A titled block: the title at column 0, its rows indented below it.
+/// A titled block: the title at column 0, its rows indented below it.
 [[nodiscard]] std::string RenderSection(std::string_view title, std::span<const TableRow> rows, const Style &style,
                                         ValueAlign align = ValueAlign::Left);
 
-// Return just the correctly inflected label, or the count and label together.
-// An omitted plural uses the ordinary English `s` suffix.
+/// Return just the correctly inflected label, or the count and label together. An omitted plural uses the ordinary
+/// English `s` suffix.
 [[nodiscard]] std::string Pluralize(std::size_t count, std::string_view singular, std::string_view plural = {});
 [[nodiscard]] std::string FormatCount(std::size_t count, std::string_view singular, std::string_view plural = {});
 
-// Human duration policy: milliseconds below one second, seconds below one
-// minute, then minutes plus seconds. Units are always separated by spaces.
+/// Human duration policy: milliseconds below one second, seconds below one minute, then minutes plus seconds. Units are
+/// always separated by spaces.
 [[nodiscard]] std::string FormatDuration(std::chrono::milliseconds elapsed);
 } // namespace Rux::Reporting

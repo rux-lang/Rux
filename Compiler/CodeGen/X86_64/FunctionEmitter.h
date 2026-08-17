@@ -13,10 +13,9 @@
 namespace Rux {
 class X64Enc;
 
-// Narrow access to module-owned operations needed while selecting instructions
-// for one function. Keeping these operations behind hooks lets the function
-// emitter own instruction families without taking ownership of module symbols
-// or literal pools.
+/// Narrow access to module-owned operations needed while selecting instructions for one function. Keeping these
+/// operations behind hooks lets the function emitter own instruction families without taking ownership of module
+/// symbols or literal pools.
 class X86_64FunctionEmitterHooks {
 public:
     virtual ~X86_64FunctionEmitterHooks() = default;
@@ -34,21 +33,20 @@ public:
     virtual void EmitCallArguments(const std::vector<LirReg> &arguments) = 0;
 };
 
-// Selects LIR instructions in the context of one planned x86-64 function.
-// Additional instruction families can move behind this boundary without
-// exposing frame or module-emission state.
+/// Selects LIR instructions in the context of one planned x86-64 function. Additional instruction families can move
+/// behind this boundary without exposing frame or module-emission state.
 class X86_64FunctionEmitter {
 public:
     X86_64FunctionEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan, X86_64RuntimeHelperEmitter &runtimeHelpers,
                           CallingConvention defaultConvention, const Layout::LayoutMap &layouts,
                           const std::unordered_set<std::string> &interfaceNames, X86_64FunctionEmitterHooks &hooks);
 
-    // Returns true exactly when the instruction belongs to the arithmetic,
-    // comparison, shift, cast, or unary family and was emitted here.
+    /// Returns true exactly when the instruction belongs to the arithmetic, comparison, shift, cast, or unary family
+    /// and was emitted here.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
 
-    // Returns true exactly when the instruction materializes a constant,
-    // accesses memory, or computes an aggregate address and was emitted here.
+    /// Returns true exactly when the instruction materializes a constant, accesses memory, or computes an aggregate
+    /// address and was emitted here.
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
 private:

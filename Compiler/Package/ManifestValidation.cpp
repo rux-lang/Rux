@@ -1,3 +1,6 @@
+// Schema validation for a parsed manifest: which sections and fields may
+// appear, and which combinations are contradictory.
+
 #include "Package/ManifestValidation.h"
 
 #include <algorithm>

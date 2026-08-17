@@ -10,8 +10,8 @@
 #include <unordered_set>
 
 namespace Rux::SemanticDetail {
-// Private state shared by semantic-analysis implementation files. Public
-// callers interact only with SemanticAnalyzer and SemanticModel.
+/// Private state shared by semantic-analysis implementation files. Public callers interact only with SemanticAnalyzer
+/// and SemanticModel.
 class SemanticAnalyzerContext {
 public:
     SemanticAnalyzerContext(std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDependencies,

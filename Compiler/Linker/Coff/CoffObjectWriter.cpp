@@ -1,3 +1,6 @@
+// Translates one RCU object into a relocatable COFF object, the counterpart to
+// the ELF and Mach-O object writers.
+
 #include "Linker/Coff/CoffObjectWriter.h"
 
 #include "Linker/AArch64Relocation.h"
@@ -18,6 +21,8 @@
 
 namespace Rux {
 namespace {
+/// Add a name to the COFF string table and return its offset. Only names too long for the inline field go here, which
+/// is why the offset is not simply the symbol index.
 std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view value) {
     const auto offset = static_cast<std::uint32_t>(table.size());
     table.insert(table.end(), value.begin(), value.end());
@@ -25,14 +30,15 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     return offset;
 }
 
+/// Whether the relocation patches an immediate inside an instruction rather than a whole word of data, which decides if
+/// the instruction has to be decoded before writing.
 bool IsFieldRelocation(const std::uint16_t type) noexcept {
     return type == RcuRelType::None || type == RcuRelType::Abs64 || type == RcuRelType::Abs32 ||
            type == RcuRelType::Rel32;
 }
 
-// The COFF relocation number a kind takes for `targetArch`, or nullopt when
-// that architecture has no representation for it. Classic Windows ARM64 has
-// no relocation for the MOVW halfwords or a 64-bit PC-relative data field.
+/// The COFF relocation number a kind takes for `targetArch`, or nullopt when that architecture has no representation
+/// for it. Classic Windows ARM64 has no relocation for the MOVW halfwords or a 64-bit PC-relative data field.
 std::optional<std::uint16_t> CoffRelocationType(const std::uint16_t type, const Target::Arch targetArch) noexcept {
     if (targetArch == Target::Arch::X86_64) {
         switch (type) {
@@ -87,6 +93,7 @@ std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::ui
     return word;
 }
 
+/// Order symbols so statics precede externals, matching what COFF consumers expect to find.
 std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     std::vector<std::size_t> order(file.symbols.size());
     std::iota(order.begin(), order.end(), 0);
@@ -105,9 +112,8 @@ void PatchInlineField(Buf &data, const RcuReloc &relocation, const std::int64_t 
     }
 }
 
-// COFF has no explicit addend field. Whole-field relocations carry it as a
-// little-endian value, while ARM64 instruction relocations carry it in their
-// immediate bits using the COFF linker's input convention.
+/// COFF has no explicit addend field. Whole-field relocations carry it as a little-endian value, while ARM64
+/// instruction relocations carry it in their immediate bits using the COFF linker's input convention.
 bool ApplyCoffInlineAddend(Buf &data, const RcuReloc &relocation, const Target::Arch targetArch,
                            const std::string_view symbolName, std::string &error) {
     if (relocation.type == RcuRelType::None) {

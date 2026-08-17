@@ -6,9 +6,8 @@
 #include <type_traits>
 
 namespace Rux {
-// The C conversions return the correctly rounded subnormal value even when
-// they report underflow through errno. The throwing std::stof/std::stod
-// wrappers discard that useful result by raising std::out_of_range.
+/// The C conversions return the correctly rounded subnormal value even when they report underflow through errno. The
+/// throwing std::stof/std::stod wrappers discard that useful result by raising std::out_of_range.
 template <typename T>
 T ParseFloatLiteral(const std::string_view literal) {
     static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);

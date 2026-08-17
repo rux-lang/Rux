@@ -1,3 +1,7 @@
+// Shared state and operand decoding for the AArch64 `asm func` assembler:
+// label collection, diagnostics, and the register and immediate forms the
+// instruction families below it all parse through.
+
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "CodeGen/AArch64/Registers.h"
 #include "CodeGen/BackendDiagnostics.h"

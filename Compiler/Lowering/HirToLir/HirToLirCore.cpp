@@ -69,8 +69,8 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
     return pkg;
 }
 
-// The name a function reaches the linker under: the second `#Link` argument
-// override when one was given, otherwise the Rux name itself.
+/// The name a function reaches the linker under: the second `#Link` argument override when one was given, otherwise the
+/// Rux name itself.
 const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
     const auto it = externSymbols.find(name);
     return it == externSymbols.end() ? name : it->second;
@@ -94,10 +94,9 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
     }
 }
 
-// Preserve the declaration boundary on every target. Apple and FreeBSD
-// AArch64 apply C's default argument promotions before their platform call
-// layouts; keeping the promotion in LIR makes the value's ABI type explicit
-// and lets code generation move it like any other converted value.
+/// Preserve the declaration boundary on every target. Apple and FreeBSD AArch64 apply C's default argument promotions
+/// before their platform call layouts; keeping the promotion in LIR makes the value's ABI type explicit and lets code
+/// generation move it like any other converted value.
 void HirToLirContext::SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr) {
     const auto found = cVariadicFixedParamCounts.find(name);
     if (found == cVariadicFixedParamCounts.end()) {
@@ -294,8 +293,8 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
     return dst;
 }
 
-// The types that live in a register and are held to a width: everything a
-// comparison can widen one side of without changing what is being asked.
+/// The types that live in a register and are held to a width: everything a comparison can widen one side of without
+/// changing what is being asked.
 bool HirToLirContext::IsScalar(const TypeRef &t) {
     return t.IsNumeric() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
            t.kind == TypeRef::Kind::Char32;
@@ -337,9 +336,8 @@ LirReg HirToLirContext::EmitIndexPtr(LirReg base, LirReg idx, const TypeRef &ele
     return ptr;
 }
 
-// `pointee` names what the symbol holds, so that a later FieldPtr can find
-// the layout. Opaque is right for a function address, which is never
-// dereferenced.
+/// `pointee` names what the symbol holds, so that a later FieldPtr can find the layout. Opaque is right for a function
+/// address, which is never dereferenced.
 LirReg HirToLirContext::EmitGlobalAddr(std::string label, TypeRef pointee) {
     LirReg r = NewReg();
     LirInstr i;
@@ -487,7 +485,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     return lm;
 }
 
-// Render a simple constant expression to a printable string.
+/// Render a simple constant expression to a printable string.
 std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
     if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
         return lit->value;
@@ -501,10 +499,9 @@ std::string HirToLirContext::PrintConstExpr(const HirExpr &e) {
     return "<const>";
 }
 
-// The literal an array element spells out, with a leading minus folded in
-// and a named constant resolved to the literal it stands for. Anything else
-// is not a constant the backend can lay out; the semantic analyzer rejects
-// those before we get here.
+/// The literal an array element spells out, with a leading minus folded in and a named constant resolved to the literal
+/// it stands for. Anything else is not a constant the backend can lay out; the semantic analyzer rejects those before
+/// we get here.
 std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) const {
     if (auto *lit = dynamic_cast<const HirLiteralExpr *>(&e)) {
         return lit->value;
@@ -522,7 +519,7 @@ std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) 
     return std::nullopt;
 }
 
-// Records constant slice/array contents for direct read-only emission.
+/// Records constant slice/array contents for direct read-only emission.
 void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) const {
     if (!IsSliceType(c.type) && !IsArrayType(c.type)) {
         return;

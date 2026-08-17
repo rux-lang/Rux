@@ -55,17 +55,15 @@ public:
     [[nodiscard]] const std::vector<std::uint8_t> &SectionData(RcuModuleSection section) const;
     [[nodiscard]] const std::vector<RcuReloc> &Relocations(RcuModuleSection section) const;
 
-    // Zero-pad a section and return the offset at which the next value begins.
+    /// Zero-pad a section and return the offset at which the next value begins.
     [[nodiscard]] std::uint32_t AlignSection(RcuModuleSection section, std::uint16_t alignment);
     [[nodiscard]] std::uint32_t Append(RcuModuleSection section, std::span<const std::uint8_t> bytes);
-    // Discard a speculative suffix of a section and its relocations. AArch64
-    // uses this when a branch-layout pass must be emitted again with widened
-    // conditional branches.
+    /// Discard a speculative suffix of a section and its relocations. AArch64 uses this when a branch-layout pass must
+    /// be emitted again with widened conditional branches.
     [[nodiscard]] bool TruncateSection(RcuModuleSection section, std::size_t dataSize, std::size_t relocationCount);
 
-    // Repeated compatible declarations name the same symbol. Definitions are
-    // separate so functions can be declared before their forward references
-    // and assigned an offset only when emission reaches them.
+    /// Repeated compatible declarations name the same symbol. Definitions are separate so functions can be declared
+    /// before their forward references and assigned an offset only when emission reaches them.
     [[nodiscard]] std::optional<std::uint32_t> DeclareSymbol(RcuSymbolDeclaration declaration);
     [[nodiscard]] std::optional<std::uint32_t> DeclareExternal(std::string name, std::uint8_t kind,
                                                                std::string typeName = {});
@@ -74,13 +72,13 @@ public:
     [[nodiscard]] std::optional<std::uint32_t> AddDefinition(RcuSymbolDeclaration declaration, RcuModuleSection section,
                                                              std::uint32_t offset, std::uint32_t size);
 
-    // BeginFunction captures the current .text offset; EndFunction records the
-    // final byte count. This keeps helper and user-function sizes consistent.
+    /// BeginFunction captures the current .text offset; EndFunction records the final byte count. This keeps helper and
+    /// user-function sizes consistent.
     [[nodiscard]] bool BeginFunction(std::uint32_t symbolIndex);
     [[nodiscard]] bool EndFunction(std::uint32_t symbolIndex);
 
-    // Literal encoding stays target-owned. These hooks only deduplicate a
-    // caller-defined family/key pair and associate it with an RCU symbol.
+    /// Literal encoding stays target-owned. These hooks only deduplicate a caller-defined family/key pair and associate
+    /// it with an RCU symbol.
     [[nodiscard]] std::optional<std::uint32_t> InternedLiteral(std::string_view family, std::string_view key) const;
     [[nodiscard]] bool RecordInternedLiteral(std::string family, std::string key, std::uint32_t symbolIndex);
 

@@ -9,6 +9,10 @@
 #include <format>
 
 namespace Rux::CliSupport {
+/// Point the driver's diagnostic callback at this reporter.
+///
+/// Diagnostics stay visible under `--quiet`, which is why they are written at `Always` visibility rather than as
+/// ordinary output. The callback captures the reporter by reference, so it must outlive the options.
 inline void ConfigureCompileDiagnostics(Driver::CompileOptions &options, const Reporter &reporter) {
     options.emitDiagnostic = [&reporter](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
         reporter.Write(RenderDiagnostic(diagnostic, reporter.Style().enabled, sourceLineLookup),
@@ -16,6 +20,8 @@ inline void ConfigureCompileDiagnostics(Driver::CompileOptions &options, const R
     };
 }
 
+/// Report one pipeline phase as verbose output. Phase names come from `CompilePhaseName` so `--verbose` and the
+/// `--stats` report name the pipeline identically.
 inline void ReportCompileProgress(const Reporter &reporter, const Driver::CompileProgress &progress) {
     if (progress.phase == Driver::CompilePhase::LoadingDependency) {
         reporter.Verbose(std::format("{} '{}' from '{}'", Driver::CompilePhaseName(progress.phase), progress.subject,

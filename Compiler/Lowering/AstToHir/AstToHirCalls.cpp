@@ -1,3 +1,6 @@
+// Call lowering: the callable analysis selected, default arguments, and the
+// compile-time values a call site can be handed.
+
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
 #include <algorithm>
@@ -9,6 +12,10 @@
 namespace Rux::AstToHirDetail {
 namespace {
 template <typename Fact>
+/// Unwrap a semantic fact that analysis is required to have recorded.
+///
+/// A missing fact means analysis accepted a node without resolving it, which is a compiler bug that would otherwise
+/// surface as a null dereference somewhere further down. Failing here names the invariant instead.
 const Fact &RequireSemanticFact(const Fact *fact) {
     assert(fact != nullptr && "accepted AST node is missing a required semantic fact");
     if (!fact) {
@@ -17,6 +24,8 @@ const Fact &RequireSemanticFact(const Fact *fact) {
     return *fact;
 }
 
+/// The function overload resolution chose for this call. Lowering never re-resolves: the binding analysis recorded is
+/// the answer.
 const FuncDecl &SelectedFunction(const ResolvedCallableBinding &binding) {
     const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
     assert(function != nullptr && "call binding does not select a function declaration");

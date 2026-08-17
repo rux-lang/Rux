@@ -12,9 +12,8 @@ enum class X86_64RuntimeHelper {
     FloatPower32,
 };
 
-// Owns the synthesized helper functions referenced by one x86-64 RCU module.
-// References declare helpers lazily; EmitRequested writes only reachable bodies
-// in dependency order after user functions have been emitted.
+/// Owns the synthesized helper functions referenced by one x86-64 RCU module. References declare helpers lazily;
+/// EmitRequested writes only reachable bodies in dependency order after user functions have been emitted.
 class X86_64RuntimeHelperEmitter {
 public:
     X86_64RuntimeHelperEmitter(RcuModuleBuilder &moduleBuilder, CallingConvention defaultConvention);

@@ -22,8 +22,8 @@ using namespace Rux::Driver;
 
 namespace {
 
-// The four Version 1 package kinds map one-to-one onto the scaffolding flags,
-// which are mutually exclusive rather than letting one silently win.
+/// The four Version 1 package kinds map one-to-one onto the scaffolding flags, which are mutually exclusive rather than
+/// letting one silently win.
 std::optional<ManifestPackageType> SelectPackageType(const bool executable, const bool shared, const bool staticLibrary,
                                                      const bool source) {
     if (static_cast<int>(executable) + static_cast<int>(shared) + static_cast<int>(staticLibrary) +
@@ -44,7 +44,7 @@ std::optional<ManifestPackageType> SelectPackageType(const bool executable, cons
     return ManifestPackageType::Executable;
 }
 
-// Validates the optional `--namespace` operand against the identity grammar.
+/// Validates the optional `--namespace` operand against the identity grammar.
 bool ParseNamespace(const std::string_view value, std::optional<IdentitySegment> &ns,
                     const CliSupport::Reporter &diagnostics) {
     const auto parsed = IdentitySegment::Parse(value);
@@ -69,7 +69,7 @@ bool ValidatePackageName(const std::string_view value, const CliSupport::Reporte
     return false;
 }
 
-// Lower-case description used by the progress lines of both commands.
+/// Lower-case description used by the progress lines of both commands.
 std::string_view KindLabel(const ManifestPackageType type) {
     switch (type) {
     case ManifestPackageType::SharedLibrary:

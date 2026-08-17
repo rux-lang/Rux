@@ -6,9 +6,10 @@
 #include <vector>
 
 namespace Rux {
-// x86-64 binary encoder
-// All accesses to stack slots use [rbp + disp] where disp is negative.
-// disp = -slotMap[vreg]  (i.e., pass negative displacement directly).
+/// x86-64 binary encoder.
+///
+/// All accesses to stack slots use [rbp + disp] where disp is negative. disp = -slotMap[vreg]  (i.e., pass negative
+/// displacement directly).
 class X64Enc {
 public:
     explicit X64Enc(std::vector<uint8_t> &buf)
@@ -91,7 +92,7 @@ public:
 
     void MovR11Store(int32_t d) const;
 
-    // Registers loaded from [r10 + disp32].
+    /// Registers loaded from [r10 + disp32].
     void MovRdxR10Load(int32_t d = 0) const;
 
     void MovR8R10Load(int32_t d = 0) const;
@@ -101,16 +102,14 @@ public:
     // RCX ↔ stack (for shift count)
     void MovRcxLoad(int32_t d) const;
 
-    // ABI arg regs ↔ [RBP + disp32]
-    // argIdx: 0=RDI,1=RSI,2=RDX,3=RCX,4=R8,5=R9
+    /// ABI arg regs ↔ [RBP + disp32] argIdx: 0=RDI,1=RSI,2=RDX,3=RCX,4=R8,5=R9
     void MovArgLoad(int idx, int32_t d) const;
 
     void MovArgStore(int idx, int32_t d) const;
 
     void MovArgRax(int idx) const;
 
-    // Win64 ABI arg regs ↔ [RBP + disp32]
-    // argIdx: 0=RCX,1=RDX,2=R8,3=R9
+    /// Win64 ABI arg regs ↔ [RBP + disp32] argIdx: 0=RCX,1=RDX,2=R8,3=R9
     void MovArgLoadWin64(int idx, int32_t d) const;
 
     void MovArgStoreWin64(int idx, int32_t d) const;
@@ -132,7 +131,8 @@ public:
     void AddRspShadow() const;
 
     // XMM arg regs ↔ [RBP + disp32] (N = 0..7)
-    // MOVSS xmmN, [rbp + d]
+
+    /// MOVSS xmmN, [rbp + d]
     void MovssXmmNLoad(int n, int32_t d) const;
 
     // MOVSD xmmN, [rbp + d]
@@ -212,9 +212,8 @@ public:
 
     void NotRax() const;
 
-    // XOR RAX, imm32 (sign-extended). Used for `~` on bools to fold
-    // the value back to 0 or 1 (logical NOT), matching the docs at
-    // Web/src/docs/types/bool.md (issue #95).
+    /// XOR RAX, imm32 (sign-extended). Used for `~` on bools to fold the value back to 0 or 1 (logical NOT), matching
+    /// the docs at Web/src/docs/types/bool.md (issue #95).
     void XorRaxImmediate(std::int32_t imm) const;
 
     // Division

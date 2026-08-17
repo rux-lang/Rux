@@ -65,9 +65,8 @@ enum class LirOpcode {
     StringAddr, // %dst = stringaddr <value> — address of static literal storage
 };
 
-// The spelling of an opcode, as a dump writes it and as a diagnostic names it.
-// One name serves both, so a back end reporting an opcode it cannot lower yet
-// names the same thing the LIR dump beside it does.
+/// The spelling of an opcode, as a dump writes it and as a diagnostic names it. One name serves both, so a back end
+/// reporting an opcode it cannot lower yet names the same thing the LIR dump beside it does.
 [[nodiscard]] constexpr std::string_view LirOpcodeName(const LirOpcode op) noexcept {
     switch (op) {
     case LirOpcode::Const:
@@ -154,10 +153,10 @@ struct LirInstr {
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
     bool isCVariadic = false;                                // direct call to a C-style variadic extern
-    // Present only with isCVariadic. AArch64 platform variants need the declaration
-    // boundary to promote and/or place anonymous arguments correctly.
+    /// Present only with isCVariadic. AArch64 platform variants need the declaration boundary to promote and/or place
+    /// anonymous arguments correctly.
     std::optional<std::uint32_t> cVariadicFixedParamCount;
-    // Optional source context used by instructions that report runtime failures.
+    /// Optional source context used by instructions that report runtime failures.
     std::string sourceFile;
     std::string sourceFunction;
     std::uint32_t sourceLine = 0;
@@ -173,7 +172,7 @@ enum class LirTermKind {
     Unreachable,
 };
 
-// The spelling of a terminator, under the same rule as LirOpcodeName.
+/// The spelling of a terminator, under the same rule as LirOpcodeName.
 [[nodiscard]] constexpr std::string_view LirTermKindName(const LirTermKind kind) noexcept {
     switch (kind) {
     case LirTermKind::Jump:
@@ -279,8 +278,8 @@ struct LirConstDecl {
     TypeRef type;
     std::string value; // printed literal of the constant expression
 
-    // Constant sequence contents. Slice<T> publishes a {data, length} header;
-    // T[N] publishes the inline elements directly under `name`.
+    /// Constant sequence contents. Slice<T> publishes a {data, length} header; T[N] publishes the inline elements
+    /// directly under `name`.
     TypeRef elementType;
     std::vector<std::string> elements;
     std::string text;

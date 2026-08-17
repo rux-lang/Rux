@@ -1,3 +1,6 @@
+// Expression dispatch for AST-to-HIR lowering, plus the operator-overload path
+// that has to run before an ordinary binary expression is lowered.
+
 #include "Lowering/AstToHir/AstToHir.h"
 
 #include "Ir/Hir/HirInternal.h"
@@ -97,6 +100,7 @@ std::string_view OpStr(TokenKind op) {
 namespace Rux::AstToHirDetail {
 
 namespace {
+/// Name an expression's kind for an internal-error message, so a lowering failure says which node it could not handle.
 std::string_view ExpressionKind(const Expr &expression) {
     if (dynamic_cast<const LiteralExpr *>(&expression))
         return "literal";

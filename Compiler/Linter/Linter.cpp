@@ -14,9 +14,8 @@
 
 namespace Rux::Linting {
 namespace {
-// A compiler-injected intrinsic such as `#target` or `#Error`. Its spelling is
-// dictated by the compiler, not the source's naming conventions, so the naming
-// lints leave it alone.
+/// A compiler-injected intrinsic such as `#target` or `#Error`. Its spelling is dictated by the compiler, not the
+/// source's naming conventions, so the naming lints leave it alone.
 bool IsIntrinsicName(std::string_view name) {
     return !name.empty() && name.front() == '#';
 }
@@ -56,6 +55,8 @@ enum class NamingConvention {
     CamelCase,
 };
 
+/// Whether a word starts at `index`, which is what a case check has to agree on before it can judge the spelling. An
+/// acronym run is the awkward case: the boundary in `HTTPServer` is before the `S`, not after the `P`.
 bool IsWordBoundary(const std::string_view name, const std::size_t index) {
     if (index == 0 || name[index - 1] == '_') {
         return true;
@@ -71,6 +72,10 @@ bool IsWordBoundary(const std::string_view name, const std::size_t index) {
            std::islower(static_cast<unsigned char>(name[index + 1]));
 }
 
+/// Rewrite a name into the convention it should follow, so the diagnostic can show the suggestion rather than only
+/// naming the rule.
+///
+/// @return nullopt when the name already conforms, which is what suppresses the warning
 std::optional<std::string> NormalizeName(const std::string_view name, const NamingConvention convention) {
     std::vector<std::string> words;
     for (std::size_t index = 0; index < name.size();) {
@@ -115,6 +120,9 @@ std::string_view ConventionName(const NamingConvention convention) {
     return convention == NamingConvention::PascalCase ? "PascalCase" : "camelCase";
 }
 
+/// The name a declaration should be checked under.
+///
+/// @return nullopt for a declaration that introduces no name of its own
 std::optional<std::string> DeclName(const Decl &decl) {
     if (const auto *function = dynamic_cast<const FuncDecl *>(&decl)) {
         return function->name;
@@ -171,6 +179,8 @@ std::vector<std::string> Names(const std::vector<T> &items) {
     return names;
 }
 
+/// Collect the bindings a pattern introduces, recursing through nested patterns, since each is a name the convention
+/// applies to.
 void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names) {
     if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
         if (!identifier->name.empty()) {
@@ -218,6 +228,8 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
     }
 }
 
+/// Every name visible inside a block, its own bindings plus those inherited from enclosing scopes. Shadowing checks
+/// need the inherited set, which is why it is threaded through rather than recomputed.
 std::vector<std::string> BlockBindingNames(const Block &block, const std::span<const std::string> inheritedNames) {
     std::vector<std::string> names(inheritedNames.begin(), inheritedNames.end());
     for (const auto &statement : block.stmts) {
@@ -250,10 +262,14 @@ bool SuggestionCollides(const std::string_view original, const std::string_view 
     return false;
 }
 
+/// Whether the declaration carries an `#Allow` for this rule, which is how a deliberate exception silences the warning
+/// at the point it applies.
 bool Allows(const Decl &decl, const std::string_view rule) {
     return std::ranges::find(decl.allowedLints, rule) != decl.allowedLints.end();
 }
 
+/// Whether the name is an operator spelling rather than an identifier, and so exempt from naming conventions that only
+/// make sense for words.
 bool IsSymbolicOperatorName(const std::string_view name) {
     return !name.empty() && std::ranges::none_of(name, [](const char c) {
         const auto value = static_cast<unsigned char>(c);

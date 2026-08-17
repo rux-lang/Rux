@@ -14,6 +14,11 @@
 #include <vector>
 
 namespace Rux {
+/// Append one scalar constant to an aggregate's initialized data.
+///
+/// Emits exactly the type's own size in bytes, little-endian, so a struct or array literal is laid out by appending its
+/// elements in order. Floats are written as their bit pattern rather than re-parsed by the backend, which is what keeps
+/// both code generators emitting identical data.
 inline void AppendScalarConstant(std::vector<std::uint8_t> &data, const std::string_view literal, const TypeRef &type) {
     std::uint64_t bits = 0;
     if (type.kind == TypeRef::Kind::Float64) {

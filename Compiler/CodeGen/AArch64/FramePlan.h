@@ -16,9 +16,8 @@ class AArch64FramePlanner;
 
 using AArch64PhiMoves = std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>>;
 
-// Every function-local placement decision needed by AArch64 emission. The
-// plan is completed before the first instruction is written and exposes only
-// const views, so widening retries consume exactly the same frame.
+/// Every function-local placement decision needed by AArch64 emission. The plan is completed before the first
+/// instruction is written and exposes only const views, so widening retries consume exactly the same frame.
 class AArch64FramePlan {
 public:
     [[nodiscard]] const std::unordered_map<LirReg, std::int32_t> &SlotOffsets() const {
@@ -37,8 +36,8 @@ public:
         return phiMoves;
     }
 
-    // Machine-register numbers, rather than allocation-pool indices. General
-    // homes are therefore X19-X28 and can never name the platform register X18.
+    /// Machine-register numbers, rather than allocation-pool indices. General homes are therefore X19-X28 and can never
+    /// name the platform register X18.
     [[nodiscard]] const std::unordered_map<LirReg, unsigned> &GeneralRegisterHomes() const {
         return generalRegisterHomes;
     }

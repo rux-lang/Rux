@@ -17,8 +17,8 @@
 
 namespace Rux::Driver {
 namespace {
-// The triple a report names. An embedder that leaves it unset built for the
-// host, which is what the report said before it carried a target at all.
+/// The triple a report names. An embedder that leaves it unset built for the host, which is what the report said before
+/// it carried a target at all.
 std::optional<Target::TargetTriple> ReportedTriple(const std::string_view targetTriple) {
     if (targetTriple.empty()) {
         return Target::TargetTriple::Host();
@@ -26,9 +26,8 @@ std::optional<Target::TargetTriple> ReportedTriple(const std::string_view target
     return Target::TargetTriple::Parse(targetTriple);
 }
 
-// `Built App (Debug, Windows x86-64) in 22 ms`. Both the one-line summary and
-// the statistics report open with it, so `--stats` reads as that summary plus
-// its sections rather than as a second, differently shaped report.
+/// `Built App (Debug, Windows x86-64) in 22 ms`. Both the one-line summary and the statistics report open with it, so
+/// `--stats` reads as that summary plus its sections rather than as a second, differently shaped report.
 std::string FormatBuildStatusLine(const BuildReportInfo &info, const BuildStats &stats, const Reporting::Style &style) {
     const auto triple = ReportedTriple(info.targetTriple);
     const std::string context = triple ? FormatBuildContext(info.profile, *triple)
@@ -37,9 +36,8 @@ std::string FormatBuildStatusLine(const BuildReportInfo &info, const BuildStats 
                        context, Reporting::FormatDuration(stats.total));
 }
 
-// A label column followed by right-aligned value columns, under an optional
-// header row. Column widths come from the cells themselves, so no width is
-// written down anywhere and adding a row cannot break the alignment.
+/// A label column followed by right-aligned value columns, under an optional header row. Column widths come from the
+/// cells themselves, so no width is written down anywhere and adding a row cannot break the alignment.
 std::string RenderGrid(const std::span<const std::string> headers,
                        const std::span<const std::vector<std::string>> rows) {
     std::size_t columns = headers.size() + 1;

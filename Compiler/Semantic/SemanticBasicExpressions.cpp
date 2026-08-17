@@ -1,3 +1,6 @@
+// Checking for literals, names, operators and assignment, including the
+// mutability rules an assignment target has to satisfy.
+
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <format>
@@ -155,8 +158,8 @@ bool IsAssignablePlace(const Expr &expression) noexcept {
     return unary && unary->op == TokenKind::Star;
 }
 
-// Addresses: a function value is the address of its entry point, so it converts
-// to and from pointers, but never to a numeric or character value.
+/// Addresses: a function value is the address of its entry point, so it converts to and from pointers, but never to a
+/// numeric or character value.
 bool IsAddressValue(const TypeRef &type) noexcept {
     return type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func;
 }

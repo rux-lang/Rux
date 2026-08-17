@@ -16,6 +16,11 @@ namespace ConditionalEvaluation {
 [[nodiscard]] std::optional<std::string> ParseStringLiteral(std::string_view text);
 } // namespace ConditionalEvaluation
 
+/// The evaluator's private state, split out so the compile-time expression machinery does not appear in the header
+/// every semantic file includes.
+///
+/// Evaluation is name-sensitive: the same expression means different things depending on which file, module, and
+/// function it appears in, which is why the source context is set before each evaluation rather than passed in.
 class ConditionalEvaluator::Impl {
 public:
     Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules);

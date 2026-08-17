@@ -75,10 +75,9 @@ struct CompileOptions {
     BuildProfile profile = BuildProfile::Debug;
     std::map<std::string, std::string> defines; // --define overrides
 
-    // Workspace members that override registry dependencies by normalized package name.
-    // Repository checks and tests use this map to compile against the local
-    // source tree while publishable package manifests retain version-based
-    // dependencies.
+    /// Workspace members that override registry dependencies by normalized package name. Repository checks and tests
+    /// use this map to compile against the local source tree while publishable package manifests retain version-based
+    /// dependencies.
     std::map<std::string, std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
 
@@ -87,7 +86,7 @@ struct CompileOptions {
     // frontend errors so all diagnostics are reported
     bool captureFrontend = false; // retain folded user ASTs in CompileResult
 
-    // Debug dumps written under <package root>/Temp (build --dump-*).
+    /// Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;
     bool dumpAst = false;
     bool dumpSema = false;
@@ -96,12 +95,11 @@ struct CompileOptions {
     bool dumpAsm = false;
     bool dumpRcu = false;
 
-    // Optional presentation hook. The driver always retains diagnostics in
-    // CompileResult and supplies already-loaded source text to a callback so a
-    // CLI can render context without rereading files.
+    /// Optional presentation hook. The driver always retains diagnostics in CompileResult and supplies already-loaded
+    /// source text to a callback so a CLI can render context without rereading files.
     std::function<void(const Diagnostic &, const SourceLineLookup &)> emitDiagnostic;
-    // Optional semantic progress events. The CLI owns visibility, styling, and
-    // stream selection; the reusable driver never writes progress itself.
+    /// Optional semantic progress events. The CLI owns visibility, styling, and stream selection; the reusable driver
+    /// never writes progress itself.
     std::function<void(const CompileProgress &)> emitProgress;
 };
 
@@ -124,7 +122,7 @@ private:
     void Emit(const Diagnostic &diag);
     void BeginPhase(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {});
     void EmitProgress(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {}) const;
-    // Emit every diagnostic; returns true if any is an error.
+    /// Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags);
     void RememberSources(std::span<const SourceFile> sources);
     bool WriteInspectionOutput(InspectionKind kind, const std::filesystem::path &path,
@@ -132,12 +130,12 @@ private:
     [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
                                                                    std::size_t lineNumber) const;
 
-    // The operating system of the build target, named exactly ("FreeBSD", not
-    // the "BSD" family). This is what `#target.os` reports.
+    /// The operating system of the build target, named exactly ("FreeBSD", not the "BSD" family). This is what
+    /// `#target.os` reports.
     [[nodiscard]] std::string TargetSystemName() const;
     void InitializeCompileTimeContext();
 
-    // Pipeline phases. Each returns false when the pipeline cannot continue.
+    /// Pipeline phases. Each returns false when the pipeline cannot continue.
     bool LexAndParseSources();
     bool LoadDependencies();
     bool Analyze();

@@ -183,10 +183,9 @@ private:
     virtual void Dispatch(const AsmInstr &in) = 0;
 };
 
-// Integer data-processing forms live in their own implementation while sharing
-// the label, diagnostic and encoder state owned by AssemblerContext. The final
-// facade derives from this private intermediate context and falls through to
-// the remaining instruction families when DispatchInteger returns false.
+/// Integer data-processing forms live in their own implementation while sharing the label, diagnostic and encoder state
+/// owned by AssemblerContext. The final facade derives from this private intermediate context and falls through to the
+/// remaining instruction families when DispatchInteger returns false.
 class IntegerAssemblerContext : public AssemblerContext {
 public:
     using AssemblerContext::AssemblerContext;
@@ -211,10 +210,9 @@ private:
     void EncodeCondSet(const AsmInstr &in, CondSetFn fn);
 };
 
-// Load/store, addressing, floating-point and conversion forms live in their
-// own implementation. The final facade derives from this context and falls
-// through to branch and system instructions when DispatchMemoryFloating does
-// not claim a mnemonic.
+/// Load/store, addressing, floating-point and conversion forms live in their own implementation. The final facade
+/// derives from this context and falls through to branch and system instructions when DispatchMemoryFloating does not
+/// claim a mnemonic.
 class MemoryFloatingAssemblerContext : public IntegerAssemblerContext {
 public:
     using IntegerAssemblerContext::IntegerAssemblerContext;
@@ -232,9 +230,8 @@ private:
     void EncodeFccmp(const AsmInstr &in);
 };
 
-// Branch and symbol-address forms, local-label resolution, system forms and
-// the final mnemonic dispatch live behind this last private context. The
-// public assembler facade only constructs this implementation and runs it.
+/// Branch and symbol-address forms, local-label resolution, system forms and the final mnemonic dispatch live behind
+/// this last private context. The public assembler facade only constructs this implementation and runs it.
 class BranchSystemAssemblerContext final : public MemoryFloatingAssemblerContext {
 public:
     using MemoryFloatingAssemblerContext::MemoryFloatingAssemblerContext;

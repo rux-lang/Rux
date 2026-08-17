@@ -95,6 +95,10 @@ constexpr MachOArchitectureProfile kAArch64Profile{
     .requiresPositionIndependentExecutable = true,
 };
 
+/// The Mach-O constants for one architecture, kept as a table so architecture-specific values stay out of the writer
+/// itself.
+///
+/// @return nullptr for an architecture this writer does not emit
 const MachOArchitectureProfile *ArchitectureProfile(const Target::Arch architecture) {
     if (architecture == kX86_64Profile.architecture) {
         return &kX86_64Profile;
@@ -105,6 +109,8 @@ const MachOArchitectureProfile *ArchitectureProfile(const Target::Arch architect
     return nullptr;
 }
 
+/// Add a signed addend to an address, reporting rather than wrapping on overflow: a wrapped address would place a
+/// relocation somewhere plausible-looking and wrong.
 bool AddSigned(const uint64_t value, const int32_t addend, uint64_t &result) {
     if (addend >= 0) {
         const auto positive = static_cast<uint64_t>(addend);
@@ -190,6 +196,8 @@ bool ApplyMachORelocation(const MachOArchitectureProfile &profile, Buf &buffer, 
     return true;
 }
 
+/// The install name a dependency is recorded under, so an image references a shared library the way the loader will
+/// search for it.
 std::string NormalizeDylibName(const std::string &name) {
     if (name == kSystemLibName) {
         return kDefaultLib;

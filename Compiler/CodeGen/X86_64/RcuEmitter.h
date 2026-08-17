@@ -16,8 +16,8 @@ public:
                         Target::OS inputTargetOs = Target::HostOS, BuildInfo inputBuildInfo = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
-    // Diagnostics accumulated during generation (e.g. errors encoding an
-    // `asm func` body). Populated by Generate(); check after calling it.
+    /// Diagnostics accumulated during generation (e.g. errors encoding an `asm func` body). Populated by Generate();
+    /// check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
         return diagnostics;
     }

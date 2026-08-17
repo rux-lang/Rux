@@ -1,3 +1,6 @@
+// Lowering for struct, enum, union, array and slice expressions, and for the
+// compile-time `Compiler` values whose fields are resolved rather than read.
+
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Semantic/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
@@ -25,6 +28,8 @@ HirExprPtr CompilerString(const SourceLocation location, std::string value) {
     return CompilerLiteral(location, TypeRef::MakeNamed("Slice<char8>"), std::move(value));
 }
 
+/// Convert to UTC, not local time, so the same source and the same build timestamp produce identical output wherever
+/// the compiler runs.
 bool UtcTime(const std::time_t time, std::tm &out) {
 #if RUX_OS_WINDOWS
     return gmtime_s(&out, &time) == 0;
@@ -33,6 +38,8 @@ bool UtcTime(const std::time_t time, std::tm &out) {
 #endif
 }
 
+/// Render the build timestamp for a compile-time `Build` value. Reads the timestamp from the context rather than the
+/// clock, which is what lets a reproducible build pin it.
 std::string FormatBuildTime(const CompileTimeContext &context, const char *format) {
     const std::time_t value = static_cast<std::time_t>(context.buildInfo.Timestamp());
     std::tm utc{};
@@ -43,6 +50,8 @@ std::string FormatBuildTime(const CompileTimeContext &context, const char *forma
     return std::strftime(buffer, sizeof(buffer), format, &utc) == 0 ? std::string{} : std::string(buffer);
 }
 
+/// Whether the target being compiled for has a named CPU feature. Answered from target data, never from the host, so a
+/// cross build does not inherit the building machine's capabilities.
 bool TargetHasFeature(const CompileTimeContext &context, const std::string_view name) {
     const Target::CpuFeatures features = context.target.cpu_features;
     if (name == "SSE2")
@@ -68,6 +77,8 @@ bool TargetHasFeature(const CompileTimeContext &context, const std::string_view 
     return false;
 }
 
+/// Whether this compiler implements a named language feature, letting source guard a construct that older releases
+/// would not accept.
 bool CompilerHasFeature(const std::string_view feature) {
     static constexpr std::array features{
         "conditional-compilation", "namespaced-intrinsics",      "target-intrinsics",

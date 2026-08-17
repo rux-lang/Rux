@@ -15,6 +15,7 @@ namespace {
 using BlockIndex = std::uint32_t;
 using Predecessors = std::vector<std::vector<BlockIndex>>;
 
+/// Name a block for a diagnostic, preferring its label so the message points at something a dump also shows.
 std::string BlockContext(const LirFunc &function, const BlockIndex blockIndex) {
     if (blockIndex >= function.blocks.size()) {
         return std::format("function '{}', block {}", function.name, blockIndex);
@@ -27,6 +28,8 @@ void Report(const PassContext &context, const LirFunc &function, const BlockInde
         std::format("internal LIR CFG error in {}: {}", BlockContext(function, blockIndex), std::move(message)));
 }
 
+/// The blocks a terminator can transfer to. One place computes this so the verifier, the reachability walk, and phi
+/// maintenance can never disagree about the shape of the graph.
 std::vector<BlockIndex> Successors(const LirTerminator &terminator) {
     std::vector<BlockIndex> result;
     const auto add = [&result](const BlockIndex target) {
@@ -56,6 +59,10 @@ std::vector<BlockIndex> Successors(const LirTerminator &terminator) {
     return result;
 }
 
+/// Check one function's graph, reporting every problem rather than the first, so a broken lowering is diagnosed in one
+/// run.
+///
+/// @return false when the function is malformed
 bool ValidateFunction(const LirFunc &function, const PassContext &context) {
     if (function.isExtern || function.isAsm) {
         return true;
@@ -125,6 +132,8 @@ bool ValidateFunction(const LirFunc &function, const PassContext &context) {
     return valid;
 }
 
+/// The constant a register holds, if it was defined by a constant in this same block. Deliberately block-local: a
+/// definition elsewhere might not dominate this use, and proving that it does is not this pass's job.
 std::optional<TypedConstant> LocalConstant(const LirBlock &block, const LirReg reg) {
     for (auto instruction = block.instrs.rbegin(); instruction != block.instrs.rend(); ++instruction) {
         if (instruction->dst == reg) {
@@ -141,6 +150,10 @@ bool SameConstant(const TypedConstant &left, const TypedConstant &right) {
     return left.GetKind() == right.GetKind() && left.Width() == right.Width() && left.RawBits() == right.RawBits();
 }
 
+/// The single block a switch must reach when its subject is a known constant, falling through to the default when no
+/// case matches.
+///
+/// @return nullopt when the subject is not known at compile time
 std::optional<BlockIndex> KnownSwitchTarget(const LirBlock &block, const LirTerminator &terminator) {
     const auto condition = LocalConstant(block, terminator.cond);
     if (!condition) {
@@ -164,6 +177,8 @@ std::optional<BlockIndex> KnownSwitchTarget(const LirBlock &block, const LirTerm
     return terminator.defaultTarget;
 }
 
+/// Turn conditional terminators whose condition is known into unconditional jumps, which is what makes the branch not
+/// taken unreachable for the pass below.
 bool FoldTerminators(LirFunc &function) {
     bool changed = false;
     for (auto &block : function.blocks) {
@@ -190,6 +205,8 @@ bool FoldTerminators(LirFunc &function) {
     return changed;
 }
 
+/// Mark the blocks reachable from entry. Reachability is by edge, not by position: a block is kept because something
+/// branches to it, never because it is written between two blocks that are kept.
 std::vector<bool> ReachableBlocks(const LirFunc &function) {
     std::vector<bool> reachable(function.blocks.size(), false);
     std::vector<BlockIndex> pending = {0};
@@ -209,6 +226,7 @@ std::vector<bool> ReachableBlocks(const LirFunc &function) {
     return reachable;
 }
 
+/// Drop unreachable blocks and renumber every edge that pointed past them, since block indices are positional.
 bool RemoveUnreachableBlocks(LirFunc &function) {
     const std::vector<bool> reachable = ReachableBlocks(function);
     if (std::ranges::all_of(reachable, [](const bool value) { return value; })) {
@@ -263,6 +281,8 @@ bool RemoveUnreachableBlocks(LirFunc &function) {
     return true;
 }
 
+/// Drop phi operands naming a predecessor that no longer branches here. A phi that outlived its incoming edge would
+/// otherwise claim a value from a block that cannot reach it.
 void RemoveStalePhiPredecessors(LirFunc &function) {
     Predecessors predecessors(function.blocks.size());
     for (BlockIndex blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {

@@ -18,6 +18,8 @@ using namespace Rux;
 using namespace Rux::CliSupport;
 
 namespace {
+/// The width help text should wrap to, falling back to a fixed default when the output is not a terminal so piped help
+/// stays stable rather than depending on the environment.
 std::size_t TerminalWidth() {
     return CliHelp::NormalizeTerminalWidth(System::TerminalWidth());
 }

@@ -1,3 +1,6 @@
+// Declaration lowering, and the literal decoding it needs: character and
+// string escapes are resolved here so HIR carries values rather than syntax.
+
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 

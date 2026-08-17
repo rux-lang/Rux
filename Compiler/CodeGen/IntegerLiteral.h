@@ -17,7 +17,7 @@
 #include <string_view>
 
 namespace Rux {
-// The type suffix `text` ends with, or an empty view when it carries none.
+/// The type suffix `text` ends with, or an empty view when it carries none.
 [[nodiscard]] inline std::string_view NumericLiteralSuffix(const std::string_view text) {
     static constexpr std::string_view suffixes[] = {
         "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "i", "u",
@@ -30,11 +30,10 @@ namespace Rux {
     return {};
 }
 
-// The bits `text` denotes, as the pattern a 64-bit register would hold: a
-// negative literal comes back as its two's complement. Nothing is returned when
-// the text is not an integer literal at all, or names a magnitude no 64-bit
-// register holds, so a caller decides for itself what an unreadable constant
-// means rather than being handed a zero that looks deliberate.
+/// The bits `text` denotes, as the pattern a 64-bit register would hold: a negative literal comes back as its two's
+/// complement. Nothing is returned when the text is not an integer literal at all, or names a magnitude no 64-bit
+/// register holds, so a caller decides for itself what an unreadable constant means rather than being handed a zero
+/// that looks deliberate.
 [[nodiscard]] inline std::optional<std::uint64_t> ParseIntegerLiteralBits(std::string_view text) {
     if (const std::string_view suffix = NumericLiteralSuffix(text); !suffix.empty()) {
         text.remove_suffix(suffix.size());

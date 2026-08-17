@@ -12,8 +12,8 @@
 namespace Rux {
 class X64Enc;
 
-// Narrow access to function values and module symbols while calls and control
-// flow are emitted. The collaborators retain no module-owned state.
+/// Narrow access to function values and module symbols while calls and control flow are emitted. The collaborators
+/// retain no module-owned state.
 class X86_64CallAndTerminatorHooks {
 public:
     virtual ~X86_64CallAndTerminatorHooks() = default;
@@ -33,7 +33,7 @@ public:
     X86_64CallEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan, Target::OS targetOs,
                       X86_64CallAndTerminatorHooks &hooks);
 
-    // Returns true exactly when the instruction is a direct or indirect call.
+    /// Returns true exactly when the instruction is a direct or indirect call.
     [[nodiscard]] bool Emit(const LirInstr &instruction);
     void EmitArguments(const std::vector<LirReg> &arguments, CallingConvention convention = CallingConvention::Default,
                        int startIndex = 0) const;

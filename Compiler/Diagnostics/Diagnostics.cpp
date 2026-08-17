@@ -10,6 +10,10 @@
 
 namespace Rux {
 namespace {
+/// Append text with control bytes escaped.
+///
+/// A diagnostic can quote source or a file path, and neither is trusted to be printable: an embedded escape sequence
+/// could otherwise move the cursor and forge lines the compiler never wrote.
 void AppendHumanText(std::string &out, const std::string_view text) {
     for (const char ch : text) {
         const auto value = static_cast<unsigned char>(ch);
@@ -68,6 +72,8 @@ struct ExpandedSourceLine {
     std::size_t caret = 0;
 };
 
+/// The byte length of the UTF-8 code point starting at `offset`, so the caret can be positioned by character rather
+/// than by byte.
 std::size_t Utf8CodePointSize(const std::string_view text, const std::size_t offset) {
     const auto lead = static_cast<unsigned char>(text[offset]);
     std::size_t size = 1;
@@ -98,6 +104,8 @@ void AppendEscapedSourceByte(std::vector<std::string> &cells, const unsigned cha
     }
 }
 
+/// Prepare one source line for display, expanding tabs and escaping unprintable bytes, and reporting where the caret
+/// lands once those substitutions have shifted the columns.
 ExpandedSourceLine ExpandSourceLine(const std::string_view line, const std::size_t column) {
     ExpandedSourceLine expanded;
     const std::size_t caretByte = std::min(column > 0 ? column - 1 : 0, line.size());

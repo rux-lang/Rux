@@ -11,6 +11,11 @@
 #include <vector>
 
 namespace Rux::MachO {
+/// Everything image layout depends on, gathered before any address is chosen.
+///
+/// Sizes arrive already summed per section so the planner never walks the link graph: laying out an image is then
+/// arithmetic over these numbers plus the alignment rules, which is what lets one implementation plan both an
+/// executable and a shared library.
 struct ImageLayoutRequest {
     std::span<const std::string> neededLibraries;
     std::string_view installName;

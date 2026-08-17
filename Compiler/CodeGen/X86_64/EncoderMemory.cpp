@@ -1,3 +1,6 @@
+// x86-64 encoding for loads and stores, including the stack-relative forms the
+// frame layout addresses spill slots through.
+
 #include "CodeGen/X86_64/Encoder.h"
 
 namespace Rux {

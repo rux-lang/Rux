@@ -24,6 +24,7 @@ namespace {
 uint32_t Crc32cTable[256];
 bool Crc32cReady = false;
 
+/// Build the CRC-32C lookup table once, on first use.
 void InitCrc32c() {
     if (Crc32cReady) {
         return;
@@ -38,6 +39,8 @@ void InitCrc32c() {
     Crc32cReady = true;
 }
 
+/// The Castagnoli CRC-32 guarding an RCU container. Deliberately not the IEEE polynomial the ZIP format uses, so the
+/// two checksums are not interchangeable.
 uint32_t Crc32c(const std::vector<uint8_t> &data) {
     InitCrc32c();
     uint32_t crc = 0xFFFF'FFFFu;

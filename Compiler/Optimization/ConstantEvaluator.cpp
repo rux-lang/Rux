@@ -18,6 +18,9 @@ struct TypeProperties {
     std::uint8_t width;
 };
 
+/// The width and signedness the evaluator models a type at.
+///
+/// @return nullopt for any type outside the integer and boolean model, which is how folding declines to touch it
 std::optional<TypeProperties> Properties(const TypeRef &type) {
     if (type.IsBool()) {
         return TypeProperties{TypedConstant::Kind::Boolean,
@@ -30,10 +33,12 @@ std::optional<TypeProperties> Properties(const TypeRef &type) {
                           static_cast<std::uint8_t>(type.SizeInBytes().value_or(0) * 8)};
 }
 
+/// The low `width` bits set. Every stored value is masked to this, which is what makes wrapping the default.
 std::uint64_t Mask(const std::uint8_t width) {
     return width == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << width) - 1;
 }
 
+/// Whether the top bit of the value's own width is set, which is its sign bit and not bit 63.
 bool SignBit(const TypedConstant &value) {
     return (value.RawBits() & (std::uint64_t{1} << (value.Width() - 1))) != 0;
 }
@@ -47,11 +52,17 @@ TypedConstant MakeBoolean(const bool value) {
     return Make(TypeRef::MakeBool(), value ? 1 : 0);
 }
 
+/// Whether two constants share a width and signedness. Binary evaluation requires it: folding operands of different
+/// types would have to reproduce the language's conversion rules, which analysis has already applied.
 bool SameIntegerType(const TypedConstant &left, const TypedConstant &right) {
     return left.GetKind() != TypedConstant::Kind::Boolean && left.GetKind() == right.GetKind() &&
            left.Width() == right.Width();
 }
 
+/// The shift distance, when it is one the result is defined for.
+///
+/// @return nullopt for a negative or too-large distance, leaving the shift in HIR rather than folding to a value the
+/// target would not produce
 std::optional<std::uint64_t> ShiftAmount(const TypedConstant &value, const std::uint8_t width) {
     if (value.GetKind() == TypedConstant::Kind::Boolean ||
         (value.GetKind() == TypedConstant::Kind::SignedInteger && SignBit(value))) {
@@ -63,6 +74,8 @@ std::optional<std::uint64_t> ShiftAmount(const TypedConstant &value, const std::
     return value.RawBits();
 }
 
+/// The value widened to 64 bits with its sign, so a signed operation computes in the same arithmetic the target would
+/// use before the result is masked back down.
 std::uint64_t SignExtendedBits(const TypedConstant &value) {
     if (value.GetKind() != TypedConstant::Kind::SignedInteger || !SignBit(value)) {
         return value.RawBits();

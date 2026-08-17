@@ -1,3 +1,6 @@
+// The semantic pass entry point: it drives conditional folding, indexing, and
+// the per-module checks that live in the sibling Semantic*.cpp files.
+
 #include "Semantic/SemanticAnalyzer.h"
 
 #include "Lexer/Lexer.h"

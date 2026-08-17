@@ -5,6 +5,12 @@
 
 namespace Rux {
 namespace {
+/// The width the target stores this type at.
+///
+/// Read from the target rather than the host, because a pointer-sized type's limits are the target's: `usize::Max` must
+/// differ between a 32- and a 64-bit target compiled from the same machine.
+///
+/// @return nullopt for a type with no fixed width
 std::optional<std::uint32_t> StorageBits(const TypeRef &type, const CompileTimeContext &context) {
     using K = TypeRef::Kind;
     switch (type.kind) {
@@ -40,6 +46,8 @@ bool IsCharacter(const TypeRef::Kind kind) {
     return kind == TypeRef::Kind::Char8 || kind == TypeRef::Kind::Char16 || kind == TypeRef::Kind::Char32;
 }
 
+/// The minimum of a signed integer of this width, rendered as a literal. Built as text rather than computed in a host
+/// integer so a width the host cannot represent is still exact.
 std::string SignedMin(const std::uint32_t bits) {
     if (bits == 64) {
         return "-9223372036854775808";

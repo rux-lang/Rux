@@ -103,9 +103,9 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
     SetBlock(mergeBlock);
 }
 
-// Pattern lowering
-// Returns a bool register: 1 if the pattern matches `subjectVal`.
-// Side-effects: binds pattern variables into locals
+/// Pattern lowering.
+///
+/// Returns a bool register: 1 if the pattern matches `subjectVal`. Side-effects: binds pattern variables into locals.
 void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, const TypeRef &subjectType) {
     if (dynamic_cast<const HirWildcardPattern *>(&pat)) {
         return;
@@ -512,7 +512,7 @@ LirReg HirToLirContext::LowerMatchExpr(const HirMatchExpr &e) {
     return EmitLoad(slot, e.type);
 }
 
-// Fill an existing 16-byte fat-pointer slot with {&concrete, &vtable}.
+/// Fill an existing 16-byte fat-pointer slot with {&concrete, &vtable}.
 void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, LirReg slot) {
     LirReg val = LowerExpr(*e.value);
     LirReg concreteSlot = EmitAlloca(e.value->type);
@@ -535,8 +535,8 @@ void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, 
     }
 }
 
-// Wrap a concrete value into a {data_ptr, vtable_ptr} fat pointer.
-// Returns the alloca slot whose data region IS the 16-byte fat pointer.
+/// Wrap a concrete value into a {data_ptr, vtable_ptr} fat pointer. Returns the alloca slot whose data region IS the
+/// 16-byte fat pointer.
 LirReg HirToLirContext::LowerCoerceToInterface(const HirCoerceToInterfaceExpr &e) {
     LirReg slot = EmitAlloca(e.type); // Named("X") → 16-byte data region
     StoreCoerceToInterface(e, slot);
@@ -559,7 +559,7 @@ LirReg HirToLirContext::LowerArrayToSlice(const HirArrayToSliceExpr &e) {
     return slot;
 }
 
-// Call a method through an interface fat pointer via vtable dispatch.
+/// Call a method through an interface fat pointer via vtable dispatch.
 LirReg HirToLirContext::LowerEnumConstruct(const HirEnumConstructExpr &e) {
     const LirReg slot = EmitAlloca(e.type);
     StoreEnumConstructIntoSlot(e, slot);

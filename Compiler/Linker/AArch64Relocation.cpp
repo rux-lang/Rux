@@ -6,20 +6,19 @@
 
 namespace Rux {
 namespace {
-// Reads back a little-endian instruction word a relocation is about to
-// rewrite a field of.
+/// Reads back a little-endian instruction word a relocation is about to rewrite a field of.
 [[nodiscard]] uint32_t ReadU32(const Buf &buf, const size_t offset) {
     return static_cast<uint32_t>(buf[offset]) | static_cast<uint32_t>(buf[offset + 1]) << 8U |
            static_cast<uint32_t>(buf[offset + 2]) << 16U | static_cast<uint32_t>(buf[offset + 3]) << 24U;
 }
 
-// True when `value` fits in `bits` bits read as two's complement.
+/// True when `value` fits in `bits` bits read as two's complement.
 [[nodiscard]] bool FitsSigned(const int64_t value, const unsigned bits) {
     const int64_t limit = int64_t{1} << (bits - 1);
     return value >= -limit && value < limit;
 }
 
-// Replaces `width` bits of `word` starting at `lsb` with `value`.
+/// Replaces `width` bits of `word` starting at `lsb` with `value`.
 [[nodiscard]] uint32_t WithField(const uint32_t word, const unsigned lsb, const unsigned width, const uint32_t value) {
     const uint32_t mask = width == 32 ? ~0U : ((1U << width) - 1U) << lsb;
     return (word & ~mask) | ((value << lsb) & mask);

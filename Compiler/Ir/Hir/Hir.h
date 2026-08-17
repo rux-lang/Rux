@@ -130,14 +130,14 @@ struct HirPostfixExpr : HirExpr {
     HirExprPtr operand;
 };
 
-// a + b, a && b, a == b, etc.
+/// a + b, a && b, a == b, etc.
 struct HirBinaryExpr : HirExpr {
     TokenKind op;
     HirExprPtr left;
     HirExprPtr right;
 };
 
-// a = b, a += b, etc.
+/// a = b, a += b, etc.
 struct HirAssignExpr : HirExpr {
     TokenKind op;
     HirExprPtr target;
@@ -163,29 +163,27 @@ struct HirCallExpr : HirExpr {
     HirExprPtr callee;
     std::vector<HirExprPtr> args;
     bool isNoReturn = false;
-    // Populated for compiler builtins that need to report their call site.
+    /// Populated for compiler builtins that need to report their call site.
     std::string sourceFile;
     std::string sourceFunction;
     std::uint32_t sourceLine = 0;
     std::uint32_t sourceColumn = 0;
 };
 
-// Wrap a concrete value into an interface fat pointer {data_ptr,
-// vtable_ptr}
+/// Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}
 struct HirCoerceToInterfaceExpr : HirExpr {
     HirExprPtr value;
     std::string vtableLabel;
 };
 
-// A fixed inline array viewed as a non-owning Slice<T>.
+/// A fixed inline array viewed as a non-owning Slice<T>.
 struct HirArrayToSliceExpr : HirExpr {
     HirExprPtr value;
     TypeRef elementType;
     std::uint64_t length = 0;
 };
 
-// Call a method through an interface fat pointer (dynamic dispatch via
-// vtable)
+/// Call a method through an interface fat pointer (dynamic dispatch via vtable)
 struct HirInterfaceCallExpr : HirExpr {
     HirExprPtr fatPtrExpr; // expression that yields the fat-pointer address
     // (8 bytes)
@@ -324,10 +322,9 @@ struct HirForStmt : HirStmt {
     TypeRef varType;
     HirExprPtr iterable;
     HirBlock body;
-    // True when `variable` names a mutable variable already in scope, which the
-    // loop reuses as its induction variable rather than introducing a fresh
-    // binding. The loop then mutates that outer variable, so its final value
-    // persists after the loop (e.g. `for k in k..7` leaves k == 7).
+    /// True when `variable` names a mutable variable already in scope, which the loop reuses as its induction variable
+    /// rather than introducing a fresh binding. The loop then mutates that outer variable, so its final value persists
+    /// after the loop (e.g. `for k in k..7` leaves k == 7).
     bool reusesOuterVar = false;
 };
 
@@ -351,8 +348,7 @@ struct HirContinueStmt : HirStmt {
     std::string label;
 };
 
-// local declaration inside a block (func, const, type alias declared
-// locally)
+/// local declaration inside a block (func, const, type alias declared locally)
 struct HirLocalDecl : HirStmt {
     std::string description;
     bool hasConstant = false;
@@ -466,8 +462,7 @@ struct HirConst {
 struct HirExternFunc {
     std::string name;
     std::string dll;
-    // The name imported from the DLL, when it differs from `name`. Empty means
-    // the two are the same.
+    /// The name imported from the DLL, when it differs from `name`. Empty means the two are the same.
     std::string symbolName;
     bool isPublic = false;
     bool isNoReturn = false;

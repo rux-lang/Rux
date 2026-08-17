@@ -14,6 +14,8 @@
 
 namespace Rux {
 namespace {
+/// Archive symbol tables are big-endian regardless of the target's own byte order, which is why this sits beside the
+/// little-endian helpers rather than replacing them.
 void PutBig32(std::vector<std::uint8_t> &out, const std::uint32_t value) {
     out.push_back(static_cast<std::uint8_t>(value >> 24U));
     out.push_back(static_cast<std::uint8_t>(value >> 16U));
@@ -31,6 +33,8 @@ void PutLittle32(std::vector<std::uint8_t> &out, const std::uint32_t value) {
     PutLittle16(out, static_cast<std::uint16_t>(value >> 16U));
 }
 
+/// Format one archive header field: decimal, space-padded to a fixed width. The format is textual and column-oriented,
+/// so a field that overflows its width would corrupt every field after it.
 std::string DecimalField(const std::uint64_t value, const std::size_t width) {
     std::string result(width, ' ');
     const std::string digits = std::to_string(value);
@@ -38,6 +42,7 @@ std::string DecimalField(const std::uint64_t value, const std::size_t width) {
     return result;
 }
 
+/// Append the fixed-width header that precedes one archive member.
 void AppendHeader(std::vector<std::uint8_t> &out, std::string name, const std::size_t size) {
     if (name.size() <= 15 && !name.ends_with('/')) {
         name.push_back('/');
@@ -48,6 +53,7 @@ void AppendHeader(std::vector<std::uint8_t> &out, std::string name, const std::s
     out.insert(out.end(), header.begin(), header.end());
 }
 
+/// A member's size once padded to the archive's even-byte alignment, which every member is required to start on.
 std::size_t PaddedMemberSize(const std::size_t dataSize) {
     return 60 + dataSize + (dataSize & 1U);
 }
@@ -57,6 +63,10 @@ struct SymbolReference {
     std::size_t memberIndex = 0;
 };
 
+/// Gather the defined symbols of every member for the archive index.
+///
+/// The index is what lets a linker pull only the members it needs out of a static library instead of reading all of
+/// them, so it has to name every symbol a member defines.
 std::vector<SymbolReference> CollectSymbols(const std::span<const NativeObject> objects) {
     std::vector<SymbolReference> symbols;
     for (std::size_t memberIndex = 0; memberIndex < objects.size(); ++memberIndex) {

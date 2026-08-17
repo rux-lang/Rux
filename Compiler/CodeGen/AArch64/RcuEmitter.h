@@ -31,15 +31,14 @@
 namespace Rux {
 class AArch64RcuEmitter {
 public:
-    // An unspecified system retains the generic AAPCS64/Linux policy. Real
-    // driver builds always pass the target OS explicitly.
+    /// An unspecified system retains the generic AAPCS64/Linux policy. Real driver builds always pass the target OS
+    /// explicitly.
     explicit AArch64RcuEmitter(const LirPackage &package, std::string inputPackageName = {},
                                Target::OS inputTargetOs = Target::OS::Linux, BuildInfo inputBuildInfo = {});
     [[nodiscard]] std::vector<RcuFile> Generate() const;
 
-    // Diagnostics accumulated during generation, which for this back end also
-    // covers everything it does not implement yet. Populated by Generate();
-    // check after calling it.
+    /// Diagnostics accumulated during generation, which for this back end also covers everything it does not implement
+    /// yet. Populated by Generate(); check after calling it.
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const {
         return diagnostics;
     }

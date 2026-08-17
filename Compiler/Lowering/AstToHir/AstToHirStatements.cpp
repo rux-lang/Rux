@@ -1,3 +1,6 @@
+// Statement and block lowering, including the pattern bindings a `let` or a
+// match arm introduces.
+
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
 #include <algorithm>

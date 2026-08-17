@@ -1,3 +1,5 @@
+// Module-level assembly text: sections, symbols and data definitions.
+
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 
 #include "CodeGen/FloatLiteral.h"

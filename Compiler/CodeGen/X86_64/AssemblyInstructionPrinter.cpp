@@ -1,3 +1,6 @@
+// Per-instruction assembly text, including the register and operand-size
+// spellings x86-64 syntax requires.
+
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
@@ -11,6 +14,8 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
+/// The accumulator register's name at a given width — `al`, `ax`, `eax`, `rax` — since x86-64 spells the same register
+/// differently depending on the operand size.
 std::string_view GprA(const int bytes) {
     switch (bytes) {
     case 1:
@@ -24,6 +29,8 @@ std::string_view GprA(const int bytes) {
     }
 }
 
+/// The size keyword a memory operand needs when the width is not implied by a register operand, as in `qword ptr [rbp -
+/// 8]`.
 std::string_view PtrSize(const int bytes) {
     switch (bytes) {
     case 1:

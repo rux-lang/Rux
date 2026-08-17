@@ -27,25 +27,23 @@ namespace Rux {
 
 // DLL-specific
 [[maybe_unused]] static constexpr uint16_t kSubsystemGUI = 2; // windows GUI (used for DLLs)
-// IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE. The .reloc
-// table below describes every absolute fixup, so IMAGE_FILE_RELOCS_STRIPPED
-// must stay clear: the ARM64 loader refuses an image it cannot relocate with
-// "%1 is not a valid Win32 application".
+/// IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_LARGE_ADDRESS_AWARE. The .reloc table below describes every absolute fixup,
+/// so IMAGE_FILE_RELOCS_STRIPPED must stay clear: the ARM64 loader refuses an image it cannot relocate with "%1 is not
+/// a valid Win32 application".
 [[maybe_unused]] static constexpr uint16_t kCharacteristicsExecutable = 0x0022u;
-// The same flags plus IMAGE_FILE_DLL.
+/// The same flags plus IMAGE_FILE_DLL.
 [[maybe_unused]] static constexpr uint16_t kCharacteristicsDll = 0x2022u;
 
 // IMAGE_SCN_ characteristics
 [[maybe_unused]] static constexpr uint32_t kScnText = 0x6000'0020u;  // CNT_CODE | MEM_EXECUTE | MEM_READ
 [[maybe_unused]] static constexpr uint32_t kScnRData = 0x4000'0040u; // CNT_INITIALIZED_DATA | MEM_READ
 [[maybe_unused]] static constexpr uint32_t kScnData = 0xC000'0040u;  // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
-// CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ — the loader reads .reloc
-// once while mapping and never needs it again.
+/// CNT_INITIALIZED_DATA | MEM_DISCARDABLE | MEM_READ — the loader reads .reloc once while mapping and never needs it
+/// again.
 [[maybe_unused]] static constexpr uint32_t kScnReloc = 0x4200'0040u;
 
-// DllCharacteristics: HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT |
-// TERMINAL_SERVER_AWARE. The .reloc table lets the loader place the image
-// anywhere, and Windows on ARM64 only loads images that opt into ASLR.
+/// DllCharacteristics: HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE. The .reloc table lets the
+/// loader place the image anywhere, and Windows on ARM64 only loads images that opt into ASLR.
 [[maybe_unused]] static constexpr uint16_t kDllChars = 0x8160u;
 
 struct PeStubPatch {

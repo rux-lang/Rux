@@ -1,38 +1,37 @@
+// AArch64 encoding for loads, stores and address generation, across the scaled,
+// unscaled, indexed and pair addressing forms.
+
 #include "CodeGen/AArch64/Encoder.h"
 
 #include <bit>
 
 namespace Rux {
 namespace {
-// A register a composite sequence can address through, or leave an address in.
-// Neither reading of code 31 is one: the zero register discards what it is
-// given, and the stack pointer is not something a sequence may take for its
-// own.
+/// A register a composite sequence can address through, or leave an address in. Neither reading of code 31 is one: the
+/// zero register discards what it is given, and the stack pointer is not something a sequence may take for its own.
 constexpr bool AddressableReg(const A64Reg &reg) {
     return reg.IsGeneral() && reg.bits == 64 && reg.code != 31;
 }
 
-// A general-purpose operand of width `bits` in a field that reads code 31 as
-// the zero register. SP has no encoding there, so passing it is an error rather
-// than a silent rename.
+/// A general-purpose operand of width `bits` in a field that reads code 31 as the zero register. SP has no encoding
+/// there, so passing it is an error rather than a silent rename.
 constexpr bool ZrOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsStackPointer();
 }
 
-// The same, for a field that reads code 31 as the stack pointer.
+/// The same, for a field that reads code 31 as the stack pointer.
 constexpr bool SpOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsZeroReg();
 }
 
-// Whether a signed value fits a two's-complement field `bits` wide.
+/// Whether a signed value fits a two's-complement field `bits` wide.
 constexpr bool FitsSigned(const std::int64_t value, const unsigned bits) {
     const std::int64_t limit = std::int64_t{1} << (bits - 1U);
     return value >= -limit && value < limit;
 }
 
-// One load or store form: the `size` and `opc` fields that name it, the
-// register file it transfers, and the width it accesses — which is also the
-// scale of a scaled offset and of a scaled index register.
+/// One load or store form: the `size` and `opc` fields that name it, the register file it transfers, and the width it
+/// accesses — which is also the scale of a scaled offset and of a scaled index register.
 struct MemForm {
     std::uint32_t size = 0;
     std::uint32_t opc = 0;
@@ -40,17 +39,15 @@ struct MemForm {
     std::uint32_t bytes = 1;
 };
 
-// What a narrowing load or store does with the bits of the register above the
-// value it moves.
+/// What a narrowing load or store does with the bits of the register above the value it moves.
 enum class MemAccess : std::uint8_t {
     Store,
     Load,
     LoadSigned,
 };
 
-// LDR / STR of a whole register: `rt` names both the width of the access and
-// the file it lands in, and a Q access is the one that borrows a bit of `opc`
-// because `size` has no fifth value.
+/// LDR / STR of a whole register: `rt` names both the width of the access and the file it lands in, and a Q access is
+/// the one that borrows a bit of `opc` because `size` has no fifth value.
 std::optional<MemForm> WholeRegisterForm(const A64Reg rt, const bool load) {
     const std::uint32_t opc = load ? 1U : 0U;
     if (rt.IsGeneral()) {
@@ -81,9 +78,8 @@ std::optional<MemForm> WholeRegisterForm(const A64Reg rt, const bool load) {
     }
 }
 
-// The narrowing and sign-extending forms, whose access width is fixed by the
-// mnemonic. `rt` is instead the width the value ends up at, which for the
-// sign-extending loads has to be wider than what memory supplied.
+/// The narrowing and sign-extending forms, whose access width is fixed by the mnemonic. `rt` is instead the width the
+/// value ends up at, which for the sign-extending loads has to be wider than what memory supplied.
 std::optional<MemForm> NarrowForm(const A64Reg rt, const std::uint32_t size, const MemAccess access) {
     if (!rt.IsGeneral() || rt.IsStackPointer() || (rt.bits != 32 && rt.bits != 64)) {
         return std::nullopt;
@@ -104,8 +100,7 @@ std::optional<MemForm> NarrowForm(const A64Reg rt, const std::uint32_t size, con
     return MemForm{size, access == MemAccess::Load ? 1U : 0U, 0, bytes};
 }
 
-// Load/store register (unsigned immediate):
-// size | 111 | V | 01 | opc | imm12 | Rn | Rt.
+/// Load/store register (unsigned immediate): size | 111 | V | 01 | opc | imm12 | Rn | Rt.
 A64Status EncodeMemUnsigned(const A64Enc &enc, const std::optional<MemForm> &form, const A64Reg rt, const A64Reg rn,
                             const std::uint64_t offset) {
     if (!form || !SpOperand(rn, 64)) {
@@ -123,8 +118,8 @@ A64Status EncodeMemUnsigned(const A64Enc &enc, const std::optional<MemForm> &for
     return A64Status::Ok;
 }
 
-// The two bits that tell the three immediate addressing modes of a single
-// register apart, sitting just below the field they share.
+/// The two bits that tell the three immediate addressing modes of a single register apart, sitting just below the field
+/// they share.
 constexpr std::uint32_t IndexModeBits(const A64IndexMode mode) {
     switch (mode) {
     case A64IndexMode::PostIndex:
@@ -137,7 +132,7 @@ constexpr std::uint32_t IndexModeBits(const A64IndexMode mode) {
     return 0;
 }
 
-// Load/store register (immediate): size | 111 | V | 00 | opc | 0 | imm9 | mode | Rn | Rt.
+/// Load/store register (immediate): size | 111 | V | 00 | opc | 0 | imm9 | mode | Rn | Rt.
 A64Status EncodeMemImm9(const A64Enc &enc, const std::optional<MemForm> &form, const A64Reg rt, const A64Reg rn,
                         const std::int64_t offset, const A64IndexMode mode) {
     if (!form || !SpOperand(rn, 64)) {
@@ -152,8 +147,7 @@ A64Status EncodeMemImm9(const A64Enc &enc, const std::optional<MemForm> &form, c
     return A64Status::Ok;
 }
 
-// Load/store register (register offset):
-// size | 111 | V | 00 | opc | 1 | Rm | option | S | 10 | Rn | Rt.
+/// Load/store register (register offset): size | 111 | V | 00 | opc | 1 | Rm | option | S | 10 | Rn | Rt.
 A64Status EncodeMemReg(const A64Enc &enc, const std::optional<MemForm> &form, const A64Reg rt, const A64Reg rn,
                        const A64Reg rm, const A64ExtendKind extend, const unsigned amount) {
     if (!form || !SpOperand(rn, 64)) {
@@ -179,10 +173,9 @@ A64Status EncodeMemReg(const A64Enc &enc, const std::optional<MemForm> &form, co
     return A64Status::Ok;
 }
 
-// Load/store pair: opc | 101 | V | mode | L | imm7 | Rt2 | Rn | Rt. The pair
-// forms number their widths in their own `opc` field rather than sharing the
-// `size` field of the single-register ones, and every mode writes an immediate
-// scaled by the width of one register.
+/// Load/store pair: opc | 101 | V | mode | L | imm7 | Rt2 | Rn | Rt. The pair forms number their widths in their own
+/// `opc` field rather than sharing the `size` field of the single-register ones, and every mode writes an immediate
+/// scaled by the width of one register.
 A64Status EncodeMemPair(const A64Enc &enc, const A64Reg rt, const A64Reg rt2, const A64Reg rn,
                         const std::int64_t offset, const A64IndexMode mode, const bool load) {
     if (!SpOperand(rn, 64) || rt.file != rt2.file || rt.bits != rt2.bits) {
@@ -362,7 +355,7 @@ A64Status A64Enc::Stp(const A64Reg rt, const A64Reg rt2, const A64Reg rn, const 
     return EncodeMemPair(*this, rt, rt2, rn, offset, mode, false);
 }
 
-// Load register (literal): opc | 011 | V | 00 | imm19 | Rt.
+/// Load register (literal): opc | 011 | V | 00 | imm19 | Rt.
 A64Status A64Enc::LdrLiteral(const A64Reg rt, const std::int64_t offset) const {
     std::uint32_t opc = 0;
     std::uint32_t v = 0;
