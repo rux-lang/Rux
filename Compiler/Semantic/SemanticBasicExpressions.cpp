@@ -380,6 +380,15 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
             return leftType;
         }
         if (leftType.IsInteger() && rightType.IsInteger()) {
+            // Two integers normally settle on the left operand's type. An unsuffixed literal carries the default
+            // `int`, though, so that rule made `2 * count` an `int` while `count * 2` was a `uint` — the same
+            // expression mirrored, one spelling compiling and the other not. A literal takes the other operand's
+            // type whichever side it is written on. The guard is narrow: an `int`-typed expression that is not a
+            // literal is not assignable to another width, so only a literal can flip the result.
+            if (leftType.kind == TypeRef::Kind::Int && rightType.kind != TypeRef::Kind::Int &&
+                CanAssignExprTo(leftExpr, leftType, rightType)) {
+                return rightType;
+            }
             return leftType;
         }
         if (CanAssignExprTo(rightExpr, rightType, leftType)) {

@@ -1,4 +1,62 @@
+func Take(value: uint) -> uint {
+    return value;
+}
+
 func Main() -> int {
     let value = 1 + 2 * (3 + 4) - 10 / 2;
-    return value - 10;
+    if value != 10 {
+        return 1;
+    }
+
+    // Two integer operands normally settle on the left one's type. An
+    // unsuffixed literal carries the default `int`, so that rule used to make
+    // `2 * count` an `int` while `count * 2` was a `uint` -- the same
+    // expression mirrored, one spelling compiling and the other rejected. A
+    // literal takes the other operand's type whichever side it is written on.
+    let count: uint = 5;
+    let doubledLeft: uint = 2 * count;
+    let doubledRight: uint = count * 2;
+    if doubledLeft != 10 || doubledRight != 10 {
+        return 2;
+    }
+
+    // Every arithmetic operator, with the literal on the left.
+    if 8 - count != 3 {
+        return 3;
+    }
+    if 7 + count != 12 {
+        return 4;
+    }
+    if 20 / count != 4 {
+        return 5;
+    }
+    if 7 % count != 2 {
+        return 6;
+    }
+
+    // The result is usable where a uint is required, not merely assignable to
+    // one, which is where this first showed up.
+    if Take(2 * count) != 10 {
+        return 7;
+    }
+
+    // Other widths behave the same way.
+    let wide: uint64 = 5u64;
+    if 2 * wide != 10u64 {
+        return 8;
+    }
+    let narrow: int32 = 5i32;
+    if 2 * narrow != 10i32 {
+        return 9;
+    }
+
+    // Two literals still settle on int, and a typed int operand is untouched.
+    let both = 2 * 3;
+    let plain: int = 4;
+    let scaled: int = 2 * plain;
+    if both != 6 || scaled != 8 {
+        return 10;
+    }
+
+    return 0;
 }
