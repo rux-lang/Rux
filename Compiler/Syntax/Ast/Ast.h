@@ -475,6 +475,12 @@ struct Param {
     bool isMut = false;      // `var name: T`; parameters are immutable by default
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
+
+    /// The method receiver, written `self: T`, `self: *T` or `self: *var T`. A first parameter spelled this way is what
+    /// makes a `func` inside an `extend` block a method rather than an associated function.
+    [[nodiscard]] bool IsReceiver() const {
+        return name == "self";
+    }
 };
 
 /// when cond { decls } else when cond { decls } else { decls }
@@ -521,6 +527,12 @@ struct FuncDecl : Decl {
     std::optional<TypeExprPtr> returnType;
     std::unique_ptr<Block> body;   // null = signature only
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is null
+
+    /// The declared receiver, always written first. Null for a plain function and for an associated function, which is a
+    /// `func` inside an `extend` block that takes no receiver and is called as `Type::Func(...)`.
+    [[nodiscard]] const Param *Receiver() const {
+        return !params.empty() && params.front().IsReceiver() ? &params.front() : nullptr;
+    }
 };
 
 // struct Name { field: Type; ... }

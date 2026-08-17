@@ -90,6 +90,11 @@ protected:
     std::unordered_set<std::string> activeLabels;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
+    /// The extend block a method is being checked in, and the type it extends. A method's declared receiver has to name
+    /// that type, and an extend block that names an interface constrains the receiver further, so both travel from
+    /// CheckImplDecl down to the method being checked.
+    const ImplDecl *currentImpl = nullptr;
+    TypeRef currentExtendedType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
     const std::unordered_map<std::string, const StructDecl *> &structDecls;
     const std::unordered_map<std::string, const EnumDecl *> &enumDecls;
