@@ -254,6 +254,13 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     currentTypeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
     auto savedSubstitutions = currentSubstitutions;
     currentSubstitutions = substitutions;
+    // The receiver's declared type is what `self` is throughout the body, so it has to be in place before the name, the
+    // return type or any parameter is resolved. A bare `self` carries no type and keeps the extend block's.
+    const TypeRef savedSelfType = currentSelfType;
+    if (const Param *receiver = d.Receiver();
+        receiver && !dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        currentSelfType = ResolveType(*receiver->type);
+    }
     TypeRef retType = d.returnType ? ResolveType(**d.returnType) : TypeRef::MakeOpaque();
     auto savedRet = currentReturnType;
     currentReturnType = retType;
@@ -283,7 +290,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         Define(self);
     }
     for (const auto &param : d.params) {
-        if (param.name == "self") {
+        if (param.IsReceiver()) {
             continue;
         }
         HirSymbol sym;
@@ -312,6 +319,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.location = d.location;
 
     PopScope();
+    currentSelfType = savedSelfType;
     currentReturnType = savedRet;
     currentTypeParams = savedTypeParams;
     currentSubstitutions = savedSubstitutions;

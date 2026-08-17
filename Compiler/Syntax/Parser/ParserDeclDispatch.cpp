@@ -157,9 +157,16 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
+    // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
+    // receiver by value, by read-only reference or by writable reference. A bare `self` leaves the type to the enclosing
+    // extend block, and is only still accepted so the tree can be migrated one package at a time.
     if (Match(TokenKind::SelfKeyword)) {
         parameter.name = "self";
-        parameter.type = std::make_unique<SelfTypeExpr>();
+        if (!Match(TokenKind::Colon)) {
+            parameter.type = std::make_unique<SelfTypeExpr>();
+            return parameter;
+        }
+        parameter.type = ParseType("add the receiver type after ':'");
         return parameter;
     }
 
