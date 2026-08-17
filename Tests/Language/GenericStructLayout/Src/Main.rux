@@ -1,0 +1,68 @@
+import Core::Assert;
+import Core::Slice;
+
+// A generic struct is declared once but laid out once per instantiation. Sizing
+// every instantiation from the unsubstituted declaration charged a pointer's
+// width for a field whose type is the type parameter, so `Box<Wide>` reserved
+// eight bytes for sixteen: its initializer wrote past its own slot, faulting
+// outright where the frame ended and corrupting a neighbour where it did not.
+
+struct Box<T> {
+    value: T;
+}
+
+struct Wide {
+    a: int64;
+    b: int64;
+}
+
+struct Pair<T, U> {
+    left: T;
+    right: U;
+}
+
+func Sum(box: Box<Wide>) -> int64 {
+    return box.value.a + box.value.b;
+}
+
+func Main() -> int {
+    // A type argument wider than a pointer.
+    let wide = Box<Wide> { value: Wide { a: 1i64, b: 2i64 } };
+    Assert(wide.value.a == 1i64, "a wide type argument keeps its first field");
+    Assert(wide.value.b == 2i64, "a wide type argument keeps its second field");
+
+    // The neighbours of a wide instantiation are untouched by it.
+    let guard: int64 = 99i64;
+    let second = Box<Wide> { value: Wide { a: 3i64, b: 4i64 } };
+    Assert(guard == 99i64, "a wide instantiation stays inside its own slot");
+    Assert(wide.value.a == 1i64, "an earlier instantiation survives a later one");
+    Assert(second.value.b == 4i64, "the later instantiation is itself intact");
+
+    // The same generic at a narrow argument is still narrow.
+    let scalar = Box<int32> { value: 7 };
+    Assert(scalar.value == 7, "a narrow instantiation is unaffected");
+
+    // Nesting: the outer instantiation is sized from the inner one.
+    let nested = Box<Box<Wide>> { value: wide };
+    Assert(nested.value.value.b == 2i64, "a nested instantiation carries the whole inner value");
+
+    // A slice argument, which is two words rather than one.
+    var values: int32[4] = [10, 20, 30, 40];
+    let boxed = Box<Slice<int32>> { value: values[..] };
+    Assert(boxed.value[3] == 40, "a slice argument keeps both of its words");
+
+    // Two parameters of mixed width, in both orders, so a wide field is checked
+    // both before and after a narrow one.
+    let mixed = Pair<Wide, int32> { left: Wide { a: 5i64, b: 6i64 }, right: 8 };
+    Assert(mixed.left.b == 6i64, "the wide field of a two-parameter instantiation");
+    Assert(mixed.right == 8, "the field following a wide one is at the right offset");
+
+    let flipped = Pair<int32, Wide> { left: 8, right: Wide { a: 5i64, b: 6i64 } };
+    Assert(flipped.left == 8, "a narrow field before a wide one");
+    Assert(flipped.right.a == 5i64, "a wide field after a narrow one");
+
+    // Crossing a call boundary.
+    Assert(Sum(wide) == 3i64, "an instantiation passed by value arrives whole");
+
+    return 0;
+}

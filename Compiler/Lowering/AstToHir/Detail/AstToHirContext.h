@@ -74,6 +74,11 @@ protected:
     std::unordered_map<std::string, TypeRef> currentSubstitutions;
     std::vector<HirFunc> monomorphizedFuncs;
     std::unordered_set<std::string> generatedMonomorphizedFuncNames;
+    /// Generic struct instantiations seen while resolving types, in the order their layouts must be computed: an
+    /// argument's own instantiation is recorded before the instantiation that uses it. Recording happens inside const
+    /// resolution helpers, so the queue is mutable and drained once the module has been lowered.
+    mutable std::vector<std::string> pendingStructInstantiations;
+    mutable std::unordered_set<std::string> seenStructInstantiations;
     std::unordered_map<std::string, const StructDecl *> structDecls;
     std::unordered_map<std::string, const EnumDecl *> enumDecls;
     std::unordered_map<std::string, const UnionDecl *> unionDecls;
@@ -165,6 +170,12 @@ private:
                                     const std::unordered_map<std::string, TypeRef> &substitutions = {},
                                     const std::string &overrideName = "");
     [[nodiscard]] HirStruct LowerStruct(const StructDecl &decl);
+    [[nodiscard]] HirStruct LowerStructInstantiation(const StructDecl &decl, const std::string &name,
+                                                     const std::vector<TypeRef> &typeArgs);
+    /// Record `type` as a generic struct instantiation needing its own declaration, along with any instantiation nested
+    /// in its type arguments. A generic struct declares one set of fields for every instantiation, so `Box<int32>` and
+    /// `Box<Two>` would otherwise share the layout computed from the unsubstituted `T` and be sized alike.
+    void NoteStructInstantiation(const TypeRef &type) const;
     [[nodiscard]] HirEnum LowerEnum(const EnumDecl &decl);
     [[nodiscard]] HirUnion LowerUnion(const UnionDecl &decl);
     [[nodiscard]] HirInterface LowerInterface(const InterfaceDecl &decl);

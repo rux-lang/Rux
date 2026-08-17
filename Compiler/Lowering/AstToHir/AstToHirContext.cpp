@@ -300,6 +300,20 @@ HirModule AstToHirContext::LowerModule(const Module &module) {
     }
     monomorphizedFuncs.clear();
     generatedMonomorphizedFuncNames.clear();
+
+    // Lowering an instantiation's fields resolves types of its own, so the queue is walked by index rather than
+    // iterated: entries appended along the way are lowered in the same pass.
+    for (std::size_t pending = 0; pending < pendingStructInstantiations.size(); ++pending) {
+        const std::string name = pendingStructInstantiations[pending];
+        const auto declaration = structDecls.find(BaseTypeName(name));
+        if (declaration == structDecls.end()) {
+            continue;
+        }
+        loweredModule.structs.push_back(
+            LowerStructInstantiation(*declaration->second, name, ParseTypeArgsFromTypeName(name)));
+    }
+    pendingStructInstantiations.clear();
+    seenStructInstantiations.clear();
     return loweredModule;
 }
 

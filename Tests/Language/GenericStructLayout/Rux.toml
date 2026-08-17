@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "GenericStructLayout"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: GenericStructLayout"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

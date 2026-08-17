@@ -4,6 +4,7 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <optional>
@@ -344,6 +345,61 @@ HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
     PopScope();
     currentTypeParams = savedTypeParams;
     return hs;
+}
+
+void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
+    for (const auto &inner : type.inner) {
+        NoteStructInstantiation(inner);
+    }
+    if (type.kind != TypeRef::Kind::Named || type.name.find('<') == std::string::npos) {
+        return;
+    }
+    const std::string base = BaseTypeNameImpl(type.name);
+    // The fat pointers below have a shape the runtime fixes rather than a declaration, so an instantiated declaration
+    // would restate what the back ends already know and could only disagree with it.
+    if (base == "Slice" || base == "String" || base == "StringArray" || base == "StringBuilder" ||
+        base == "SystemTime") {
+        return;
+    }
+    const auto declaration = structDecls.find(base);
+    if (declaration == structDecls.end() || declaration->second->typeParams.empty()) {
+        return;
+    }
+    const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(type.name);
+    if (args.size() != declaration->second->typeParams.size()) {
+        return;
+    }
+    // A type argument naming a type parameter still in scope is the generic declaration itself, not an instantiation of
+    // it; its layout is only knowable once that parameter has been substituted.
+    for (const auto &arg : args) {
+        if (arg.kind == TypeRef::Kind::TypeParam) {
+            return;
+        }
+        if (arg.kind == TypeRef::Kind::Named &&
+            std::find(currentTypeParams.begin(), currentTypeParams.end(), arg.name) != currentTypeParams.end()) {
+            return;
+        }
+        NoteStructInstantiation(arg);
+    }
+    if (seenStructInstantiations.insert(type.name).second) {
+        pendingStructInstantiations.push_back(type.name);
+    }
+}
+
+HirStruct AstToHirContext::LowerStructInstantiation(const StructDecl &d, const std::string &name,
+                                                    const std::vector<TypeRef> &typeArgs) {
+    auto savedSubstitutions = currentSubstitutions;
+    currentSubstitutions.clear();
+    for (std::size_t i = 0; i < d.typeParams.size() && i < typeArgs.size(); ++i) {
+        currentSubstitutions.insert_or_assign(d.typeParams[i], typeArgs[i]);
+    }
+    HirStruct instantiation = LowerStruct(d);
+    currentSubstitutions = std::move(savedSubstitutions);
+
+    // The instantiation stands beside the generic declaration under its own name, with nothing left to substitute.
+    instantiation.name = name;
+    instantiation.typeParams.clear();
+    return instantiation;
 }
 
 HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {

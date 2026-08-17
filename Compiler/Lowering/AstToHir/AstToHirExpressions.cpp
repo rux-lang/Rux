@@ -84,7 +84,9 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
         assert(false && "accepted expression is missing a required semantic type fact");
         std::abort();
     }
-    return SubstituteType(*type, currentSubstitutions);
+    TypeRef substituted = SubstituteType(*type, currentSubstitutions);
+    NoteStructInstantiation(substituted);
+    return substituted;
 }
 
 HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
