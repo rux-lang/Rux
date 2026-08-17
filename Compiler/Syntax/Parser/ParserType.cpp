@@ -206,10 +206,11 @@ std::vector<std::string> Parser::ParseTypeParams() {
 std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
     std::vector<TypeExprPtr> args;
     ExpectBefore(TokenKind::Less, "'<' to start the type argument list");
-    while (!Check(TokenKind::Greater) && !IsAtEnd()) {
+    while (!CheckCloseAngle() && !IsAtEnd()) {
         auto argument = ParseType("add a type argument after '<' or ','");
         if (!argument) {
-            while (!CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::RightParen, TokenKind::RightBrace,
+            while (!CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                              TokenKind::GreaterGreaterGreater, TokenKind::RightParen, TokenKind::RightBrace,
                               TokenKind::Semicolon}) &&
                    !IsAtEnd()) {
                 Advance();
@@ -223,12 +224,17 @@ std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
         if (Match(TokenKind::Comma)) {
             continue;
         }
-        if (Check(TokenKind::Greater) || IsAtEnd()) {
+        if (CheckCloseAngle() || IsAtEnd()) {
             break;
         }
         EmitExpected(CurrentLocation(), "',' between type arguments", "separate adjacent type arguments with ','");
     }
-    ExpectBefore(TokenKind::Greater, "'>' to close the type argument list");
+    if (CheckCloseAngle()) {
+        ConsumeCloseAngle();
+    }
+    else {
+        ExpectBefore(TokenKind::Greater, "'>' to close the type argument list");
+    }
     return args;
 }
 
