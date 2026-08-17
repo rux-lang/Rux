@@ -1,0 +1,59 @@
+import Core::Assert;
+import Core::Slice;
+
+// A type argument that is itself generic ends two argument lists at once, and
+// the lexer hands that over as a single `>>`. Reading it as a right shift left
+// `Depth<Slice<int32>>(slice)` rejected while `Depth<Slice<int32> >(slice)`
+// compiled -- the same call, one spelling accepted and the other not. Both
+// spellings work now, and a `>>` that really is a shift still is one.
+
+struct Box<T> {
+    value: T;
+}
+
+func Depth<T>(value: T) -> uint {
+    return 1;
+}
+
+func Pair<T, U>(left: T, right: U) -> uint {
+    return 2;
+}
+
+func Main() -> int {
+    var values: int32[4] = [1, 2, 3, 4];
+    var slice: Slice<int32> = values[..];
+
+    // Two lists closing on one token, and the spaced spelling beside it.
+    Assert(Depth<Slice<int32>>(slice) == 1, "two lists close on one token");
+    Assert(Depth<Slice<int32> >(slice) == 1, "the spaced spelling still parses");
+
+    // Three closing at once.
+    Assert(Depth<Box<Box<int32>>>(Box<Box<int32>> { value: Box<int32> { value: 1 } }) == 1,
+           "three lists close on one token");
+
+    // A nested argument beside a plain one, in either position.
+    Assert(Pair<Slice<int32>, int32>(slice, 1) == 2, "nested argument first");
+    Assert(Pair<int32, Slice<int32>>(1, slice) == 2, "nested argument last");
+
+    // In a type annotation and a struct initializer rather than a call.
+    let boxed: Box<Box<int32>> = Box<Box<int32>> { value: Box<int32> { value: 7 } };
+    Assert(boxed.value.value == 7, "nested arguments in an annotation and an initializer");
+
+    // A `>>` that is a shift is still a shift, including its compound form and
+    // beside a comparison, which is where the two spellings meet.
+    let wide: int32 = 256i32;
+    Assert(wide >> 4 == 16i32, "right shift still shifts");
+    Assert(wide >>> 4 == 16i32, "logical right shift still shifts");
+    Assert(wide > 4 && (wide >> 1) > 4, "comparison and shift coexist");
+
+    var shifted: int32 = 256i32;
+    shifted >>= 4;
+    Assert(shifted == 16i32, "compound right shift still shifts");
+
+    // A comparison chain that looks like a type argument list but is not.
+    let low: int32 = 1i32;
+    let high: int32 = 9i32;
+    Assert(low < high, "a plain comparison is unaffected");
+
+    return 0;
+}

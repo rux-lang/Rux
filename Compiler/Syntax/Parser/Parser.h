@@ -62,6 +62,14 @@ private:
     const Token &Advance() noexcept;
     [[nodiscard]] bool Check(TokenKind kind) const noexcept;
     [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
+
+    /// Whether the current token closes a generic argument list. A `>>` or `>>>` written where two or three of them
+    /// end at once is a run of closers rather than a shift, and only the parser knows which it is looking at.
+    [[nodiscard]] bool CheckCloseAngle() const noexcept;
+
+    /// Consumes one closing `>`. A longer run is narrowed in place rather than advanced past, leaving the rest for
+    /// the enclosing list to close with.
+    void ConsumeCloseAngle() noexcept;
     bool Match(TokenKind kind) noexcept;
     const Token &Expect(TokenKind kind, std::string_view message);
     /// Grammar-aware diagnostics name both the role of a missing token and the token that prevented it from being

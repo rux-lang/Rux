@@ -99,6 +99,47 @@ bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexce
     return false;
 }
 
+namespace {
+/// How many generic argument lists a token could close. `Slice<Slice<int32>>` ends two at once and the lexer hands
+/// that over as a single `>>`, so a lookahead that counts only a bare `>` never sees the list close.
+int CloseAngleCount(const TokenKind kind) noexcept {
+    switch (kind) {
+    case TokenKind::Greater:
+        return 1;
+    case TokenKind::GreaterGreater:
+        return 2;
+    case TokenKind::GreaterGreaterGreater:
+        return 3;
+    default:
+        return 0;
+    }
+}
+} // namespace
+
+bool Parser::CheckCloseAngle() const noexcept {
+    return CheckAny({TokenKind::Greater, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater});
+}
+
+void Parser::ConsumeCloseAngle() noexcept {
+    // `Slice<Slice<int32>>` ends two argument lists with one token. The lexer cannot tell that from a shift, so the
+    // run is narrowed here instead: take the first `>` by shortening the token in place and leave the remainder for
+    // the enclosing list. The location moves with it, so a diagnostic still points at the `>` it means.
+    Token &token = tokens[pos];
+    if (token.kind == TokenKind::GreaterGreaterGreater) {
+        token.kind = TokenKind::GreaterGreater;
+        token.text = ">>";
+        token.location.column += 1;
+        return;
+    }
+    if (token.kind == TokenKind::GreaterGreater) {
+        token.kind = TokenKind::Greater;
+        token.text = ">";
+        token.location.column += 1;
+        return;
+    }
+    Advance();
+}
+
 bool Parser::Match(const TokenKind kind) noexcept {
     if (!Check(kind)) {
         return false;
@@ -162,8 +203,8 @@ bool Parser::IsGenericStructInitAhead() const noexcept {
             continue;
         }
 
-        if (kind == TokenKind::Greater) {
-            --angleDepth;
+        if (const int closers = CloseAngleCount(kind); closers > 0) {
+            angleDepth -= closers;
             if (angleDepth == 0) {
                 return Peek(ahead + 1).kind == TokenKind::LeftBrace;
             }
@@ -231,8 +272,8 @@ bool Parser::IsGenericCallAhead() const noexcept {
             continue;
         }
 
-        if (kind == TokenKind::Greater) {
-            --angleDepth;
+        if (const int closers = CloseAngleCount(kind); closers > 0) {
+            angleDepth -= closers;
             if (angleDepth == 0) {
                 return Peek(ahead + 1).kind == TokenKind::LeftParen;
             }
@@ -255,12 +296,14 @@ bool Parser::IsTypeArgListAhead() const noexcept {
             ++angleDepth;
             continue;
         case TokenKind::Greater:
-            --angleDepth;
-            if (angleDepth == 0) {
+        case TokenKind::GreaterGreater:
+        case TokenKind::GreaterGreaterGreater:
+            // This lookahead runs from the innermost list, so a `>>` supplies one closer for it and the rest for the
+            // lists enclosing it. Reaching zero or below means this list closed; the surplus is not an error here,
+            // unlike in the call and struct-initializer lookaheads, which start at the outermost `<`.
+            angleDepth -= CloseAngleCount(Peek(ahead).kind);
+            if (angleDepth <= 0) {
                 return true;
-            }
-            if (angleDepth < 0) {
-                return false;
             }
             continue;
         case TokenKind::Ident:
