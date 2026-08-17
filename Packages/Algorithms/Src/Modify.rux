@@ -127,7 +127,11 @@ func Unique<T>(data: *var T, length: uint) -> uint {
     var kept: uint = 1;
     var i: uint = 1;
     while i < length {
-        if data[i] != data[kept - 1] {
+        // Negating `==` rather than writing `!=`: only the operator a type
+        // actually defines is dispatched, and `!=` falls back to comparing the
+        // raw bytes, which disagrees with any `==` that ignores a field or
+        // whose type carries padding. See BACKLOG.md.
+        if !(data[i] == data[kept - 1]) {
             data[kept] = data[i];
             kept++;
         }
@@ -144,7 +148,8 @@ func RemoveValue<T>(data: *var T, length: uint, value: T) -> uint {
     var kept: uint = 0;
     var i: uint = 0;
     while i < length {
-        if data[i] != value {
+        // `!(a == b)` rather than `a != b`; see Unique above.
+        if !(data[i] == value) {
             if kept != i {
                 data[kept] = data[i];
             }

@@ -13,6 +13,20 @@ extend Record {
     }
 }
 
+// Equality deliberately ignores `origin`, so two values sharing a key are
+// equal while their raw bytes differ. Anything that compares elements by their
+// bytes rather than through this operator gets the opposite answer.
+struct Keyed {
+    key: int32;
+    origin: int32;
+}
+
+extend Keyed {
+    func ==(self, other: Keyed) -> bool {
+        return self.key == other.key;
+    }
+}
+
 func Main() -> int {
     var values: int32[7] = [4, 1, 7, 1, 9, 1, 4];
     var empty: int32[1] = [0];
@@ -137,6 +151,35 @@ func Main() -> int {
     if Equal<Record>(@records[0], 3, @copy[0], 3) { return 96; }
     if !TryMismatch<Record>(@records[0], 3, @copy[0], 3, @index) { return 97; }
     if index != 1 { return 98; }
+
+    // A type whose equality ignores a field. Every query has to route through
+    // that operator, not through the elements' bytes, so values differing only
+    // in the ignored field count as equal.
+    var keyed: Keyed[3] = [Keyed { key: 1, origin: 10 },
+                           Keyed { key: 2, origin: 20 },
+                           Keyed { key: 3, origin: 30 }];
+    let sameKeyOtherOrigin = Keyed { key: 2, origin: 99 };
+
+    if !Contains<Keyed>(@keyed[0], 3, sameKeyOtherOrigin) { return 100; }
+    if Count<Keyed>(@keyed[0], 3, sameKeyOtherOrigin) != 1 { return 101; }
+    if !TryFind<Keyed>(@keyed[0], 3, sameKeyOtherOrigin, @index) { return 102; }
+    if index != 1 { return 103; }
+    if !TryFindLast<Keyed>(@keyed[0], 3, sameKeyOtherOrigin, @index) { return 104; }
+    if index != 1 { return 105; }
+
+    // Two sequences equal under the operator, though none of their origins
+    // match, so a byte-wise comparison would call them different.
+    var shifted: Keyed[3] = [Keyed { key: 1, origin: 71 },
+                             Keyed { key: 2, origin: 72 },
+                             Keyed { key: 3, origin: 73 }];
+    if !Equal<Keyed>(@keyed[0], 3, @shifted[0], 3) { return 106; }
+    if TryMismatch<Keyed>(@keyed[0], 3, @shifted[0], 3, @index) { return 107; }
+
+    // And a real difference is still reported, at the right index.
+    shifted[2] = Keyed { key: 9, origin: 73 };
+    if Equal<Keyed>(@keyed[0], 3, @shifted[0], 3) { return 108; }
+    if !TryMismatch<Keyed>(@keyed[0], 3, @shifted[0], 3, @index) { return 109; }
+    if index != 2 { return 110; }
 
     return 0;
 }

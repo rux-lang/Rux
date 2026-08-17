@@ -81,7 +81,11 @@ func Equal<T>(a: *T, aLength: uint, b: *T, bLength: uint) -> bool {
 
     var i: uint = 0;
     while i < aLength {
-        if a[i] != b[i] {
+        // Negating `==` rather than writing `!=`: only the operator a type
+        // actually defines is dispatched, and `!=` falls back to comparing the
+        // raw bytes, which disagrees with any `==` that ignores a field or
+        // whose type carries padding. See BACKLOG.md.
+        if !(a[i] == b[i]) {
             return false;
         }
         i++;
@@ -105,7 +109,8 @@ func TryMismatch<T>(a: *T, aLength: uint, b: *T, bLength: uint, index: *var uint
 
     var i: uint = 0;
     while i < common {
-        if a[i] != b[i] {
+        // `!(a == b)` rather than `a != b`; see Equal above.
+        if !(a[i] == b[i]) {
             *index = i;
             return true;
         }
