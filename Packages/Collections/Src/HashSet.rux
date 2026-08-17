@@ -1,1 +1,371 @@
-// Planned package API; HashSet is not implemented yet.
+import Memory::{ Alloc, Copy, Free, Zero };
+
+// A set of distinct values over an open-addressed table, sharing HashMap's
+// probing through the Probe module so the probe sequence, tombstone handling
+// and wraparound exist in one place rather than two.
+//
+// It keeps its own keys and states rather than wrapping a HashMap: Rux has no
+// unit type, so a map-based set would allocate and carry a full values array
+// it would never read. Sharing happens at the algorithm, not at the storage.
+//
+// Everything HashMap documents about hashing applies here — the two functions
+// are ordinary values held for the life of the table, they must agree with
+// each other, and without closures neither can be seeded per instance.
+//
+// Invariants:
+//   capacity is zero, or a power of two of at least MinimumTableCapacity
+//   capacity == 0 exactly when both storage pointers are null
+//   length + tombstones <= capacity, and at least a quarter of the slots are
+//     neither occupied nor tombstoned
+//   keys[i] is initialized exactly when states[i] is occupied
+//   every live value is reachable from its hash slot without crossing an empty
+//     slot
+//
+// Ownership is manual. Assignment copies the HashSet value and therefore
+// shares its allocations, so Clone when both copies must be freed, and Free
+// exactly once. Values are copied byte for byte and never destroyed.
+struct HashSet<T> {
+    keys: *var T;
+    states: *var uint8;
+    capacity: uint;
+    length: uint;
+    tombstones: uint;
+    hash: func(T) -> uint;
+    equals: func(T, T) -> bool;
+}
+
+extend HashSet<T> {
+    // An empty set that allocates nothing until the first insertion.
+    func New(hash: func(T) -> uint, equals: func(T, T) -> bool) -> HashSet<T> {
+        return HashSet<T> {
+            keys: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: hash, equals: equals
+        };
+    }
+
+    // An empty set sized so `capacity` insertions do not rehash.
+    func WithCapacity(capacity: uint, hash: func(T) -> uint, equals: func(T, T) -> bool,
+                      result: *var HashSet<T>) -> CollectionError {
+        var fresh = HashSet<T> {
+            keys: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: hash, equals: equals
+        };
+
+        if capacity == 0 {
+            *result = fresh;
+            return CollectionError::None;
+        }
+
+        var slots: uint = 0;
+        let planned = TableCapacity(capacity, @slots);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        let built = fresh.Rehash(slots);
+        if !(built == CollectionError::None) {
+            return built;
+        }
+
+        *result = fresh;
+        return CollectionError::None;
+    }
+
+    // Rebuilds the table at `capacity` slots, reinserting every live value and
+    // clearing the tombstones. Nothing is released until the new table is
+    // built, so a failed allocation leaves the set untouched.
+    //
+    // Internal helper; not part of the package API.
+    func Rehash(self: *var HashSet<T>, capacity: uint) -> CollectionError {
+        var keyBytes: uint = 0;
+        let keySizing = ByteSize(capacity, sizeof(T), @keyBytes);
+        if !(keySizing == CollectionError::None) {
+            return keySizing;
+        }
+
+        let keys = Alloc(keyBytes) as *var T;
+        if keys == null {
+            return CollectionError::OutOfMemory;
+        }
+
+        // One byte per slot, so this size needs no multiply to check.
+        let states = Alloc(capacity) as *var uint8;
+        if states == null {
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        Zero(states, capacity);
+
+        // The new table holds no tombstones, so every probe ends at an empty
+        // slot and needs no equality test.
+        let mask = capacity - 1;
+        var moved: uint = 0;
+        var slot: uint = 0;
+        while slot < self.capacity {
+            if self.states[slot] == SlotOccupied {
+                let value = self.keys[slot];
+                var index = self.hash(value) & mask;
+                while states[index] == SlotOccupied {
+                    index = (index + 1) & mask;
+                }
+
+                keys[index] = value;
+                states[index] = SlotOccupied;
+                moved++;
+            }
+            slot++;
+        }
+
+        Free(self.states);
+        Free(self.keys);
+
+        self.keys = keys;
+        self.states = states;
+        self.capacity = capacity;
+        self.length = moved;
+        self.tombstones = 0;
+        return CollectionError::None;
+    }
+
+    // Makes sure one more value can occupy a fresh slot without pushing the
+    // table past its load factor.
+    //
+    // Internal helper; not part of the package API.
+    func EnsureRoom(self: *var HashSet<T>) -> CollectionError {
+        if self.capacity == 0 {
+            return self.Rehash(MinimumTableCapacity);
+        }
+
+        let used = self.length + self.tombstones + 1;
+        if used <= self.capacity - (self.capacity / 4) {
+            return CollectionError::None;
+        }
+
+        var capacity: uint = 0;
+        let planned = TableCapacity(self.length + 1, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // Sizes the table so `additional` more insertions do not rehash.
+    func Reserve(self: *var HashSet<T>, additional: uint) -> CollectionError {
+        var required: uint = 0;
+        let total = AddLength(self.length, additional, @required);
+        if !(total == CollectionError::None) {
+            return total;
+        }
+
+        var capacity: uint = 0;
+        let planned = TableCapacity(required, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        if self.capacity >= capacity && self.tombstones == 0 {
+            return CollectionError::None;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // Rebuilds at the smallest capacity the live values need. An emptied set
+    // becomes allocation-free.
+    func ShrinkToFit(self: *var HashSet<T>) -> CollectionError {
+        if self.length == 0 {
+            self.Free();
+            return CollectionError::None;
+        }
+
+        var capacity: uint = 0;
+        let planned = TableCapacity(self.length, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        if capacity == self.capacity && self.tombstones == 0 {
+            return CollectionError::None;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // An independent set holding the same values and the same functions. The
+    // slot layout is copied verbatim rather than rebuilt, since the same
+    // hasher would place every value in the same slot.
+    func Clone(self: *HashSet<T>, result: *var HashSet<T>) -> CollectionError {
+        var fresh = HashSet<T> {
+            keys: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: self.hash, equals: self.equals
+        };
+
+        if self.capacity == 0 {
+            *result = fresh;
+            return CollectionError::None;
+        }
+
+        // A size the original already had checked, so this cannot overflow.
+        let keyBytes = self.capacity * sizeof(T);
+
+        let keys = Alloc(keyBytes) as *var T;
+        if keys == null {
+            return CollectionError::OutOfMemory;
+        }
+
+        let states = Alloc(self.capacity) as *var uint8;
+        if states == null {
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        // Unoccupied slots carry whatever the allocator left behind, and
+        // copying that is harmless: the state byte is what says a slot holds
+        // anything.
+        Copy(keys, self.keys, keyBytes);
+        Copy(states, self.states, self.capacity);
+
+        fresh.keys = keys;
+        fresh.states = states;
+        fresh.capacity = self.capacity;
+        fresh.length = self.length;
+        fresh.tombstones = self.tombstones;
+        *result = fresh;
+        return CollectionError::None;
+    }
+
+    // Releases the table and leaves an empty set that still remembers its
+    // functions, so it stays usable and Free is a no-op the second time.
+    func Free(self: *var HashSet<T>) {
+        Free(self.states);
+        Free(self.keys);
+        self.keys = null;
+        self.states = null;
+        self.capacity = 0;
+        self.length = 0;
+        self.tombstones = 0;
+    }
+
+    // The number of distinct values held.
+    func Length(self: *HashSet<T>) -> uint {
+        return self.length;
+    }
+
+    // The number of slots. Always a power of two, or zero.
+    func Capacity(self: *HashSet<T>) -> uint {
+        return self.capacity;
+    }
+
+    func IsEmpty(self: *HashSet<T>) -> bool {
+        return self.length == 0;
+    }
+
+    // Drops every value while keeping the table, clearing the tombstones with
+    // them.
+    func Clear(self: *var HashSet<T>) {
+        if self.capacity > 0 {
+            Zero(self.states, self.capacity);
+        }
+        self.length = 0;
+        self.tombstones = 0;
+    }
+
+    func Contains(self: *HashSet<T>, value: T) -> bool {
+        if self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        FindSlot<T>(self.keys, self.states, self.capacity, value, self.hash, self.equals, @found);
+        return found;
+    }
+
+    // Adds `value`, reporting through `inserted` whether it was new. A value
+    // already present leaves the set unchanged and reports false; `inserted`
+    // may be null. A failure to grow leaves the set exactly as it was.
+    func Insert(self: *var HashSet<T>, value: T, inserted: *var bool) -> CollectionError {
+        if self.capacity > 0 {
+            var present = false;
+            FindSlot<T>(self.keys, self.states, self.capacity, value, self.hash, self.equals, @present);
+            if present {
+                if inserted != null {
+                    *inserted = false;
+                }
+                return CollectionError::None;
+            }
+        }
+
+        let room = self.EnsureRoom();
+        if !(room == CollectionError::None) {
+            return room;
+        }
+
+        // A second probe, because EnsureRoom may have rebuilt the table and
+        // moved every slot.
+        var present = false;
+        let slot = FindSlot<T>(self.keys, self.states, self.capacity, value,
+                               self.hash, self.equals, @present);
+        if self.states[slot] == SlotTombstone {
+            self.tombstones--;
+        }
+
+        self.keys[slot] = value;
+        self.states[slot] = SlotOccupied;
+        self.length++;
+        if inserted != null {
+            *inserted = true;
+        }
+        return CollectionError::None;
+    }
+
+    // Removes `value`, reporting whether it was there. The slot becomes a
+    // tombstone so the values probed past it stay reachable; the next rehash
+    // reclaims it.
+    func Remove(self: *var HashSet<T>, value: T) -> bool {
+        if self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        let slot = FindSlot<T>(self.keys, self.states, self.capacity, value,
+                               self.hash, self.equals, @found);
+        if !found {
+            return false;
+        }
+
+        self.states[slot] = SlotTombstone;
+        self.length--;
+        self.tombstones++;
+        return true;
+    }
+
+    // Walks the live values. Seed `cursor` with zero and call until it returns
+    // false. A cursor rather than a callback because Rux has no closures, and
+    // anything that changes the set invalidates one in flight.
+    func TryNextValue(self: *HashSet<T>, cursor: *var uint, value: *var T) -> bool {
+        if cursor == null {
+            return false;
+        }
+
+        var slot = *cursor;
+        while slot < self.capacity {
+            if self.states[slot] == SlotOccupied {
+                if value != null {
+                    *value = self.keys[slot];
+                }
+
+                *cursor = slot + 1;
+                return true;
+            }
+            slot++;
+        }
+
+        *cursor = slot;
+        return false;
+    }
+}

@@ -1,0 +1,203 @@
+import Collections::CollectionError;
+import Collections::HashSet;
+import Collections::{ EqualsInt32, EqualsSlice, HashInt32, HashSlice };
+
+// See Tests/Packages/Collections/Array for why a failed check reports itself
+// through a numbered exit code rather than through an assertion.
+
+struct Pair {
+    first: int64;
+    second: int64;
+}
+
+func HashPair(value: Pair) -> uint {
+    return ((value.first * 31i64) + value.second) as uint;
+}
+
+func EqualsPair(a: Pair, b: Pair) -> bool {
+    return a.first == b.first && a.second == b.second;
+}
+
+// Every value lands in the same bucket, so the table becomes one probe chain.
+func CollideAll(value: int32) -> uint {
+    return 0u;
+}
+
+func Main() -> int {
+    // An empty set allocates nothing and contains nothing.
+    var empty = HashSet::New<int32>(HashInt32, EqualsInt32);
+    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
+    if empty.Contains(1) { return 11; }
+    if empty.Remove(1) { return 12; }
+    var cursor: uint = 0;
+    if empty.TryNextValue(@cursor, null) { return 13; }
+
+    // The first insertion builds the table, and a duplicate changes nothing.
+    var set = HashSet::New<int32>(HashInt32, EqualsInt32);
+    var inserted = false;
+    if !(set.Insert(5, @inserted) == CollectionError::None) { return 20; }
+    if !inserted || set.Length() != 1 || set.Capacity() != 8 { return 21; }
+    if !set.Contains(5) || set.Contains(6) { return 22; }
+    if !(set.Insert(5, @inserted) == CollectionError::None) { return 23; }
+    if inserted || set.Length() != 1 { return 24; }
+    if !(set.Insert(6, null) == CollectionError::None) { return 25; }
+    if set.Length() != 2 { return 26; }
+
+    // Removing then reinserting reports the value as new again.
+    if !set.Remove(5) { return 30; }
+    if set.Contains(5) || set.Length() != 1 { return 31; }
+    if set.Remove(5) { return 32; }
+    if !(set.Insert(5, @inserted) == CollectionError::None) { return 33; }
+    if !inserted || set.Length() != 2 { return 34; }
+    set.Free();
+
+    // A chain of colliding values still inserts, finds and removes correctly.
+    var collided = HashSet::New<int32>(CollideAll, EqualsInt32);
+    var k: int32 = 0;
+    while k < 20 {
+        if !(collided.Insert(k, @inserted) == CollectionError::None) { return 40; }
+        if !inserted { return 41; }
+        k++;
+    }
+    if collided.Length() != 20 { return 42; }
+    k = 0;
+    while k < 20 {
+        if !collided.Contains(k) { return 43; }
+        k++;
+    }
+
+    // Removing every other value leaves the rest reachable past the tombstones.
+    k = 0;
+    while k < 20 {
+        if k % 2 == 0 {
+            if !collided.Remove(k) { return 44; }
+        }
+        k++;
+    }
+    if collided.Length() != 10 { return 45; }
+    k = 1;
+    while k < 20 {
+        if !collided.Contains(k) { return 46; }
+        k = k + 2;
+    }
+    collided.Free();
+
+    // Churning one value reuses its tombstone rather than growing the table.
+    var churn = HashSet::New<int32>(HashInt32, EqualsInt32);
+    if !(churn.Insert(3, null) == CollectionError::None) { return 50; }
+    let steadyCapacity = churn.Capacity();
+    var round: int32 = 0;
+    while round < 200 {
+        if !churn.Remove(3) { return 51; }
+        if !(churn.Insert(3, @inserted) == CollectionError::None) { return 52; }
+        if !inserted { return 53; }
+        round++;
+    }
+    if churn.Length() != 1 || churn.Capacity() != steadyCapacity { return 54; }
+    churn.Free();
+
+    // Growing past the load factor rehashes and keeps every value.
+    var many = HashSet::New<int32>(HashInt32, EqualsInt32);
+    var i: int32 = 0;
+    while i < 500 {
+        if !(many.Insert(i, @inserted) == CollectionError::None) { return 60; }
+        if !inserted { return 61; }
+        i++;
+    }
+    if many.Length() != 500 { return 62; }
+    if many.Length() > many.Capacity() - (many.Capacity() / 4) { return 63; }
+    i = 0;
+    while i < 500 {
+        if !many.Contains(i) { return 64; }
+        i++;
+    }
+    if many.Contains(500) { return 65; }
+
+    // Traversal visits every value exactly once.
+    var total: int64 = 0;
+    var count: uint = 0;
+    var value: int32 = 0;
+    cursor = 0;
+    while many.TryNextValue(@cursor, @value) {
+        total = total + (value as int64);
+        count++;
+    }
+    if count != 500 || total != 124750i64 { return 70; }
+    cursor = 0;
+    count = 0;
+    while many.TryNextValue(@cursor, null) {
+        count++;
+    }
+    if count != 500 { return 71; }
+
+    // Clone is independent and keeps the same functions.
+    var copy = HashSet::New<int32>(HashInt32, EqualsInt32);
+    if !(many.Clone(@copy) == CollectionError::None) { return 80; }
+    if copy.Length() != many.Length() || copy.Capacity() != many.Capacity() { return 81; }
+    if !copy.Contains(499) { return 82; }
+    if !(copy.Insert(1000, null) == CollectionError::None) { return 83; }
+    if many.Contains(1000) { return 84; }
+    if !copy.Remove(0) || !many.Contains(0) { return 85; }
+    copy.Free();
+    many.Free();
+
+    // Reserve sizes ahead; Clear keeps the table; ShrinkToFit rebuilds small.
+    var sized = HashSet::New<int32>(HashInt32, EqualsInt32);
+    if !(sized.Reserve(100) == CollectionError::None) { return 90; }
+    let reserved = sized.Capacity();
+    if reserved < 134 { return 91; }
+    i = 0;
+    while i < 100 {
+        if !(sized.Insert(i, null) == CollectionError::None) { return 92; }
+        i++;
+    }
+    if sized.Capacity() != reserved { return 93; }
+    sized.Clear();
+    if !sized.IsEmpty() || sized.Capacity() != reserved || sized.Contains(0) { return 94; }
+    if !(sized.Insert(1, null) == CollectionError::None) { return 95; }
+    if !(sized.ShrinkToFit() == CollectionError::None) { return 96; }
+    if sized.Capacity() != 8 || sized.Length() != 1 || !sized.Contains(1) { return 97; }
+    if !sized.Remove(1) { return 98; }
+    if !(sized.ShrinkToFit() == CollectionError::None) { return 99; }
+    if sized.Capacity() != 0 { return 100; }
+    sized.Free();
+
+    // A struct value wider than one machine word, with its own hash and
+    // equality functions.
+    var pairs = HashSet::New<Pair>(HashPair, EqualsPair);
+    let one = Pair { first: 1i64, second: 2i64 };
+    let two = Pair { first: 1i64, second: 3i64 };
+    let alsoOne = Pair { first: 1i64, second: 2i64 };
+    if !(pairs.Insert(one, @inserted) == CollectionError::None) { return 110; }
+    if !inserted { return 111; }
+    if !(pairs.Insert(two, @inserted) == CollectionError::None) { return 112; }
+    if !inserted || pairs.Length() != 2 { return 113; }
+    if !(pairs.Insert(alsoOne, @inserted) == CollectionError::None) { return 114; }
+    if inserted || pairs.Length() != 2 { return 115; }
+    if !pairs.Contains(alsoOne) { return 116; }
+    if !pairs.Remove(one) || pairs.Contains(alsoOne) { return 117; }
+    pairs.Free();
+
+    // Borrowed byte runs, hashed and compared by content rather than address.
+    var words = HashSet::New<Slice<char8>>(HashSlice, EqualsSlice);
+    let alpha: Slice<char8> = "alpha";
+    let beta: Slice<char8> = "beta";
+    let alphaAgain: Slice<char8> = "alpha";
+    if !(words.Insert(alpha, null) == CollectionError::None) { return 120; }
+    if !(words.Insert(beta, null) == CollectionError::None) { return 121; }
+    if !(words.Insert(alphaAgain, @inserted) == CollectionError::None) { return 122; }
+    if inserted || words.Length() != 2 { return 123; }
+    if !words.Contains(alphaAgain) { return 124; }
+    words.Free();
+
+    // A reservation whose table cannot be addressed is rejected before any
+    // allocation, and the set stays usable.
+    var huge = HashSet::New<Pair>(HashPair, EqualsPair);
+    if !(huge.Insert(one, null) == CollectionError::None) { return 130; }
+    if !(huge.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 131; }
+    if huge.Length() != 1 || !huge.Contains(one) { return 132; }
+    huge.Free();
+
+    empty.Free();
+    return 0;
+}
