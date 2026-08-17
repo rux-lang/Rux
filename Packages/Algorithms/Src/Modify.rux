@@ -140,6 +140,104 @@ func Unique<T>(data: *var T, length: uint) -> uint {
     return kept;
 }
 
+// RemoveValue against a caller's test rather than a value: removes every
+// element the predicate accepts, compacting the survivors toward the front,
+// and returns the new length. Relative order is preserved and the tail is left
+// unspecified, exactly as in RemoveValue. Requires nothing of T.
+func RemoveIf<T>(data: *var T, length: uint, predicate: func(T) -> bool) -> uint {
+    var kept: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if !predicate(data[i]) {
+            if kept != i {
+                data[kept] = data[i];
+            }
+            kept++;
+        }
+        i++;
+    }
+    return kept;
+}
+
+// Reorders so every element the predicate accepts precedes every element it
+// rejects, and returns the boundary between them — which is also the number of
+// accepted elements.
+//
+// The order within each group is **not** preserved: this swaps ends inward, so
+// it costs one pass and no memory. A stable partition would need either an
+// auxiliary buffer or a rotation per element, and is deliberately not offered.
+func Partition<T>(data: *var T, length: uint, predicate: func(T) -> bool) -> uint {
+    var boundary: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if predicate(data[i]) {
+            if boundary != i {
+                let temp = data[boundary];
+                data[boundary] = data[i];
+                data[i] = temp;
+            }
+            boundary++;
+        }
+        i++;
+    }
+    return boundary;
+}
+
+// The boundary of an already-partitioned sequence: the first index the
+// predicate rejects, or length when it accepts everything. O(log n), so it
+// requires the sequence to be partitioned — every accepted element before
+// every rejected one — which is exactly what Partition leaves behind. An
+// unpartitioned sequence yields an unspecified index but never an access
+// outside it.
+func PartitionPoint<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
+    var low: uint = 0;
+    var high = length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if predicate(data[middle]) {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+// Writes transform(source[i]) into destination[i] for each of length elements,
+// and reports whether it ran. The two sequences may have different element
+// types, and may be the same storage when U and T match.
+func Transform<T, U>(destination: *var U, source: *T, length: uint, transform: func(T) -> U) -> bool {
+    if length == 0 {
+        return true;
+    }
+    if destination == null || source == null {
+        return false;
+    }
+
+    var i: uint = 0;
+    while i < length {
+        destination[i] = transform(source[i]);
+        i++;
+    }
+    return true;
+}
+
+// Combines every element into an accumulator, left to right, starting from
+// initial. An empty sequence yields initial unchanged.
+//
+// The accumulator's type is independent of the element's, so this both sums a
+// sequence and builds something else entirely out of one.
+func Fold<T, A>(data: *T, length: uint, initial: A, combine: func(A, T) -> A) -> A {
+    var total = initial;
+    var i: uint = 0;
+    while i < length {
+        total = combine(total, data[i]);
+        i++;
+    }
+    return total;
+}
+
 // Removes every element equal to value by compacting the survivors toward the
 // front, and returns the new length. Relative order is preserved. As in
 // Unique, the tail is left unspecified and the storage is not resized.

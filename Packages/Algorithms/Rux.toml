@@ -7,13 +7,13 @@ Namespace = "Rux"
 Name = "Algorithms"
 Version = "0.1.0"
 Type = "SourceLibrary"
-Description = "Generic algorithms over slices, ranges, and iterators"
+Description = "Generic algorithms over slices and mutable slices"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["Algorithms", "Sorting", "Search", "Slices", "Iterators"]
+Keywords = ["Algorithms", "Sorting", "Search", "Slices", "Predicates"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
-Homepage = "https://rux-lang.dev"
+Homepage = "https://rux-lang.dev/docs/api/algorithms"
 ReadmeFile = "README.md"
 
 [Dependencies]
