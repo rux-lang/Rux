@@ -155,14 +155,6 @@ LirReg HirToLirContext::LowerExpr(const HirExpr &expr) {
 LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
     const LirReg ptr = LowerLValue(*e.operand);
     const LirReg old_val = EmitLoad(ptr, e.type);
-    LirReg delta = EmitConst("1", e.type);
-    if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
-        const auto elemSize = e.type.inner[0].SizeInBytes();
-        if (elemSize && *elemSize > 1) {
-            const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
-            delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
-        }
-    }
     LirOpcode op = LirOpcode::Add;
     switch (e.op) {
     case TokenKind::PlusPlus:
@@ -175,7 +167,8 @@ LirReg HirToLirContext::LowerPostfix(const HirPostfixExpr &e) {
         BuilderFailure("postfix operator has no LIR opcode mapping");
         break;
     }
-    const LirReg new_val = EmitBinary(op, old_val, delta, e.type);
+    const LirReg new_val = IsPointerArithmetic(e.type) ? EmitPointerStep(old_val, e.type, op == LirOpcode::Add)
+                                                       : EmitBinary(op, old_val, EmitConst("1", e.type), e.type);
     EmitStore(new_val, ptr, e.type);
     return old_val;
 }
@@ -202,16 +195,9 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
     case TK::MinusMinus: {
         const LirReg ptr = LowerLValue(*e.operand);
         const LirReg old_val = EmitLoad(ptr, e.type);
-        LirReg delta = EmitConst("1", e.type);
-        if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
-            const auto elemSize = e.type.inner[0].SizeInBytes();
-            if (elemSize && *elemSize > 1) {
-                const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
-                delta = EmitBinary(LirOpcode::Mul, delta, sz, e.type);
-            }
-        }
         const LirOpcode aop = (e.op == TK::PlusPlus) ? LirOpcode::Add : LirOpcode::Sub;
-        const LirReg new_val = EmitBinary(aop, old_val, delta, e.type);
+        const LirReg new_val = IsPointerArithmetic(e.type) ? EmitPointerStep(old_val, e.type, e.op == TK::PlusPlus)
+                                                           : EmitBinary(aop, old_val, EmitConst("1", e.type), e.type);
         EmitStore(new_val, ptr, e.type);
         return new_val;
     }
@@ -289,24 +275,17 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
         }
     }
 
-    // Scale integer operand by element size for pointer arithmetic.
-    if ((e.op == TK::Plus || e.op == TK::Minus) && e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
-        const auto elemSize = e.type.inner[0].SizeInBytes();
-        if (elemSize && *elemSize > 1) {
-            if (e.left->type.kind == TypeRef::Kind::Pointer) {
-                // ptr + int or ptr - int: scale the right (integer)
-                // operand
-                const LirReg sz = EmitConst(std::to_string(*elemSize), e.right->type);
-                const LirReg scaled = EmitBinary(LirOpcode::Mul, rhs, sz, e.right->type);
-                return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, scaled, e.type);
-            }
-            else {
-                // int + ptr: scale the left (integer) operand
-                const LirReg sz = EmitConst(std::to_string(*elemSize), e.left->type);
-                const LirReg scaled = EmitBinary(LirOpcode::Mul, lhs, sz, e.left->type);
-                return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), scaled, rhs, e.type);
-            }
+    // Pointer arithmetic offsets by whole elements, so the integer operand is scaled by the pointee size. IndexPtr
+    // carries the element type and is scaled in the back end, which is the only place a struct pointee can be sized.
+    if ((e.op == TK::Plus || e.op == TK::Minus) && IsPointerArithmetic(e.type)) {
+        if (e.left->type.kind == TypeRef::Kind::Pointer) {
+            // ptr + int, or ptr - int with the count negated first.
+            const LirReg index =
+                e.op == TK::Minus ? EmitBinary(LirOpcode::Sub, EmitConst("0", e.right->type), rhs, e.right->type) : rhs;
+            return EmitPointerOffset(lhs, index, e.type);
         }
+        // int + ptr. Subtraction never lands here: `int - ptr` is not a pointer.
+        return EmitPointerOffset(rhs, lhs, e.type);
     }
 
     return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type);
@@ -323,14 +302,16 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     if (e.op != TokenKind::Assign) {
         // Compound assignment: load current value, compute, then store.
         const LirReg current = LowerExpr(*e.target);
-        if (e.type.kind == TypeRef::Kind::Pointer && !e.type.inner.empty()) {
-            const auto elemSize = e.type.inner[0].SizeInBytes();
-            if (elemSize && *elemSize > 1) {
-                const LirReg sz = EmitConst(std::to_string(*elemSize), e.type);
-                val = EmitBinary(LirOpcode::Mul, val, sz, e.type);
-            }
+        if (IsPointerArithmetic(e.type)) {
+            // `ptr += n` and `ptr -= n` offset by whole elements, scaled in the back end as above.
+            const LirReg index = e.op == TokenKind::MinusAssign
+                                   ? EmitBinary(LirOpcode::Sub, EmitConst("0", e.value->type), val, e.value->type)
+                                   : val;
+            val = EmitPointerOffset(current, index, e.type);
         }
-        val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, val, e.type);
+        else {
+            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, val, e.type);
+        }
     }
     else {
         val = EmitCastIfNeeded(val, e.value->type, e.type);
