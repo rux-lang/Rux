@@ -238,6 +238,37 @@ void AssemblyInstructionPrinter::StoreA(const LirReg reg, const TypeRef &type) {
     }
 }
 
+/// Copies an aggregate of any size a chunk at a time, the way the object emitter does. A slot offset names the end of
+/// its region, so byte `offset` of the value sits at `[rbp - (slot - offset)]`. Sizing the copy from the type rather
+/// than special-casing sixteen bytes matters: anything wider silently copied only its first eight before.
+void AssemblyInstructionPrinter::CopyAggregateFromR10ToSlot(const std::int32_t destinationSlot, const int size) const {
+    int offset = 0;
+    for (const int chunk : {8, 4, 2, 1}) {
+        while (offset + chunk <= size) {
+            modulePrinter.TextInstruction(
+                offset == 0 ? std::format("{:<8}{}, {} [r10]", "mov", GprA(chunk), PtrSize(chunk))
+                            : std::format("{:<8}{}, {} [r10 + {}]", "mov", GprA(chunk), PtrSize(chunk), offset));
+            modulePrinter.TextInstruction(
+                std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(chunk), destinationSlot - offset, GprA(chunk)));
+            offset += chunk;
+        }
+    }
+}
+
+void AssemblyInstructionPrinter::CopyAggregateFromSlotToR11(const std::int32_t sourceSlot, const int size) const {
+    int offset = 0;
+    for (const int chunk : {8, 4, 2, 1}) {
+        while (offset + chunk <= size) {
+            modulePrinter.TextInstruction(
+                std::format("{:<8}{}, {} [rbp - {}]", "mov", GprA(chunk), PtrSize(chunk), sourceSlot - offset));
+            modulePrinter.TextInstruction(
+                offset == 0 ? std::format("{:<8}{} [r11], {}", "mov", PtrSize(chunk), GprA(chunk))
+                            : std::format("{:<8}{} [r11 + {}], {}", "mov", PtrSize(chunk), offset, GprA(chunk)));
+            offset += chunk;
+        }
+    }
+}
+
 void AssemblyInstructionPrinter::LoadReturnValue(const LirReg reg, const TypeRef &type) {
     const int size = SizeOfRuntime(type);
     if (IsRegPointerTo(reg, type) && (size == 1 || size == 2 || size == 4 || size == 8 || size == 16)) {
@@ -701,13 +732,11 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
                 modulePrinter.TextInstruction(
                     std::format("{:<8}r10, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(pointer)));
             }
-            if (size == 16) {
-                modulePrinter.TextInstruction(std::format("{:<8}rax, qword [r10]", "mov"));
-                modulePrinter.TextInstruction(
-                    std::format("{:<8}qword [rbp - {}], rax", "mov", framePlan.SlotOffsets().at(instruction.dst)));
-                modulePrinter.TextInstruction(std::format("{:<8}rax, qword [r10 + 8]", "mov"));
-                modulePrinter.TextInstruction(
-                    std::format("{:<8}qword [rbp - {}], rax", "mov", framePlan.SlotOffsets().at(instruction.dst) - 8));
+            // Anything wider than a register is an aggregate: no scalar reaches nine bytes. Copying it a chunk at a
+            // time covers every width, where keying on exactly sixteen left a twenty-four byte value copying its
+            // first eight bytes and silently dropping the rest.
+            if (size > 8) {
+                CopyAggregateFromR10ToSlot(framePlan.SlotOffsets().at(instruction.dst), size);
                 return true;
             }
             if (IsFloat(type)) {
@@ -747,13 +776,9 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
             modulePrinter.TextInstruction(
                 std::format("{:<8}r11, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(pointer)));
         }
-        if (size == 16) {
-            modulePrinter.TextInstruction(
-                std::format("{:<8}rax, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(value)));
-            modulePrinter.TextInstruction(std::format("{:<8}qword [r11], rax", "mov"));
-            modulePrinter.TextInstruction(
-                std::format("{:<8}rax, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(value) - 8));
-            modulePrinter.TextInstruction(std::format("{:<8}qword [r11 + 8], rax", "mov"));
+        if (size > 8) {
+            // As in Load above: any width, a chunk at a time, rather than sixteen bytes exactly.
+            CopyAggregateFromSlotToR11(framePlan.SlotOffsets().at(value), size);
         }
         else if (IsFloat(type)) {
             modulePrinter.TextInstruction(std::format("{:<8}xmm0, {} [rbp - {}]", size == 4 ? "movss" : "movsd",

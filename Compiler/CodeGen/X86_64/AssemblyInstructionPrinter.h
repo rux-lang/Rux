@@ -44,6 +44,8 @@ private:
     Target::OS targetOs;
 
     void LoadB(LirReg reg, const TypeRef &type);
+    void CopyAggregateFromR10ToSlot(std::int32_t destinationSlot, int size) const;
+    void CopyAggregateFromSlotToR11(std::int32_t sourceSlot, int size) const;
     [[nodiscard]] bool IsWin64AddressParameter(const TypeRef &type) const;
     [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
     [[nodiscard]] int ResolveFieldOffset(LirReg base, const std::string &fieldName) const;

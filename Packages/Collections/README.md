@@ -29,7 +29,7 @@ Both available types own their storage through [`Rux/Memory`](../Memory) and are
 ```rux
 import Collections::List;
 
-var numbers = List<int32>::New();
+var numbers = List::New<int32>();
 numbers.Add(1);
 numbers.Add(2);
 numbers.Free();
