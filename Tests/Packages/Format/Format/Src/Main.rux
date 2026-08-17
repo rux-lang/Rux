@@ -24,7 +24,7 @@ struct Point {
 }
 
 extend Point : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *Point) -> String {
         return Format("({}, {})", self.x, self.y);
     }
 }
@@ -36,7 +36,7 @@ struct Filler {
 }
 
 extend Filler : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *Filler) -> String {
         var unit = String::From("0123456789abcdef");
         let text = unit.Repeat(self.count);
         unit.Free();

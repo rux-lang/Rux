@@ -35,7 +35,7 @@ func ToString(value: float32) -> String {
 }
 
 extend float32 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *float32) -> String {
         return ToString(*self);
     }
 }

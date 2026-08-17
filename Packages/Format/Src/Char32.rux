@@ -11,7 +11,7 @@ func ToString(value: char32) -> String {
 }
 
 extend char32 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *char32) -> String {
         return ToString(*self);
     }
 }

@@ -158,8 +158,8 @@ Param Parser::ParseParam(const bool allowVariadic) {
     }
 
     // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
-    // receiver by value, by read-only reference or by writable reference. A bare `self` leaves the type to the enclosing
-    // extend block, and is only still accepted so the tree can be migrated one package at a time.
+    // receiver by value, by read-only reference or by writable reference. A bare `self` leaves the type to the
+    // enclosing extend block, and is only still accepted so the tree can be migrated one package at a time.
     if (Match(TokenKind::SelfKeyword)) {
         parameter.name = "self";
         if (!Match(TokenKind::Colon)) {

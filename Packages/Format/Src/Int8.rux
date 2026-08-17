@@ -9,7 +9,7 @@ func ToString(value: int8) -> String {
 }
 
 extend int8 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *int8) -> String {
         return ToString(*self);
     }
 }

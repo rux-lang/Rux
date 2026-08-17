@@ -2288,15 +2288,16 @@ private:
     }
 
     /// A receiver in `extend T` is written `T`, `*T` or `*var T` and nothing else: it names the type being extended, so
-    /// anything else is a typo rather than a conversion to work out. An extend block that names an interface is narrower
-    /// still — dispatch reaches the method through a vtable slot that is handed a pointer, so a receiver taken by value
-    /// has nowhere to arrive.
+    /// anything else is a typo rather than a conversion to work out. An extend block that names an interface is
+    /// narrower still — dispatch reaches the method through a vtable slot that is handed an address, so the receiver
+    /// has to be one. A slice already is: it is a fat pointer, and the ABI passes it by address.
     void CheckReceiverType(const FuncDecl &d, const Param &receiver, const TypeRef &declared) {
         if (!currentImpl || declared.IsUnknown() || currentExtendedType.IsUnknown()) {
             return;
         }
-        const bool isReference = declared.kind == TypeRef::Kind::Pointer && !declared.inner.empty();
-        if (const TypeRef &base = isReference ? declared.inner.front() : declared;
+        const bool isPointer = declared.kind == TypeRef::Kind::Pointer && !declared.inner.empty();
+        const bool isReference = isPointer || IsSliceTypeRef(declared);
+        if (const TypeRef &base = isPointer ? declared.inner.front() : declared;
             !base.IsUnknown() && base != currentExtendedType) {
             EmitError(receiver.location,
                       std::format("receiver type '{}' does not name the extended type '{}'", declared.ToString(),
@@ -2314,9 +2315,9 @@ private:
         }
     }
 
-    /// `self` names the receiver, so it is a parameter of a method and only of a method, and it is the one the call site
-    /// writes to the left of the dot. Both mistakes are reported against the parameter rather than the declaration,
-    /// because that is what has to move.
+    /// `self` names the receiver, so it is a parameter of a method and only of a method, and it is the one the call
+    /// site writes to the left of the dot. Both mistakes are reported against the parameter rather than the
+    /// declaration, because that is what has to move.
     void CheckReceiverPlacement(const FuncDecl &d, const bool isMethod) {
         for (std::size_t index = 0; index < d.params.size(); ++index) {
             const Param &param = d.params[index];
@@ -2329,8 +2330,8 @@ private:
                           "declare it inside an 'extend' block, or rename the parameter");
             }
             else if (index != 0) {
-                EmitError(param.location, std::format("receiver 'self' must be the first parameter of method '{}'",
-                                                      d.name));
+                EmitError(param.location,
+                          std::format("receiver 'self' must be the first parameter of method '{}'", d.name));
             }
         }
     }

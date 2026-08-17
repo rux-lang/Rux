@@ -34,7 +34,7 @@ extend StringBuilder {
     // builder behind. Safe on a builder that owns nothing, so it can follow
     // an IntoString that already gave the block away, and the builder stays
     // usable afterwards.
-    func Free(self) {
+    func Free(self: *StringBuilder) {
         Free(self.data);
         self.data = null;
         self.length = 0;
@@ -43,37 +43,37 @@ extend StringBuilder {
 
     // The block itself. Unlike String::Data this points at memory a later
     // append may move, so do not hold onto it across one.
-    func Data(self) -> *char8 {
+    func Data(self: *StringBuilder) -> *char8 {
         return self.data;
     }
 
     // The number of bytes written so far, which is not the capacity.
-    func Length(self) -> uint {
+    func Length(self: *StringBuilder) -> uint {
         return self.length;
     }
 
     // The number of bytes the block can hold before it has to grow.
-    func Capacity(self) -> uint {
+    func Capacity(self: *StringBuilder) -> uint {
         return self.capacity;
     }
 
     // Whether anything has been written. Says nothing about the capacity: a
     // cleared builder is empty but still holds its block.
-    func IsEmpty(self) -> bool {
+    func IsEmpty(self: *StringBuilder) -> bool {
         return self.length == 0;
     }
 
     // Makes room for `additional` more bytes on top of what is already
     // written. Capacity only ever grows, so this leaves a builder that is
     // already big enough alone; Shrink is what hands capacity back.
-    func Reserve(self, additional: uint) {
+    func Reserve(self: *StringBuilder, additional: uint) {
         self.Grow(self.length + additional);
     }
 
     // Grows the block to hold at least `required` bytes. Doubling from a 16
     // byte floor is what makes a run of appends cost an amortized constant
     // rather than a reallocation each time.
-    func Grow(self, required: uint) {
+    func Grow(self: *StringBuilder, required: uint) {
         if required <= self.capacity {
             return;
         }
@@ -95,7 +95,7 @@ extend StringBuilder {
     // Drops the capacity the builder is not using. IntoString leans on this
     // so the String it hands out owns a block sized to its contents rather
     // than to the builder's high-water mark.
-    func Shrink(self) {
+    func Shrink(self: *StringBuilder) {
         if self.capacity == self.length {
             return;
         }
@@ -110,7 +110,7 @@ extend StringBuilder {
     }
 
     // Writes one byte, growing the block if it is full.
-    func Append(self, ch: char8) {
+    func Append(self: *StringBuilder, ch: char8) {
         self.Grow(self.length + 1);
         self.data[self.length] = ch;
         self.length++;
@@ -118,7 +118,7 @@ extend StringBuilder {
 
     // Writes the bytes of a slice, so a literal can be appended without
     // wrapping it in a String first.
-    func Append(self, str: Slice<char8>) {
+    func Append(self: *StringBuilder, str: Slice<char8>) {
         if str.length == 0 {
             return;
         }
@@ -130,7 +130,7 @@ extend StringBuilder {
 
     // Writes the bytes of a String. They are copied, so the String is left
     // untouched and is still the caller's to free.
-    func Append(self, str: String) {
+    func Append(self: *StringBuilder, str: String) {
         if str.length == 0 {
             return;
         }
@@ -142,21 +142,21 @@ extend StringBuilder {
 
     // Forgets what was written but keeps the block, so the builder can be
     // filled again without a fresh allocation. Free is what releases it.
-    func Clear(self) {
+    func Clear(self: *StringBuilder) {
         self.length = 0;
     }
 
     // Copies the contents out into a String. The builder keeps its own block
     // and stays usable, so both it and the String have to be freed. Reach for
     // IntoString instead once the builder is finished with.
-    func ToString(self) -> String {
+    func ToString(self: *StringBuilder) -> String {
         return String::From(self.data, self.length);
     }
 
     // Hands the block itself to the String, which costs no copy. The builder
     // is left empty and owning nothing, so only the String has to be freed.
     // Draining an empty builder yields the empty String.
-    func IntoString(self) -> String {
+    func IntoString(self: *StringBuilder) -> String {
         self.Shrink();
 
         let result = String { data: self.data, length: self.length };

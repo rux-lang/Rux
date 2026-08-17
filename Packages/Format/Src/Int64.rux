@@ -10,7 +10,7 @@ func ToString(value: int64) -> String {
 }
 
 extend int64 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *int64) -> String {
         return ToString(*self);
     }
 }

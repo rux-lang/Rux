@@ -11,7 +11,7 @@ extend SemanticVersion {
     }
 
     /// Compares version precedence, returning -1, 0 or 1.
-    func Compare(self, other: SemanticVersion) -> int {
+    func Compare(self: *SemanticVersion, other: SemanticVersion) -> int {
         if self.major < other.major { return -1; }
         if self.major > other.major { return 1; }
         if self.minor < other.minor { return -1; }
@@ -21,47 +21,47 @@ extend SemanticVersion {
         return 0;
     }
 
-    func IsEqualTo(self, other: SemanticVersion) -> bool {
+    func IsEqualTo(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
-    func IsLessThan(self, other: SemanticVersion) -> bool {
+    func IsLessThan(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
-    func IsAtMost(self, other: SemanticVersion) -> bool {
+    func IsAtMost(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
-    func IsGreaterThan(self, other: SemanticVersion) -> bool {
+    func IsGreaterThan(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
-    func IsAtLeast(self, other: SemanticVersion) -> bool {
+    func IsAtLeast(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 
-    func ==(self, other: SemanticVersion) -> bool {
+    func ==(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
-    func !=(self, other: SemanticVersion) -> bool {
+    func !=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) != 0;
     }
 
-    func <(self, other: SemanticVersion) -> bool {
+    func <(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
-    func <=(self, other: SemanticVersion) -> bool {
+    func <=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
-    func >(self, other: SemanticVersion) -> bool {
+    func >(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
-    func >=(self, other: SemanticVersion) -> bool {
+    func >=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 }
@@ -72,7 +72,7 @@ struct Compiler {
 }
 
 extend Compiler {
-    intrinsic func HasFeature(self, feature: Slice<char8>) -> bool;
+    intrinsic func HasFeature(self: *Compiler, feature: Slice<char8>) -> bool;
 }
 
 // Compile-time value

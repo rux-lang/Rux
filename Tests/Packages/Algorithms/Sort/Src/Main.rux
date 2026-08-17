@@ -11,11 +11,11 @@ struct Ranked {
 }
 
 extend Ranked {
-    func <(self, other: Ranked) -> bool {
+    func <(self: *Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 
-    func ==(self, other: Ranked) -> bool {
+    func ==(self: *Ranked, other: Ranked) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

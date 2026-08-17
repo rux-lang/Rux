@@ -8,7 +8,7 @@ struct Record {
 }
 
 extend Record {
-    func ==(self, other: Record) -> bool {
+    func ==(self: *Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

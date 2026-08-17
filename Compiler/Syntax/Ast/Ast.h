@@ -528,8 +528,8 @@ struct FuncDecl : Decl {
     std::unique_ptr<Block> body;   // null = signature only
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is null
 
-    /// The declared receiver, always written first. Null for a plain function and for an associated function, which is a
-    /// `func` inside an `extend` block that takes no receiver and is called as `Type::Func(...)`.
+    /// The declared receiver, always written first. Null for a plain function and for an associated function, which is
+    /// a `func` inside an `extend` block that takes no receiver and is called as `Type::Func(...)`.
     [[nodiscard]] const Param *Receiver() const {
         return !params.empty() && params.front().IsReceiver() ? &params.front() : nullptr;
     }

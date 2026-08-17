@@ -6,7 +6,7 @@ import Text::String;
 // builder, and handing back the receiver's own block would leave the caller
 // holding a String whose allocation is gone.
 extend String : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *String) -> String {
         return self.Clone();
     }
 }

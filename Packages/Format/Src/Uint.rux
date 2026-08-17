@@ -9,7 +9,7 @@ func ToString(value: uint) -> String {
 }
 
 extend uint : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *uint) -> String {
         return ToString(*self);
     }
 }

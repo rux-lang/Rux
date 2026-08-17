@@ -9,7 +9,7 @@ func ToString(value: uint64) -> String {
 }
 
 extend uint64 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *uint64) -> String {
         return ToString(*self);
     }
 }
