@@ -55,6 +55,102 @@ func SortDescending<T>(data: *var T, length: uint) {
     Reverse<T>(data, length);
 }
 
+// Places the element that would sit at n in a fully sorted sequence, and
+// partitions around it: everything before n is at most that element and
+// everything after is at least it. Neither side is ordered further.
+//
+// Returns false, changing nothing, when n is not an index into the sequence.
+// This is the operation to reach for when only one order statistic is wanted
+// -- a median, a percentile -- because it is linear on average where a full
+// sort is not.
+//
+// Quickselect over the same partition Sort uses, but iterative: only one side
+// of each partition can contain n, so there is nothing to recurse into and the
+// stack stays flat. The same recursion budget bounds the worst case.
+func NthElement<T>(data: *var T, length: uint, n: uint) -> bool {
+    if n >= length {
+        return false;
+    }
+
+    var lo: uint = 0;
+    var hi = length;
+    var budget = FloorLog2(length) * 2;
+    if budget == 0 {
+        budget = 1;
+    }
+
+    while hi - lo > InsertionSortThreshold {
+        if budget == 0 {
+            // Ordering the rest satisfies the postcondition too, and bounds
+            // the worst case at O(n log n).
+            HeapSortRange<T>(data, lo, hi);
+            return true;
+        }
+        budget--;
+
+        let middle = lo + (hi - lo) / 2;
+        let pivotIndex = MedianOfThree<T>(data, lo, middle, hi - 1);
+        let pivot = data[pivotIndex];
+
+        var lessEnd: uint = 0;
+        var greaterStart: uint = 0;
+        PartitionThreeWay<T>(data, lo, hi, pivot, @lessEnd, @greaterStart);
+
+        if n < lessEnd {
+            hi = lessEnd;
+        }
+        else if n < greaterStart {
+            // n fell inside the band equivalent to the pivot, so the element
+            // there is already the one that belongs at n.
+            return true;
+        }
+        else {
+            lo = greaterStart;
+        }
+    }
+
+    InsertionSortRange<T>(data, lo, hi);
+    return true;
+}
+
+// Orders the count smallest elements into the front of the sequence, leaving
+// the remainder unspecified. Returns false, changing nothing, when count
+// exceeds the length.
+//
+// Cheaper than a full sort when count is small: it keeps a max-heap of the
+// best count elements seen so far, so the cost is O(n log count) rather than
+// O(n log n), and it allocates nothing.
+func PartialSort<T>(data: *var T, length: uint, count: uint) -> bool {
+    if count > length {
+        return false;
+    }
+    if count == 0 {
+        return true;
+    }
+
+    // A max-heap over the first count elements: its root is the largest of the
+    // candidates, which is exactly the one a smaller element should displace.
+    var i = count / 2;
+    while i > 0 {
+        i--;
+        SiftDown<T>(data, 0, i, count);
+    }
+
+    var j = count;
+    while j < length {
+        if data[j] < data[0] {
+            SwapAt<T>(data, 0, j);
+            SiftDown<T>(data, 0, 0, count);
+        }
+        j++;
+    }
+
+    // The candidates are now the count smallest, but in heap order rather than
+    // sorted order.
+    HeapSortRange<T>(data, 0, count);
+    return true;
+}
+
 // Internal helper; not part of the package API.
 //
 // floor(log2(value)), and zero for both 0 and 1. A shift loop rather than a

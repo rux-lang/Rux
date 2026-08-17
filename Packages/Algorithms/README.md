@@ -113,10 +113,12 @@ Equivalence in this module is derived as `!(a < b) && !(b < a)`, never from `==`
 
 ### `Sort` — ordering, requiring `<`
 
-| Function         | Mutates | Complexity            | Stability |
-| ---------------- | ------- | --------------------- | --------- |
-| `Sort`           | yes     | O(n log n) worst case | unstable  |
-| `SortDescending` | yes     | O(n log n) worst case | unstable  |
+| Function         | Mutates | Returns                     | Complexity              | Stability |
+| ---------------- | ------- | --------------------------- | ----------------------- | --------- |
+| `Sort`           | yes     | —                           | O(n log n) worst case   | unstable  |
+| `SortDescending` | yes     | —                           | O(n log n) worst case   | unstable  |
+| `NthElement`     | yes     | `false` if `n >= length`    | O(n) expected           | unstable  |
+| `PartialSort`    | yes     | `false` if `count > length` | O(n log count)          | unstable  |
 
 `Sort` is an introsort: quicksort with a three-way partition, falling back to heapsort once its recursion budget is spent and to insertion sort below 16 elements. The three-way partition means an all-equal sequence costs a single linear pass rather than the quadratic behavior a two-way partition produces on it, and input drawn from a small set of distinct values stops being a worst case. The heapsort fallback is what makes O(n log n) a guarantee rather than an average.
 
@@ -125,6 +127,8 @@ It allocates nothing and recurses only into the smaller side of each partition, 
 Sorting is **unstable**: equivalent elements may be reordered. It is deterministic, though — there is no randomized pivot, so the same input always produces the same output.
 
 `SortDescending` sorts ascending and then reverses. That costs one extra linear pass and avoids maintaining a mirrored copy of every helper, which matters more than the pass does; order among equivalent elements is unspecified in both directions anyway.
+
+`NthElement` places the element that a full sort would put at `n` and partitions around it, without ordering either side. Reach for it when only one order statistic is wanted — a median, a percentile — since it is linear on average where a sort is not. `PartialSort` orders the `count` smallest into the front and leaves the rest unspecified, at O(n log count) rather than O(n log n). Both allocate nothing, and neither recurses.
 
 ### `MinMax` — extremes and clamping, requiring `<`
 
