@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Receiver"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: Receiver"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

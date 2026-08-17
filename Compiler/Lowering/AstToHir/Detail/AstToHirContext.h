@@ -158,6 +158,7 @@ private:
                                                      const std::vector<TypeRef> &typeArguments = {});
     [[nodiscard]] std::string BaseTypeName(const std::string &name) const;
     [[nodiscard]] std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const;
+    [[nodiscard]] bool ReceiverIsByValue(const FuncDecl &method) const;
     [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method);
     [[nodiscard]] TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method);
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
