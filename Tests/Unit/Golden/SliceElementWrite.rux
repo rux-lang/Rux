@@ -1,0 +1,37 @@
+// Declared exactly as Rux/Core declares it, so the fixture stands alone.
+struct Slice<T> {
+    data: *T;
+    length: uint;
+}
+
+struct MutableSlice<T> {
+    data: *var T;
+    length: uint;
+}
+
+func Main() -> int {
+    var values: int32[3] = [1, 2, 3];
+
+    // A fixed array owns its elements, so writing one is fine.
+    values[0] = 10;
+
+    // So is a writable pointer to them.
+    var writable: *var int32 = @values[0];
+    writable[1] = 20;
+
+    // And so is a slice that borrows them through a '*var T'.
+    var mutable = MutableSlice<int32> { data: @values[0], length: 3 };
+    mutable.data[2] = 30;
+
+    // A plain slice borrows them through a read-only '*T'. Declaring the slice
+    // itself 'var' lets it be re-pointed, never rewritten, so this is rejected
+    // however the binding was declared.
+    var borrowed = Slice<int32> { data: @values[0], length: 3 };
+    borrowed[0] = 40;
+
+    let fixed = Slice<int32> { data: @values[0], length: 3 };
+    fixed[0] = 50;
+
+    // Reading through either slice stays legal.
+    return (borrowed[0] + fixed[1]) as int;
+}
