@@ -1,0 +1,24 @@
+// Each instantiation asks for one at a strictly larger type argument, so the
+// set of instantiations never closes: Grow<int32>, Grow<*int32>, Grow<**int32>
+// and so on. Deduplication cannot help, because every one of them is genuinely
+// new. The compiler used to follow the chain until its recursive walks over an
+// ever-deeper type exhausted the stack, and died with no diagnostic at all.
+func Grow<T>(value: T) -> int {
+    let bigger = @value;
+    return Grow<*T>(bigger);
+}
+
+// Recursion at a fixed type argument is finite and stays accepted: the set of
+// instantiations closes after the first one.
+func Countdown<T>(value: T, depth: uint) -> uint {
+    if depth == 0 {
+        return 0;
+    }
+    return Countdown<T>(value, depth - 1) + 1;
+}
+
+func Main() -> int {
+    var seed: int32 = 1;
+    let counted = Countdown<int32>(seed, 3);
+    return Grow<int32>(seed) + (counted as int);
+}

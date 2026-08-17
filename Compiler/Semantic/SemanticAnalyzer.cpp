@@ -63,6 +63,7 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
     std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
+    std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
     std::unordered_set<std::string> activeLayoutTypes;
 
     struct FunctionSignature {
@@ -3401,6 +3402,29 @@ private:
         return type;
     }
 
+    /// Counts a type's structural nodes, stopping once the limit is passed so a runaway type costs no more to
+    /// measure than a well-behaved one.
+    static std::size_t TypeNodeCount(const TypeRef &type, const std::size_t limit) {
+        std::size_t count = 1;
+        for (const TypeRef &inner : type.inner) {
+            if (count > limit) {
+                return count;
+            }
+            count += TypeNodeCount(inner, limit - std::min(count, limit));
+        }
+        return count;
+    }
+
+    /// A generic that instantiates itself at a strictly larger type argument -- `Grow<T>` calling `Grow<*T>` -- never
+    /// closes its set of instantiations. Deduplication does not help, because every instantiation is genuinely new.
+    /// The compiler used to follow it until the recursive walks over an ever-deeper type exhausted the stack and it
+    /// died with no diagnostic at all.
+    ///
+    /// Bounding the type argument's size catches it: any infinite set of instantiations must produce ever-larger type
+    /// arguments, since there are only finitely many small types. Size rather than nesting depth, so a set that grows
+    /// in breadth is caught too. The limit is far above anything written by hand -- `Slice<char8>` is two nodes.
+    static constexpr std::size_t kMaxInstantiationTypeNodes = 128;
+
     void QueueGenericInstantiation(const FuncDecl &decl,
                                    const std::unordered_map<std::string, TypeRef> &substitutions) override {
         if (decl.typeParams.empty() || substitutions.size() != decl.typeParams.size()) {
@@ -3433,6 +3457,32 @@ private:
                 key += instantiation.substitutions.at(param).ToString();
             }
             if (!validatedGenericInstantiations[instantiation.decl].insert(std::move(key)).second) {
+                continue;
+            }
+
+            // Refusing to process this instantiation is what stops the runaway: its body is never walked, so it never
+            // queues the next, larger one. Reported once per function, since every instantiation past the limit has
+            // the same cause and listing them would bury it.
+            const auto oversized = std::ranges::find_if(instantiation.substitutions, [](const auto &substitution) {
+                return TypeNodeCount(substitution.second, kMaxInstantiationTypeNodes) > kMaxInstantiationTypeNodes;
+            });
+            if (oversized != instantiation.substitutions.end()) {
+                if (reportedRunawayInstantiations.insert(instantiation.decl).second) {
+                    // The offending type is by definition enormous, and printing all of it would bury the message
+                    // it is meant to illustrate.
+                    constexpr std::size_t kShownTypeCharacters = 40;
+                    std::string shown = oversized->second.ToString();
+                    if (shown.size() > kShownTypeCharacters) {
+                        shown = shown.substr(0, kShownTypeCharacters) + "...";
+                    }
+                    EmitError(
+                        instantiation.decl->location,
+                        std::format("generic function '{}' instantiates itself without end", instantiation.decl->name),
+                        {std::format("type argument '{}' for '{}' grew past the limit of {} type nodes", shown,
+                                     oversized->first, kMaxInstantiationTypeNodes)},
+                        "give the recursion a case that stops, or one that reuses a type argument it has "
+                        "already been given");
+                }
                 continue;
             }
 
