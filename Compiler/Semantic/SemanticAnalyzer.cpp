@@ -3039,15 +3039,23 @@ private:
                 continue;
             }
             if (function && !function->typeParams.empty()) {
-                binding.linkerName = function->name;
+                // A generic function's monomorphized name is its own name plus its type arguments, which two
+                // overloads instantiated at the same argument share. Only the first was ever emitted, and every call
+                // bound to it — so a four-argument call reached a three-parameter function and quietly dropped an
+                // argument. Overloaded methods already carry their parameter types in the name; free functions now
+                // do too, built through the same recipe so a later re-instantiation spells it identically.
                 binding.linkerNameBase = function->name;
-                binding.linkerSpecializationParameters = function->typeParams;
-                for (const auto &parameter : function->typeParams) {
-                    if (const auto substitution = binding.substitutions.find(parameter);
-                        substitution != binding.substitutions.end()) {
-                        binding.linkerName += "_" + MangleTypeName(substitution->second);
+                binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(*function);
+                if (binding.linkerNameHasOverloadSignature) {
+                    for (const auto &parameter : function->params) {
+                        if (!parameter.isVariadic) {
+                            binding.linkerOverloadTypes.push_back(
+                                IdentityParameterType(parameter, binding.substitutions));
+                        }
                     }
                 }
+                binding.linkerSpecializationParameters = function->typeParams;
+                binding.linkerName = binding.LinkerNameFor(binding.substitutions);
                 continue;
             }
             if (const auto identity = symbolIdentities.find(binding.selectedDeclaration);

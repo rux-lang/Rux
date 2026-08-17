@@ -1,0 +1,81 @@
+import Core::Assert;
+
+// A generic function's monomorphized name is its own name plus its type
+// arguments. Two overloads instantiated at the same type argument therefore
+// used to collide: only the first was emitted, and every call bound to it. A
+// four-argument call reached a three-parameter function and quietly dropped an
+// argument, so this returned the wrong answer rather than failing to build.
+//
+// Each overload below returns something only it can return, so a call landing
+// on the wrong one is visible in the result rather than merely suspected.
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+// Overloads differing only in arity — the case that collided.
+func Weigh<T>(value: T, base: uint) -> uint {
+    return base;
+}
+
+func Weigh<T>(value: T, base: uint, extra: uint) -> uint {
+    return base + extra;
+}
+
+func Weigh<T>(value: T, base: uint, extra: uint, more: uint) -> uint {
+    return base + extra + more;
+}
+
+// Overloads differing only in parameter type, at the same arity.
+func Describe<T>(value: T, flag: bool) -> uint {
+    return 1;
+}
+
+func Describe<T>(value: T, count: uint) -> uint {
+    return 2;
+}
+
+// An overload set where one member is generic in a second parameter, so the
+// two differ in how many type arguments they take.
+func Combine<T>(left: T, right: T) -> uint {
+    return 10;
+}
+
+func Combine<T, U>(left: T, right: U, marker: bool) -> uint {
+    return 20;
+}
+
+func Main() -> int {
+    let one: uint = 1;
+    let two: uint = 2;
+    let four: uint = 4;
+    let value: int32 = 7;
+
+    // Each arity reaches its own overload, at one instantiation.
+    Assert(Weigh<int32>(value, one) == 1, "two-argument overload");
+    Assert(Weigh<int32>(value, one, two) == 3, "three-argument overload");
+    Assert(Weigh<int32>(value, one, two, four) == 7, "four-argument overload");
+
+    // The same three at a different instantiation, so each type argument gets
+    // its own set of symbols rather than sharing one.
+    let pair = Pair { first: 1, second: 2 };
+    Assert(Weigh<Pair>(pair, one) == 1, "two-argument overload for a struct");
+    Assert(Weigh<Pair>(pair, one, two) == 3, "three-argument overload for a struct");
+    Assert(Weigh<Pair>(pair, one, two, four) == 7, "four-argument overload for a struct");
+
+    // A second instantiation of the same overload set does not disturb the
+    // first: both remain callable and distinct.
+    Assert(Weigh<int32>(value, two, two) == 4, "int32 set still intact");
+    Assert(Weigh<Pair>(pair, two, two) == 4, "struct set still intact");
+
+    // Overloads at equal arity, selected by parameter type.
+    Assert(Describe<int32>(value, true) == 1, "bool overload");
+    Assert(Describe<int32>(value, two) == 2, "uint overload");
+
+    // Overloads taking different numbers of type arguments.
+    Assert(Combine<int32>(value, value) == 10, "one type argument");
+    Assert(Combine<int32, bool>(value, true, true) == 20, "two type arguments");
+
+    return 0;
+}
