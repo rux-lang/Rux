@@ -144,6 +144,11 @@ LirReg HirToLirContext::LowerExpr(const HirExpr &expr) {
         if (IsTerminated()) {
             return LirNoReg;
         }
+        // A block carrying a trailing expression evaluates to it. Blocks lowered from source carry none and keep
+        // producing a placeholder, so this changes nothing a program can already write.
+        if (e->value) {
+            return LowerExpr(*e->value);
+        }
         return EmitConst("0", e->type);
     }
     if (auto *e = dynamic_cast<const HirRangeExpr *>(&expr)) {
