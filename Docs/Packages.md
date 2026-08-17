@@ -8,7 +8,7 @@ Packages marked **Planned** reserve their package names and source layout but do
 
 | Package       | Status    | Description                                              |
 | ------------- | --------- | -------------------------------------------------------- |
-| `Algorithms`  | Planned   | Generic algorithms over slices, ranges, and iterators    |
+| `Algorithms`  | Partial   | Generic algorithms; `Modify` is usable                    |
 | `C`           | Available | C standard library bindings                              |
 | `Collections` | Partial   | Generic data structures; `Array` and `List` are usable   |
 | `Core`        | Available | Core language intrinsics                                 |

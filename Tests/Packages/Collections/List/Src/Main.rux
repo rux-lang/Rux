@@ -49,6 +49,16 @@ func Main() -> int {
     let borrowed = values.AsSlice();
     if borrowed.data != values.Data() || borrowed.length != 4 || borrowed[2] != 30 { return 60; }
 
+    // A mutable view borrows the initialized elements only, never the spare
+    // capacity, and writes through it reach the List.
+    values.Reserve(20);
+    let writable = values.AsMutableSlice();
+    if writable.Length() != values.Length() || writable.Length() == values.Capacity() { return 61; }
+    if writable.data != values.Data() { return 62; }
+    writable.Set(0, 15);
+    if values.At(0) != 15 { return 63; }
+    writable.Set(0, 10);
+
     // Clone and ToArray copy, leaving independently owned allocations.
     var copy = values.Clone();
     if copy.Data() == values.Data() || copy.Capacity() != copy.Length() { return 70; }
