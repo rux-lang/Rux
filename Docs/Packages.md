@@ -10,7 +10,7 @@ Packages marked **Planned** reserve their package names and source layout but do
 | ------------- | --------- | -------------------------------------------------------- |
 | `Algorithms`  | Available | Generic algorithms over slices and mutable slices        |
 | `C`           | Available | C standard library bindings                              |
-| `Collections` | Partial   | Generic data structures; `Array` and `List` are usable   |
+| `Collections` | Available | Generic data structures                                  |
 | `Core`        | Available | Core language intrinsics                                 |
 | `Format`      | Available | String conversion and formatting                         |
 | `Hash`        | Planned   | Hash functions and checksums                             |

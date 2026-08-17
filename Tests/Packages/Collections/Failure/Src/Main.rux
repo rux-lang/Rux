@@ -1,0 +1,153 @@
+import Collections::Array;
+import Collections::CollectionError;
+import Collections::Deque;
+import Collections::HashMap;
+import Collections::HashSet;
+import Collections::Vector;
+import Collections::{ EqualsInt32, HashInt32 };
+
+// The cross-cutting axis: what every container does when an operation cannot
+// be completed. Two things are checked here that the per-type tests do not.
+//
+// First, that the failure modes stay distinguishable. An exhausted allocator,
+// an unaddressable capacity and a rejected index are three different answers,
+// and a caller has to be able to tell them apart.
+//
+// Second, that a failed operation changes nothing. Every check below reads the
+// whole container back afterwards, because the defect this package was
+// rewritten to fix was exactly a failure that left a container claiming
+// storage it did not own.
+//
+// Out-of-memory itself cannot be forced portably, so it is not exercised
+// directly; it shares its reporting path with the overflow cases that are.
+//
+// See Tests/Packages/Collections/Array for the numbered exit-code convention.
+
+func Main() -> int {
+    // The error cases are distinct values, so no two failures can be confused.
+    if CollectionError::None == CollectionError::OutOfMemory { return 10; }
+    if CollectionError::None == CollectionError::CapacityOverflow { return 11; }
+    if CollectionError::None == CollectionError::IndexOutOfRange { return 12; }
+    if CollectionError::OutOfMemory == CollectionError::CapacityOverflow { return 13; }
+    if CollectionError::OutOfMemory == CollectionError::IndexOutOfRange { return 14; }
+    if CollectionError::CapacityOverflow == CollectionError::IndexOutOfRange { return 15; }
+    if !(CollectionError::None == CollectionError::None) { return 16; }
+
+    // A count whose byte size cannot be addressed is rejected by every
+    // constructor, before anything is allocated.
+    var array = Array::New<int64>();
+    if !(Array::NewUninitialized<int64>(uint::Max, @array) == CollectionError::CapacityOverflow) { return 20; }
+    if !array.IsEmpty() || array.Data() != null { return 21; }
+
+    var vector = Vector::New<int64>();
+    if !(Vector::WithCapacity<int64>(uint::Max, @vector) == CollectionError::CapacityOverflow) { return 22; }
+    if !vector.IsEmpty() || vector.Data() != null || vector.Capacity() != 0 { return 23; }
+
+    var deque = Deque::New<int64>();
+    if !(Deque::WithCapacity<int64>(uint::Max, @deque) == CollectionError::CapacityOverflow) { return 24; }
+    if !deque.IsEmpty() || deque.Capacity() != 0 { return 25; }
+
+    // A populated Vector survives a rejected reservation untouched: the same
+    // block, the same length, the same capacity, the same elements.
+    var populated = Vector::New<int64>();
+    var element: int64 = 0;
+    while element < 8i64 {
+        if !(populated.Push(element) == CollectionError::None) { return 30; }
+        element++;
+    }
+
+    let block = populated.Data();
+    let length = populated.Length();
+    let capacity = populated.Capacity();
+
+    // The length plus the request wraps.
+    if !(populated.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 31; }
+    if populated.Data() != block || populated.Length() != length { return 32; }
+    if populated.Capacity() != capacity { return 33; }
+
+    // The sum fits but its byte size does not, which is the other way the same
+    // request fails.
+    if !(populated.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 34; }
+    if populated.Data() != block || populated.Length() != length { return 35; }
+    if populated.Capacity() != capacity { return 36; }
+
+    element = 0;
+    while element < 8i64 {
+        if populated.At(element as uint) != element { return 37; }
+        element++;
+    }
+
+    // A bulk append is checked the same way, and a rejected one appends
+    // nothing rather than part of its input.
+    let borrowed = populated.AsSlice();
+    let hostile = Slice<int64> { data: borrowed.data, length: uint::Max };
+    if !(populated.PushSlice(hostile) == CollectionError::CapacityOverflow) { return 40; }
+    if populated.Data() != block || populated.Length() != length { return 41; }
+    if populated.Capacity() != capacity { return 42; }
+
+    // A rejected index is reported as itself, not as an exhausted allocator,
+    // and the container is left alone.
+    if !(populated.Insert(length + 1, 99i64) == CollectionError::IndexOutOfRange) { return 50; }
+    if populated.Length() != length || populated.Data() != block { return 51; }
+    if populated.At(0) != 0i64 { return 52; }
+
+    // Inserting at exactly the length is the append that is allowed, which is
+    // what makes the rejection above a boundary rather than a blanket refusal.
+    if !(populated.Insert(length, 99i64) == CollectionError::None) { return 53; }
+    if populated.Length() != length + 1 { return 54; }
+
+    // The non-allocating rejections stay booleans, so they cannot be confused
+    // with either error above.
+    if populated.RemoveAt(populated.Length()) { return 55; }
+    if populated.SwapRemoveAt(populated.Length()) { return 56; }
+    if populated.TrySet(populated.Length(), 0i64) { return 57; }
+    var read: int64 = -1i64;
+    if populated.TryGet(populated.Length(), @read) { return 58; }
+    if read != -1i64 { return 59; }
+    populated.Free();
+
+    // A Deque rejects the same requests and stays usable afterwards.
+    var ring = Deque::New<int64>();
+    if !(ring.PushBack(1i64) == CollectionError::None) { return 60; }
+    let ringCapacity = ring.Capacity();
+    if !(ring.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 61; }
+    if ring.Length() != 1 || ring.Capacity() != ringCapacity || ring.At(0) != 1i64 { return 62; }
+    if !(ring.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 63; }
+    if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
+    if !(ring.PushFront(0i64) == CollectionError::None) { return 65; }
+    if ring.At(0) != 0i64 || ring.At(1) != 1i64 { return 66; }
+    ring.Free();
+
+    // A hash table rejects an unsizeable reservation and keeps every entry.
+    var map = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
+    if !(map.Insert(1, 10, null, null) == CollectionError::None) { return 70; }
+    if !(map.Insert(2, 20, null, null) == CollectionError::None) { return 71; }
+    let mapCapacity = map.Capacity();
+    if !(map.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 72; }
+    if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
+    var got: int32 = 0;
+    if !map.TryGet(1, @got) || got != 10 { return 74; }
+    if !map.TryGet(2, @got) || got != 20 { return 75; }
+    if !(map.Insert(3, 30, null, null) == CollectionError::None) { return 76; }
+    if map.Length() != 3 { return 77; }
+    map.Free();
+
+    var set = HashSet::New<int32>(HashInt32, EqualsInt32);
+    if !(set.Insert(1, null) == CollectionError::None) { return 80; }
+    let setCapacity = set.Capacity();
+    if !(set.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 81; }
+    if set.Length() != 1 || set.Capacity() != setCapacity || !set.Contains(1) { return 82; }
+    if !(set.Insert(2, null) == CollectionError::None) { return 83; }
+    if set.Length() != 2 { return 84; }
+    set.Free();
+
+    // Releasing twice is a no-op everywhere, because Free leaves the empty
+    // value behind rather than a dangling pointer.
+    array.Free();
+    array.Free();
+    vector.Free();
+    vector.Free();
+    deque.Free();
+    deque.Free();
+    return 0;
+}
