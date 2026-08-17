@@ -43,7 +43,7 @@ extend float32 : Stringable {
 // Appends the text of a float32 to a builder. The conversion runs in float64,
 // which the value reaches exactly, and only the digit count says which type
 // it came from.
-func WriteFloat(builder: *StringBuilder, value: float32) {
+func WriteFloat(builder: *var StringBuilder, value: float32) {
     if IsNan(value) {
         builder.Append("NaN");
         return;

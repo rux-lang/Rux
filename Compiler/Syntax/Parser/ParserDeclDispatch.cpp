@@ -157,6 +157,8 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
+    parameter.isMut = Match(TokenKind::VarKeyword);
+
     // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
     // receiver by value, by read-only reference or by writable reference. A bare `self` leaves the type to the
     // enclosing extend block, and is only still accepted so the tree can be migrated one package at a time.
@@ -170,7 +172,6 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
-    parameter.isMut = Match(TokenKind::VarKeyword);
     parameter.name = ExpectBefore(TokenKind::Ident, "a parameter name").text;
     ExpectBefore(TokenKind::Colon, "':' after the parameter name", "write parameters as 'name: Type'");
     parameter.type = ParseType("add the parameter type after ':'");

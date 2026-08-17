@@ -49,7 +49,7 @@ extend float64 : Stringable {
 // Appends the text of a float64 to a builder. This is what ToString is built
 // on, and what a caller who is already accumulating should reach for: it
 // costs no String of its own.
-func WriteFloat(builder: *StringBuilder, value: float64) {
+func WriteFloat(builder: *var StringBuilder, value: float64) {
     if IsNan(value) {
         builder.Append("NaN");
         return;

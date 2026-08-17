@@ -53,7 +53,7 @@ extend List<T> {
     }
 
     // Releases the allocation and leaves an empty, reusable List behind.
-    func Free(self: *List<T>) {
+    func Free(self: *var List<T>) {
         Free(self.data);
         self.data = null;
         self.length = 0;
@@ -79,13 +79,13 @@ extend List<T> {
     }
 
     // Makes room for additional elements without changing Length.
-    func Reserve(self: *List<T>, additional: uint) {
+    func Reserve(self: *var List<T>, additional: uint) {
         self.Grow(self.length + additional);
     }
 
     // Ensures capacity for required elements. Starting at four slots and then
     // doubling keeps repeated additions amortized constant time.
-    func Grow(self: *List<T>, required: uint) {
+    func Grow(self: *var List<T>, required: uint) {
         if required <= self.capacity {
             return;
         }
@@ -106,14 +106,14 @@ extend List<T> {
     }
 
     // Appends one element, growing the allocation when it is full.
-    func Add(self: *List<T>, value: T) {
+    func Add(self: *var List<T>, value: T) {
         self.Grow(self.length + 1);
         self.data[self.length] = value;
         self.length++;
     }
 
     // Add under the sequence-oriented name used by StringBuilder.
-    func Append(self: *List<T>, value: T) {
+    func Append(self: *var List<T>, value: T) {
         self.Grow(self.length + 1);
         self.data[self.length] = value;
         self.length++;
@@ -121,7 +121,7 @@ extend List<T> {
 
     // Inserts before index and shifts following elements to the right. Index
     // may equal Length to append; a larger index is rejected.
-    func Insert(self: *List<T>, index: uint, value: T) -> bool {
+    func Insert(self: *var List<T>, index: uint, value: T) -> bool {
         if index > self.length {
             return false;
         }
@@ -139,7 +139,7 @@ extend List<T> {
 
     // Removes the element at index and closes the gap. Capacity is retained so
     // later additions can reuse the allocation. An invalid index is rejected.
-    func RemoveAt(self: *List<T>, index: uint) -> bool {
+    func RemoveAt(self: *var List<T>, index: uint) -> bool {
         if index >= self.length {
             return false;
         }
@@ -163,12 +163,12 @@ extend List<T> {
     }
 
     // Removes all elements while retaining the allocation for reuse.
-    func Clear(self: *List<T>) {
+    func Clear(self: *var List<T>) {
         self.length = 0;
     }
 
     // Releases unused capacity. An empty List becomes allocation-free.
-    func Shrink(self: *List<T>) {
+    func Shrink(self: *var List<T>) {
         if self.capacity == self.length {
             return;
         }
@@ -206,7 +206,7 @@ extend List<T> {
 
     // Transfers the allocation into a fixed-size Array without copying. The
     // List is reset and no longer owns anything.
-    func IntoArray(self: *List<T>) -> Array<T> {
+    func IntoArray(self: *var List<T>) -> Array<T> {
         self.Shrink();
 
         let result = Array<T> { data: self.data, length: self.length };

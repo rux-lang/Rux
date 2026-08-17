@@ -51,7 +51,7 @@ extend String {
     // this safe to call on any String this package returns. It leaves an
     // empty String behind, so a second call is a no-op rather than a double
     // free.
-    func Free(self: *String) {
+    func Free(self: *var String) {
         Free(self.data);
         self.data = null;
         self.length = 0;

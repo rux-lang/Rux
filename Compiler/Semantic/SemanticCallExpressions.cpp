@@ -307,6 +307,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 }
             }
 
+            CheckReceiverMutability(*e, *field->object, receiverType, *method);
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                   MethodTypeSubstitutions(receiverType), receiverType);
             return ResolveMethodReturnType(receiverType, *method);
@@ -616,6 +617,39 @@ void SemanticAnalyzerContext::EmitCallSiteDiagnostics(const Decl &declaration, c
     if (!declaration.errorMessage.empty()) {
         EmitError(location, declaration.errorMessage);
     }
+}
+
+/// A method that declares `self: *var T` writes through its receiver, so the call site has to be able to hand it one.
+/// The receiver reaches the method one of two ways and each has its own answer: a receiver that is already a pointer
+/// carries the permission in its own type, while a receiver named as a place is addressed at the call, and that address
+/// is writable only when the place is.
+void SemanticAnalyzerContext::CheckReceiverMutability(const CallExpr &call, const Expr &receiver,
+                                                      const TypeRef &receiverType, const FuncDecl &method) {
+    const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
+    if (!declared || declared->kind != TypeRef::Kind::Pointer || declared->inner.empty() ||
+        !declared->inner.front().isMut) {
+        return;
+    }
+    if (receiverType.kind == TypeRef::Kind::Pointer) {
+        if (!receiverType.inner.empty() && !receiverType.inner.front().isMut) {
+            EmitError(
+                call.location,
+                std::format("cannot call '{}' through read-only pointer '{}'", method.name, receiverType.ToString()),
+                {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
+                std::format("declare the pointer as '{}'", declared->ToString()));
+        }
+        return;
+    }
+    if (!PlaceIsImmutable(receiver)) {
+        return;
+    }
+    const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
+    EmitError(call.location,
+              identifier ? std::format("cannot call '{}' on immutable '{}'", method.name, identifier->name)
+                         : std::format("cannot call '{}' on an immutable receiver", method.name),
+              {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
+              identifier ? std::format("declare '{}' with 'var' to make it mutable", identifier->name)
+                         : std::optional<std::string>{});
 }
 
 void SemanticAnalyzerContext::RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,

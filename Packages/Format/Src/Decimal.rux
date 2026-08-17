@@ -8,7 +8,7 @@ import Text::StringBuilder;
 // The digits of a finite, non-zero magnitude, and the point placed by the
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
-func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
+func WriteDecimal(builder: *var StringBuilder, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {
         builder.Append(c8'-');
@@ -90,7 +90,7 @@ func WriteDecimal(builder: *StringBuilder, value: float64, significant: uint) {
 // exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
 // written, so the text still reads as a float when the value has no fraction
 // of its own to show.
-func WriteFixed(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteFixed(builder: *var StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
     if exp10 < 0 {
         // Below one, so the text opens with a zero and the point, then as
         // many more zeros as the exponent calls for: -1 puts the first digit
@@ -138,7 +138,7 @@ func WriteFixed(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp1
 // One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
 // exponent carries a sign and at least two digits, so the tail keeps a
 // steady width across the range.
-func WriteScientific(builder: *StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteScientific(builder: *var StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
     builder.Append(digits[0]);
     builder.Append(c8'.');
     if count == 1 {

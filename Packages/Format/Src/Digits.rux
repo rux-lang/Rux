@@ -8,7 +8,7 @@ import Text::StringBuilder;
 // The digits of an unsigned value. A division loop hands them over least
 // significant first, so they land in a stack buffer and go back reversed.
 // Twenty is the most a uint64 ever needs, for 18446744073709551615.
-func WriteUint(builder: *StringBuilder, value: uint64) {
+func WriteUint(builder: *var StringBuilder, value: uint64) {
     if value == 0u64 {
         builder.Append(c8'0');
         return;
@@ -35,7 +35,7 @@ func WriteUint(builder: *StringBuilder, value: uint64) {
 // int64 has no positive counterpart there: -(-9223372036854775808) overflows
 // straight back to itself. Two's complement gives the right answer for that
 // value and for every other one.
-func WriteInt(builder: *StringBuilder, value: int64) {
+func WriteInt(builder: *var StringBuilder, value: int64) {
     if value < 0i64 {
         builder.Append(c8'-');
         WriteUint(builder, ~(value as uint64) + 1u64);

@@ -17,6 +17,6 @@ extend char32 : Stringable {
 }
 
 // Appends the UTF-8 bytes of a char32 to a builder.
-func WriteChar(builder: *StringBuilder, value: char32) {
+func WriteChar(builder: *var StringBuilder, value: char32) {
     WriteUtf8(builder, value as uint32);
 }
