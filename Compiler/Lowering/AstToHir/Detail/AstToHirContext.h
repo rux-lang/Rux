@@ -182,6 +182,9 @@ private:
                                                       HirExprPtr &right);
     [[nodiscard]] HirExprPtr LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left,
                                                        HirExprPtr &right, const FuncDecl &resolved);
+    [[nodiscard]] HirExprPtr LowerDerivedOrderingCompare(const BinaryExpr &expression, HirExprPtr &left,
+                                                         HirExprPtr &right, const FuncDecl &lessThan,
+                                                         const FuncDecl &equals);
     [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type) const;
     [[nodiscard]] TypeRef LiteralType(const Token &token) const;
     [[nodiscard]] std::string StripNumericLiteralSuffix(const std::string &text) const;

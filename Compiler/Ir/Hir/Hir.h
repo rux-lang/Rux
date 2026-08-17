@@ -241,6 +241,11 @@ struct HirIsExpr : HirExpr {
 struct HirBlockExpr : HirExpr {
     ~HirBlockExpr() override;
     HirBlock block;
+
+    /// The expression the block evaluates to, when it has one. A block lowered from source has none — Rux blocks are
+    /// statements — but a lowering that needs to bind an operand before using it twice builds one that does, so the
+    /// operand is evaluated once and named twice.
+    HirExprPtr value;
 };
 
 struct HirMatchArm {

@@ -509,16 +509,16 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
             const auto declares = [&](const std::string &name, const TypeRef &receiver, const TypeRef &argument) {
                 return LookupOperatorMethod(receiver, name, {argument}) != nullptr;
             };
+            const bool ordered = operation == TK::LessEqual || operation == TK::GreaterEqual;
             const bool derivable = (operation == TK::BangEqual && declares("==", left, right)) ||
-                                   (operation == TK::Greater && declares("<", right, left));
+                                   (operation == TK::Greater && declares("<", right, left)) ||
+                                   (ordered && declares("<", left, right) && declares("==", left, right));
             if (derivable) {
                 return TypeRef::MakeBool();
             }
 
-            // `==` and `<` are the operators everything else is derived from, so they can only be declared. `!=` and
-            // `>` reached here because the one they derive from is missing too. `<=` and `>=` would need `<` and `==`
-            // and each operand twice; lowering cannot yet bind an operand to a temporary, so deriving them would
-            // evaluate a side-effecting operand twice. See BACKLOG.md.
+            // `==` and `<` are the operators everything else derives from, so they can only be declared. Anything
+            // else reached here because what it derives from is missing too.
             std::string help = std::format("declare '{}' on '{}'", operatorName, left.ToString());
             if (operation == TK::BangEqual) {
                 help += ", or the '==' it is derived from";
@@ -526,8 +526,8 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
             else if (operation == TK::Greater) {
                 help += ", or the '<' it is derived from";
             }
-            else if (operation == TK::LessEqual || operation == TK::GreaterEqual) {
-                help += "; it is not derived from '<' and '==' because that would evaluate each operand twice";
+            else if (ordered) {
+                help += ", or the '<' and '==' it is derived from";
             }
             EmitError(location, std::format("operator '{}' is not defined for '{}'", operatorName, left.ToString()),
                       {"a struct is compared through the operators it declares, never by its representation"},

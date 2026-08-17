@@ -198,11 +198,79 @@ HirExprPtr AstToHirContext::TryLowerOverloadedBinary(const BinaryExpr &expressio
             return LowerOverloadedBinaryCall(expression, right, left, *lessThan);
         }
     }
+    if (!method && (expression.op == TokenKind::LessEqual || expression.op == TokenKind::GreaterEqual)) {
+        const FuncDecl *lessThan = LookupMethod(left->type, "<", {right->type});
+        const FuncDecl *equals = LookupMethod(left->type, "==", {right->type});
+        if (lessThan && equals) {
+            return LowerDerivedOrderingCompare(expression, left, right, *lessThan, *equals);
+        }
+    }
 
     if (!method) {
         return nullptr;
     }
     return LowerOverloadedBinaryCall(expression, left, right, *method);
+}
+
+/// `a <= b` is `(a < b) || (a == b)`, and `a >= b` is `(b < a) || (a == b)`. Both name each operand twice, so the
+/// operands are bound to temporaries first and the two comparisons run against those — an operand with a side effect
+/// still runs exactly once. Deriving `<=` as `!(b < a)` would need no temporaries, but answers wrongly for a type with
+/// unordered values, where neither `a < b` nor `b < a` holds.
+HirExprPtr AstToHirContext::LowerDerivedOrderingCompare(const BinaryExpr &expression, HirExprPtr &left,
+                                                        HirExprPtr &right, const FuncDecl &lessThan,
+                                                        const FuncDecl &equals) {
+    const TypeRef leftType = left->type;
+    const TypeRef rightType = right->type;
+
+    // Spellings no source identifier can take, so a temporary never shadows a local.
+    const std::string leftName = "<compare.left>";
+    const std::string rightName = "<compare.right>";
+
+    auto block = std::make_unique<HirBlockExpr>();
+    block->location = expression.location;
+    block->type = TypeRef::MakeBool();
+    block->block.location = expression.location;
+
+    const auto bind = [&](const std::string &name, HirExprPtr &value, const TypeRef &type) {
+        auto binding = std::make_unique<HirLetStmt>();
+        binding->location = expression.location;
+        binding->name = name;
+        binding->type = type;
+        binding->init = std::move(value);
+        block->block.stmts.push_back(std::move(binding));
+    };
+    bind(leftName, left, leftType);
+    bind(rightName, right, rightType);
+
+    const auto reference = [&](const std::string &name, const TypeRef &type) {
+        auto variable = std::make_unique<HirVarExpr>();
+        variable->location = expression.location;
+        variable->name = name;
+        variable->type = type;
+        return HirExprPtr{std::move(variable)};
+    };
+
+    // `>=` reverses the ordering test and leaves the equality test alone.
+    const bool reversed = expression.op == TokenKind::GreaterEqual;
+    HirExprPtr orderReceiver = reference(reversed ? rightName : leftName, reversed ? rightType : leftType);
+    HirExprPtr orderArgument = reference(reversed ? leftName : rightName, reversed ? leftType : rightType);
+    HirExprPtr ordered = LowerOverloadedBinaryCall(expression, orderReceiver, orderArgument, lessThan);
+    ordered->type = TypeRef::MakeBool();
+
+    HirExprPtr equalReceiver = reference(leftName, leftType);
+    HirExprPtr equalArgument = reference(rightName, rightType);
+    HirExprPtr equal = LowerOverloadedBinaryCall(expression, equalReceiver, equalArgument, equals);
+    equal->type = TypeRef::MakeBool();
+
+    auto either = std::make_unique<HirBinaryExpr>();
+    either->location = expression.location;
+    either->op = TokenKind::PipePipe;
+    either->type = TypeRef::MakeBool();
+    either->left = std::move(ordered);
+    either->right = std::move(equal);
+
+    block->value = std::move(either);
+    return block;
 }
 
 HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left, HirExprPtr &right,

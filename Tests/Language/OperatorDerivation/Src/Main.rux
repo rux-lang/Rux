@@ -41,12 +41,39 @@ extend Contrary {
     }
 }
 
+// Orders only within a group: two values in different groups are unordered, so
+// neither `a < b` nor `b < a` holds and they are not equal either. Deriving
+// `<=` as `!(b < a)` would call such a pair "less than or equal"; deriving it
+// as `(a < b) || (a == b)` correctly says neither.
+struct Partial {
+    group: int32;
+    rank: int32;
+}
+
+extend Partial {
+    func ==(self, other: Partial) -> bool {
+        return self.group == other.group && self.rank == other.rank;
+    }
+
+    func <(self, other: Partial) -> bool {
+        return self.group == other.group && self.rank < other.rank;
+    }
+}
+
 func Differs<T>(a: T, b: T) -> bool {
     return a != b;
 }
 
 func Exceeds<T>(a: T, b: T) -> bool {
     return a > b;
+}
+
+func AtMost<T>(a: T, b: T) -> bool {
+    return a <= b;
+}
+
+func AtLeast<T>(a: T, b: T) -> bool {
+    return a >= b;
 }
 
 // Counts how often it is called, so a derived operator can be shown to
@@ -97,6 +124,47 @@ func Main() -> int {
     let ordered = Count(@evaluations, 9) > Count(@evaluations, 1);
     Assert(ordered, "derived > still answers correctly");
     Assert(evaluations == 2, "derived > evaluates each operand exactly once");
+
+    // `<=` and `>=` derive from `<` and `==` together.
+    Assert(five <= eight, "<= is true below");
+    Assert(five <= alsoFive, "<= is true for equal keys");
+    Assert(!(eight <= five), "<= is false above");
+    Assert(eight >= five, ">= is true above");
+    Assert(five >= alsoFive, ">= is true for equal keys");
+    Assert(!(five >= eight), ">= is false below");
+
+    Assert(AtMost<Keyed>(five, alsoFive), "derived <= survives substitution");
+    Assert(!AtMost<Keyed>(eight, five), "derived <= is false after substitution");
+    Assert(AtLeast<Keyed>(five, alsoFive), "derived >= survives substitution");
+    Assert(!AtLeast<Keyed>(five, eight), "derived >= is false after substitution");
+
+    // The derived form is `(a < b) || (a == b)`, not `!(b < a)`. For a pair
+    // that is neither ordered nor equal the two disagree, and only the first
+    // is right.
+    let leftGroup = Partial { group: 1, rank: 5 };
+    let rightGroup = Partial { group: 2, rank: 5 };
+    Assert(!(leftGroup < rightGroup), "unordered values are not less");
+    Assert(!(rightGroup < leftGroup), "unordered values are not greater");
+    Assert(!(leftGroup == rightGroup), "unordered values are not equal");
+    Assert(!(leftGroup <= rightGroup), "<= is false for unordered values");
+    Assert(!(leftGroup >= rightGroup), ">= is false for unordered values");
+
+    // And within one group it still orders normally.
+    let sameGroup = Partial { group: 1, rank: 9 };
+    Assert(leftGroup <= sameGroup, "<= orders within a group");
+    Assert(sameGroup >= leftGroup, ">= orders within a group");
+
+    // Each operand is evaluated once, even though the derivation names it
+    // twice.
+    evaluations = 0;
+    let atMost = Count(@evaluations, 1) <= Count(@evaluations, 2);
+    Assert(atMost, "derived <= still answers correctly");
+    Assert(evaluations == 2, "derived <= evaluates each operand exactly once");
+
+    evaluations = 0;
+    let atLeast = Count(@evaluations, 9) >= Count(@evaluations, 1);
+    Assert(atLeast, "derived >= still answers correctly");
+    Assert(evaluations == 2, "derived >= evaluates each operand exactly once");
 
     // Primitives are untouched by any of this.
     Assert(1 != 2, "primitive != is unchanged");
