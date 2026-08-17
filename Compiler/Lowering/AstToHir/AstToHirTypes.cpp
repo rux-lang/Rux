@@ -902,6 +902,19 @@ std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitution
     return substitutions;
 }
 
+/// Whether the method asked for a copy of its receiver rather than a reference to it. A pointer receiver is passed as
+/// it stands, and a slice receiver is a value the ABI still passes by address, so only a receiver written as a plain
+/// type travels the way an ordinary argument does.
+bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
+    const Param *receiver = method.Receiver();
+    if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        return false;
+    }
+    const TypeRef &declared = ResolvedType(*receiver->type);
+    return declared.kind != TypeRef::Kind::Pointer &&
+           !(declared.kind == TypeRef::Kind::Named && declared.name.starts_with("Slice<"));
+}
+
 TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl &method) {
     const auto substitutions = MethodTypeSubstitutions(receiverType);
     std::vector<TypeRef> params;

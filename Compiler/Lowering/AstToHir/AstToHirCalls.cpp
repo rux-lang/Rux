@@ -212,8 +212,19 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
 
     if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
         HirExprPtr receiver = LowerExpr(*field->object);
+        const bool byValue = ReceiverIsByValue(method);
+        const bool isPointer = receiver->type.kind == TypeRef::Kind::Pointer;
         HirExprPtr self;
-        if (receiver->type.kind == TypeRef::Kind::Pointer) {
+        if (byValue && isPointer) {
+            // A by-value receiver reached through a pointer is the value the pointer names, copied like any argument.
+            auto load = std::make_unique<HirUnaryExpr>();
+            load->location = receiver->location;
+            load->op = TokenKind::Star;
+            load->type = receiver->type.inner.front();
+            load->operand = std::move(receiver);
+            self = std::move(load);
+        }
+        else if (byValue || isPointer) {
             self = std::move(receiver);
         }
         else {

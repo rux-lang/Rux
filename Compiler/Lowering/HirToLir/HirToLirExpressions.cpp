@@ -547,6 +547,13 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
 
 /// Returns the pointer register for an lvalue expression.
 LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
+    // A receiver taken by value is a local like any other, and its slot is where a write through it has to land. This
+    // never came up while every receiver was a pointer, because a write went through the pointer rather than to `self`.
+    if (dynamic_cast<const HirSelfExpr *>(&expr)) {
+        if (const auto it = locals.find("self"); it != locals.end()) {
+            return it->second;
+        }
+    }
     if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
         auto it = locals.find(e->name);
         if (it != locals.end()) {

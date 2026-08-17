@@ -1,0 +1,110 @@
+// The three receiver forms, and the one thing that separates them: what the
+// method may do to the value the call site named. `self: *T` reads it,
+// `self: *var T` rewrites it in place, and `self: T` gets a copy the caller
+// never sees again.
+
+struct Vector {
+    x: float64;
+    y: float64;
+}
+
+extend Vector {
+    func Sum(self: *Vector) -> float64 {
+        return self.x + self.y;
+    }
+
+    func Scale(self: *var Vector, factor: float64) {
+        self.x *= factor;
+        self.y *= factor;
+    }
+
+    // The copy is the method's own, so scaling it leaves the receiver alone. It
+    // takes `var` for the same reason any other parameter does: a copy is not
+    // writable until the declaration says so.
+    func Scaled(var self: Vector, factor: float64) -> Vector {
+        self.Scale(factor);
+        return self;
+    }
+}
+
+// Wider than two registers, so the ABI passes it in memory rather than in a
+// pair: a by-value receiver has to survive that route as well as the short one.
+struct Wide {
+    a: float64;
+    b: float64;
+    c: float64;
+    d: float64;
+    e: float64;
+}
+
+extend Wide {
+    func Total(self: Wide) -> float64 {
+        return self.a + self.b + self.c + self.d + self.e;
+    }
+
+    func Bumped(self: Wide, amount: float64) -> Wide {
+        return Wide { a: self.a + amount, b: self.b, c: self.c, d: self.d, e: self.e };
+    }
+}
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+extend Pair<T> {
+    // A receiver is written with the type being extended, type arguments and
+    // all, and reads its own type parameter through it.
+    func Second(self: *Pair<T>) -> T {
+        return self.second;
+    }
+
+    func Swap(self: *var Pair<T>) {
+        let held = self.first;
+        self.first = self.second;
+        self.second = held;
+    }
+}
+
+func Main() -> int {
+    var vector = Vector { x: 1.0, y: 2.0 };
+    if vector.Sum() != 3.0 {
+        return 1;
+    }
+
+    // A by-value receiver is a copy: what the method does to it stays there.
+    let doubled = vector.Scaled(2.0);
+    if doubled.Sum() != 6.0 || vector.Sum() != 3.0 {
+        return 2;
+    }
+
+    // A writable reference receiver rewrites the value the call site named.
+    vector.Scale(3.0);
+    if vector.Sum() != 9.0 {
+        return 3;
+    }
+
+    // Reached through a pointer, a by-value receiver copies what it points at.
+    let pointer = @vector;
+    if pointer.Scaled(0.5).Sum() != 4.5 || vector.Sum() != 9.0 {
+        return 4;
+    }
+
+    let wide = Wide { a: 1.0, b: 2.0, c: 3.0, d: 4.0, e: 5.0 };
+    if wide.Total() != 15.0 {
+        return 5;
+    }
+    if wide.Bumped(10.0).Total() != 25.0 || wide.Total() != 15.0 {
+        return 6;
+    }
+
+    var pair = Pair<int> { first: 7, second: 11 };
+    if pair.Second() != 11 {
+        return 7;
+    }
+    pair.Swap();
+    if pair.Second() != 7 {
+        return 8;
+    }
+    return 0;
+}
