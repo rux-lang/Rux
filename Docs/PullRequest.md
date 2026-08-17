@@ -5,11 +5,7 @@ What happens to a change from the moment you open a pull request until it merges
 ## Preflight Checklist
 
 - Your branch is based on `dev` and targets `dev` (see [Branch Architecture](Branches.md)).
-- The release build passes locally.
-- `rux test --release` passes from the repository root using only local workspace packages.
-- C++ unit tests pass with `ctest --test-dir Build --output-on-failure -C Release` when the change touches compiler internals.
-- Touched files are `clang-format`-clean.
-- `clang-tidy` passes for every maintained C++ translation unit.
+- `sh Run.sh test --clang-tidy` (PowerShell: `./Run.ps1 test -ClangTidy`) passes locally. One command covers the whole preflight: the source-tree policy guards, the Release build, `clang-format` and `rux fmt` checks, `clang-tidy` over every maintained C++ translation unit, the C++ unit tests through CTest, the workspace check and lint, and every Rux test package resolved from local workspace packages.
 - User-visible behavior has an integration or golden test; internal behavior has focused C++ unit coverage.
 - Documentation and `CHANGELOG.md` are updated when behavior or workflow changes.
 

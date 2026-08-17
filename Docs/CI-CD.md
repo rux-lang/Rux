@@ -8,11 +8,11 @@ The workflow matrices described here build the Rux compiler on native runners. T
 
 Each supported platform has its own workflow under [`.github/workflows/`](../.github/workflows/):
 
-| Workflow      | Platform                                                                             | Runner            | Toolchain install         |
-| ------------- | ------------------------------------------------------------------------------------ | ----------------- | ------------------------- |
-| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64                                                      | QEMU VM on Ubuntu | `pkg llvm22`              |
-| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds               | GitHub-hosted     | `apt.llvm.org` → Clang 22 |
-| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted     | Homebrew `llvm@22`        |
+| Workflow      | Platform                                                                             | Runner            | Toolchain install             |
+| ------------- | ------------------------------------------------------------------------------------ | ----------------- | ----------------------------- |
+| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64                                                      | QEMU VM on Ubuntu | `pkg llvm22`                  |
+| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds               | GitHub-hosted     | `apt.llvm.org` → Clang 22     |
+| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted     | Homebrew `llvm@22`            |
 | `Windows.yml` | Windows 2025 and Windows 11 ARM, plus Windows/macOS AArch64 cross coverage           | GitHub-hosted     | llvm.org installer → Clang 22 |
 
 Their status is shown by the badges at the top of the [README](../README.md).
@@ -20,7 +20,7 @@ Their status is shown by the badges at the top of the [README](../README.md).
 Two repository-policy workflows run alongside the per-OS matrix:
 
 - **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), the oversized-file architecture guard (`Tests/Policy/OversizedFiles/Check.sh`), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
-- **`PullRequestPolicy.yml`** — rejects pull requests targeting `main` and directs contributors to the `dev` integration branch.
+- **`BranchPolicy.yml`** — rejects pull requests targeting `main` and directs contributors to the `dev` integration branch.
 
 ### The External-Toolchain Guard
 
@@ -31,11 +31,11 @@ Two repository-policy workflows run alongside the per-OS matrix:
 
 No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
 
-The guard runs as its own job in `CodeQuality.yml` and as the first step of `Test.sh` and `Test.ps1`, beside the platform-isolation check.
+The guard runs as its own job in `CodeQuality.yml` and as the first step of `sh Run.sh test` and `./Run.ps1 test`, beside the platform-isolation check. The FreeBSD build job runs the same complete guard set through `sh Run.sh policy` before configuring, so the one VM that has no dedicated policy job still enforces every source-tree invariant.
 
 ### The Oversized-File Architecture Guard
 
-`Tests/Policy/OversizedFiles/Check.sh` counts C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` in bytewise path order. Files above 1,200 physical lines fail with their path and measured line count unless that exact path has a reviewed exception in the script. The same check runs through `sh` from both `Test.sh` and `Test.ps1`, so POSIX and Windows workflows use one implementation and produce the same ordering and counts.
+`Tests/Policy/OversizedFiles/Check.sh` counts C and C++ translation units, headers, and include fragments under `Compiler/` and `Tests/Unit/` in bytewise path order. Files above 1,200 physical lines fail with their path and measured line count unless that exact path has a reviewed exception in the script. The same check runs through `sh` from both `Run.sh` and `Run.ps1`, so POSIX and Windows workflows use one implementation and produce the same ordering and counts.
 
 An exception records a reason and a ceiling equal to the reviewed size. It is not a wildcard exclusion: further growth fails, another file in the same directory is checked normally, and an exception becomes an error once its file is reduced to the ordinary limit so the stale entry is removed. This lets cohesive module owners and test fixtures keep a useful boundary, preserves the locality of dense instruction vectors, and leaves vendored single-file sources intact without turning those categories into blanket exemptions. `Tests/Policy/OversizedFiles/Test.sh` verifies those pass and failure modes in a temporary fixture, and the `oversized-files` job runs the contract tests before checking the repository.
 
@@ -148,9 +148,9 @@ To reproduce the Linux cross job, build and check the target without launching i
 ./Bin/rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
 ```
 
-On an AArch64 Linux machine, `sh Test.sh --target linux-aarch64` adds the policy checks, format pass, C++ unit tests, and directly executed Rux target tests. A physical x86-64 machine refuses that target test run before compiling the suite.
+On an AArch64 Linux machine, `sh Run.sh test --target linux-aarch64` adds the policy checks, format pass, C++ unit tests, and directly executed Rux target tests. A physical x86-64 machine refuses that target test run before compiling the suite.
 
-On native FreeBSD AArch64, reproduce the ordinary and focused runtime paths with `sh Test.sh` followed by `sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux`. The transferred producer and consumer commands are documented in the [FreeBSD platform guide](Platforms/FreeBSD.md#cross-compiling); the consumer must run on a separate native AArch64 FreeBSD machine.
+On native FreeBSD AArch64, reproduce the ordinary and focused runtime paths with `sh Run.sh test` followed by `sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux`. The transferred producer and consumer commands are documented in the [FreeBSD platform guide](Platforms/FreeBSD.md#cross-compiling); the consumer must run on a separate native AArch64 FreeBSD machine.
 
 The Windows required check is the same flow, prefixed by the developer-environment step CI uses. From PowerShell at the repository root:
 
@@ -192,10 +192,7 @@ sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
 sh Tests/Native/MacOSAArch64/VerifyRosetta.sh /path/to/x86_64/rux
 ```
 
-The Rosetta script requires a thin x86-64 compiler, but every emitted ARM64 image
-is launched directly. On Linux or Windows, run
-`Tests/Native/MacOSAArch64/VerifyCross.ps1` instead; it builds and inspects the
-signed images but deliberately never executes them.
+The Rosetta script requires a thin x86-64 compiler, but every emitted ARM64 image is launched directly. On Linux or Windows, run `Tests/Native/MacOSAArch64/VerifyCross.ps1` instead; it builds and inspects the signed images but deliberately never executes them.
 
 ## Infrastructure Notes
 

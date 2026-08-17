@@ -61,10 +61,7 @@ jobs:
             pkg install -y llvm22 cmake-core ninja
           run: |
             set -e
-            sh Tests/Policy/PlatformIsolation/Check.sh
-            sh Tests/Policy/NoExternalToolchain/Check.sh
-            sh Tests/Policy/OversizedFiles/Test.sh
-            sh Tests/Policy/OversizedFiles/Check.sh
+            sh Run.sh policy
             cmake --version
             cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
@@ -72,7 +69,7 @@ jobs:
               -DRUX_WERROR=ON \
               -DRUX_BUILD_TESTS=ON
             cmake --build Build --config Release --parallel
-            sh Format.sh --check --rux-executable ./Bin/rux
+            sh Run.sh format --check --rux-executable ./Bin/rux
             ctest --test-dir Build --output-on-failure -C Release
 
       - name: Upload binary artifact

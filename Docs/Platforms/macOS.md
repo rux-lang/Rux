@@ -19,12 +19,12 @@ Clone and build Rux with Homebrew's Clang:
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh Build.sh --compiler "$(brew --prefix llvm@22)/bin/clang++"
+sh Run.sh build --compiler "$(brew --prefix llvm@22)/bin/clang++"
 ```
 
 The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
-For a Debug build, add `--configuration Debug`. Run `sh Build.sh --help` to see every option.
+For a Debug build, add `--configuration Debug`. Run `sh Run.sh` to see every command and option.
 
 On Apple Silicon, Rux selects the `macos-aarch64` target by default. The AArch64 back end reaches `linux-aarch64` through ELF and `windows-aarch64` through PE/COFF, and `macos-aarch64` through Mach-O. Its Mach-O paths write ARM64 object members, deterministic BSD static archives, signed executable images with or without C function imports, and signed shared libraries. All three artifact kinds are available through `rux build --target macos-aarch64` on every supported compiler host. `rux check --target macos-aarch64` selects the Apple target conditions and ARM64 ABI without producing or executing an artifact. Generated images declare macOS 26 as their initial deployment and SDK baseline; supporting older deployment targets is a separate feature.
 
@@ -72,16 +72,16 @@ On Apple Silicon, `file` should report a `Mach-O 64-bit executable arm64`. Progr
 Run the complete repository verification workflow with the same Homebrew compiler:
 
 ```sh
-sh Test.sh --compiler "$(brew --prefix llvm@22)/bin/clang++"
+sh Run.sh test --compiler "$(brew --prefix llvm@22)/bin/clang++"
 ```
 
 Static analysis is intentionally opt-in because it is slower:
 
 ```sh
-sh Test.sh --compiler "$(brew --prefix llvm@22)/bin/clang++" --clang-tidy
+sh Run.sh test --compiler "$(brew --prefix llvm@22)/bin/clang++" --clang-tidy
 ```
 
-Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --check` to check them without making changes.
+Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.
 
 ### Apple Silicon runtime acceptance
 
