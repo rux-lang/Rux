@@ -1,0 +1,103 @@
+import Core::Assert;
+
+// A fixed array reserves one element's worth of stack per element. The size of
+// a struct element is only known to the layout map, and the frame planner used
+// to fall back to eight bytes for it, so an array of wider structs reserved
+// less stack than it occupied and its later elements overwrote the frame --
+// including the saved frame pointer and the return address. The fallback was
+// only reached once the function had more than one basic block, which is why a
+// branch appears in several cases below.
+
+struct Pair {
+    a: int64;
+    b: int64;
+}
+
+struct Triple {
+    a: int64;
+    b: int64;
+    c: int64;
+}
+
+struct Mixed {
+    tag: int32;
+    value: int64;
+}
+
+func Sum(values: Pair[4]) -> int64 {
+    var total: int64 = 0i64;
+    var i: uint = 0;
+    while i < 4 {
+        total = total + values[i].a + values[i].b;
+        i++;
+    }
+    return total;
+}
+
+func Main() -> int {
+    // Sixteen bytes per element, initialized, with a branch in the function.
+    var pairs: Pair[3] = [Pair { a: 1i64, b: 2i64 },
+                          Pair { a: 3i64, b: 4i64 },
+                          Pair { a: 5i64, b: 6i64 }];
+    var guard = 0;
+    while guard < 1 {
+        guard++;
+    }
+    Assert(guard == 1, "the loop that forces a second basic block ran once");
+
+    Assert(pairs[0].a == 1i64, "first element survives initialization");
+    Assert(pairs[1].b == 4i64, "middle element survives initialization");
+    Assert(pairs[2].a == 5i64, "last element survives initialization");
+    Assert(pairs[2].b == 6i64, "last field of the last element survives");
+
+    // Elements are laid out end to end, with no overlap.
+    Assert(@pairs[1] != @pairs[0], "elements occupy distinct storage");
+    pairs[1].a = 30i64;
+    Assert(pairs[0].a == 1i64, "writing one element spares the one before it");
+    Assert(pairs[2].a == 5i64, "writing one element spares the one after it");
+
+    // Twenty-four bytes per element, which is not a power of two.
+    var triples: Triple[3] = [Triple { a: 1i64, b: 2i64, c: 3i64 },
+                              Triple { a: 4i64, b: 5i64, c: 6i64 },
+                              Triple { a: 7i64, b: 8i64, c: 9i64 }];
+    Assert(triples[0].a == 1i64, "first wide element survives");
+    Assert(triples[2].c == 9i64, "last field of the last wide element survives");
+    triples[2].a = 70i64;
+    Assert(triples[1].c == 6i64, "writing a wide element spares its neighbour");
+
+    // A struct whose fields need padding.
+    var mixed: Mixed[3] = [Mixed { tag: 1, value: 10i64 },
+                           Mixed { tag: 2, value: 20i64 },
+                           Mixed { tag: 3, value: 30i64 }];
+    Assert(mixed[0].tag == 1, "padded element keeps its first field");
+    Assert(mixed[2].value == 30i64, "padded element keeps its last field");
+
+    // Writing every element of a larger array through a loop, then reading it
+    // back, which walks the whole reserved region.
+    var many: Pair[8];
+    var i: uint = 0;
+    while i < 8 {
+        many[i].a = (i as int64);
+        many[i].b = (i as int64) * 10i64;
+        i++;
+    }
+    var total: int64 = 0i64;
+    i = 0;
+    while i < 8 {
+        total = total + many[i].a + many[i].b;
+        i++;
+    }
+    Assert(total == 308i64, "every element of a larger array round-trips");
+    Assert(many[7].b == 70i64, "the last element of a larger array is intact");
+
+    // Passing an array by value, which copies the whole reserved region.
+    var four: Pair[4] = [Pair { a: 1i64, b: 1i64 },
+                         Pair { a: 2i64, b: 2i64 },
+                         Pair { a: 3i64, b: 3i64 },
+                         Pair { a: 4i64, b: 4i64 }];
+    Assert(Sum(four) == 20i64, "an array of structs survives being passed");
+
+    // The frame is still intact: reaching a normal return proves the saved
+    // frame pointer and return address were never overwritten.
+    return 0;
+}
