@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "AlgorithmsComparator"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Algorithms: Comparator"
+
+[Dependencies]
+Algorithms = { Path = "../../../../Packages/Algorithms" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Algorithms"

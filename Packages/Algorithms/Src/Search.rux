@@ -112,3 +112,89 @@ func EqualRange<T>(data: *T, length: uint, value: T) -> Range<uint> {
     let end = UpperBound<T>(data, length, value);
     return Range<uint> { start: start, end: end };
 }
+
+// Each search above also takes an explicit ordering, for a sequence ordered by
+// something other than its element type's own `<`. The comparator answers
+// "does a come strictly before b", the same question `<` answers, and must be
+// the strict weak ordering the sequence is actually sorted by. Equivalence is
+// still derived from it alone, so a comparator is enough on its own: the
+// element type need not define any operator.
+//
+// A comparator is a plain function value and carries no captured state, since
+// Rux has no closures.
+func IsSortedBy<T>(data: *T, length: uint, less: func(T, T) -> bool) -> bool {
+    var i: uint = 1;
+    while i < length {
+        if less(data[i], data[i - 1]) {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+func IsSortedUntilBy<T>(data: *T, length: uint, less: func(T, T) -> bool) -> uint {
+    var i: uint = 1;
+    while i < length {
+        if less(data[i], data[i - 1]) {
+            return i;
+        }
+        i++;
+    }
+    return length;
+}
+
+func LowerBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> uint {
+    var low: uint = 0;
+    var high = length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if less(data[middle], value) {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+func UpperBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> uint {
+    var low: uint = 0;
+    var high = length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if less(value, data[middle]) {
+            high = middle;
+        }
+        else {
+            low = middle + 1;
+        }
+    }
+    return low;
+}
+
+// The comparator goes with the other inputs; the out-parameter stays last, as
+// it does everywhere else in the package.
+func TryBinarySearchBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    let position = LowerBoundBy<T>(data, length, value, less);
+    if position >= length {
+        return false;
+    }
+    if less(value, data[position]) {
+        return false;
+    }
+
+    *index = position;
+    return true;
+}
+
+func EqualRangeBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> Range<uint> {
+    let start = LowerBoundBy<T>(data, length, value, less);
+    let end = UpperBoundBy<T>(data, length, value, less);
+    return Range<uint> { start: start, end: end };
+}

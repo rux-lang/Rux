@@ -1,0 +1,252 @@
+import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
+import Algorithms::{ IsSortedBy, IsSortedUntilBy, LowerBoundBy, UpperBoundBy, TryBinarySearchBy, EqualRangeBy };
+import Algorithms::{ TryMinIndexBy, TryMaxIndexBy, TryMinMaxIndexBy, ClampBy };
+import Algorithms::{ Equal, Copy, Reverse };
+
+// Declares no operators at all. Every ordering below has to come from the
+// comparator, which is the point: a comparator is enough on its own.
+struct Task {
+    priority: int32;
+    id: int32;
+}
+
+func LessInt32(a: int32, b: int32) -> bool {
+    return a < b;
+}
+
+func GreaterInt32(a: int32, b: int32) -> bool {
+    return b < a;
+}
+
+func ByPriority(a: Task, b: Task) -> bool {
+    return a.priority < b.priority;
+}
+
+func ById(a: Task, b: Task) -> bool {
+    return a.id < b.id;
+}
+
+// A deliberately naive reference, structurally unlike introsort.
+func ReferenceSort(data: *var int32, length: uint, less: func(int32, int32) -> bool) {
+    var i: uint = 0;
+    while i < length {
+        var best = i;
+        var j = i + 1;
+        while j < length {
+            if less(data[j], data[best]) {
+                best = j;
+            }
+            j++;
+        }
+        let temp = data[i];
+        data[i] = data[best];
+        data[best] = temp;
+        i++;
+    }
+}
+
+func NextRandom(state: *var uint64) -> uint64 {
+    var x = *state;
+    x = x ^ (x >> 12u64);
+    x = x ^ (x << 25u64);
+    x = x ^ (x >> 27u64);
+    *state = x;
+    return x * 2685821657736338717u64;
+}
+
+// Sorts one copy with the comparator overload and another with the reference,
+// and requires them identical: ordering and multiset preservation at once.
+func CheckSort(source: *int32, length: uint) -> int {
+    var actual: int32[260];
+    var expected: int32[260];
+
+    Copy<int32>(@actual[0], source, length);
+    Copy<int32>(@expected[0], source, length);
+
+    SortBy<int32>(@actual[0], length, LessInt32);
+    ReferenceSort(@expected[0], length, LessInt32);
+
+    if !IsSortedBy<int32>(@actual[0], length, LessInt32) {
+        return 1;
+    }
+    if !Equal<int32>(@actual[0], length, @expected[0], length) {
+        return 2;
+    }
+
+    // The reversed comparator gives exactly the reverse ordering.
+    var descending: int32[260];
+    Copy<int32>(@descending[0], source, length);
+    SortBy<int32>(@descending[0], length, GreaterInt32);
+    Reverse<int32>(@descending[0], length);
+    if !Equal<int32>(@descending[0], length, @expected[0], length) {
+        return 3;
+    }
+    return 0;
+}
+
+func Main() -> int {
+    var state: uint64 = 88172645463325252u64;
+    var buffer: int32[260];
+    var index: uint = 0;
+    var other: uint = 0;
+
+    // Shapes and sizes across the insertion-sort threshold, sorted by an
+    // explicit comparator rather than by `<`.
+    let sizes: uint[7] = [0, 1, 2, 3, 16, 17, 200];
+    var caseId: int = 0;
+    for n in sizes {
+        var i: uint = 0;
+        while i < n {
+            buffer[i] = (NextRandom(@state) % 60u64) as int32;
+            i++;
+        }
+        let kind = CheckSort(@buffer[0], n);
+        if kind != 0 {
+            return 10 + caseId * 4 + kind;
+        }
+        caseId++;
+    }
+
+    // Already sorted, reversed and all-equal, through the comparator path.
+    var ordered: int32[32];
+    var i: uint = 0;
+    while i < 32 {
+        ordered[i] = i as int32;
+        i++;
+    }
+    if CheckSort(@ordered[0], 32) != 0 { return 50; }
+    Reverse<int32>(@ordered[0], 32);
+    if CheckSort(@ordered[0], 32) != 0 { return 51; }
+    i = 0;
+    while i < 32 {
+        ordered[i] = 7;
+        i++;
+    }
+    if CheckSort(@ordered[0], 32) != 0 { return 52; }
+
+    // A type with no operators at all, ordered two different ways.
+    let five: uint = 5;
+    let six: uint = 6;
+    var tasks: Task[5] = [Task { priority: 3, id: 40 },
+                          Task { priority: 1, id: 50 },
+                          Task { priority: 3, id: 10 },
+                          Task { priority: 2, id: 30 },
+                          Task { priority: 1, id: 20 }];
+
+    SortBy<Task>(@tasks[0], five, ByPriority);
+    if !IsSortedBy<Task>(@tasks[0], five, ByPriority) { return 60; }
+    if tasks[0].priority != 1 || tasks[4].priority != 3 { return 61; }
+
+    SortBy<Task>(@tasks[0], five, ById);
+    if !IsSortedBy<Task>(@tasks[0], five, ById) { return 62; }
+    if tasks[0].id != 10 || tasks[4].id != 50 { return 63; }
+    // Ordering by id leaves priorities unsorted, so the two orders are really
+    // different rather than coincidentally equal.
+    if IsSortedBy<Task>(@tasks[0], five, ByPriority) { return 64; }
+
+    SortDescendingBy<Task>(@tasks[0], five, ById);
+    if tasks[0].id != 50 || tasks[4].id != 10 { return 65; }
+
+    // IsSortedUntil reports the first break under the comparator.
+    var broken: int32[4] = [1, 2, 0, 3];
+    if IsSortedUntilBy<int32>(@broken[0], 4, LessInt32) != 2 { return 70; }
+    if IsSortedUntilBy<int32>(@broken[0], 0, LessInt32) != 0 { return 71; }
+    if IsSortedUntilBy<int32>(@broken[0], 1, LessInt32) != 1 { return 72; }
+
+    // The bounded searches, against a sequence sorted by the comparator.
+    var values: int32[6] = [10, 20, 20, 20, 40, 50];
+    if LowerBoundBy<int32>(@values[0], six, 20, LessInt32) != 1 { return 80; }
+    if UpperBoundBy<int32>(@values[0], six, 20, LessInt32) != 4 { return 81; }
+    if LowerBoundBy<int32>(@values[0], six, 5, LessInt32) != 0 { return 82; }
+    if UpperBoundBy<int32>(@values[0], six, 60, LessInt32) != 6 { return 83; }
+
+    let span = EqualRangeBy<int32>(@values[0], six, 20, LessInt32);
+    if span.start != 1 || span.end != 4 { return 84; }
+    let absent = EqualRangeBy<int32>(@values[0], six, 30, LessInt32);
+    if absent.start != 4 || absent.end != 4 { return 85; }
+
+    if !TryBinarySearchBy<int32>(@values[0], six, 20, LessInt32, @index) { return 86; }
+    if index != 1 { return 87; }
+    if TryBinarySearchBy<int32>(@values[0], six, 30, LessInt32, @index) { return 88; }
+    if TryBinarySearchBy<int32>(@values[0], six, 20, LessInt32, null) { return 89; }
+
+    // Searching a Task sequence ordered by the same comparator that sorted it.
+    var byPriority: Task[5] = [Task { priority: 1, id: 1 },
+                               Task { priority: 2, id: 2 },
+                               Task { priority: 2, id: 3 },
+                               Task { priority: 4, id: 4 },
+                               Task { priority: 5, id: 5 }];
+    let probe = Task { priority: 2, id: 99 };
+    if LowerBoundBy<Task>(@byPriority[0], five, probe, ByPriority) != 1 { return 90; }
+    if UpperBoundBy<Task>(@byPriority[0], five, probe, ByPriority) != 3 { return 91; }
+    if !TryBinarySearchBy<Task>(@byPriority[0], five, probe, ByPriority, @index) { return 92; }
+    if index != 1 { return 93; }
+
+    // Extremes under a comparator, still reporting the first of equals.
+    var extremes: int32[6] = [3, 1, 9, 1, 9, 4];
+    if !TryMinMaxIndexBy<int32>(@extremes[0], 6, LessInt32, @index, @other) { return 100; }
+    if index != 1 || other != 2 { return 101; }
+    if !TryMinIndexBy<int32>(@extremes[0], 6, LessInt32, @index) { return 102; }
+    if index != 1 { return 103; }
+    if !TryMaxIndexBy<int32>(@extremes[0], 6, LessInt32, @index) { return 104; }
+    if index != 2 { return 105; }
+
+    // A reversed comparator swaps which end is which.
+    if !TryMinMaxIndexBy<int32>(@extremes[0], 6, GreaterInt32, @index, @other) { return 106; }
+    if index != 2 || other != 1 { return 107; }
+
+    // Empty and null cases behave as they do without a comparator.
+    if TryMinIndexBy<int32>(@extremes[0], 0, LessInt32, @index) { return 108; }
+    if TryMinIndexBy<int32>(@extremes[0], 6, LessInt32, null) { return 109; }
+    if TryMinMaxIndexBy<int32>(@extremes[0], 6, LessInt32, null, @other) { return 110; }
+
+    // Extremes over a type with no operators.
+    if !TryMinIndexBy<Task>(@byPriority[0], five, ByPriority, @index) { return 111; }
+    if index != 0 { return 112; }
+
+    // Clamp under a comparator.
+    if ClampBy<int32>(5, 1, 10, LessInt32) != 5 { return 120; }
+    if ClampBy<int32>(0, 1, 10, LessInt32) != 1 { return 121; }
+    if ClampBy<int32>(99, 1, 10, LessInt32) != 10 { return 122; }
+    let low = Task { priority: 2, id: 0 };
+    let high = Task { priority: 8, id: 0 };
+    let inside = Task { priority: 5, id: 77 };
+    if ClampBy<Task>(inside, low, high, ByPriority).id != 77 { return 123; }
+
+    // Selection under a comparator, checked against a fully sorted copy.
+    var selection: int32[40];
+    i = 0;
+    while i < 40 {
+        selection[i] = (NextRandom(@state) % 30u64) as int32;
+        i++;
+    }
+    var sorted: int32[40];
+    Copy<int32>(@sorted[0], @selection[0], 40);
+    ReferenceSort(@sorted[0], 40, LessInt32);
+
+    var nth: int32[40];
+    Copy<int32>(@nth[0], @selection[0], 40);
+    if !NthElementBy<int32>(@nth[0], 40, 17, LessInt32) { return 130; }
+    if nth[17] != sorted[17] { return 131; }
+    i = 0;
+    while i < 17 {
+        if LessInt32(nth[17], nth[i]) { return 132; }
+        i++;
+    }
+    i = 18;
+    while i < 40 {
+        if LessInt32(nth[i], nth[17]) { return 133; }
+        i++;
+    }
+    if NthElementBy<int32>(@nth[0], 40, 40, LessInt32) { return 134; }
+
+    var partial: int32[40];
+    Copy<int32>(@partial[0], @selection[0], 40);
+    if !PartialSortBy<int32>(@partial[0], 40, 8, LessInt32) { return 140; }
+    if !IsSortedBy<int32>(@partial[0], 8, LessInt32) { return 141; }
+    if !Equal<int32>(@partial[0], 8, @sorted[0], 8) { return 142; }
+    if PartialSortBy<int32>(@partial[0], 40, 41, LessInt32) { return 143; }
+    if !PartialSortBy<int32>(@partial[0], 40, 0, LessInt32) { return 144; }
+
+    return 0;
+}

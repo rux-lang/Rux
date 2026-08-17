@@ -52,8 +52,7 @@ let kept = Unique<int32>(view.data, view.length);
 numbers.Free();
 ```
 
-A [`Rux/Core`](../Core) `MutableSlice` works the same way, and a plain fixed
-array needs no view at all:
+A [`Rux/Core`](../Core) `MutableSlice` works the same way, and a plain fixed array needs no view at all:
 
 ```rux
 import Algorithms::Rotate;
@@ -85,9 +84,7 @@ Rotate<int32>(view.data, view.length, 2);
 
 ### Predicates — requiring nothing of `T`
 
-A predicate is an ordinary function value of type `func(T) -> bool`. Rux has no
-closures, so it carries no captured state: anything the test needs beyond the
-element has to be reachable from the function itself.
+A predicate is an ordinary function value of type `func(T) -> bool`. Rux has no closures, so it carries no captured state: anything the test needs beyond the element has to be reachable from the function itself.
 
 | Function         | Mutates | Returns                                         | Complexity |
 | ---------------- | ------- | ----------------------------------------------- | ---------- |
@@ -103,16 +100,11 @@ element has to be reachable from the function itself.
 | `Transform`      | yes     | `false` on a null with length                   | O(n)       |
 | `Fold`           | no      | the accumulator                                 | O(n)       |
 
-An empty sequence satisfies `All` vacuously and `Any` never, so `All` and
-`None` are both true only when there is nothing to test.
+An empty sequence satisfies `All` vacuously and `Any` never, so `All` and `None` are both true only when there is nothing to test.
 
-`Partition` does **not** preserve order within either group: it swaps ends
-inward for one pass and no memory. `RemoveIf` does preserve it. A stable
-partition would need an auxiliary buffer or a rotation per element and is not
-offered.
+`Partition` does **not** preserve order within either group: it swaps ends inward for one pass and no memory. `RemoveIf` does preserve it. A stable partition would need an auxiliary buffer or a rotation per element and is not offered.
 
-`Transform` and `Fold` let the result type differ from the element type, so
-`Fold` both sums a sequence and builds something else entirely out of one:
+`Transform` and `Fold` let the result type differ from the element type, so `Fold` both sums a sequence and builds something else entirely out of one:
 
 ```rux
 import Algorithms::{ CountIf, Fold, Partition };
@@ -125,6 +117,34 @@ let evens = CountIf<int32>(@values[0], 5, IsEven);
 let sum = Fold<int32, int32>(@values[0], 5, 0, Add);
 let boundary = Partition<int32>(@values[0], 5, IsEven);
 ```
+
+### Comparators — ordering by something other than `<`
+
+Every ordering function has a `*By` counterpart taking an explicit comparator: `SortBy`, `SortDescendingBy`, `NthElementBy`, `PartialSortBy`, `IsSortedBy`, `IsSortedUntilBy`, `LowerBoundBy`, `UpperBoundBy`, `TryBinarySearchBy`, `EqualRangeBy`, `TryMinIndexBy`, `TryMaxIndexBy`, `TryMinMaxIndexBy` and `ClampBy`.
+
+The comparator answers "does `a` come strictly before `b`" — the same question `<` answers — and must be a strict weak ordering. Equivalence is derived from it alone, so **a comparator is enough on its own**: the element type need not define any operator at all.
+
+```rux
+import Algorithms::{ SortBy, LowerBoundBy };
+
+struct Task {
+    priority: int32;
+    id: int32;
+}
+
+func ByPriority(a: Task, b: Task) -> bool { return a.priority < b.priority; }
+func ById(a: Task, b: Task) -> bool { return a.id < b.id; }
+
+var tasks: Task[3] = [Task { priority: 3, id: 40 },
+                      Task { priority: 1, id: 50 },
+                      Task { priority: 2, id: 30 }];
+let count: uint = 3;
+
+SortBy<Task>(@tasks[0], count, ByPriority);
+SortBy<Task>(@tasks[0], count, ById);
+```
+
+They are separate names rather than overloads of the operator forms. Rux resolves an untyped integer literal against a single candidate but not against an overload set, so adding an overload would have made `Sort<int32>(data, 8)` stop compiling for everyone already calling it.
 
 ### `Find` — linear queries, requiring `==`
 
@@ -212,8 +232,8 @@ The planned ordering and search modules will require `func <` in the same way. A
 - **No allocation.** Every function is O(1) auxiliary space and the package depends only on `Rux/Core`.
 - **Unchecked indexing**, matching `Slice`, `Array` and `List`: a length larger than the storage is undefined behavior, not a reported error.
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `List` view is invalidated by any growth.
-- **No closures.** A predicate is a plain function value carrying no captured state; anything it needs beyond the element must be reachable from the function itself.
-- **The ordering functions have no comparator overload yet.** `Sort`, `LowerBound` and the rest order by the `<` operator, so an alternative order needs the wrapper-struct pattern above. The predicate-taking functions are already available.
+- **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
+- **No stable sort.** Every sort here is unstable. A stable sort needs an auxiliary buffer, which would end the package's zero-allocation property.
 - `Algorithms::Copy` and [`Memory::Copy`](../Memory) share a name. Importing both is fine — they take different parameter types and overload — but the Algorithms one is element-wise and correct for any `T`, while the Memory one is a byte copy.
 
 ## License

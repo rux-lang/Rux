@@ -84,6 +84,78 @@ func TryMinMaxIndex<T>(data: *T, length: uint, minIndex: *var uint, maxIndex: *v
     return true;
 }
 
+// Each search above also takes an explicit ordering, for a sequence ordered by
+// something other than its element type's own `<`. The comparator answers the
+// same question `<` does, and reporting the first extreme is unchanged, so
+// these agree with the operator forms whenever the comparator agrees with `<`.
+func TryMinIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, index: *var uint) -> bool {
+    if index == null || length == 0 {
+        return false;
+    }
+
+    var best: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        if less(data[i], data[best]) {
+            best = i;
+        }
+        i++;
+    }
+    *index = best;
+    return true;
+}
+
+func TryMaxIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, index: *var uint) -> bool {
+    if index == null || length == 0 {
+        return false;
+    }
+
+    var best: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        if less(data[best], data[i]) {
+            best = i;
+        }
+        i++;
+    }
+    *index = best;
+    return true;
+}
+
+func TryMinMaxIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, minIndex: *var uint,
+                       maxIndex: *var uint) -> bool {
+    if minIndex == null || maxIndex == null || length == 0 {
+        return false;
+    }
+
+    var smallest: uint = 0;
+    var largest: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        if less(data[i], data[smallest]) {
+            smallest = i;
+        }
+        if less(data[largest], data[i]) {
+            largest = i;
+        }
+        i++;
+    }
+
+    *minIndex = smallest;
+    *maxIndex = largest;
+    return true;
+}
+
+func ClampBy<T>(value: T, low: T, high: T, less: func(T, T) -> bool) -> T {
+    if less(value, low) {
+        return low;
+    }
+    if less(high, value) {
+        return high;
+    }
+    return value;
+}
+
 // Restricts value to the range low..=high. The caller is responsible for
 // passing a range that is the right way round; a reversed one yields high,
 // which is not checked.
