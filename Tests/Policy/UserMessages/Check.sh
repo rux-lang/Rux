@@ -89,7 +89,7 @@ scan_bad_routes_and_severity() {
             --include='*.cpp' --include='*.h' --include='*.rux' --include='*.ps1' --include='*.sh' 2>/dev/null |
             while IFS= read -r file; do scan_one_message_file "$file"; done
     done
-    for script in Build.sh Format.sh Test.sh Build.ps1 Format.ps1 Test.ps1; do
+    for script in Run.sh Run.ps1; do
         [ -f "$repository_root/$script" ] && scan_one_message_file "$repository_root/$script"
     done
 }

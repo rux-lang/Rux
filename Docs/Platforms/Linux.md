@@ -38,10 +38,10 @@ Clone and build Rux:
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh Build.sh
+sh Run.sh build
 ```
 
-The LLVM installer names the compiler `clang++-22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+The LLVM installer names the compiler `clang++-22`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
 On AArch64, Rux selects the `linux-aarch64` target automatically and compiles it the same way it compiles `linux-x86_64`: instructions are encoded in-process, written into an RCU object, and linked by Rux's own ELF writer. No assembler, C compiler, or external linker is involved on either architecture, so nothing beyond the tools listed above needs to be installed to build Rux programs.
 
@@ -51,7 +51,7 @@ An `Executable` package writes `Name`, a `SharedLibrary` writes `libName.so` wit
 
 Both backends write ELF objects and images directly, from a host of either architecture: executables, shared libraries with their relocation and PLT tables, and relocatable objects gathered by the common deterministic archive layer into a static library.
 
-For a Debug build, run `sh Build.sh --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Build.sh --help` to see every option.
+For a Debug build, run `sh Run.sh build --configuration Debug`. On other Linux distributions, install equivalent tool versions through the distribution's package manager and pass `--compiler PATH` when Clang is not detected automatically. Run `sh Run.sh` to see every command and option.
 
 ## Cross-Compiling and Testing
 
@@ -98,13 +98,13 @@ Run the compiler:
 Run the complete repository verification workflow:
 
 ```sh
-sh Test.sh
+sh Run.sh test
 ```
 
 Static analysis is intentionally opt-in because it is slower and requires `clang-tidy` from the same LLVM release:
 
 ```sh
-sh Test.sh --clang-tidy
+sh Run.sh test --clang-tidy
 ```
 
-Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --check` to check them without making changes.
+Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.

@@ -65,10 +65,10 @@ Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or n
    ```powershell
    git clone https://github.com/rux-lang/Rux.git
    Set-Location Rux
-   .\Build.ps1
+   .\Run.ps1 build
    ```
 
-The script creates a Release build in `Build\` and writes the compiler to `Bin\rux.exe`.
+The command creates a Release build in `Build\` and writes the compiler to `Bin\rux.exe`.
 
 Once the repository is cloned, later sessions can replace the snippet in step 4 with the script CI uses, which performs the same initialization for the requested toolset:
 
@@ -76,7 +76,7 @@ Once the repository is cloned, later sessions can replace the snippet in step 4 
 ./.github/scripts/Enter-VsDevEnv.ps1 -Arch amd64   # arm64 on an AArch64 host
 ```
 
-`Build.ps1` selects `windows-x86_64` or `windows-aarch64` from the native host architecture. Both compilers can emit Windows x86-64 and Classic Windows AArch64 programs. The AArch64 backend and PE/COFF writer produce executables, DLLs with import libraries, and static libraries in-process; no external assembler, compiler, linker, or archiver is invoked.
+`Run.ps1 build` selects `windows-x86_64` or `windows-aarch64` from the native host architecture. Both compilers can emit Windows x86-64 and Classic Windows AArch64 programs. The AArch64 backend and PE/COFF writer produce executables, DLLs with import libraries, and static libraries in-process; no external assembler, compiler, linker, or archiver is invoked.
 
 ## Cross-Compiling for Windows AArch64
 
@@ -102,7 +102,7 @@ An `Executable` package writes `Name.exe`, a `SharedLibrary` writes `Name.dll` p
 
 The x86-64 and AArch64 backends write PE/COFF objects and libraries directly, without an external toolchain. Executables prefer image base `0x140000000` and DLLs `0x180000000`, and every 64-bit absolute fixup is listed as an `IMAGE_REL_BASED_DIR64` entry in the `.reloc` table, so both PE architectures are relocatable and opt into ASLR with high-entropy addresses. That table is what lets AArch64 images launch at all: Windows on ARM64 refuses an executable or DLL it cannot relocate. ARM64 unwind metadata (`.pdata` / `.xdata`) and broader PE hardening remain follow-up work.
 
-For a Debug build, run `.\Build.ps1 -Configuration Debug`. Run `Get-Help .\Build.ps1 -Full` to see every option.
+For a Debug build, run `.\Run.ps1 build -Configuration Debug`. Run `.\Run.ps1` for the command and option summary, or `Get-Help .\Run.ps1 -Full` for the complete reference.
 
 ## Verifying the Build
 
@@ -115,16 +115,16 @@ Run the compiler:
 Run the complete repository verification workflow:
 
 ```powershell
-.\Test.ps1
+.\Run.ps1 test
 ```
 
 Static analysis is intentionally opt-in because it is slower and requires PowerShell 7 or newer:
 
 ```powershell
-.\Test.ps1 -ClangTidy
+.\Run.ps1 test -ClangTidy
 ```
 
-Use `.\Format.ps1` to format maintained C++ and Rux sources, or `.\Format.ps1 -Check` to check them without making changes.
+Use `.\Run.ps1 format` to format maintained C++ and Rux sources, or `.\Run.ps1 format -Check` to check them without making changes. Individual workflow steps are also available on their own as `.\Run.ps1 policy`, `.\Run.ps1 tidy`, and `.\Run.ps1 unit`.
 
 On AArch64 Windows, reproduce the CI cross-target coverage with an x86-64 or native compiler:
 

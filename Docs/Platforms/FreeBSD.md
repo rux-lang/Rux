@@ -19,10 +19,10 @@ Clone and build Rux:
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh Build.sh
+sh Run.sh build
 ```
 
-The FreeBSD package names the compiler `clang++22`; `Build.sh` detects it automatically. The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+The FreeBSD package names the compiler `clang++22`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
 On AArch64, Rux selects the `freebsd-aarch64` target automatically. The same target is available explicitly to `build` and `check` on every supported host; `freebsd-arm64` is accepted as an alias and canonicalized to `freebsd-aarch64` before target conditions, reports, and output paths are selected.
 
@@ -77,7 +77,7 @@ The verifier restores the declared executable modes, checks SHA-256 hashes and F
 
 CI applies both acceptance boundaries before publishing `rux-freebsd-aarch64`: a native AArch64 compiler runs the complete ordinary Rux suite and focused fixtures, and an x86-64 compiler builds a target-only payload that a fresh AArch64 VM verifies and executes. Skipping either path blocks the aggregate FreeBSD acceptance check, which is a direct dependency of the release publish job.
 
-For a Debug build, run `sh Build.sh --configuration Debug`. Run `sh Build.sh --help` to see every option.
+For a Debug build, run `sh Run.sh build --configuration Debug`. Run `sh Run.sh` to see every command and option.
 
 ## Verifying the Build
 
@@ -98,13 +98,13 @@ The verifier preflights every ELF image using its repository-owned byte reader b
 Run the complete repository verification workflow:
 
 ```sh
-sh Test.sh
+sh Run.sh test
 ```
 
 Static analysis is intentionally opt-in because it is slower and requires `clang-tidy` from the LLVM 22 package:
 
 ```sh
-sh Test.sh --clang-tidy
+sh Run.sh test --clang-tidy
 ```
 
-Use `sh Format.sh` to format maintained C++ and Rux sources, or `sh Format.sh --check` to check them without making changes.
+Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.

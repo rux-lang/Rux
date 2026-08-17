@@ -1,6 +1,5 @@
 <!--
-Target branch must be `dev`. Pull requests against `main` are closed automatically.
-See Docs/PullRequest.md for the full lifecycle.
+Target branch must be `dev`. Pull requests against `main` are closed automatically. See Docs/PullRequest.md for the full lifecycle.
 -->
 
 ## What and Why
@@ -17,10 +16,6 @@ See Docs/PullRequest.md for the full lifecycle.
 ## Checklist
 
 - [ ] Branched from `dev` and targeting `dev`
-- [ ] Release build passes locally
-- [ ] `rux test --release` passes from the repository root
-- [ ] `ctest --test-dir Build --output-on-failure -C Release` passes (compiler internals)
-- [ ] Sources formatted with `sh Format.sh` / `./Format.ps1`
-- [ ] `clang-tidy` clean for touched translation units (`--clang-tidy` / `-ClangTidy`)
+- [ ] `sh Run.sh test --clang-tidy` / `./Run.ps1 test -ClangTidy` passes locally — policy guards, Release build, formatting, static analysis, C++ unit tests, workspace check and lint, and every Rux test package
 - [ ] Tests added or updated: integration/golden for user-visible behavior, C++ unit for internals
 - [ ] `CHANGELOG.md` and affected documentation updated

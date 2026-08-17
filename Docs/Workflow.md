@@ -10,7 +10,7 @@ The LLVM tools have distinct roles:
 
 - **`clang-format`** enforces C++ layout.
 - **`clang-tidy`** enforces the static-analysis baseline in [`.clang-tidy`](../.clang-tidy).
-- **Editor / IDE** setup is optional. The build scripts enable `CMAKE_EXPORT_COMPILE_COMMANDS`, producing `Build/compile_commands.json` for clang-tidy, clangd, and other tools.
+- **Editor / IDE** setup is optional. The `build` command enables `CMAKE_EXPORT_COMPILE_COMMANDS`, producing `Build/compile_commands.json` for clang-tidy, clangd, and other tools.
 
 ## 2. Get the Source and Configure
 
@@ -42,9 +42,9 @@ With no `-DCMAKE_BUILD_TYPE`, the project defaults to a **Release** build (set i
    ./Bin/rux test --release
    ctest --test-dir Build --output-on-failure -C Release
    ```
-6. **Format** all maintained C++ and Rux sources: `sh Format.sh` (PowerShell: `./Format.ps1`).
+6. **Format** all maintained C++ and Rux sources: `sh Run.sh format` (PowerShell: `./Run.ps1 format`).
 
-The repository provides matching platform entry points. PowerShell users can run `./Build.ps1`, `./Format.ps1`, and `./Test.ps1`; Linux, macOS, and FreeBSD users can run `sh Build.sh`, `sh Format.sh`, and `sh Test.sh`. The build scripts configure and build the compiler and C++ test target while generating the compilation database. The format scripts handle maintained C++ and Rux sources. The test scripts run the policy, formatting, build, CTest, lint, and Rux-test workflow. `Scripts/RepositoryMessages.ps1` and `Scripts/RepositoryMessages.sh` keep each shell family's progress verbs, pass/fail labels, child-command handling, and duration formatting in one place; the two families expose the same user-facing vocabulary, file/package counts, quoted paths, and canonical duration units (`ms`, `s`, or `min` plus `s`). A failed child command identifies the command and retains its failure status. Use `./Test.ps1 -SkipBuild` or `sh Test.sh --skip-build` to reuse an existing build; the scripts report the selected existing build directory. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `rux run` is host-only and has no `--target` option. A `-Target` / `--target` test run is allowed only for the host OS and an architecture the compiler process or native OS can execute directly. This supports an x86-64 compiler process on AArch64 Windows and under Rosetta on Apple Silicon; a physical x86-64 host should use `rux build --target` and `rux check --target`, then test the output on its native machine.
+The repository provides one entry point per shell family: `./Run.ps1` on PowerShell and `sh Run.sh` on Linux, macOS, and FreeBSD. Each takes a single command — `build`, `test`, `format`, `policy`, `tidy`, `unit`, `clean`, or `help` — and prints its command and option summary when run with no arguments. `build` configures and builds the compiler and C++ test target while generating the compilation database. `format` handles maintained C++ and Rux sources. `test` runs the policy, build, formatting, CTest, check, lint, and Rux-test workflow, composing the same step functions the standalone commands use, so a step behaves identically alone and in the workflow. `policy`, `tidy`, and `unit` expose those individual steps for a fast inner loop, and `clean` removes the build directory and `Bin/`. `Scripts/RepositoryMessages.ps1` and `Scripts/RepositoryMessages.sh` keep each shell family's progress verbs, pass/fail labels, tool discovery, child-command handling, and duration formatting in one place; the two families expose the same user-facing vocabulary, file/package counts, quoted paths, and canonical duration units (`ms`, `s`, or `min` plus `s`), and both drop ANSI styling when output is redirected or `NO_COLOR` is set. A failed child command identifies the command and retains its failure status. An option a command does not accept is rejected rather than ignored. Use `./Run.ps1 test -SkipBuild` or `sh Run.sh test --skip-build` to reuse an existing build; the workflow reports the selected existing build directory. Add `-ClangTidy` or `--clang-tidy` for the slower static-analysis pass; the Code Quality workflow always runs it. `rux run` is host-only and has no `--target` option. A `-Target` / `--target` test run is allowed only for the host OS and an architecture the compiler process or native OS can execute directly. This supports an x86-64 compiler process on AArch64 Windows and under Rosetta on Apple Silicon; a physical x86-64 host should use `rux build --target` and `rux check --target`, then test the output on its native machine.
 
 The same rule applies to FreeBSD AArch64. Every supported host can build or check `freebsd-aarch64`; Release output lands below `Bin/Release/FreeBSD/AArch64/`. Only FreeBSD with an AArch64 compiler process or native OS can use `test --target freebsd-aarch64`. For cross-runtime work, use `Tests/Native/FreeBSDAArch64/BuildTransfer.sh` on x86-64 FreeBSD and `VerifyTransfer.sh` in a separate AArch64 FreeBSD checkout so the compiler and target-runtime boundaries stay explicit.
 
@@ -146,7 +146,7 @@ When adding or changing messages:
 
 There are two broad suites: Rux-language/package tests (run with `rux test`) and C++ unit tests for the compiler internals (run with `ctest`). Target-specific native fixtures supplement them where a complete OS interaction needs a dedicated driver script.
 
-`Test.sh` and `Test.ps1` first run all repository-policy guards. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points. `Tests/Policy/InstallerMessages/Check.sh` covers native-architecture selection, explicit/latest releases, download and extraction failures, PATH/profile handling, Windows user-PATH ownership, MSI downgrade recovery, and timed success output. The user-message policy has seeded passing and failing fixtures for each rule, including the requirement that every compatibility exception state its category and reason.
+`sh Run.sh test` and `./Run.ps1 test` first run all repository-policy guards; `sh Run.sh policy` and `./Run.ps1 policy` run that step alone. The oversized-file guard has its own shell contract tests, which exercise the ordinary limit, unreviewed files, reviewed ceilings, stale exceptions, and path-specific third-party handling without modifying the source tree. `Tests/Policy/ScriptMessages/Check.sh` smoke-tests repository-script help, unknown commands and misapplied options, prerequisite and child-command failures, format check/fix modes, redirected no-color output, and the key message labels shared by the PowerShell and POSIX entry points. `Tests/Policy/InstallerMessages/Check.sh` covers native-architecture selection, explicit/latest releases, download and extraction failures, PATH/profile handling, Windows user-PATH ownership, MSI downgrade recovery, and timed success output. The user-message policy has seeded passing and failing fixtures for each rule, including the requirement that every compatibility exception state its category and reason.
 
 ### Language and Package Tests (`Tests/Language/`, `Tests/Packages/`)
 
@@ -209,7 +209,7 @@ cmake --build Build --config Release
 ctest --test-dir Build --output-on-failure -C Release
 ```
 
-The unit-test executable is written to `Bin/Tests/Unit/rux-tests` (`rux-tests.exe` on Windows); CTest resolves that path automatically.
+`sh Run.sh unit` and `./Run.ps1 unit` run the same CTest invocation against an existing build. The unit-test executable is written to `Bin/Tests/Unit/rux-tests` (`rux-tests.exe` on Windows); CTest resolves that path automatically.
 
 Run the centralized binary directly for doctest filtering, for example `Bin/Tests/Unit/rux-tests -ts="Lexer*"` (with `.exe` on Windows).
 
@@ -219,19 +219,19 @@ Part of the unit-test binary: every `Tests/Unit/Golden/<Case>.rux` is compiled t
 
 ## 6. Code Style
 
-Formatting is enforced by [`.clang-format`](../.clang-format) for C++ (LLVM base, 4-space indent, west const, 120-column limit) and by `rux fmt` for Rux sources. The repository scripts format all maintained sources:
+Formatting is enforced by [`.clang-format`](../.clang-format) for C++ (LLVM base, 4-space indent, west const, 120-column limit) and by `rux fmt` for Rux sources. The repository entry point formats all maintained sources:
 
 ```sh
-sh Format.sh
+sh Run.sh format
 ```
 
 PowerShell equivalent:
 
 ```powershell
-./Format.ps1
+./Run.ps1 format
 ```
 
-Use `sh Format.sh --check` or `./Format.ps1 -Check` to verify formatting without changing files. Vendored C++ under `Tests/Unit/ThirdParty/` and intentionally malformed Rux diagnostic fixtures under `Tests/Unit/Golden/` are excluded.
+Use `sh Run.sh format --check` or `./Run.ps1 format -Check` to verify formatting without changing files. Vendored C++ under `Tests/Unit/ThirdParty/` and intentionally malformed Rux diagnostic fixtures under `Tests/Unit/Golden/` are excluded.
 
 The formatters handle layout; the conventions they can't enforce, observed throughout the codebase:
 

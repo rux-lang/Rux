@@ -33,14 +33,29 @@ write_tool() {
     chmod +x "$fixture_root/bin/$name"
 }
 cd "$repository_root"
-for script in Build Format Test; do
-    sh "$script.sh" --help >"$output"
-    require_output "Usage: sh $script.sh [options]"
-    require_text "$script.ps1" '.SYNOPSIS'
-    require_text "$script.ps1" '[CmdletBinding()]'
-    require_text "$script.ps1" 'Scripts/RepositoryMessages.ps1'
-    require_text "$script.sh" 'Scripts/RepositoryMessages.sh'
+# Help is the no-argument behavior, so the entry point is discoverable on its own.
+for invocation in '' '--help' 'help'; do
+    # shellcheck disable=SC2086
+    sh Run.sh $invocation >"$output"
+    require_output 'Usage: sh Run.sh <command> [options]'
 done
+# Both entry points must offer the same commands under the same names.
+for expected_command in build test format policy tidy unit clean help; do
+    require_output "  $expected_command "
+    require_text Run.ps1 "  $expected_command "
+done
+require_text Run.ps1 '.SYNOPSIS'
+require_text Run.ps1 '[CmdletBinding()]'
+require_text Run.ps1 'Scripts/RepositoryMessages.ps1'
+require_text Run.sh 'Scripts/RepositoryMessages.sh'
+if sh Run.sh rux-msg-014-command >"$output" 2>&1; then
+    fail 'Run.sh accepted an unknown command'
+fi
+require_output "error: unknown command 'rux-msg-014-command'"
+if sh Run.sh format --clang-tidy >"$output" 2>&1; then
+    fail 'Run.sh accepted an option the command does not take'
+fi
+require_output "error: option '--clang-tidy' is not valid for command 'format'"
 duration=$(sh -c '. ./Scripts/RepositoryMessages.sh; format_duration 65')
 [ "$duration" = '1 min 5.0 s' ] || fail "POSIX duration formatter returned '$duration'"
 if command -v pwsh >/dev/null 2>&1; then
@@ -55,57 +70,55 @@ fi
 # Prerequisite and child-command failures are checked without configuring a build.
 write_tool cmake 0
 write_tool ninja 0
-if PATH="$fixture_root/bin:$PATH" sh Build.sh --compiler rux-msg-013-missing >"$output" 2>&1; then
-    fail 'Build.sh accepted a missing compiler'
+if PATH="$fixture_root/bin:$PATH" sh Run.sh build --compiler rux-msg-013-missing >"$output" 2>&1; then
+    fail 'Run.sh accepted a missing compiler'
 fi
 require_output "error: C++ compiler 'rux-msg-013-missing' was not found"
 write_tool cmake 23
 write_tool clang++ 0
 set +e
-PATH="$fixture_root/bin:$PATH" sh Build.sh --compiler "$fixture_root/bin/clang++" >"$output" 2>&1
+PATH="$fixture_root/bin:$PATH" sh Run.sh build --compiler "$fixture_root/bin/clang++" >"$output" 2>&1
 status=$?
 set -e
-[ "$status" -eq 23 ] || fail "Build.sh did not preserve child exit code 23 (received $status)"
+[ "$status" -eq 23 ] || fail "Run.sh did not preserve child exit code 23 (received $status)"
 require_output "error: command 'cmake' failed with exit code 23"
 # Check and fix modes use identical counts and outcome vocabulary without touching sources.
 write_tool clang-format-22 0
 write_tool rux 0
-NO_COLOR=1 PATH="$fixture_root/bin:$PATH" sh Format.sh --check \
+NO_COLOR=1 PATH="$fixture_root/bin:$PATH" sh Run.sh format --check \
     --rux-executable "$fixture_root/bin/rux" >"$output" 2>&1
 require_output 'Checking C++ formatting ('
 require_output 'Checking Rux formatting ('
 require_output 'Finished format check in '
 if LC_ALL=C grep "$(printf '\033')" "$output" >/dev/null; then
-    fail 'Format.sh emitted ANSI styling when output was redirected with NO_COLOR'
+    fail 'Run.sh emitted ANSI styling when output was redirected with NO_COLOR'
 fi
-NO_COLOR=1 PATH="$fixture_root/bin:$PATH" sh Format.sh \
+NO_COLOR=1 PATH="$fixture_root/bin:$PATH" sh Run.sh format \
     --rux-executable "$fixture_root/bin/rux" >"$output" 2>&1
 require_output 'Formatting C++ sources ('
 require_output 'Formatting Rux sources ('
 require_output 'Finished source formatting in '
-# Each entry is POSIX script|PowerShell script|shared label.
-for contract in \
-    'Build.sh|Build.ps1|Configuring ' \
-    'Build.sh|Build.ps1|Building compiler and unit tests' \
-    'Build.sh|Build.ps1|Finished build in ' \
-    'Format.sh|Format.ps1|Checking C++ formatting (' \
-    'Format.sh|Format.ps1|Checking Rux formatting (' \
-    'Format.sh|Format.ps1|Finished format check in ' \
-    'Test.sh|Test.ps1|Skipping compiler build' \
-    'Test.sh|Test.ps1|Running clang-tidy (' \
-    'Test.sh|Test.ps1|Running C++ unit tests' \
-    'Test.sh|Test.ps1|Finished test workflow in '; do
-    saved_ifs=$IFS
-    IFS='|'
-    set -- $contract
-    IFS=$saved_ifs
-    require_text "$1" "$3"
-    require_text "$2" "$3"
+# Labels shared by the POSIX and PowerShell entry points.
+for label in \
+    'Checking source-tree policy' \
+    'Configuring ' \
+    'Building compiler and unit tests' \
+    'Finished build in ' \
+    'Checking C++ formatting (' \
+    'Checking Rux formatting (' \
+    'Finished format check in ' \
+    'Skipping compiler build' \
+    'Running clang-tidy (' \
+    'Running C++ unit tests' \
+    'Removing build outputs' \
+    'Finished test workflow in '; do
+    require_text Run.sh "$label"
+    require_text Run.ps1 "$label"
 done
-require_text Test.sh 'if [ "$skip_build" = false ]'
-require_text Test.ps1 'if (-not $SkipBuild)'
-require_text Format.sh 'if [ "$check" = true ]'
-require_text Format.ps1 'if ($Check)'
+require_text Run.sh 'if [ "$skip_build" = false ]'
+require_text Run.ps1 'if (-not $SkipBuild)'
+require_text Run.sh 'if [ "$check" = true ]'
+require_text Run.ps1 'if ($Check)'
 require_text Scripts/RepositoryMessages.sh '[ -t 1 ] && [ -z "${NO_COLOR:-}" ]'
 
 printf 'Repository script message policy tests passed.\n'
