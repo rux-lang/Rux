@@ -1,1 +1,485 @@
-// Planned package API; HashMap is not implemented yet.
+import Memory::{ Alloc, Copy, Free, Zero };
+
+// An associative container over an open-addressed table, keyed by whatever a
+// caller's hash and equality functions agree on.
+//
+// Rux has no trait system and no closures, so the two functions are ordinary
+// function values handed to the constructor and held for the life of the
+// table. Rux/Collections' Hashing module supplies them for the common key
+// types; anything else needs a pair of plain top-level functions. The
+// consequence of having no closures is that neither can carry state: a hasher
+// cannot be seeded per table, so nothing here resists an adversary who picks
+// colliding keys.
+//
+// Storage is three parallel allocations — keys, values, and one state byte per
+// slot — rather than one interleaved block. Rux has no alignof, so splitting a
+// single allocation into correctly aligned regions cannot be written; the
+// dense state array also makes a probe scan touch one byte per slot instead of
+// a whole entry, and it is what lets HashSet share the probing kernel without
+// carrying a values array it would never read.
+//
+// Invariants:
+//   capacity is zero, or a power of two of at least MinimumTableCapacity
+//   capacity == 0 exactly when every storage pointer is null
+//   length + tombstones <= capacity, and at least a quarter of the slots are
+//     neither occupied nor tombstoned
+//   keys[i] and values[i] are initialized exactly when states[i] is occupied
+//   every live key is reachable from its hash slot without crossing an empty
+//     slot
+//   hash and equals are never null and never replaced
+//
+// Ownership is manual. Assignment copies the HashMap value and therefore
+// shares its allocations, so Clone when both copies must be freed, and Free
+// exactly once. Keys and values are copied byte for byte and never destroyed:
+// a key or value owning a resource stays its owner's responsibility, and
+// TryRemove is the only chance to reclaim one.
+//
+// Insert, TryRemove, Reserve, ShrinkToFit, Clear and Free invalidate every
+// pointer handed out by TryGetPointer and every traversal cursor in flight.
+struct HashMap<K, V> {
+    keys: *var K;
+    values: *var V;
+    states: *var uint8;
+    capacity: uint;
+    length: uint;
+    tombstones: uint;
+    hash: func(K) -> uint;
+    equals: func(K, K) -> bool;
+}
+
+extend HashMap<K, V> {
+    // An empty map that allocates nothing until the first insertion. The two
+    // functions must agree: keys the equality function accepts must hash the
+    // same, or the table will lose entries it still holds.
+    func New(hash: func(K) -> uint, equals: func(K, K) -> bool) -> HashMap<K, V> {
+        return HashMap<K, V> {
+            keys: null, values: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: hash, equals: equals
+        };
+    }
+
+    // An empty map sized so `capacity` insertions do not rehash.
+    func WithCapacity(capacity: uint, hash: func(K) -> uint, equals: func(K, K) -> bool,
+                      result: *var HashMap<K, V>) -> CollectionError {
+        var fresh = HashMap<K, V> {
+            keys: null, values: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: hash, equals: equals
+        };
+
+        if capacity == 0 {
+            *result = fresh;
+            return CollectionError::None;
+        }
+
+        var slots: uint = 0;
+        let planned = TableCapacity(capacity, @slots);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        let built = fresh.Rehash(slots);
+        if !(built == CollectionError::None) {
+            return built;
+        }
+
+        *result = fresh;
+        return CollectionError::None;
+    }
+
+    // Rebuilds the table at `capacity` slots and reinserts every live entry,
+    // which is what clears the tombstones. Nothing is released until the new
+    // table is fully built, so a failed allocation leaves the map untouched.
+    //
+    // Internal helper; not part of the package API.
+    func Rehash(self: *var HashMap<K, V>, capacity: uint) -> CollectionError {
+        var keyBytes: uint = 0;
+        let keySizing = ByteSize(capacity, sizeof(K), @keyBytes);
+        if !(keySizing == CollectionError::None) {
+            return keySizing;
+        }
+
+        var valueBytes: uint = 0;
+        let valueSizing = ByteSize(capacity, sizeof(V), @valueBytes);
+        if !(valueSizing == CollectionError::None) {
+            return valueSizing;
+        }
+
+        let keys = Alloc(keyBytes) as *var K;
+        if keys == null {
+            return CollectionError::OutOfMemory;
+        }
+
+        let values = Alloc(valueBytes) as *var V;
+        if values == null {
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        // One byte per slot, so this size needs no multiply to check.
+        let states = Alloc(capacity) as *var uint8;
+        if states == null {
+            Free(values);
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        Zero(states, capacity);
+
+        // The new table holds no tombstones, so every probe here ends at an
+        // empty slot and needs no equality test: the old table already held
+        // each key exactly once.
+        let mask = capacity - 1;
+        var moved: uint = 0;
+        var slot: uint = 0;
+        while slot < self.capacity {
+            if self.states[slot] == SlotOccupied {
+                let key = self.keys[slot];
+                var index = self.hash(key) & mask;
+                while states[index] == SlotOccupied {
+                    index = (index + 1) & mask;
+                }
+
+                keys[index] = key;
+                values[index] = self.values[slot];
+                states[index] = SlotOccupied;
+                moved++;
+            }
+            slot++;
+        }
+
+        Free(self.states);
+        Free(self.values);
+        Free(self.keys);
+
+        self.keys = keys;
+        self.values = values;
+        self.states = states;
+        self.capacity = capacity;
+        self.length = moved;
+        self.tombstones = 0;
+        return CollectionError::None;
+    }
+
+    // Makes sure one more entry can occupy a fresh slot without pushing the
+    // table past its load factor.
+    //
+    // Internal helper; not part of the package API.
+    func EnsureRoom(self: *var HashMap<K, V>) -> CollectionError {
+        if self.capacity == 0 {
+            return self.Rehash(MinimumTableCapacity);
+        }
+
+        // Tombstones count against the limit because they end no probe: a
+        // table full of them probes the whole way round. The bound is written
+        // as a subtraction rather than as `used * 4 <= capacity * 3` so that
+        // neither side can overflow, and it is exact because the capacity is a
+        // power of two.
+        let used = self.length + self.tombstones + 1;
+        if used <= self.capacity - (self.capacity / 4) {
+            return CollectionError::None;
+        }
+
+        // Sized from the live entries rather than from the current capacity,
+        // so a table that is mostly tombstones rebuilds at the same size or a
+        // smaller one instead of doubling.
+        var capacity: uint = 0;
+        let planned = TableCapacity(self.length + 1, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // Sizes the table so `additional` more insertions do not rehash.
+    func Reserve(self: *var HashMap<K, V>, additional: uint) -> CollectionError {
+        var required: uint = 0;
+        let total = AddLength(self.length, additional, @required);
+        if !(total == CollectionError::None) {
+            return total;
+        }
+
+        var capacity: uint = 0;
+        let planned = TableCapacity(required, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        if self.capacity >= capacity && self.tombstones == 0 {
+            return CollectionError::None;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // Rebuilds the table at the smallest capacity its live entries need. An
+    // emptied map becomes allocation-free.
+    func ShrinkToFit(self: *var HashMap<K, V>) -> CollectionError {
+        if self.length == 0 {
+            self.Free();
+            return CollectionError::None;
+        }
+
+        var capacity: uint = 0;
+        let planned = TableCapacity(self.length, @capacity);
+        if !(planned == CollectionError::None) {
+            return planned;
+        }
+
+        if capacity == self.capacity && self.tombstones == 0 {
+            return CollectionError::None;
+        }
+
+        return self.Rehash(capacity);
+    }
+
+    // An independent map holding the same entries, keeping the same hash and
+    // equality functions. The slot layout is copied verbatim rather than
+    // rebuilt, since the same hasher would place every key in the same slot.
+    func Clone(self: *HashMap<K, V>, result: *var HashMap<K, V>) -> CollectionError {
+        var fresh = HashMap<K, V> {
+            keys: null, values: null, states: null,
+            capacity: 0, length: 0, tombstones: 0,
+            hash: self.hash, equals: self.equals
+        };
+
+        if self.capacity == 0 {
+            *result = fresh;
+            return CollectionError::None;
+        }
+
+        // Sizes the original already had checked, so these cannot overflow.
+        let keyBytes = self.capacity * sizeof(K);
+        let valueBytes = self.capacity * sizeof(V);
+
+        let keys = Alloc(keyBytes) as *var K;
+        if keys == null {
+            return CollectionError::OutOfMemory;
+        }
+
+        let values = Alloc(valueBytes) as *var V;
+        if values == null {
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        let states = Alloc(self.capacity) as *var uint8;
+        if states == null {
+            Free(values);
+            Free(keys);
+            return CollectionError::OutOfMemory;
+        }
+
+        // Unoccupied slots carry whatever the allocator left behind, and
+        // copying that is harmless: the state byte is what says a slot holds
+        // anything.
+        Copy(keys, self.keys, keyBytes);
+        Copy(values, self.values, valueBytes);
+        Copy(states, self.states, self.capacity);
+
+        fresh.keys = keys;
+        fresh.values = values;
+        fresh.states = states;
+        fresh.capacity = self.capacity;
+        fresh.length = self.length;
+        fresh.tombstones = self.tombstones;
+        *result = fresh;
+        return CollectionError::None;
+    }
+
+    // Releases the table and leaves an empty map that still remembers its hash
+    // and equality functions, so it stays usable and Free is a no-op the
+    // second time.
+    func Free(self: *var HashMap<K, V>) {
+        Free(self.states);
+        Free(self.values);
+        Free(self.keys);
+        self.keys = null;
+        self.values = null;
+        self.states = null;
+        self.capacity = 0;
+        self.length = 0;
+        self.tombstones = 0;
+    }
+
+    // The number of live entries, which counts neither empty nor tombstoned
+    // slots.
+    func Length(self: *HashMap<K, V>) -> uint {
+        return self.length;
+    }
+
+    // The number of slots. Always a power of two, or zero.
+    func Capacity(self: *HashMap<K, V>) -> uint {
+        return self.capacity;
+    }
+
+    func IsEmpty(self: *HashMap<K, V>) -> bool {
+        return self.length == 0;
+    }
+
+    // Drops every entry while keeping the table, and clears the tombstones
+    // with them, so a refilled map probes as short as a fresh one.
+    func Clear(self: *var HashMap<K, V>) {
+        if self.capacity > 0 {
+            Zero(self.states, self.capacity);
+        }
+        self.length = 0;
+        self.tombstones = 0;
+    }
+
+    func ContainsKey(self: *HashMap<K, V>, key: K) -> bool {
+        if self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        FindSlot<K>(self.keys, self.states, self.capacity, key, self.hash, self.equals, @found);
+        return found;
+    }
+
+    // Reads the value stored under `key`, reporting whether it was there. A
+    // miss leaves `value` untouched, so a caller may seed it with a default. A
+    // null `value` reports failure rather than searching.
+    func TryGet(self: *HashMap<K, V>, key: K, value: *var V) -> bool {
+        if value == null || self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        let slot = FindSlot<K>(self.keys, self.states, self.capacity, key, self.hash, self.equals, @found);
+        if !found {
+            return false;
+        }
+
+        *value = self.values[slot];
+        return true;
+    }
+
+    // Hands back a pointer to the stored value, so it can be updated in place
+    // without a second lookup. The pointer is invalidated by anything that
+    // resizes or rebuilds the table, and by removing any entry.
+    func TryGetPointer(self: *var HashMap<K, V>, key: K, value: *var *var V) -> bool {
+        if value == null || self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        let slot = FindSlot<K>(self.keys, self.states, self.capacity, key, self.hash, self.equals, @found);
+        if !found {
+            return false;
+        }
+
+        *value = @self.values[slot];
+        return true;
+    }
+
+    // Stores `value` under `key`, replacing any value already there.
+    //
+    // One method rather than an insert-or-replace pair, because everything a
+    // caller might want to know is an out-parameter it can decline: `inserted`
+    // is true only when the key was new, and `previous` receives the displaced
+    // value only when it was not. Either may be null.
+    //
+    // A failure to grow the table leaves the map exactly as it was, including
+    // the value already stored under an existing key.
+    func Insert(self: *var HashMap<K, V>, key: K, value: V, previous: *var V,
+                inserted: *var bool) -> CollectionError {
+        if self.capacity > 0 {
+            var present = false;
+            let existing = FindSlot<K>(self.keys, self.states, self.capacity, key,
+                                       self.hash, self.equals, @present);
+            if present {
+                if previous != null {
+                    *previous = self.values[existing];
+                }
+                self.values[existing] = value;
+                if inserted != null {
+                    *inserted = false;
+                }
+                return CollectionError::None;
+            }
+        }
+
+        let room = self.EnsureRoom();
+        if !(room == CollectionError::None) {
+            return room;
+        }
+
+        // A second probe, because EnsureRoom may have rebuilt the table and
+        // moved every slot.
+        var present = false;
+        let slot = FindSlot<K>(self.keys, self.states, self.capacity, key,
+                               self.hash, self.equals, @present);
+        if self.states[slot] == SlotTombstone {
+            self.tombstones--;
+        }
+
+        self.keys[slot] = key;
+        self.values[slot] = value;
+        self.states[slot] = SlotOccupied;
+        self.length++;
+        if inserted != null {
+            *inserted = true;
+        }
+        return CollectionError::None;
+    }
+
+    // Removes the entry under `key` and hands back its value, reporting
+    // whether there was one. A null `value` discards it rather than refusing
+    // to remove. The slot becomes a tombstone so the keys probed past it stay
+    // reachable; the next rehash reclaims it.
+    func TryRemove(self: *var HashMap<K, V>, key: K, value: *var V) -> bool {
+        if self.length == 0 {
+            return false;
+        }
+
+        var found = false;
+        let slot = FindSlot<K>(self.keys, self.states, self.capacity, key, self.hash, self.equals, @found);
+        if !found {
+            return false;
+        }
+
+        if value != null {
+            *value = self.values[slot];
+        }
+
+        self.states[slot] = SlotTombstone;
+        self.length--;
+        self.tombstones++;
+        return true;
+    }
+
+    // Walks the live entries. Seed `cursor` with zero and call until it
+    // returns false; `key` and `value` may each be null, so one method serves
+    // key-only, value-only and entry traversal.
+    //
+    // This is a cursor rather than a callback because Rux has no closures: a
+    // visitor could carry nothing from the surrounding scope. Anything that
+    // changes the table invalidates a cursor in flight.
+    func TryNextEntry(self: *HashMap<K, V>, cursor: *var uint, key: *var K, value: *var V) -> bool {
+        if cursor == null {
+            return false;
+        }
+
+        var slot = *cursor;
+        while slot < self.capacity {
+            if self.states[slot] == SlotOccupied {
+                if key != null {
+                    *key = self.keys[slot];
+                }
+                if value != null {
+                    *value = self.values[slot];
+                }
+
+                *cursor = slot + 1;
+                return true;
+            }
+            slot++;
+        }
+
+        *cursor = slot;
+        return false;
+    }
+}

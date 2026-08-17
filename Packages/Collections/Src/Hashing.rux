@@ -1,0 +1,113 @@
+import Memory::Compare;
+
+// Hash and equality functions for the key types a table is most often keyed
+// by, so HashMap and HashSet are usable without every caller first writing a
+// hash function by hand.
+//
+// These are table hashers, not digests. Rux/Hash is the package for MD5 and
+// the SHA family; nothing here is suitable for integrity or authentication,
+// and none of it is resistant to an adversary choosing colliding keys. Rux has
+// no closures, so a table cannot carry a per-instance seed that would help
+// with that.
+//
+// Each one is a plain function rather than a generic, because a generic
+// function cannot be used as a value in Rux: `HashValue<int32>` is not
+// something that can be passed as a `func(int32) -> uint`.
+//
+// Writing your own is the same shape. A hasher must return the same value for
+// keys the matching equality function accepts, or a table will lose entries it
+// still holds.
+
+// FNV-1a offset basis and prime, for a 64-bit hash.
+const FnvOffsetBasis: uint = 14695981039346656037u;
+const FnvPrime: uint = 1099511628211u;
+
+// FNV-1a over a run of bytes. The multiply is meant to wrap: that is where the
+// mixing comes from, and it is the one place in this package where an
+// unchecked overflow is deliberate rather than a defect.
+func HashBytes(data: *uint8, length: uint) -> uint {
+    var hash = FnvOffsetBasis;
+    var i: uint = 0;
+    while i < length {
+        hash = hash ^ (data[i] as uint);
+        hash = hash * FnvPrime;
+        i++;
+    }
+
+    return hash;
+}
+
+// FNV-1a over the bytes a slice borrows.
+func HashSlice(bytes: Slice<char8>) -> uint {
+    return HashBytes(bytes.data as *uint8, bytes.length);
+}
+
+// The splitmix64 finalizer. An integer key is often small, consecutive, or
+// aligned, and a table masks off the low bits to choose a bucket, so the raw
+// value would pile every such key into a handful of slots. This spreads the
+// high bits down into them.
+func HashUint64(value: uint64) -> uint {
+    var x = value;
+    x = (x ^ (x >> 30)) * 13787848793156543929u64;
+    x = (x ^ (x >> 27)) * 10723151780598845931u64;
+    x = x ^ (x >> 31);
+    return x as uint;
+}
+
+func HashUint(value: uint) -> uint {
+    return HashUint64(value as uint64);
+}
+
+func HashUint32(value: uint32) -> uint {
+    return HashUint64(value as uint64);
+}
+
+func HashInt64(value: int64) -> uint {
+    return HashUint64(value as uint64);
+}
+
+func HashInt32(value: int32) -> uint {
+    return HashUint64((value as int64) as uint64);
+}
+
+func HashChar8(value: char8) -> uint {
+    return HashUint64((value as uint) as uint64);
+}
+
+func EqualsUint(a: uint, b: uint) -> bool {
+    return a == b;
+}
+
+func EqualsUint64(a: uint64, b: uint64) -> bool {
+    return a == b;
+}
+
+func EqualsUint32(a: uint32, b: uint32) -> bool {
+    return a == b;
+}
+
+func EqualsInt64(a: int64, b: int64) -> bool {
+    return a == b;
+}
+
+func EqualsInt32(a: int32, b: int32) -> bool {
+    return a == b;
+}
+
+func EqualsChar8(a: char8, b: char8) -> bool {
+    return a == b;
+}
+
+// Two borrowed runs of bytes are equal when they are the same length and
+// nothing differs. Memory::Compare reports the offset of the first difference,
+// or the length when there is none, so the length is the match.
+func EqualsSlice(a: Slice<char8>, b: Slice<char8>) -> bool {
+    if a.length != b.length {
+        return false;
+    }
+    if a.length == 0 {
+        return true;
+    }
+
+    return Compare(a.data, b.data, a.length) == a.length;
+}
