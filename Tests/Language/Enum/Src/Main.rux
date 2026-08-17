@@ -24,6 +24,36 @@ enum Shape {
     Point
 }
 
+// A tag is stored at the enum's declared width, so a match has to read it back
+// at that width. Reading it as a full word instead picked up whatever sat
+// beside it, and the mask that cleared those bits was itself 32 bits wide, so
+// matching an enum based on a narrower type used to select no arm at all.
+enum Narrow: int8 {
+    Low = 0,
+    High = 1
+}
+
+enum Ordering: int8 {
+    Less = -1,
+    Equal = 0,
+    Greater = 1
+}
+
+enum Halfword: int16 {
+    Low = 0,
+    High = 1
+}
+
+func Classify(value: int32) -> Ordering {
+    if value < 0 {
+        return Ordering::Less;
+    }
+    if value > 0 {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
 func IdentityDirection(direction: Direction) -> Direction {
     return direction;
 }
@@ -49,5 +79,29 @@ func Main() -> int {
         else => 2
     };
     Assert(fallback == 2, "Expected the else match arm");
+
+    // A tag narrower than a word still selects the right arm.
+    let narrow = Narrow::High;
+    Assert((match narrow { .Low => 10, .High => 20 }) == 20, "Expected an int8 tag to match its arm");
+    let halfword = Halfword::High;
+    Assert((match halfword { .Low => 10, .High => 20 }) == 20, "Expected an int16 tag to match its arm");
+    let byteColor = Color::Green;
+    Assert((match byteColor { .Red => 1, .Green => 2, .Blue => 3 }) == 2, "Expected a uint8 tag to match its arm");
+
+    // Negative discriminants survive being read back and compared.
+    Assert((match Classify(-5) { .Less => 1, .Equal => 2, .Greater => 3 }) == 1,
+           "Expected a negative discriminant to match its arm");
+    Assert((match Classify(0) { .Less => 1, .Equal => 2, .Greater => 3 }) == 2,
+           "Expected a zero discriminant to match its arm");
+    Assert((match Classify(5) { .Less => 1, .Equal => 2, .Greater => 3 }) == 3,
+           "Expected a positive discriminant to match its arm");
+
+    // The tag is unaffected by a neighbouring local, which is what a full-width
+    // read used to pick up.
+    let before: int64 = -1i64;
+    let neighbour = Narrow::Low;
+    let after: int64 = -1i64;
+    Assert((match neighbour { .Low => 10, .High => 20 }) == 10, "Expected a tag to ignore its neighbours");
+    Assert(before == -1i64 && after == -1i64, "Expected the neighbours themselves to be intact");
     return 0;
 }
