@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "AlgorithmsSort"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Algorithms: Sort"
+
+[Dependencies]
+Algorithms = { Path = "../../../../Packages/Algorithms" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Algorithms"

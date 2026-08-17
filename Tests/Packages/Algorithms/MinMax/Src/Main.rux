@@ -1,0 +1,150 @@
+import Algorithms::{ TryMinIndex, TryMaxIndex, TryMinMaxIndex, Clamp };
+
+// Ordered by key alone, so equivalent-but-distinct elements exist and the
+// choice among them is observable through origin.
+struct Ranked {
+    key: int32;
+    origin: int32;
+}
+
+extend Ranked {
+    func <(self, other: Ranked) -> bool {
+        return self.key < other.key;
+    }
+}
+
+// TryMinMaxIndex must agree with the two single searches, on every input.
+func CheckAgreement(data: *int32, length: uint, code: int) -> int {
+    var wantMin: uint = 0;
+    var wantMax: uint = 0;
+    var gotMin: uint = 0;
+    var gotMax: uint = 0;
+
+    let single = TryMinIndex<int32>(data, length, @wantMin) && TryMaxIndex<int32>(data, length, @wantMax);
+    let both = TryMinMaxIndex<int32>(data, length, @gotMin, @gotMax);
+
+    if single != both {
+        return code;
+    }
+    if both {
+        if gotMin != wantMin {
+            return code + 1;
+        }
+        if gotMax != wantMax {
+            return code + 2;
+        }
+    }
+    return 0;
+}
+
+func Main() -> int {
+    var code = 0;
+    var index: uint = 77;
+    var other: uint = 88;
+
+    // An empty sequence has no extremes, and the indices are left alone.
+    var one: int32[1] = [5];
+    if TryMinIndex<int32>(@one[0], 0, @index) { return 10; }
+    if index != 77 { return 11; }
+    if TryMaxIndex<int32>(@one[0], 0, @index) { return 12; }
+    if TryMinMaxIndex<int32>(@one[0], 0, @index, @other) { return 13; }
+    if index != 77 || other != 88 { return 14; }
+
+    // A single element is both extremes.
+    if !TryMinIndex<int32>(@one[0], 1, @index) { return 20; }
+    if index != 0 { return 21; }
+    if !TryMaxIndex<int32>(@one[0], 1, @index) { return 22; }
+    if index != 0 { return 23; }
+    if !TryMinMaxIndex<int32>(@one[0], 1, @index, @other) { return 24; }
+    if index != 0 || other != 0 { return 25; }
+
+    // A null out-parameter reports failure rather than searching, and
+    // TryMinMaxIndex needs both of its pointers.
+    if TryMinIndex<int32>(@one[0], 1, null) { return 30; }
+    if TryMaxIndex<int32>(@one[0], 1, null) { return 31; }
+    if TryMinMaxIndex<int32>(@one[0], 1, null, @other) { return 32; }
+    if TryMinMaxIndex<int32>(@one[0], 1, @index, null) { return 33; }
+
+    // Extremes at the ends and in the middle.
+    var rising: int32[5] = [1, 2, 3, 4, 5];
+    var falling: int32[5] = [5, 4, 3, 2, 1];
+    var middle: int32[5] = [3, 1, 9, 2, 4];
+
+    if !TryMinMaxIndex<int32>(@rising[0], 5, @index, @other) { return 40; }
+    if index != 0 || other != 4 { return 41; }
+    if !TryMinMaxIndex<int32>(@falling[0], 5, @index, @other) { return 42; }
+    if index != 4 || other != 0 { return 43; }
+    if !TryMinMaxIndex<int32>(@middle[0], 5, @index, @other) { return 44; }
+    if index != 1 || other != 2 { return 45; }
+
+    // With duplicates, both searches report the first occurrence.
+    var duplicates: int32[6] = [2, 7, 2, 7, 2, 7];
+    if !TryMinIndex<int32>(@duplicates[0], 6, @index) { return 50; }
+    if index != 0 { return 51; }
+    if !TryMaxIndex<int32>(@duplicates[0], 6, @index) { return 52; }
+    if index != 1 { return 53; }
+
+    // An all-equal sequence puts both extremes at the front.
+    var equal: int32[4] = [6, 6, 6, 6];
+    if !TryMinMaxIndex<int32>(@equal[0], 4, @index, @other) { return 54; }
+    if index != 0 || other != 0 { return 55; }
+
+    // The one-pass and two-pass forms agree on every shape above.
+    code = CheckAgreement(@rising[0], 5, 60);
+    if code != 0 { return code; }
+    code = CheckAgreement(@falling[0], 5, 64);
+    if code != 0 { return code; }
+    code = CheckAgreement(@middle[0], 5, 68);
+    if code != 0 { return code; }
+    code = CheckAgreement(@duplicates[0], 6, 72);
+    if code != 0 { return code; }
+    code = CheckAgreement(@equal[0], 4, 76);
+    if code != 0 { return code; }
+    code = CheckAgreement(@one[0], 0, 80);
+    if code != 0 { return code; }
+
+    // Signed and unsigned limits are ordinary values, not sentinels.
+    var signed: int32[3] = [0i32, 2147483647i32, -2147483648i32];
+    if !TryMinMaxIndex<int32>(@signed[0], 3, @index, @other) { return 90; }
+    if index != 2 || other != 1 { return 91; }
+
+    var unsigned: uint32[3] = [7u32, 0u32, 4294967295u32];
+    if !TryMinMaxIndex<uint32>(@unsigned[0], 3, @index, @other) { return 92; }
+    if index != 1 || other != 2 { return 93; }
+
+    // Clamp returns the bound it is pushed to, and the value itself when it is
+    // already inside. The endpoints are inclusive.
+    if Clamp<int32>(5, 1, 10) != 5 { return 100; }
+    if Clamp<int32>(0, 1, 10) != 1 { return 101; }
+    if Clamp<int32>(99, 1, 10) != 10 { return 102; }
+    if Clamp<int32>(1, 1, 10) != 1 { return 103; }
+    if Clamp<int32>(10, 1, 10) != 10 { return 104; }
+
+    // A degenerate range admits only one value.
+    if Clamp<int32>(4, 7, 7) != 7 { return 105; }
+    if Clamp<int32>(9, 7, 7) != 7 { return 106; }
+
+    // A user struct ordered by key alone: the element reported is the first of
+    // its run, identified by origin.
+    var ranked: Ranked[5] = [Ranked { key: 4, origin: 0 },
+                             Ranked { key: 1, origin: 1 },
+                             Ranked { key: 9, origin: 2 },
+                             Ranked { key: 1, origin: 3 },
+                             Ranked { key: 9, origin: 4 }];
+
+    if !TryMinMaxIndex<Ranked>(@ranked[0], 5, @index, @other) { return 110; }
+    if index != 1 || other != 2 { return 111; }
+    if ranked[index].origin != 1 { return 112; }
+    if ranked[other].origin != 2 { return 113; }
+
+    let low = Ranked { key: 2, origin: 90 };
+    let high = Ranked { key: 8, origin: 91 };
+    let inside = Ranked { key: 5, origin: 92 };
+    let below = Ranked { key: 0, origin: 93 };
+
+    // Clamping returns the bound itself, so its origin comes through too.
+    if Clamp<Ranked>(inside, low, high).origin != 92 { return 114; }
+    if Clamp<Ranked>(below, low, high).origin != 90 { return 115; }
+
+    return 0;
+}
