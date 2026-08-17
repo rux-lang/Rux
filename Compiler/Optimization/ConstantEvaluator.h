@@ -20,19 +20,19 @@ public:
     };
 
     [[nodiscard]] Kind GetKind() const noexcept {
-        return kind_;
+        return kind;
     }
 
     [[nodiscard]] std::uint8_t Width() const noexcept {
-        return width_;
+        return width;
     }
 
     [[nodiscard]] std::uint64_t RawBits() const noexcept {
-        return bits_;
+        return bits;
     }
 
     [[nodiscard]] const TypeRef &Type() const noexcept {
-        return type_;
+        return type;
     }
 
     [[nodiscard]] std::optional<bool> BooleanValue() const noexcept;
@@ -41,12 +41,12 @@ public:
 
 private:
     friend class TypedConstantFactory;
-    TypedConstant(TypeRef type, Kind kind, std::uint8_t width, std::uint64_t bits);
+    TypedConstant(TypeRef inputType, Kind inputKind, std::uint8_t inputWidth, std::uint64_t inputBits);
 
-    TypeRef type_;
-    Kind kind_;
-    std::uint8_t width_;
-    std::uint64_t bits_;
+    TypeRef type;
+    Kind kind;
+    std::uint8_t width;
+    std::uint64_t bits;
 };
 
 // These helpers intentionally return no value for operations that must remain

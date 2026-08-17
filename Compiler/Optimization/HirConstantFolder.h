@@ -49,7 +49,7 @@ private:
     bool FoldCast(HirExprPtr &expr);
     bool SimplifyBinary(HirExprPtr &expr);
 
-    bool changed_ = false;
-    std::vector<Scope> scopes_;
+    bool changed = false;
+    std::vector<Scope> scopes;
 };
 } // namespace Rux::Optimization

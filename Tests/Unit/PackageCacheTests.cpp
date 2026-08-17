@@ -35,36 +35,36 @@ class ScopedPackageCache {
 public:
     ScopedPackageCache() {
         static int sequence = 0;
-        savedHome_ = GetEnvPath(homeVariable);
+        savedHome = GetEnvPath(homeVariable);
 
-        root_ = TempDirectory() / ("RuxPackageCacheTest-" + std::to_string(++sequence));
+        root = TempDirectory() / ("RuxPackageCacheTest-" + std::to_string(++sequence));
         std::error_code ec;
-        std::filesystem::remove_all(root_, ec);
-        std::filesystem::create_directories(root_, ec);
+        std::filesystem::remove_all(root, ec);
+        std::filesystem::create_directories(root, ec);
         REQUIRE(!ec);
-        REQUIRE(SetEnvPath(homeVariable, root_));
+        REQUIRE(SetEnvPath(homeVariable, root));
         // A redirect that silently failed would point the cases at the real
         // cache, so prove the path moved before any of them run.
-        REQUIRE(RegistryPackagesDir().string().starts_with(root_.string()));
+        REQUIRE(RegistryPackagesDir().string().starts_with(root.string()));
     }
 
     ScopedPackageCache(const ScopedPackageCache &) = delete;
     ScopedPackageCache &operator=(const ScopedPackageCache &) = delete;
 
     ~ScopedPackageCache() {
-        if (savedHome_) {
-            static_cast<void>(SetEnvPath(homeVariable, *savedHome_));
+        if (savedHome) {
+            static_cast<void>(SetEnvPath(homeVariable, *savedHome));
         }
         else {
             static_cast<void>(UnsetEnv(homeVariable));
         }
         std::error_code ec;
-        std::filesystem::remove_all(root_, ec);
+        std::filesystem::remove_all(root, ec);
     }
 
 private:
-    std::optional<std::filesystem::path> savedHome_;
-    std::filesystem::path root_;
+    std::optional<std::filesystem::path> savedHome;
+    std::filesystem::path root;
 };
 
 IdentitySegment Segment(const std::string_view text) {

@@ -243,17 +243,17 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
 
 namespace Rux {
 AstToHirLowering::AstToHirLowering(const SemanticModel &model)
-    : semanticModel_(model) {
+    : semanticModel(model) {
 }
 
 HirPackage AstToHirLowering::Generate() {
-    diagnostics_.clear();
-    AstToHirDetail::AstToHirContext lowering(semanticModel_, semanticModel_.modules, semanticModel_.compileTimeContext,
-                                             diagnostics_);
+    diagnostics.clear();
+    AstToHirDetail::AstToHirContext lowering(semanticModel, semanticModel.modules, semanticModel.compileTimeContext,
+                                             diagnostics);
     return lowering.Run();
 }
 
 const std::vector<Diagnostic> &AstToHirLowering::Diagnostics() const noexcept {
-    return diagnostics_;
+    return diagnostics;
 }
 } // namespace Rux

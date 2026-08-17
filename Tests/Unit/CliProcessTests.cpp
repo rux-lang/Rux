@@ -64,54 +64,54 @@ class ScopedCliPackageCache {
 public:
     ScopedCliPackageCache() {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        savedHome_ = System::GetEnvPath(packageCacheHomeVariable);
-        root_ = System::TempDirectory() / ("rux-cli-package-cache-test-" + std::to_string(nonce));
+        savedHome = System::GetEnvPath(packageCacheHomeVariable);
+        root = System::TempDirectory() / ("rux-cli-package-cache-test-" + std::to_string(nonce));
 
         std::error_code error;
-        std::filesystem::create_directories(root_, error);
+        std::filesystem::create_directories(root, error);
         REQUIRE(!error);
-        REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root_));
-        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root_.string()));
+        REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root));
+        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root.string()));
     }
 
     ScopedCliPackageCache(const ScopedCliPackageCache &) = delete;
     ScopedCliPackageCache &operator=(const ScopedCliPackageCache &) = delete;
 
     ~ScopedCliPackageCache() {
-        if (savedHome_) {
-            static_cast<void>(System::SetEnvPath(packageCacheHomeVariable, *savedHome_));
+        if (savedHome) {
+            static_cast<void>(System::SetEnvPath(packageCacheHomeVariable, *savedHome));
         }
         else {
             static_cast<void>(System::UnsetEnv(packageCacheHomeVariable));
         }
         std::error_code error;
-        std::filesystem::remove_all(root_, error);
+        std::filesystem::remove_all(root, error);
     }
 
 private:
-    std::optional<std::filesystem::path> savedHome_;
-    std::filesystem::path root_;
+    std::optional<std::filesystem::path> savedHome;
+    std::filesystem::path root;
 };
 
 class ScopedEnvironmentValue {
 public:
-    explicit ScopedEnvironmentValue(const std::string_view name)
-        : name_(name)
-        , saved_(System::GetEnv(name_.c_str())) {
+    explicit ScopedEnvironmentValue(const std::string_view inputName)
+        : name(inputName)
+        , saved(System::GetEnv(name.c_str())) {
     }
 
     ~ScopedEnvironmentValue() {
-        if (saved_) {
-            static_cast<void>(System::SetEnv(name_.c_str(), *saved_));
+        if (saved) {
+            static_cast<void>(System::SetEnv(name.c_str(), *saved));
         }
         else {
-            static_cast<void>(System::UnsetEnv(name_.c_str()));
+            static_cast<void>(System::UnsetEnv(name.c_str()));
         }
     }
 
 private:
-    std::string name_;
-    std::optional<std::string> saved_;
+    std::string name;
+    std::optional<std::string> saved;
 };
 
 std::filesystem::path WriteCachedPackage(const std::string_view packageNamespace, const std::string_view packageName,

@@ -128,13 +128,13 @@ bool CommitDownloadedPackage(const std::filesystem::path &staging, const std::fi
 namespace {
 class WinHttpHandle {
 public:
-    explicit WinHttpHandle(HINTERNET value = nullptr)
-        : value_(value) {
+    explicit WinHttpHandle(HINTERNET inputValue = nullptr)
+        : value(inputValue) {
     }
 
     ~WinHttpHandle() {
-        if (value_) {
-            WinHttpCloseHandle(value_);
+        if (value) {
+            WinHttpCloseHandle(value);
         }
     }
 
@@ -142,11 +142,11 @@ public:
     WinHttpHandle &operator=(const WinHttpHandle &) = delete;
 
     [[nodiscard]] HINTERNET Get() const noexcept {
-        return value_;
+        return value;
     }
 
 private:
-    HINTERNET value_;
+    HINTERNET value;
 };
 
 std::wstring Utf8ToWide(const std::string_view text) {

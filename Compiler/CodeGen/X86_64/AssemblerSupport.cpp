@@ -32,10 +32,10 @@ bool FitsInt32(const std::int64_t value) {
     return value >= INT32_MIN && value <= INT32_MAX;
 }
 
-LabelFixups::LabelFixups(const std::string_view sourceName, Bytes &out, AsmAssembly &result)
-    : sourceName_(sourceName)
-    , out_(out)
-    , result_(result) {
+LabelFixups::LabelFixups(const std::string_view inputSourceName, Bytes &inputOut, AsmAssembly &inputResult)
+    : sourceName(inputSourceName)
+    , out(inputOut)
+    , result(inputResult) {
 }
 
 void LabelFixups::Collect(const std::vector<AsmInstr> &instrs) {
@@ -43,38 +43,38 @@ void LabelFixups::Collect(const std::vector<AsmInstr> &instrs) {
     // branch can be distinguished from an external symbol reference.
     for (const auto &instr : instrs) {
         if (!instr.labelDef.empty()) {
-            labels_.emplace(instr.labelDef, 0);
+            labels.emplace(instr.labelDef, 0);
         }
     }
 }
 
 void LabelFixups::Define(const std::string &label, const std::uint32_t offset) {
-    labels_[label] = offset;
+    labels[label] = offset;
 }
 
 void LabelFixups::RecordRel32(const std::string &name, const SourceLocation &loc, const std::uint32_t fieldOffset) {
-    if (labels_.contains(name)) {
-        localJumps_.push_back({fieldOffset, name, loc});
+    if (labels.contains(name)) {
+        localJumps.push_back({fieldOffset, name, loc});
         return;
     }
 
     // The linker resolves rel32 as targetVA + addend - (site + 4).
-    result_.fixups.push_back({fieldOffset, name, RcuRelType::Rel32, 0});
+    result.fixups.push_back({fieldOffset, name, RcuRelType::Rel32, 0});
 }
 
 void LabelFixups::Resolve() {
-    for (const auto &jump : localJumps_) {
-        const auto it = labels_.find(jump.label);
-        if (it == labels_.end()) {
+    for (const auto &jump : localJumps) {
+        const auto it = labels.find(jump.label);
+        if (it == labels.end()) {
             Error(jump.location, std::format("undefined label '{}'", jump.label));
             continue;
         }
         const auto target = static_cast<std::int32_t>(it->second);
         const std::int32_t rel = target - static_cast<std::int32_t>(jump.fieldOffset + 4);
-        out_[jump.fieldOffset] = rel & 0xFF;
-        out_[jump.fieldOffset + 1] = (rel >> 8) & 0xFF;
-        out_[jump.fieldOffset + 2] = (rel >> 16) & 0xFF;
-        out_[jump.fieldOffset + 3] = (rel >> 24) & 0xFF;
+        out[jump.fieldOffset] = rel & 0xFF;
+        out[jump.fieldOffset + 1] = (rel >> 8) & 0xFF;
+        out[jump.fieldOffset + 2] = (rel >> 16) & 0xFF;
+        out[jump.fieldOffset + 3] = (rel >> 24) & 0xFF;
     }
 }
 
@@ -83,8 +83,8 @@ void LabelFixups::Error(const SourceLocation &loc, std::string message) {
     diagnostic.severity = Diagnostic::Severity::Error;
     diagnostic.message = std::move(message);
     diagnostic.location = loc;
-    diagnostic.sourceName = sourceName_;
-    result_.diagnostics.push_back(std::move(diagnostic));
+    diagnostic.sourceName = sourceName;
+    result.diagnostics.push_back(std::move(diagnostic));
 }
 
 std::optional<std::uint8_t> ConditionCode(const std::string_view mnemonic, const std::string_view prefix) {

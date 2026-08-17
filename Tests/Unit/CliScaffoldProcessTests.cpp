@@ -41,7 +41,7 @@ void WriteTextFile(const std::filesystem::path &path, const std::string_view con
 class ScopedCurrentDirectory {
 public:
     explicit ScopedCurrentDirectory(const std::filesystem::path &path)
-        : previous_(std::filesystem::current_path()) {
+        : previous(std::filesystem::current_path()) {
         std::filesystem::current_path(path);
     }
 
@@ -50,11 +50,11 @@ public:
 
     ~ScopedCurrentDirectory() {
         std::error_code error;
-        std::filesystem::current_path(previous_, error);
+        std::filesystem::current_path(previous, error);
     }
 
 private:
-    std::filesystem::path previous_;
+    std::filesystem::path previous;
 };
 
 bool ContainsDuration(const std::string_view text) {

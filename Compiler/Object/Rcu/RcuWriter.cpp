@@ -50,29 +50,29 @@ uint32_t Crc32c(const std::vector<uint8_t> &data) {
 // Binary writer
 class BinaryWriter {
 public:
-    static std::vector<uint8_t> Serialize(const RcuFile &f) {
-        BinaryWriter w(f);
+    static std::vector<uint8_t> Serialize(const RcuFile &file) {
+        BinaryWriter w(file);
         return w.Build();
     }
 
 private:
-    const RcuFile &f_;
-    RcuStringTable st_;
+    const RcuFile &file;
+    RcuStringTable strings;
 
-    explicit BinaryWriter(const RcuFile &f)
-        : f_(f) {
+    explicit BinaryWriter(const RcuFile &inputFile)
+        : file(inputFile) {
     }
 
     // Intern all strings first so offsets are stable
     void InternStrings() {
-        st_.Intern(f_.sourcePath);
-        st_.Intern(f_.packageName);
-        for (const auto &s : f_.symbols) {
-            st_.Intern(s.name);
-            st_.Intern(s.typeName);
+        strings.Intern(file.sourcePath);
+        strings.Intern(file.packageName);
+        for (const auto &s : file.symbols) {
+            strings.Intern(s.name);
+            strings.Intern(s.typeName);
         }
-        for (const auto &sec : f_.sections) {
-            st_.Intern(sec.name);
+        for (const auto &sec : file.sections) {
+            strings.Intern(sec.name);
         }
     }
 
@@ -120,8 +120,8 @@ private:
         InternStrings();
         std::vector<uint8_t> out;
         out.reserve(1024);
-        auto secCount = static_cast<uint16_t>(f_.sections.size());
-        auto symCount = static_cast<uint32_t>(f_.symbols.size());
+        auto secCount = static_cast<uint16_t>(file.sections.size());
+        auto symCount = static_cast<uint32_t>(file.symbols.size());
         // File Header (32 bytes)
         // [0-3]  magic
         out.push_back(0x52);
@@ -131,9 +131,9 @@ private:
         // [4-5]  version 1.0
         AppendU16(out, 0x0100);
         // [6]    arch
-        AppendU8(out, f_.arch);
+        AppendU8(out, file.arch);
         // [7]    flags
-        AppendU8(out, f_.flags);
+        AppendU8(out, file.flags);
         // [8-9]  section_count
         AppendU16(out, secCount);
         // [10-11] reserved
@@ -157,7 +157,7 @@ private:
         std::vector<uint32_t> secRelocOffPatches(secCount);
         std::vector<uint32_t> secRawOffPatches(secCount);
         for (uint16_t i = 0; i < secCount; ++i) {
-            const auto &sec = f_.sections[i];
+            const auto &sec = file.sections[i];
             // name[8]
             char name8[8] = {};
             for (int j = 0; j < 7 && j < static_cast<int>(sec.name.size()); ++j) {
@@ -180,18 +180,18 @@ private:
             AppendU32(out, 0); // reserved
         }
         // Symbol Table (symCount × 20 bytes)
-        for (const auto &sym : f_.symbols) {
-            AppendU32(out, st_.Intern(sym.name));
+        for (const auto &sym : file.symbols) {
+            AppendU32(out, strings.Intern(sym.name));
             AppendU32(out, sym.value);
             AppendU32(out, sym.size);
             AppendU16(out, sym.sectionIdx);
             AppendU8(out, sym.kind);
             AppendU8(out, sym.visibility);
-            AppendU32(out, sym.typeName.empty() ? 0 : st_.Intern(sym.typeName));
+            AppendU32(out, sym.typeName.empty() ? 0 : strings.Intern(sym.typeName));
         }
         // Section Data + Relocations
         for (uint16_t i = 0; i < secCount; ++i) {
-            const auto &sec = f_.sections[i];
+            const auto &sec = file.sections[i];
             // Align to section alignment
             AlignTo(out, sec.alignment);
             Patch32At(out, secRawOffPatches[i], static_cast<uint32_t>(out.size()));
@@ -212,14 +212,14 @@ private:
         }
         // String Table
         Patch32At(out, stOffPatch, static_cast<uint32_t>(out.size()));
-        Patch32At(out, stSizePatch, st_.Size());
-        const char *stData = st_.Data();
-        for (uint32_t i = 0; i < st_.Size(); ++i) {
+        Patch32At(out, stSizePatch, strings.Size());
+        const char *stData = strings.Data();
+        for (uint32_t i = 0; i < strings.Size(); ++i) {
             out.push_back(static_cast<uint8_t>(stData[i]));
         }
 
         // Rux Metadata (64 bytes, 8-byte aligned)
-        if (f_.hasMetadata) {
+        if (file.hasMetadata) {
             AlignTo(out, 8);
             Patch32At(out, metaOffPatch, static_cast<uint32_t>(out.size()));
             // magic
@@ -229,13 +229,13 @@ private:
             out.push_back(0x41);
             AppendU32(out, 64); // block_size
             AppendU32(out,
-                      st_.Intern(f_.sourcePath)); // source_path_off
+                      strings.Intern(file.sourcePath)); // source_path_off
             AppendU32(out,
-                      st_.Intern(f_.packageName)); // package_name_off
-            AppendU64(out, f_.buildTimestamp);
-            AppendU32(out, f_.ruxVersion);
-            AppendU32(out, f_.compilerFlags);
-            for (uint8_t b : f_.sourceHash) {
+                      strings.Intern(file.packageName)); // package_name_off
+            AppendU64(out, file.buildTimestamp);
+            AppendU32(out, file.ruxVersion);
+            AppendU32(out, file.compilerFlags);
+            for (uint8_t b : file.sourceHash) {
                 AppendU8(out, b);
             }
         }

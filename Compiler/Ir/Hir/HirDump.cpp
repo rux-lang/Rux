@@ -288,7 +288,7 @@ static void DumpFuncSignature(std::ostream &out, const HirFunc &f, const std::st
         out << prefix << "#NoReturn()\n";
     }
     std::string pub = f.isPublic ? "pub " : "";
-    std::string asm_ = f.isAsm ? "asm " : "";
+    std::string asmPrefix = f.isAsm ? "asm " : "";
     std::string tps;
     if (!f.typeParams.empty()) {
         tps = "<";
@@ -313,7 +313,7 @@ static void DumpFuncSignature(std::ostream &out, const HirFunc &f, const std::st
         }
     }
     std::string ret = f.returnType.IsOpaque() ? "" : " -> " + f.returnType.ToString();
-    out << std::format("{}{}{}func {}{}{}{}\n", prefix, pub, asm_, f.name, tps,
+    out << std::format("{}{}{}func {}{}{}{}\n", prefix, pub, asmPrefix, f.name, tps,
                        params.empty() ? "()" : "(" + params + ")", ret);
 }
 

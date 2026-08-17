@@ -6,7 +6,7 @@
 namespace Rux::Optimization {
 class LirDeclarationPruner final : public LirPass {
 public:
-    explicit LirDeclarationPruner(ArtifactKind artifactKind);
+    explicit LirDeclarationPruner(ArtifactKind inputArtifactKind);
 
     [[nodiscard]] std::string_view Name() const noexcept override {
         return "lir-declaration-pruner";
@@ -15,6 +15,6 @@ public:
     PassChange Run(LirPackage &package, const PassContext &context) override;
 
 private:
-    ArtifactKind artifactKind_;
+    ArtifactKind artifactKind;
 };
 } // namespace Rux::Optimization

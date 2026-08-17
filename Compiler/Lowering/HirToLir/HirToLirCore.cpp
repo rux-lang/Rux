@@ -634,18 +634,18 @@ void HirToLirContext::LowerBlock(const HirBlock &block) {
 namespace Rux {
 
 // Lir public API
-HirToLirLowering::HirToLirLowering(HirPackage package, TargetContext target)
-    : hir_(std::move(package))
-    , target_(target) {
+HirToLirLowering::HirToLirLowering(HirPackage inputHir, TargetContext inputTarget)
+    : hir(std::move(inputHir))
+    , target(inputTarget) {
 }
 
 LirPackage HirToLirLowering::Generate() {
-    diagnostics_.clear();
-    HirToLirDetail::HirToLirContext lowering(target_, diagnostics_);
-    return lowering.Run(hir_);
+    diagnostics.clear();
+    HirToLirDetail::HirToLirContext lowering(target, diagnostics);
+    return lowering.Run(hir);
 }
 
 const std::vector<Diagnostic> &HirToLirLowering::Diagnostics() const noexcept {
-    return diagnostics_;
+    return diagnostics;
 }
 } // namespace Rux

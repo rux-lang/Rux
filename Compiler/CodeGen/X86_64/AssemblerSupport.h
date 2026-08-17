@@ -21,7 +21,7 @@ void Append64(Bytes &out, std::uint64_t value);
 
 class LabelFixups {
 public:
-    LabelFixups(std::string_view sourceName, Bytes &out, AsmAssembly &result);
+    LabelFixups(std::string_view inputSourceName, Bytes &inputOut, AsmAssembly &inputResult);
 
     void Collect(const std::vector<AsmInstr> &instrs);
     void Define(const std::string &label, std::uint32_t offset);
@@ -37,11 +37,11 @@ private:
 
     void Error(const SourceLocation &loc, std::string message);
 
-    std::string_view sourceName_;
-    Bytes &out_;
-    AsmAssembly &result_;
-    std::unordered_map<std::string, std::uint32_t> labels_;
-    std::vector<LocalJump> localJumps_;
+    std::string_view sourceName;
+    Bytes &out;
+    AsmAssembly &result;
+    std::unordered_map<std::string, std::uint32_t> labels;
+    std::vector<LocalJump> localJumps;
 };
 
 enum class SseFormKind : std::uint8_t {

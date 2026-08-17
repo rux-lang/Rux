@@ -43,8 +43,8 @@ bool Prune(std::vector<Declaration> &declarations, IsReachable isReachable, OnPr
 }
 } // namespace
 
-LirDeclarationPruner::LirDeclarationPruner(const ArtifactKind artifactKind)
-    : artifactKind_(artifactKind) {
+LirDeclarationPruner::LirDeclarationPruner(const ArtifactKind inputArtifactKind)
+    : artifactKind(inputArtifactKind) {
 }
 
 PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &context) {
@@ -52,7 +52,7 @@ PassChange LirDeclarationPruner::Run(LirPackage &package, const PassContext &con
         return PassChange::None;
     }
 
-    const auto reachability = LirReachabilityAnalysis::Run(package, artifactKind_);
+    const auto reachability = LirReachabilityAnalysis::Run(package, artifactKind);
     LirPruningStats ignoredStats;
     LirPruningStats &stats = context.lirPruning != nullptr ? *context.lirPruning : ignoredStats;
     bool changed = false;

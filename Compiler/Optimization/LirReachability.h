@@ -30,7 +30,7 @@ public:
 
 private:
     friend class LirReachabilityAnalysis;
-    std::vector<LirDeclarationId> reachableDeclarations_;
+    std::vector<LirDeclarationId> reachableDeclarations;
 };
 
 class LirReachabilityAnalysis {

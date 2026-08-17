@@ -149,32 +149,32 @@ std::string FoundText(const AsmOperand &op) {
     return "nothing";
 }
 
-AssemblerContext::AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out,
-                                   const Target::OS targetOs)
-    : instrs_(instrs)
-    , sourceName_(std::move(sourceName))
-    , targetOs_(targetOs)
-    , out_(out)
-    , enc_(out_) {
+AssemblerContext::AssemblerContext(const std::vector<AsmInstr> &inputInstrs, std::string inputSourceName,
+                                   Bytes &inputOut, const Target::OS inputTargetOs)
+    : instrs(inputInstrs)
+    , sourceName(std::move(inputSourceName))
+    , targetOs(inputTargetOs)
+    , out(inputOut)
+    , encoder(out) {
 }
 
 AsmAssembly AssemblerContext::Run() {
     CollectLabels();
-    for (const auto &instr : instrs_) {
+    for (const auto &instr : instrs) {
         if (!instr.labelDef.empty()) {
-            labels_[instr.labelDef] = Here();
+            labels[instr.labelDef] = Here();
             continue;
         }
         EncodeInstr(instr);
     }
     ResolveLocalTargets();
-    result_.ok = result_.diagnostics.empty();
-    return std::move(result_);
+    result.ok = result.diagnostics.empty();
+    return std::move(result);
 }
 
 void AssemblerContext::Begin(const AsmInstr &in, const Syntax syntax) {
-    in_ = &in;
-    syntax_ = syntax;
+    currentInstr = &in;
+    currentSyntax = syntax;
 }
 
 void AssemblerContext::Error(const SourceLocation &loc, std::string msg, std::vector<std::string> notes,
@@ -183,15 +183,15 @@ void AssemblerContext::Error(const SourceLocation &loc, std::string msg, std::ve
     diagnostic.severity = Diagnostic::Severity::Error;
     diagnostic.message = std::move(msg);
     diagnostic.location = loc;
-    diagnostic.sourceName = sourceName_;
+    diagnostic.sourceName = sourceName;
     diagnostic.notes = std::move(notes);
     diagnostic.help = std::move(help);
-    result_.diagnostics.push_back(std::move(diagnostic));
+    result.diagnostics.push_back(std::move(diagnostic));
 }
 
 std::string AssemblerContext::FormText() const {
-    std::string mnemonic = Uppered(in_->mnemonic);
-    return syntax_.empty() ? mnemonic : std::format("{} {}", mnemonic, syntax_);
+    std::string mnemonic = Uppered(currentInstr->mnemonic);
+    return currentSyntax.empty() ? mnemonic : std::format("{} {}", mnemonic, currentSyntax);
 }
 
 void AssemblerContext::FormError(const SourceLocation &loc, const std::string &what) {
@@ -199,36 +199,36 @@ void AssemblerContext::FormError(const SourceLocation &loc, const std::string &w
 }
 
 const std::string &AssemblerContext::Mnemonic() const {
-    return in_->mnemonic;
+    return currentInstr->mnemonic;
 }
 
 Target::OS AssemblerContext::TargetOs() const {
-    return targetOs_;
+    return targetOs;
 }
 
 std::size_t AssemblerContext::IndexOf(const AsmOperand &op) const {
-    return static_cast<std::size_t>(&op - in_->operands.data()) + 1;
+    return static_cast<std::size_t>(&op - currentInstr->operands.data()) + 1;
 }
 
 std::uint32_t AssemblerContext::Here() const {
-    return static_cast<std::uint32_t>(out_.size());
+    return static_cast<std::uint32_t>(out.size());
 }
 
 bool AssemblerContext::Operands(const std::size_t count) {
-    if (in_->operands.size() == count) {
+    if (currentInstr->operands.size() == count) {
         return true;
     }
-    FormError(in_->location, std::format("'{}' takes {} operand{}, found {}", in_->mnemonic, count,
-                                         count == 1 ? "" : "s", in_->operands.size()));
+    FormError(currentInstr->location, std::format("'{}' takes {} operand{}, found {}", currentInstr->mnemonic, count,
+                                                  count == 1 ? "" : "s", currentInstr->operands.size()));
     return false;
 }
 
 bool AssemblerContext::Operands(const std::size_t least, const std::size_t most) {
-    if (in_->operands.size() >= least && in_->operands.size() <= most) {
+    if (currentInstr->operands.size() >= least && currentInstr->operands.size() <= most) {
         return true;
     }
-    FormError(in_->location,
-              std::format("'{}' takes {} to {} operands, found {}", in_->mnemonic, least, most, in_->operands.size()));
+    FormError(currentInstr->location, std::format("'{}' takes {} to {} operands, found {}", currentInstr->mnemonic,
+                                                  least, most, currentInstr->operands.size()));
     return false;
 }
 
@@ -238,7 +238,7 @@ std::optional<A64Reg> AssemblerContext::RegNamed(const std::string &name, const 
         if (LookupRegister(Target::Arch::X86_64, name).valid) {
             Error(loc,
                   std::format("register '{}' is not available for target '{}'", name,
-                              BackendTargetName(targetOs_, Target::Arch::AArch64)),
+                              BackendTargetName(targetOs, Target::Arch::AArch64)),
                   {std::format("'{}' is an x86-64 register", name)});
         }
         else {
@@ -251,8 +251,8 @@ std::optional<A64Reg> AssemblerContext::RegNamed(const std::string &name, const 
 
 std::optional<A64Reg> AssemblerContext::RegOf(const AsmOperand &op) {
     if (op.kind != AsmOperand::Kind::Reg) {
-        FormError(op.location, std::format("'{}' takes a register as operand {}, found {}", in_->mnemonic, IndexOf(op),
-                                           FoundText(op)));
+        FormError(op.location, std::format("'{}' takes a register as operand {}, found {}", currentInstr->mnemonic,
+                                           IndexOf(op), FoundText(op)));
         return std::nullopt;
     }
     return RegNamed(op.name, op.location);
@@ -260,7 +260,7 @@ std::optional<A64Reg> AssemblerContext::RegOf(const AsmOperand &op) {
 
 std::optional<std::int64_t> AssemblerContext::ImmOf(const AsmOperand &op) {
     if (op.kind != AsmOperand::Kind::Imm) {
-        FormError(op.location, std::format("'{}' takes an immediate as operand {}, found {}", in_->mnemonic,
+        FormError(op.location, std::format("'{}' takes an immediate as operand {}, found {}", currentInstr->mnemonic,
                                            IndexOf(op), FoundText(op)));
         return std::nullopt;
     }
@@ -282,7 +282,8 @@ std::optional<unsigned> AssemblerContext::UnsignedImmOf(const AsmOperand &op, co
         return std::nullopt;
     }
     if (*value < 0 || static_cast<std::uint64_t>(*value) > limit) {
-        FormError(op.location, std::format("'{}' takes {} of 0 to {}, found {}", in_->mnemonic, what, limit, *value));
+        FormError(op.location,
+                  std::format("'{}' takes {} of 0 to {}, found {}", currentInstr->mnemonic, what, limit, *value));
         return std::nullopt;
     }
     return static_cast<unsigned>(*value);
@@ -290,8 +291,8 @@ std::optional<unsigned> AssemblerContext::UnsignedImmOf(const AsmOperand &op, co
 
 std::optional<A64Condition> AssemblerContext::CondOf(const AsmOperand &op) {
     if (op.kind != AsmOperand::Kind::Sym) {
-        FormError(op.location, std::format("'{}' takes a condition as operand {}, found {}", in_->mnemonic, IndexOf(op),
-                                           FoundText(op)));
+        FormError(op.location, std::format("'{}' takes a condition as operand {}, found {}", currentInstr->mnemonic,
+                                           IndexOf(op), FoundText(op)));
         return std::nullopt;
     }
     if (const auto cond = ConditionFromName(Lowered(op.name))) {
@@ -314,13 +315,13 @@ bool AssemblerContext::Uniform(const RegClass regClass, const std::initializer_l
         if (regClass == RegClass::Float && !ref.reg.IsVector()) {
             FormError(ref.op->location, std::format("'{}' takes a floating-point register as operand {}, found the "
                                                     "general-purpose '{}'",
-                                                    in_->mnemonic, IndexOf(*ref.op), ref.name));
+                                                    currentInstr->mnemonic, IndexOf(*ref.op), ref.name));
             return false;
         }
         if (regClass == RegClass::General && ref.reg.IsVector()) {
             FormError(ref.op->location,
                       std::format("'{}' takes a general-purpose register as operand {}, found the floating-point '{}'",
-                                  in_->mnemonic, IndexOf(*ref.op), ref.name));
+                                  currentInstr->mnemonic, IndexOf(*ref.op), ref.name));
             return false;
         }
         if (first == nullptr) {
@@ -331,7 +332,7 @@ bool AssemblerContext::Uniform(const RegClass regClass, const std::initializer_l
             FormError(ref.op->location,
                       std::format("'{}' takes operands of one width, and operand {} '{}' is {}-bit where '{}' is "
                                   "{}-bit",
-                                  in_->mnemonic, IndexOf(*ref.op), ref.name, ref.reg.bits, first->name,
+                                  currentInstr->mnemonic, IndexOf(*ref.op), ref.name, ref.reg.bits, first->name,
                                   first->reg.bits));
             return false;
         }
@@ -347,7 +348,7 @@ bool AssemblerContext::NoStackPointer(const std::initializer_list<RegRef> regs) 
         FormError(ref.op->location,
                   std::format("'{}' reads register 31 as the zero register, so operand {} cannot be '{}' but may be "
                               "'{}'",
-                              in_->mnemonic, IndexOf(*ref.op), ref.name, ref.reg.Is64() ? "xzr" : "wzr"));
+                              currentInstr->mnemonic, IndexOf(*ref.op), ref.name, ref.reg.Is64() ? "xzr" : "wzr"));
         return false;
     }
     return true;
@@ -359,7 +360,7 @@ bool AssemblerContext::CheckArithImm(const AsmOperand &op, const std::uint64_t v
     }
     FormError(op.location, std::format("'{}' takes an immediate of 0 to 4095 or a multiple of 4096 up to "
                                        "16773120, found {}",
-                                       in_->mnemonic, value));
+                                       currentInstr->mnemonic, value));
     return false;
 }
 
@@ -369,7 +370,7 @@ bool AssemblerContext::CheckLogicalImm(const AsmOperand &op, const std::uint64_t
     }
     FormError(op.location, std::format("'{}' takes a bitmask immediate (a run of one bits, rotated and repeated to "
                                        "fill the register), and {} is not one",
-                                       in_->mnemonic, value));
+                                       currentInstr->mnemonic, value));
     return false;
 }
 
@@ -385,24 +386,24 @@ void AssemblerContext::Emit(const AsmInstr &in, const A64Status status) {
 
 void AssemblerContext::EncodeInstr(const AsmInstr &in) {
     const std::uint32_t before = Here();
-    const std::size_t reported = result_.diagnostics.size();
+    const std::size_t reported = result.diagnostics.size();
     if (in.arch != Target::Arch::Unknown && in.arch != Target::Arch::AArch64) {
         Error(in.location,
               std::format("inline assembly parsed for {} cannot be emitted for target '{}'",
-                          Target::ToDisplayString(in.arch), BackendTargetName(targetOs_, Target::Arch::AArch64)),
+                          Target::ToDisplayString(in.arch), BackendTargetName(targetOs, Target::Arch::AArch64)),
               {std::format("instruction: '{}'", in.mnemonic)},
               "compile the assembly body for the architecture it was parsed for");
     }
     else {
         Dispatch(in);
     }
-    if (result_.diagnostics.size() != reported && Here() == before) {
-        enc_.Word(0);
+    if (result.diagnostics.size() != reported && Here() == before) {
+        encoder.Word(0);
     }
 }
 
 void AssemblerContext::AddFixup(const std::uint32_t at, const std::string &symbol, const std::uint16_t relType) {
-    result_.fixups.push_back({at, symbol, relType, 0});
+    result.fixups.push_back({at, symbol, relType, 0});
 }
 
 } // namespace Rux::AArch64AssemblerPrivate

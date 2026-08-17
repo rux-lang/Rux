@@ -13,7 +13,7 @@ class CheckedLirBuilder {
 public:
     using BlockIndex = std::uint32_t;
 
-    explicit CheckedLirBuilder(LirFunc &function);
+    explicit CheckedLirBuilder(LirFunc &inputFunction);
 
     [[nodiscard]] LirReg AllocateRegister();
     [[nodiscard]] LirReg DefineParameter();
@@ -36,10 +36,10 @@ private:
     [[nodiscard]] bool HasValidSources(const LirTerminator &terminator) const noexcept;
     [[nodiscard]] bool HasValidTargets(const LirTerminator &terminator) const noexcept;
 
-    LirFunc *function_;
-    std::optional<BlockIndex> currentBlock_;
-    LirReg nextRegister_ = 0;
-    std::unordered_set<LirReg> definedRegisters_;
-    std::string failureReason_;
+    LirFunc *function;
+    std::optional<BlockIndex> currentBlock;
+    LirReg nextRegister = 0;
+    std::unordered_set<LirReg> definedRegisters;
+    std::string failureReason;
 };
 } // namespace Rux

@@ -14,7 +14,7 @@ public:
     [[nodiscard]] const std::vector<Diagnostic> &Diagnostics() const noexcept;
 
 private:
-    const SemanticModel &semanticModel_;
-    std::vector<Diagnostic> diagnostics_;
+    const SemanticModel &semanticModel;
+    std::vector<Diagnostic> diagnostics;
 };
 } // namespace Rux
