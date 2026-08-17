@@ -1,0 +1,271 @@
+import Algorithms::{ NthElement, PartialSort, IsSorted, Equal, Copy };
+
+struct Ranked {
+    key: int32;
+    origin: int32;
+}
+
+extend Ranked {
+    func <(self, other: Ranked) -> bool {
+        return self.key < other.key;
+    }
+}
+
+// Independent of everything under test: no partitioning, no heap. The expected
+// results below are derived from this rather than from Sort, so a shared bug
+// in the partition helpers cannot hide itself.
+func ReferenceSort(data: *var int32, length: uint) {
+    var i: uint = 0;
+    while i < length {
+        var best = i;
+        var j = i + 1;
+        while j < length {
+            if data[j] < data[best] {
+                best = j;
+            }
+            j++;
+        }
+        let temp = data[i];
+        data[i] = data[best];
+        data[best] = temp;
+        i++;
+    }
+}
+
+func NextRandom(state: *var uint64) -> uint64 {
+    var x = *state;
+    x = x ^ (x >> 12u64);
+    x = x ^ (x << 25u64);
+    x = x ^ (x >> 27u64);
+    *state = x;
+    return x * 2685821657736338717u64;
+}
+
+// Checks the whole NthElement contract at one position: the element landing at
+// n is the one a full sort would put there, nothing before it is larger,
+// nothing after it is smaller, and no element was lost along the way.
+func CheckNth(source: *int32, length: uint, n: uint) -> int {
+    var actual: int32[260];
+    var expected: int32[260];
+    var check: int32[260];
+
+    Copy<int32>(@actual[0], source, length);
+    Copy<int32>(@expected[0], source, length);
+    ReferenceSort(@expected[0], length);
+
+    if !NthElement<int32>(@actual[0], length, n) {
+        return 1;
+    }
+    if actual[n] != expected[n] {
+        return 2;
+    }
+
+    var i: uint = 0;
+    while i < n {
+        if actual[n] < actual[i] {
+            return 3;
+        }
+        i++;
+    }
+
+    i = n + 1;
+    while i < length {
+        if actual[i] < actual[n] {
+            return 4;
+        }
+        i++;
+    }
+
+    Copy<int32>(@check[0], @actual[0], length);
+    ReferenceSort(@check[0], length);
+    if !Equal<int32>(@check[0], length, @expected[0], length) {
+        return 5;
+    }
+    return 0;
+}
+
+// The count smallest, in order, at the front; the rest still present.
+func CheckPartial(source: *int32, length: uint, count: uint) -> int {
+    var actual: int32[260];
+    var expected: int32[260];
+    var check: int32[260];
+
+    Copy<int32>(@actual[0], source, length);
+    Copy<int32>(@expected[0], source, length);
+    ReferenceSort(@expected[0], length);
+
+    if !PartialSort<int32>(@actual[0], length, count) {
+        return 1;
+    }
+    if !IsSorted<int32>(@actual[0], count) {
+        return 2;
+    }
+    if !Equal<int32>(@actual[0], count, @expected[0], count) {
+        return 3;
+    }
+
+    Copy<int32>(@check[0], @actual[0], length);
+    ReferenceSort(@check[0], length);
+    if !Equal<int32>(@check[0], length, @expected[0], length) {
+        return 4;
+    }
+    return 0;
+}
+
+func FillShape(data: *var int32, length: uint, shape: int, state: *var uint64) {
+    var i: uint = 0;
+    while i < length {
+        if shape == 0 {
+            data[i] = i as int32;
+        }
+        else if shape == 1 {
+            data[i] = (length - i) as int32;
+        }
+        else if shape == 2 {
+            data[i] = 7;
+        }
+        else if shape == 3 {
+            data[i] = (i % 3) as int32;
+        }
+        else {
+            data[i] = (NextRandom(state) % 40u64) as int32;
+        }
+        i++;
+    }
+}
+
+func Main() -> int {
+    var buffer: int32[260];
+    var state: uint64 = 2463534242u64;
+
+    // An index at or past the end is rejected, and the sequence is untouched.
+    var small: int32[3] = [3, 1, 2];
+    if NthElement<int32>(@small[0], 3, 3) { return 10; }
+    if NthElement<int32>(@small[0], 3, 99) { return 11; }
+    if NthElement<int32>(@small[0], 0, 0) { return 12; }
+    if small[0] != 3 || small[1] != 1 || small[2] != 2 { return 13; }
+
+    // A count past the end is rejected, and the sequence is untouched.
+    if PartialSort<int32>(@small[0], 3, 4) { return 14; }
+    if small[0] != 3 || small[1] != 1 || small[2] != 2 { return 15; }
+
+    // Sorting zero elements succeeds and does nothing.
+    if !PartialSort<int32>(@small[0], 3, 0) { return 16; }
+    if small[0] != 3 { return 17; }
+
+    // Every position of a short sequence, across every shape.
+    var shape: int = 0;
+    var caseId: int = 0;
+    while shape < 5 {
+        FillShape(@buffer[0], 9, shape, @state);
+        var n: uint = 0;
+        while n < 9 {
+            let kind = CheckNth(@buffer[0], 9, n);
+            if kind != 0 {
+                return 20 + caseId + kind;
+            }
+            n++;
+        }
+        caseId = caseId + 8;
+        shape++;
+    }
+
+    // Every count of a short sequence, across every shape.
+    shape = 0;
+    caseId = 0;
+    while shape < 5 {
+        FillShape(@buffer[0], 9, shape, @state);
+        var count: uint = 0;
+        while count <= 9 {
+            let kind = CheckPartial(@buffer[0], 9, count);
+            if kind != 0 {
+                return 70 + caseId + kind;
+            }
+            count++;
+        }
+        caseId = caseId + 6;
+        shape++;
+    }
+
+    // Longer inputs, past the point where the partition loop does real work:
+    // the ends, the median, and a quarter position.
+    var round: int = 0;
+    while round < 12 {
+        let length = ((NextRandom(@state) % 200u64) as uint) + 4;
+        FillShape(@buffer[0], length, 4, @state);
+
+        if CheckNth(@buffer[0], length, 0) != 0 { return 120; }
+        if CheckNth(@buffer[0], length, length - 1) != 0 { return 121; }
+        if CheckNth(@buffer[0], length, length / 2) != 0 { return 122; }
+        if CheckNth(@buffer[0], length, length / 4) != 0 { return 123; }
+
+        if CheckPartial(@buffer[0], length, 1) != 0 { return 124; }
+        if CheckPartial(@buffer[0], length, 5) != 0 { return 125; }
+        if CheckPartial(@buffer[0], length, length / 2) != 0 { return 126; }
+        if CheckPartial(@buffer[0], length, length) != 0 { return 127; }
+        round++;
+    }
+
+    // An all-equal sequence lands n inside the pivot band on the first
+    // partition, which is the early-exit path.
+    FillShape(@buffer[0], 200, 2, @state);
+    if CheckNth(@buffer[0], 200, 100) != 0 { return 130; }
+    if CheckPartial(@buffer[0], 200, 10) != 0 { return 131; }
+
+    // Already-sorted and reverse-sorted input at length 200.
+    FillShape(@buffer[0], 200, 0, @state);
+    if CheckNth(@buffer[0], 200, 37) != 0 { return 132; }
+    if CheckPartial(@buffer[0], 200, 20) != 0 { return 133; }
+    FillShape(@buffer[0], 200, 1, @state);
+    if CheckNth(@buffer[0], 200, 37) != 0 { return 134; }
+    if CheckPartial(@buffer[0], 200, 20) != 0 { return 135; }
+
+    // A single element is its own order statistic.
+    var single: int32[1] = [42];
+    if CheckNth(@single[0], 1, 0) != 0 { return 140; }
+    if CheckPartial(@single[0], 1, 1) != 0 { return 141; }
+
+    // Signed limits are ordinary values.
+    var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
+    if CheckNth(@signed[0], 5, 0) != 0 { return 150; }
+    if CheckNth(@signed[0], 5, 4) != 0 { return 151; }
+    if CheckPartial(@signed[0], 5, 2) != 0 { return 152; }
+
+    // A user struct ordered by key alone. Selection is unstable, so the test
+    // pins the key at the requested position, not which record supplies it.
+    var ranked: Ranked[7] = [Ranked { key: 5, origin: 0 },
+                             Ranked { key: 1, origin: 1 },
+                             Ranked { key: 9, origin: 2 },
+                             Ranked { key: 3, origin: 3 },
+                             Ranked { key: 1, origin: 4 },
+                             Ranked { key: 7, origin: 5 },
+                             Ranked { key: 3, origin: 6 }];
+    if !NthElement<Ranked>(@ranked[0], 7, 3) { return 160; }
+    // Sorted keys are 1 1 3 3 5 7 9, so position three holds a 3.
+    if ranked[3].key != 3 { return 161; }
+
+    var i: uint = 0;
+    while i < 3 {
+        if ranked[3] < ranked[i] { return 162; }
+        i++;
+    }
+    i = 4;
+    while i < 7 {
+        if ranked[i] < ranked[3] { return 163; }
+        i++;
+    }
+
+    var partial: Ranked[7] = [Ranked { key: 5, origin: 0 },
+                              Ranked { key: 1, origin: 1 },
+                              Ranked { key: 9, origin: 2 },
+                              Ranked { key: 3, origin: 3 },
+                              Ranked { key: 1, origin: 4 },
+                              Ranked { key: 7, origin: 5 },
+                              Ranked { key: 3, origin: 6 }];
+    if !PartialSort<Ranked>(@partial[0], 7, 4) { return 170; }
+    if !IsSorted<Ranked>(@partial[0], 4) { return 171; }
+    if partial[0].key != 1 || partial[1].key != 1 { return 172; }
+    if partial[2].key != 3 || partial[3].key != 3 { return 173; }
+
+    return 0;
+}

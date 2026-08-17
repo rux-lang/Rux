@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Each release groups its entries under **Added**, **Changed**, **Removed**, and **Fixed**, subdivided by area (Language, CLI / Package Manager, Tooling, Platform, Runtime / Linker) when a section is long enough to need it.
+Each release groups its entries under **Added**, **Changed**, **Removed**, and **Fixed**, subdivided by area (Language, Packages, CLI / Package Manager, Tooling, Platform, Runtime / Linker) when a section is long enough to need it.
 
 ## [Unreleased]
 
@@ -29,6 +29,12 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Whole-module import** — `import Pkg;` binds a dependency's eponymous `module Pkg` as a namespace, so its members are used through `Pkg::Name` (e.g. `import Windows;` then `Windows::HeapAlloc(...)`). A package that exposes no same-named module still requires naming an item, and `import Pkg::Module` / `import Pkg::{ A, B }` / `import Pkg::*` are unchanged.
 - **Inline assembly functions** — `asm func Name(...) -> T { ... }` bodies are written directly in x86-64 (Intel syntax) and assembled to machine code, bypassing the normal HIR/LIR pipeline. Supports the common instruction subset (ALU ops, `mov`/`lea`, `movzx`/`movsx`, the multiply/divide group, shifts, `push`/`pop`, `call`/`jmp`, the full `jcc`/`setcc` family, `ret`/`leave`/`nop`/`syscall`), register/immediate/memory operands, local labels, and calls to other functions. A body is read and assembled for the architecture the build targets: an AArch64 build accepts AArch64 register names and operand syntax (`#imm`, `[Xn, #off]`, `[Xn, Xm, LSL #3]`, `[Xn], #off`, `[Xn, #off]!`, `X1, LSL #3`, `B.EQ`) and encodes the body itself, and a body whose instructions belong to the other architecture — an `imul` in an AArch64 build, an `ldr` in an x86-64 one — is an error naming the mnemonic that gives it away. One function reaches both machines by writing a body per architecture under `when #target.arch`.
 - **Targeted lint allowances** — `#Allow("naming.type")` preserves intentional foreign type, field, and variant spellings on a single type declaration without disabling naming checks elsewhere.
+
+#### Packages
+
+- **`Rux/Algorithms`** — the package is implemented, replacing its reserved placeholder. Five modules split by what they ask of the element type, so a type defining one comparison operator can still use the modules that want it: `Modify` (`Swap`, `Reverse`, `Rotate`, `Fill`, `Copy`, `CopyBackward`, `Unique`, `RemoveValue`) needs nothing; `Find` (`Contains`, `Count`, `TryFind`, `TryFindLast`, `Equal`, `TryMismatch`) needs `==`; and `Search` (`IsSorted`, `IsSortedUntil`, `LowerBound`, `UpperBound`, `TryBinarySearch`, `EqualRange`), `Sort` (`Sort`, `SortDescending`, `NthElement`, `PartialSort`), and `MinMax` (`TryMinIndex`, `TryMaxIndex`, `TryMinMaxIndex`, `Clamp`) need `<`. Ordering comes from the `<` operator rather than a comparator parameter, so every primitive works and a struct joins in by defining `func <`. `Sort` is an introsort — quicksort with a three-way partition, falling back to heapsort on its recursion budget and to insertion sort below sixteen elements — giving O(n log n) worst case, linear behavior on all-equal input, and about log2(n) stack frames. Nothing in the package allocates, its only dependency is `Rux/Core`, and every entry point takes a pointer and a length so it accepts a `Slice`, a `MutableSlice`, an `Array`, or a `List` without coupling to any of them.
+- **`Core::MutableSlice`** — the writable counterpart to `Slice`, holding `*var T` where `Slice` holds `*T`, with `New`, `From`, `Length`, `IsEmpty`, `At`, `Set`, `Swap`, `Sub`, and `AsSlice`. It borrows and never owns. `Sub` clamps a length that runs past the end and yields an empty view for a start at or past it, so a sub-view never covers storage the original does not.
+- **`Collections::Array::AsMutableSlice` and `Collections::List::AsMutableSlice`** — hand out a writable view of a container's elements without copying them, mirroring the existing `AsSlice`. `List` exposes only its initialized elements, never its spare capacity.
 
 #### CLI / Package Manager
 
