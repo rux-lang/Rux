@@ -14,6 +14,7 @@ rux add Rux/Collections
 | ------------ | --------------------------------------------- |
 | `Array`      | Available — fixed-length heap-allocated sequence |
 | `Vector`     | Available — growable sequence, and the stack  |
+| `Deque`      | Available — circular buffer, and the queue    |
 | `Dictionary` | Planned                                       |
 | `HashMap`    | Planned                                       |
 | `HashSet`    | Planned                                       |
