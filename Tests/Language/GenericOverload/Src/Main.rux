@@ -46,11 +46,33 @@ func Combine<T, U>(left: T, right: U, marker: bool) -> uint {
     return 20;
 }
 
+// Overloads on a non-generic name, to check literal coercion is not specific
+// to generics.
+func Plain(value: uint) -> int {
+    return 1;
+}
+
+func Plain(value: uint, extra: uint) -> int {
+    return 2;
+}
+
 func Main() -> int {
     let one: uint = 1;
     let two: uint = 2;
     let four: uint = 4;
     let value: int32 = 7;
+
+    // An unsuffixed integer literal reaches an integer parameter of any width,
+    // as it does when the name has only one candidate. Before, giving a name a
+    // second overload stopped every bare-literal call from resolving.
+    Assert(Weigh<int32>(value, 1) == 1, "literal reaches a uint parameter");
+    Assert(Weigh<int32>(value, 1, 2) == 3, "literals reach a three-argument overload");
+    Assert(Weigh<int32>(value, 1, 2, 4) == 7, "literals reach a four-argument overload");
+    Assert(Plain(1) == 1, "literal reaches a non-generic overload");
+    Assert(Plain(1, 2) == 2, "literals reach the other non-generic overload");
+
+    // The element argument coerces too, not just the lengths.
+    Assert(Describe<int32>(value, 2) == 2, "literal picks the uint overload");
 
     // Each arity reaches its own overload, at one instantiation.
     Assert(Weigh<int32>(value, one) == 1, "two-argument overload");
@@ -69,7 +91,8 @@ func Main() -> int {
     Assert(Weigh<int32>(value, two, two) == 4, "int32 set still intact");
     Assert(Weigh<Pair>(pair, two, two) == 4, "struct set still intact");
 
-    // Overloads at equal arity, selected by parameter type.
+    // Overloads at equal arity, selected by parameter type. A bool argument
+    // must not be swept into the integer allowance above.
     Assert(Describe<int32>(value, true) == 1, "bool overload");
     Assert(Describe<int32>(value, two) == 2, "uint overload");
 
