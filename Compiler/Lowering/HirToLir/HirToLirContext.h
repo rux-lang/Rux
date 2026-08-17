@@ -82,6 +82,9 @@ private:
     [[nodiscard]] LirReg EmitCastIfNeeded(LirReg source, const TypeRef &fromType, const TypeRef &toType);
     [[nodiscard]] LirReg EmitFieldPtr(LirReg base, std::string field, const TypeRef &elementType);
     [[nodiscard]] LirReg EmitIndexPtr(LirReg base, LirReg index, const TypeRef &elementType);
+    [[nodiscard]] static bool IsPointerArithmetic(const TypeRef &type);
+    [[nodiscard]] LirReg EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType);
+    [[nodiscard]] LirReg EmitPointerStep(LirReg base, const TypeRef &pointerType, bool forward);
     [[nodiscard]] LirReg EmitGlobalAddr(std::string label, TypeRef pointee = TypeRef::MakeOpaque());
     [[nodiscard]] LirReg EmitStringAddr(std::string value, const TypeRef &elementType);
 

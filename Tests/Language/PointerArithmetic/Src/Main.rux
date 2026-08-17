@@ -1,0 +1,92 @@
+import Core::Assert;
+
+// Offsetting a pointer moves it by whole elements, so the byte distance it
+// travels is the size of the pointee. That scaling used to be computed during
+// lowering, where a struct pointee has no size, and was silently skipped: a
+// pointer to any struct advanced one byte per element instead of one element.
+// Every case below compares an offset pointer against the address the array
+// itself reports, so the expected stride is never hard-coded.
+
+struct Pair {
+    a: int32;
+    b: int32;
+}
+
+struct Wide {
+    a: int64;
+    b: int64;
+    c: int64;
+}
+
+struct Nested {
+    inner: Pair;
+    tail: int32;
+}
+
+func Main() -> int {
+    // A primitive pointee, which always scaled correctly.
+    var numbers: int32[4] = [10, 20, 30, 40];
+    let numberBase = @numbers[0];
+    Assert(numberBase + 1 == @numbers[1], "int32 pointer advances one element");
+    Assert(numberBase + 3 == @numbers[3], "int32 pointer advances three elements");
+    Assert((numberBase + 2)[0] == 30, "offset int32 pointer reads its element");
+
+    // A single-field struct: four bytes wide, but a struct all the same.
+    var pairs: Pair[4] = [Pair { a: 10, b: 11 }, Pair { a: 20, b: 21 },
+                          Pair { a: 30, b: 31 }, Pair { a: 40, b: 41 }];
+    let base = @pairs[0];
+    Assert(base + 1 == @pairs[1], "struct pointer advances one element");
+    Assert(base + 3 == @pairs[3], "struct pointer advances three elements");
+
+    // Addition, in both operand orders, and subtraction.
+    let third = @pairs[2];
+    Assert(third - 1 == @pairs[1], "struct pointer subtracts one element");
+    Assert(third - 2 == base, "struct pointer subtracts back to the start");
+
+    var offset: uint = 2;
+    Assert(base + offset == @pairs[2], "a runtime offset scales too");
+    Assert(offset + base == base + offset, "int + ptr matches ptr + int");
+
+    // Compound assignment moves by elements as well.
+    var moving = base;
+    moving += 1;
+    Assert(moving == @pairs[1], "compound addition advances one element");
+    moving += 2;
+    Assert(moving == @pairs[3], "compound addition advances two more");
+    moving -= 3;
+    Assert(moving == base, "compound subtraction returns to the start");
+
+    // Indexing and arithmetic agree, since both scale by the element size.
+    Assert(@base[2] == base + 2, "address-of-index matches pointer arithmetic");
+
+    // Reading and writing through an offset pointer reaches that element and
+    // leaves its neighbours alone.
+    Assert((base + 1)[0].a == 20, "offset struct pointer reads its element");
+    Assert((base + 2)[0].b == 31, "offset struct pointer reads a later field");
+
+    let target = base + 3;
+    target[0].a = 99;
+    Assert(pairs[3].a == 99, "writing through an offset pointer hits its element");
+    Assert(pairs[2].a == 30, "writing through an offset pointer spares its neighbour");
+
+    // A wider struct, so a stride of one byte and a stride of one element are
+    // far apart.
+    var wides: Wide[3] = [Wide { a: 1i64, b: 2i64, c: 3i64 },
+                          Wide { a: 4i64, b: 5i64, c: 6i64 },
+                          Wide { a: 7i64, b: 8i64, c: 9i64 }];
+    let wideBase = @wides[0];
+    Assert(wideBase + 1 == @wides[1], "wide struct pointer advances one element");
+    Assert(wideBase + 2 == @wides[2], "wide struct pointer advances two elements");
+    Assert((wideBase + 2)[0].c == 9i64, "offset wide pointer reads its element");
+
+    // A struct containing a struct, whose size is not a power of two.
+    var nests: Nested[3] = [Nested { inner: Pair { a: 1, b: 2 }, tail: 3 },
+                            Nested { inner: Pair { a: 4, b: 5 }, tail: 6 },
+                            Nested { inner: Pair { a: 7, b: 8 }, tail: 9 }];
+    let nestBase = @nests[0];
+    Assert(nestBase + 1 == @nests[1], "nested struct pointer advances one element");
+    Assert((nestBase + 2)[0].inner.a == 7, "offset nested pointer reads its element");
+    Assert((nestBase + 2)[0].tail == 9, "offset nested pointer reads its tail");
+
+    return 0;
+}

@@ -336,6 +336,28 @@ LirReg HirToLirContext::EmitIndexPtr(LirReg base, LirReg idx, const TypeRef &ele
     return ptr;
 }
 
+bool HirToLirContext::IsPointerArithmetic(const TypeRef &type) {
+    return type.kind == TypeRef::Kind::Pointer && !type.inner.empty();
+}
+
+/// Offsets a pointer by a count of elements, scaling by the pointee size.
+///
+/// The scaling is deliberately left to IndexPtr rather than emitted here as a multiply. Only the back end can size a
+/// struct pointee: it owns the layout map, while `TypeRef::SizeInBytes` is a purely syntactic query that answers
+/// nothing for a named type. Emitting the multiply here silently skipped it for every struct, so `ptr + 1` advanced one
+/// byte instead of one element. Routing through IndexPtr gives pointer arithmetic and `ptr[n]` one scaling rule.
+LirReg HirToLirContext::EmitPointerOffset(LirReg base, LirReg index, const TypeRef &pointerType) {
+    return EmitIndexPtr(base, index, pointerType.inner[0]);
+}
+
+/// Moves a pointer one element forward or back, for `++` and `--`. A negative index is correct for the back end's
+/// signed multiply, and stays correct when the caller's own index type is unsigned, because the two's-complement
+/// product is the same either way.
+LirReg HirToLirContext::EmitPointerStep(LirReg base, const TypeRef &pointerType, bool forward) {
+    const LirReg step = EmitConst(forward ? "1" : "-1", TypeRef::MakeInt());
+    return EmitPointerOffset(base, step, pointerType);
+}
+
 /// `pointee` names what the symbol holds, so that a later FieldPtr can find the layout. Opaque is right for a function
 /// address, which is never dereferenced.
 LirReg HirToLirContext::EmitGlobalAddr(std::string label, TypeRef pointee) {
