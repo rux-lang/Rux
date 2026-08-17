@@ -205,8 +205,10 @@ private:
                     if (step.kind != PhiMoveStep::Kind::SaveDestination) {
                         continue;
                     }
-                    const int size = RuntimeSize(step.type) == 16 ? 16 : 8;
-                    plan.phiTemporarySize = std::max(plan.phiTemporarySize, size);
+                    // Reserve what the value actually occupies. Clamping to sixteen would under-reserve any wider
+                    // aggregate carried through a phi, which is the same overrun that undersized array allocas
+                    // produced. AArch64 already sizes this the same way.
+                    plan.phiTemporarySize = std::max(plan.phiTemporarySize, std::max(8, RuntimeSize(step.type)));
                 }
             }
         }

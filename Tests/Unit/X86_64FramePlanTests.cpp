@@ -76,6 +76,84 @@ TEST_CASE("x86-64 frame plan owns hidden returns aggregate regions phi scratch a
     CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
 }
 
+TEST_CASE("x86-64 frame plan reserves an array of structs by its element layout") {
+    // An alloca carrying its whole array type has to be sized through the layout map. Sizing it without one charges
+    // eight bytes per struct element, so the region is short of what the array occupies and its last elements write
+    // over the frame above them -- the saved frame pointer and the return address included.
+    const TypeRef pair = TypeRef::MakeNamed("Pair");
+    LayoutMap layouts;
+    layouts["Pair"] = StructLayout{.fields = {}, .totalSize = 16, .alignment = 8};
+
+    LirFunc function;
+    function.name = "Hold";
+    function.callConv = CallingConvention::SysV;
+
+    LirInstr uncounted;
+    uncounted.op = LirOpcode::Alloca;
+    uncounted.dst = 0;
+    uncounted.type = TypeRef::MakeArray(pair, 3);
+
+    // The counted form names the element type and its count separately, and was always sized correctly. Both shapes
+    // have to agree on the same forty-eight bytes.
+    LirInstr counted;
+    counted.op = LirOpcode::Alloca;
+    counted.dst = 1;
+    counted.type = pair;
+    counted.strArg = "3";
+
+    LirBlock block;
+    block.instrs = {uncounted, counted};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    function.blocks.push_back(std::move(block));
+
+    const X86_64FramePlan plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
+
+    const std::int32_t uncountedData = plan.AllocaDataOffsets().at(0);
+    const std::int32_t countedData = plan.AllocaDataOffsets().at(1);
+    const std::int32_t uncountedPointer = plan.SlotOffsets().at(0);
+
+    CHECK_EQ(uncountedData - uncountedPointer, 48);
+    CHECK_EQ(countedData - plan.SlotOffsets().at(1), 48);
+    CHECK_LE(uncountedData, plan.FrameSize());
+    CHECK_LE(countedData, plan.FrameSize());
+}
+
+TEST_CASE("x86-64 frame plan reserves a phi temporary as wide as the value it carries") {
+    // A phi cycle spills its destination through one shared scratch region. Clamping that region to sixteen bytes
+    // under-reserves any wider aggregate travelling through the cycle.
+    const TypeRef triple = TypeRef::MakeNamed("Triple");
+    LayoutMap layouts;
+    layouts["Triple"] = StructLayout{.fields = {}, .totalSize = 24, .alignment = 8};
+
+    LirFunc function;
+    function.name = "Swap";
+    function.callConv = CallingConvention::SysV;
+
+    LirBlock entry;
+    entry.instrs = {Define(0, triple), Define(1, triple)};
+    entry.term = JumpTo(1);
+
+    LirInstr firstPhi;
+    firstPhi.op = LirOpcode::Phi;
+    firstPhi.dst = 2;
+    firstPhi.type = triple;
+    firstPhi.phiPreds = {{0, 0}, {3, 1}};
+    LirInstr secondPhi = firstPhi;
+    secondPhi.dst = 3;
+    secondPhi.phiPreds = {{1, 0}, {2, 1}};
+
+    LirBlock loop;
+    loop.instrs = {firstPhi, secondPhi};
+    loop.term = JumpTo(1);
+    function.blocks = {std::move(entry), std::move(loop)};
+
+    const X86_64FramePlan plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
+
+    CHECK_EQ(plan.PhiTemporarySize(), 24);
+    CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
+}
+
 TEST_CASE("x86-64 frame plan records Win64 address homes and hidden return after callee saves") {
     const TypeRef slice = TypeRef::MakeNamed("Slice<int>");
     LirFunc function;
