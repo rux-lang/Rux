@@ -7,6 +7,8 @@
 #include <string_view>
 
 namespace Rux {
+/// Every kind of token the language has. The trailing comment on each enumerator is the source spelling it stands for,
+/// which is the only documentation most of them need.
 enum class TokenKind : std::uint8_t {
     // Literals
     IntLiteral,    // 42  0xFF  0b1010  0o77
@@ -130,9 +132,11 @@ enum class TokenKind : std::uint8_t {
     Unknown,    // unrecognized character — carry it for better errors
 };
 
+/// One token, keeping the text it was written as. The spelling is retained even where the kind implies it, so a
+/// diagnostic can quote what the author actually typed.
 struct Token {
     TokenKind kind = TokenKind::Unknown;
-    std::string text; // original source spelling
+    std::string text; ///< original source spelling
     SourceLocation location;
 
     // Convenience predicates
@@ -148,14 +152,14 @@ struct Token {
         return kind == TokenKind::EndOfFile;
     }
 
-    // Human-readable description for diagnostics
+    /// Human-readable description for diagnostics. Names this token, spelling included, where `TokenKindName` names
+    /// only its kind.
     [[nodiscard]] std::string Describe() const;
 };
 
-// Map a keyword string to its TokenKind; returns TokenKind::Ident if not a
-// keyword.
+/// Map a keyword string to its TokenKind; returns TokenKind::Ident if not a keyword.
 [[nodiscard]] TokenKind KeywordKind(std::string_view text) noexcept;
 
-// Name of a TokenKind suitable for error messages.
+/// Name of a TokenKind suitable for error messages.
 [[nodiscard]] std::string_view TokenKindName(TokenKind kind) noexcept;
 } // namespace Rux

@@ -1,3 +1,6 @@
+// Shared analyzer state: module collection, declaration indexing, and the
+// diagnostic helpers every checking file reports through.
+
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <algorithm>

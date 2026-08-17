@@ -21,6 +21,8 @@ using namespace Rux;
 using namespace Rux::CliContract;
 
 namespace {
+/// Levenshtein distance, used to suggest what a mistyped command or option probably meant. Suggesting the nearest known
+/// spelling turns an unknown-name error into an actionable one.
 std::size_t EditDistance(const std::string_view left, const std::string_view right) {
     std::vector<std::size_t> row(right.size() + 1);
     for (std::size_t i = 0; i <= right.size(); ++i)
@@ -38,6 +40,9 @@ std::size_t EditDistance(const std::string_view left, const std::string_view rig
 }
 
 template <typename Range, typename Projection>
+/// The nearest candidate to `value`, if one is near enough to be worth suggesting.
+///
+/// @return nullopt when nothing is close, since a wrong suggestion is worse than none
 std::optional<std::string_view> Closest(const std::string_view value, const Range &candidates, Projection projection) {
     std::size_t bestDistance = std::numeric_limits<std::size_t>::max();
     std::string_view best;
@@ -59,15 +64,20 @@ const OptionSpec *FindOption(const std::span<const OptionSpec> options, const st
     return it == options.end() ? nullptr : &*it;
 }
 
+/// The flag part of an argument, with any `=value` tail removed, so `--target=linux-x86_64` matches `--target`.
 std::string_view OptionSpelling(const std::string_view argument) {
     return argument.substr(0, argument.find('='));
 }
 
+/// The value written as `--flag=value`.
+///
+/// @return nullopt when the argument carries no attached value, meaning it takes the next argument instead
 std::optional<std::string_view> AttachedValue(const std::string_view argument) {
     const auto equals = argument.find('=');
     return equals == std::string_view::npos ? std::nullopt : std::optional(argument.substr(equals + 1));
 }
 
+/// Whether giving the option more than once is meaningful rather than a mistake, as it is for `--define`.
 bool IsRepeatable(const std::string_view option) {
     return option == "--define" || option == "--emit";
 }
@@ -115,6 +125,8 @@ std::string_view ValueDescription(const OptionSpec &option) {
     return "path";
 }
 
+/// A realistic value for this option, so a usage error can show a complete invocation rather than a placeholder the
+/// reader still has to fill in.
 std::string_view SampleValue(const std::string_view command, const OptionSpec &option) {
     const auto preferred = PreferredOptionName(option);
     if (preferred == "--target")

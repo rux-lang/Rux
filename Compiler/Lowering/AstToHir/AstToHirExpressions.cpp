@@ -1,3 +1,6 @@
+// Lowering for the basic expression forms — literals, names, operators — and
+// the type substitution a generic body needs while they are lowered.
+
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
 #include <algorithm>
@@ -13,6 +16,8 @@ bool IsIdentifierCharacter(const char character) {
     return std::isalnum(static_cast<unsigned char>(character)) || character == '_';
 }
 
+/// Replace type parameters inside a written type name with the arguments of this instantiation, so a generic body
+/// lowers once per concrete set of arguments.
 std::string SubstituteTypeName(std::string name, const std::unordered_map<std::string, TypeRef> &substitutions) {
     std::vector<std::pair<std::string_view, const TypeRef *>> ordered;
     ordered.reserve(substitutions.size());
@@ -42,6 +47,8 @@ std::string SubstituteTypeName(std::string name, const std::unordered_map<std::s
     return name;
 }
 
+/// Substitute type parameters throughout a type, recursing into pointees, elements, and type arguments so a parameter
+/// is replaced wherever it is nested.
 TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
         if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {

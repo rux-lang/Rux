@@ -365,8 +365,7 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std
 #else
 
 namespace {
-// Wrap a value in single quotes, escaping embedded single quotes, so it can be
-// passed safely as one shell argument.
+/// Wrap a value in single quotes, escaping embedded single quotes, so it can be passed safely as one shell argument.
 std::string ShellQuote(const std::string &value) {
     std::string quoted;
     quoted.reserve(value.size() + 2);
@@ -402,8 +401,8 @@ std::optional<std::string> RunCommandCapture(const std::string &command) {
     return output;
 }
 
-// Quote a value for a curl configuration file, where an argument is wrapped in
-// double quotes and backslashes and quotes are escaped.
+/// Quote a value for a curl configuration file, where an argument is wrapped in double quotes and backslashes and
+/// quotes are escaped.
 std::string CurlConfigQuote(const std::string &value) {
     std::string quoted;
     quoted.reserve(value.size() + 2);
@@ -418,9 +417,8 @@ std::string CurlConfigQuote(const std::string &value) {
     return quoted;
 }
 
-// Write a file only the current user can read. The curl configuration carries
-// the bearer credential, so it must never be world-readable, and open() with an
-// explicit mode avoids the window a later permissions change would leave.
+/// Write a file only the current user can read. The curl configuration carries the bearer credential, so it must never
+/// be world-readable, and open() with an explicit mode avoids the window a later permissions change would leave.
 bool WritePrivateFile(const std::filesystem::path &path, const std::string_view data) {
     const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0600);
     if (fd < 0) {
@@ -447,7 +445,7 @@ std::optional<std::string> ReadWholeFile(const std::filesystem::path &path) {
     return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
 }
 
-// Removes its directory when the request finishes, however it finishes.
+/// Removes its directory when the request finishes, however it finishes.
 struct TemporaryDirectory {
     std::filesystem::path path;
 

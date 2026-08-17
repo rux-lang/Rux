@@ -15,9 +15,8 @@
 
 namespace Rux::HirToLirDetail {
 
-// Private state for lowering one HIR package. Function-local state is reset by
-// LowerFunc and is shared only by the focused statement, expression, and
-// aggregate lowering implementations.
+/// Private state for lowering one HIR package. Function-local state is reset by LowerFunc and is shared only by the
+/// focused statement, expression, and aggregate lowering implementations.
 class HirToLirContext {
 public:
     HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics);

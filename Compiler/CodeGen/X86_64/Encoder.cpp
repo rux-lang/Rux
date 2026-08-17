@@ -1,3 +1,7 @@
+// x86-64 instruction encoding: the byte-level emission and patching primitives
+// every form is built on, and the integer and control-flow instructions. Memory
+// and floating-point forms live in the sibling Encoder*.cpp files.
+
 #include "CodeGen/X86_64/Encoder.h"
 
 namespace Rux {

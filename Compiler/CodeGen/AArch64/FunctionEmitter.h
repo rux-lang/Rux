@@ -14,9 +14,8 @@
 #include <unordered_set>
 
 namespace Rux {
-// Narrow access to register homes, stack slots, diagnostics, and symbol/literal
-// operations owned by the surrounding module emitter. Instruction-family
-// ownership stays here without exposing the rest of function emission.
+/// Narrow access to register homes, stack slots, diagnostics, and symbol/literal operations owned by the surrounding
+/// module emitter. Instruction-family ownership stays here without exposing the rest of function emission.
 class AArch64FunctionEmitterHooks {
 public:
     virtual ~AArch64FunctionEmitterHooks() = default;
@@ -46,8 +45,8 @@ public:
     virtual void ReportFunctionDiagnostic(Diagnostic diagnostic) = 0;
 };
 
-// Selects instruction families for one planned AArch64 function. Each family
-// returns false for instructions owned by another emitter.
+/// Selects instruction families for one planned AArch64 function. Each family returns false for instructions owned by
+/// another emitter.
 class AArch64FunctionEmitter {
 public:
     AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
@@ -55,12 +54,12 @@ public:
                            const std::unordered_set<std::string> &interfaceNames, std::string functionName,
                            Target::OS targetOs, AArch64FunctionEmitterHooks &hooks);
 
-    // Includes integer and floating arithmetic, comparisons, shifts, unary and
-    // bit operations, casts, power operations and float-bit reinterpretations.
+    /// Includes integer and floating arithmetic, comparisons, shifts, unary and bit operations, casts, power operations
+    /// and float-bit reinterpretations.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
 
-    // Includes constants, local and symbol addresses, scalar and aggregate
-    // loads/stores, and field/index address computation.
+    /// Includes constants, local and symbol addresses, scalar and aggregate loads/stores, and field/index address
+    /// computation.
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
 private:

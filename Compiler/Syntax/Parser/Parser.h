@@ -12,30 +12,41 @@
 namespace Rux {
 using ParserDiagnostic = Diagnostic;
 
+/// One parsed module and everything that went wrong building it. Because the parser recovers, a result with errors
+/// still carries the partial `module` it managed to build rather than nothing.
 struct ParseResult {
     Module module;
     std::vector<ParserDiagnostic> diagnostics;
     [[nodiscard]] bool HasErrors() const noexcept;
 };
 
+/**
+ * @brief Builds the AST for one module from its token stream.
+ *
+ * Recursive descent for declarations and statements, precedence climbing for expressions. A syntax error does not end
+ * the parse: it is recorded and the parser resynchronizes at the next statement or declaration boundary, so one run
+ * reports many problems instead of only the first.
+ */
 class Parser {
 public:
-    // `inputArch` is the architecture the source is being compiled for. It only
-    // reaches `asm func` bodies, whose register names and operand syntax are
-    // the machine's rather than the language's; everything else parses the same
-    // for every target. It defaults to the host so an embedder or a focused
-    // test that names no target still reads the assembly it would write.
+    /// `inputArch` is the architecture the source is being compiled for. It only reaches `asm func` bodies, whose
+    /// register names and operand syntax are the machine's rather than the language's; everything else parses the same
+    /// for every target. It defaults to the host so an embedder or a focused test that names no target still reads the
+    /// assembly it would write.
     explicit Parser(std::vector<Token> inputTokens, std::string inputSourceName = "<input>",
                     Target::Arch inputArch = Target::HostArch);
 
-    // Convenience: lex and parse in one step.
+    /// Convenience: lex and parse in one step.
+    ///
+    /// @return nullopt when lexing failed, since there is no token stream to parse
     [[nodiscard]] static std::optional<ParseResult> FromLexResult(const LexerResult &lex,
                                                                   const std::string &sourceName = "<input>",
                                                                   Target::Arch arch = Target::HostArch);
+
+    /// Parse the token stream into one module. Consumes the parser's state, so call it once per instance.
     [[nodiscard]] ParseResult Parse();
 
-    // Dump the parsed AST to a file for debugging.
-    // Path defaults to sourceName + ".ast" if not specified.
+    /// Dump the parsed AST to a file for debugging. Path defaults to sourceName + ".ast" if not specified.
     static bool DumpAst(const ParseResult &result, const std::filesystem::path &path = {});
 
 private:
@@ -44,7 +55,7 @@ private:
     Target::Arch arch = Target::HostArch;
     std::size_t pos = 0;
     std::vector<ParserDiagnostic> diagnostics;
-    bool structInitAllowed = true; // disabled inside if/while/for/match conditions
+    bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
 
     // Token helpers
     [[nodiscard]] const Token &Peek(std::size_t ahead = 0) const noexcept;
@@ -53,17 +64,16 @@ private:
     [[nodiscard]] bool CheckAny(std::initializer_list<TokenKind> kinds) const noexcept;
     bool Match(TokenKind kind) noexcept;
     const Token &Expect(TokenKind kind, std::string_view message);
-    // Grammar-aware diagnostics name both the role of a missing token and the
-    // token that prevented it from being parsed.
+    /// Grammar-aware diagnostics name both the role of a missing token and the token that prevented it from being
+    /// parsed.
     const Token &ExpectBefore(TokenKind kind, std::string_view expected, std::optional<std::string> help = {});
     bool ConsumeBodyStart(std::string_view role);
     [[nodiscard]] bool IsAtEnd() const noexcept;
     [[nodiscard]] const Token &Previous() const noexcept;
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
     [[nodiscard]] bool IsGenericStructInitAhead() const noexcept;
-    // Assumes the current token is '{'. True when the brace opens compile-time
-    // match arms (`pattern => ...`) rather than an ordinary `when`/block body,
-    // i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
+    /// Assumes the current token is '{'. True when the brace opens compile-time match arms (`pattern => ...`) rather
+    /// than an ordinary `when`/block body, i.e. a top-level '=>' appears before any top-level ';' or the closing '}'.
     [[nodiscard]] bool NextBraceIsMatchArms() const noexcept;
     [[nodiscard]] bool IsGenericCallAhead() const noexcept;
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
@@ -73,8 +83,7 @@ private:
     void EmitExpected(SourceLocation loc, std::string_view expected, std::optional<std::string> help = {});
     void EmitWarning(SourceLocation loc, std::string message);
 
-    // Skip tokens until a safe recovery point (statement/declaration
-    // boundary).
+    /// Skip tokens until a safe recovery point (statement/declaration boundary).
     void Synchronize();
     void Recover();
     bool RecoverDelimitedList(TokenKind closing);
@@ -104,8 +113,7 @@ private:
         SourceLocation allowLocation;
     };
 
-    // Parses `#Name(...)` attribute calls before a declaration. The former
-    // `#{...}` metadata-block form is rejected.
+    /// Parses `#Name(...)` attribute calls before a declaration. The former `#{...}` metadata-block form is rejected.
     ParsedAttrs ParseAttrs();
     void ParseAttributeCall(ParsedAttrs &attrs);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
@@ -125,8 +133,8 @@ private:
     std::unique_ptr<ConstDecl> ParseConstDecl(bool isPublic);
     std::unique_ptr<WhenDecl> ParseWhenDecl();
     std::unique_ptr<WhenDecl> ParseWhenBody(SourceLocation loc);
-    // Compile-time match forms `when subject { pattern => body, ... }`. The
-    // subject has already been parsed; the current token is its opening '{'.
+    /// Compile-time match forms `when subject { pattern => body, ... }`. The subject has already been parsed; the
+    /// current token is its opening '{'.
     std::unique_ptr<WhenDecl> ParseWhenMatchBody(SourceLocation loc, ExprPtr subject);
     std::unique_ptr<TypeAliasDecl> ParseTypeAliasDecl(bool isPublic);
 
@@ -135,21 +143,21 @@ private:
     [[nodiscard]] bool CanStartAsmOperand() const noexcept;
     AsmOperand ParseAsmOperand();
     void ParseAsmMemory(AsmOperand &op);
-    // AArch64: the `, LSL #3` / `, UXTW #2` tail a register or immediate
-    // operand may carry. Consumes nothing when the next tokens are not one.
+    /// AArch64: the `, LSL #3` / `, UXTW #2` tail a register or immediate operand may carry. Consumes nothing when the
+    /// next tokens are not one.
     void ParseAsmShift(AsmOperand &op);
     std::int64_t ParseAsmInt();
 
     // Shared declaration helpers
     Param ParseParam(bool allowVariadic = false);
     std::vector<Param> ParseParamList(bool allowVariadic = false);
-    std::vector<std::string> ParseTypeParams(); // <T, U, ...>
-    std::vector<TypeExprPtr> ParseTypeArgs();   // <int32, T[], ...>
+    std::vector<std::string> ParseTypeParams(); ///< <T, U, ...>
+    std::vector<TypeExprPtr> ParseTypeArgs();   ///< <int32, T[], ...>
 
     // Type expressions
     TypeExprPtr ParseType(std::optional<std::string> help = {});
-    TypeExprPtr ParseBaseType(std::optional<std::string> help = {}); // named, path, pointer, tuple, self
-    TypeExprPtr ParseFunctionType();                                 // func(params) -> T
+    TypeExprPtr ParseBaseType(std::optional<std::string> help = {}); ///< named, path, pointer, tuple, self
+    TypeExprPtr ParseFunctionType();                                 ///< func(params) -> T
 
     // Blocks and statements
     std::unique_ptr<Block> ParseBlock(std::string_view role = "the block");
@@ -182,7 +190,7 @@ private:
     ExprPtr ParseShift();
     ExprPtr ParseAdd();
     ExprPtr ParseMul();
-    ExprPtr ParseExp(); // ** right-associative
+    ExprPtr ParseExp(); ///< ** right-associative
     ExprPtr ParseUnary();
     ExprPtr ParsePostfix();
     ExprPtr ParsePrimary();
@@ -195,6 +203,6 @@ private:
     PatternPtr ParseMatchArmPattern();
 
     // Expression argument list
-    std::vector<ExprPtr> ParseArgList(); // ( expr, ... )
+    std::vector<ExprPtr> ParseArgList(); ///< ( expr, ... )
 };
 } // namespace Rux

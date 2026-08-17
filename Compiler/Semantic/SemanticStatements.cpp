@@ -1,3 +1,6 @@
+// Statement and control-flow checking, including whether a function body
+// definitely returns and whether a match covers its subject.
+
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <algorithm>
@@ -10,6 +13,8 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+/// A stable textual key for a pattern, so two arms written differently but matching the same values compare equal. This
+/// is what lets a duplicate or already-covered arm be reported without implementing full pattern subsumption.
 std::string PatternKey(const Pattern &pattern) {
     if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
         return "literal:" + literal->value.text;
@@ -53,11 +58,15 @@ std::string PatternKey(const Pattern &pattern) {
     return {};
 }
 
+/// Whether the pattern is irrefutable, which makes any arm after it unreachable and completes an exhaustiveness check
+/// whatever the subject type is.
 bool PatternMatchesEveryValue(const Pattern &pattern) {
     return dynamic_cast<const WildcardPattern *>(&pattern) != nullptr ||
            dynamic_cast<const IdentPattern *>(&pattern) != nullptr;
 }
 
+/// Whether an enum pattern accounts for one variant, including its payload. Exhaustiveness over an enum is decided
+/// variant by variant, so a variant left unmatched is what the diagnostic names.
 bool EnumPatternCoversVariant(const EnumPattern &pattern, const EnumDecl::Variant &variant) {
     const std::size_t fieldCount = variant.fields.size() + variant.namedFields.size();
     if (pattern.args.size() + pattern.namedArgs.size() < fieldCount) {

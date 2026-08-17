@@ -4,12 +4,14 @@
 #include <string_view>
 
 namespace Rux::Formatting {
+/// Formatted source, and whether it differs from the input. `rux fmt --check` reports on `changed` rather than diffing
+/// the text itself.
 struct FormatResult {
     std::string text;
     bool changed = false;
 };
 
-// Conservative source normalization. Structural formatting will build on the
-// syntax tree once the lexer preserves comments and other trivia.
+/// Conservative source normalization. Structural formatting will build on the syntax tree once the lexer preserves
+/// comments and other trivia.
 [[nodiscard]] FormatResult Format(std::string_view source);
 } // namespace Rux::Formatting

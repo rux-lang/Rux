@@ -5,8 +5,8 @@
 #include <vector>
 
 namespace Rux::CliSupport {
-/// CLI-ready context for one rejected registry publication. The primary error
-/// stays stable while problem-document codes select actionable guidance.
+/// CLI-ready context for one rejected registry publication. The primary error stays stable while problem-document codes
+/// select actionable guidance.
 struct PublicationProblem {
     std::string error;
     std::vector<std::string> notes;

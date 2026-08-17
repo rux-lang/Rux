@@ -7,9 +7,10 @@
 # real ownership boundary is useful, while scattering a cohesive table or
 # vendored source is not.
 #
-# Reviewed exceptions below are path-specific and capped at their reviewed line
-# count. Raising a cap, adding a path, or changing its reason is therefore a
-# visible policy change. An exception that reaches the ordinary limit must be
+# Reviewed exceptions below are path-specific and capped at the reviewed size
+# rounded up to the next 100 lines, so an edit of a line or two does not have to
+# touch this file. Raising a cap, adding a path, or changing its reason is still
+# a visible policy change. An exception that reaches the ordinary limit must be
 # removed so it cannot silently grow back.
 #
 # Run from anywhere: paths are resolved relative to the repository root.
@@ -30,31 +31,31 @@ review_exception() {
 
     case "$1" in
     Compiler/CodeGen/AArch64/RcuEmitter.cpp)
-        reviewed_limit=1423
+        reviewed_limit=1500
         reviewed_reason='cohesive module-level RCU sections, symbols, retry orchestration, fixups, and shared emitter hooks'
         ;;
     Compiler/Semantic/SemanticAnalyzer.cpp)
-        reviewed_limit=3506
+        reviewed_limit=3600
         reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, and shared-context policy'
         ;;
     Tests/Unit/AArch64EncoderVectors.inc)
-        reviewed_limit=1605
+        reviewed_limit=1700
         reviewed_reason='dense one-line instruction reference vectors whose locality makes coverage auditable'
         ;;
     Tests/Unit/CliProcessTests.cpp)
-        reviewed_limit=1374
+        reviewed_limit=1400
         reviewed_reason='end-to-end CLI stream, option, workspace, and process contracts sharing one filesystem fixture'
         ;;
     Tests/Unit/OptimizerTests.cpp)
-        reviewed_limit=1284
+        reviewed_limit=1300
         reviewed_reason='shared hand-built HIR/LIR pass fixtures and pipeline contract tests'
         ;;
     Tests/Unit/SemanticTests.cpp)
-        reviewed_limit=1473
+        reviewed_limit=1500
         reviewed_reason='end-to-end semantic contracts sharing source analysis and diagnostic-order assertions'
         ;;
     Tests/Unit/ThirdParty/doctest.h)
-        reviewed_limit=7134
+        reviewed_limit=7200
         reviewed_reason='vendored single-header doctest distribution; local splitting would fork the dependency'
         ;;
     esac

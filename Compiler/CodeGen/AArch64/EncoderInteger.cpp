@@ -1,23 +1,24 @@
+// AArch64 encoding for integer data processing: arithmetic, logic, shifts,
+// bitfields, moves and the conditional forms.
+
 #include "CodeGen/AArch64/Encoder.h"
 
 namespace Rux {
 namespace {
-// All ones in the low `bits` of a 64-bit word.
+/// All ones in the low `bits` of a 64-bit word.
 constexpr std::uint64_t LowMask(const unsigned bits) {
     return ~0ULL >> (64U - bits);
 }
 
-// The `hw`-th 16-bit halfword of a value, counting from the bottom.
+/// The `hw`-th 16-bit halfword of a value, counting from the bottom.
 constexpr std::uint16_t Halfword(const std::uint64_t value, const unsigned hw) {
     return static_cast<std::uint16_t>(value >> (hw * 16U));
 }
 
-// The shortest move chain for a value at a given register width, and which
-// root it grows from. A chain costs one instruction per halfword its root does
-// not already leave behind: MOVZ zeroes the other halfwords and MOVN fills them
-// with ones, so the two roots count the halfwords that are not 0 and not
-// 0xFFFF. A value every halfword of which is what its root leaves behind is the
-// root alone rather than an empty sequence.
+/// The shortest move chain for a value at a given register width, and which root it grows from. A chain costs one
+/// instruction per halfword its root does not already leave behind: MOVZ zeroes the other halfwords and MOVN fills them
+/// with ones, so the two roots count the halfwords that are not 0 and not 0xFFFF. A value every halfword of which is
+/// what its root leaves behind is the root alone rather than an empty sequence.
 struct MovChain {
     unsigned length = 1;
     bool invert = false;
@@ -36,25 +37,24 @@ constexpr MovChain ShortestMovChain(const std::uint64_t value, const unsigned bi
     return MovChain{length != 0 ? length : 1U, invert};
 }
 
-// A general-purpose operand of width `bits` in a field that reads code 31 as
-// the zero register. SP has no encoding there, so passing it is an error rather
-// than a silent rename.
+/// A general-purpose operand of width `bits` in a field that reads code 31 as the zero register. SP has no encoding
+/// there, so passing it is an error rather than a silent rename.
 constexpr bool ZrOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsStackPointer();
 }
 
-// The same, for a field that reads code 31 as the stack pointer.
+/// The same, for a field that reads code 31 as the stack pointer.
 constexpr bool SpOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsZeroReg();
 }
 
-// Whether a signed value fits a two's-complement field `bits` wide.
+/// Whether a signed value fits a two's-complement field `bits` wide.
 constexpr bool FitsSigned(const std::int64_t value, const unsigned bits) {
     const std::int64_t limit = std::int64_t{1} << (bits - 1U);
     return value >= -limit && value < limit;
 }
 
-// ADD / ADDS / SUB / SUBS (immediate): sf | op | S | 100010 | sh | imm12 | Rn | Rd.
+/// ADD / ADDS / SUB / SUBS (immediate): sf | op | S | 100010 | sh | imm12 | Rn | Rd.
 A64Status EncodeAddSubImm(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const std::uint64_t imm,
                           const bool subtract, const bool setFlags) {
     const unsigned bits = rd.bits;
@@ -73,7 +73,7 @@ A64Status EncodeAddSubImm(const A64Enc &enc, const A64Reg rd, const A64Reg rn, c
     return A64Status::Ok;
 }
 
-// AND / ORR / EOR / ANDS (bitmask immediate): sf | opc | 100100 | N | immr | imms | Rn | Rd.
+/// AND / ORR / EOR / ANDS (bitmask immediate): sf | opc | 100100 | N | immr | imms | Rn | Rd.
 A64Status EncodeLogicalImm(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const std::uint64_t imm,
                            const unsigned opc) {
     const unsigned bits = rd.bits;
@@ -91,7 +91,7 @@ A64Status EncodeLogicalImm(const A64Enc &enc, const A64Reg rd, const A64Reg rn, 
     return A64Status::Ok;
 }
 
-// MOVN / MOVZ / MOVK: sf | opc | 100101 | hw | imm16 | Rd.
+/// MOVN / MOVZ / MOVK: sf | opc | 100101 | hw | imm16 | Rd.
 A64Status EncodeMovWide(const A64Enc &enc, const A64Reg rd, const std::uint16_t imm16, const unsigned shift,
                         const unsigned opc) {
     if (!ZrOperand(rd, rd.bits)) {
@@ -104,8 +104,8 @@ A64Status EncodeMovWide(const A64Enc &enc, const A64Reg rd, const std::uint16_t 
     return A64Status::Ok;
 }
 
-// ADR / ADRP: op | immlo | 10000 | immhi | Rd, the 21-bit immediate split with
-// its low two bits stranded above the opcode.
+/// ADR / ADRP: op | immlo | 10000 | immhi | Rd, the 21-bit immediate split with its low two bits stranded above the
+/// opcode.
 A64Status EncodeAdr(const A64Enc &enc, const A64Reg rd, const std::int64_t offset, const bool page) {
     if (!ZrOperand(rd, 64)) {
         return A64Status::InvalidRegister;
@@ -122,8 +122,8 @@ A64Status EncodeAdr(const A64Enc &enc, const A64Reg rd, const std::int64_t offse
     return A64Status::Ok;
 }
 
-// SBFM / BFM / UBFM: sf | opc | 100110 | N | immr | imms | Rn | Rd. The N bit
-// selects the register width alongside sf and always matches it.
+/// SBFM / BFM / UBFM: sf | opc | 100110 | N | immr | imms | Rn | Rd. The N bit selects the register width alongside sf
+/// and always matches it.
 A64Status EncodeBitfield(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned immr, const unsigned imms,
                          const unsigned opc) {
     const unsigned bits = rd.bits;
@@ -138,8 +138,8 @@ A64Status EncodeBitfield(const A64Enc &enc, const A64Reg rd, const A64Reg rn, co
     return A64Status::Ok;
 }
 
-// The extends are all bitfield moves of a field that starts at bit 0, so they
-// differ only in how many bits they keep and whether they replicate the sign.
+/// The extends are all bitfield moves of a field that starts at bit 0, so they differ only in how many bits they keep
+/// and whether they replicate the sign.
 A64Status EncodeExtend(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned width,
                        const bool signExtend) {
     if (!ZrOperand(rn, 32)) {
@@ -151,8 +151,7 @@ A64Status EncodeExtend(const A64Enc &enc, const A64Reg rd, const A64Reg rn, cons
     return EncodeBitfield(enc, rd, source, 0, width - 1U, signExtend ? 0U : 2U);
 }
 
-// ADD / ADDS / SUB / SUBS (shifted register):
-// sf | op | S | 01011 | shift | 0 | Rm | imm6 | Rn | Rd.
+/// ADD / ADDS / SUB / SUBS (shifted register): sf | op | S | 01011 | shift | 0 | Rm | imm6 | Rn | Rd.
 A64Status EncodeAddSubShifted(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                               const A64ShiftKind shift, const unsigned amount, const bool subtract,
                               const bool setFlags) {
@@ -171,8 +170,7 @@ A64Status EncodeAddSubShifted(const A64Enc &enc, const A64Reg rd, const A64Reg r
     return A64Status::Ok;
 }
 
-// ADD / ADDS / SUB / SUBS (extended register):
-// sf | op | S | 01011 | 00 | 1 | Rm | option | imm3 | Rn | Rd.
+/// ADD / ADDS / SUB / SUBS (extended register): sf | op | S | 01011 | 00 | 1 | Rm | option | imm3 | Rn | Rd.
 A64Status EncodeAddSubExtended(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                                const A64ExtendKind extend, const unsigned amount, const bool subtract,
                                const bool setFlags) {
@@ -196,8 +194,8 @@ A64Status EncodeAddSubExtended(const A64Enc &enc, const A64Reg rd, const A64Reg 
     return A64Status::Ok;
 }
 
-// Logical (shifted register): sf | opc | 01010 | shift | N | Rm | imm6 | Rn | Rd.
-// `opc` picks the operation and `N` complements the shifted `rm`.
+/// Logical (shifted register): sf | opc | 01010 | shift | N | Rm | imm6 | Rn | Rd. `opc` picks the operation and `N`
+/// complements the shifted `rm`.
 A64Status EncodeLogicalShifted(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                                const A64ShiftKind shift, const unsigned amount, const unsigned opc, const bool negate) {
     const unsigned bits = rd.bits;
@@ -213,8 +211,8 @@ A64Status EncodeLogicalShifted(const A64Enc &enc, const A64Reg rd, const A64Reg 
     return A64Status::Ok;
 }
 
-// Data processing (2 source): sf | 0 | S | 11010110 | Rm | opcode | Rn | Rd.
-// The variable shifts and the two divides share it.
+/// Data processing (2 source): sf | 0 | S | 11010110 | Rm | opcode | Rn | Rd. The variable shifts and the two divides
+/// share it.
 A64Status EncodeDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const unsigned opcode) {
     const unsigned bits = rd.bits;
     if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
@@ -225,7 +223,7 @@ A64Status EncodeDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn, c
     return A64Status::Ok;
 }
 
-// Data processing (1 source): sf | 1 | S | 11010110 | 00000 | opcode | Rn | Rd.
+/// Data processing (1 source): sf | 1 | S | 11010110 | 00000 | opcode | Rn | Rd.
 A64Status EncodeDataProc1(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned opcode) {
     const unsigned bits = rd.bits;
     if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits)) {
@@ -235,9 +233,8 @@ A64Status EncodeDataProc1(const A64Enc &enc, const A64Reg rd, const A64Reg rn, c
     return A64Status::Ok;
 }
 
-// Data processing (3 source): sf | 00 | 11011 | op31 | Rm | o0 | Ra | Rn | Rd.
-// `op31` and `o0` together name the operation, and the widening and high-half
-// forms differ from the plain ones only in the widths their operands take.
+/// Data processing (3 source): sf | 00 | 11011 | op31 | Rm | o0 | Ra | Rn | Rd. `op31` and `o0` together name the
+/// operation, and the widening and high-half forms differ from the plain ones only in the widths their operands take.
 A64Status EncodeMulAcc(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra,
                        const unsigned op31, const bool subtract, const unsigned sourceBits) {
     if (!ZrOperand(rd, rd.bits) || !ZrOperand(ra, rd.bits)) {
@@ -251,7 +248,7 @@ A64Status EncodeMulAcc(const A64Enc &enc, const A64Reg rd, const A64Reg rn, cons
     return A64Status::Ok;
 }
 
-// Conditional select: sf | op | S | 11010100 | Rm | cond | op2 | Rn | Rd.
+/// Conditional select: sf | op | S | 11010100 | Rm | cond | op2 | Rn | Rd.
 A64Status EncodeCondSelect(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                            const A64Condition cond, const bool invert, const bool increment) {
     const unsigned bits = rd.bits;
@@ -264,17 +261,15 @@ A64Status EncodeCondSelect(const A64Enc &enc, const A64Reg rd, const A64Reg rn, 
     return A64Status::Ok;
 }
 
-// Every conditional-select alias reads as "when `cond`, do the thing", which
-// the underlying instruction spells as "unless `cond`, transform rm". AL and NV
-// are each other's inverse and mean the same thing, so no alias can be written
-// with them without reversing its own sense.
+/// Every conditional-select alias reads as "when `cond`, do the thing", which the underlying instruction spells as
+/// "unless `cond`, transform rm". AL and NV are each other's inverse and mean the same thing, so no alias can be
+/// written with them without reversing its own sense.
 constexpr bool InvertibleCondition(const A64Condition cond) {
     return cond != A64Condition::Al && cond != A64Condition::Nv;
 }
 
-// A branch immediate counts instructions from the branch itself, so a byte
-// offset divides by four before it is measured against the field it has to fit.
-// `imm` is left alone unless the offset encodes.
+/// A branch immediate counts instructions from the branch itself, so a byte offset divides by four before it is
+/// measured against the field it has to fit. `imm` is left alone unless the offset encodes.
 A64Status BranchOffset(const std::int64_t offset, const unsigned bits, std::uint32_t &imm) {
     if (offset % A64Enc::InstrSize != 0) {
         return A64Status::Unaligned;
@@ -287,7 +282,7 @@ A64Status BranchOffset(const std::int64_t offset, const unsigned bits, std::uint
     return A64Status::Ok;
 }
 
-// B / BL: op | 00101 | imm26.
+/// B / BL: op | 00101 | imm26.
 A64Status EncodeBranchImm(const A64Enc &enc, const std::int64_t offset, const bool link) {
     std::uint32_t imm = 0;
     if (const A64Status status = BranchOffset(offset, 26, imm); status != A64Status::Ok) {
@@ -297,7 +292,7 @@ A64Status EncodeBranchImm(const A64Enc &enc, const std::int64_t offset, const bo
     return A64Status::Ok;
 }
 
-// Compare and branch: sf | 011010 | op | imm19 | Rt.
+/// Compare and branch: sf | 011010 | op | imm19 | Rt.
 A64Status EncodeCompareBranch(const A64Enc &enc, const A64Reg rt, const std::int64_t offset, const bool notZero) {
     if (!ZrOperand(rt, rt.bits) || (rt.bits != 32 && rt.bits != 64)) {
         return A64Status::InvalidRegister;
@@ -310,8 +305,8 @@ A64Status EncodeCompareBranch(const A64Enc &enc, const A64Reg rt, const std::int
     return A64Status::Ok;
 }
 
-// Test and branch: b5 | 011011 | op | b40 | imm14 | Rt. The bit index is split
-// with its top bit above the opcode, where every other instruction keeps sf.
+/// Test and branch: b5 | 011011 | op | b40 | imm14 | Rt. The bit index is split with its top bit above the opcode,
+/// where every other instruction keeps sf.
 A64Status EncodeTestBranch(const A64Enc &enc, const A64Reg rt, const unsigned bit, const std::int64_t offset,
                            const bool notZero) {
     if (!ZrOperand(rt, rt.bits) || (rt.bits != 32 && rt.bits != 64)) {
@@ -328,7 +323,7 @@ A64Status EncodeTestBranch(const A64Enc &enc, const A64Reg rt, const unsigned bi
     return A64Status::Ok;
 }
 
-// Unconditional branch to a register: 1101011 | opc | 11111 | 000000 | Rn | 00000.
+/// Unconditional branch to a register: 1101011 | opc | 11111 | 000000 | Rn | 00000.
 A64Status EncodeBranchReg(const A64Enc &enc, const A64Reg rn, const unsigned opc) {
     if (!ZrOperand(rn, 64)) {
         return A64Status::InvalidRegister;
@@ -781,7 +776,7 @@ A64Status A64Enc::Bl(const std::int64_t offset) const {
     return EncodeBranchImm(*this, offset, true);
 }
 
-// B.cond: 0101010 | 0 | imm19 | 0 | cond.
+/// B.cond: 0101010 | 0 | imm19 | 0 | cond.
 A64Status A64Enc::BCond(const A64Condition cond, const std::int64_t offset) const {
     std::uint32_t imm = 0;
     if (const A64Status status = BranchOffset(offset, 19, imm); status != A64Status::Ok) {

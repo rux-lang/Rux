@@ -1,27 +1,30 @@
+// AArch64 instruction encoding: system, exception and barrier forms, plus the
+// shared encoder state. Integer, memory and floating-point forms live in the
+// sibling Encoder*.cpp files.
+
 #include "CodeGen/AArch64/Encoder.h"
 
 #include <bit>
 
 namespace Rux {
 namespace {
-// A value whose set bits form one contiguous run ending at bit 0.
+/// A value whose set bits form one contiguous run ending at bit 0.
 constexpr bool IsMask(const std::uint64_t value) {
     return value != 0 && ((value + 1) & value) == 0;
 }
 
-// A value whose set bits form one contiguous run anywhere in the word.
+/// A value whose set bits form one contiguous run anywhere in the word.
 constexpr bool IsShiftedMask(const std::uint64_t value) {
     return value != 0 && IsMask((value - 1) | value);
 }
 
-// All ones in the low `bits` of a 64-bit word.
+/// All ones in the low `bits` of a 64-bit word.
 constexpr std::uint64_t LowMask(const unsigned bits) {
     return ~0ULL >> (64U - bits);
 }
 
-// The halfword index of the only non-zero halfword of `value`, or -1 when it
-// has none or more than one. A zero value reports halfword 0, which encodes as
-// MOVZ #0.
+/// The halfword index of the only non-zero halfword of `value`, or -1 when it has none or more than one. A zero value
+/// reports halfword 0, which encodes as MOVZ #0.
 constexpr int SoleHalfword(const std::uint64_t value, const unsigned halfwords) {
     for (unsigned hw = 0; hw < halfwords; ++hw) {
         if ((value & ~(0xFFFFULL << (hw * 16U))) == 0) {
@@ -31,29 +34,28 @@ constexpr int SoleHalfword(const std::uint64_t value, const unsigned halfwords) 
     return -1;
 }
 
-// A general-purpose operand of width `bits` in a field that reads code 31 as
-// the zero register. SP has no encoding there, so passing it is an error rather
-// than a silent rename.
+/// A general-purpose operand of width `bits` in a field that reads code 31 as the zero register. SP has no encoding
+/// there, so passing it is an error rather than a silent rename.
 constexpr bool ZrOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsStackPointer();
 }
 
-// Exception generation: 11010100 | opc | imm16 | op2 | LL. Each instruction
-// fixes both trailing fields, so the two of them travel together as `tail`.
+/// Exception generation: 11010100 | opc | imm16 | op2 | LL. Each instruction fixes both trailing fields, so the two of
+/// them travel together as `tail`.
 A64Status EncodeException(const A64Enc &enc, const std::uint16_t imm16, const unsigned opc, const unsigned tail) {
     enc.Word(0xD4000000U | opc << 21U | std::uint32_t{imm16} << 5U | tail);
     return A64Status::Ok;
 }
 
-// Hints and barriers: 11010101 | 00000011 | 0011 | CRm | op2 | 11111, with the
-// hint page sitting at CRn 0010 and the barrier page at 0011.
+/// Hints and barriers: 11010101 | 00000011 | 0011 | CRm | op2 | 11111, with the hint page sitting at CRn 0010 and the
+/// barrier page at 0011.
 A64Status EncodeSystemNoReg(const A64Enc &enc, const unsigned crn, const unsigned crm, const unsigned op2) {
     enc.Word(0xD5030000U | crn << 12U | crm << 8U | op2 << 5U | 0x1FU);
     return A64Status::Ok;
 }
 
-// MRS / MSR (register): 1101010100 | L | 1 | o0 | op1 | CRn | CRm | op2 | Rt,
-// which is the 15-bit system-register encoding laid down whole.
+/// MRS / MSR (register): 1101010100 | L | 1 | o0 | op1 | CRn | CRm | op2 | Rt, which is the 15-bit system-register
+/// encoding laid down whole.
 A64Status EncodeSysRegMove(const A64Enc &enc, const A64Reg rt, const std::uint16_t sysreg, const bool read) {
     if (!ZrOperand(rt, 64)) {
         return A64Status::InvalidRegister;
@@ -212,8 +214,8 @@ A64Status A64Enc::Hlt(const std::uint16_t imm16) const {
     return EncodeException(*this, imm16, 2, 0);
 }
 
-// UDF: 0000000000000000 | imm16. The whole of the rest of the word is zero,
-// which is what makes a page of zeroed memory trap on its first instruction.
+/// UDF: 0000000000000000 | imm16. The whole of the rest of the word is zero, which is what makes a page of zeroed
+/// memory trap on its first instruction.
 A64Status A64Enc::Udf(const std::uint16_t imm16) const {
     Word(imm16);
     return A64Status::Ok;

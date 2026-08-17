@@ -23,6 +23,8 @@ void IndexSymbol(SymbolIndex &index, const std::string &name, const LirDeclarati
     index[name].push_back(declaration);
 }
 
+/// Index every declaration in the package by the names it can be referenced under, so the walk can resolve a symbol
+/// string to declarations without rescanning the package for each reference.
 PackageIndex BuildIndex(const LirPackage &package) {
     PackageIndex index;
     for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
@@ -51,6 +53,8 @@ PackageIndex BuildIndex(const LirPackage &package) {
     return index;
 }
 
+/// Strip the `&` an address-of reference carries, so taking a function's address and calling it resolve to the same
+/// declaration.
 std::string_view NormalizeSymbol(std::string_view symbol) {
     if (symbol.starts_with('&')) {
         symbol.remove_prefix(1);
@@ -58,6 +62,10 @@ std::string_view NormalizeSymbol(std::string_view symbol) {
     return symbol;
 }
 
+/// Resolve a symbol reference to the declarations it could name, retrying without the module qualifier so a call
+/// written as `Module::Func` still finds a declaration indexed under its bare name.
+///
+/// @return nullptr when nothing in the package matches
 const DeclarationList *FindSymbol(const SymbolIndex &index, std::string_view symbol) {
     symbol = NormalizeSymbol(symbol);
     if (const auto found = index.find(std::string(symbol)); found != index.end()) {

@@ -11,8 +11,7 @@
 #include <vector>
 
 namespace Rux {
-// Canonical string key owned by the type parser and used for intrinsic and
-// extension binding names.
+/// Canonical string key owned by the type parser and used for intrinsic and extension binding names.
 std::string ImplTypeName(const TypeExpr &type);
 
 // Attribute parsing
@@ -75,13 +74,11 @@ static std::string DecodeStringLiteralText(const std::string &text) {
     return out;
 }
 
-// Parses one `#Name(...)` attribute call, with the '#' already consumed.
-// `#Error` and `#Warn` act at each use of the declaration, `#Allow` suppresses
-// a named lint rule for one declaration, `#Link` describes
-// how an extern declaration is imported (`#Library` and `#Symbol` are retained
-// as compatibility spellings), and `#When` conditionally includes the
-// declaration at compile time, `#Abi(...)` selects a calling convention, and
-// `#NoReturn()` marks a function that never returns to its caller.
+/// Parses one `#Name(...)` attribute call, with the '#' already consumed. `#Error` and `#Warn` act at each use of the
+/// declaration, `#Allow` suppresses a named lint rule for one declaration, `#Link` describes how an extern declaration
+/// is imported (`#Library` and `#Symbol` are retained as compatibility spellings), and `#When` conditionally includes
+/// the declaration at compile time, `#Abi(...)` selects a calling convention, and `#NoReturn()` marks a function that
+/// never returns to its caller.
 void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     const SourceLocation attributeLoc = Previous().location;
     const SourceLocation nameLoc = CurrentLocation();
@@ -291,9 +288,8 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
 }
 
-// Parses the attributes that precede a declaration. A declaration may carry
-// any number of `#Name(...)` calls. The removed `#{...}` metadata form is
-// consumed only for recovery and always produces an error.
+/// Parses the attributes that precede a declaration. A declaration may carry any number of `#Name(...)` calls. The
+/// removed `#{...}` metadata form is consumed only for recovery and always produces an error.
 Parser::ParsedAttrs Parser::ParseAttrs() {
     ParsedAttrs attrs;
     while (Check(TokenKind::Hash)) {
@@ -368,9 +364,8 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     return decl;
 }
 
-// The constant or function after an `intrinsic`. Its name is the intrinsic's:
-// a constant takes its type (`Target`), a free function its own name (`Assert`).
-// A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
+/// The constant or function after an `intrinsic`. Its name is the intrinsic's: a constant takes its type (`Target`), a
+/// free function its own name (`Assert`). A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
 DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
     // A compiler-injected value: `intrinsic #target: Target;`. The '#' name is
     // how the value is referred to; the type it is declared with names the
@@ -877,8 +872,8 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenDecl() {
     return ParseWhenBody(loc);
 }
 
-// The chain after its opening keyword, so that a rejected `#if` can still be
-// parsed as the `when` it should have been and report only its own error.
+/// The chain after its opening keyword, so that a rejected `#if` can still be parsed as the `when` it should have been
+/// and report only its own error.
 std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
     auto decl = std::make_unique<WhenDecl>();
     decl->location = loc;
@@ -945,10 +940,9 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
     return decl;
 }
 
-// `when subject { pattern => body, ... else => body }` at declaration level. An
-// arm body is a `#Error`/`#Warn` directive, a `{ decls }` block, or a single
-// declaration. Arms may be comma-separated, but declarations self-terminate so
-// the comma is optional.
+/// `when subject { pattern => body, ... else => body }` at declaration level. An arm body is a `#Error`/`#Warn`
+/// directive, a `{ decls }` block, or a single declaration. Arms may be comma-separated, but declarations
+/// self-terminate so the comma is optional.
 std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, ExprPtr subject) {
     auto decl = std::make_unique<WhenDecl>();
     decl->location = loc;

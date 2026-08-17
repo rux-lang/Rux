@@ -5,6 +5,8 @@
 
 namespace Rux::Driver {
 namespace {
+/// The normalized key two references to the same package share, so `Rux/My_Pkg` and `rux/my-pkg` resolve to one entry
+/// rather than being fetched twice.
 std::string IdentityKey(const IdentitySegment &ns, const IdentitySegment &package) {
     return ns.Normalized() + "/" + package.Normalized();
 }

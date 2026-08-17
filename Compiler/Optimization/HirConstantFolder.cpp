@@ -7,6 +7,8 @@
 
 namespace Rux::Optimization {
 namespace {
+/// A literal's digits without its type suffix, so `42i64` can be parsed as a value once the type is already known from
+/// the expression.
 std::string_view WithoutIntegerSuffix(const std::string_view literal) {
     constexpr std::array suffixes{"i16", "i32", "i64", "u16", "u32", "u64", "i8", "u8", "i", "u"};
     for (const std::string_view suffix : suffixes) {

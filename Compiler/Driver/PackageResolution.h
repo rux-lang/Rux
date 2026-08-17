@@ -38,9 +38,8 @@ using PackageIndexFetcher = std::function<std::expected<RegistryIndexEntry, Regi
 /**
  * @brief Resolves package requirements through one registry.
  *
- * Index documents are cached by normalized package identity for the lifetime of
- * the service. Resolution returns structured failures and never writes to a
- * terminal; command handlers own all rendering.
+ * Index documents are cached by normalized package identity for the lifetime of the service. Resolution returns
+ * structured failures and never writes to a terminal; command handlers own all rendering.
  */
 class PackageResolver {
 public:

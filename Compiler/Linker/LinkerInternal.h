@@ -109,11 +109,9 @@ inline void Patch64(Buf &b, size_t off, uint64_t v) {
     return true;
 }
 
-// The log2 of the number of bytes an unsigned-offset AArch64 load or store
-// moves, read out of the instruction itself. The scaled 12-bit immediate an
-// LDR or STR carries counts elements of that width, so both the writer that
-// patches the immediate and the writer that names the relocation for another
-// linker to patch have to agree on it.
+/// The log2 of the number of bytes an unsigned-offset AArch64 load or store moves, read out of the instruction itself.
+/// The scaled 12-bit immediate an LDR or STR carries counts elements of that width, so both the writer that patches the
+/// immediate and the writer that names the relocation for another linker to patch have to agree on it.
 [[nodiscard]] inline unsigned AArch64LoadStoreScale(const uint32_t word) noexcept {
     const unsigned size = word >> 30U & 3U;
     const bool vector = (word >> 26U & 1U) != 0;

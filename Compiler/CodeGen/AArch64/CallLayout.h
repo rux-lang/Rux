@@ -46,9 +46,8 @@ struct AArch64CallLayoutPolicy {
     return {};
 }
 
-// One argument's target location. A value larger than sixteen bytes travels
-// as the address of a caller-owned copy; copyOffset and copyBytes name that
-// copy inside the same outgoing area.
+/// One argument's target location. A value larger than sixteen bytes travels as the address of a caller-owned copy;
+/// copyOffset and copyBytes name that copy inside the same outgoing area.
 struct AArch64ArgumentLocation {
     enum class Kind : std::uint8_t {
         General,
@@ -68,16 +67,15 @@ struct AArch64ArgumentLocation {
     std::int32_t copyBytes = 0;
 };
 
-// A complete placement plan for one call's arguments and copies.
+/// A complete placement plan for one call's arguments and copies.
 struct AArch64CallLayout {
     std::vector<AArch64ArgumentLocation> args;
     std::int32_t areaBytes = 0;
     bool windowsVariadic = false;
 };
 
-// Pure target-driven AAPCS64 argument and result classification. The planner
-// reads type metadata and produces locations only; instruction emission owns
-// no ABI placement decisions.
+/// Pure target-driven AAPCS64 argument and result classification. The planner reads type metadata and produces
+/// locations only; instruction emission owns no ABI placement decisions.
 class AArch64CallPlanner {
 public:
     AArch64CallPlanner(const Layout::LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames,

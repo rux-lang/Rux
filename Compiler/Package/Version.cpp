@@ -15,6 +15,8 @@ constexpr bool IsAlphanumeric(const char c) noexcept {
     return IsDigit(c) || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 
+/// Whether a pre-release identifier is numeric, which decides how it orders: SemVer compares numeric identifiers
+/// numerically and everything else lexically.
 constexpr bool IsNumericIdentifier(const std::string_view value) noexcept {
     return std::ranges::all_of(value, IsDigit);
 }
@@ -28,7 +30,7 @@ std::unexpected<VersionError> Fail(const VersionErrorKind kind, const std::size_
     return std::unexpected(VersionError{kind, offset, section});
 }
 
-// A numeric component: ASCII digits only, no leading zero, no overflow.
+/// A numeric component: ASCII digits only, no leading zero, no overflow.
 std::expected<std::uint64_t, VersionError> ParseNumber(const std::string_view value, const std::string_view section,
                                                        const std::size_t index) {
     if (value.empty()) {
@@ -50,7 +52,7 @@ std::expected<std::uint64_t, VersionError> ParseNumber(const std::string_view va
     return number;
 }
 
-// One dot-separated prerelease or build identifier.
+/// One dot-separated prerelease or build identifier.
 std::expected<void, VersionError> ValidateIdentifier(const std::string_view value, const std::string_view section,
                                                      const std::size_t index, const bool rejectNumericLeadingZero) {
     if (value.empty()) {
@@ -62,7 +64,7 @@ std::expected<void, VersionError> ValidateIdentifier(const std::string_view valu
     return {};
 }
 
-// A dot-separated identifier list. Identifiers are ASCII alphanumerics and `-`.
+/// A dot-separated identifier list. Identifiers are ASCII alphanumerics and `-`.
 std::expected<void, VersionError> ValidateIdentifiers(const std::string_view value, const std::string_view section,
                                                       const std::size_t baseIndex,
                                                       const bool rejectNumericLeadingZero) {
@@ -92,7 +94,9 @@ struct VersionSuffix {
     std::optional<std::string> build;
 };
 
-// Everything from the first `-` or `+` onward: `-prerelease`, `+build`, or both.
+/// Everything from the first `-` or `+` onward: `-prerelease`, `+build`, or both.
+///
+/// @param suffixIndex Offset of the suffix within the whole version string, so a rejection points at the real column
 std::expected<VersionSuffix, VersionError> ParseSuffix(const std::string_view value, const std::size_t suffixIndex) {
     if (suffixIndex == value.size()) {
         return VersionSuffix{};
@@ -125,9 +129,8 @@ std::expected<VersionSuffix, VersionError> ParseSuffix(const std::string_view va
     return VersionSuffix{std::string(prerelease), std::string(build)};
 }
 
-// Semantic Versioning 2.0.0 section 11: numeric identifiers compare
-// numerically, alphanumeric identifiers compare in ASCII order, and a numeric
-// identifier always has lower precedence than an alphanumeric one.
+/// Semantic Versioning 2.0.0 section 11: numeric identifiers compare numerically, alphanumeric identifiers compare in
+/// ASCII order, and a numeric identifier always has lower precedence than an alphanumeric one.
 std::strong_ordering CompareIdentifier(const std::string_view left, const std::string_view right) {
     const bool leftNumeric = IsNumericIdentifier(left);
     const bool rightNumeric = IsNumericIdentifier(right);
@@ -146,7 +149,9 @@ std::strong_ordering CompareIdentifier(const std::string_view left, const std::s
     return left <=> right;
 }
 
-// A larger set of identifiers wins when every preceding one is equal.
+/// Order two dot-separated pre-release lists, field by field.
+///
+/// A larger set of identifiers wins when every preceding one is equal, so `1.0.0-rc` precedes `1.0.0-rc.1`.
 std::strong_ordering CompareIdentifierLists(const std::string_view left, const std::string_view right) {
     std::size_t leftPos = 0;
     std::size_t rightPos = 0;
@@ -176,7 +181,7 @@ std::strong_ordering CompareIdentifierLists(const std::string_view left, const s
     return std::strong_ordering::equal;
 }
 
-// A version without a prerelease outranks one with it.
+/// A version without a prerelease outranks one with it.
 std::strong_ordering ComparePrerelease(const std::optional<std::string> &left,
                                        const std::optional<std::string> &right) {
     if (!left && !right) {
@@ -199,7 +204,7 @@ struct PartialVersion {
     bool hasWildcard = false;
 };
 
-// Byte offset of the numeric component at `position` within a dotted core.
+/// Byte offset of the numeric component at `position` within a dotted core.
 std::size_t ComponentIndex(const std::string_view core, const std::size_t position) {
     if (position == 0) {
         return 0;
@@ -292,6 +297,7 @@ struct ParsedOperator {
     std::size_t length = 0;
 };
 
+/// Read the comparison operator a requirement opens with, defaulting to an exact match when none is written.
 ParsedOperator ParseOperator(const std::string_view value) {
     constexpr std::pair<std::string_view, VersionOperator> spellings[] = {
         {">=", VersionOperator::GreaterOrEqual}, {"<=", VersionOperator::LessOrEqual}, {"=", VersionOperator::Exact},

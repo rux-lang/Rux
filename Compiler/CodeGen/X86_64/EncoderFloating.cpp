@@ -1,3 +1,6 @@
+// x86-64 SSE encoding: scalar floating-point moves, arithmetic, comparison and
+// conversion.
+
 #include "CodeGen/X86_64/Encoder.h"
 
 namespace Rux {

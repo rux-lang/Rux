@@ -26,9 +26,8 @@ inline constexpr const char *kCredentialVariable = "RUX_TOKEN";
 /// Environment variable overriding the registry API base URL.
 inline constexpr const char *kRegistryVariable = "RUX_REGISTRY_URL";
 
-/// The registry a command talks to: `flagValue` from --registry when non-empty,
-/// otherwise RUX_REGISTRY_URL, otherwise the official API. The result is
-/// normalized, so it doubles as the credentials-file key.
+/// The registry a command talks to: `flagValue` from --registry when non-empty, otherwise RUX_REGISTRY_URL, otherwise
+/// the official API. The result is normalized, so it doubles as the credentials-file key.
 [[nodiscard]] std::string ResolveRegistryBase(std::string_view flagValue);
 
 /// A bearer credential together with the origin an error message should name.
@@ -57,8 +56,8 @@ struct CredentialVerification {
 
 [[nodiscard]] CredentialVerification VerifyCredential(std::string_view registryBase, std::string_view token);
 
-/// Registry base URL in the form used as a credentials-file key: trailing
-/// slashes trimmed, so `https://host/` and `https://host` are one registry.
+/// Registry base URL in the form used as a credentials-file key: trailing slashes trimmed, so `https://host/` and
+/// `https://host` are one registry.
 [[nodiscard]] std::string NormalizeRegistryBase(std::string_view base);
 
 /// Path of the per-user credentials file, beside the package cache.
@@ -67,16 +66,14 @@ struct CredentialVerification {
 /// The stored credential for `registryBase`, ignoring the environment. Returns
 [[nodiscard]] std::expected<std::optional<Credential>, std::string> LoadCredential(std::string_view registryBase);
 
-/// The credential to authenticate to `registryBase` with: RUX_TOKEN when set,
-/// otherwise the stored entry.
+/// The credential to authenticate to `registryBase` with: RUX_TOKEN when set, otherwise the stored entry.
 [[nodiscard]] std::expected<std::optional<Credential>, std::string> ResolveCredential(std::string_view registryBase);
 
-/// Store `token` for `registryBase`, replacing any entry it already has and
-/// preserving every other registry's. The file is written through a temporary
-/// that is restricted to the owner before the token reaches it.
+/// Store `token` for `registryBase`, replacing any entry it already has and preserving every other registry's. The file
+/// is written through a temporary that is restricted to the owner before the token reaches it.
 [[nodiscard]] std::expected<void, std::string> StoreCredential(std::string_view registryBase, std::string_view token);
 
-/// Remove the entry for `registryBase`. The result reports whether one was
-/// there; erasing a registry that was never stored is not an error.
+/// Remove the entry for `registryBase`. The result reports whether one was there; erasing a registry that was never
+/// stored is not an error.
 [[nodiscard]] std::expected<bool, std::string> EraseCredential(std::string_view registryBase);
 } // namespace Rux::Driver

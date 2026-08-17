@@ -1,3 +1,6 @@
+// AArch64 `asm func` assembly for load, store, addressing and floating-point
+// mnemonics.
+
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "Object/Rcu/Rcu.h"
 
@@ -9,8 +12,8 @@
 #include <unordered_map>
 
 namespace Rux::AArch64AssemblerPrivate {
-// The register a memory operand addresses through, as the encoder models it.
-// What that register is allowed to be is CheckBase's question.
+/// The register a memory operand addresses through, as the encoder models it. What that register is allowed to be is
+/// CheckBase's question.
 std::optional<A64Reg> MemoryFloatingAssemblerContext::BaseOf(const AsmOperand &op) {
     if (op.memBase.empty()) {
         FormError(op.location, std::format("'{}' addresses memory through a base register, and this operand names "
@@ -21,8 +24,8 @@ std::optional<A64Reg> MemoryFloatingAssemblerContext::BaseOf(const AsmOperand &o
     return RegNamed(op.memBase, op.location);
 }
 
-// The base register of a memory operand addresses memory, so it is 64-bit in
-// every form and is the one field that reads code 31 as the stack pointer.
+/// The base register of a memory operand addresses memory, so it is 64-bit in every form and is the one field that
+/// reads code 31 as the stack pointer.
 bool MemoryFloatingAssemblerContext::CheckBase(const AsmOperand &addr, const A64Reg base) {
     if (base.IsVector() || !base.Is64()) {
         FormError(addr.location, std::format("'{}' addresses memory through a 64-bit general-purpose register, "
@@ -186,8 +189,7 @@ void MemoryFloatingAssemblerContext::EncodePair(const AsmInstr &in, const PairFn
     Emit(in, (encoder.*fn)(*rt, *rt2, *rn, addr.imm, ToA64IndexMode(addr.indexMode)));
 }
 
-// FMOV moves between registers of either file and is the one floating-point
-// instruction that also names a value.
+/// FMOV moves between registers of either file and is the one floating-point instruction that also names a value.
 void MemoryFloatingAssemblerContext::EncodeFmov(const AsmInstr &in) {
     Begin(in, "Vd, Vn | Vd, Rn | Rd, Vn | Vd, #imm");
     if (!Operands(2)) {
@@ -211,7 +213,7 @@ void MemoryFloatingAssemblerContext::EncodeFmov(const AsmInstr &in) {
     Emit(in, encoder.Fmov(*rd, *rn));
 }
 
-// FCMP and FCMPE take either a register or the dedicated zero form.
+/// FCMP and FCMPE take either a register or the dedicated zero form.
 void MemoryFloatingAssemblerContext::EncodeFcmp(const AsmInstr &in, const bool signalling) {
     Begin(in, "Vn, Vm | Vn, #0");
     if (!Operands(2)) {

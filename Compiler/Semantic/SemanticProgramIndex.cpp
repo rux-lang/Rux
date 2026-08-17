@@ -1,3 +1,6 @@
+// The scope and symbol tables name resolution reads: how declarations are
+// indexed, and how a name that resolves to nothing is explained.
+
 #include "Semantic/SemanticProgramIndex.h"
 
 #include <algorithm>
@@ -7,15 +10,18 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+/// Join a module prefix to a name, skipping the separator at the root so a top-level module is not spelled `::Name`.
 std::string JoinModulePath(const std::string &prefix, const std::string &name) {
     return prefix.empty() ? name : prefix + "::" + name;
 }
 
+/// A generic type's name without its argument list, so `List<int32>` and `List<char8>` resolve to the same declaration.
 std::string BaseTypeName(const std::string &name) {
     const std::size_t position = name.find('<');
     return position == std::string::npos ? name : name.substr(0, position);
 }
 
+/// Levenshtein distance, used to suggest the name an unresolved identifier probably meant.
 std::size_t EditDistance(const std::string_view left, const std::string_view right) {
     std::vector<std::size_t> previous(right.size() + 1);
     std::vector<std::size_t> current(right.size() + 1);

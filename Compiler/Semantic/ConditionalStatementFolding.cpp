@@ -1,3 +1,6 @@
+// Folding `#if` chains inside function bodies, the statement-level counterpart
+// to declaration folding.
+
 #include "Semantic/ConditionalFolding.h"
 
 #include <iterator>

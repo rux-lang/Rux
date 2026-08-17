@@ -1,3 +1,6 @@
+// Evaluating the expression forms a compile-time condition is built from, and
+// selecting the arm of a compile-time match.
+
 #include "Semantic/ConditionalEvaluatorInternal.h"
 
 #include <cstdint>
@@ -13,8 +16,8 @@
 
 namespace Rux {
 namespace ConditionalEvaluation {
-// "hello" / c8"hello" -> hello. Only the escapes that can plausibly appear in a
-// `when` comparison are decoded; anything else is kept verbatim.
+/// "hello" / c8"hello" -> hello. Only the escapes that can plausibly appear in a `when` comparison are decoded;
+/// anything else is kept verbatim.
 std::optional<std::string> ParseStringLiteral(const std::string_view text) {
     const auto open = text.find('"');
     if (open == std::string_view::npos || text.back() != '"' || text.size() < open + 2) {
@@ -623,8 +626,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalBinary(const Bin
     return std::nullopt;
 }
 
-// Evaluates a conditional-compilation condition, reporting why it cannot
-// be used if it fails.
+/// Evaluates a conditional-compilation condition, reporting why it cannot be used if it fails.
 bool ConditionalEvaluator::Impl::EvalCondition(const Expr *condition, const SourceLocation location) {
     if (!condition) {
         return false;
@@ -647,7 +649,7 @@ bool ConditionalEvaluator::Impl::EvalCondition(const Expr *condition, const Sour
 
 // Compile-time match: `when subject { pattern => ..., else => ... }`
 
-// The compile-time value against an arm pattern, for the no-match diagnostic.
+/// The compile-time value against an arm pattern, for the no-match diagnostic.
 std::string ConditionalEvaluator::Impl::FormatValue(const Value &value) {
     if (const auto *e = std::get_if<EnumValue>(&value)) {
         return "." + e->variant;
@@ -670,7 +672,7 @@ std::string ConditionalEvaluator::Impl::FormatValue(const Value &value) {
     return "the subject";
 }
 
-// Whether the subject value equals an arm pattern.
+/// Whether the subject value equals an arm pattern.
 std::optional<bool> ConditionalEvaluator::Impl::ArmMatches(const Value &subject, const Expr &pattern,
                                                            const SourceLocation location, Value *evaluatedPattern) {
     const auto patternValue = Eval(pattern);
@@ -695,9 +697,8 @@ std::optional<bool> ConditionalEvaluator::Impl::ArmMatches(const Value &subject,
     return subject == *patternValue;
 }
 
-// Index of the first arm one of whose patterns matches the subject; an arm
-// with no patterns is the `else`. Returns -1 (reporting an error) when
-// nothing matches and there is no `else`.
+/// Index of the first arm one of whose patterns matches the subject; an arm with no patterns is the `else`. Returns -1
+/// (reporting an error) when nothing matches and there is no `else`.
 int ConditionalEvaluator::Impl::SelectMatchArmImpl(const Expr &subject,
                                                    const std::vector<std::vector<const Expr *>> &arms,
                                                    const SourceLocation location) {

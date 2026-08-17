@@ -1,3 +1,7 @@
+// Package and scope setup for AST-to-HIR lowering: the entry point that walks
+// the modules, and the scope stack every other lowering file resolves names
+// against.
+
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
 #include <cassert>
@@ -221,6 +225,8 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
 }
 
 namespace {
+/// The module path a source file corresponds to, relative to the package root, so the identity does not depend on where
+/// the package was checked out.
 std::string FilePathToModulePath(const std::string &filePath) {
     const std::string generic = std::filesystem::path(filePath).generic_string();
     std::vector<std::string> parts;

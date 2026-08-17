@@ -24,6 +24,8 @@ concept Sizable = requires(const T &value) {
 
 template <std::ranges::input_range Range, typename Projection = std::identity>
     requires Sizable<std::indirect_result_t<Projection, std::ranges::iterator_t<Range>>>
+/// The widest element in a range, which is how each help block sizes its own label column. Widths are per block, not
+/// shared, so one long flag never pads an unrelated section.
 std::size_t MaxSize(const Range &range, Projection projection = {}) {
     std::size_t result = 0;
     for (const auto &item : range) {

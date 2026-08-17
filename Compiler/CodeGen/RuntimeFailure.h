@@ -11,9 +11,8 @@ enum class RuntimeFailureKind {
     Panic
 };
 
-// Runtime failures are emitted as three writes because the message is a
-// runtime Slice<char8>. Keeping the two static fragments together here makes
-// their logical byte layout independent of the target's writing mechanism.
+/// Runtime failures are emitted as three writes because the message is a runtime Slice<char8>. Keeping the two static
+/// fragments together here makes their logical byte layout independent of the target's writing mechanism.
 struct RuntimeFailureLayout {
     std::string prefix;
     std::string location;

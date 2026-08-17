@@ -19,8 +19,7 @@
 #include <vector>
 
 namespace Rux {
-// Encode `instrs`, appending the machine code to `out`. `sourceName` is used
-// only for diagnostics.
+/// Encode `instrs`, appending the machine code to `out`. `sourceName` is used only for diagnostics.
 AsmAssembly AssembleAArch64AsmFunc(const std::vector<AsmInstr> &instrs, const std::string &sourceName,
                                    std::vector<std::uint8_t> &out, Target::OS targetOs = Target::OS::Linux);
 } // namespace Rux

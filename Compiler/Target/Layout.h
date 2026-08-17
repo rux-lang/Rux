@@ -19,14 +19,13 @@ namespace Rux::Layout {
     return (value + align - 1) & ~(align - 1);
 }
 
-// Natural alignment of a field of `size` bytes, capped at 8.
+/// Natural alignment of a field of `size` bytes, capped at 8.
 [[nodiscard]] constexpr std::uint64_t FieldAlign(const std::uint64_t size) noexcept {
     return size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
 }
 
-// Accumulate `fields` into a record, calling `sizeOf(field)` (returning
-// std::optional<std::uint64_t>) for each. Returns {total size, alignment},
-// or nullopt as soon as any field size is unknown.
+/// Accumulate `fields` into a record, calling `sizeOf(field)` (returning std::optional<std::uint64_t>) for each.
+/// Returns {total size, alignment}, or nullopt as soon as any field size is unknown.
 template <typename Range, typename SizeFn>
 [[nodiscard]] std::optional<std::pair<std::uint64_t, std::uint64_t>> FieldsSizeAndAlign(const Range &fields,
                                                                                         SizeFn &&sizeOf) {

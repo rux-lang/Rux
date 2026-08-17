@@ -19,38 +19,36 @@
 #include <unordered_map>
 
 namespace Rux {
-// Which register file a name belongs to. `Vector` covers the x86-64 XMM file
-// and the AArch64 SIMD and floating-point file alike: on both, a name from it
-// is spelled where an instruction expects a floating-point operand.
+/// Which register file a name belongs to. `Vector` covers the x86-64 XMM file and the AArch64 SIMD and floating-point
+/// file alike: on both, a name from it is spelled where an instruction expects a floating-point operand.
 enum class AsmRegFile : std::uint8_t {
     None,
     Gpr,
     Vector,
 };
 
-// A decoded register name: which file it belongs to, its number, the width the
-// name selects, and the per-architecture quirks that affect encoding.
+/// A decoded register name: which file it belongs to, its number, the width the name selects, and the per-architecture
+/// quirks that affect encoding.
 struct AsmRegInfo {
     bool valid = false;
     Target::Arch arch = Target::Arch::Unknown;
     AsmRegFile file = AsmRegFile::None;
 
-    // x86-64: 0..15. AArch64: 0..31, where 31 is the zero register unless
-    // `stackPointer` says the name is the other reading of that code.
+    /// x86-64: 0..15. AArch64: 0..31, where 31 is the zero register unless `stackPointer` says the name is the other
+    /// reading of that code.
     int code = 0;
 
-    // Width in bytes the name selects. General purpose: 1/2/4/8. Vector:
-    // x86-64 XMM is always 16; AArch64 B/H/S/D/Q views are 1/2/4/8/16.
+    /// Width in bytes the name selects. General purpose: 1/2/4/8. Vector: x86-64 XMM is always 16; AArch64 B/H/S/D/Q
+    /// views are 1/2/4/8/16.
     int size = 0;
 
-    // x86-64 only: spl/bpl/sil/dil need a REX prefix to be reachable, and
-    // ah/ch/dh/bh are the legacy high-byte registers.
+    /// x86-64 only: spl/bpl/sil/dil need a REX prefix to be reachable, and ah/ch/dh/bh are the legacy high-byte
+    /// registers.
     bool rexRequired = false;
     bool high8 = false;
 
-    // AArch64 only: SP and WSP, the reading of code 31 that is not the zero
-    // register. Nothing in the encoding distinguishes the two, so the reading
-    // has to travel with the name.
+    /// AArch64 only: SP and WSP, the reading of code 31 that is not the zero register. Nothing in the encoding
+    /// distinguishes the two, so the reading has to travel with the name.
     bool stackPointer = false;
 
     [[nodiscard]] bool IsVector() const noexcept {
@@ -58,9 +56,8 @@ struct AsmRegInfo {
     }
 };
 
-// Transparent hashing so a table keyed by owned names — the AArch64 one builds
-// `x0`, `w0`, `d0` and their kin rather than listing them — is still looked up
-// with the `std::string_view` the parser and the assembler hold.
+/// Transparent hashing so a table keyed by owned names — the AArch64 one builds `x0`, `w0`, `d0` and their kin rather
+/// than listing them — is still looked up with the `std::string_view` the parser and the assembler hold.
 struct AsmNameHash {
     using is_transparent = void;
 
@@ -71,8 +68,7 @@ struct AsmNameHash {
 
 using AsmRegisterMap = std::unordered_map<std::string, AsmRegInfo, AsmNameHash, std::equal_to<>>;
 
-// x86-64: the general-purpose file in all four widths, its legacy high-byte
-// names, and the XMM (SSE) file.
+/// x86-64: the general-purpose file in all four widths, its legacy high-byte names, and the XMM (SSE) file.
 inline const AsmRegisterMap &X86_64RegisterTable() {
     static const AsmRegisterMap table = [] {
         AsmRegisterMap m;
@@ -89,7 +85,7 @@ inline const AsmRegisterMap &X86_64RegisterTable() {
             m[r64[i]] = AsmRegInfo{.valid = true, .arch = arch, .file = AsmRegFile::Gpr, .code = i, .size = 8};
             m[r32[i]] = AsmRegInfo{.valid = true, .arch = arch, .file = AsmRegFile::Gpr, .code = i, .size = 4};
             m[r16[i]] = AsmRegInfo{.valid = true, .arch = arch, .file = AsmRegFile::Gpr, .code = i, .size = 2};
-            // spl/bpl/sil/dil (codes 4..7) require a REX prefix to be reachable.
+            /// spl/bpl/sil/dil (codes 4..7) require a REX prefix to be reachable.
             m[r8l[i]] = AsmRegInfo{.valid = true,
                                    .arch = arch,
                                    .file = AsmRegFile::Gpr,
@@ -109,11 +105,10 @@ inline const AsmRegisterMap &X86_64RegisterTable() {
     return table;
 }
 
-// AArch64: X0-X30 and W0-W30, both readings of code 31, and the scalar views of
-// the SIMD file. The bare `V` names are deliberately absent: they are only ever
-// written with an element qualifier (`V0.16B`), which the scalar subset the
-// encoder covers has no use for, so a body naming one is read as a symbol here
-// and reported by the assembler rather than silently becoming a register.
+/// AArch64: X0-X30 and W0-W30, both readings of code 31, and the scalar views of the SIMD file. The bare `V` names are
+/// deliberately absent: they are only ever written with an element qualifier (`V0.16B`), which the scalar subset the
+/// encoder covers has no use for, so a body naming one is read as a symbol here and reported by the assembler rather
+/// than silently becoming a register.
 inline const AsmRegisterMap &AArch64RegisterTable() {
     static const AsmRegisterMap table = [] {
         AsmRegisterMap m;
@@ -130,18 +125,17 @@ inline const AsmRegisterMap &AArch64RegisterTable() {
             gpr(std::format("x{}", i), i, 8);
             gpr(std::format("w{}", i), i, 4);
         }
-        // The two readings of code 31. Which one a name means is not in the
-        // encoding, so it travels here; an instruction accepts one or the other.
+        /// The two readings of code 31. Which one a name means is not in the encoding, so it travels here; an
+        /// instruction accepts one or the other.
         gpr("xzr", 31, 8);
         gpr("wzr", 31, 4);
         gpr("sp", 31, 8, true);
         gpr("wsp", 31, 4, true);
-        // The two register names AAPCS64 gives a role rather than a number.
+        /// The two register names AAPCS64 gives a role rather than a number.
         gpr("fp", 29, 8);
         gpr("lr", 30, 8);
 
-        // Scalar views of V0-V31: the letter selects how many bytes of the
-        // register the instruction reads and writes.
+        /// Scalar views of V0-V31: the letter selects how many bytes of the register the instruction reads and writes.
         static constexpr struct {
             char letter;
             int size;
@@ -157,8 +151,7 @@ inline const AsmRegisterMap &AArch64RegisterTable() {
     return table;
 }
 
-// The table for `arch`, or an empty one for an architecture with no inline
-// assembly support.
+/// The table for `arch`, or an empty one for an architecture with no inline assembly support.
 [[nodiscard]] inline const AsmRegisterMap &RegisterTable(const Target::Arch arch) {
     static const AsmRegisterMap none;
     switch (arch) {
@@ -171,10 +164,9 @@ inline const AsmRegisterMap &AArch64RegisterTable() {
     }
 }
 
-// Decode `name` — already lower-cased — as a register of `arch`. An
-// unrecognized name comes back invalid rather than as a diagnostic: the parser
-// reads it as a symbol, and only the assembler knows which of the two the
-// instruction wanted.
+/// Decode `name` — already lower-cased — as a register of `arch`. An unrecognized name comes back invalid rather than
+/// as a diagnostic: the parser reads it as a symbol, and only the assembler knows which of the two the instruction
+/// wanted.
 [[nodiscard]] inline AsmRegInfo LookupRegister(const Target::Arch arch, const std::string_view name) {
     const auto &table = RegisterTable(arch);
     if (const auto it = table.find(name); it != table.end()) {

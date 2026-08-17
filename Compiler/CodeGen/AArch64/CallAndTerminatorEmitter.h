@@ -13,9 +13,8 @@
 #include <vector>
 
 namespace Rux {
-// Narrow access to function values, diagnostics, and module symbols while
-// calls and control flow are emitted. Relocation construction and shared
-// register/stack movement remain owned by the surrounding module emitter.
+/// Narrow access to function values, diagnostics, and module symbols while calls and control flow are emitted.
+/// Relocation construction and shared register/stack movement remain owned by the surrounding module emitter.
 class AArch64CallAndTerminatorHooks {
 public:
     virtual ~AArch64CallAndTerminatorHooks() = default;
@@ -49,7 +48,7 @@ public:
     AArch64CallEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan, AArch64CallPlanner &callPlanner,
                        std::string functionName, AArch64CallAndTerminatorHooks &hooks);
 
-    // Returns true exactly when the instruction is a direct or indirect call.
+    /// Returns true exactly when the instruction is a direct or indirect call.
     [[nodiscard]] bool Emit(const LirInstr &instruction);
     void EmitParamSpills(const LirFunc &function);
     void EmitReturnValue(LirReg reg, const TypeRef &type);
@@ -88,8 +87,8 @@ public:
     [[nodiscard]] bool PatchJumps();
     [[nodiscard]] std::size_t WidenedSiteCount() const;
 
-    // Assertion lowering remains with the runtime/platform emitter but uses the
-    // same checked short-branch implementation as ordinary control flow.
+    /// Assertion lowering remains with the runtime/platform emitter but uses the same checked short-branch
+    /// implementation as ordinary control flow.
     [[nodiscard]] std::uint32_t EmitBranchOverNonZero(A64Reg reg);
     void PatchBranchOver(std::uint32_t patchOffset);
 

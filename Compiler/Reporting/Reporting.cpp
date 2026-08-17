@@ -6,6 +6,7 @@
 
 namespace Rux::Reporting {
 namespace {
+/// Render a fixed-point decimal without locale influence, so a report reads the same on every machine.
 std::string FormatDecimal(const double value, const int decimals) {
     std::ostringstream output;
     output << std::fixed << std::setprecision(decimals) << value;

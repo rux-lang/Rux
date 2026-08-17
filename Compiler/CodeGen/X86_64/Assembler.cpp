@@ -29,8 +29,8 @@ namespace {
 using Bytes = std::vector<std::uint8_t>;
 using namespace X86_64AssemblerPrivate;
 
-// Resolved r/m encoding: the ModRM byte with an empty reg field, plus the SIB,
-// displacement, REX.B/X bits, and any rip-relative symbol reference.
+/// Resolved r/m encoding: the ModRM byte with an empty reg field, plus the SIB, displacement, REX.B/X bits, and any
+/// rip-relative symbol reference.
 struct RmEnc {
     std::uint8_t modrm = 0;
     bool hasSib = false;

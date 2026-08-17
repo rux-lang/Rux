@@ -174,7 +174,7 @@ struct MemoryInfo {
     }
 }
 
-// Every supported architecture is 64-bit, so pointer size does not vary.
+/// Every supported architecture is 64-bit, so pointer size does not vary.
 [[nodiscard]] constexpr std::size_t GetPointerSize(Arch) noexcept {
     return Pointer64;
 }
@@ -294,8 +294,8 @@ inline constexpr CallingConv HostCC = HostABIDetails.cc;
 } // namespace Rux::Target
 
 namespace Rux {
-// Fully resolved description of the machine code is being generated for. Created
-// from the host today; a cross-compilation front end can populate it explicitly.
+/// Fully resolved description of the machine code is being generated for. Created from the host today; a
+/// cross-compilation front end can populate it explicitly.
 struct TargetContext {
     Target::OS os;
     Target::Arch arch;

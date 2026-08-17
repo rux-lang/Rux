@@ -113,8 +113,9 @@ TypeExprPtr Parser::ParseBaseType(std::optional<std::string> help) {
     return nullptr;
 }
 
-// func(x: int, y: int) -> bool
-// Parameter names are optional; only the types and the return type matter.
+/// func(x: int, y: int) -> bool
+///
+/// Parameter names are optional; only the types and the return type matter.
 TypeExprPtr Parser::ParseFunctionType() {
     const auto loc = CurrentLocation();
     ExpectBefore(TokenKind::FuncKeyword, "'func' to start the function type");
@@ -231,8 +232,8 @@ std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
     return args;
 }
 
-// Language aliases are normalized so extension and intrinsic binding keys
-// match their resolved receiver types (for example, `bool[]` and `bool8[]`).
+/// Language aliases are normalized so extension and intrinsic binding keys match their resolved receiver types (for
+/// example, `bool[]` and `bool8[]`).
 static std::string NormalizePrimitiveName(const std::string &name) {
     if (name == "bool") {
         return "bool8";

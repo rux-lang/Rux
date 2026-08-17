@@ -56,9 +56,8 @@ private:
 [[nodiscard]] std::string_view SymbolKindName(Symbol::Kind kind);
 [[nodiscard]] std::string DeclarationNote(const Symbol &symbol);
 
-// Owns the package/module declaration topology built before semantic checking.
-// The analyzer supplies type resolution because aliases and typed constants
-// still use its in-progress type context.
+/// Owns the package/module declaration topology built before semantic checking. The analyzer supplies type resolution
+/// because aliases and typed constants still use its in-progress type context.
 class SemanticProgramIndex {
 public:
     using PackageScopes = std::unordered_map<std::string, std::unordered_map<std::string, Scope *>>;

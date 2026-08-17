@@ -10,8 +10,8 @@
 #include <string_view>
 
 namespace Rux {
-// This compiler's version, packed as major:minor:patch one byte apart, which is
-// the form byte 8 onward of the RCU header takes.
+/// This compiler's version, packed as major:minor:patch one byte apart, which is the form byte 8 onward of the RCU
+/// header takes.
 [[nodiscard]] inline std::uint32_t RcuCompilerVersion(const BuildInfo &buildInfo) noexcept {
     unsigned parts[3] = {0, 0, 0};
     std::string_view text = buildInfo.CompilerVersion();
@@ -27,7 +27,7 @@ namespace Rux {
     return parts[0] << 16U | parts[1] << 8U | parts[2];
 }
 
-// The one composition-time instant shared by the whole compilation.
+/// The one composition-time instant shared by the whole compilation.
 [[nodiscard]] inline std::uint64_t RcuBuildTimestamp(const BuildInfo &buildInfo) noexcept {
     return static_cast<std::uint64_t>(buildInfo.Timestamp());
 }

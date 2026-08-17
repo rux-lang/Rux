@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace Rux {
-// Resolved type representation used by the semantic analyzer.
+/// Resolved type representation used by the semantic analyzer.
 struct TypeRef {
     enum class Kind {
         Unknown, // unresolved / error recovery
@@ -43,6 +43,7 @@ struct TypeRef {
         TypeParam,        // generic parameter T — name = param name
         Func,             // func(...) -> T — inner[0..n-2] = params, inner[n-1] =
         // return
+
         // Aliases — must come after all concrete values so they don't shift
         // the counter
         Bool = Bool8,    // bool is an alias for bool8
@@ -320,8 +321,7 @@ struct TypeRef {
     [[nodiscard]] bool IsFloat() const noexcept;
     [[nodiscard]] bool IsSigned() const noexcept;
 
-    // True when this type can be assigned to `other` (lenient: Unknown is
-    // compatible with anything).
+    /// True when this type can be assigned to `other` (lenient: Unknown is compatible with anything).
     [[nodiscard]] bool IsAssignableTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;

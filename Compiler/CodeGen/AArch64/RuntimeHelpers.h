@@ -15,9 +15,8 @@ enum class AArch64RuntimeHelper {
     FloatPower32,
 };
 
-// Owns the synthesized helper functions referenced by one AArch64 RCU module.
-// References declare helpers lazily; EmitRequested writes only reachable bodies
-// after user functions, preserving helper dependency and body order.
+/// Owns the synthesized helper functions referenced by one AArch64 RCU module. References declare helpers lazily;
+/// EmitRequested writes only reachable bodies after user functions, preserving helper dependency and body order.
 class AArch64RuntimeHelperEmitter {
 public:
     using DiagnosticReporter = std::function<void(std::string)>;

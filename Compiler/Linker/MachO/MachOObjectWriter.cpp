@@ -1,3 +1,6 @@
+// Translates one RCU object into a relocatable Mach-O object. Linking a whole
+// Mach-O image is MachOWriter's job.
+
 #include "Linker/MachO/MachOObjectWriter.h"
 
 #include "Linker/AArch64Relocation.h"
@@ -78,6 +81,7 @@ public:
     }
 };
 
+/// Intern a name into the Mach-O string table and return its offset.
 std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view value) {
     const auto offset = static_cast<std::uint32_t>(table.size());
     table.insert(table.end(), value.begin(), value.end());
@@ -85,8 +89,8 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     return offset;
 }
 
-// Mach-O cputype/cpusubtype: CPU_TYPE_X86_64 with CPU_SUBTYPE_X86_64_ALL, and
-// CPU_TYPE_ARM64 with CPU_SUBTYPE_ARM64_ALL.
+/// Mach-O cputype/cpusubtype: CPU_TYPE_X86_64 with CPU_SUBTYPE_X86_64_ALL, and CPU_TYPE_ARM64 with
+/// CPU_SUBTYPE_ARM64_ALL.
 std::pair<std::uint32_t, std::uint32_t> MachOCpuType(const Target::Arch targetArch) noexcept {
     switch (targetArch) {
     case Target::Arch::X86_64:
@@ -98,9 +102,8 @@ std::pair<std::uint32_t, std::uint32_t> MachOCpuType(const Target::Arch targetAr
     }
 }
 
-// The architecture-neutral relocation kinds, which name a whole little-endian
-// field. Every container has a number for them; architecture-specific mappings
-// decide which AArch64 instruction fields their format can carry.
+/// The architecture-neutral relocation kinds, which name a whole little-endian field. Every container has a number for
+/// them; architecture-specific mappings decide which AArch64 instruction fields their format can carry.
 bool IsFieldRelocation(const std::uint16_t type) noexcept {
     return type == RcuRelType::None || type == RcuRelType::Abs64 || type == RcuRelType::Abs32 ||
            type == RcuRelType::Rel32;
@@ -122,8 +125,7 @@ bool IsAArch64MachORelocation(const std::uint16_t type) noexcept {
     }
 }
 
-// The instruction a relocation names, or zero when the site lies past the end
-// of its section.
+/// The instruction a relocation names, or zero when the site lies past the end of its section.
 std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::uint32_t offset) noexcept {
     if (static_cast<std::size_t>(offset) + 4 > data.size()) {
         return 0;
@@ -135,6 +137,8 @@ std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::ui
     return word;
 }
 
+/// Order symbols into the local, external, and undefined groups Mach-O requires, since the symbol table header records
+/// each group as a range rather than tagging entries individually.
 std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     std::vector<std::size_t> order(file.symbols.size());
     std::iota(order.begin(), order.end(), 0);
@@ -143,6 +147,8 @@ std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     return order;
 }
 
+/// Write a value into the instruction field a relocation targets, decoding the instruction to find where that field is
+/// and how it is scaled.
 void PatchInlineField(Buf &data, const RcuReloc &relocation, const std::int64_t value) {
     const std::size_t width = relocation.type == RcuRelType::Abs64 ? 8 : 4;
     if (static_cast<std::size_t>(relocation.sectionOffset) + width > data.size()) {
@@ -183,6 +189,8 @@ bool IsAArch64UnsignedOffsetLoadStore(const std::uint32_t word) noexcept {
     return (word & 0x3B00'0000U) == 0x3900'0000U;
 }
 
+/// Zero the immediate before emitting an external relocation. Mach-O expects the field to start empty, so a leftover
+/// value from lowering would be added to whatever the linker computes.
 void ClearAArch64RelocationField(Buf &data, const RcuReloc &relocation, const std::uint32_t word) {
     std::uint32_t cleared = word;
     switch (relocation.type) {

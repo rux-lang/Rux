@@ -1,3 +1,6 @@
+// Assembly text for branches, labels and calls — the parts of a function whose
+// printed form depends on the block structure around them.
+
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 
 #include "CodeGen/RuntimeFailure.h"

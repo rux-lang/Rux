@@ -14,9 +14,9 @@ struct NativeObject {
     std::vector<std::string> publicSymbols;
 };
 
-// Writes `file` as a relocatable object in the target's native format: COFF on
-// Windows, Mach-O on macOS, ELF everywhere else. The object's own architecture
-// must match `targetArch`, which selects the format's machine identifier.
+/// Writes `file` as a relocatable object in the target's native format: COFF on Windows, Mach-O on macOS, ELF
+/// everywhere else. The object's own architecture must match `targetArch`, which selects the format's machine
+/// identifier.
 [[nodiscard]] bool WriteNativeObject(const RcuFile &file, Target::OS targetOs, Target::Arch targetArch,
                                      NativeObject &output, std::string &error);
 

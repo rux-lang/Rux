@@ -11,6 +11,9 @@
 #include <print>
 
 namespace Rux::CliSupport {
+/// Find the nearest `Rux.toml`, searching upward from the working directory.
+///
+/// @return nullopt when none was found, having already reported why
 [[nodiscard]] inline std::optional<std::filesystem::path> RequireManifest() {
     auto path = Manifest::Find();
     if (!path) {
@@ -20,6 +23,8 @@ namespace Rux::CliSupport {
     return path;
 }
 
+/// Use an explicitly given manifest path, falling back to the upward search when it is empty. An explicit path that
+/// does not exist is an error rather than a reason to search, since the user named a specific file.
 [[nodiscard]] inline std::optional<std::filesystem::path> RequireManifest(const std::filesystem::path &manifestPath) {
     if (manifestPath.empty()) {
         return RequireManifest();

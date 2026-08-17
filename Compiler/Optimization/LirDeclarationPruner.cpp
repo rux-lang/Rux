@@ -8,6 +8,8 @@
 
 namespace Rux::Optimization {
 namespace {
+/// A rough size for one declaration, counted in IR nodes. Only ever compared against itself to report how much pruning
+/// removed, so the exact weighting matters less than staying consistent between runs.
 std::size_t EstimateNodes(const LirFunc &function) {
     std::size_t nodes = 1 + function.params.size() + function.asmBody.size();
     for (const auto &block : function.blocks) {
@@ -25,6 +27,9 @@ std::size_t EstimateNodes(const LirVtable &vtable) {
 }
 
 template <typename Declaration, typename IsReachable, typename OnPruned>
+/// Keep the reachable declarations of one kind, reporting each removal so the caller can total what it cost. Rebuilding
+/// the vector rather than erasing in place keeps the surviving declarations in their original order, which their
+/// recorded indices depend on.
 bool Prune(std::vector<Declaration> &declarations, IsReachable isReachable, OnPruned onPruned) {
     std::vector<Declaration> retained;
     retained.reserve(declarations.size());

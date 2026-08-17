@@ -44,8 +44,8 @@ private:
     std::unordered_map<std::string, HirSymbol> table;
 };
 
-// Private state shared only by AST-to-HIR implementation files. Public callers
-// interact with AstToHirLowering and never depend on this orchestration layer.
+/// Private state shared only by AST-to-HIR implementation files. Public callers interact with AstToHirLowering and
+/// never depend on this orchestration layer.
 class AstToHirContext {
 public:
     AstToHirContext(const SemanticModel &inputModel, const std::vector<const Module *> &inputModules,

@@ -1,3 +1,7 @@
+// Translates one RCU object into a relocatable ELF object, so a Rux static
+// library can be consumed by a toolchain that cannot read RCU. Linking a whole
+// ELF image is ElfWriter's job.
+
 #include "Linker/Elf/ElfObjectWriter.h"
 
 #include "Linker/AArch64Relocation.h"
@@ -85,6 +89,7 @@ struct ElfSection {
     std::uint64_t offset = 0;
 };
 
+/// Intern a name into an ELF string table and return its offset, the form every ELF name field takes.
 std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view value) {
     const auto offset = static_cast<std::uint32_t>(table.size());
     table.insert(table.end(), value.begin(), value.end());
@@ -92,6 +97,8 @@ std::uint32_t AddString(std::vector<std::uint8_t> &table, const std::string_view
     return offset;
 }
 
+/// Read the 32-bit instruction word at an offset. AArch64 relocation types depend on which instruction is being
+/// patched, so the writer has to decode the site before it can classify the fixup.
 std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::uint32_t offset) noexcept {
     if (static_cast<std::size_t>(offset) + 4 > data.size()) {
         return 0;
@@ -103,6 +110,8 @@ std::uint32_t InstructionAt(const std::vector<std::uint8_t> &data, const std::ui
     return word;
 }
 
+/// Order symbols so every local one precedes every global one. ELF requires that split and records the boundary in the
+/// section header, so the order is part of the format rather than a preference.
 std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     std::vector<std::size_t> order(file.symbols.size());
     std::iota(order.begin(), order.end(), 0);
@@ -111,9 +120,8 @@ std::vector<std::size_t> SymbolOrder(const RcuFile &file) {
     return order;
 }
 
-// R_AARCH64_LDST<n>_ABS_LO12_NC, one number per access width, because a linker
-// placing the symbol's low 12 bits into the immediate has to scale them down by
-// the width the instruction moves.
+/// R_AARCH64_LDST<n>_ABS_LO12_NC, one number per access width, because a linker placing the symbol's low 12 bits into
+/// the immediate has to scale them down by the width the instruction moves.
 std::uint32_t AArch64LdstRelocationType(const std::uint32_t word) noexcept {
     switch (AArch64LoadStoreScale(word)) {
     case 0:
@@ -129,9 +137,8 @@ std::uint32_t AArch64LdstRelocationType(const std::uint32_t word) noexcept {
     }
 }
 
-// The ELF relocation number a kind takes for `targetArch`, or nullopt when
-// that architecture has none for it. `word` is read only by the load-store
-// form, whose ELF relocation number depends on the instruction access width.
+/// The ELF relocation number a kind takes for `targetArch`, or nullopt when that architecture has none for it. `word`
+/// is read only by the load-store form, whose ELF relocation number depends on the instruction access width.
 std::optional<std::uint32_t> RelocationType(const std::uint16_t type, const Target::Arch targetArch,
                                             const std::uint32_t word) noexcept {
     if (targetArch == Target::Arch::X86_64) {
@@ -187,8 +194,10 @@ std::optional<std::uint32_t> RelocationType(const std::uint16_t type, const Targ
     }
 }
 
-// R_X86_64_PC32 is measured from the end of its four-byte field. AArch64
-// relocations are measured from the start of the instruction or field.
+/// The addend for a relocation, which x86-64 and AArch64 carry differently in the RCU form.
+///
+/// R_X86_64_PC32 is measured from the end of its four-byte field. AArch64 relocations are measured from the start of
+/// the instruction or field.
 std::int64_t RelocationAddend(const RcuReloc &relocation, const Target::Arch targetArch) noexcept {
     const bool biased = targetArch == Target::Arch::X86_64 && relocation.type == RcuRelType::Rel32;
     return biased ? relocation.addend - 4 : relocation.addend;

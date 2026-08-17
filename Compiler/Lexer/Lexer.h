@@ -11,29 +11,41 @@
 namespace Rux {
 using LexerDiagnostic = Diagnostic;
 
+/// The token stream and everything that went wrong producing it. A result with errors still carries a usable stream,
+/// since scanning recovers rather than stopping.
 struct LexerResult {
     std::vector<Token> tokens;
     std::vector<LexerDiagnostic> diagnostics;
     [[nodiscard]] bool HasErrors() const noexcept;
 };
 
+/**
+ * @brief Turns UTF-8 source text into the token stream the parser reads.
+ *
+ * Scanning never stops at the first bad character: an unrecognized byte or an unterminated literal becomes a diagnostic
+ * and a token, so the parser still receives a complete stream and one run can report many problems.
+ *
+ * A `///` doc comment is a token here rather than trivia, because Rux attaches it to the declaration that follows for
+ * `rux doc` to read. Ordinary line and block comments are skipped instead, and block comments nest.
+ */
 class Lexer {
 public:
-    // Construct from in-memory source text.
-    // `sourceName` is used only for diagnostic messages (e.g. file path).
+    /// Construct from in-memory source text. `sourceName` is used only for diagnostic messages (e.g. file path).
     explicit Lexer(std::string inputSource, std::string inputSourceName = "<input>");
 
-    // Convenience: read a file and lex it. Open and read failures are returned
-    // as diagnostics; reusable compiler code never prints them directly.
+    /// Convenience: read a file and lex it. Open and read failures are returned as diagnostics; reusable compiler code
+    /// never prints them directly.
     [[nodiscard]] static LexerResult FromFile(const std::filesystem::path &path);
 
-    // Run the full lexer pass and return all tokens + diagnostics.
+    /// Run the full lexer pass and return all tokens + diagnostics.
     [[nodiscard]] LexerResult Tokenize();
 
-    // Dump a token list to a file for debugging.
-    // Path defaults to sourceName + ".tokens" if not specified.
+    /// Dump a token list to a file for debugging. Path defaults to sourceName + ".tokens" if not specified.
     static bool DumpTokens(const LexerResult &result, const std::filesystem::path &path = {});
 
+    /// The single code point a character literal denotes, with any escape already resolved.
+    ///
+    /// @return nullopt when the text is not exactly one code point
     [[nodiscard]] static std::optional<std::uint32_t> DecodeCharLiteralCodePoint(std::string_view text);
 
 private:
@@ -42,7 +54,7 @@ private:
     std::string sourceName;
 
     // Cursor state
-    std::size_t pos = 0; // current byte position
+    std::size_t pos = 0; ///< current byte position
     std::uint32_t line = 1;
     std::uint32_t col = 1;
 

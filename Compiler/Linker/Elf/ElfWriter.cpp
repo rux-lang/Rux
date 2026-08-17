@@ -56,7 +56,7 @@ constexpr uint32_t BrX17 = 0xD61F0220;     // br x17
 constexpr uint32_t Nop = 0xD503201F;
 } // namespace A64Plt
 
-// Classic SysV ELF symbol hash (used by DT_HASH).
+/// Classic SysV ELF symbol hash (used by DT_HASH).
 static uint32_t ElfHash(const std::string &name) {
     uint32_t h = 0;
     for (const unsigned char c : name) {

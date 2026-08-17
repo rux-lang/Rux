@@ -1,3 +1,7 @@
+// The ad-hoc code signature a Mach-O image carries. Required on some Apple
+// targets before an image will load at all, which is why it is emitted here
+// rather than left to a separate tool.
+
 #include "Linker/MachO/CodeSignature.h"
 
 #include "Crypto/Sha256.h"
@@ -17,6 +21,8 @@ constexpr std::uint32_t kCodeDirectoryHeaderSize = 88;
 constexpr std::uint8_t kSha256Type = 2;
 constexpr std::uint8_t kPageSizePower = 12;
 
+/// Code signature structures are big-endian, unlike the rest of a Mach-O image, so these helpers exist separately from
+/// the writer's native-order ones.
 void WriteBig32(std::vector<std::uint8_t> &buffer, const std::uint32_t value) {
     buffer.push_back(static_cast<std::uint8_t>(value >> 24U));
     buffer.push_back(static_cast<std::uint8_t>(value >> 16U));

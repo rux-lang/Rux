@@ -11,11 +11,15 @@
 #include <vector>
 
 namespace Rux::MachO {
+/// One symbol imported from another library, with the ordinal identifying which one. Mach-O encodes the library as a
+/// small index into the load commands rather than by name, so the ordinal has to be assigned before binding is written.
 struct LinkEditImport {
     std::string name;
     std::uint8_t libraryOrdinal = 0;
 };
 
+/// The addresses LINKEDIT contents are expressed relative to. Binding and relocation entries store offsets from a
+/// segment base, so building them needs the layout to have been decided first.
 struct LinkEditSegmentLayout {
     RcuSectionBases sectionBases;
     std::uint64_t imageBase = 0;
@@ -28,6 +32,8 @@ struct LinkEditSegmentLayout {
     std::uint8_t dataSegmentIndex = 0;
 };
 
+/// The inputs for building the LINKEDIT segment: the symbol tables, binding opcodes, and relocation entries the dynamic
+/// loader reads. It is built last because every offset in it points into a placed image.
 struct LinkEditBuildRequest {
     const RcuLinkGraph &graph;
     std::span<const RcuFile> objects;

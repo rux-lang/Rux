@@ -1,38 +1,37 @@
+// AArch64 encoding for floating-point arithmetic, comparison and the
+// conversions between the integer and floating-point register files.
+
 #include "CodeGen/AArch64/Encoder.h"
 
 #include <bit>
 
 namespace Rux {
 namespace {
-// All ones in the low `bits` of a 64-bit word.
+/// All ones in the low `bits` of a 64-bit word.
 constexpr std::uint64_t LowMask(const unsigned bits) {
     return ~0ULL >> (64U - bits);
 }
 
-// A register a composite sequence can address through, or leave an address in.
-// Neither reading of code 31 is one: the zero register discards what it is
-// given, and the stack pointer is not something a sequence may take for its
-// own.
+/// A register a composite sequence can address through, or leave an address in. Neither reading of code 31 is one: the
+/// zero register discards what it is given, and the stack pointer is not something a sequence may take for its own.
 constexpr bool AddressableReg(const A64Reg &reg) {
     return reg.IsGeneral() && reg.bits == 64 && reg.code != 31;
 }
 
-// A general-purpose operand of width `bits` in a field that reads code 31 as
-// the zero register. SP has no encoding there, so passing it is an error rather
-// than a silent rename.
+/// A general-purpose operand of width `bits` in a field that reads code 31 as the zero register. SP has no encoding
+/// there, so passing it is an error rather than a silent rename.
 constexpr bool ZrOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsStackPointer();
 }
 
-// The same, for a field that reads code 31 as the stack pointer.
+/// The same, for a field that reads code 31 as the stack pointer.
 constexpr bool SpOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsGeneral() && reg.bits == bits && !reg.IsZeroReg();
 }
 
-// The two-bit `ptype` field naming the precision a floating-point instruction
-// works at. Half precision has an encoding here, but it needs an architectural
-// extension and no Rux type reaches it, so it is left unallocated and a B, H or
-// Q operand has no form at all.
+/// The two-bit `ptype` field naming the precision a floating-point instruction works at. Half precision has an encoding
+/// here, but it needs an architectural extension and no Rux type reaches it, so it is left unallocated and a B, H or Q
+/// operand has no form at all.
 constexpr std::optional<std::uint32_t> FpType(const A64Reg &reg) {
     if (!reg.IsVector()) {
         return std::nullopt;
@@ -47,22 +46,20 @@ constexpr std::optional<std::uint32_t> FpType(const A64Reg &reg) {
     }
 }
 
-// A floating-point operand at the width the instruction works at. The vector
-// file has no second reading of any register code, so unlike ZrOperand and
-// SpOperand this is a width check and nothing more.
+/// A floating-point operand at the width the instruction works at. The vector file has no second reading of any
+/// register code, so unlike ZrOperand and SpOperand this is a width check and nothing more.
 constexpr bool FpOperand(const A64Reg &reg, const unsigned bits) {
     return reg.IsVector() && reg.bits == bits;
 }
 
-// Floating-point data processing (1 source):
-// M | 0 | S | 11110 | ptype | 1 | opcode | 10000 | Rn | Rd. `ptype` is the
-// precision read, which for everything but FCVT is also the one written.
+/// Floating-point data processing (1 source): M | 0 | S | 11110 | ptype | 1 | opcode | 10000 | Rn | Rd. `ptype` is the
+/// precision read, which for everything but FCVT is also the one written.
 void EncodeFpDataProc1(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const std::uint32_t type,
                        const unsigned opcode) {
     enc.Word(0x1E204000U | type << 22U | opcode << 15U | std::uint32_t{rn.code} << 5U | rd.code);
 }
 
-// The one-source operations that read and write the same precision.
+/// The one-source operations that read and write the same precision.
 A64Status EncodeFpUnary(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const unsigned opcode) {
     const std::optional<std::uint32_t> type = FpType(rd);
     if (!type || !FpOperand(rn, rd.bits)) {
@@ -72,8 +69,7 @@ A64Status EncodeFpUnary(const A64Enc &enc, const A64Reg rd, const A64Reg rn, con
     return A64Status::Ok;
 }
 
-// Floating-point data processing (2 source):
-// M | 0 | S | 11110 | ptype | 1 | Rm | opcode | 10 | Rn | Rd.
+/// Floating-point data processing (2 source): M | 0 | S | 11110 | ptype | 1 | Rm | opcode | 10 | Rn | Rd.
 A64Status EncodeFpDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                             const unsigned opcode) {
     const std::optional<std::uint32_t> type = FpType(rd);
@@ -85,10 +81,8 @@ A64Status EncodeFpDataProc2(const A64Enc &enc, const A64Reg rd, const A64Reg rn,
     return A64Status::Ok;
 }
 
-// Floating-point data processing (3 source):
-// M | 0 | S | 11111 | ptype | o1 | Rm | o0 | Ra | Rn | Rd. `o1` negates the
-// result and `o0` the product, which is what tells the four fused
-// multiply-adds apart.
+/// Floating-point data processing (3 source): M | 0 | S | 11111 | ptype | o1 | Rm | o0 | Ra | Rn | Rd. `o1` negates the
+/// result and `o0` the product, which is what tells the four fused multiply-adds apart.
 A64Status EncodeFpDataProc3(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Reg ra,
                             const bool negateResult, const bool negateProduct) {
     const std::optional<std::uint32_t> type = FpType(rd);
@@ -100,9 +94,9 @@ A64Status EncodeFpDataProc3(const A64Enc &enc, const A64Reg rd, const A64Reg rn,
     return A64Status::Ok;
 }
 
-// Floating-point compare: M | 0 | S | 11110 | ptype | 1 | Rm | 00 | 1000 | Rn |
-// opcode2. The zero forms say so in `opcode2` and leave `Rm` empty, since the
-// value they compare against is part of the instruction rather than an operand.
+/// Floating-point compare: M | 0 | S | 11110 | ptype | 1 | Rm | 00 | 1000 | Rn | opcode2. The zero forms say so in
+/// `opcode2` and leave `Rm` empty, since the value they compare against is part of the instruction rather than an
+/// operand.
 A64Status EncodeFpCompare(const A64Enc &enc, const A64Reg rn, const A64Reg rm, const bool zero, const bool signalling) {
     const std::optional<std::uint32_t> type = FpType(rn);
     if (!type || (!zero && !FpOperand(rm, rn.bits))) {
@@ -113,12 +107,10 @@ A64Status EncodeFpCompare(const A64Enc &enc, const A64Reg rn, const A64Reg rm, c
     return A64Status::Ok;
 }
 
-// Conversion between floating point and integer:
-// sf | 0 | S | 11110 | ptype | 1 | rmode | opcode | 000000 | Rn | Rd. The
-// integer width comes from the general-purpose register and the precision from
-// the vector one, so the two are independent. Which operand is which is fixed
-// by the instruction rather than read off the registers, so writing one
-// backwards is refused instead of encoding the opposite conversion.
+/// Conversion between floating point and integer: sf | 0 | S | 11110 | ptype | 1 | rmode | opcode | 000000 | Rn | Rd.
+/// The integer width comes from the general-purpose register and the precision from the vector one, so the two are
+/// independent. Which operand is which is fixed by the instruction rather than read off the registers, so writing one
+/// backwards is refused instead of encoding the opposite conversion.
 A64Status EncodeFpIntConv(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const bool toGeneral,
                           const unsigned rmode, const unsigned opcode) {
     const A64Reg gpr = toGeneral ? rd : rn;
@@ -168,7 +160,7 @@ A64Status A64Enc::Fmov(const A64Reg rd, const A64Reg rn) const {
     return EncodeFpIntConv(*this, rd, rn, !rd.IsVector(), 0, rd.IsVector() ? 7U : 6U);
 }
 
-// FMOV (scalar, immediate): M | 0 | S | 11110 | ptype | 1 | imm8 | 100 | 00000 | Rd.
+/// FMOV (scalar, immediate): M | 0 | S | 11110 | ptype | 1 | imm8 | 100 | 00000 | Rd.
 A64Status A64Enc::FmovImm(const A64Reg rd, const double value) const {
     const std::optional<std::uint32_t> type = FpType(rd);
     if (!type) {
@@ -278,8 +270,7 @@ A64Status A64Enc::FcmpeZero(const A64Reg rn) const {
     return EncodeFpCompare(*this, rn, rn, true, true);
 }
 
-// Floating-point conditional compare:
-// M | 0 | S | 11110 | ptype | 1 | Rm | cond | 01 | Rn | op | nzcv.
+/// Floating-point conditional compare: M | 0 | S | 11110 | ptype | 1 | Rm | cond | 01 | Rn | op | nzcv.
 A64Status A64Enc::Fccmp(const A64Reg rn, const A64Reg rm, const unsigned nzcv, const A64Condition cond) const {
     const std::optional<std::uint32_t> type = FpType(rn);
     if (!type || !FpOperand(rm, rn.bits)) {
@@ -293,8 +284,7 @@ A64Status A64Enc::Fccmp(const A64Reg rn, const A64Reg rm, const unsigned nzcv, c
     return A64Status::Ok;
 }
 
-// Floating-point conditional select:
-// M | 0 | S | 11110 | ptype | 1 | Rm | cond | 11 | Rn | Rd.
+/// Floating-point conditional select: M | 0 | S | 11110 | ptype | 1 | Rm | cond | 11 | Rn | Rd.
 A64Status A64Enc::Fcsel(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64Condition cond) const {
     const std::optional<std::uint32_t> type = FpType(rd);
     if (!type || !FpOperand(rn, rd.bits) || !FpOperand(rm, rd.bits)) {

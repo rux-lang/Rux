@@ -1,3 +1,7 @@
+// Builds the LINKEDIT segment the dynamic loader reads: symbol tables, binding
+// opcodes and the export trie. Written last, because every offset in it points
+// into an already-placed image.
+
 #include "Linker/MachO/MachOLinkEdit.h"
 
 #include "Linker/MachO/CodeSignature.h"
@@ -9,6 +13,7 @@
 
 namespace Rux::MachO {
 namespace {
+/// Append a ULEB128 value, the variable-length encoding Mach-O binding opcodes and the export trie are written in.
 void WriteUleb128(Buf &buffer, std::uint64_t value) {
     do {
         std::uint8_t byte = static_cast<std::uint8_t>(value & 0x7F);
@@ -36,6 +41,10 @@ std::optional<std::uint64_t> CheckedAdd(const std::uint64_t left, const std::uin
     return left + right;
 }
 
+/// Build the export trie the dynamic loader searches.
+///
+/// Exports are stored as a prefix tree rather than a list so a lookup costs the length of the name instead of a scan
+/// over every export in the image.
 Buf BuildExportTrie(const std::vector<std::pair<std::string, std::uint64_t>> &exports) {
     if (exports.empty()) {
         return {};
@@ -108,6 +117,8 @@ Buf BuildExportTrie(const std::vector<std::pair<std::string, std::uint64_t>> &ex
     return trie;
 }
 
+/// The one-based section number a merged section becomes. Mach-O symbol entries name their section by ordinal, and 0 is
+/// reserved to mean no section.
 std::uint8_t SectionOrdinal(const RcuMergedSection section) {
     switch (section) {
     case RcuMergedSection::Text:

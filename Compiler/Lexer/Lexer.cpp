@@ -18,6 +18,8 @@ struct DecodedUtf8 {
 
 constexpr std::string_view LiteralDocumentation = "https://rux-lang.dev/docs/";
 
+/// Decode the leading UTF-8 code point, rejecting an overlong encoding or a truncated sequence rather than accepting
+/// the bytes as-is: the lexer reports malformed input as a diagnostic instead of passing it downstream.
 std::optional<DecodedUtf8> DecodeUtf8(std::string_view text) {
     if (text.empty()) {
         return std::nullopt;
@@ -86,6 +88,8 @@ std::optional<std::uint32_t> DecodeUtf8CodePoint(const std::string_view text) {
     return decoded->codePoint;
 }
 
+/// Whether the character is a digit in this base. Knowing the base is what lets `0b12` be reported as a bad binary
+/// digit rather than silently ending the literal at the `1`.
 bool IsDigitForBase(const char c, const int base) {
     if (c >= '0' && c <= '9') {
         return c - '0' < base;
@@ -93,6 +97,7 @@ bool IsDigitForBase(const char c, const int base) {
     return base == 16 && ((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
 }
 
+/// The base's name for a diagnostic, so the message says `binary` rather than `base 2`.
 std::string_view BaseName(const int base) {
     switch (base) {
     case 2:

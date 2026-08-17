@@ -49,19 +49,19 @@ require_output 'Compiler/Oversized.cpp: 1201 lines: error:'
 require_output 'without a reviewed exception'
 rm "$fixture_root/Compiler/Oversized.cpp"
 
-write_lines "$fixture_root/Compiler/CodeGen/AArch64/RcuEmitter.cpp" 1423
+write_lines "$fixture_root/Compiler/CodeGen/AArch64/RcuEmitter.cpp" 1500
 if ! run_check; then
     printf 'error: a reviewed file at its ceiling should pass\n' >&2
     exit 1
 fi
-require_output 'reviewed oversized file: Compiler/CodeGen/AArch64/RcuEmitter.cpp: 1423 lines (ceiling 1423)'
+require_output 'reviewed oversized file: Compiler/CodeGen/AArch64/RcuEmitter.cpp: 1500 lines (ceiling 1500)'
 
-write_lines "$fixture_root/Compiler/CodeGen/AArch64/RcuEmitter.cpp" 1424
+write_lines "$fixture_root/Compiler/CodeGen/AArch64/RcuEmitter.cpp" 1501
 if run_check; then
     printf 'error: growth beyond a reviewed ceiling should fail\n' >&2
     exit 1
 fi
-require_output 'Compiler/CodeGen/AArch64/RcuEmitter.cpp: 1424 lines: error: exceeds its reviewed ceiling of 1423 lines'
+require_output 'Compiler/CodeGen/AArch64/RcuEmitter.cpp: 1501 lines: error: exceeds its reviewed ceiling of 1500 lines'
 
 write_lines "$fixture_root/Compiler/CodeGen/AArch64/RcuEmitter.cpp" 1200
 if run_check; then

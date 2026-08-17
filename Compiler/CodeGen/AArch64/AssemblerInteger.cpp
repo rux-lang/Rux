@@ -1,3 +1,5 @@
+// AArch64 `asm func` assembly for integer data-processing mnemonics.
+
 #include "CodeGen/AArch64/AssemblerContext.h"
 #include "Object/Rcu/Rcu.h"
 
@@ -6,10 +8,9 @@
 #include <unordered_map>
 
 namespace Rux::AArch64AssemblerPrivate {
-// ADD / ADDS / SUB / SUBS and the CMP / CMN spelling of the last two. The
-// last operand decides the form: an immediate, a register with an extension,
-// or a register with a shift — which is also the plain register form, since a
-// shift of nothing is LSL #0.
+/// ADD / ADDS / SUB / SUBS and the CMP / CMN spelling of the last two. The last operand decides the form: an immediate,
+/// a register with an extension, or a register with a shift — which is also the plain register form, since a shift of
+/// nothing is LSL #0.
 void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &forms) {
     Begin(in,
           forms.discardsResult ? "Rn, #imm | Rn, Rm{, shift #amount}" : "Rd, Rn, #imm | Rd, Rn, Rm{, shift #amount}");
@@ -122,7 +123,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
     Emit(in, (encoder.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
 }
 
-// AND / ORR / EOR / ANDS, their inverting counterparts, and TST.
+/// AND / ORR / EOR / ANDS, their inverting counterparts, and TST.
 void IntegerAssemblerContext::EncodeLogic(const AsmInstr &in, const LogicForms &forms) {
     const bool hasImm = forms.imm != nullptr;
     Begin(in, forms.discardsResult ? "Rn, #imm | Rn, Rm{, shift #amount}"
@@ -191,9 +192,8 @@ void IntegerAssemblerContext::EncodeLogic(const AsmInstr &in, const LogicForms &
     Emit(in, (encoder.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
 }
 
-// MOV, which moves a register or materializes a constant. A constant no
-// single instruction reaches becomes the MOVZ / MOVK chain LoadImm64 picks,
-// which is what `LDR Xd, =value` would have assembled to.
+/// MOV, which moves a register or materializes a constant. A constant no single instruction reaches becomes the MOVZ /
+/// MOVK chain LoadImm64 picks, which is what `LDR Xd, =value` would have assembled to.
 void IntegerAssemblerContext::EncodeMov(const AsmInstr &in) {
     Begin(in, "Rd, Rn | Rd, #imm");
     if (!Operands(2)) {
@@ -231,8 +231,7 @@ void IntegerAssemblerContext::EncodeMov(const AsmInstr &in) {
     Emit(in, encoder.Mov(*rd, *rm));
 }
 
-// MOVZ / MOVN / MOVK, whose immediate is one halfword and whose shift names
-// which halfword that is.
+/// MOVZ / MOVN / MOVK, whose immediate is one halfword and whose shift names which halfword that is.
 void IntegerAssemblerContext::EncodeMovw(const AsmInstr &in, const MovwFn fn) {
     Begin(in, "Rd, #imm{, LSL #shift}");
     if (!Operands(2)) {
@@ -258,8 +257,7 @@ void IntegerAssemblerContext::EncodeMovw(const AsmInstr &in, const MovwFn fn) {
     Emit(in, (encoder.*fn)(*rd, static_cast<std::uint16_t>(*imm), shift));
 }
 
-// SBFM / UBFM / BFM and the four aliases, which differ only in what their
-// two immediates mean.
+/// SBFM / UBFM / BFM and the four aliases, which differ only in what their two immediates mean.
 void IntegerAssemblerContext::EncodeBitfield(const AsmInstr &in, const BitfieldForms &form) {
     Begin(in, form.syntax);
     if (!Operands(4)) {
@@ -291,8 +289,8 @@ void IntegerAssemblerContext::EncodeBitfield(const AsmInstr &in, const BitfieldF
     Emit(in, (encoder.*form.fn)(*rd, *rn, *first, *second));
 }
 
-// LSL / LSR / ASR / ROR, which name a constant shift written with an
-// immediate and the variable-register instruction written with a register.
+/// LSL / LSR / ASR / ROR, which name a constant shift written with an immediate and the variable-register instruction
+/// written with a register.
 void IntegerAssemblerContext::EncodeShift(const AsmInstr &in, const ShiftForms &forms) {
     Begin(in, "Rd, Rn, #shift | Rd, Rn, Rm");
     if (!Operands(3)) {
@@ -348,9 +346,8 @@ void IntegerAssemblerContext::EncodeExtr(const AsmInstr &in) {
     Emit(in, encoder.Extr(*rd, *rn, *rm, *lsb));
 }
 
-// The register-only shapes, each of which is one table away from its encoder:
-// two registers, three, four, or two with a shift on the second. The floating
-// dispatcher also reuses the arity helpers until its own family is split.
+/// The register-only shapes, each of which is one table away from its encoder: two registers, three, four, or two with
+/// a shift on the second. The floating dispatcher also reuses the arity helpers until its own family is split.
 void IntegerAssemblerContext::EncodeReg2(const AsmInstr &in, const Form<Reg2Fn> &form) {
     Begin(in, form.syntax.empty() ? "Rd, Rn" : form.syntax);
     if (!Operands(2)) {
@@ -431,8 +428,7 @@ void IntegerAssemblerContext::EncodeReg2Shift(const AsmInstr &in, const Reg2Shif
     Emit(in, (encoder.*fn)(*rd, *rm, ToA64Shift(src.shift), amount));
 }
 
-// The conditional group: a select over two registers, the aliases that read
-// one, and the two that read none.
+/// The conditional group: a select over two registers, the aliases that read one, and the two that read none.
 void IntegerAssemblerContext::EncodeCondSel(const AsmInstr &in, const Form<CondSelFn> &form) {
     Begin(in, form.syntax.empty() ? "Rd, Rn, Rm, cond" : form.syntax);
     if (!Operands(4)) {

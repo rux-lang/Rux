@@ -1,3 +1,6 @@
+// The TOML subset manifests are written in. Deliberately not a general parser:
+// it accepts what the manifest schema needs and reports anything else.
+
 #include "Package/ManifestSyntax.h"
 
 #include <charconv>
@@ -22,8 +25,8 @@ std::string_view Value::KindName() const noexcept {
 }
 
 namespace {
-// Thrown only to unwind the recursive-descent parser. ParseManifestSyntax
-// catches it at the translation-unit boundary and returns an error value.
+/// Thrown only to unwind the recursive-descent parser. ParseManifestSyntax catches it at the translation-unit boundary
+/// and returns an error value.
 struct ParseFailure {
     Location location;
     std::string message;

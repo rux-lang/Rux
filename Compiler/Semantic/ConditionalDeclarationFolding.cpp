@@ -1,3 +1,5 @@
+// Folding `#if` chains between declarations, rewriting each module in place.
+
 #include "Semantic/ConditionalFolding.h"
 
 #include <format>

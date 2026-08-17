@@ -15,9 +15,8 @@ struct GenerateOptions {
     bool includePrivate = false;
 };
 
-// Generate one deterministic, self-contained package documentation site.
-// `modules` must be the compiler driver's folded, semantically valid frontend
-// result. On failure, `error` contains an operational diagnostic.
+/// Generate one deterministic, self-contained package documentation site. `modules` must be the compiler driver's
+/// folded, semantically valid frontend result. On failure, `error` contains an operational diagnostic.
 [[nodiscard]] bool Generate(const Manifest &manifest, std::span<const ParseResult> modules,
                             const GenerateOptions &options, Diagnostic &error);
 } // namespace Rux::Documentation

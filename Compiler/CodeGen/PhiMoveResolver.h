@@ -26,9 +26,8 @@ struct PhiMoveStep {
     bool sourceIsTemporary = false;
 };
 
-// Convert an SSA parallel copy into a safe sequential schedule. A cycle is
-// broken by saving one destination in a temporary stack slot. The caller may
-// reuse that slot: all reads from it are scheduled before another save.
+/// Convert an SSA parallel copy into a safe sequential schedule. A cycle is broken by saving one destination in a
+/// temporary stack slot. The caller may reuse that slot: all reads from it are scheduled before another save.
 inline std::vector<PhiMoveStep> ResolvePhiMoves(std::vector<PhiMove> moves) {
     struct PendingMove {
         PhiMove move;
@@ -59,8 +58,8 @@ inline std::vector<PhiMoveStep> ResolvePhiMoves(std::vector<PhiMove> moves) {
             continue;
         }
 
-        // Every remaining destination is still needed as a source, so at
-        // least one cycle remains. Preserve one value and redirect all uses.
+        /// Every remaining destination is still needed as a source, so at least one cycle remains. Preserve one value
+        /// and redirect all uses.
         const PhiMove &cycleMove = pending.front().move;
         steps.push_back({PhiMoveStep::Kind::SaveDestination, cycleMove.dst, LirNoReg, cycleMove.type, false});
         for (auto &move : pending) {

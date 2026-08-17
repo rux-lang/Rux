@@ -12,8 +12,8 @@
 namespace Rux {
 namespace {
 
-// Inside an asm body, a language keyword may still name a register, symbol or
-// label because the lexer has already classified it before reaching the parser.
+/// Inside an asm body, a language keyword may still name a register, symbol or label because the lexer has already
+/// classified it before reaching the parser.
 bool IsAsmNameToken(const Token &token) {
     return token.Is(TokenKind::Ident) || token.IsKeyword();
 }
@@ -25,18 +25,17 @@ std::string LowerAsmName(std::string name) {
     return name;
 }
 
-// x86-64 mnemonics that never take an operand. They have to be listed because
-// an identifier after one of them starts the next instruction rather than an
-// operand, and x86-64 operand syntax gives no other way to tell. AArch64 needs
-// no such list: its operands are registers, `#` immediates and brackets, so
-// `CanStartAsmOperand` asks the mnemonic table instead.
+/// x86-64 mnemonics that never take an operand. They have to be listed because an identifier after one of them starts
+/// the next instruction rather than an operand, and x86-64 operand syntax gives no other way to tell. AArch64 needs no
+/// such list: its operands are registers, `#` immediates and brackets, so `CanStartAsmOperand` asks the mnemonic table
+/// instead.
 bool IsZeroOperandAsmMnemonic(const std::string_view mnemonic) {
     return mnemonic == "ret" || mnemonic == "leave" || mnemonic == "nop" || mnemonic == "syscall" ||
            mnemonic == "cqo" || mnemonic == "cdq" || mnemonic == "cdqe";
 }
 
-// AArch64 shift and extend keywords, as written after a register or immediate
-// operand and inside a register-offset memory operand.
+/// AArch64 shift and extend keywords, as written after a register or immediate operand and inside a register-offset
+/// memory operand.
 AsmShiftKind AsmShiftFromName(const std::string_view name) noexcept {
     if (name == "lsl") {
         return AsmShiftKind::Lsl;
@@ -69,10 +68,9 @@ AsmExtendKind AsmExtendFromName(const std::string_view name) noexcept {
 
 } // namespace
 
-// An asm body is a sequence of instructions and label definitions between the
-// braces of an `asm func`. Newlines are not significant to the lexer, so an
-// instruction's operand list simply ends at the first token that is not a
-// comma — the next mnemonic, a label, or the closing brace.
+/// An asm body is a sequence of instructions and label definitions between the braces of an `asm func`. Newlines are
+/// not significant to the lexer, so an instruction's operand list simply ends at the first token that is not a comma —
+/// the next mnemonic, a label, or the closing brace.
 std::vector<AsmInstr> Parser::ParseAsmBody() {
     std::vector<AsmInstr> instrs;
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -134,9 +132,8 @@ std::vector<AsmInstr> Parser::ParseAsmBody() {
     return instrs;
 }
 
-// True when the current token can begin an operand of the instruction whose
-// mnemonic was just consumed. Used to tell a zero-operand instruction (ret,
-// syscall) followed by another mnemonic apart from one that takes operands.
+/// True when the current token can begin an operand of the instruction whose mnemonic was just consumed. Used to tell a
+/// zero-operand instruction (ret, syscall) followed by another mnemonic apart from one that takes operands.
 bool Parser::CanStartAsmOperand() const noexcept {
     switch (Peek().kind) {
     case TokenKind::IntLiteral:
@@ -167,8 +164,8 @@ bool Parser::CanStartAsmOperand() const noexcept {
     }
 }
 
-// Parse one operand: a register, an immediate, a `[...]` memory reference, a
-// size-prefixed memory reference (qword [...]), or a symbol / label name.
+/// Parse one operand: a register, an immediate, a `[...]` memory reference, a size-prefixed memory reference (qword
+/// [...]), or a symbol / label name.
 AsmOperand Parser::ParseAsmOperand() {
     AsmOperand op;
     op.location = CurrentLocation();
@@ -239,15 +236,13 @@ AsmOperand Parser::ParseAsmOperand() {
     return op;
 }
 
-// AArch64: the shift or extend a register or immediate operand may carry, as
-// the tail of the operand rather than as an operand of its own. Recognized
-// only after a comma, so an instruction whose name is a shift keyword — `LSL`
-// is an alias of `UBFM` — still starts a new instruction when one follows.
-//
-// Read for every architecture rather than only for AArch64: an AArch64 body
-// compiled for x86-64 is diagnosed by its mnemonics, and reading it as far as
-// the assembler keeps that one diagnostic from arriving behind a pile of
-// syntax errors about a syntax the target simply does not have.
+/// AArch64: the shift or extend a register or immediate operand may carry, as the tail of the operand rather than as an
+/// operand of its own. Recognized only after a comma, so an instruction whose name is a shift keyword — `LSL` is an
+/// alias of `UBFM` — still starts a new instruction when one follows.
+///
+/// Read for every architecture rather than only for AArch64: an AArch64 body compiled for x86-64 is diagnosed by its
+/// mnemonics, and reading it as far as the assembler keeps that one diagnostic from arriving behind a pile of syntax
+/// errors about a syntax the target simply does not have.
 void Parser::ParseAsmShift(AsmOperand &op) {
     if (!Check(TokenKind::Comma) || !IsAsmNameToken(Peek(1))) {
         return;
@@ -271,11 +266,10 @@ void Parser::ParseAsmShift(AsmOperand &op) {
     }
 }
 
-// Parse a memory operand. x86-64 writes `[base + index*scale +/- disp]`, where
-// any of the three may be omitted; AArch64 writes `[Xn]`, `[Xn, #off]`,
-// `[Xn, Xm]`, `[Xn, Xm, LSL #3]` and `[Xn, Wm, UXTW #2]`, followed by `!` for
-// pre-index or, outside the brackets, `, #off` for post-index. One loop reads
-// both: the separators an architecture does not use simply never appear.
+/// Parse a memory operand. x86-64 writes `[base + index*scale +/- disp]`, where any of the three may be omitted;
+/// AArch64 writes `[Xn]`, `[Xn, #off]`, `[Xn, Xm]`, `[Xn, Xm, LSL #3]` and `[Xn, Wm, UXTW #2]`, followed by `!` for
+/// pre-index or, outside the brackets, `, #off` for post-index. One loop reads both: the separators an architecture
+/// does not use simply never appear.
 void Parser::ParseAsmMemory(AsmOperand &op) {
     op.kind = AsmOperand::Kind::Mem;
     ExpectBefore(TokenKind::LeftBracket, "'[' to start the memory operand");
@@ -371,7 +365,7 @@ void Parser::ParseAsmMemory(AsmOperand &op) {
     }
 }
 
-// Parse an optionally-signed integer literal (decimal, hex, octal, binary).
+/// Parse an optionally-signed integer literal (decimal, hex, octal, binary).
 std::int64_t Parser::ParseAsmInt() {
     bool negative = false;
     if (Match(TokenKind::Minus)) {

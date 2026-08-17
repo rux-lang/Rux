@@ -42,7 +42,7 @@ struct Elf64Profile {
     std::size_t pltEntrySize;
 };
 
-// Linux and FreeBSD are the two ELF targets Rux supports, on both architectures.
+/// Linux and FreeBSD are the two ELF targets Rux supports, on both architectures.
 [[nodiscard]] constexpr std::optional<Elf64Profile> Elf64ProfileFor(const OS os, const Arch arch) noexcept {
     if (arch != Arch::X86_64 && arch != Arch::AArch64) {
         return std::nullopt;

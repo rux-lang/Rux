@@ -1,3 +1,6 @@
+// Manifest loading and discovery: finding `Rux.toml`, reading it, and turning
+// a parse or encoding failure into a diagnostic that points at the line.
+
 #include "Package/Manifest.h"
 
 #include "Package/ManifestSyntax.h"
@@ -11,6 +14,12 @@
 
 namespace Rux {
 namespace {
+/// Where a manifest first stops being valid UTF-8.
+///
+/// Checked before parsing so a binary or mis-encoded file is reported as such, rather than as a syntax error at
+/// whatever byte happened to confuse the parser.
+///
+/// @return nullopt when the whole text is well-formed
 std::optional<ManifestDetail::Location> InvalidUtf8Location(const std::string_view text) {
     ManifestDetail::Location location;
     for (std::size_t offset = 0; offset < text.size();) {
@@ -66,6 +75,7 @@ std::optional<ManifestDetail::Location> InvalidUtf8Location(const std::string_vi
     return std::nullopt;
 }
 
+/// One line of the manifest, so a diagnostic can quote the line it points at.
 std::optional<std::string> SourceLineAt(const std::string_view text, const std::uint32_t wantedLine) {
     std::uint32_t line = 1;
     std::size_t begin = 0;

@@ -1,3 +1,6 @@
+// Call checking: overload resolution, argument compatibility, and recording the
+// binding lowering will later emit without re-resolving.
+
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 #include "Syntax/Parser/Detail/AstDumpWriter.h"
 
@@ -584,9 +587,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
     return TypeRef::MakeUnknown();
 }
 
-// Resolves a direct or module-qualified callee without emitting diagnostics.
-// Expression checking remains responsible for invalid names and paths; this
-// lookup only recovers declaration metadata absent from a function TypeRef.
+/// Resolves a direct or module-qualified callee without emitting diagnostics. Expression checking remains responsible
+/// for invalid names and paths; this lookup only recovers declaration metadata absent from a function TypeRef.
 Symbol *SemanticAnalyzerContext::LookupCalleeSymbol(const Expr &callee) const {
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&callee)) {
         return currentScope->Lookup(identifier->name);

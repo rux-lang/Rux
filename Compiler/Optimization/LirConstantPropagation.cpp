@@ -28,6 +28,8 @@ bool SameValue(const KnownValue &left, const KnownValue &right) {
     return left.copy && right.copy && left.copy == right.copy;
 }
 
+/// Follow a chain of copies to whatever the register ultimately holds. The visited set is not defensive tidiness: a phi
+/// cycle in a loop genuinely produces a copy chain that returns to its start.
 KnownValue Resolve(const Values &values, const LirReg reg) {
     LirReg current = reg;
     std::unordered_set<LirReg> visited;
@@ -155,6 +157,8 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
     return std::nullopt;
 }
 
+/// Work out what each register is known to hold, over the whole function before anything is rewritten. Separating the
+/// two means the rewrite never reads facts it has already invalidated.
 Values Analyze(const LirFunc &function) {
     Values values;
     std::size_t definitions = function.params.size();
@@ -185,6 +189,8 @@ Values Analyze(const LirFunc &function) {
     return values;
 }
 
+/// Whether an operand of this opcode may be replaced by an equal value. Restricted to instructions that only read their
+/// sources: substituting into anything with an effect could change what the effect acts on.
 bool IsPureUser(const LirOpcode opcode) {
     return UnaryToken(opcode).has_value() || BinaryToken(opcode).has_value() || opcode == LirOpcode::Cast ||
            opcode == LirOpcode::FieldPtr || opcode == LirOpcode::IndexPtr || opcode == LirOpcode::Phi;

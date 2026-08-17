@@ -1,3 +1,7 @@
+// Chooses every address, file offset and load command of a Mach-O image. All of
+// it is checked arithmetic: a wrapped size would produce an image that overlaps
+// itself rather than a diagnostic.
+
 #include "Linker/MachO/MachOLayout.h"
 
 #include <algorithm>
@@ -12,6 +16,8 @@ constexpr std::uint32_t kMachHeaderSize = 32;
 constexpr std::size_t kMachUuidSize = 16;
 constexpr std::string_view kDyldPath = "/usr/lib/dyld";
 
+/// Round up to an alignment boundary, reporting overflow rather than wrapping. Layout arithmetic runs on attacker- or
+/// bug-supplied sizes, so a wrapped address would silently produce an image that overlaps itself.
 std::optional<std::uint64_t> AlignUp64(const std::uint64_t value, const std::uint64_t alignment) {
     if (alignment == 0 || (alignment & (alignment - 1)) != 0 ||
         value > std::numeric_limits<std::uint64_t>::max() - (alignment - 1)) {
@@ -20,6 +26,7 @@ std::optional<std::uint64_t> AlignUp64(const std::uint64_t value, const std::uin
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
+/// Add, or report that the sum does not fit. Same reasoning as `AlignUp64`.
 std::optional<std::uint64_t> CheckedAdd(const std::uint64_t left, const std::uint64_t right) {
     if (left > std::numeric_limits<std::uint64_t>::max() - right) {
         return std::nullopt;
@@ -27,11 +34,13 @@ std::optional<std::uint64_t> CheckedAdd(const std::uint64_t left, const std::uin
     return left + right;
 }
 
+/// The padded size of a load command that carries a string, such as a library path.
 std::optional<std::uint64_t> StringCommandSize(const std::uint32_t headerSize, const std::string_view value) {
     const auto unaligned = CheckedAdd(headerSize + 1, value.size());
     return unaligned ? AlignUp64(*unaligned, 8) : std::nullopt;
 }
 
+/// Write a fixed-width, NUL-padded name field, truncating rather than overflowing the field.
 void WriteMachName(Buf &buffer, const std::string_view name) {
     for (std::size_t index = 0; index < 16; ++index) {
         WriteU8(buffer, index < name.size() ? static_cast<std::uint8_t>(name[index]) : 0);
@@ -58,6 +67,7 @@ void WriteStringCommand(Buf &commands, const std::uint32_t command, const std::u
     }
 }
 
+/// Convert an alignment in bytes to the log2 form Mach-O section headers store.
 std::uint32_t AlignmentPower(const std::uint32_t alignment) {
     std::uint32_t power = 0;
     for (std::uint32_t value = alignment; value > 1; value >>= 1U) {

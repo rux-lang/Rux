@@ -11,9 +11,8 @@
 namespace Rux {
 class AssemblyModulePrinter;
 
-// Owns function setup, function-local operand spelling, and scalar and memory
-// LIR instruction text for one planned x86-64 function. The control-flow
-// printer delegates exactly these opcode families through this boundary.
+/// Owns function setup, function-local operand spelling, and scalar and memory LIR instruction text for one planned
+/// x86-64 function. The control-flow printer delegates exactly these opcode families through this boundary.
 class AssemblyInstructionPrinter {
 public:
     AssemblyInstructionPrinter(AssemblyModulePrinter &modulePrinter, const X86_64FramePlan &framePlan,
@@ -22,12 +21,12 @@ public:
 
     void EmitFunctionSetup(const LirFunc &function);
 
-    // Return true exactly when this printer owns and emitted the instruction.
+    /// Return true exactly when this printer owns and emitted the instruction.
     [[nodiscard]] bool EmitArithmetic(const LirInstr &instruction);
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
-    // Operand operations shared temporarily with call and control-flow text.
-    // They remain the single owner of virtual-register and stack-slot spelling.
+    /// Operand operations shared temporarily with call and control-flow text. They remain the single owner of
+    /// virtual-register and stack-slot spelling.
     void LoadA(LirReg reg, const TypeRef &type);
     void StoreA(LirReg reg, const TypeRef &type);
     void LoadReturnValue(LirReg reg, const TypeRef &type);

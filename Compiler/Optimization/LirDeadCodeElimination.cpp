@@ -19,6 +19,8 @@ enum class InstructionEffect {
     Observable,
 };
 
+/// What an opcode does besides producing its result. This is the whole safety argument for the pass: only a `Pure`
+/// instruction may be removed for having no readers, because every other category is worth running for its effect.
 InstructionEffect EffectOf(const LirOpcode opcode) {
     switch (opcode) {
     case LirOpcode::Const:
@@ -81,6 +83,10 @@ void AddUses(Registers &registers, const LirInstr &instruction) {
     }
 }
 
+/// The stack slots this function allocates itself.
+///
+/// A store is only a candidate for removal when its destination is one of these: the function owns the storage, so
+/// nothing outside it can observe the write. A store through a pointer that arrived from elsewhere always stays.
 Registers FindLocalAllocas(const LirFunc &function) {
     Registers localAllocas;
     for (const auto &block : function.blocks) {
@@ -159,6 +165,8 @@ std::vector<std::uint32_t> Successors(const LirBlock &block, const std::size_t b
     return successors;
 }
 
+/// Walk one block backwards, updating which slots hold a value that is still read later. Backwards is the natural
+/// direction because liveness is about the future: a slot becomes live at a load and dies at the store above it.
 void TransferStorageLiveness(const LirBlock &block, const Registers &localAllocas, Registers &live) {
     for (auto instruction = block.instrs.rbegin(); instruction != block.instrs.rend(); ++instruction) {
         if (instruction->op == LirOpcode::Load && instruction->srcs.size() == 1 &&
@@ -172,6 +180,9 @@ void TransferStorageLiveness(const LirBlock &block, const Registers &localAlloca
     }
 }
 
+/// Stores whose value no later load can read, found by iterating liveness across the control-flow graph until it
+/// settles. The iteration is bounded so a malformed graph cannot spin here; running out means nothing is reported dead,
+/// which is the safe answer.
 InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAllocas) {
     const std::size_t blockCount = function.blocks.size();
     std::vector<Registers> liveIn(blockCount);
@@ -218,6 +229,7 @@ InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAll
     return deadStores;
 }
 
+/// Whether the instruction must be kept regardless of who reads its result.
 bool IsRequiredEffect(const LirInstr &instruction, const Registers &localAllocas, const InstructionSet &deadStores) {
     if (deadStores.contains(&instruction)) {
         return false;

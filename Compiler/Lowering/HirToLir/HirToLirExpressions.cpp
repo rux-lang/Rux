@@ -559,7 +559,7 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
     return slot;
 }
 
-// Returns the pointer register for an lvalue expression.
+/// Returns the pointer register for an lvalue expression.
 LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirVarExpr *>(&expr)) {
         auto it = locals.find(e->name);

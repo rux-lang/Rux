@@ -16,6 +16,8 @@
 #include <vector>
 
 namespace Rux {
+/// The four output sections every input section is merged into. Deliberately fewer than any target format offers:
+/// merging happens in these neutral terms, and each writer maps them onto its own section names afterwards.
 enum class RcuMergedSection : std::uint8_t {
     Text,
     RoData,
@@ -23,6 +25,8 @@ enum class RcuMergedSection : std::uint8_t {
     Bss,
 };
 
+/// Bytes a format writer places ahead of the merged input sections, such as jump stubs or a header it generates itself.
+/// Supplied as sizes and padding so the layout can account for them without knowing what they contain.
 struct RcuLayoutPrefixes {
     std::span<const std::uint8_t> text;
     std::span<const std::uint8_t> rodata;

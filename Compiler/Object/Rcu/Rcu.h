@@ -83,8 +83,8 @@ constexpr uint16_t AArch64Prel32 = 27;
 constexpr uint16_t AArch64Prel64 = 28;
 } // namespace RcuRelType
 
-// The architecture byte an object built for `arch` carries, or
-// RcuArch::Unknown when RCU has no encoding for that architecture.
+/// The architecture byte an object built for `arch` carries, or RcuArch::Unknown when RCU has no encoding for that
+/// architecture.
 [[nodiscard]] constexpr uint8_t RcuArchFor(const Target::Arch arch) noexcept {
     switch (arch) {
     case Target::Arch::X86_64:
@@ -96,7 +96,7 @@ constexpr uint16_t AArch64Prel64 = 28;
     }
 }
 
-// Display spelling of an architecture byte, matching Target::ToDisplayString.
+/// Display spelling of an architecture byte, matching Target::ToDisplayString.
 [[nodiscard]] constexpr std::string_view RcuArchName(const uint8_t arch) noexcept {
     switch (arch) {
     case RcuArch::X86_64:
@@ -108,8 +108,8 @@ constexpr uint16_t AArch64Prel64 = 28;
     }
 }
 
-// Relocation name used by dumps and diagnostics. AArch64 kinds keep their ELF
-// R_AARCH64_* spelling so a dump can be checked against the ABI document.
+/// Relocation name used by dumps and diagnostics. AArch64 kinds keep their ELF R_AARCH64_* spelling so a dump can be
+/// checked against the ABI document.
 [[nodiscard]] constexpr std::string_view RcuRelTypeName(const uint16_t type) noexcept {
     switch (type) {
     case RcuRelType::None:

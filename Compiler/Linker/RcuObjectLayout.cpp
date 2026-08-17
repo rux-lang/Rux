@@ -39,6 +39,8 @@ namespace {
     return static_cast<std::size_t>(section);
 }
 
+/// Pad to an alignment boundary with a chosen filler, which differs by section: code is padded with a trap byte so
+/// execution running off the end of a function faults instead of drifting into the next one.
 void Pad(std::vector<std::uint8_t> &data, const std::uint16_t alignment, const std::uint8_t value) {
     const auto boundary = std::max<std::uint16_t>(alignment, 1);
     while (data.size() % boundary != 0) {

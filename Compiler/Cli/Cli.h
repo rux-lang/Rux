@@ -5,22 +5,36 @@
 #include <string_view>
 
 namespace Rux {
+/// What the user asked for, before the terminal is consulted. `Auto` is the only value that still depends on where
+/// output is going; the reporter resolves it once and everything below works from the answer.
 enum class ColorMode {
     Auto,
     On,
     Off,
 };
 
+/// Options every command accepts, parsed before the subcommand is dispatched.
 struct GlobalOptions {
     ColorMode color = ColorMode::Auto;
     bool quiet = false;
     bool verbose = false;
-    std::filesystem::path manifest; // Custom manifest path; empty = find automatically
+    std::filesystem::path manifest; ///< Custom manifest path; empty = find automatically
 };
 
+/**
+ * @brief The `rux` command-line front end.
+ *
+ * Owns argument parsing, user-facing wording, and exit codes; the driver and the reusable compiler components below it
+ * own none of those and never print. That split is enforced by a CI guard, not just by convention.
+ */
 class Cli {
 public:
+    /// Borrows `argv`, which must outlive this object.
     Cli(int argc, char *argv[]);
+
+    /// Dispatch the subcommand.
+    ///
+    /// @return The process exit code: 0 on success, non-zero when the command failed or the arguments were rejected
     [[nodiscard]] int Run() const;
 
 private:

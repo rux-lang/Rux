@@ -16,10 +16,9 @@ class X86_64FramePlanner;
 
 using X86_64PhiMoves = std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<PhiMove>>>;
 
-// Every function-local placement decision needed by x86-64 emission. Planning
-// finishes before the first instruction is written; consumers can only inspect
-// the result, so instruction selection cannot grow or otherwise reshape a
-// frame while it is being emitted.
+/// Every function-local placement decision needed by x86-64 emission. Planning finishes before the first instruction is
+/// written; consumers can only inspect the result, so instruction selection cannot grow or otherwise reshape a frame
+/// while it is being emitted.
 class X86_64FramePlan {
 public:
     [[nodiscard]] const std::unordered_map<LirReg, std::int32_t> &SlotOffsets() const {
@@ -54,8 +53,8 @@ public:
         return hiddenReturnOffset;
     }
 
-    // End offset of the one reusable phi-cycle scratch region, or zero when
-    // every phi edge is already an acyclic copy schedule.
+    /// End offset of the one reusable phi-cycle scratch region, or zero when every phi edge is already an acyclic copy
+    /// schedule.
     [[nodiscard]] std::int32_t PhiTemporaryOffset() const {
         return phiTemporaryOffset;
     }

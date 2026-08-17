@@ -4,8 +4,8 @@
 
 namespace Rux::Layout {
 namespace {
-// Offset of tuple element `index`, laid out exactly the way SizeOf lays a tuple
-// out: each element aligned to its own size, capped at a doubleword.
+/// Offset of tuple element `index`, laid out exactly the way SizeOf lays a tuple out: each element aligned to its own
+/// size, capped at a doubleword.
 [[nodiscard]] int TupleElementOffset(const TypeRef &tuple, const std::size_t index) {
     int offset = 0;
     for (std::size_t i = 0; i < index; ++i) {

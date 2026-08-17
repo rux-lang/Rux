@@ -13,9 +13,8 @@ enum class X86_64RuntimeHelper;
 struct LirFunc;
 struct LirModule;
 
-// Owns package-level x86-64 assembly text: declarations, sections, interned
-// literals, and synthesized helper bodies. Function printing writes its text
-// through this boundary so final section ordering has a single owner.
+/// Owns package-level x86-64 assembly text: declarations, sections, interned literals, and synthesized helper bodies.
+/// Function printing writes its text through this boundary so final section ordering has a single owner.
 class AssemblyModulePrinter {
 public:
     explicit AssemblyModulePrinter(Target::OS targetOs);
@@ -36,7 +35,7 @@ public:
     void TextComment(std::string_view comment);
     void TextBlank();
 
-    // Completes requested helper bodies and assembles the final NASM text.
+    /// Completes requested helper bodies and assembles the final NASM text.
     [[nodiscard]] std::string Finalize();
 
 private:
