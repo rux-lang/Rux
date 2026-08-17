@@ -182,6 +182,29 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
 }
 
 int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames) {
+    // A composite's size follows from its elements', and an element may be a struct that only the layout map can size.
+    // Recurse here rather than falling through to SizeOf, which has no layout map and charges eight bytes for every
+    // struct it cannot measure: an array would then reserve less stack than it occupies and overrun its own frame.
+    if (t.kind == TypeRef::Kind::Array) {
+        if (t.inner.empty() || !t.arrayLength) {
+            return 0;
+        }
+        return RuntimeSizeOf(t.inner[0], layouts, interfaceNames) * static_cast<int>(*t.arrayLength);
+    }
+    if (t.kind == TypeRef::Kind::Tuple) {
+        int offset = 0;
+        int maxAlign = 1;
+        for (const auto &element : t.inner) {
+            const int size = RuntimeSizeOf(element, layouts, interfaceNames);
+            const int alignment = size > 0 ? std::min(size, 8) : 1;
+            if (alignment > 1) {
+                offset = AlignUp(offset, alignment);
+            }
+            offset += size > 0 ? size : 8;
+            maxAlign = std::max(maxAlign, alignment);
+        }
+        return AlignUp(offset, maxAlign);
+    }
     if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(t.name);
         // An interface value is a data pointer and a vtable pointer, and the
