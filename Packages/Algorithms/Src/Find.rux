@@ -1,0 +1,120 @@
+// Linear queries over an unordered sequence.
+//
+// Everything here requires `==` on T and nothing else, so a type that defines
+// equality but no ordering can use this module in full. The ordered searches
+// live in Search and require `<` instead.
+//
+// Reading past the end is the caller's responsibility, as it is for Slice,
+// Array and List. A length of zero never touches the data pointer, so a null
+// pointer with a zero length is accepted everywhere.
+
+// Reports whether any element equals value. An empty sequence contains
+// nothing.
+func Contains<T>(data: *T, length: uint, value: T) -> bool {
+    var i: uint = 0;
+    while i < length {
+        if data[i] == value {
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+// The number of elements equal to value.
+func Count<T>(data: *T, length: uint, value: T) -> uint {
+    var found: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if data[i] == value {
+            found++;
+        }
+        i++;
+    }
+    return found;
+}
+
+// Writes the index of the first element equal to value and returns true. When
+// there is no match the index is left alone, so a caller may seed it with a
+// fallback. A null index reports failure rather than searching.
+func TryFind<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    var i: uint = 0;
+    while i < length {
+        if data[i] == value {
+            *index = i;
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+// TryFind from the other end: the index of the last equal element.
+func TryFindLast<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    // Counting down from length rather than up from length - 1, which would
+    // wrap when the sequence is empty.
+    var i = length;
+    while i > 0 {
+        i--;
+        if data[i] == value {
+            *index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Reports whether two sequences have the same length and equal elements. Two
+// empty sequences are equal.
+func Equal<T>(a: *T, aLength: uint, b: *T, bLength: uint) -> bool {
+    if aLength != bLength {
+        return false;
+    }
+
+    var i: uint = 0;
+    while i < aLength {
+        if a[i] != b[i] {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+// Writes the first index at which two sequences differ and returns true. A
+// sequence that is a proper prefix of the other differs at the shorter length,
+// so this returns false exactly when Equal returns true. A null index reports
+// failure.
+func TryMismatch<T>(a: *T, aLength: uint, b: *T, bLength: uint, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    var common = aLength;
+    if bLength < common {
+        common = bLength;
+    }
+
+    var i: uint = 0;
+    while i < common {
+        if a[i] != b[i] {
+            *index = i;
+            return true;
+        }
+        i++;
+    }
+
+    if aLength != bLength {
+        *index = common;
+        return true;
+    }
+    return false;
+}

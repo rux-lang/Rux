@@ -127,7 +127,7 @@ func Unique<T>(data: *var T, length: uint) -> uint {
     var kept: uint = 1;
     var i: uint = 1;
     while i < length {
-        if !(data[i] == data[kept - 1]) {
+        if data[i] != data[kept - 1] {
             data[kept] = data[i];
             kept++;
         }
@@ -144,7 +144,7 @@ func RemoveValue<T>(data: *var T, length: uint, value: T) -> uint {
     var kept: uint = 0;
     var i: uint = 0;
     while i < length {
-        if !(data[i] == value) {
+        if data[i] != value {
             if kept != i {
                 data[kept] = data[i];
             }

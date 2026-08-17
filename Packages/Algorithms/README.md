@@ -2,7 +2,7 @@
 
 Generic algorithms over slices and mutable slices.
 
-> **Partially implemented.** `Modify` is usable. Ordering, searching, and selection are still placeholders — see [Status](#status).
+> **Partially implemented.** `Modify`, `Find` and `Search` are usable. Sorting and selection are still placeholders — see [Status](#status).
 
 ## Installation
 
@@ -12,12 +12,18 @@ rux add Rux/Algorithms
 
 ## Status
 
-| Module   | Status                                                          |
-| -------- | --------------------------------------------------------------- |
-| `Modify` | Available — reordering and bulk element movement                 |
-| `Search` | Planned — linear and binary search                               |
-| `Sort`   | Planned — introsort, and the sortedness predicates that pair with it |
-| `MinMax` | Planned — sequence extremes and clamping                         |
+| Module   | Requires on `T` | Status                                            |
+| -------- | --------------- | ------------------------------------------------- |
+| `Modify` | —               | Available — reordering and bulk element movement  |
+| `Find`   | `==`            | Available — linear queries over unordered input   |
+| `Search` | `<`             | Available — sortedness checks and binary search   |
+| `Sort`   | `<`             | Planned — introsort                               |
+| `MinMax` | `<`             | Planned — sequence extremes and clamping          |
+
+Modules are split by what they ask of the element type, so a type that defines
+only one of the two comparison operators can still use the modules that need
+it, and a missing operator is reported against one module rather than the
+whole package.
 
 ## The pointer-and-length shape
 
@@ -87,6 +93,46 @@ their C++ counterparts.
 `Copy` moves elements front to back and `CopyBackward` back to front, so
 overlapping ranges are correct when the destination is respectively at or below
 and at or above the source. Neither detects overlap for you.
+
+### `Find` — linear queries, requiring `==`
+
+| Function       | Returns                                    | Complexity |
+| -------------- | ------------------------------------------ | ---------- |
+| `Contains`     | whether any element matches                 | O(n)       |
+| `Count`        | how many elements match                     | O(n)       |
+| `TryFind`      | `true` + the first matching index           | O(n)       |
+| `TryFindLast`  | `true` + the last matching index            | O(n)       |
+| `Equal`        | whether two sequences match element-wise    | O(n)       |
+| `TryMismatch`  | `true` + the first differing index          | O(n)       |
+
+### `Search` — ordered queries, requiring `<`
+
+| Function          | Returns                                        | Complexity |
+| ----------------- | ---------------------------------------------- | ---------- |
+| `IsSorted`        | whether the sequence is non-decreasing          | O(n)       |
+| `IsSortedUntil`   | the first index breaking the order, else length | O(n)       |
+| `LowerBound`      | the first index not less than the value         | O(log n)   |
+| `UpperBound`      | the first index greater than the value          | O(log n)   |
+| `TryBinarySearch` | `true` + the lowest equivalent index            | O(log n)   |
+| `EqualRange`      | the `Range<uint>` of equivalent elements        | O(log n)   |
+
+The four bounded searches require the sequence to be sorted by the same `<`;
+`IsSorted` checks exactly that precondition. An unsorted sequence yields an
+unspecified index but never an access outside it.
+
+`LowerBound`, `UpperBound` and `IsSortedUntil` return a position in
+`0..=length`, so every result is meaningful and none of them doubles as a
+not-found marker. Where a query really can fail, the `Try*` form writes through
+an out-parameter and returns a `bool`, leaving the index untouched on a miss so
+a caller can seed it with a fallback. A null out-parameter reports failure
+rather than searching.
+
+`EqualRange` returns an empty range when nothing matched, and its endpoints are
+then the single position where the value would be inserted — so the absent case
+still answers "where would this go?".
+
+Equivalence in this module is derived as `!(a < b) && !(b < a)`, never from
+`==`. A type that orders but does not define equality works here in full.
 
 ## Custom element types
 
