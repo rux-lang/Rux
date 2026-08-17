@@ -16,10 +16,7 @@ rux add Rux/Collections
 | `Vector`     | Available — growable sequence, and the stack  |
 | `Deque`      | Available — circular buffer, and the queue    |
 | `HashMap`    | Available — open-addressed associative table  |
-| `Dictionary` | Planned                                       |
-| `HashSet`    | Planned                                       |
-| `Queue`      | Planned                                       |
-| `Stack`      | Planned                                       |
+| `HashSet`    | Available — open-addressed set                |
 
 The planned modules exist as placeholders so the package layout and its documented surface stay stable while they are filled in. They declare nothing yet, so importing one is an error rather than a silent no-op.
 

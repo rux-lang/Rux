@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "CollectionsHashSet"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Collections: HashSet"
+
+[Dependencies]
+Collections = { Path = "../../../../Packages/Collections" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Collections"
