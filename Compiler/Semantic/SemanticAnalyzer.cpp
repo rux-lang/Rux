@@ -397,6 +397,15 @@ private:
             return TypeRef::MakeRangeFull();
         }
 
+        // A type parameter in scope is that parameter, not a type that happens to share its name. This path reads a
+        // type back out of a printed name, where `T` and a struct called `T` look alike, so the parameter list is the
+        // only thing that tells them apart -- and ResolveType answers the same way for the same spelling written out.
+        for (const auto &parameter : currentTypeParams) {
+            if (parameter == str) {
+                return TypeRef::MakeTypeParam(str);
+            }
+        }
+
         return TypeRef::MakeNamed(str);
     }
 

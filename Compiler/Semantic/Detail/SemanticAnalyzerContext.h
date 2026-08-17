@@ -63,7 +63,7 @@ protected:
                                                              const std::string &variantName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
     [[nodiscard]] std::string NamedBaseTypeName(const TypeRef &type) const;
-    [[nodiscard]] static std::optional<TypeRef> SliceElementType(const TypeRef &type);
+    [[nodiscard]] std::optional<TypeRef> SliceElementType(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type);
 
     std::vector<const Module *> &modules;

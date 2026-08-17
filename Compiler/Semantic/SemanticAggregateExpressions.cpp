@@ -28,69 +28,6 @@ template <typename Range, typename Projection>
     return result;
 }
 
-[[nodiscard]] std::optional<TypeRef> BuiltinTypeFromName(const std::string &name) {
-    if (name == "opaque") {
-        return TypeRef::MakeOpaque();
-    }
-    if (name == "bool" || name == "bool8") {
-        return TypeRef::MakeBool8();
-    }
-    if (name == "bool16") {
-        return TypeRef::MakeBool16();
-    }
-    if (name == "bool32") {
-        return TypeRef::MakeBool32();
-    }
-    if (name == "char" || name == "char32") {
-        return TypeRef::MakeChar32();
-    }
-    if (name == "char8") {
-        return TypeRef::MakeChar8();
-    }
-    if (name == "char16") {
-        return TypeRef::MakeChar16();
-    }
-    if (name == "int8") {
-        return TypeRef::MakeInt8();
-    }
-    if (name == "int16") {
-        return TypeRef::MakeInt16();
-    }
-    if (name == "int32") {
-        return TypeRef::MakeInt32();
-    }
-    if (name == "int64") {
-        return TypeRef::MakeInt64();
-    }
-    if (name == "int") {
-        return TypeRef::MakeInt();
-    }
-    if (name == "byte" || name == "uint8") {
-        return TypeRef::MakeUInt8();
-    }
-    if (name == "uint16") {
-        return TypeRef::MakeUInt16();
-    }
-    if (name == "uint32") {
-        return TypeRef::MakeUInt32();
-    }
-    if (name == "uint64") {
-        return TypeRef::MakeUInt64();
-    }
-    if (name == "uint") {
-        return TypeRef::MakeUInt();
-    }
-    if (name == "float32") {
-        return TypeRef::MakeFloat32();
-    }
-    if (name == "float64") {
-        return TypeRef::MakeFloat64();
-    }
-    if (name == "float") {
-        return TypeRef::MakeFloat();
-    }
-    return std::nullopt;
-}
 } // namespace
 
 std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) const {
@@ -134,7 +71,7 @@ std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) cons
     }
 }
 
-std::optional<TypeRef> SemanticAnalyzerContext::SliceElementType(const TypeRef &type) {
+std::optional<TypeRef> SemanticAnalyzerContext::SliceElementType(const TypeRef &type) const {
     if (type.kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
@@ -142,11 +79,10 @@ std::optional<TypeRef> SemanticAnalyzerContext::SliceElementType(const TypeRef &
     if (!type.name.starts_with(prefix) || type.name.back() != '>') {
         return std::nullopt;
     }
-    const std::string elementName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-    if (auto builtin = BuiltinTypeFromName(elementName)) {
-        return builtin;
-    }
-    return TypeRef::MakeNamed(elementName);
+    // One reader for a type written inside a name, so an element is the same type here as anywhere else it is read
+    // back: a type parameter in scope stays a parameter, and a pointer or tuple element is not flattened to a name
+    // that merely looks like one.
+    return ParseTypeRefFromString(type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1));
 }
 
 std::optional<TypeRef> SemanticAnalyzerContext::IndexElementType(const TypeRef &type) {
