@@ -1,8 +1,14 @@
 // Linear queries over an unordered sequence.
 //
-// Everything here requires `==` on T and nothing else, so a type that defines
-// equality but no ordering can use this module in full. The ordered searches
-// live in Search and require `<` instead.
+// The value-based queries require `==` on T and nothing else, so a type that
+// defines equality but no ordering can use them. The predicate-based ones
+// require nothing at all: the caller's function supplies the test, so they
+// work on any element type. The ordered searches live in Search and require
+// `<` instead.
+//
+// A predicate is an ordinary function value. Rux has no closures, so it
+// carries no captured state; anything it needs beyond the element has to be
+// reachable from the function itself.
 //
 // Reading past the end is the caller's responsibility, as it is for Slice,
 // Array and List. A length of zero never touches the data pointer, so a null
@@ -91,6 +97,86 @@ func Equal<T>(a: *T, aLength: uint, b: *T, bLength: uint) -> bool {
         i++;
     }
     return true;
+}
+
+// TryFind against a caller's test rather than a value: writes the index of the
+// first element the predicate accepts and returns true. As in TryFind, a miss
+// leaves the index alone and a null index reports failure.
+func TryFindIf<T>(data: *T, length: uint, predicate: func(T) -> bool, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    var i: uint = 0;
+    while i < length {
+        if predicate(data[i]) {
+            *index = i;
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+// TryFindIf from the other end: the index of the last accepted element.
+func TryFindLastIf<T>(data: *T, length: uint, predicate: func(T) -> bool, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    var i = length;
+    while i > 0 {
+        i--;
+        if predicate(data[i]) {
+            *index = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+// The number of elements the predicate accepts.
+func CountIf<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
+    var found: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if predicate(data[i]) {
+            found++;
+        }
+        i++;
+    }
+    return found;
+}
+
+// Whether every element is accepted. An empty sequence is accepted: there is
+// no element to refuse, which is the reading that keeps All and Any exact
+// opposites under negation.
+func All<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
+    var i: uint = 0;
+    while i < length {
+        if !predicate(data[i]) {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+// Whether any element is accepted. An empty sequence accepts nothing.
+func Any<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
+    var i: uint = 0;
+    while i < length {
+        if predicate(data[i]) {
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+// Whether no element is accepted, the exact negation of Any.
+func None<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
+    return !Any<T>(data, length, predicate);
 }
 
 // Writes the first index at which two sequences differ and returns true. A
