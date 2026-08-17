@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "CollectionsList"
+Name = "CollectionsVector"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Collections: List"
+Description = "Package test for Collections: Vector"
 
 [Dependencies]
 Collections = { Path = "../../../../Packages/Collections" }

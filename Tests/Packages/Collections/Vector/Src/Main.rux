@@ -1,0 +1,199 @@
+import Collections::Array;
+import Collections::CollectionError;
+import Collections::Vector;
+
+// See Tests/Packages/Collections/Array for why a failed check reports itself
+// through a numbered exit code rather than through an assertion.
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Main() -> int {
+    // New owns nothing until the first element is added.
+    var empty = Vector::New<int32>();
+    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
+    if empty.Data() != null { return 11; }
+
+    // Reserving nothing on an empty Vector still allocates nothing.
+    if !(empty.Reserve(0) == CollectionError::None) { return 12; }
+    if empty.Capacity() != 0 || empty.Data() != null { return 13; }
+
+    // A zero capacity is the empty Vector rather than a zero-byte allocation.
+    var zero = Vector::New<int32>();
+    if !(Vector::WithCapacity<int32>(0, @zero) == CollectionError::None) { return 14; }
+    if zero.Capacity() != 0 || zero.Data() != null { return 15; }
+    zero.Free();
+
+    // Capacity grows geometrically while the existing elements stay intact.
+    var values = Vector::New<int32>();
+    if !(Vector::WithCapacity<int32>(2, @values) == CollectionError::None) { return 20; }
+    if values.Length() != 0 || values.Capacity() != 2 { return 21; }
+    if !(values.Push(10) == CollectionError::None) { return 22; }
+    if !(values.Push(20) == CollectionError::None) { return 23; }
+    if values.Capacity() != 2 { return 24; }
+    if !(values.Push(30) == CollectionError::None) { return 25; }
+    if values.Length() != 3 || values.Capacity() < 4 { return 26; }
+    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 { return 27; }
+
+    // Repeated growth keeps every element across each reallocation.
+    var grown = Vector::New<int32>();
+    var i: int32 = 0;
+    while i < 100 {
+        if !(grown.Push(i) == CollectionError::None) { return 28; }
+        i++;
+    }
+    if grown.Length() != 100 { return 29; }
+    var check: int32 = 0;
+    while check < 100 {
+        if grown.At(check as uint) != check { return 30; }
+        check++;
+    }
+    if grown.Capacity() < 100 { return 31; }
+    grown.Free();
+
+    // Reserve changes only the capacity, and counts from the current length.
+    let beforeReserve = values.Length();
+    if !(values.Reserve(10) == CollectionError::None) { return 32; }
+    if values.Length() != beforeReserve || values.Capacity() < beforeReserve + 10 { return 33; }
+
+    // A bulk append copies every element and lands them after the existing ones.
+    let extra: Slice<int32> = [40, 50];
+    if !(values.PushSlice(extra) == CollectionError::None) { return 40; }
+    if values.Length() != 5 || values.At(3) != 40 || values.At(4) != 50 { return 41; }
+    let none: Slice<int32> = [];
+    if !(values.PushSlice(none) == CollectionError::None) { return 42; }
+    if values.Length() != 5 { return 43; }
+
+    // Insert accepts every position through Length and rejects positions past
+    // it, reporting a rejected index separately from an exhausted allocator.
+    if !(values.Insert(0, 5) == CollectionError::None) { return 50; }
+    if !(values.Insert(values.Length(), 60) == CollectionError::None) { return 51; }
+    if !(values.Insert(values.Length() + 1, 99) == CollectionError::IndexOutOfRange) { return 52; }
+    if values.Length() != 7 { return 53; }
+    if values.At(0) != 5 || values.At(1) != 10 || values.At(6) != 60 { return 54; }
+
+    // RemoveAt closes the gap and preserves order; SwapRemoveAt does not.
+    if !values.RemoveAt(0) { return 55; }
+    if values.RemoveAt(values.Length()) { return 56; }
+    if values.At(0) != 10 || values.Length() != 6 { return 57; }
+    if !values.SwapRemoveAt(0) { return 58; }
+    if values.Length() != 5 || values.At(0) != 60 { return 59; }
+    if values.SwapRemoveAt(values.Length()) { return 60; }
+
+    // Removing the last element by swap is a plain pop.
+    let lastIndex = values.Length() - 1;
+    if !values.SwapRemoveAt(lastIndex) { return 61; }
+    if values.Length() != lastIndex { return 62; }
+
+    // Ends and popping. An empty Vector reports every end as absent.
+    var seen: int32 = -1;
+    if !values.TryFirst(@seen) || seen != 60 { return 70; }
+    if !values.TryLast(@seen) { return 71; }
+    if !values.TryPop(@seen) { return 72; }
+    if !values.TryPop(null) { return 73; }
+    if empty.TryPop(@seen) { return 74; }
+    if empty.TryFirst(@seen) { return 75; }
+    if empty.TryLast(@seen) { return 76; }
+
+    // Checked access rejects an out-of-range index and leaves the target alone.
+    var read: int32 = -7;
+    if !values.TryGet(0, @read) || read != 60 { return 77; }
+    if values.TryGet(values.Length(), @read) { return 78; }
+    if read != 60 { return 79; }
+    if !values.TrySet(0, 61) || values.At(0) != 61 { return 80; }
+    if values.TrySet(values.Length(), 0) { return 81; }
+    values.Set(0, 60);
+
+    // A view borrows the initialized elements only, never the spare capacity.
+    if !(values.Reserve(20) == CollectionError::None) { return 82; }
+    let borrowed = values.AsSlice();
+    if borrowed.data != values.Data() || borrowed.length != values.Length() { return 83; }
+    let writable = values.AsMutableSlice();
+    if writable.Length() != values.Length() || writable.Length() == values.Capacity() { return 84; }
+    writable.Set(0, 15);
+    if values.At(0) != 15 { return 85; }
+    writable.Set(0, 60);
+
+    // Clone and ToArray copy into independently owned allocations.
+    var copy = Vector::New<int32>();
+    if !(values.Clone(@copy) == CollectionError::None) { return 90; }
+    if copy.Data() == values.Data() || copy.Capacity() != copy.Length() { return 91; }
+    copy.Set(0, 99);
+    if values.At(0) != 60 { return 92; }
+    copy.Free();
+
+    var fixed = Array::New<int32>();
+    if !(values.ToArray(@fixed) == CollectionError::None) { return 93; }
+    if fixed.Data() == values.Data() || fixed.Length() != values.Length() { return 94; }
+    fixed.Set(0, 88);
+    if values.At(0) != 60 { return 95; }
+    fixed.Free();
+
+    // Clear keeps the allocation for reuse; Truncate drops only the tail.
+    let retained = values.Data();
+    let retainedCapacity = values.Capacity();
+    if !(values.Push(70) == CollectionError::None) { return 100; }
+    let beforeTruncate = values.Length();
+    values.Truncate(beforeTruncate + 5);
+    if values.Length() != beforeTruncate { return 101; }
+    values.Truncate(1);
+    if values.Length() != 1 || values.At(0) != 60 { return 102; }
+    values.Clear();
+    if !values.IsEmpty() || values.Data() != retained || values.Capacity() != retainedCapacity { return 103; }
+    if !(values.Push(7) == CollectionError::None) { return 104; }
+    if values.Data() != retained || values.At(0) != 7 { return 105; }
+
+    // Shrinking an emptied Vector releases the allocation entirely.
+    values.Clear();
+    if !(values.ShrinkToFit() == CollectionError::None) { return 106; }
+    if values.Data() != null || values.Capacity() != 0 { return 107; }
+    values.Free();
+
+    // FromSlice copies its source and trims capacity to length.
+    let source: Slice<int32> = [1, 2, 3];
+    var from = Vector::New<int32>();
+    if !(Vector::FromSlice<int32>(source, @from) == CollectionError::None) { return 110; }
+    if from.Data() == source.data || from.Length() != 3 || from.Capacity() != 3 { return 111; }
+    if !(from.Reserve(5) == CollectionError::None) { return 112; }
+    if !(from.ShrinkToFit() == CollectionError::None) { return 113; }
+    if from.Capacity() != from.Length() || from.At(2) != 3 { return 114; }
+    from.Free();
+
+    // IntoArray transfers the allocation and leaves the Vector owning nothing.
+    var moved = Vector::New<int32>();
+    if !(Vector::WithCapacity<int32>(8, @moved) == CollectionError::None) { return 120; }
+    if !(moved.Push(6) == CollectionError::None) { return 121; }
+    if !(moved.Push(7) == CollectionError::None) { return 122; }
+    var array = moved.IntoArray();
+    if moved.Data() != null || moved.Length() != 0 || moved.Capacity() != 0 { return 123; }
+    if array.Length() != 2 || array.At(0) != 6 || array.At(1) != 7 { return 124; }
+    if array.Data() == null { return 125; }
+    array.Free();
+    moved.Free();
+
+    // Growth and indexing honor an element wider than one machine word.
+    // A struct literal cannot appear inside an `if` condition, since its brace
+    // is read as the block's, so each operand is named first.
+    var pairs = Vector::New<Pair>();
+    let firstPair = Pair { first: 1, second: 2 };
+    let secondPair = Pair { first: 3, second: 4 };
+    let middlePair = Pair { first: 5, second: 6 };
+    if !(pairs.Push(firstPair) == CollectionError::None) { return 130; }
+    if !(pairs.Push(secondPair) == CollectionError::None) { return 131; }
+    if !(pairs.Insert(1, middlePair) == CollectionError::None) { return 132; }
+    if pairs.Length() != 3 || pairs.At(1).second != 6 || pairs.At(2).first != 3 { return 133; }
+    var readPair = Pair { first: 0, second: 0 };
+    if !pairs.TryPop(@readPair) || readPair.first != 3 { return 134; }
+    pairs.Free();
+
+    // A capacity whose byte size cannot be addressed is rejected before any
+    // allocation, and the target is left as it was.
+    var huge = Vector::New<int64>();
+    if !(Vector::WithCapacity<int64>(uint::Max, @huge) == CollectionError::CapacityOverflow) { return 140; }
+    if !huge.IsEmpty() || huge.Data() != null || huge.Capacity() != 0 { return 141; }
+
+    empty.Free();
+    return 0;
+}
