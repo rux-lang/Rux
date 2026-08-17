@@ -21,6 +21,23 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
             interfacesByName[iface.name] = &iface;
         }
     }
+    // How wide an enum's tag is stored, which decides how wide it must be read back. A variant carrying fields packs
+    // its tag and payload into one word, so those enums are always full width; a plain C-like enum is stored at its
+    // declared base type, which may be a single byte. Collected package-wide because a match may name an enum
+    // declared in another module.
+    enumTagTypes.clear();
+    for (const auto &mod : hir.modules) {
+        for (const auto &declaration : mod.enums) {
+            const bool packsPayload = std::ranges::any_of(
+                declaration.variants, [](const HirEnumVariant &variant) { return !variant.fields.empty(); });
+            TypeRef tagType = TypeRef::MakeInt64();
+            if (!packsPayload && !declaration.baseType.IsUnknown()) {
+                tagType = declaration.baseType;
+            }
+            enumTagTypes[declaration.name] = tagType;
+            enumTagTypes[mod.name + "::" + declaration.name] = tagType;
+        }
+    }
     for (const auto &mod : hir.modules) {
         for (const auto &c : mod.consts) {
             globalConsts[c.name] = &c;
@@ -397,6 +414,16 @@ bool HirToLirContext::IsArrayType(const TypeRef &type) {
 bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) {
     return type.kind == TypeRef::Kind::Named && !type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array &&
            type.SizeInBytes().value_or(0) > 8;
+}
+
+/// The type an enum's tag is stored as, which is what a match has to read it back as. Defaults to a full word, so an
+/// enum this pass never saw declared behaves as it always did.
+TypeRef HirToLirContext::EnumTagType(const TypeRef &enumType) const {
+    if (enumType.kind != TypeRef::Kind::Named) {
+        return TypeRef::MakeInt64();
+    }
+    const auto found = enumTagTypes.find(enumType.name);
+    return found == enumTagTypes.end() ? TypeRef::MakeInt64() : found->second;
 }
 
 bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {

@@ -35,6 +35,7 @@ private:
     };
 
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
+    std::unordered_map<std::string, TypeRef> enumTagTypes;
     CheckedLirBuilder *builder = nullptr;
     std::unordered_map<std::string, LirReg> locals;
     std::unordered_map<std::string, const HirConst *> globalConsts;
@@ -92,6 +93,7 @@ private:
     [[nodiscard]] static bool IsSliceType(const TypeRef &type);
     [[nodiscard]] static bool IsArrayType(const TypeRef &type);
     [[nodiscard]] static bool IsAggregateEnumType(const TypeRef &type);
+    [[nodiscard]] TypeRef EnumTagType(const TypeRef &enumType) const;
     [[nodiscard]] static bool IsStringSliceLiteral(const HirLiteralExpr &expression);
     [[nodiscard]] static TypeRef StringSliceElementType(const HirLiteralExpr &expression);
     [[nodiscard]] static TypeRef SliceElementTypeFromType(const TypeRef &type);

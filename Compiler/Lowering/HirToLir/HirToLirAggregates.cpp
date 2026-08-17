@@ -171,8 +171,20 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
     // placeholder true. Full structural matching requires runtime
     // support beyond what this IR stage provides.
     if (auto *p = dynamic_cast<const HirEnumPattern *>(&pat)) {
-        LirReg tagValue = subjectSlot != LirNoReg ? EmitLoad(subjectSlot, TypeRef::MakeInt64()) : subjectVal;
-        if (!p->unitDiscriminants.empty() || p->discriminant) {
+        // Read the tag back at the width it was stored. A C-like enum is stored at its declared base type, so reading
+        // it as a full word picked up whatever happened to sit beside it, and the mask below only cleared that when
+        // the base type was at least as wide as the mask -- which is why matching an int8- or int16-based enum
+        // matched nothing at all. Widening afterwards keeps the comparison below unchanged.
+        const TypeRef tagType = EnumTagType(subjectType);
+        LirReg tagValue = subjectVal;
+        if (subjectSlot != LirNoReg) {
+            tagValue = EmitLoad(subjectSlot, tagType);
+            tagValue = EmitCastIfNeeded(tagValue, tagType, TypeRef::MakeInt64());
+        }
+        // The mask strips a packed payload from beside the tag. A tag narrower than the mask has nothing packed
+        // beside it, and masking a sign-extended negative discriminant would only corrupt it.
+        if ((!p->unitDiscriminants.empty() || p->discriminant) &&
+            tagType.SizeInBytes().value_or(8) >= sizeof(std::uint32_t)) {
             LirReg mask = EmitConst("4294967295", TypeRef::MakeInt64());
             tagValue = EmitBinary(LirOpcode::And, tagValue, mask, TypeRef::MakeInt64());
         }
