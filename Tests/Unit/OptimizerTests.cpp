@@ -54,32 +54,32 @@ static LirPackage CompileToLir(const std::string &source, const BuildProfile pro
 namespace {
 class RecordingHirPass final : public Optimization::HirPass {
 public:
-    RecordingHirPass(std::string_view name, std::vector<std::string_view> &runs, std::size_t changesRemaining)
-        : name_(name)
-        , runs_(runs)
-        , changesRemaining_(changesRemaining) {
+    RecordingHirPass(std::string_view inputName, std::vector<std::string_view> &inputRuns, std::size_t inputChanges)
+        : name(inputName)
+        , runs(inputRuns)
+        , changesRemaining(inputChanges) {
     }
 
     [[nodiscard]] std::string_view Name() const noexcept override {
-        return name_;
+        return name;
     }
 
     Optimization::PassChange Run(HirPackage &, const Optimization::PassContext &context) override {
-        runs_.push_back(name_);
+        runs.push_back(name);
         contexts.push_back(context);
-        if (changesRemaining_ == 0) {
+        if (changesRemaining == 0) {
             return Optimization::PassChange::None;
         }
-        --changesRemaining_;
+        --changesRemaining;
         return Optimization::PassChange::Changed;
     }
 
     std::vector<Optimization::PassContext> contexts;
 
 private:
-    std::string_view name_;
-    std::vector<std::string_view> &runs_;
-    std::size_t changesRemaining_;
+    std::string_view name;
+    std::vector<std::string_view> &runs;
+    std::size_t changesRemaining;
 };
 
 LirTerminator JumpTo(const std::uint32_t target) {

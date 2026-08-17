@@ -12,21 +12,21 @@ class BuildInfo {
 public:
     BuildInfo() = default;
 
-    BuildInfo(std::string compilerVersion, const std::int64_t timestamp)
-        : compilerVersion_(std::move(compilerVersion))
-        , timestamp_(timestamp) {
+    BuildInfo(std::string inputCompilerVersion, const std::int64_t inputTimestamp)
+        : compilerVersion(std::move(inputCompilerVersion))
+        , timestamp(inputTimestamp) {
     }
 
     [[nodiscard]] const std::string &CompilerVersion() const noexcept {
-        return compilerVersion_;
+        return compilerVersion;
     }
 
     [[nodiscard]] std::int64_t Timestamp() const noexcept {
-        return timestamp_;
+        return timestamp;
     }
 
 private:
-    std::string compilerVersion_ = "0.0.0";
-    std::int64_t timestamp_ = 0;
+    std::string compilerVersion = "0.0.0";
+    std::int64_t timestamp = 0;
 };
 } // namespace Rux

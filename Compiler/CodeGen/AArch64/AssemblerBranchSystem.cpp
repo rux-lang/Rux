@@ -89,9 +89,9 @@ std::optional<std::uint16_t> SysRegFromName(const std::string_view name) {
 }
 
 void AssemblerContext::CollectLabels() {
-    for (const auto &instr : instrs_) {
+    for (const auto &instr : instrs) {
         if (!instr.labelDef.empty()) {
-            labels_.emplace(instr.labelDef, 0);
+            labels.emplace(instr.labelDef, 0);
         }
     }
 }
@@ -103,8 +103,8 @@ void AssemblerContext::RecordTarget(const AsmInstr &in, const AsmOperand &target
                                                IndexOf(target), FoundText(target)));
         return;
     }
-    if (labels_.contains(target.name)) {
-        targets_.push_back({at, target.name, target.location, in.mnemonic, field});
+    if (labels.contains(target.name)) {
+        targets.push_back({at, target.name, target.location, in.mnemonic, field});
         return;
     }
     if (relType == RcuRelType::None) {
@@ -116,9 +116,9 @@ void AssemblerContext::RecordTarget(const AsmInstr &in, const AsmOperand &target
 }
 
 void AssemblerContext::ResolveLocalTargets() {
-    for (const auto &target : targets_) {
-        const auto it = labels_.find(target.label);
-        if (it == labels_.end()) {
+    for (const auto &target : targets) {
+        const auto it = labels.find(target.label);
+        if (it == labels.end()) {
             Error(target.loc, std::format("undefined label '{}'", target.label));
             continue;
         }
@@ -131,11 +131,11 @@ void AssemblerContext::ResolveLocalTargets() {
         }
         const auto [lsb, width] = LayoutOf(target.field);
         if (target.field == TargetField::Adr) {
-            enc_.PatchField(target.instrOffset, 29, 2, static_cast<std::uint32_t>(delta) & 3U);
-            enc_.PatchField(target.instrOffset, lsb, width - 2U, static_cast<std::uint32_t>(delta >> 2));
+            encoder.PatchField(target.instrOffset, 29, 2, static_cast<std::uint32_t>(delta) & 3U);
+            encoder.PatchField(target.instrOffset, lsb, width - 2U, static_cast<std::uint32_t>(delta >> 2));
             continue;
         }
-        enc_.PatchField(target.instrOffset, lsb, width, static_cast<std::uint32_t>(delta / A64Enc::InstrSize));
+        encoder.PatchField(target.instrOffset, lsb, width, static_cast<std::uint32_t>(delta / A64Enc::InstrSize));
     }
 }
 
@@ -166,7 +166,7 @@ void BranchSystemAssemblerContext::EncodeAdr(const AsmInstr &in, const bool page
         return;
     }
     const std::uint32_t at = Here();
-    Emit(in, page ? enc_.Adrp(*rd, 0) : enc_.Adr(*rd, 0));
+    Emit(in, page ? encoder.Adrp(*rd, 0) : encoder.Adr(*rd, 0));
     if (page) {
         AddFixup(at, target.name, RcuRelType::AArch64AdrPrelPgHi21);
         return;
@@ -180,7 +180,7 @@ void BranchSystemAssemblerContext::EncodeBranch(const AsmInstr &in, const bool l
         return;
     }
     const std::uint32_t at = Here();
-    Emit(in, link ? enc_.Bl(0) : enc_.B(0));
+    Emit(in, link ? encoder.Bl(0) : encoder.B(0));
     RecordTarget(in, in.operands[0], at, TargetField::Imm26,
                  link ? RcuRelType::AArch64Call26 : RcuRelType::AArch64Jump26);
 }
@@ -196,7 +196,7 @@ void BranchSystemAssemblerContext::EncodeCondBranch(const AsmInstr &in, const st
         return;
     }
     const std::uint32_t at = Here();
-    Emit(in, enc_.BCond(*cond, 0));
+    Emit(in, encoder.BCond(*cond, 0));
     RecordTarget(in, in.operands[0], at, TargetField::Imm19, RcuRelType::AArch64CondBr19);
 }
 
@@ -213,7 +213,7 @@ void BranchSystemAssemblerContext::EncodeCompareBranch(const AsmInstr &in, const
         return;
     }
     const std::uint32_t at = Here();
-    Emit(in, (enc_.*fn)(*rt, 0));
+    Emit(in, (encoder.*fn)(*rt, 0));
     RecordTarget(in, in.operands[1], at, TargetField::Imm19, RcuRelType::AArch64CondBr19);
 }
 
@@ -234,7 +234,7 @@ void BranchSystemAssemblerContext::EncodeTestBranch(const AsmInstr &in, const Te
         return;
     }
     const std::uint32_t at = Here();
-    Emit(in, (enc_.*fn)(*rt, *bit, 0));
+    Emit(in, (encoder.*fn)(*rt, *bit, 0));
     RecordTarget(in, in.operands[2], at, TargetField::Imm14, RcuRelType::AArch64TstBr14);
 }
 
@@ -242,7 +242,7 @@ void BranchSystemAssemblerContext::EncodeTestBranch(const AsmInstr &in, const Te
 void BranchSystemAssemblerContext::EncodeBranchReg(const AsmInstr &in, const Reg1Fn fn, const bool optional) {
     Begin(in, optional ? "{Xn}" : "Xn");
     if (optional && in.operands.empty()) {
-        Emit(in, (enc_.*fn)(A64::Lr));
+        Emit(in, (encoder.*fn)(A64::Lr));
         return;
     }
     if (!Operands(1)) {
@@ -261,7 +261,7 @@ void BranchSystemAssemblerContext::EncodeBranchReg(const AsmInstr &in, const Reg
                               in.operands[0].name));
         return;
     }
-    Emit(in, (enc_.*fn)(*rn));
+    Emit(in, (encoder.*fn)(*rn));
 }
 
 void BranchSystemAssemblerContext::EncodeException(const AsmInstr &in, const Imm16Fn fn) {
@@ -273,7 +273,7 @@ void BranchSystemAssemblerContext::EncodeException(const AsmInstr &in, const Imm
     if (!imm) {
         return;
     }
-    Emit(in, (enc_.*fn)(static_cast<std::uint16_t>(*imm)));
+    Emit(in, (encoder.*fn)(static_cast<std::uint16_t>(*imm)));
 }
 
 void BranchSystemAssemblerContext::EncodeBarrier(const AsmInstr &in, const BarrierFn fn) {
@@ -282,7 +282,7 @@ void BranchSystemAssemblerContext::EncodeBarrier(const AsmInstr &in, const Barri
         return;
     }
     if (in.operands.empty()) {
-        Emit(in, (enc_.*fn)(A64Barrier::Sy));
+        Emit(in, (encoder.*fn)(A64Barrier::Sy));
         return;
     }
     const AsmOperand &option = in.operands[0];
@@ -296,7 +296,7 @@ void BranchSystemAssemblerContext::EncodeBarrier(const AsmInstr &in, const Barri
         FormError(option.location, std::format("unknown barrier option '{}'", option.name));
         return;
     }
-    Emit(in, (enc_.*fn)(*barrier));
+    Emit(in, (encoder.*fn)(*barrier));
 }
 
 std::optional<std::uint16_t> BranchSystemAssemblerContext::SysRegOf(const AsmOperand &op) {
@@ -335,7 +335,7 @@ void BranchSystemAssemblerContext::EncodeSysMove(const AsmInstr &in, const bool 
     if (!sysreg) {
         return;
     }
-    Emit(in, read ? enc_.Mrs(*rt, *sysreg) : enc_.Msr(*sysreg, *rt));
+    Emit(in, read ? encoder.Mrs(*rt, *sysreg) : encoder.Msr(*sysreg, *rt));
 }
 
 void BranchSystemAssemblerContext::Unsupported(const AsmInstr &in) {
@@ -420,7 +420,7 @@ void BranchSystemAssemblerContext::Dispatch(const AsmInstr &in) {
     if (m == "nop") {
         Begin(in, "");
         if (Operands(0)) {
-            Emit(in, enc_.Nop());
+            Emit(in, encoder.Nop());
         }
         return;
     }
@@ -430,7 +430,7 @@ void BranchSystemAssemblerContext::Dispatch(const AsmInstr &in) {
             return;
         }
         if (const auto imm = UnsignedImmOf(in.operands[0], 127, "a hint number")) {
-            Emit(in, enc_.Hint(*imm));
+            Emit(in, encoder.Hint(*imm));
         }
         return;
     }

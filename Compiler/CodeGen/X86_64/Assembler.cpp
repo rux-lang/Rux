@@ -47,42 +47,43 @@ struct RmEnc {
 
 class Assembler {
 public:
-    Assembler(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out, const Target::OS targetOs)
-        : instrs_(instrs)
-        , sourceName_(std::move(sourceName))
-        , targetOs_(targetOs)
-        , out_(out)
-        , labelFixups_(sourceName_, out_, result_) {
+    Assembler(const std::vector<AsmInstr> &inputInstrs, std::string inputSourceName, Bytes &inputOut,
+              const Target::OS inputTargetOs)
+        : instrs(inputInstrs)
+        , sourceName(std::move(inputSourceName))
+        , targetOs(inputTargetOs)
+        , out(inputOut)
+        , labelFixups(sourceName, out, result) {
     }
 
     AsmAssembly Run() {
-        labelFixups_.Collect(instrs_);
-        for (const auto &instr : instrs_) {
+        labelFixups.Collect(instrs);
+        for (const auto &instr : instrs) {
             if (!instr.labelDef.empty()) {
-                labelFixups_.Define(instr.labelDef, Here());
+                labelFixups.Define(instr.labelDef, Here());
                 continue;
             }
             EncodeInstr(instr);
         }
-        labelFixups_.Resolve();
-        result_.ok = result_.diagnostics.empty();
-        return std::move(result_);
+        labelFixups.Resolve();
+        result.ok = result.diagnostics.empty();
+        return std::move(result);
     }
 
 private:
-    const std::vector<AsmInstr> &instrs_;
-    std::string sourceName_;
-    Target::OS targetOs_;
-    Bytes &out_;
-    AsmAssembly result_;
-    LabelFixups labelFixups_;
+    const std::vector<AsmInstr> &instrs;
+    std::string sourceName;
+    Target::OS targetOs;
+    Bytes &out;
+    AsmAssembly result;
+    LabelFixups labelFixups;
 
     void Error(const SourceLocation &loc, std::string msg, std::vector<std::string> notes = {},
                std::optional<std::string> help = {}) {
         Diagnostic d = ErrorDiagnostic(std::move(msg), std::move(notes), std::move(help));
         d.location = loc;
-        d.sourceName = sourceName_;
-        result_.diagnostics.push_back(std::move(d));
+        d.sourceName = sourceName;
+        result.diagnostics.push_back(std::move(d));
     }
 
     void Error(const SourceLocation &loc, AsmInstructionDiagnostic diagnostic) {
@@ -91,19 +92,19 @@ private:
 
     // Emission primitives
     void Emit8(std::uint8_t b) {
-        out_.push_back(b);
+        out.push_back(b);
     }
 
     void Emit32(std::int32_t v) {
-        Append32(out_, v);
+        Append32(out, v);
     }
 
     void Emit64(std::uint64_t v) {
-        Append64(out_, v);
+        Append64(out, v);
     }
 
     std::uint32_t Here() const {
-        return static_cast<std::uint32_t>(out_.size());
+        return static_cast<std::uint32_t>(out.size());
     }
 
     // Resolve one operand that names a register into its info, reporting an
@@ -111,7 +112,7 @@ private:
     std::optional<AsmRegInfo> Reg(const AsmOperand &op) {
         AsmRegInfo info = LookupRegister(Target::Arch::X86_64, op.name);
         if (!info.valid) {
-            Error(op.location, ClassifyAsmRegister(op.name, targetOs_, Target::Arch::X86_64));
+            Error(op.location, ClassifyAsmRegister(op.name, targetOs, Target::Arch::X86_64));
             return std::nullopt;
         }
         return info;
@@ -301,7 +302,7 @@ private:
             if (!rm.ripSymbol.empty()) {
                 // The linker patches the whole field as targetVA + addend -
                 // (site + 4); fold the in-bracket displacement into the addend.
-                result_.fixups.push_back({fieldOff, rm.ripSymbol, RcuRelType::Rel32, rm.disp});
+                result.fixups.push_back({fieldOff, rm.ripSymbol, RcuRelType::Rel32, rm.disp});
             }
         }
         else if (rm.dispLen == 1) {
@@ -364,7 +365,7 @@ private:
         return defaultSize;
     }
 
-    // Encode a signed/zero immediate into `out_` at the appropriate width for an
+    // Encode a signed/zero immediate into `out` at the appropriate width for an
     // ALU immediate (imm8 when it fits, otherwise imm32).
     void EmitAluImm(std::int64_t v, int opSize, bool useImm8) {
         if (opSize == 1 || useImm8) {
@@ -803,7 +804,7 @@ private:
     void EmitRel32Target(const std::string &name, const SourceLocation &loc) {
         const std::uint32_t fieldOff = Here();
         Emit32(0);
-        labelFixups_.RecordRel32(name, loc, fieldOff);
+        labelFixups.RecordRel32(name, loc, fieldOff);
     }
 
     // --- SSE / SSE2 -------------------------------------------------------
@@ -973,7 +974,7 @@ private:
     void EncodeInstr(const AsmInstr &in) {
         if (in.arch != Target::Arch::Unknown && in.arch != Target::Arch::X86_64) {
             Error(in.location,
-                  ParsedAssemblyArchitectureDiagnostic(in.mnemonic, in.arch, targetOs_, Target::Arch::X86_64));
+                  ParsedAssemblyArchitectureDiagnostic(in.mnemonic, in.arch, targetOs, Target::Arch::X86_64));
             return;
         }
         const std::string &m = in.mnemonic;
@@ -1181,7 +1182,7 @@ private:
             return;
         }
 
-        Error(in.location, ClassifyAsmInstruction(m, targetOs_, Target::Arch::X86_64));
+        Error(in.location, ClassifyAsmInstruction(m, targetOs, Target::Arch::X86_64));
     }
 };
 } // namespace

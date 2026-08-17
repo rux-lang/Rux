@@ -55,7 +55,7 @@ void MemoryFloatingAssemblerContext::EncodeMem(const AsmInstr &in, const MemForm
             return;
         }
         const std::uint32_t at = Here();
-        Emit(in, enc_.LdrLiteral(*rt, 0));
+        Emit(in, encoder.LdrLiteral(*rt, 0));
         RecordTarget(in, addr, at, TargetField::Imm19, RcuRelType::None);
         return;
     }
@@ -110,7 +110,7 @@ void MemoryFloatingAssemblerContext::EncodeMem(const AsmInstr &in, const MemForm
         }
         const A64ExtendKind extend =
             addr.extend != AsmExtendKind::None ? ToA64Extend(addr.extend) : A64ExtendKind::Uxtx;
-        Emit(in, (enc_.*forms.indexed)(*rt, *rn, *rm, extend, amount));
+        Emit(in, (encoder.*forms.indexed)(*rt, *rn, *rm, extend, amount));
         return;
     }
 
@@ -122,7 +122,7 @@ void MemoryFloatingAssemblerContext::EncodeMem(const AsmInstr &in, const MemForm
             return;
         }
         const std::uint32_t at = Here();
-        Emit(in, (enc_.*forms.scaled)(*rt, *rn, 0));
+        Emit(in, (encoder.*forms.scaled)(*rt, *rn, 0));
         AddFixup(at, addr.memSym, RcuRelType::AArch64LdstAbsLo12Nc);
         return;
     }
@@ -131,11 +131,11 @@ void MemoryFloatingAssemblerContext::EncodeMem(const AsmInstr &in, const MemForm
     if (forms.scaled != nullptr && mode == A64IndexMode::Offset && addr.imm >= 0) {
         // The scaled form reaches furthest and is the canonical spelling of an
         // offset it can express. Negative or unaligned offsets use unscaled.
-        if ((enc_.*forms.scaled)(*rt, *rn, static_cast<std::uint64_t>(addr.imm)) == A64Status::Ok) {
+        if ((encoder.*forms.scaled)(*rt, *rn, static_cast<std::uint64_t>(addr.imm)) == A64Status::Ok) {
             return;
         }
     }
-    const A64Status status = (enc_.*forms.unscaled)(*rt, *rn, addr.imm, mode);
+    const A64Status status = (encoder.*forms.unscaled)(*rt, *rn, addr.imm, mode);
     if (status == A64Status::OutOfRange || status == A64Status::Unaligned) {
         // Both forms were tried, so name their combined reach.
         if (forms.scaled != nullptr && mode == A64IndexMode::Offset) {
@@ -183,7 +183,7 @@ void MemoryFloatingAssemblerContext::EncodePair(const AsmInstr &in, const PairFn
                                              in.mnemonic, width, -64 * width, 63 * width, addr.imm));
         return;
     }
-    Emit(in, (enc_.*fn)(*rt, *rt2, *rn, addr.imm, ToA64IndexMode(addr.indexMode)));
+    Emit(in, (encoder.*fn)(*rt, *rt2, *rn, addr.imm, ToA64IndexMode(addr.indexMode)));
 }
 
 // FMOV moves between registers of either file and is the one floating-point
@@ -201,14 +201,14 @@ void MemoryFloatingAssemblerContext::EncodeFmov(const AsmInstr &in) {
     if (src.kind == AsmOperand::Kind::Imm) {
         // The lexer has no floating-point literal inside an `asm func` body,
         // so the value is written as the integer it equals.
-        Emit(in, enc_.FmovImm(*rd, static_cast<double>(src.imm)));
+        Emit(in, encoder.FmovImm(*rd, static_cast<double>(src.imm)));
         return;
     }
     const auto rn = RegOf(src);
     if (!rn) {
         return;
     }
-    Emit(in, enc_.Fmov(*rd, *rn));
+    Emit(in, encoder.Fmov(*rd, *rn));
 }
 
 // FCMP and FCMPE take either a register or the dedicated zero form.
@@ -231,7 +231,7 @@ void MemoryFloatingAssemblerContext::EncodeFcmp(const AsmInstr &in, const bool s
         if (!Uniform(RegClass::Float, {Ref(in.operands[0], *rn)})) {
             return;
         }
-        Emit(in, signalling ? enc_.FcmpeZero(*rn) : enc_.FcmpZero(*rn));
+        Emit(in, signalling ? encoder.FcmpeZero(*rn) : encoder.FcmpZero(*rn));
         return;
     }
     const auto rm = RegOf(src);
@@ -241,7 +241,7 @@ void MemoryFloatingAssemblerContext::EncodeFcmp(const AsmInstr &in, const bool s
     if (!Uniform(RegClass::Float, {Ref(in.operands[0], *rn), Ref(src, *rm)})) {
         return;
     }
-    Emit(in, signalling ? enc_.Fcmpe(*rn, *rm) : enc_.Fcmp(*rn, *rm));
+    Emit(in, signalling ? encoder.Fcmpe(*rn, *rm) : encoder.Fcmp(*rn, *rm));
 }
 
 void MemoryFloatingAssemblerContext::EncodeFccmp(const AsmInstr &in) {
@@ -265,7 +265,7 @@ void MemoryFloatingAssemblerContext::EncodeFccmp(const AsmInstr &in) {
     if (!cond) {
         return;
     }
-    Emit(in, enc_.Fccmp(*rn, *rm, *nzcv, *cond));
+    Emit(in, encoder.Fccmp(*rn, *rm, *nzcv, *cond));
 }
 
 bool MemoryFloatingAssemblerContext::DispatchMemoryFloating(const AsmInstr &in) {

@@ -35,32 +35,32 @@ class ScopedPackageCache {
 public:
     ScopedPackageCache() {
         const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-        savedHome_ = System::GetEnvPath(packageCacheHomeVariable);
-        root_ = System::TempDirectory() / ("rux-cmd-inspect-cache-" + std::to_string(nonce));
+        savedHome = System::GetEnvPath(packageCacheHomeVariable);
+        root = System::TempDirectory() / ("rux-cmd-inspect-cache-" + std::to_string(nonce));
         std::error_code error;
-        std::filesystem::create_directories(root_, error);
+        std::filesystem::create_directories(root, error);
         REQUIRE(!error);
-        REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root_));
-        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root_.string()));
+        REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root));
+        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root.string()));
     }
 
     ScopedPackageCache(const ScopedPackageCache &) = delete;
     ScopedPackageCache &operator=(const ScopedPackageCache &) = delete;
 
     ~ScopedPackageCache() {
-        if (savedHome_) {
-            static_cast<void>(System::SetEnvPath(packageCacheHomeVariable, *savedHome_));
+        if (savedHome) {
+            static_cast<void>(System::SetEnvPath(packageCacheHomeVariable, *savedHome));
         }
         else {
             static_cast<void>(System::UnsetEnv(packageCacheHomeVariable));
         }
         std::error_code error;
-        std::filesystem::remove_all(root_, error);
+        std::filesystem::remove_all(root, error);
     }
 
 private:
-    std::optional<std::filesystem::path> savedHome_;
-    std::filesystem::path root_;
+    std::optional<std::filesystem::path> savedHome;
+    std::filesystem::path root;
 };
 
 void WriteTextFile(const std::filesystem::path &path, const std::string_view contents) {

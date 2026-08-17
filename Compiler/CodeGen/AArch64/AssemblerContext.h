@@ -113,7 +113,8 @@ template <typename Map>
 
 class AssemblerContext {
 public:
-    AssemblerContext(const std::vector<AsmInstr> &instrs, std::string sourceName, Bytes &out, Target::OS targetOs);
+    AssemblerContext(const std::vector<AsmInstr> &inputInstrs, std::string inputSourceName, Bytes &inputOut,
+                     Target::OS inputTargetOs);
     virtual ~AssemblerContext() = default;
 
     AsmAssembly Run();
@@ -127,15 +128,15 @@ private:
         TargetField field;
     };
 
-    const std::vector<AsmInstr> &instrs_;
-    std::string sourceName_;
-    Target::OS targetOs_;
-    Bytes &out_;
-    AsmAssembly result_;
-    std::unordered_map<std::string, std::uint32_t> labels_;
-    std::vector<LocalTarget> targets_;
-    const AsmInstr *in_ = nullptr;
-    Syntax syntax_;
+    const std::vector<AsmInstr> &instrs;
+    std::string sourceName;
+    Target::OS targetOs;
+    Bytes &out;
+    AsmAssembly result;
+    std::unordered_map<std::string, std::uint32_t> labels;
+    std::vector<LocalTarget> targets;
+    const AsmInstr *currentInstr = nullptr;
+    Syntax currentSyntax;
 
 protected:
     struct RegRef {
@@ -172,7 +173,7 @@ protected:
     void RecordTarget(const AsmInstr &in, const AsmOperand &target, std::uint32_t at, TargetField field,
                       std::uint16_t relType);
 
-    A64Enc enc_;
+    A64Enc encoder;
 
 private:
     [[nodiscard]] std::string FormText() const;

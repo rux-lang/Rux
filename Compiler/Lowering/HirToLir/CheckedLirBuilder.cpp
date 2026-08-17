@@ -4,59 +4,59 @@
 #include <utility>
 
 namespace Rux {
-CheckedLirBuilder::CheckedLirBuilder(LirFunc &function)
-    : function_(&function) {
+CheckedLirBuilder::CheckedLirBuilder(LirFunc &inputFunction)
+    : function(&inputFunction) {
 }
 
 LirReg CheckedLirBuilder::AllocateRegister() {
-    return nextRegister_++;
+    return nextRegister++;
 }
 
 LirReg CheckedLirBuilder::DefineParameter() {
     const LirReg reg = AllocateRegister();
-    definedRegisters_.insert(reg);
+    definedRegisters.insert(reg);
     return reg;
 }
 
 CheckedLirBuilder::BlockIndex CheckedLirBuilder::CreateBlock(std::string label) {
     if (label.empty()) {
-        label = std::format("bb{}", function_->blocks.size());
+        label = std::format("bb{}", function->blocks.size());
     }
-    function_->blocks.push_back({std::move(label), {}, std::nullopt});
-    return static_cast<BlockIndex>(function_->blocks.size() - 1);
+    function->blocks.push_back({std::move(label), {}, std::nullopt});
+    return static_cast<BlockIndex>(function->blocks.size() - 1);
 }
 
 bool CheckedLirBuilder::SelectBlock(const BlockIndex index) {
-    if (index >= function_->blocks.size()) {
-        failureReason_ = "block index is out of range";
+    if (index >= function->blocks.size()) {
+        failureReason = "block index is out of range";
         return false;
     }
-    failureReason_.clear();
-    currentBlock_ = index;
+    failureReason.clear();
+    currentBlock = index;
     return true;
 }
 
 bool CheckedLirBuilder::IsTerminated() const noexcept {
-    return currentBlock_ && function_->blocks[*currentBlock_].term.has_value();
+    return currentBlock && function->blocks[*currentBlock].term.has_value();
 }
 
 CheckedLirBuilder::BlockIndex CheckedLirBuilder::CurrentBlock() const noexcept {
-    if (!currentBlock_) {
+    if (!currentBlock) {
         std::unreachable();
     }
-    return *currentBlock_;
+    return *currentBlock;
 }
 
 LirFunc &CheckedLirBuilder::Function() const noexcept {
-    return *function_;
+    return *function;
 }
 
 std::string_view CheckedLirBuilder::FailureReason() const noexcept {
-    return failureReason_;
+    return failureReason;
 }
 
 bool CheckedLirBuilder::IsDefined(const LirReg reg) const noexcept {
-    return reg != LirNoReg && definedRegisters_.contains(reg);
+    return reg != LirNoReg && definedRegisters.contains(reg);
 }
 
 bool CheckedLirBuilder::HasValidSources(const LirInstr &instruction) const noexcept {
@@ -89,7 +89,7 @@ bool CheckedLirBuilder::HasValidSources(const LirTerminator &terminator) const n
 }
 
 bool CheckedLirBuilder::HasValidTargets(const LirTerminator &terminator) const noexcept {
-    const auto valid = [this](const BlockIndex target) { return target < function_->blocks.size(); };
+    const auto valid = [this](const BlockIndex target) { return target < function->blocks.size(); };
     switch (terminator.kind) {
     case LirTermKind::Jump:
         return valid(terminator.trueTarget);
@@ -113,50 +113,50 @@ bool CheckedLirBuilder::HasValidTargets(const LirTerminator &terminator) const n
 }
 
 bool CheckedLirBuilder::Insert(LirInstr instruction) {
-    if (!currentBlock_) {
-        failureReason_ = "no current block is selected";
+    if (!currentBlock) {
+        failureReason = "no current block is selected";
         return false;
     }
     if (IsTerminated()) {
-        failureReason_ = "the current block already has a terminator";
+        failureReason = "the current block already has a terminator";
         return false;
     }
     if (!HasValidSources(instruction)) {
-        failureReason_ = "the instruction uses an undefined register";
+        failureReason = "the instruction uses an undefined register";
         return false;
     }
     if (instruction.dst != LirNoReg &&
-        (instruction.dst >= nextRegister_ || definedRegisters_.contains(instruction.dst))) {
-        failureReason_ = "the instruction defines an invalid or previously defined register";
+        (instruction.dst >= nextRegister || definedRegisters.contains(instruction.dst))) {
+        failureReason = "the instruction defines an invalid or previously defined register";
         return false;
     }
     if (instruction.dst != LirNoReg) {
-        definedRegisters_.insert(instruction.dst);
+        definedRegisters.insert(instruction.dst);
     }
-    function_->blocks[*currentBlock_].instrs.push_back(std::move(instruction));
-    failureReason_.clear();
+    function->blocks[*currentBlock].instrs.push_back(std::move(instruction));
+    failureReason.clear();
     return true;
 }
 
 bool CheckedLirBuilder::Terminate(LirTerminator terminator) {
-    if (!currentBlock_) {
-        failureReason_ = "no current block is selected";
+    if (!currentBlock) {
+        failureReason = "no current block is selected";
         return false;
     }
     if (IsTerminated()) {
-        failureReason_ = "the current block already has a terminator";
+        failureReason = "the current block already has a terminator";
         return false;
     }
     if (!HasValidSources(terminator)) {
-        failureReason_ = "the terminator uses an undefined register";
+        failureReason = "the terminator uses an undefined register";
         return false;
     }
     if (!HasValidTargets(terminator)) {
-        failureReason_ = "the terminator targets an invalid block";
+        failureReason = "the terminator targets an invalid block";
         return false;
     }
-    function_->blocks[*currentBlock_].term = std::move(terminator);
-    failureReason_.clear();
+    function->blocks[*currentBlock].term = std::move(terminator);
+    failureReason.clear();
     return true;
 }
 

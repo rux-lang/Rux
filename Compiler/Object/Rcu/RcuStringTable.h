@@ -11,41 +11,41 @@ namespace Rux {
 class RcuStringTable {
 public:
     RcuStringTable() {
-        data_.push_back('\0');
+        data.push_back('\0');
     }
 
     uint32_t Intern(const std::string &s) {
         if (s.empty()) {
             return 0;
         }
-        auto it = map_.find(s);
-        if (it != map_.end()) {
+        auto it = map.find(s);
+        if (it != map.end()) {
             return it->second;
         }
-        const auto off = static_cast<uint32_t>(data_.size());
-        map_[s] = off;
-        data_.insert(data_.end(), s.begin(), s.end());
-        data_.push_back('\0');
+        const auto off = static_cast<uint32_t>(data.size());
+        map[s] = off;
+        data.insert(data.end(), s.begin(), s.end());
+        data.push_back('\0');
         return off;
     }
 
     [[nodiscard]] uint32_t Size() const {
-        return static_cast<uint32_t>(data_.size());
+        return static_cast<uint32_t>(data.size());
     }
 
     [[nodiscard]] const char *Data() const {
-        return data_.data();
+        return data.data();
     }
 
     [[nodiscard]] std::string Get(const uint32_t off) const {
-        if (off >= data_.size()) {
+        if (off >= data.size()) {
             return {};
         }
-        return {data_.data() + off};
+        return {data.data() + off};
     }
 
 private:
-    std::vector<char> data_;
-    std::unordered_map<std::string, uint32_t> map_;
+    std::vector<char> data;
+    std::unordered_map<std::string, uint32_t> map;
 };
 } // namespace Rux

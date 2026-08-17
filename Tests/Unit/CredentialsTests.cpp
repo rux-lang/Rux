@@ -27,53 +27,53 @@ class ScopedUserDataDir {
 public:
     ScopedUserDataDir() {
         static int sequence = 0;
-        savedHome_ = GetEnvPath(homeVariable);
-        savedToken_ = GetEnv(kCredentialVariable);
-        savedRegistry_ = GetEnv(kRegistryVariable);
+        savedHome = GetEnvPath(homeVariable);
+        savedToken = GetEnv(kCredentialVariable);
+        savedRegistry = GetEnv(kRegistryVariable);
 
-        root_ = TempDirectory() / ("RuxCredentialsTest-" + std::to_string(++sequence));
+        root = TempDirectory() / ("RuxCredentialsTest-" + std::to_string(++sequence));
         std::error_code ec;
-        std::filesystem::remove_all(root_, ec);
-        std::filesystem::create_directories(root_, ec);
+        std::filesystem::remove_all(root, ec);
+        std::filesystem::create_directories(root, ec);
         REQUIRE(!ec);
-        REQUIRE(SetEnvPath(homeVariable, root_));
+        REQUIRE(SetEnvPath(homeVariable, root));
         REQUIRE(UnsetEnv(kCredentialVariable));
         // A redirect that silently failed would send the writes below at the
         // real credentials file, so prove the path moved before any test runs.
-        REQUIRE(CredentialsPath().string().starts_with(root_.string()));
+        REQUIRE(CredentialsPath().string().starts_with(root.string()));
     }
 
     ScopedUserDataDir(const ScopedUserDataDir &) = delete;
     ScopedUserDataDir &operator=(const ScopedUserDataDir &) = delete;
 
     ~ScopedUserDataDir() {
-        if (savedHome_) {
-            static_cast<void>(SetEnvPath(homeVariable, *savedHome_));
+        if (savedHome) {
+            static_cast<void>(SetEnvPath(homeVariable, *savedHome));
         }
         else {
             static_cast<void>(UnsetEnv(homeVariable));
         }
-        if (savedToken_) {
-            static_cast<void>(SetEnv(kCredentialVariable, *savedToken_));
+        if (savedToken) {
+            static_cast<void>(SetEnv(kCredentialVariable, *savedToken));
         }
         else {
             static_cast<void>(UnsetEnv(kCredentialVariable));
         }
-        if (savedRegistry_) {
-            static_cast<void>(SetEnv(kRegistryVariable, *savedRegistry_));
+        if (savedRegistry) {
+            static_cast<void>(SetEnv(kRegistryVariable, *savedRegistry));
         }
         else {
             static_cast<void>(UnsetEnv(kRegistryVariable));
         }
         std::error_code ec;
-        std::filesystem::remove_all(root_, ec);
+        std::filesystem::remove_all(root, ec);
     }
 
 private:
-    std::optional<std::filesystem::path> savedHome_;
-    std::optional<std::string> savedToken_;
-    std::optional<std::string> savedRegistry_;
-    std::filesystem::path root_;
+    std::optional<std::filesystem::path> savedHome;
+    std::optional<std::string> savedToken;
+    std::optional<std::string> savedRegistry;
+    std::filesystem::path root;
 };
 
 constexpr const char *official = "https://api.rux-lang.dev";

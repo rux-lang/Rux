@@ -34,7 +34,7 @@ using ValueAlign = Reporting::ValueAlign;
 
 class Reporter {
 public:
-    Reporter(std::FILE *output, ReporterOptions options = {});
+    Reporter(std::FILE *inputOutput, ReporterOptions inputOptions = {});
 
     [[nodiscard]] bool Visible(MessageVisibility visibility) const;
     [[nodiscard]] const Reporting::Style &Style() const;
@@ -61,8 +61,8 @@ private:
     void Status(std::string_view primary, std::string_view detail, Reporting::StatusKind kind,
                 MessageVisibility visibility) const;
 
-    std::FILE *output_;
-    ReporterOptions options_;
-    Reporting::Style style_;
+    std::FILE *output;
+    ReporterOptions options;
+    Reporting::Style style;
 };
 } // namespace Rux::CliSupport

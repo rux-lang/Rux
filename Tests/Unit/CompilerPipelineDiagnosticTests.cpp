@@ -74,23 +74,23 @@ private:
 
 class ScopedEnvironmentValue {
 public:
-    explicit ScopedEnvironmentValue(std::string name)
-        : name_(std::move(name))
-        , saved_(GetEnv(name_.c_str())) {
+    explicit ScopedEnvironmentValue(std::string inputName)
+        : name(std::move(inputName))
+        , saved(GetEnv(name.c_str())) {
     }
 
     ~ScopedEnvironmentValue() {
-        if (saved_) {
-            static_cast<void>(SetEnv(name_.c_str(), *saved_));
+        if (saved) {
+            static_cast<void>(SetEnv(name.c_str(), *saved));
         }
         else {
-            static_cast<void>(UnsetEnv(name_.c_str()));
+            static_cast<void>(UnsetEnv(name.c_str()));
         }
     }
 
 private:
-    std::string name_;
-    std::optional<std::string> saved_;
+    std::string name;
+    std::optional<std::string> saved;
 };
 
 struct UnsupportedExpr final : Expr {};

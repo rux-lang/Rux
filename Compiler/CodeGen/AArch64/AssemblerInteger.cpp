@@ -47,7 +47,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
         if (!CheckArithImm(src, value)) {
             return;
         }
-        Emit(in, (enc_.*forms.imm)(rd, *rn, value));
+        Emit(in, (encoder.*forms.imm)(rd, *rn, value));
         return;
     }
     case AsmOperand::Kind::Sym: {
@@ -58,7 +58,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
             return;
         }
         const std::uint32_t at = Here();
-        Emit(in, (enc_.*forms.imm)(rd, *rn, 0));
+        Emit(in, (encoder.*forms.imm)(rd, *rn, 0));
         AddFixup(at, src.name, RcuRelType::AArch64AddAbsLo12Nc);
         return;
     }
@@ -87,7 +87,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
         if (!NoStackPointer({Ref(src, *rm)})) {
             return;
         }
-        Emit(in, (enc_.*forms.extended)(rd, *rn, *rm, ToA64Extend(src.extend), amount));
+        Emit(in, (encoder.*forms.extended)(rd, *rn, *rm, ToA64Extend(src.extend), amount));
         return;
     }
     // A plain register form that addresses through SP is the extended one
@@ -96,7 +96,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
     // and the zero register in the shifted form.
     if ((rn->IsStackPointer() || rd.IsStackPointer()) && src.shift == AsmShiftKind::None && rm->IsGeneral() &&
         !rm->IsStackPointer() && rm->bits == rn->bits) {
-        Emit(in, (enc_.*forms.extended)(rd, *rn, *rm, rn->Is64() ? A64ExtendKind::Uxtx : A64ExtendKind::Uxtw, 0));
+        Emit(in, (encoder.*forms.extended)(rd, *rn, *rm, rn->Is64() ? A64ExtendKind::Uxtx : A64ExtendKind::Uxtw, 0));
         return;
     }
     // The shifted-register form reaches neither reading of SP: code 31 is
@@ -119,7 +119,7 @@ void IntegerAssemblerContext::EncodeArith(const AsmInstr &in, const ArithForms &
                   std::format("'{}' takes a shift of 0 to {}, found {}", in.mnemonic, rm->bits - 1U, amount));
         return;
     }
-    Emit(in, (enc_.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
+    Emit(in, (encoder.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
 }
 
 // AND / ORR / EOR / ANDS, their inverting counterparts, and TST.
@@ -164,7 +164,7 @@ void IntegerAssemblerContext::EncodeLogic(const AsmInstr &in, const LogicForms &
         if (!CheckLogicalImm(src, value, rd.Is64())) {
             return;
         }
-        Emit(in, (enc_.*forms.imm)(rd, *rn, value));
+        Emit(in, (encoder.*forms.imm)(rd, *rn, value));
         return;
     }
     const auto rm = RegOf(src);
@@ -188,7 +188,7 @@ void IntegerAssemblerContext::EncodeLogic(const AsmInstr &in, const LogicForms &
                   std::format("'{}' takes a shift of 0 to {}, found {}", in.mnemonic, rm->bits - 1U, amount));
         return;
     }
-    Emit(in, (enc_.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
+    Emit(in, (encoder.*forms.shifted)(rd, *rn, *rm, ToA64Shift(src.shift), amount));
 }
 
 // MOV, which moves a register or materializes a constant. A constant no
@@ -218,7 +218,7 @@ void IntegerAssemblerContext::EncodeMov(const AsmInstr &in) {
             }
             value &= 0xFFFFFFFFULL;
         }
-        Emit(in, enc_.LoadImm64(*rd, value));
+        Emit(in, encoder.LoadImm64(*rd, value));
         return;
     }
     const auto rm = RegOf(src);
@@ -228,7 +228,7 @@ void IntegerAssemblerContext::EncodeMov(const AsmInstr &in) {
     if (!Uniform(RegClass::General, {Ref(in.operands[0], *rd), Ref(src, *rm)})) {
         return;
     }
-    Emit(in, enc_.Mov(*rd, *rm));
+    Emit(in, encoder.Mov(*rd, *rm));
 }
 
 // MOVZ / MOVN / MOVK, whose immediate is one halfword and whose shift names
@@ -255,7 +255,7 @@ void IntegerAssemblerContext::EncodeMovw(const AsmInstr &in, const MovwFn fn) {
                                             rd->Is64() ? "0, 16, 32 or 48" : "0 or 16", shift));
         return;
     }
-    Emit(in, (enc_.*fn)(*rd, static_cast<std::uint16_t>(*imm), shift));
+    Emit(in, (encoder.*fn)(*rd, static_cast<std::uint16_t>(*imm), shift));
 }
 
 // SBFM / UBFM / BFM and the four aliases, which differ only in what their
@@ -288,7 +288,7 @@ void IntegerAssemblerContext::EncodeBitfield(const AsmInstr &in, const BitfieldF
         FormError(in.operands[3].location, std::format("'{}' moves at least one bit, found a width of 0", in.mnemonic));
         return;
     }
-    Emit(in, (enc_.*form.fn)(*rd, *rn, *first, *second));
+    Emit(in, (encoder.*form.fn)(*rd, *rn, *first, *second));
 }
 
 // LSL / LSR / ASR / ROR, which name a constant shift written with an
@@ -316,14 +316,14 @@ void IntegerAssemblerContext::EncodeShift(const AsmInstr &in, const ShiftForms &
             !NoStackPointer({Ref(in.operands[2], *rm)})) {
             return;
         }
-        Emit(in, (enc_.*forms.variable)(*rd, *rn, *rm));
+        Emit(in, (encoder.*forms.variable)(*rd, *rn, *rm));
         return;
     }
     const auto amount = BitOf(in.operands[2], *rd, "a shift");
     if (!amount) {
         return;
     }
-    Emit(in, (enc_.*forms.imm)(*rd, *rn, *amount));
+    Emit(in, (encoder.*forms.imm)(*rd, *rn, *amount));
 }
 
 void IntegerAssemblerContext::EncodeExtr(const AsmInstr &in) {
@@ -345,7 +345,7 @@ void IntegerAssemblerContext::EncodeExtr(const AsmInstr &in) {
     if (!lsb) {
         return;
     }
-    Emit(in, enc_.Extr(*rd, *rn, *rm, *lsb));
+    Emit(in, encoder.Extr(*rd, *rn, *rm, *lsb));
 }
 
 // The register-only shapes, each of which is one table away from its encoder:
@@ -365,7 +365,7 @@ void IntegerAssemblerContext::EncodeReg2(const AsmInstr &in, const Form<Reg2Fn> 
         !NoStackPointer({Ref(in.operands[0], *rd), Ref(in.operands[1], *rn)})) {
         return;
     }
-    Emit(in, (enc_.*form.fn)(*rd, *rn));
+    Emit(in, (encoder.*form.fn)(*rd, *rn));
 }
 
 void IntegerAssemblerContext::EncodeReg3(const AsmInstr &in, const Form<Reg3Fn> &form) {
@@ -383,7 +383,7 @@ void IntegerAssemblerContext::EncodeReg3(const AsmInstr &in, const Form<Reg3Fn> 
         !NoStackPointer({Ref(in.operands[0], *rd), Ref(in.operands[1], *rn), Ref(in.operands[2], *rm)})) {
         return;
     }
-    Emit(in, (enc_.*form.fn)(*rd, *rn, *rm));
+    Emit(in, (encoder.*form.fn)(*rd, *rn, *rm));
 }
 
 void IntegerAssemblerContext::EncodeReg4(const AsmInstr &in, const Form<Reg4Fn> &form) {
@@ -404,7 +404,7 @@ void IntegerAssemblerContext::EncodeReg4(const AsmInstr &in, const Form<Reg4Fn> 
             {Ref(in.operands[0], *rd), Ref(in.operands[1], *rn), Ref(in.operands[2], *rm), Ref(in.operands[3], *ra)})) {
         return;
     }
-    Emit(in, (enc_.*form.fn)(*rd, *rn, *rm, *ra));
+    Emit(in, (encoder.*form.fn)(*rd, *rn, *rm, *ra));
 }
 
 void IntegerAssemblerContext::EncodeReg2Shift(const AsmInstr &in, const Reg2ShiftFn fn) {
@@ -428,7 +428,7 @@ void IntegerAssemblerContext::EncodeReg2Shift(const AsmInstr &in, const Reg2Shif
                   std::format("'{}' takes a shift of 0 to {}, found {}", in.mnemonic, rm->bits - 1U, amount));
         return;
     }
-    Emit(in, (enc_.*fn)(*rd, *rm, ToA64Shift(src.shift), amount));
+    Emit(in, (encoder.*fn)(*rd, *rm, ToA64Shift(src.shift), amount));
 }
 
 // The conditional group: a select over two registers, the aliases that read
@@ -452,7 +452,7 @@ void IntegerAssemblerContext::EncodeCondSel(const AsmInstr &in, const Form<CondS
     if (!cond) {
         return;
     }
-    Emit(in, (enc_.*form.fn)(*rd, *rn, *rm, *cond));
+    Emit(in, (encoder.*form.fn)(*rd, *rn, *rm, *cond));
 }
 
 void IntegerAssemblerContext::EncodeCondAlias(const AsmInstr &in, const CondAliasFn fn) {
@@ -473,7 +473,7 @@ void IntegerAssemblerContext::EncodeCondAlias(const AsmInstr &in, const CondAlia
     if (!cond) {
         return;
     }
-    Emit(in, (enc_.*fn)(*rd, *rn, *cond));
+    Emit(in, (encoder.*fn)(*rd, *rn, *cond));
 }
 
 void IntegerAssemblerContext::EncodeCondSet(const AsmInstr &in, const CondSetFn fn) {
@@ -492,7 +492,7 @@ void IntegerAssemblerContext::EncodeCondSet(const AsmInstr &in, const CondSetFn 
     if (!cond) {
         return;
     }
-    Emit(in, (enc_.*fn)(*rd, *cond));
+    Emit(in, (encoder.*fn)(*rd, *cond));
 }
 
 bool IntegerAssemblerContext::DispatchInteger(const AsmInstr &in) {

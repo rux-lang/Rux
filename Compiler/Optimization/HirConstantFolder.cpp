@@ -23,12 +23,12 @@ std::string_view HirConstantFolder::Name() const noexcept {
 }
 
 PassChange HirConstantFolder::Run(HirPackage &package, const PassContext &) {
-    changed_ = false;
-    scopes_.clear();
+    changed = false;
+    scopes.clear();
     for (auto &module : package.modules) {
         OptimizeModule(module);
     }
-    return changed_ ? PassChange::Changed : PassChange::None;
+    return changed ? PassChange::Changed : PassChange::None;
 }
 
 void HirConstantFolder::OptimizeModule(HirModule &module) {
@@ -41,7 +41,7 @@ void HirConstantFolder::OptimizeModule(HirModule &module) {
         }
     }
     for (auto &constant : module.consts) {
-        scopes_.clear();
+        scopes.clear();
         PushScope();
         OptimizeExpr(constant.value);
         PopScope();
@@ -49,7 +49,7 @@ void HirConstantFolder::OptimizeModule(HirModule &module) {
 }
 
 void HirConstantFolder::OptimizeFunc(HirFunc &func) {
-    scopes_.clear();
+    scopes.clear();
     PushScope();
     for (const auto &param : func.params) {
         Declare(param.name);
@@ -61,21 +61,21 @@ void HirConstantFolder::OptimizeFunc(HirFunc &func) {
 }
 
 void HirConstantFolder::PushScope() {
-    scopes_.emplace_back();
+    scopes.emplace_back();
 }
 
 void HirConstantFolder::PopScope() {
-    scopes_.pop_back();
+    scopes.pop_back();
 }
 
 void HirConstantFolder::Declare(const std::string_view name, std::optional<TypedConstant> constant) {
     if (!name.empty()) {
-        scopes_.back().insert_or_assign(std::string{name}, BindingFact{std::move(constant)});
+        scopes.back().insert_or_assign(std::string{name}, BindingFact{std::move(constant)});
     }
 }
 
 const TypedConstant *HirConstantFolder::Lookup(const std::string_view name) const {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
         if (const auto found = scope->find(std::string{name}); found != scope->end()) {
             return found->second.constant ? &*found->second.constant : nullptr;
         }
@@ -84,7 +84,7 @@ const TypedConstant *HirConstantFolder::Lookup(const std::string_view name) cons
 }
 
 void HirConstantFolder::Invalidate(const std::string_view name) {
-    for (auto scope = scopes_.rbegin(); scope != scopes_.rend(); ++scope) {
+    for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
         if (const auto found = scope->find(std::string{name}); found != scope->end()) {
             found->second.constant.reset();
             return;
@@ -93,7 +93,7 @@ void HirConstantFolder::Invalidate(const std::string_view name) {
 }
 
 void HirConstantFolder::InvalidateAll() {
-    for (auto &scope : scopes_) {
+    for (auto &scope : scopes) {
         for (auto &[name, fact] : scope) {
             static_cast<void>(name);
             fact.constant.reset();
@@ -151,7 +151,7 @@ void HirConstantFolder::OptimizePattern(HirPattern &pattern) {
 }
 
 void HirConstantFolder::OptimizeMatchArm(HirMatchArm &arm, const std::vector<Scope> &incomingScopes) {
-    scopes_ = incomingScopes;
+    scopes = incomingScopes;
     PushScope();
     DeclarePatternBindings(*arm.pattern);
     OptimizePattern(*arm.pattern);
@@ -171,7 +171,7 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
             continue;
         }
         if (unreachable) {
-            changed_ = true;
+            changed = true;
             continue;
         }
 
@@ -212,7 +212,7 @@ void HirConstantFolder::OptimizeBlock(HirBlock &block, const bool introduceScope
                         }
                     }
                 }
-                changed_ = true;
+                changed = true;
                 continue;
             }
         }
@@ -253,18 +253,18 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
     }
     else if (auto *conditional = dynamic_cast<HirIfStmt *>(stmt.get())) {
         OptimizeExpr(conditional->condition);
-        const auto incoming = scopes_;
+        const auto incoming = scopes;
         OptimizeBlock(conditional->thenBlock);
         for (auto &elseIf : conditional->elseIfs) {
-            scopes_ = incoming;
+            scopes = incoming;
             OptimizeExpr(elseIf.condition);
             OptimizeBlock(elseIf.block);
         }
         if (conditional->elseBlock) {
-            scopes_ = incoming;
+            scopes = incoming;
             OptimizeBlock(*conditional->elseBlock);
         }
-        scopes_ = incoming;
+        scopes = incoming;
         InvalidateAll();
     }
     else if (auto *whileStmt = dynamic_cast<HirWhileStmt *>(stmt.get())) {
@@ -295,11 +295,11 @@ void HirConstantFolder::OptimizeStmt(HirStmtPtr &stmt) {
     }
     else if (auto *match = dynamic_cast<HirMatchStmt *>(stmt.get())) {
         OptimizeExpr(match->subject);
-        const auto incoming = scopes_;
+        const auto incoming = scopes;
         for (auto &arm : match->arms) {
             OptimizeMatchArm(arm, incoming);
         }
-        scopes_ = incoming;
+        scopes = incoming;
         InvalidateAll();
     }
     else if (auto *local = dynamic_cast<HirLocalDecl *>(stmt.get())) {
@@ -347,7 +347,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         if (allowSubstitution) {
             if (const TypedConstant *constant = Lookup(variable->name)) {
                 expr = MakeLiteral(*constant, variable->location);
-                changed_ = true;
+                changed = true;
             }
         }
         return;
@@ -356,14 +356,14 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         OptimizeExpr(binary->left, allowSubstitution);
         OptimizeExpr(binary->right, allowSubstitution);
         if (FoldBinary(expr) || SimplifyBinary(expr)) {
-            changed_ = true;
+            changed = true;
         }
     }
     else if (auto *unary = dynamic_cast<HirUnaryExpr *>(expr.get())) {
         const bool maySubstituteOperand = allowSubstitution && unary->op != TokenKind::At;
         OptimizeExpr(unary->operand, maySubstituteOperand);
         if (FoldUnary(expr)) {
-            changed_ = true;
+            changed = true;
         }
     }
     else if (auto *postfix = dynamic_cast<HirPostfixExpr *>(expr.get())) {
@@ -383,14 +383,14 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
             HirExprPtr selected = *condition ? std::move(ternary->thenExpr) : std::move(ternary->elseExpr);
             OptimizeExpr(selected, allowSubstitution);
             expr = std::move(selected);
-            changed_ = true;
+            changed = true;
         }
         else {
-            const auto incoming = scopes_;
+            const auto incoming = scopes;
             OptimizeExpr(ternary->thenExpr, allowSubstitution);
-            scopes_ = incoming;
+            scopes = incoming;
             OptimizeExpr(ternary->elseExpr, allowSubstitution);
-            scopes_ = incoming;
+            scopes = incoming;
             InvalidateAll();
         }
     }
@@ -443,7 +443,7 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
     else if (auto *cast = dynamic_cast<HirCastExpr *>(expr.get())) {
         OptimizeExpr(cast->operand, allowSubstitution);
         if (FoldCast(expr)) {
-            changed_ = true;
+            changed = true;
         }
     }
     else if (auto *typeTest = dynamic_cast<HirIsExpr *>(expr.get())) {
@@ -455,11 +455,11 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
     }
     else if (auto *match = dynamic_cast<HirMatchExpr *>(expr.get())) {
         OptimizeExpr(match->subject, allowSubstitution);
-        const auto incoming = scopes_;
+        const auto incoming = scopes;
         for (auto &arm : match->arms) {
             OptimizeMatchArm(arm, incoming);
         }
-        scopes_ = incoming;
+        scopes = incoming;
         InvalidateAll();
     }
     else if (auto *enumeration = dynamic_cast<HirEnumConstructExpr *>(expr.get())) {

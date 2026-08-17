@@ -71,25 +71,26 @@ std::uint64_t SignExtendedBits(const TypedConstant &value) {
 }
 } // namespace
 
-TypedConstant::TypedConstant(TypeRef type, const Kind kind, const std::uint8_t width, const std::uint64_t bits)
-    : type_(std::move(type))
-    , kind_(kind)
-    , width_(width)
-    , bits_(bits & Mask(width)) {
+TypedConstant::TypedConstant(TypeRef inputType, const Kind inputKind, const std::uint8_t inputWidth,
+                             const std::uint64_t inputBits)
+    : type(std::move(inputType))
+    , kind(inputKind)
+    , width(inputWidth)
+    , bits(inputBits & Mask(inputWidth)) {
 }
 
 std::optional<bool> TypedConstant::BooleanValue() const noexcept {
-    return kind_ == Kind::Boolean ? std::optional{bits_ != 0} : std::nullopt;
+    return kind == Kind::Boolean ? std::optional{bits != 0} : std::nullopt;
 }
 
 std::optional<std::int64_t> TypedConstant::SignedValue() const noexcept {
-    if (kind_ != Kind::SignedInteger) {
+    if (kind != Kind::SignedInteger) {
         return std::nullopt;
     }
     if (!SignBit(*this)) {
-        return static_cast<std::int64_t>(bits_);
+        return static_cast<std::int64_t>(bits);
     }
-    return -1 - static_cast<std::int64_t>((~bits_) & Mask(width_));
+    return -1 - static_cast<std::int64_t>((~bits) & Mask(width));
 }
 
 std::string TypedConstant::ToLiteral() const {
@@ -99,7 +100,7 @@ std::string TypedConstant::ToLiteral() const {
     if (const auto value = SignedValue()) {
         return std::to_string(*value);
     }
-    return std::to_string(bits_);
+    return std::to_string(bits);
 }
 
 std::optional<TypedConstant> ParseConstant(const std::string_view literal, const TypeRef &type) {

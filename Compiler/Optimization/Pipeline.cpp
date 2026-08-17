@@ -10,18 +10,18 @@
 
 namespace Rux::Optimization {
 OptimizationPipeline::OptimizationPipeline(const BuildProfile profile, const std::size_t fixedPointLimit)
-    : hir_(profile, fixedPointLimit, "HIR")
-    , lir_(profile, fixedPointLimit, "LIR") {
+    : hir(profile, fixedPointLimit, "HIR")
+    , lir(profile, fixedPointLimit, "LIR") {
 }
 
 OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile, const std::size_t fixedPointLimit) {
     OptimizationPipeline pipeline(profile, fixedPointLimit);
-    pipeline.lir_.Add(std::make_unique<LirCfgVerifier>());
+    pipeline.lir.Add(std::make_unique<LirCfgVerifier>());
     if (profile == BuildProfile::Release) {
-        pipeline.hir_.Add(std::make_unique<HirConstantFolder>());
-        pipeline.lir_.Add(std::make_unique<LirConstantPropagation>());
-        pipeline.lir_.Add(std::make_unique<LirDeadCodeElimination>());
-        pipeline.lir_.Add(std::make_unique<LirCfgCleanup>());
+        pipeline.hir.Add(std::make_unique<HirConstantFolder>());
+        pipeline.lir.Add(std::make_unique<LirConstantPropagation>());
+        pipeline.lir.Add(std::make_unique<LirDeadCodeElimination>());
+        pipeline.lir.Add(std::make_unique<LirCfgCleanup>());
     }
     return pipeline;
 }
@@ -30,24 +30,24 @@ OptimizationPipeline OptimizationPipeline::ForProfile(const BuildProfile profile
                                                       const std::size_t fixedPointLimit) {
     OptimizationPipeline pipeline = ForProfile(profile, fixedPointLimit);
     if (profile == BuildProfile::Release) {
-        pipeline.lir_.Add(std::make_unique<LirDeclarationPruner>(artifactKind));
+        pipeline.lir.Add(std::make_unique<LirDeclarationPruner>(artifactKind));
     }
     return pipeline;
 }
 
 std::vector<std::string_view> OptimizationPipeline::HirPassNames() const {
-    return hir_.PassNames();
+    return hir.PassNames();
 }
 
 std::vector<std::string_view> OptimizationPipeline::LirPassNames() const {
-    return lir_.PassNames();
+    return lir.PassNames();
 }
 
 PassRunReport OptimizationPipeline::RunHir(HirPackage &package) {
-    return hir_.Run(package);
+    return hir.Run(package);
 }
 
 PassRunReport OptimizationPipeline::RunLir(LirPackage &package) {
-    return lir_.Run(package);
+    return lir.Run(package);
 }
 } // namespace Rux::Optimization
