@@ -1,4 +1,4 @@
-name: Pull Request Policy
+name: Branch Policy
 
 on:
   pull_request:
