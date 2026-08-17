@@ -1,0 +1,17 @@
+// Why a collection operation could not be completed.
+//
+// `None` is success, so an operation that can fail for more than one reason
+// reports a single value rather than a bool the caller has to disambiguate.
+// The return type is what separates the two kinds of failure in this package:
+// an operation returning a CollectionError needed memory or capacity
+// arithmetic, while an operation returning bool never allocates and has
+// exactly one way to fail. So an exhausted allocator can never be mistaken for
+// a missing key, and a rejected index can never be mistaken for either.
+//
+// A returned error other than None always means the receiver is unchanged.
+enum CollectionError: uint8 {
+    None = 0,
+    OutOfMemory = 1,
+    CapacityOverflow = 2,
+    IndexOutOfRange = 3
+}

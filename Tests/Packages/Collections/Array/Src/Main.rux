@@ -1,4 +1,9 @@
 import Collections::Array;
+import Collections::CollectionError;
+
+// Std is deliberately absent from the dependencies, so a failed check reports
+// itself through the exit code rather than through an assertion: each one below
+// is numbered, and `rux test` prints the number of the first that fails.
 
 struct Pair {
     first: int32;
@@ -6,68 +11,104 @@ struct Pair {
 }
 
 func Main() -> int {
-    // Empty arrays allocate nothing and remain safe to release.
-    var empty = Array::New<int32>(0);
+    // New owns nothing and allocates nothing.
+    var empty = Array::New<int32>();
     if !empty.IsEmpty() { return 10; }
     if empty.Length() != 0 { return 11; }
     if empty.Data() != null { return 12; }
-    empty.Free();
 
-    // New reserves exactly the requested fixed number of typed slots.
-    var values = Array::New<int32>(3);
-    if values.IsEmpty() { return 20; }
-    if values.Length() != 3 { return 21; }
-    if values.Data() == null { return 22; }
+    // A zero length is the empty Array rather than a zero-byte allocation.
+    var blank = Array::New<int32>();
+    if !(Array::NewUninitialized<int32>(0, @blank) == CollectionError::None) { return 13; }
+    if !blank.IsEmpty() || blank.Data() != null { return 14; }
+    blank.Free();
+
+    // NewUninitialized reserves exactly the requested number of typed slots.
+    var values = Array::New<int32>();
+    if !(Array::NewUninitialized<int32>(3, @values) == CollectionError::None) { return 20; }
+    if values.IsEmpty() { return 21; }
+    if values.Length() != 3 { return 22; }
+    if values.Data() == null { return 23; }
     values.Set(0, 10);
     values.Set(1, 20);
     values.Set(2, 30);
-    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 { return 23; }
+    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 { return 24; }
 
-    // AsSlice borrows the same allocation rather than copying it.
+    // Checked access reports an out-of-range index instead of reading past the
+    // end, and leaves the out-parameter holding whatever it already held.
+    var read: int32 = -1;
+    if !values.TryGet(2, @read) || read != 30 { return 30; }
+    if values.TryGet(3, @read) { return 31; }
+    if read != 30 { return 32; }
+    if values.TryGet(0, null) { return 33; }
+    if !values.TrySet(1, 25) || values.At(1) != 25 { return 34; }
+    if values.TrySet(3, 99) { return 35; }
+    if values.At(0) != 10 || values.At(2) != 30 { return 36; }
+
+    // An empty Array rejects every index rather than trusting Length.
+    if empty.TryGet(0, @read) { return 37; }
+    if empty.TrySet(0, 1) { return 38; }
+
+    // A view borrows the same allocation rather than copying it.
     let borrowed = values.AsSlice();
-    if borrowed.data != values.Data() || borrowed.length != values.Length() { return 30; }
+    if borrowed.data != values.Data() || borrowed.length != values.Length() { return 40; }
+    values.Set(1, 26);
+    if borrowed[1] != 26 { return 41; }
     values.Set(1, 25);
-    if borrowed[1] != 25 { return 31; }
 
-    // A mutable view borrows the same allocation, and writes through it are
+    // A writable view borrows the same allocation, and writes through it are
     // visible to the Array that lent it out.
     let writable = values.AsMutableSlice();
-    if writable.data != values.Data() || writable.Length() != values.Length() { return 32; }
+    if writable.data != values.MutableData() || writable.Length() != values.Length() { return 42; }
     writable.Set(2, 35);
-    if values.At(2) != 35 { return 33; }
+    if values.At(2) != 35 { return 43; }
     writable.Set(2, 30);
+    if !empty.AsMutableSlice().IsEmpty() { return 44; }
 
-    // Clone owns an independent allocation with the same element values.
-    var copy = values.Clone();
-    if copy.Data() == values.Data() { return 40; }
-    if copy.At(0) != 10 || copy.At(1) != 25 || copy.At(2) != 30 { return 41; }
+    // Clone owns an independent allocation holding the same element values.
+    var copy = Array::New<int32>();
+    if !(values.Clone(@copy) == CollectionError::None) { return 50; }
+    if copy.Data() == values.Data() { return 51; }
+    if copy.At(0) != 10 || copy.At(1) != 25 || copy.At(2) != 30 { return 52; }
     copy.Set(0, 99);
-    if values.At(0) != 10 { return 42; }
+    if values.At(0) != 10 { return 53; }
     copy.Free();
 
-    // From copies a slice and leaves its source untouched.
+    // Cloning the empty Array allocates nothing.
+    var emptyCopy = Array::New<int32>();
+    if !(empty.Clone(@emptyCopy) == CollectionError::None) { return 54; }
+    if !emptyCopy.IsEmpty() || emptyCopy.Data() != null { return 55; }
+
+    // FromSlice copies and leaves its source untouched.
     let source: Slice<int32> = [4, 5, 6, 7];
-    var from = Array::From<int32>(source);
-    if from.Length() != 4 || from.Data() == source.data { return 50; }
+    var from = Array::New<int32>();
+    if !(Array::FromSlice<int32>(source, @from) == CollectionError::None) { return 60; }
+    if from.Length() != 4 || from.Data() == source.data { return 61; }
     from.Set(0, 8);
-    if source[0] != 4 || from.At(0) != 8 { return 51; }
+    if source[0] != 4 || from.At(0) != 8 { return 62; }
     from.Free();
 
     // Element size participates in allocation and pointer indexing.
-    var pairs = Array::New<Pair>(2);
+    var pairs = Array::New<Pair>();
+    if !(Array::NewUninitialized<Pair>(2, @pairs) == CollectionError::None) { return 70; }
     pairs.Set(0, Pair { first: 1, second: 2 });
     pairs.Set(1, Pair { first: 3, second: 4 });
-    if pairs.At(0).second != 2 || pairs.At(1).first != 3 { return 60; }
+    if pairs.At(0).second != 2 || pairs.At(1).first != 3 { return 71; }
+    var readPair = Pair { first: 0, second: 0 };
+    if !pairs.TryGet(1, @readPair) || readPair.first != 3 { return 72; }
     pairs.Free();
 
-    // An empty Array lends an empty view.
-    var blank = Array::New<int32>(0);
-    if !blank.AsMutableSlice().IsEmpty() { return 65; }
-    blank.Free();
+    // A length whose byte size cannot be addressed is rejected before any
+    // allocation is attempted, and the target is left as it was.
+    var huge = Array::New<int64>();
+    if !(Array::NewUninitialized<int64>(uint::Max, @huge) == CollectionError::CapacityOverflow) { return 80; }
+    if !huge.IsEmpty() || huge.Data() != null { return 81; }
 
     // Free resets ownership, making repeated release a no-op.
     values.Free();
-    if !values.IsEmpty() || values.Data() != null { return 70; }
+    if !values.IsEmpty() || values.Data() != null { return 90; }
     values.Free();
+    if !values.IsEmpty() { return 91; }
+    empty.Free();
     return 0;
 }

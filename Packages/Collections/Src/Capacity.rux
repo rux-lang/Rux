@@ -1,0 +1,112 @@
+// Overflow-checked sizing arithmetic, shared by every container in this
+// package so the checks exist once rather than once per type.
+//
+// Rux has no checked-arithmetic intrinsics and integer overflow wraps
+// silently, so `count * sizeof(T)` is the single most dangerous expression a
+// container writes: a product that wraps asks the allocator for a small block
+// and then writes far past it. Every allocation in this package sizes itself
+// through ByteSize rather than multiplying inline.
+//
+// These report through CollectionError like the public operations that call
+// them, and none of them writes its out-parameter unless it returns None.
+//
+// Internal helpers; not part of the package API.
+
+// `count * elementSize`, rejecting a product that does not fit in uint. A zero
+// count or element size is a zero-byte request rather than an error, so a
+// caller may pass a length it has not yet tested.
+func ByteSize(count: uint, elementSize: uint, bytes: *var uint) -> CollectionError {
+    if count == 0 || elementSize == 0 {
+        *bytes = 0;
+        return CollectionError::None;
+    }
+
+    // Division rather than multiply-then-test: the product that would prove the
+    // overflow is the one that must never be evaluated.
+    if count > uint::Max / elementSize {
+        return CollectionError::CapacityOverflow;
+    }
+
+    *bytes = count * elementSize;
+    return CollectionError::None;
+}
+
+// `current + additional`, rejecting a sum that wraps. This is what turns a
+// `Reserve(uint::Max)` on a non-empty container into a reported error instead
+// of a silently tiny capacity.
+func AddLength(current: uint, additional: uint, total: *var uint) -> CollectionError {
+    let sum = current + additional;
+    if sum < current {
+        return CollectionError::CapacityOverflow;
+    }
+
+    *total = sum;
+    return CollectionError::None;
+}
+
+// A capacity holding at least `required` elements, reached by doubling from
+// `minimum`. Doubling is what makes a run of appends cost an amortized
+// constant rather than a reallocation each time.
+//
+// A doubling that would wrap falls back to `required` itself, and so does a
+// doubled capacity too large to size in bytes: a request that fits must never
+// be rejected merely because the next power of two does not.
+func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uint,
+                  capacity: *var uint) -> CollectionError {
+    var bytes: uint = 0;
+    let sizing = ByteSize(required, elementSize, @bytes);
+    if !(sizing == CollectionError::None) {
+        return sizing;
+    }
+
+    var grown = current;
+    if grown < minimum {
+        grown = minimum;
+    }
+
+    while grown < required {
+        let doubled = grown * 2;
+        if doubled < grown {
+            grown = required;
+            break;
+        }
+        grown = doubled;
+    }
+
+    let grownSizing = ByteSize(grown, elementSize, @bytes);
+    if !(grownSizing == CollectionError::None) {
+        grown = required;
+    }
+
+    *capacity = grown;
+    return CollectionError::None;
+}
+
+// The smallest power of two at least `required`, never below `minimum`.
+// `minimum` must itself be a power of two, which every caller in this package
+// spells as a literal.
+//
+// Deque and the hash tables need this rather than GrowCapacity because they
+// index with a mask: `& (capacity - 1)` is only the same as `% capacity` when
+// the capacity is a power of two, and that is what keeps wraparound and bucket
+// selection free of division.
+func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint,
+                        capacity: *var uint) -> CollectionError {
+    var grown = minimum;
+    while grown < required {
+        let doubled = grown * 2;
+        if doubled < grown {
+            return CollectionError::CapacityOverflow;
+        }
+        grown = doubled;
+    }
+
+    var bytes: uint = 0;
+    let sizing = ByteSize(grown, elementSize, @bytes);
+    if !(sizing == CollectionError::None) {
+        return sizing;
+    }
+
+    *capacity = grown;
+    return CollectionError::None;
+}
