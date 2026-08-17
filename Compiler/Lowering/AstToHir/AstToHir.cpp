@@ -278,18 +278,7 @@ HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expressi
     const FuncDecl *method = &resolved;
 
     const std::string receiverBase = NamedBaseTypeName(left->type);
-    HirExprPtr selfArg;
-    if (left->type.kind == TypeRef::Kind::Pointer) {
-        selfArg = std::move(left);
-    }
-    else {
-        auto address = std::make_unique<HirUnaryExpr>();
-        address->location = left->location;
-        address->op = TokenKind::At;
-        address->type = TypeRef::MakePointer(left->type);
-        address->operand = std::move(left);
-        selfArg = std::move(address);
-    }
+    HirExprPtr selfArg = LowerReceiverFor(*method, std::move(left));
 
     auto callee = std::make_unique<HirVarExpr>();
     callee->location = expression.location;

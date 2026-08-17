@@ -1525,19 +1525,6 @@ private:
         return ret;
     }
 
-    std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method) override {
-        const Param *receiver = method.Receiver();
-        if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
-            return std::nullopt;
-        }
-        TypeRef savedSelfType = currentSelfType;
-        currentSelfType =
-            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-        TypeRef declared = ResolveTypeWithSubstitution(*receiver->type, MethodTypeSubstitutions(receiverType));
-        currentSelfType = savedSelfType;
-        return declared;
-    }
-
     std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
@@ -1601,7 +1588,8 @@ private:
     std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method) override {
         std::vector<TypeRef> params;
         for (const auto &param : method.params) {
-            if (param.isVariadic) {
+            // The receiver arrives as the data half of the interface value, so it is not one of the written arguments.
+            if (param.isVariadic || param.IsReceiver()) {
                 continue;
             }
             params.push_back(ResolveType(*param.type));
@@ -2210,31 +2198,7 @@ private:
             Define(sym);
         }
 
-        // What `self` means in a body is what the receiver declares: `self: Vector` is a copy the method owns,
-        // `self: *Vector` reaches a receiver it may read but not write, and `self: *var Vector` writes it in place. A
-        // bare `self` carries no type of its own and falls back to the pointer the enclosing extend block implies.
-        const Param *receiver = d.Receiver();
-        const TypeRef savedSelfType = currentSelfType;
-        if (receiver) {
-            // Resolving the receiver is what records its type for lowering, so it happens either way; only a receiver
-            // that declares a type of its own displaces the one the extend block implies.
-            const TypeRef declared = ResolveType(*receiver->type);
-            if (!dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
-                currentSelfType = declared;
-                CheckReceiverType(d, *receiver, declared);
-            }
-        }
-        CheckReceiverPlacement(d, isMethod);
-
-        if (isMethod) {
-            Symbol self;
-            self.kind = Symbol::Kind::Var;
-            self.name = "self";
-            self.location = receiver ? receiver->location : d.location;
-            self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
-            self.isMut = receiver && receiver->isMut;
-            Define(self);
-        }
+        const TypeRef savedSelfType = DeclareReceiver(d, isMethod);
 
         bool seenDefault = false;
         for (const auto &param : d.params) {
@@ -2298,55 +2262,6 @@ private:
         currentFunctionNoReturn = savedNoReturn;
         currentTypeParams = savedTypeParams;
         currentFunctionDecl = savedFunctionDecl;
-    }
-
-    /// A receiver in `extend T` is written `T`, `*T` or `*var T` and nothing else: it names the type being extended, so
-    /// anything else is a typo rather than a conversion to work out. An extend block that names an interface is
-    /// narrower still — dispatch reaches the method through a vtable slot that is handed an address, so the receiver
-    /// has to be one. A slice already is: it is a fat pointer, and the ABI passes it by address.
-    void CheckReceiverType(const FuncDecl &d, const Param &receiver, const TypeRef &declared) {
-        if (!currentImpl || declared.IsUnknown() || currentExtendedType.IsUnknown()) {
-            return;
-        }
-        const bool isPointer = declared.kind == TypeRef::Kind::Pointer && !declared.inner.empty();
-        const bool isReference = isPointer || IsSliceTypeRef(declared);
-        if (const TypeRef &base = isPointer ? declared.inner.front() : declared;
-            !base.IsUnknown() && base != currentExtendedType) {
-            EmitError(receiver.location,
-                      std::format("receiver type '{}' does not name the extended type '{}'", declared.ToString(),
-                                  currentExtendedType.ToString()),
-                      {}, std::format("write the receiver as 'self: *var {}'", currentExtendedType.ToString()));
-            return;
-        }
-        if (currentImpl->interfaceName && !isReference) {
-            EmitError(receiver.location,
-                      std::format("method '{}' cannot take its receiver by value because this block implements "
-                                  "interface '{}'",
-                                  d.name, *currentImpl->interfaceName),
-                      {"a method reached through an interface receives its receiver by reference"},
-                      std::format("write the receiver as 'self: *{}'", currentExtendedType.ToString()));
-        }
-    }
-
-    /// `self` names the receiver, so it is a parameter of a method and only of a method, and it is the one the call
-    /// site writes to the left of the dot. Both mistakes are reported against the parameter rather than the
-    /// declaration, because that is what has to move.
-    void CheckReceiverPlacement(const FuncDecl &d, const bool isMethod) {
-        for (std::size_t index = 0; index < d.params.size(); ++index) {
-            const Param &param = d.params[index];
-            if (!param.IsReceiver()) {
-                continue;
-            }
-            if (!isMethod) {
-                EmitError(param.location,
-                          std::format("function '{}' cannot take a receiver because it is not a method", d.name), {},
-                          "declare it inside an 'extend' block, or rename the parameter");
-            }
-            else if (index != 0) {
-                EmitError(param.location,
-                          std::format("receiver 'self' must be the first parameter of method '{}'", d.name));
-            }
-        }
     }
 
     // An `asm func` body is written for one architecture, and nothing in the
@@ -2558,8 +2473,8 @@ private:
         inImpl = true;
         currentImpl = &d;
         currentExtendedType = extendedType.IsUnknown() ? TypeRef::MakeNamed(d.typeName) : extendedType;
-        // The receiver a method declares for itself decides what `self` means; this is only the fallback a bare `self`
-        // still resolves through, and goes away with it.
+        // Each method replaces this with what its own receiver declares. It stands for the block as a whole: what
+        // `self` written as a type resolves to, and what a method that declares no receiver at all would see.
         if (isSliceReceiver) {
             // A slice is a fat pointer already; `self` is the slice value, so
             // `for x in self` and `self[i]` work directly.

@@ -55,8 +55,8 @@ TEST_CASE("linter warns on bad function name") {
 TEST_CASE("linter accepts symbolic operator function names") {
     auto result = Rux::Linting::Lint(R"(
         extend Number {
-            func +(self, other: Number) -> Number;
-            func ==(self, other: Number) -> bool;
+            func +(self: *self, other: Number) -> Number;
+            func ==(self: *self, other: Number) -> bool;
         }
     )",
                                      "operators.rux");

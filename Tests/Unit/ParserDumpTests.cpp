@@ -34,11 +34,11 @@ pub union Bits {
 }
 
 pub interface Reader {
-    func Read(self) -> int;
+    func Read(self: *self) -> int;
 }
 
 extend Box : Reader {
-    func Read(self) -> int { return 1; }
+    func Read(self: *Box) -> int { return 1; }
 }
 
 pub module Nested {
@@ -96,9 +96,9 @@ asm func Raw() {
     Field 'signed' : int32
     Field 'unsigned' : uint32
   pub InterfaceDecl 'Reader'
-    FuncDecl 'Read' (self: self) -> int [signature]
+    FuncDecl 'Read' (self: *self) -> int [signature]
   ImplDecl Reader for Box
-    FuncDecl 'Read' (self: self) -> int
+    FuncDecl 'Read' (self: *Box) -> int
       Block [1 stmt]
         ReturnStmt
           LiteralExpr (int) '1'

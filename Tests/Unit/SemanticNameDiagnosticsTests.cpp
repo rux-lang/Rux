@@ -149,7 +149,7 @@ TEST_CASE("interface implementations distinguish missing interfaces, wrong kinds
         struct Widget {}
         const Contract = 1;
         interface Drawable {
-            func Draw(self);
+            func Draw(self: *self);
         }
 
         extend Widget : Missing {}

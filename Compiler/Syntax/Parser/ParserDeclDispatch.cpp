@@ -160,11 +160,14 @@ Param Parser::ParseParam(const bool allowVariadic) {
     parameter.isMut = Match(TokenKind::VarKeyword);
 
     // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
-    // receiver by value, by read-only reference or by writable reference. A bare `self` leaves the type to the
-    // enclosing extend block, and is only still accepted so the tree can be migrated one package at a time.
+    // receiver by value, by read-only reference or by writable reference. It is written out like any other parameter's,
+    // because it is the one thing about a method a reader cannot otherwise tell.
     if (Match(TokenKind::SelfKeyword)) {
         parameter.name = "self";
         if (!Match(TokenKind::Colon)) {
+            EmitExpected(CurrentLocation(), "':' and the receiver type after 'self'",
+                         "write '*var Vector' to write through the receiver, '*Vector' to read it, or 'Vector' to take "
+                         "a copy");
             parameter.type = std::make_unique<SelfTypeExpr>();
             return parameter;
         }

@@ -47,6 +47,24 @@ extend Wide {
     }
 }
 
+// An operator reaches its method by a different route than a written call does,
+// and a receiver taken by value has to survive that one too. Both sides of a
+// comparison are values, so writing them alike is what the relation looks like.
+struct Key {
+    id: int32;
+    origin: int32;
+}
+
+extend Key {
+    func ==(self: Key, other: Key) -> bool {
+        return self.id == other.id && self.origin == other.origin;
+    }
+
+    func !=(self: Key, other: Key) -> bool {
+        return !(self == other);
+    }
+}
+
 struct Pair<T> {
     first: T;
     second: T;
@@ -96,6 +114,21 @@ func Main() -> int {
     }
     if wide.Bumped(10.0).Total() != 25.0 || wide.Total() != 15.0 {
         return 6;
+    }
+
+    // A struct literal cannot open an `if` condition, since its brace is the
+    // block's, so the operands are named first.
+    let key = Key { id: 1, origin: 2 };
+    let same = Key { id: 1, origin: 2 };
+    let other = Key { id: 3, origin: 2 };
+    if !(key == same) {
+        return 9;
+    }
+    if key != same {
+        return 10;
+    }
+    if key == other {
+        return 11;
     }
 
     var pair = Pair<int> { first: 7, second: 11 };

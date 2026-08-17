@@ -159,6 +159,7 @@ private:
     [[nodiscard]] std::string BaseTypeName(const std::string &name) const;
     [[nodiscard]] std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const;
     [[nodiscard]] bool ReceiverIsByValue(const FuncDecl &method) const;
+    [[nodiscard]] HirExprPtr LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver);
     [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method);
     [[nodiscard]] TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method);
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
@@ -244,6 +245,6 @@ private:
                                                         std::uint32_t &codePoint);
     [[nodiscard]] static std::string DecodeCharLiteral(const std::string &text);
     [[nodiscard]] static std::string DecodeStringLiteral(const std::string &text);
-    [[nodiscard]] std::vector<HirParam> LowerParams(const std::vector<Param> &params);
+    [[nodiscard]] std::vector<HirParam> LowerParams(const std::vector<Param> &params, bool skipReceiver = false);
 };
 } // namespace Rux::AstToHirDetail

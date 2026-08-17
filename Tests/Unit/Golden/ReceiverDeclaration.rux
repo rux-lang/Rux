@@ -1,0 +1,41 @@
+// A receiver is an ordinary parameter named `self`, so the ways of getting it
+// wrong are the ways of getting a parameter wrong: naming something other than
+// the type being extended, putting it anywhere but first, and writing it on a
+// function that is not a method at all. An extend block implementing an
+// interface adds one more, because a vtable slot is handed an address.
+
+struct Vector {
+    x: float64;
+}
+
+struct Other {
+    x: float64;
+}
+
+interface Shape {
+    func Area(self: *self) -> float64;
+}
+
+extend Vector {
+    func Foreign(self: *var Other) -> float64 {
+        return 0.0;
+    }
+
+    func Late(factor: float64, self: *Vector) -> float64 {
+        return factor;
+    }
+}
+
+extend Vector : Shape {
+    func Area(self: Vector) -> float64 {
+        return self.x;
+    }
+}
+
+func Free(self: *Vector) -> float64 {
+    return 0.0;
+}
+
+func Main() -> int {
+    return 0;
+}

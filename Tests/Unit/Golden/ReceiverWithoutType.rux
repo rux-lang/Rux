@@ -1,0 +1,21 @@
+// A receiver has to be written out like any other parameter. This is the shape
+// every source written before receivers carried a type will hit, so it reports
+// once per method and names the three forms rather than the missing ':'.
+
+struct Vector {
+    x: float64;
+}
+
+extend Vector {
+    func Sum(self) -> float64 {
+        return self.x;
+    }
+
+    func Scale(self, factor: float64) {
+        self.x *= factor;
+    }
+}
+
+func Main() -> int {
+    return 0;
+}

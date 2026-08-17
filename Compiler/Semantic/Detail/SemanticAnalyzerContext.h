@@ -59,6 +59,9 @@ protected:
     void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,
                                                const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool PlaceIsImmutable(const Expr &place);
+    [[nodiscard]] TypeRef DeclareReceiver(const FuncDecl &declaration, bool isMethod);
+    void CheckReceiverType(const FuncDecl &declaration, const Param &receiver, const TypeRef &declared);
+    void CheckReceiverPlacement(const FuncDecl &declaration, bool isMethod);
     [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
                                                              const std::string &variantName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
@@ -165,10 +168,6 @@ private:
     [[nodiscard]] virtual TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType,
                                                                        const FuncDecl &method) = 0;
-    /// The receiver the method declares, resolved for this call's receiver type. Empty for an associated function and
-    /// for a receiver still written as a bare `self`, neither of which constrains the call site.
-    [[nodiscard]] virtual std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType,
-                                                                           const FuncDecl &method) = 0;
     [[nodiscard]] virtual const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                                 const std::string &methodName) const = 0;
     [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) = 0;
@@ -229,5 +228,8 @@ private:
     void CheckMutability(const Expr &target);
     void CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                  const FuncDecl &method);
+    /// The receiver the method declares, resolved for this call's receiver type. Empty for an associated function,
+    /// which takes none.
+    [[nodiscard]] std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method);
 };
 } // namespace Rux::SemanticDetail
