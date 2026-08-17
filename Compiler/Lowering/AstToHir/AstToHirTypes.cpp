@@ -31,7 +31,9 @@ template <typename Fact>
 } // namespace
 
 [[nodiscard]] const TypeRef &AstToHirContext::ResolvedType(const TypeExpr &type) const {
-    return RequireSemanticFact(model.TryGetType(type));
+    const TypeRef &resolved = RequireSemanticFact(model.TryGetType(type));
+    NoteStructInstantiation(resolved);
+    return resolved;
 }
 
 [[nodiscard]] const ResolvedTypeLayout &AstToHirContext::ResolvedLayout(const TypeRef &type) const {
@@ -807,6 +809,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
         }
         named.name += ">";
+        NoteStructInstantiation(named);
         return named;
     }
     if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {

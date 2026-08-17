@@ -148,7 +148,13 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
         int al = AlignOf(f.type);
         if (f.type.kind == TypeRef::Kind::Named) {
             const auto baseName = BaseTypeName(f.type.name);
-            if (auto it = known.find(baseName); it != known.end()) {
+            // A generic struct is declared once but laid out once per instantiation, so the instantiation's own entry
+            // answers ahead of the declaration's: `Box<int64>` is not the size of `Box<T>`.
+            auto it = known.find(f.type.name);
+            if (it == known.end()) {
+                it = known.find(baseName);
+            }
+            if (it != known.end()) {
                 sz = it->second.totalSize;
                 al = it->second.alignment;
             }
@@ -220,6 +226,11 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         if (base == "StringBuilder") {
             return 24;
         }
+        // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain
+        // struct, whose name is its base name.
+        if (const auto it = layouts.find(t.name); it != layouts.end()) {
+            return it->second.totalSize;
+        }
         if (const auto it = layouts.find(base); it != layouts.end()) {
             return it->second.totalSize;
         }
@@ -266,7 +277,10 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
     if (base == "Slice") {
         return fieldName == "length" ? 8 : 0;
     }
-    const auto layout = layouts.find(base);
+    auto layout = layouts.find(pointee.name);
+    if (layout == layouts.end()) {
+        layout = layouts.find(base);
+    }
     if (layout == layouts.end()) {
         return 0;
     }
