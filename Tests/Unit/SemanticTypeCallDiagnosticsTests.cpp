@@ -168,6 +168,59 @@ TEST_CASE("union initializers select one known field with its declared type") {
              "field 'integer' in initializer for union 'Bits' has type 'bool8', but its declaration requires 'int32'");
 }
 
+TEST_CASE("a generic struct's field keeps the type parameter it was declared with") {
+    // A generic struct's arguments are recovered from the receiver's printed name, where a parameter and a type called
+    // the same thing are one spelling. Reading it as a type made a field declared `T` a different type from the
+    // enclosing function's `T`, reported against itself as `cannot assign 'T' to 'T'`. The parameter names deliberately
+    // differ between the struct and each function, so matching them by spelling would not answer.
+    CHECK(AnalyzeSource(R"(
+        struct Box<E> {
+            value: E;
+        }
+
+        struct View<E> {
+            data: *var E;
+        }
+
+        func Unwrap<T>(box: Box<T>) -> T {
+            return box.value;
+        }
+
+        func Store<T>(view: View<T>, value: T) {
+            view.data[0] = value;
+        }
+
+        func Rebox<T>(box: Box<T>) -> Box<T> {
+            return Box<T> { value: box.value };
+        }
+    )")
+              .empty());
+
+    // A type parameter shadows a type of the same name inside the generic, and only inside it.
+    CHECK(AnalyzeSource(R"(
+        struct T {
+            tag: int32;
+        }
+
+        struct Box<E> {
+            value: E;
+        }
+
+        func Unwrap<T>(box: Box<T>) -> T {
+            return box.value;
+        }
+
+        func TagOf(value: T) -> int32 {
+            return value.tag;
+        }
+
+        func Main() {
+            let tag = TagOf(T { tag: 1 });
+        }
+    )")
+              .empty());
+}
+
 TEST_CASE("array tuple slice and index diagnostics state the aggregate requirement") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {

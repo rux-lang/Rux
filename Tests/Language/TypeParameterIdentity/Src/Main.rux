@@ -1,0 +1,110 @@
+import Core::Assert;
+import Core::Slice;
+
+// Reaching a generic struct's field recovers the struct's type arguments by
+// reading them back out of the receiver's printed name, where `T` the parameter
+// and `T` a type that happens to be called that look exactly alike. The parse
+// answered "a type called T" every time, so a field declared `T` came out a
+// different type from the `T` the enclosing function declared -- and the two
+// were reported against each other as `cannot assign 'T' to 'T'`.
+
+struct Box<T> {
+    value: T;
+}
+
+// The struct's parameter is deliberately spelled differently from the calling
+// function's, so a fix that merely matched the two names would not pass.
+struct Cell<E> {
+    value: E;
+}
+
+struct View<T> {
+    data: *var T;
+    length: uint;
+}
+
+struct Holder<T> {
+    items: Slice<T>;
+}
+
+// A type genuinely called `T`. Outside a generic it is that type; inside one it
+// is shadowed by the parameter, which is how a written `T` already resolved.
+struct T {
+    tag: int32;
+}
+
+extend Box<T> {
+    func Get(self) -> T {
+        return self.value;
+    }
+}
+
+func Unwrap<T>(box: Box<T>) -> T {
+    return box.value;
+}
+
+func UnwrapCell<T>(cell: Cell<T>) -> T {
+    return cell.value;
+}
+
+func Store<T>(values: View<T>, index: uint, value: T) {
+    values.data[index] = value;
+}
+
+func Reload<T>(values: View<T>, index: uint) -> T {
+    let current = values.data[index];
+    return current;
+}
+
+func First<T>(holder: Holder<T>) -> T {
+    return holder.items[0];
+}
+
+// A `T` read out of one generic struct and handed to another.
+func Rebox<T>(cell: Cell<T>) -> Box<T> {
+    return Box<T> { value: cell.value };
+}
+
+func TagOf(value: T) -> int32 {
+    return value.tag;
+}
+
+func Main() -> int {
+    // Returning a field whose type is the parameter.
+    let box = Box<int32> { value: 7 };
+    Assert(Unwrap<int32>(box) == 7, "a field typed by the parameter is returned as it");
+
+    // The struct's parameter spelled differently from the function's.
+    let cell = Cell<int32> { value: 9 };
+    Assert(UnwrapCell<int32>(cell) == 9, "the parameter names need not agree");
+
+    // Writing a parameter-typed value through a pointer field, and reading it
+    // back into a local.
+    var storage: int32[2] = [0, 0];
+    let view = View<int32> { data: @storage[0], length: 2 };
+    Store<int32>(view, 1, 5);
+    Assert(storage[1] == 5, "a parameter-typed value is written through a pointer field");
+    Assert(Reload<int32>(view, 1) == 5, "and read back into a local of the same type");
+
+    // A field whose type nests the parameter rather than being it.
+    var values: int32[3] = [10, 20, 30];
+    let holder = Holder<int32> { items: values[..] };
+    Assert(First<int32>(holder) == 10, "a parameter nested inside a field's type");
+
+    // One generic struct's field feeding another's initializer.
+    Assert(Unwrap<int32>(Rebox<int32>(cell)) == 9, "a field crosses from one generic struct to another");
+
+    // The same generics at a wider argument, where the field is not a single
+    // machine word.
+    let wide = Box<int64> { value: 4000000000i64 };
+    Assert(Unwrap<int64>(wide) == 4000000000i64, "a wide parameter-typed field");
+
+    // A type actually named `T` is still that type where no parameter shadows
+    // it, through a plain function and through a method on `Box<T>`.
+    let named = T { tag: 3 };
+    Assert(TagOf(named) == 3, "a type named T is a type outside a generic");
+    let boxedNamed = Box<T> { value: named };
+    Assert(boxedNamed.Get().tag == 3, "and reaches a method on the instantiation holding it");
+
+    return 0;
+}
