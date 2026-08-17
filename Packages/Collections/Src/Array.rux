@@ -1,3 +1,4 @@
+import Core::MutableSlice;
 import Memory::{ Alloc, Copy, Free };
 
 // A fixed-length collection which owns one contiguous heap allocation. The
@@ -82,5 +83,11 @@ extend Array<T> {
     // outlive this Array's allocation.
     func AsSlice(self) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
+    }
+
+    // Borrows all elements as a writable view without copying them. Like
+    // AsSlice, the view must not outlive this Array's allocation.
+    func AsMutableSlice(self) -> MutableSlice<T> {
+        return MutableSlice<T> { data: self.data, length: self.length };
     }
 }

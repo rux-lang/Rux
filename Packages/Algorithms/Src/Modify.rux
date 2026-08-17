@@ -1,0 +1,156 @@
+// In-place rearrangement and bulk element movement.
+//
+// Every entry point takes a pointer and a length rather than a view struct.
+// That shape is deliberate: inside a generic function the compiler only
+// resolves an element to its type parameter when it is reached through a
+// pointer parameter, so `data[i]` works where `view.data[i]` does not once a
+// bare `T` value is also involved. Callers holding a Core MutableSlice or a
+// Collections container pass its `data` and `length` fields directly.
+//
+// Indexing is unchecked throughout, matching Slice, Array and List: a length
+// larger than the storage is undefined behavior, not a reported error.
+
+// Exchanges the values behind two pointers. A null pointer on either side is
+// a no-op, so callers may pass an optional endpoint without guarding it.
+func Swap<T>(first: *var T, second: *var T) {
+    if first == null || second == null {
+        return;
+    }
+
+    let temp = *first;
+    *first = *second;
+    *second = temp;
+}
+
+// Reverses the order of length elements. A length below two is a no-op.
+func Reverse<T>(data: *var T, length: uint) {
+    if length < 2 {
+        return;
+    }
+
+    var low: uint = 0;
+    var high = length - 1;
+    while low < high {
+        let temp = data[low];
+        data[low] = data[high];
+        data[high] = temp;
+        low++;
+        high--;
+    }
+}
+
+// Rotates left so the element at middle becomes the first one, and returns
+// false without touching anything when middle is past the end. A middle of 0
+// or of length is an accepted no-op.
+//
+// Three reversals rather than the juggling algorithm: it needs no greatest
+// common divisor and no nested loop, at the cost of 3n/2 swaps instead of n/2.
+func Rotate<T>(data: *var T, length: uint, middle: uint) -> bool {
+    if middle > length {
+        return false;
+    }
+    if middle == 0 || middle == length {
+        return true;
+    }
+
+    // `@data[middle]` rather than `data + middle`: pointer arithmetic does not
+    // scale by the pointee size for struct element types, while indexing does.
+    // See BACKLOG.md.
+    Reverse<T>(data, middle);
+    Reverse<T>(@data[middle], length - middle);
+    Reverse<T>(data, length);
+    return true;
+}
+
+// Assigns value to every element. A length of zero is a no-op, so a null data
+// pointer is only read when there is something to write.
+func Fill<T>(data: *var T, length: uint, value: T) {
+    var i: uint = 0;
+    while i < length {
+        data[i] = value;
+        i++;
+    }
+}
+
+// Copies length elements front to back and reports whether it ran. Copying
+// zero elements always succeeds; a null pointer with a non-zero length fails.
+//
+// Front-to-back order makes this the correct choice for overlapping ranges
+// when destination is at or below source. Use CopyBackward for the other
+// direction; neither detects overlap on the caller's behalf.
+func Copy<T>(destination: *var T, source: *T, length: uint) -> bool {
+    if length == 0 {
+        return true;
+    }
+    if destination == null || source == null {
+        return false;
+    }
+
+    var i: uint = 0;
+    while i < length {
+        destination[i] = source[i];
+        i++;
+    }
+    return true;
+}
+
+// Copies length elements back to front, which is the correct direction for
+// overlapping ranges when destination is at or above source. The resulting
+// contents are identical to Copy for non-overlapping ranges.
+func CopyBackward<T>(destination: *var T, source: *T, length: uint) -> bool {
+    if length == 0 {
+        return true;
+    }
+    if destination == null || source == null {
+        return false;
+    }
+
+    var i = length;
+    while i > 0 {
+        i--;
+        destination[i] = source[i];
+    }
+    return true;
+}
+
+// Collapses each run of adjacent equal elements to its first element and
+// returns the new length. Elements from the returned length onward are left
+// in an unspecified state rather than cleared, and the storage is not resized.
+//
+// Only adjacent duplicates are removed, so sorting first turns this into
+// whole-sequence deduplication. Requires `==` on T.
+func Unique<T>(data: *var T, length: uint) -> uint {
+    if length < 2 {
+        return length;
+    }
+
+    var kept: uint = 1;
+    var i: uint = 1;
+    while i < length {
+        if !(data[i] == data[kept - 1]) {
+            data[kept] = data[i];
+            kept++;
+        }
+        i++;
+    }
+    return kept;
+}
+
+// Removes every element equal to value by compacting the survivors toward the
+// front, and returns the new length. Relative order is preserved. As in
+// Unique, the tail is left unspecified and the storage is not resized.
+// Requires `==` on T.
+func RemoveValue<T>(data: *var T, length: uint, value: T) -> uint {
+    var kept: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if !(data[i] == value) {
+            if kept != i {
+                data[kept] = data[i];
+            }
+            kept++;
+        }
+        i++;
+    }
+    return kept;
+}

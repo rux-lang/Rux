@@ -29,6 +29,14 @@ func Main() -> int {
     values.Set(1, 25);
     if borrowed[1] != 25 { return 31; }
 
+    // A mutable view borrows the same allocation, and writes through it are
+    // visible to the Array that lent it out.
+    let writable = values.AsMutableSlice();
+    if writable.data != values.Data() || writable.Length() != values.Length() { return 32; }
+    writable.Set(2, 35);
+    if values.At(2) != 35 { return 33; }
+    writable.Set(2, 30);
+
     // Clone owns an independent allocation with the same element values.
     var copy = values.Clone();
     if copy.Data() == values.Data() { return 40; }
@@ -51,6 +59,11 @@ func Main() -> int {
     pairs.Set(1, Pair { first: 3, second: 4 });
     if pairs.At(0).second != 2 || pairs.At(1).first != 3 { return 60; }
     pairs.Free();
+
+    // An empty Array lends an empty view.
+    var blank = Array::New<int32>(0);
+    if !blank.AsMutableSlice().IsEmpty() { return 65; }
+    blank.Free();
 
     // Free resets ownership, making repeated release a no-op.
     values.Free();

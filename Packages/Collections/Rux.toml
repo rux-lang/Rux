@@ -17,4 +17,5 @@ Homepage = "https://rux-lang.dev"
 ReadmeFile = "README.md"
 
 [Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }

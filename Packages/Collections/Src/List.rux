@@ -1,3 +1,4 @@
+import Core::MutableSlice;
 import Memory::{ Alloc, Copy, Free, Realloc };
 
 // A growable collection which owns one contiguous heap allocation. Capacity
@@ -183,6 +184,13 @@ extend List<T> {
     // Borrows the initialized elements without exposing spare capacity.
     func AsSlice(self) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
+    }
+
+    // Borrows the initialized elements as a writable view, again without
+    // exposing spare capacity. A growth operation moves the allocation and
+    // invalidates the view; Free invalidates it too.
+    func AsMutableSlice(self) -> MutableSlice<T> {
+        return MutableSlice<T> { data: self.data, length: self.length };
     }
 
     // Copies the initialized elements into a fixed-size owning Array.

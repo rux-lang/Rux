@@ -1,0 +1,85 @@
+import Core::MutableSlice;
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Main() -> int {
+    // A new view borrows nothing and reports itself empty.
+    let empty = MutableSlice::New<int32>();
+    if !empty.IsEmpty() || empty.Length() != 0 { return 10; }
+    if empty.data != null { return 11; }
+
+    // A zero length ignores the pointer it was handed, so an empty view is
+    // always the same value however it was built.
+    var storage: int32[6] = [10, 20, 30, 40, 50, 60];
+    let none = MutableSlice::From<int32>(@storage[0], 0);
+    if !none.IsEmpty() || none.data != null { return 12; }
+
+    // From borrows the caller's storage without copying it.
+    let view = MutableSlice::From<int32>(@storage[0], 6);
+    if view.IsEmpty() || view.Length() != 6 { return 20; }
+    if view.data != @storage[0] { return 21; }
+    if view.At(0) != 10 || view.At(5) != 60 { return 22; }
+
+    // Set writes through to the borrowed storage.
+    view.Set(0, 11);
+    if view.At(0) != 11 || storage[0] != 11 { return 30; }
+
+    // Swap exchanges two elements, and swapping an index with itself leaves
+    // the element alone.
+    view.Swap(0, 5);
+    if view.At(0) != 60 || view.At(5) != 11 { return 31; }
+    view.Swap(2, 2);
+    if view.At(2) != 30 { return 32; }
+    view.Swap(0, 5);
+    if view.At(0) != 11 || view.At(5) != 60 { return 33; }
+
+    // Sub covers part of the same storage, sharing it rather than copying.
+    let middle = view.Sub(2, 2);
+    if middle.Length() != 2 || middle.At(0) != 30 || middle.At(1) != 40 { return 40; }
+    middle.Set(0, 33);
+    if view.At(2) != 33 || storage[2] != 33 { return 41; }
+
+    // A length running past the end is clamped to what the view owns.
+    let clamped = view.Sub(4, 99);
+    if clamped.Length() != 2 || clamped.At(0) != 50 { return 42; }
+
+    // A start at or past the end, or a zero length, gives an empty view.
+    let past = view.Sub(6, 1);
+    if !past.IsEmpty() || past.data != null { return 43; }
+    let beyond = view.Sub(99, 1);
+    if !beyond.IsEmpty() { return 44; }
+    let zero = view.Sub(1, 0);
+    if !zero.IsEmpty() || zero.data != null { return 45; }
+
+    // A sub-view of a sub-view stays inside the original storage.
+    let nested = view.Sub(1, 4).Sub(1, 2);
+    if nested.Length() != 2 || nested.At(0) != 33 { return 46; }
+
+    // AsSlice aliases the same storage read-only and tracks later writes.
+    let borrowed = view.AsSlice();
+    if borrowed.length != 6 || borrowed.data != view.data { return 50; }
+    if borrowed[0] != 11 { return 51; }
+    view.Set(0, 99);
+    if borrowed[0] != 99 { return 52; }
+
+    // An empty view converts to an empty slice.
+    if empty.AsSlice().length != 0 { return 53; }
+
+    // Element size participates in pointer indexing and in Sub's arithmetic.
+    var pairs: Pair[3] = [Pair { first: 1, second: 2 },
+                          Pair { first: 3, second: 4 },
+                          Pair { first: 5, second: 6 }];
+    let pairView = MutableSlice::From<Pair>(@pairs[0], 3);
+    if pairView.At(1).second != 4 { return 60; }
+    let pairTail = pairView.Sub(1, 2);
+    if pairTail.Length() != 2 || pairTail.At(0).first != 3 { return 61; }
+    pairTail.Set(0, Pair { first: 7, second: 8 });
+    if pairs[1].first != 7 || pairs[1].second != 8 { return 62; }
+    pairView.Swap(0, 2);
+    if pairs[0].first != 5 || pairs[2].first != 1 { return 63; }
+
+    return 0;
+}
