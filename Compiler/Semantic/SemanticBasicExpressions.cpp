@@ -499,6 +499,42 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     case TK::LessEqual:
     case TK::Greater:
     case TK::GreaterEqual: {
+        // A struct has no ordering of its own. Reaching here means no operator method matched, and comparing the
+        // operands as machine values would compare their raw bytes — quietly answering a question the type never
+        // defined. Derive what can be derived from the operators the type does declare, and reject the rest.
+        // Only when both sides are the same struct. Comparing a struct with something else is a plain type mismatch,
+        // and the message below says so more usefully than "not defined" would.
+        if (left.kind == TypeRef::Kind::Named && right.kind == TypeRef::Kind::Named &&
+            BaseTypeName(left.name) == BaseTypeName(right.name) && structDecls.contains(BaseTypeName(left.name))) {
+            const auto declares = [&](const std::string &name, const TypeRef &receiver, const TypeRef &argument) {
+                return LookupOperatorMethod(receiver, name, {argument}) != nullptr;
+            };
+            const bool derivable = (operation == TK::BangEqual && declares("==", left, right)) ||
+                                   (operation == TK::Greater && declares("<", right, left));
+            if (derivable) {
+                return TypeRef::MakeBool();
+            }
+
+            // `==` and `<` are the operators everything else is derived from, so they can only be declared. `!=` and
+            // `>` reached here because the one they derive from is missing too. `<=` and `>=` would need `<` and `==`
+            // and each operand twice; lowering cannot yet bind an operand to a temporary, so deriving them would
+            // evaluate a side-effecting operand twice. See BACKLOG.md.
+            std::string help = std::format("declare '{}' on '{}'", operatorName, left.ToString());
+            if (operation == TK::BangEqual) {
+                help += ", or the '==' it is derived from";
+            }
+            else if (operation == TK::Greater) {
+                help += ", or the '<' it is derived from";
+            }
+            else if (operation == TK::LessEqual || operation == TK::GreaterEqual) {
+                help += "; it is not derived from '<' and '==' because that would evaluate each operand twice";
+            }
+            EmitError(location, std::format("operator '{}' is not defined for '{}'", operatorName, left.ToString()),
+                      {"a struct is compared through the operators it declares, never by its representation"},
+                      std::move(help));
+            return TypeRef::MakeBool();
+        }
+
         const bool boolIntegerComparison =
             (operation == TK::Equal || operation == TK::BangEqual) &&
             ((left.IsBool() && right.IsInteger()) || (left.IsInteger() && right.IsBool()));

@@ -328,8 +328,8 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
     const auto package = CompileToAArch64Lir(std::format(R"(
         {}
         func Main() -> int {{
-            let a = Point {{ x: 1, y: 2 }};
-            let b = Point {{ x: 1, y: 2 }};
+            let a = (1, 2);
+            let b = (1, 2);
             if a == b {{
                 return 1;
             }}
@@ -343,7 +343,7 @@ TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
     CHECK_EQ(objects.size(), 1);
 
     const auto reports = JoinMessages(emitter.Diagnostics());
-    CHECK_MESSAGE(reports.contains("the 'cmpeq' opcode on 'Point'"), reports);
+    CHECK_MESSAGE(reports.contains("the 'cmpeq' opcode on '(int, int)'"), reports);
     CHECK_MESSAGE(reports.contains("target 'linux-aarch64'"), reports);
     CHECK_MESSAGE(reports.contains("'Main'"), reports);
     for (const auto &diagnostic : emitter.Diagnostics()) {
@@ -358,8 +358,8 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     const auto package = CompileToAArch64Lir(std::format(R"(
         {}
         func Main() -> int {{
-            let a = Point {{ x: 1, y: 2 }};
-            let b = Point {{ x: 1, y: 2 }};
+            let a = (1, 2);
+            let b = (1, 2);
             let first = a == b;
             let second = a == b;
             let third = a == b;
@@ -380,6 +380,6 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     std::ranges::sort(sorted);
     CHECK_EQ(std::ranges::unique(sorted).begin(), sorted.end());
     REQUIRE_EQ(messages.size(), 1);
-    CHECK_MESSAGE(messages.front().contains("the 'cmpeq' opcode on 'Point'"), messages.front());
+    CHECK_MESSAGE(messages.front().contains("the 'cmpeq' opcode on '(int, int)'"), messages.front());
     CHECK_MESSAGE(messages.front().contains("target 'linux-aarch64'"), messages.front());
 }

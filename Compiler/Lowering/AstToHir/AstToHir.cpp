@@ -169,9 +169,45 @@ HirExprPtr AstToHirContext::TryLowerOverloadedBinary(const BinaryExpr &expressio
                                                      HirExprPtr &right) {
     const std::string opName = std::string(OpStr(expression.op));
     const FuncDecl *method = LookupMethod(left->type, opName, {right->type});
+
+    // An operator a type does not declare is derived from one it does, so that declaring `==` and `<` is enough to
+    // compare a type. A declared operator always wins, and both derivations below name each operand exactly once, so
+    // neither introduces a second evaluation:
+    //
+    //   a != b  ->  !(a == b)
+    //   a >  b  ->  b < a
+    //
+    // `<=` and `>=` would need `(a < b) || (a == b)`, which names both operands twice. Deriving that safely needs a
+    // way to bind an operand to a temporary, which HIR does not yet offer, so semantic analysis asks for them to be
+    // declared instead rather than risk evaluating a side-effecting operand twice.
+    if (!method && expression.op == TokenKind::BangEqual) {
+        if (const FuncDecl *equals = LookupMethod(left->type, "==", {right->type})) {
+            HirExprPtr equality = LowerOverloadedBinaryCall(expression, left, right, *equals);
+            equality->type = TypeRef::MakeBool();
+            auto negated = std::make_unique<HirUnaryExpr>();
+            negated->location = expression.location;
+            negated->op = TokenKind::Bang;
+            negated->type = TypeRef::MakeBool();
+            negated->operand = std::move(equality);
+            return negated;
+        }
+    }
+    if (!method && expression.op == TokenKind::Greater) {
+        // `b < a`, so the receiver is the right operand and the argument is the left one.
+        if (const FuncDecl *lessThan = LookupMethod(right->type, "<", {left->type})) {
+            return LowerOverloadedBinaryCall(expression, right, left, *lessThan);
+        }
+    }
+
     if (!method) {
         return nullptr;
     }
+    return LowerOverloadedBinaryCall(expression, left, right, *method);
+}
+
+HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left, HirExprPtr &right,
+                                                      const FuncDecl &resolved) {
+    const FuncDecl *method = &resolved;
 
     const std::string receiverBase = NamedBaseTypeName(left->type);
     HirExprPtr selfArg;
