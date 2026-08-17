@@ -8,7 +8,7 @@ func ToString(value: uint16) -> String {
 }
 
 extend uint16 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *uint16) -> String {
         return ToString(*self);
     }
 }

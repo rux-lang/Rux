@@ -12,7 +12,7 @@ func ToString(value: char16) -> String {
 }
 
 extend char16 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *char16) -> String {
         return ToString(*self);
     }
 }

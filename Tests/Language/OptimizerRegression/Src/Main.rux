@@ -10,7 +10,7 @@ struct StoredValue {
 }
 
 extend StoredValue : ValueSource {
-    func Value(self) -> int {
+    func Value(self: *StoredValue) -> int {
         return self.value;
     }
 }

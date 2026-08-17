@@ -14,7 +14,7 @@ struct Square {
 }
 
 extend Square : Figure {
-    func Area(self) -> int {
+    func Area(self: *Square) -> int {
         return self.size * self.size;
     }
 }

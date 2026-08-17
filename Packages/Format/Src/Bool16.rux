@@ -7,7 +7,7 @@ func ToString(value: bool16) -> String {
 }
 
 extend bool16 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *bool16) -> String {
         return ToString(*self);
     }
 }

@@ -12,13 +12,13 @@ func ToString(value: char8) -> String {
 }
 
 extend char8 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *char8) -> String {
         return ToString(*self);
     }
 }
 
 extend Slice<char8> : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: Slice<char8>) -> String {
         return String::From(self);
     }
 }

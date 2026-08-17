@@ -3,7 +3,7 @@ import Core::Assert;
 // Extension methods on a built-in slice type. `self` is the slice value, so it
 // can be iterated and indexed directly.
 extend Slice<int> {
-    func Sum(self) -> int {
+    func Sum(self: Slice<int>) -> int {
         var sum = 0;
         for num in self {
             sum += num;
@@ -11,7 +11,7 @@ extend Slice<int> {
         return sum;
     }
 
-    func Contains(self, target: int) -> bool {
+    func Contains(self: Slice<int>, target: int) -> bool {
         var i: uint64 = 0;
         while i < self.length {
             if self[i] == target {
@@ -26,7 +26,7 @@ extend Slice<int> {
 // A second slice extension with a different element type must stay distinct
 // from Slice<int>: method lookup is element-specific.
 extend Slice<char8> {
-    func Count(self) -> int {
+    func Count(self: Slice<char8>) -> int {
         var n = 0;
         for c in self {
             n += 1;

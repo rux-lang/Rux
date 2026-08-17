@@ -8,7 +8,7 @@ func ToString(value: uint32) -> String {
 }
 
 extend uint32 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *uint32) -> String {
         return ToString(*self);
     }
 }

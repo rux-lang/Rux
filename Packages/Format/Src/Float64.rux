@@ -41,7 +41,7 @@ func ToString(value: float64) -> String {
 }
 
 extend float64 : Stringable {
-    func ToString(self) -> String {
+    func ToString(self: *float64) -> String {
         return ToString(*self);
     }
 }

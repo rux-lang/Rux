@@ -24,31 +24,31 @@ struct Tiny64 {
 }
 
 extend Tiny8 : TinyValue {
-    func Value(self) -> int {
+    func Value(self: *Tiny8) -> int {
         return 8;
     }
 }
 
 extend Tiny16 : TinyValue {
-    func Value(self) -> int {
+    func Value(self: *Tiny16) -> int {
         return 16;
     }
 }
 
 extend Tiny32 : TinyValue {
-    func Value(self) -> int {
+    func Value(self: *Tiny32) -> int {
         return 32;
     }
 }
 
 extend Pair32 : TinyValue {
-    func Value(self) -> int {
+    func Value(self: *Pair32) -> int {
         return 64;
     }
 }
 
 extend Tiny64 : TinyValue {
-    func Value(self) -> int {
+    func Value(self: *Tiny64) -> int {
         return 128;
     }
 }

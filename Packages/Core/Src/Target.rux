@@ -72,7 +72,7 @@ struct Target {
 }
 
 extend Target {
-    intrinsic func HasFeature(self, feature: TargetFeature) -> bool;
+    intrinsic func HasFeature(self: *Target, feature: TargetFeature) -> bool;
 }
 
 // Compile-time value

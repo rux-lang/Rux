@@ -16,11 +16,11 @@ struct Keyed {
 }
 
 extend Keyed {
-    func ==(self, other: Keyed) -> bool {
+    func ==(self: *Keyed, other: Keyed) -> bool {
         return self.key == other.key;
     }
 
-    func <(self, other: Keyed) -> bool {
+    func <(self: *Keyed, other: Keyed) -> bool {
         return self.key < other.key;
     }
 }
@@ -32,11 +32,11 @@ struct Contrary {
 }
 
 extend Contrary {
-    func ==(self, other: Contrary) -> bool {
+    func ==(self: *Contrary, other: Contrary) -> bool {
         return self.value == other.value;
     }
 
-    func !=(self, other: Contrary) -> bool {
+    func !=(self: *Contrary, other: Contrary) -> bool {
         return true;
     }
 }
@@ -51,11 +51,11 @@ struct Partial {
 }
 
 extend Partial {
-    func ==(self, other: Partial) -> bool {
+    func ==(self: *Partial, other: Partial) -> bool {
         return self.group == other.group && self.rank == other.rank;
     }
 
-    func <(self, other: Partial) -> bool {
+    func <(self: *Partial, other: Partial) -> bool {
         return self.group == other.group && self.rank < other.rank;
     }
 }
