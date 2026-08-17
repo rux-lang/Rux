@@ -1,0 +1,169 @@
+import Collections::CollectionError;
+import Collections::Deque;
+
+// See Tests/Packages/Collections/Array for why a failed check reports itself
+// through a numbered exit code rather than through an assertion.
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Main() -> int {
+    // New owns nothing until the first element is added, and reports every end
+    // as absent rather than trusting a null pointer.
+    var empty = Deque::New<int32>();
+    var seen: int32 = -1;
+    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
+    if empty.TryPopFront(@seen) || empty.TryPopBack(@seen) { return 11; }
+    if empty.TryFront(@seen) || empty.TryBack(@seen) { return 12; }
+    if empty.TryGet(0, @seen) || empty.TrySet(0, 1) { return 13; }
+    if !empty.IsContiguous() { return 14; }
+
+    // An empty Deque lends two empty runs rather than a null pair of lengths.
+    var front = Slice<int32> { data: null, length: 1 };
+    var back = Slice<int32> { data: null, length: 1 };
+    empty.AsSlices(@front, @back);
+    if front.length != 0 || back.length != 0 { return 15; }
+
+    // Capacity is rounded up to a power of two, never below the floor of four.
+    var sized = Deque::New<int32>();
+    if !(Deque::WithCapacity<int32>(5, @sized) == CollectionError::None) { return 20; }
+    if sized.Capacity() != 8 { return 21; }
+    sized.Free();
+    if !(Deque::WithCapacity<int32>(1, @sized) == CollectionError::None) { return 22; }
+    if sized.Capacity() != 4 { return 23; }
+
+    // Both ends accept elements, and the order across them is what the two
+    // pushes describe: front pushes reverse, back pushes do not.
+    if !(sized.PushBack(2) == CollectionError::None) { return 30; }
+    if !(sized.PushBack(3) == CollectionError::None) { return 31; }
+    if !(sized.PushFront(1) == CollectionError::None) { return 32; }
+    if !(sized.PushFront(0) == CollectionError::None) { return 33; }
+    if sized.Length() != 4 { return 34; }
+    if sized.At(0) != 0 || sized.At(1) != 1 || sized.At(2) != 2 || sized.At(3) != 3 { return 35; }
+
+    // Pushing to the front off slot zero wraps to the end of the block, so the
+    // elements are no longer one unbroken run.
+    if sized.IsContiguous() { return 36; }
+
+    // A wrapped Deque still indexes logically, and hands out two runs whose
+    // concatenation is the logical order.
+    sized.AsSlices(@front, @back);
+    if front.length == 0 || back.length == 0 { return 40; }
+    if front.length + back.length != sized.Length() { return 41; }
+    if front[0] != 0 || back[back.length - 1] != 3 { return 42; }
+    if !sized.TryGet(3, @seen) || seen != 3 { return 43; }
+    if sized.TryGet(4, @seen) { return 44; }
+    if seen != 3 { return 45; }
+    if !sized.TrySet(0, 9) || sized.At(0) != 9 { return 46; }
+    sized.Set(0, 0);
+
+    // Making the storage contiguous keeps the logical order and empties the
+    // second run.
+    sized.MakeContiguous();
+    if !sized.IsContiguous() { return 50; }
+    if sized.At(0) != 0 || sized.At(3) != 3 { return 51; }
+    sized.AsSlices(@front, @back);
+    if front.length != 4 || back.length != 0 { return 52; }
+    let whole = sized.AsSlice();
+    if whole.length != 4 || whole[0] != 0 || whole[3] != 3 { return 53; }
+    let writable = sized.AsMutableSlice();
+    writable.Set(0, 7);
+    if sized.At(0) != 7 { return 54; }
+    writable.Set(0, 0);
+    sized.Free();
+
+    // Growth while the elements are wrapped preserves their order. Filling the
+    // ring, dropping the front and adding at the back is what forces the wrap.
+    var ring = Deque::New<int32>();
+    if !(Deque::WithCapacity<int32>(4, @ring) == CollectionError::None) { return 60; }
+    var n: int32 = 0;
+    while n < 4 {
+        if !(ring.PushBack(n) == CollectionError::None) { return 61; }
+        n++;
+    }
+    if !ring.TryPopFront(@seen) || seen != 0 { return 62; }
+    if !(ring.PushBack(4) == CollectionError::None) { return 63; }
+    if ring.IsContiguous() { return 64; }
+    if ring.Capacity() != 4 || ring.Length() != 4 { return 65; }
+
+    // The next addition has to grow a wrapped ring.
+    if !(ring.PushBack(5) == CollectionError::None) { return 66; }
+    if ring.Capacity() != 8 || ring.Length() != 5 { return 67; }
+    if !ring.IsContiguous() { return 68; }
+    var expect: int32 = 1;
+    while expect < 6 {
+        if ring.At((expect - 1) as uint) != expect { return 69; }
+        expect++;
+    }
+
+    // Popping from both ends walks inward and then reports empty.
+    if !ring.TryFront(@seen) || seen != 1 { return 70; }
+    if !ring.TryBack(@seen) || seen != 5 { return 71; }
+    if !ring.TryPopFront(@seen) || seen != 1 { return 72; }
+    if !ring.TryPopBack(@seen) || seen != 5 { return 73; }
+    if ring.Length() != 3 { return 74; }
+    if !ring.TryPopFront(null) { return 75; }
+    if !ring.TryPopBack(null) { return 76; }
+    if !ring.TryPopFront(null) { return 77; }
+    if !ring.IsEmpty() { return 78; }
+    if ring.TryPopFront(@seen) || ring.TryPopBack(@seen) { return 79; }
+
+    // Clear keeps the allocation and returns the front to slot zero, so a
+    // refilled Deque does not start out wrapped.
+    if !(ring.PushFront(1) == CollectionError::None) { return 80; }
+    let retained = ring.Capacity();
+    ring.Clear();
+    if !ring.IsEmpty() || ring.Capacity() != retained { return 81; }
+    if !(ring.PushBack(2) == CollectionError::None) { return 82; }
+    if !ring.IsContiguous() || ring.At(0) != 2 { return 83; }
+
+    // Shrinking drops to the smallest power of two that still holds the
+    // elements, and an emptied Deque releases its block entirely.
+    if !(ring.Reserve(100) == CollectionError::None) { return 84; }
+    if ring.Capacity() < 101 { return 85; }
+    if !(ring.ShrinkToFit() == CollectionError::None) { return 86; }
+    if ring.Capacity() != 4 || ring.Length() != 1 || ring.At(0) != 2 { return 87; }
+    ring.Clear();
+    if !(ring.ShrinkToFit() == CollectionError::None) { return 88; }
+    if ring.Capacity() != 0 { return 89; }
+    ring.Free();
+
+    // FromSlice copies in order; Clone is independent and unwraps the storage.
+    let source: Slice<int32> = [1, 2, 3];
+    var from = Deque::New<int32>();
+    if !(Deque::FromSlice<int32>(source, @from) == CollectionError::None) { return 90; }
+    if from.Length() != 3 || from.At(0) != 1 || from.At(2) != 3 { return 91; }
+    if !(from.PushFront(0) == CollectionError::None) { return 92; }
+    if from.IsContiguous() { return 93; }
+
+    var copy = Deque::New<int32>();
+    if !(from.Clone(@copy) == CollectionError::None) { return 94; }
+    if copy.Length() != 4 || !copy.IsContiguous() { return 95; }
+    if copy.At(0) != 0 || copy.At(3) != 3 { return 96; }
+    copy.Set(0, 99);
+    if from.At(0) != 0 { return 97; }
+    copy.Free();
+    from.Free();
+
+    // An element wider than one machine word survives wrapping and growth.
+    var pairs = Deque::New<Pair>();
+    let firstPair = Pair { first: 1, second: 2 };
+    let secondPair = Pair { first: 3, second: 4 };
+    if !(pairs.PushBack(firstPair) == CollectionError::None) { return 100; }
+    if !(pairs.PushFront(secondPair) == CollectionError::None) { return 101; }
+    if pairs.At(0).first != 3 || pairs.At(1).second != 2 { return 102; }
+    var readPair = Pair { first: 0, second: 0 };
+    if !pairs.TryPopBack(@readPair) || readPair.first != 1 { return 103; }
+    pairs.Free();
+
+    // A capacity whose byte size cannot be addressed is rejected before any
+    // allocation, and the target is left as it was.
+    var huge = Deque::New<int64>();
+    if !(Deque::WithCapacity<int64>(uint::Max, @huge) == CollectionError::CapacityOverflow) { return 110; }
+    if !huge.IsEmpty() || huge.Capacity() != 0 { return 111; }
+
+    empty.Free();
+    return 0;
+}
