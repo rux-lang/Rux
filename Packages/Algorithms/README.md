@@ -38,17 +38,21 @@ Type arguments are always explicit — Rux does not infer them for free function
 
 ```rux
 import Algorithms::{ Reverse, Unique };
-import Collections::List;
+import Collections::{ CollectionError, Vector };
 
-var numbers = List::New<int32>();
-numbers.Add(3);
-numbers.Add(1);
-numbers.Add(1);
+let source: Slice<int32> = [3, 1, 1];
+var numbers = Vector::New<int32>();
+if !(Vector::FromSlice<int32>(source, @numbers) == CollectionError::None) {
+    return;
+}
 
 let view = numbers.AsMutableSlice();
 Reverse<int32>(view.data, view.length);
 
+// Unique compacts the survivors toward the front and returns how many are
+// left, without resizing anything. Truncate is what tells the Vector.
 let kept = Unique<int32>(view.data, view.length);
+numbers.Truncate(kept);
 numbers.Free();
 ```
 
@@ -232,8 +236,8 @@ The planned ordering and search modules will require `func <` in the same way. A
 ## Guarantees and limitations
 
 - **No allocation.** Every function is O(1) auxiliary space and the package depends only on `Rux/Core`.
-- **Unchecked indexing**, matching `Slice`, `Array` and `List`: a length larger than the storage is undefined behavior, not a reported error.
-- **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `List` view is invalidated by any growth.
+- **Unchecked indexing**, matching `Slice` and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
+- **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
 - **No stable sort.** Every sort here is unstable. A stable sort needs an auxiliary buffer, which would end the package's zero-allocation property.
 - `Algorithms::Copy` and [`Memory::Copy`](../Memory) share a name. Importing both is fine — they take different parameter types and overload — but the Algorithms one is element-wise and correct for any `T`, while the Memory one is a byte copy.

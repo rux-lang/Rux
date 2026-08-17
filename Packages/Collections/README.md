@@ -12,8 +12,8 @@ rux add Rux/Collections
 
 | Type         | Status                                        |
 | ------------ | --------------------------------------------- |
-| `Array`      | Available — fixed-size heap-allocated sequence |
-| `List`       | Available — growable sequence                 |
+| `Array`      | Available — fixed-length heap-allocated sequence |
+| `Vector`     | Available — growable sequence, and the stack  |
 | `Dictionary` | Planned                                       |
 | `HashMap`    | Planned                                       |
 | `HashSet`    | Planned                                       |
@@ -29,13 +29,16 @@ Both available types own their storage through [`Rux/Memory`](../Memory) and are
 ## Example
 
 ```rux
-import Collections::List;
+import Collections::{ CollectionError, Vector };
 
-var numbers = List::New<int32>();
-numbers.Add(1);
-numbers.Add(2);
+var numbers = Vector::New<int32>();
+if !(numbers.Push(1) == CollectionError::None) {
+    return;
+}
 numbers.Free();
 ```
+
+An operation that has to allocate reports a `CollectionError` and leaves the container unchanged unless it returns `None`, so an exhausted allocator is never mistaken for an empty container or a rejected index. Operations that cannot allocate report an ordinary miss with a `bool` instead.
 
 ## License
 
