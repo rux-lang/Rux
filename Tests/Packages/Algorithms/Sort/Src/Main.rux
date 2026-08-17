@@ -1,0 +1,250 @@
+import Algorithms::{ Sort, SortDescending, IsSorted, Equal, Copy, Reverse };
+// InsertionSortRange and HeapSortRange are internal helpers rather than public
+// API. They are exercised directly because the heapsort fallback is otherwise
+// unreachable from a test: it needs a recursion budget that only adversarial
+// input exhausts, and there is no supported way to force it from outside.
+import Algorithms::{ InsertionSortRange, HeapSortRange };
+
+struct Ranked {
+    key: int32;
+    origin: int32;
+}
+
+extend Ranked {
+    func <(self, other: Ranked) -> bool {
+        return self.key < other.key;
+    }
+
+    func ==(self, other: Ranked) -> bool {
+        return self.key == other.key && self.origin == other.origin;
+    }
+}
+
+// Deliberately naive and structurally unlike introsort: no partitioning, no
+// recursion, no fallbacks. Cross-checking against a second implementation is
+// what makes the comparison below meaningful.
+func ReferenceSort(data: *var int32, length: uint) {
+    var i: uint = 0;
+    while i < length {
+        var best = i;
+        var j = i + 1;
+        while j < length {
+            if data[j] < data[best] {
+                best = j;
+            }
+            j++;
+        }
+        let temp = data[i];
+        data[i] = data[best];
+        data[best] = temp;
+        i++;
+    }
+}
+
+// xorshift64*, seeded per case so every generated input is reproducible.
+// Packages/Random is still a placeholder, and a fixed seed keeps this from
+// becoming a flaky test.
+func NextRandom(state: *var uint64) -> uint64 {
+    var x = *state;
+    x = x ^ (x >> 12u64);
+    x = x ^ (x << 25u64);
+    x = x ^ (x >> 27u64);
+    *state = x;
+    return x * 2685821657736338717u64;
+}
+
+// Shapes chosen for the ways a sort can go wrong: sorted and reversed defeat a
+// naive pivot, all-equal defeats a two-way partition, organ-pipe defeats
+// median-of-three, and a small value range forces heavy duplication.
+func FillShape(data: *var int32, length: uint, shape: int, state: *var uint64) {
+    var i: uint = 0;
+    while i < length {
+        if shape == 0 {
+            data[i] = i as int32;
+        }
+        else if shape == 1 {
+            data[i] = (length - i) as int32;
+        }
+        else if shape == 2 {
+            data[i] = 7;
+        }
+        else if shape == 3 {
+            if i < length / 2 {
+                data[i] = i as int32;
+            }
+            else {
+                data[i] = (length - i) as int32;
+            }
+        }
+        else if shape == 4 {
+            data[i] = (i % 3) as int32;
+        }
+        else {
+            data[i] = (NextRandom(state) % 50u64) as int32;
+        }
+        i++;
+    }
+}
+
+// Sorts a copy with Sort and another with ReferenceSort, then requires the two
+// to be identical. Because the reference only ever swaps, its result is a
+// permutation of the input by construction; an identical result therefore
+// proves Sort both ordered the elements and preserved the multiset. Sortedness
+// alone would pass a sort that quietly dropped or duplicated elements.
+func CheckSort(source: *int32, length: uint) -> int {
+    var actual: int32[320];
+    var expected: int32[320];
+
+    Copy<int32>(@actual[0], source, length);
+    Copy<int32>(@expected[0], source, length);
+
+    Sort<int32>(@actual[0], length);
+    ReferenceSort(@expected[0], length);
+
+    if !IsSorted<int32>(@actual[0], length) {
+        return 1;
+    }
+    if !Equal<int32>(@actual[0], length, @expected[0], length) {
+        return 2;
+    }
+
+    // Descending order must be the exact reverse of ascending order.
+    var descending: int32[320];
+    Copy<int32>(@descending[0], source, length);
+    SortDescending<int32>(@descending[0], length);
+    Reverse<int32>(@descending[0], length);
+    if !Equal<int32>(@descending[0], length, @expected[0], length) {
+        return 3;
+    }
+    return 0;
+}
+
+func Main() -> int {
+    var buffer: int32[320];
+    var state: uint64 = 88172645463325252u64;
+    var caseId: int = 0;
+
+    // Sizes straddle the insertion-sort threshold of 16, where the algorithm
+    // switches strategy, and reach far enough past it to force several levels
+    // of partitioning.
+    let sizes: uint[7] = [0, 1, 2, 3, 16, 17, 300];
+
+    var shape: int = 0;
+    while shape < 6 {
+        for n in sizes {
+            FillShape(@buffer[0], n, shape, @state);
+            let kind = CheckSort(@buffer[0], n);
+            if kind != 0 {
+                return 10 + caseId * 4 + kind;
+            }
+            caseId++;
+        }
+        shape++;
+    }
+
+    // Many independent random inputs of varying length, all from the fixed
+    // seed, so a failure reproduces exactly.
+    var round: int = 0;
+    while round < 60 {
+        let length = ((NextRandom(@state) % 200u64) as uint) + 1;
+        FillShape(@buffer[0], length, 5, @state);
+        if CheckSort(@buffer[0], length) != 0 {
+            return 190 + (round % 8);
+        }
+        round++;
+    }
+
+    // A single element out of place at each end, which is where an off-by-one
+    // in the partition boundaries shows up.
+    var nearly: int32[20];
+    var i: uint = 0;
+    while i < 20 {
+        nearly[i] = i as int32;
+        i++;
+    }
+    nearly[0] = 999;
+    if CheckSort(@nearly[0], 20) != 0 { return 200; }
+
+    i = 0;
+    while i < 20 {
+        nearly[i] = i as int32;
+        i++;
+    }
+    nearly[19] = -999;
+    if CheckSort(@nearly[0], 20) != 0 { return 201; }
+
+    // The internal fallbacks sort correctly on their own, over a sub-range
+    // that leaves the surrounding elements untouched.
+    var guarded: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
+    InsertionSortRange<int32>(@guarded[0], 1, 9);
+    if guarded[0] != 100 || guarded[9] != 200 { return 210; }
+    if !IsSorted<int32>(@guarded[1], 8) { return 211; }
+
+    var heaped: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
+    HeapSortRange<int32>(@heaped[0], 1, 9);
+    if heaped[0] != 100 || heaped[9] != 200 { return 212; }
+    if !IsSorted<int32>(@heaped[1], 8) { return 213; }
+    if !Equal<int32>(@heaped[1], 8, @guarded[1], 8) { return 214; }
+
+    // Both fallbacks accept empty and single-element ranges.
+    InsertionSortRange<int32>(@heaped[0], 3, 3);
+    InsertionSortRange<int32>(@heaped[0], 3, 4);
+    HeapSortRange<int32>(@heaped[0], 3, 3);
+    HeapSortRange<int32>(@heaped[0], 3, 4);
+    if !IsSorted<int32>(@heaped[1], 8) { return 215; }
+
+    // Signed and unsigned limits sort as ordinary values.
+    var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
+    Sort<int32>(@signed[0], 5);
+    if signed[0] != -2147483648i32 || signed[4] != 2147483647i32 { return 220; }
+    if !IsSorted<int32>(@signed[0], 5) { return 221; }
+
+    var unsigned: uint32[5] = [7u32, 0u32, 4294967295u32, 1u32, 4294967294u32];
+    Sort<uint32>(@unsigned[0], 5);
+    if unsigned[0] != 0u32 || unsigned[4] != 4294967295u32 { return 222; }
+    if !IsSorted<uint32>(@unsigned[0], 5) { return 223; }
+
+    // A user struct ordered by key alone. Sorting is unstable, so the test
+    // asserts the keys are ordered and every original record survives exactly
+    // once -- never that equal keys kept their input order.
+    var ranked: Ranked[6] = [Ranked { key: 3, origin: 0 },
+                             Ranked { key: 1, origin: 1 },
+                             Ranked { key: 3, origin: 2 },
+                             Ranked { key: 2, origin: 3 },
+                             Ranked { key: 1, origin: 4 },
+                             Ranked { key: 3, origin: 5 }];
+    Sort<Ranked>(@ranked[0], 6);
+    if !IsSorted<Ranked>(@ranked[0], 6) { return 230; }
+    if ranked[0].key != 1 || ranked[1].key != 1 { return 231; }
+    if ranked[2].key != 2 { return 232; }
+    if ranked[5].key != 3 { return 233; }
+
+    // Every origin 0..5 appears exactly once among the sorted records.
+    var seen: int32[6] = [0, 0, 0, 0, 0, 0];
+    i = 0;
+    while i < 6 {
+        let origin = ranked[i].origin;
+        if origin < 0 || origin > 5 { return 234; }
+        seen[origin as uint] = seen[origin as uint] + 1;
+        i++;
+    }
+    i = 0;
+    while i < 6 {
+        if seen[i] != 1 { return 235; }
+        i++;
+    }
+
+    // Descending over the same records puts the largest key first.
+    SortDescending<Ranked>(@ranked[0], 6);
+    if ranked[0].key != 3 || ranked[5].key != 1 { return 236; }
+
+    // Sorting a range of fewer than two elements touches nothing.
+    var untouched: int32[2] = [9, 8];
+    Sort<int32>(@untouched[0], 0);
+    Sort<int32>(@untouched[0], 1);
+    if untouched[0] != 9 || untouched[1] != 8 { return 240; }
+    SortDescending<int32>(@untouched[0], 1);
+    if untouched[0] != 9 || untouched[1] != 8 { return 241; }
+
+    return 0;
+}

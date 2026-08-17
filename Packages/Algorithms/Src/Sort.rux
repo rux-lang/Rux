@@ -1,1 +1,261 @@
-// Planned package API; sorting algorithms are not implemented yet.
+// Sorting.
+//
+// Sort is an introsort: quicksort with a three-way partition, falling back to
+// heapsort once the recursion budget is spent and to insertion sort on small
+// partitions. That combination is what gives it a genuine O(n log n) worst
+// case with O(1) auxiliary space — a plain quicksort degrades to O(n^2) on
+// inputs chosen to defeat its pivot rule.
+//
+// Requires `<` on T and nothing else, under the same strict-weak-ordering
+// contract as Search. Equivalence is derived as `!(a < b) && !(b < a)`, so a
+// type that orders but does not define `==` sorts fine.
+//
+// Sorting is **not stable**: equivalent elements may be reordered. It is,
+// however, deterministic — no randomized pivots, so the same input always
+// produces the same output and the same number of comparisons.
+//
+// A comparator-taking overload is not offered because the compiler cannot yet
+// substitute a `func(T, T) -> bool` parameter through a generic. Until then,
+// order a type by defining `func <` on it, and use a single-field wrapper
+// struct with its own `<` for an alternative order.
+
+// Below this many elements, insertion sort beats partitioning: the cost of
+// choosing a pivot dominates, and partitions left by quicksort are already
+// nearly ordered, which is insertion sort's best case.
+const InsertionSortThreshold: uint = 16;
+
+// Sorts into non-decreasing order. A sequence of fewer than two elements is
+// already sorted, so the data pointer is never read in that case.
+func Sort<T>(data: *var T, length: uint) {
+    if length < 2 {
+        return;
+    }
+
+    // 2*floor(log2 n) is Musser's bound: quicksort's expected recursion depth
+    // is about 1.39*log2 n, so the budget is only exhausted by input that is
+    // actively defeating the pivot rule. The floor of one keeps the budget
+    // meaningful for the smallest ranges that reach here.
+    var budget = FloorLog2(length) * 2;
+    if budget == 0 {
+        budget = 1;
+    }
+    IntroSortRange<T>(data, 0, length, budget);
+}
+
+// Sorts into non-increasing order.
+//
+// Implemented as an ascending sort followed by a reversal rather than as a
+// mirrored copy of every helper below. The alternative — threading a direction
+// flag through the partition and both fallbacks — would cost a branch in the
+// innermost comparison, and duplicating the helpers would double the amount of
+// subtle index arithmetic to maintain for one extra linear pass. Sorting is
+// unstable in either direction, so reversing is free of ordering consequences.
+func SortDescending<T>(data: *var T, length: uint) {
+    Sort<T>(data, length);
+    Reverse<T>(data, length);
+}
+
+// Internal helper; not part of the package API.
+//
+// floor(log2(value)), and zero for both 0 and 1. A shift loop rather than a
+// call into Rux/Math, whose logarithms are floating-point only and would drag
+// a dependency and a rounding question into an integer budget.
+func FloorLog2(value: uint) -> uint {
+    var result: uint = 0;
+    var remaining = value;
+    while remaining > 1 {
+        remaining = remaining >> 1;
+        result++;
+    }
+    return result;
+}
+
+// Internal helper; not part of the package API.
+func SwapAt<T>(data: *var T, first: uint, second: uint) {
+    if first == second {
+        return;
+    }
+
+    let temp = data[first];
+    data[first] = data[second];
+    data[second] = temp;
+}
+
+// Internal helper; not part of the package API.
+//
+// The index of the median of three elements, using only `<`. Sampling three
+// positions rather than taking the first element is what keeps already-sorted
+// and reverse-sorted input off the quadratic path.
+func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
+    if data[first] < data[middle] {
+        if data[middle] < data[last] {
+            return middle;
+        }
+        if data[first] < data[last] {
+            return last;
+        }
+        return first;
+    }
+
+    if data[first] < data[last] {
+        return first;
+    }
+    if data[middle] < data[last] {
+        return last;
+    }
+    return middle;
+}
+
+// Internal helper; not part of the package API.
+//
+// Rearranges [low, high) into elements less than the pivot, then elements
+// equivalent to it, then elements greater, writing the two boundaries out.
+//
+// Three-way rather than two-way because the equivalent band is then excluded
+// from both recursions: an all-equal sequence becomes a single linear pass
+// instead of the quadratic behavior a two-way partition produces on it, and
+// input drawn from a small set of distinct values stops being a worst case.
+func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
+                          greaterStart: *var uint) {
+    var less = low;
+    var index = low;
+    var greater = high;
+
+    while index < greater {
+        if data[index] < pivot {
+            SwapAt<T>(data, index, less);
+            less++;
+            index++;
+        }
+        else {
+            if pivot < data[index] {
+                // greater is strictly above index here because the loop
+                // condition holds, so this cannot wrap.
+                greater--;
+                SwapAt<T>(data, index, greater);
+            }
+            else {
+                index++;
+            }
+        }
+    }
+
+    *lessEnd = less;
+    *greaterStart = greater;
+}
+
+// Internal helper; not part of the package API.
+func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
+    if high - low < 2 {
+        return;
+    }
+
+    var i = low + 1;
+    while i < high {
+        let key = data[i];
+        var j = i;
+        // `j > low` is the loop condition rather than half of a compound
+        // guard, so data[j - 1] is never formed at j == low, where the
+        // decrement would wrap.
+        while j > low {
+            if !(key < data[j - 1]) {
+                break;
+            }
+            data[j] = data[j - 1];
+            j--;
+        }
+        data[j] = key;
+        i++;
+    }
+}
+
+// Internal helper; not part of the package API.
+//
+// Restores the max-heap property at start within the first count elements of
+// the heap based at low. Iterative, so heapsort adds nothing to the stack.
+func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
+    var root = start;
+    loop {
+        let child = root * 2 + 1;
+        if child >= count {
+            return;
+        }
+
+        var largest = child;
+        let right = child + 1;
+        if right < count {
+            if data[low + child] < data[low + right] {
+                largest = right;
+            }
+        }
+
+        if !(data[low + root] < data[low + largest]) {
+            return;
+        }
+        SwapAt<T>(data, low + root, low + largest);
+        root = largest;
+    }
+}
+
+// Internal helper; not part of the package API.
+//
+// The fallback that bounds the worst case. O(n log n) whatever the input, and
+// O(1) space, at a larger constant factor than quicksort — which is why it is
+// reached only once the recursion budget is spent.
+func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
+    let count = high - low;
+    if count < 2 {
+        return;
+    }
+
+    var i = count / 2;
+    while i > 0 {
+        i--;
+        SiftDown<T>(data, low, i, count);
+    }
+
+    var end = count;
+    while end > 1 {
+        end--;
+        SwapAt<T>(data, low, low + end);
+        SiftDown<T>(data, low, 0, end);
+    }
+}
+
+// Internal helper; not part of the package API.
+func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
+    var lo = low;
+    var hi = high;
+    var budget = depth;
+
+    while hi - lo > InsertionSortThreshold {
+        if budget == 0 {
+            HeapSortRange<T>(data, lo, hi);
+            return;
+        }
+        budget--;
+
+        let middle = lo + (hi - lo) / 2;
+        let pivotIndex = MedianOfThree<T>(data, lo, middle, hi - 1);
+        let pivot = data[pivotIndex];
+
+        var lessEnd: uint = 0;
+        var greaterStart: uint = 0;
+        PartitionThreeWay<T>(data, lo, hi, pivot, @lessEnd, @greaterStart);
+
+        // Recurse into the smaller side and loop on the larger. The recursive
+        // call then covers at most half the range, which bounds the stack at
+        // about log2(n) frames — 64 or so for any addressable length —
+        // regardless of how badly the pivots are chosen.
+        if lessEnd - lo < hi - greaterStart {
+            IntroSortRange<T>(data, lo, lessEnd, budget);
+            lo = greaterStart;
+        }
+        else {
+            IntroSortRange<T>(data, greaterStart, hi, budget);
+            hi = lessEnd;
+        }
+    }
+
+    InsertionSortRange<T>(data, lo, hi);
+}

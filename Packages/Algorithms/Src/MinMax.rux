@@ -1,0 +1,104 @@
+// Sequence extremes and clamping.
+//
+// Everything here requires `<` on T and nothing else, and follows the same
+// strict-weak-ordering contract as Search.
+//
+// The extremes are reported as indices rather than values, so the caller keeps
+// the identity of the element it found: with a type ordered by one field, two
+// equivalent elements are not interchangeable. Both searches report the first
+// extreme, so one rule covers them and TryMinMaxIndex agrees exactly with
+// calling the two separately.
+//
+// Scalar two-argument minimum and maximum are deliberately absent. Rux/Math
+// already owns Min and Max for floating-point values, and a same-named generic
+// here would make a bare Min(1.0, 2.0) ambiguous against a candidate that
+// requires explicit type arguments.
+
+// Writes the index of the first smallest element and returns true. An empty
+// sequence or a null index reports failure and leaves the index alone.
+func TryMinIndex<T>(data: *T, length: uint, index: *var uint) -> bool {
+    if index == null || length == 0 {
+        return false;
+    }
+
+    var best: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        // Strictly less, so a later equivalent element never displaces the
+        // first one.
+        if data[i] < data[best] {
+            best = i;
+        }
+        i++;
+    }
+    *index = best;
+    return true;
+}
+
+// Writes the index of the first largest element and returns true.
+func TryMaxIndex<T>(data: *T, length: uint, index: *var uint) -> bool {
+    if index == null || length == 0 {
+        return false;
+    }
+
+    var best: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        if data[best] < data[i] {
+            best = i;
+        }
+        i++;
+    }
+    *index = best;
+    return true;
+}
+
+// Writes both extremes in one pass. Fails, writing neither, when the sequence
+// is empty or either pointer is null.
+//
+// This costs two comparisons per element rather than the three-per-pair a
+// tournament would use. The tournament saves a quarter of the comparisons but
+// reports an arbitrary member of a run of equivalent elements, which would put
+// it at odds with TryMinIndex and TryMaxIndex called separately. Agreement is
+// worth more here than the constant factor.
+func TryMinMaxIndex<T>(data: *T, length: uint, minIndex: *var uint, maxIndex: *var uint) -> bool {
+    if minIndex == null || maxIndex == null || length == 0 {
+        return false;
+    }
+
+    var smallest: uint = 0;
+    var largest: uint = 0;
+    var i: uint = 1;
+    while i < length {
+        if data[i] < data[smallest] {
+            smallest = i;
+        }
+        if data[largest] < data[i] {
+            largest = i;
+        }
+        i++;
+    }
+
+    *minIndex = smallest;
+    *maxIndex = largest;
+    return true;
+}
+
+// Restricts value to the range low..=high. The caller is responsible for
+// passing a range that is the right way round; a reversed one yields high,
+// which is not checked.
+//
+// The upper test is written `high < value` rather than the more natural
+// `value > high`. They should be identical -- `>` is derived from a `<`
+// overload -- but the derived form is currently miscompiled here for a
+// multi-field struct, returning high for a value that is inside the range.
+// See BACKLOG.md; restore the natural spelling once that is fixed.
+func Clamp<T>(value: T, low: T, high: T) -> T {
+    if value < low {
+        return low;
+    }
+    if high < value {
+        return high;
+    }
+    return value;
+}
