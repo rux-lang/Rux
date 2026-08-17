@@ -1,0 +1,142 @@
+import Algorithms::{ Contains, Count, TryFind, TryFindLast, Equal, TryMismatch };
+
+// A struct whose equality covers both fields, so a match on one field alone
+// must not be mistaken for equality.
+struct Record {
+    key: int32;
+    origin: int32;
+}
+
+extend Record {
+    func ==(self, other: Record) -> bool {
+        return self.key == other.key && self.origin == other.origin;
+    }
+}
+
+func Main() -> int {
+    var values: int32[7] = [4, 1, 7, 1, 9, 1, 4];
+    var empty: int32[1] = [0];
+    var index: uint = 0;
+
+    // Contains and Count agree about presence, and an empty sequence holds
+    // nothing whatever is asked of it.
+    if !Contains<int32>(@values[0], 7, 7) { return 10; }
+    if Contains<int32>(@values[0], 7, 8) { return 11; }
+    if Contains<int32>(@empty[0], 0, 0) { return 12; }
+    if Contains<int32>(null, 0, 5) { return 13; }
+
+    if Count<int32>(@values[0], 7, 1) != 3 { return 20; }
+    if Count<int32>(@values[0], 7, 4) != 2 { return 21; }
+    if Count<int32>(@values[0], 7, 8) != 0 { return 22; }
+    if Count<int32>(@empty[0], 0, 0) != 0 { return 23; }
+
+    // TryFind reports the first match and TryFindLast the last one, which
+    // differ exactly when the value repeats.
+    if !TryFind<int32>(@values[0], 7, 1, @index) { return 30; }
+    if index != 1 { return 31; }
+    if !TryFindLast<int32>(@values[0], 7, 1, @index) { return 32; }
+    if index != 5 { return 33; }
+
+    // A value appearing once gives the same index from both ends.
+    if !TryFind<int32>(@values[0], 7, 9, @index) { return 34; }
+    if index != 4 { return 35; }
+    if !TryFindLast<int32>(@values[0], 7, 9, @index) { return 36; }
+    if index != 4 { return 37; }
+
+    // The first and last positions are reachable.
+    if !TryFind<int32>(@values[0], 7, 4, @index) { return 38; }
+    if index != 0 { return 39; }
+    if !TryFindLast<int32>(@values[0], 7, 4, @index) { return 40; }
+    if index != 6 { return 41; }
+
+    // A miss leaves the index untouched, so a caller may seed it beforehand.
+    index = 99;
+    if TryFind<int32>(@values[0], 7, 8, @index) { return 42; }
+    if index != 99 { return 43; }
+    if TryFindLast<int32>(@values[0], 7, 8, @index) { return 44; }
+    if index != 99 { return 45; }
+
+    // An empty sequence never matches, and a null index reports failure rather
+    // than searching.
+    if TryFind<int32>(@empty[0], 0, 0, @index) { return 46; }
+    if TryFindLast<int32>(@empty[0], 0, 0, @index) { return 47; }
+    if TryFind<int32>(@values[0], 7, 4, null) { return 48; }
+    if TryFindLast<int32>(@values[0], 7, 4, null) { return 49; }
+
+    // Equal compares length first, then elements.
+    var a: int32[3] = [1, 2, 3];
+    var b: int32[3] = [1, 2, 3];
+    var c: int32[3] = [1, 5, 3];
+    var prefix: int32[2] = [1, 2];
+
+    if !Equal<int32>(@a[0], 3, @b[0], 3) { return 50; }
+    if Equal<int32>(@a[0], 3, @c[0], 3) { return 51; }
+    if Equal<int32>(@a[0], 3, @prefix[0], 2) { return 52; }
+    if !Equal<int32>(@a[0], 0, @b[0], 0) { return 53; }
+    if !Equal<int32>(null, 0, null, 0) { return 54; }
+    if !Equal<int32>(@a[0], 3, @a[0], 3) { return 55; }
+
+    // TryMismatch is the exact complement of Equal: it reports false only when
+    // the sequences are equal.
+    if TryMismatch<int32>(@a[0], 3, @b[0], 3, @index) { return 60; }
+    if !TryMismatch<int32>(@a[0], 3, @c[0], 3, @index) { return 61; }
+    if index != 1 { return 62; }
+
+    // A difference at the very first and very last positions.
+    var first: int32[3] = [9, 2, 3];
+    var last: int32[3] = [1, 2, 9];
+    if !TryMismatch<int32>(@a[0], 3, @first[0], 3, @index) { return 63; }
+    if index != 0 { return 64; }
+    if !TryMismatch<int32>(@a[0], 3, @last[0], 3, @index) { return 65; }
+    if index != 2 { return 66; }
+
+    // A proper prefix differs at the shorter length, in either argument order.
+    if !TryMismatch<int32>(@a[0], 3, @prefix[0], 2, @index) { return 67; }
+    if index != 2 { return 68; }
+    if !TryMismatch<int32>(@prefix[0], 2, @a[0], 3, @index) { return 69; }
+    if index != 2 { return 70; }
+
+    // Two empty sequences match, and a null index reports failure.
+    if TryMismatch<int32>(@a[0], 0, @b[0], 0, @index) { return 71; }
+    if TryMismatch<int32>(@a[0], 3, @c[0], 3, null) { return 72; }
+
+    // Unsigned elements behave the same, including at the type's limits.
+    var unsigned: uint32[4] = [0u32, 7u32, 4294967295u32, 7u32];
+    if !Contains<uint32>(@unsigned[0], 4, 4294967295u32) { return 80; }
+    if Count<uint32>(@unsigned[0], 4, 7u32) != 2 { return 81; }
+    if !TryFind<uint32>(@unsigned[0], 4, 0u32, @index) { return 82; }
+    if index != 0 { return 83; }
+    if !TryFindLast<uint32>(@unsigned[0], 4, 7u32, @index) { return 84; }
+    if index != 3 { return 85; }
+
+    // Signed elements at their limits.
+    var signed: int32[3] = [-2147483648i32, 0i32, 2147483647i32];
+    if !Contains<int32>(@signed[0], 3, -2147483648i32) { return 86; }
+    if !TryFindLast<int32>(@signed[0], 3, 2147483647i32, @index) { return 87; }
+    if index != 2 { return 88; }
+
+    // A user struct with an overloaded ==. Equality must consider every field,
+    // so a record sharing only its key is not a match.
+    var records: Record[3] = [Record { key: 1, origin: 0 },
+                              Record { key: 2, origin: 1 },
+                              Record { key: 1, origin: 2 }];
+    let sought = Record { key: 1, origin: 2 };
+    let sameKey = Record { key: 1, origin: 9 };
+
+    if !Contains<Record>(@records[0], 3, sought) { return 90; }
+    if Contains<Record>(@records[0], 3, sameKey) { return 91; }
+    if Count<Record>(@records[0], 3, sought) != 1 { return 92; }
+    if !TryFind<Record>(@records[0], 3, sought, @index) { return 93; }
+    if index != 2 { return 94; }
+
+    var copy: Record[3] = [Record { key: 1, origin: 0 },
+                           Record { key: 2, origin: 1 },
+                           Record { key: 1, origin: 2 }];
+    if !Equal<Record>(@records[0], 3, @copy[0], 3) { return 95; }
+    copy[1] = sameKey;
+    if Equal<Record>(@records[0], 3, @copy[0], 3) { return 96; }
+    if !TryMismatch<Record>(@records[0], 3, @copy[0], 3, @index) { return 97; }
+    if index != 1 { return 98; }
+
+    return 0;
+}

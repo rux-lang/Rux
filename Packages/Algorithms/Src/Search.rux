@@ -1,0 +1,114 @@
+import Core::Range;
+
+// Ordered queries over a sorted sequence.
+//
+// Everything here requires `<` on T and nothing else. Equivalence is derived
+// as `!(a < b) && !(b < a)` rather than from `==`, so a type that orders but
+// does not define equality still works, and a type defining both is never
+// asked to keep them consistent by this module alone.
+//
+// `<` must be a strict weak ordering: irreflexive, asymmetric, transitive,
+// with transitive incomparability. The bounded searches additionally require
+// the sequence to be sorted by that same `<`; IsSorted checks exactly that
+// precondition. A sequence that is not sorted yields an unspecified index, but
+// never an access outside the sequence.
+
+// Reports whether the sequence is in non-decreasing order. A sequence of fewer
+// than two elements is sorted.
+func IsSorted<T>(data: *T, length: uint) -> bool {
+    var i: uint = 1;
+    while i < length {
+        if data[i] < data[i - 1] {
+            return false;
+        }
+        i++;
+    }
+    return true;
+}
+
+// The index of the first element that breaks the ordering, or length when the
+// whole sequence is sorted. The result is a position in 0..=length rather than
+// a sentinel, so it needs no not-found encoding, and it is length for the empty
+// and single-element cases.
+func IsSortedUntil<T>(data: *T, length: uint) -> uint {
+    var i: uint = 1;
+    while i < length {
+        if data[i] < data[i - 1] {
+            return i;
+        }
+        i++;
+    }
+    return length;
+}
+
+// The first index at which value could be inserted without breaking the order:
+// the first index whose element is not less than value, or length when every
+// element precedes it. This is a total function, so every result in 0..=length
+// is meaningful and none of them mean "absent".
+func LowerBound<T>(data: *T, length: uint, value: T) -> uint {
+    var low: uint = 0;
+    var high = length;
+    while low < high {
+        // low + (high - low) / 2 rather than (low + high) / 2, which would
+        // overflow for large indices.
+        let middle = low + (high - low) / 2;
+        if data[middle] < value {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+// The last index at which value could be inserted without breaking the order:
+// the first index whose element is greater than value, or length when none is.
+func UpperBound<T>(data: *T, length: uint, value: T) -> uint {
+    var low: uint = 0;
+    var high = length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if value < data[middle] {
+            high = middle;
+        }
+        else {
+            low = middle + 1;
+        }
+    }
+    return low;
+}
+
+// Writes the index of an element equivalent to value and returns true. The
+// index is always the lowest such index, so repeated calls agree and a run of
+// equivalent elements has a stable entry point. When there is no match the
+// index is left alone; a null index reports failure.
+func TryBinarySearch<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
+    if index == null {
+        return false;
+    }
+
+    let position = LowerBound<T>(data, length, value);
+    if position >= length {
+        return false;
+    }
+
+    // LowerBound already established !(data[position] < value); the element is
+    // equivalent when it is not greater either. Checked separately from the
+    // bound above so the index is never used before it is known to be in range.
+    if value < data[position] {
+        return false;
+    }
+
+    *index = position;
+    return true;
+}
+
+// The half-open range of elements equivalent to value. An empty range means no
+// element matched, and its endpoints are then the single position where value
+// would be inserted, so the absent case still carries useful information.
+func EqualRange<T>(data: *T, length: uint, value: T) -> Range<uint> {
+    let start = LowerBound<T>(data, length, value);
+    let end = UpperBound<T>(data, length, value);
+    return Range<uint> { start: start, end: end };
+}
