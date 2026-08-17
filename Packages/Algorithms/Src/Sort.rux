@@ -14,10 +14,14 @@
 // however, deterministic — no randomized pivots, so the same input always
 // produces the same output and the same number of comparisons.
 //
-// A comparator-taking overload is not offered because the compiler cannot yet
-// substitute a `func(T, T) -> bool` parameter through a generic. Until then,
-// order a type by defining `func <` on it, and use a single-field wrapper
-// struct with its own `<` for an alternative order.
+// Each entry point has a `*By` counterpart lower down taking an explicit
+// comparator, for a sequence ordered by something other than its element
+// type's own `<`.
+//
+// The two are separate names rather than overloads of one. Rux resolves an
+// untyped integer literal against a single candidate but not against an
+// overload set, so adding an overload would have made `Sort<int32>(data, 8)`
+// stop compiling for everyone already calling it. See BACKLOG.md.
 
 // Below this many elements, insertion sort beats partitioning: the cost of
 // choosing a pivot dominates, and partitions left by quicksort are already
@@ -354,4 +358,257 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
     }
 
     InsertionSortRange<T>(data, lo, hi);
+}
+
+// Each sort above also takes an explicit ordering, for a sequence ordered by
+// something other than its element type's own `<`. The comparator answers
+// "does a come strictly before b" and must be a strict weak ordering, exactly
+// as `<` must be; equivalence is derived from it alone, so a comparator is
+// enough on its own and the element type need not define any operator.
+//
+// The machinery below mirrors the operator-based helpers rather than sharing
+// them. A generic function cannot be used as a value in Rux, so the operator
+// forms cannot simply pass `<` as a comparator to one shared implementation.
+// Threading a runtime flag instead would put a branch in the innermost
+// comparison of every sort, which is the one place it would be felt. When
+// generic functions become usable as values, the two sets collapse into one.
+
+// Sorts into the order the comparator describes.
+func SortBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
+    if length < 2 {
+        return;
+    }
+
+    var budget = FloorLog2(length) * 2;
+    if budget == 0 {
+        budget = 1;
+    }
+    IntroSortRangeBy<T>(data, 0, length, budget, less);
+}
+
+// Sorts into the reverse of the comparator's order, by sorting and reversing,
+// as the operator form does.
+func SortDescendingBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
+    SortBy<T>(data, length, less);
+    Reverse<T>(data, length);
+}
+
+func NthElementBy<T>(data: *var T, length: uint, n: uint, less: func(T, T) -> bool) -> bool {
+    if n >= length {
+        return false;
+    }
+
+    var lo: uint = 0;
+    var hi = length;
+    var budget = FloorLog2(length) * 2;
+    if budget == 0 {
+        budget = 1;
+    }
+
+    while hi - lo > InsertionSortThreshold {
+        if budget == 0 {
+            HeapSortRangeBy<T>(data, lo, hi, less);
+            return true;
+        }
+        budget--;
+
+        let middle = lo + (hi - lo) / 2;
+        let pivotIndex = MedianOfThreeBy<T>(data, lo, middle, hi - 1, less);
+        let pivot = data[pivotIndex];
+
+        var lessEnd: uint = 0;
+        var greaterStart: uint = 0;
+        PartitionThreeWayBy<T>(data, lo, hi, pivot, @lessEnd, @greaterStart, less);
+
+        if n < lessEnd {
+            hi = lessEnd;
+        }
+        else if n < greaterStart {
+            return true;
+        }
+        else {
+            lo = greaterStart;
+        }
+    }
+
+    InsertionSortRangeBy<T>(data, lo, hi, less);
+    return true;
+}
+
+func PartialSortBy<T>(data: *var T, length: uint, count: uint, less: func(T, T) -> bool) -> bool {
+    if count > length {
+        return false;
+    }
+    if count == 0 {
+        return true;
+    }
+
+    var i = count / 2;
+    while i > 0 {
+        i--;
+        SiftDownBy<T>(data, 0, i, count, less);
+    }
+
+    var j = count;
+    while j < length {
+        if less(data[j], data[0]) {
+            SwapAt<T>(data, 0, j);
+            SiftDownBy<T>(data, 0, 0, count, less);
+        }
+        j++;
+    }
+
+    HeapSortRangeBy<T>(data, 0, count, less);
+    return true;
+}
+
+// Internal helper; not part of the package API.
+func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint, less: func(T, T) -> bool) -> uint {
+    if less(data[first], data[middle]) {
+        if less(data[middle], data[last]) {
+            return middle;
+        }
+        if less(data[first], data[last]) {
+            return last;
+        }
+        return first;
+    }
+
+    if less(data[first], data[last]) {
+        return first;
+    }
+    if less(data[middle], data[last]) {
+        return last;
+    }
+    return middle;
+}
+
+// Internal helper; not part of the package API.
+func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd: *var uint,
+                            greaterStart: *var uint, less: func(T, T) -> bool) {
+    var lower = low;
+    var index = low;
+    var greater = high;
+
+    while index < greater {
+        if less(data[index], pivot) {
+            SwapAt<T>(data, index, lower);
+            lower++;
+            index++;
+        }
+        else {
+            if less(pivot, data[index]) {
+                greater--;
+                SwapAt<T>(data, index, greater);
+            }
+            else {
+                index++;
+            }
+        }
+    }
+
+    *lessEnd = lower;
+    *greaterStart = greater;
+}
+
+// Internal helper; not part of the package API.
+func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, less: func(T, T) -> bool) {
+    if high - low < 2 {
+        return;
+    }
+
+    var i = low + 1;
+    while i < high {
+        let key = data[i];
+        var j = i;
+        while j > low {
+            if !less(key, data[j - 1]) {
+                break;
+            }
+            data[j] = data[j - 1];
+            j--;
+        }
+        data[j] = key;
+        i++;
+    }
+}
+
+// Internal helper; not part of the package API.
+func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, less: func(T, T) -> bool) {
+    var root = start;
+    loop {
+        let child = root * 2 + 1;
+        if child >= count {
+            return;
+        }
+
+        var largest = child;
+        let right = child + 1;
+        if right < count {
+            if less(data[low + child], data[low + right]) {
+                largest = right;
+            }
+        }
+
+        if !less(data[low + root], data[low + largest]) {
+            return;
+        }
+        SwapAt<T>(data, low + root, low + largest);
+        root = largest;
+    }
+}
+
+// Internal helper; not part of the package API.
+func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, less: func(T, T) -> bool) {
+    let count = high - low;
+    if count < 2 {
+        return;
+    }
+
+    var i = count / 2;
+    while i > 0 {
+        i--;
+        SiftDownBy<T>(data, low, i, count, less);
+    }
+
+    var end = count;
+    while end > 1 {
+        end--;
+        SwapAt<T>(data, low, low + end);
+        SiftDownBy<T>(data, low, 0, end, less);
+    }
+}
+
+// Internal helper; not part of the package API.
+func IntroSortRangeBy<T>(data: *var T, low: uint, high: uint, depth: uint, less: func(T, T) -> bool) {
+    var lo = low;
+    var hi = high;
+    var budget = depth;
+
+    while hi - lo > InsertionSortThreshold {
+        if budget == 0 {
+            HeapSortRangeBy<T>(data, lo, hi, less);
+            return;
+        }
+        budget--;
+
+        let middle = lo + (hi - lo) / 2;
+        let pivotIndex = MedianOfThreeBy<T>(data, lo, middle, hi - 1, less);
+        let pivot = data[pivotIndex];
+
+        var lessEnd: uint = 0;
+        var greaterStart: uint = 0;
+        PartitionThreeWayBy<T>(data, lo, hi, pivot, @lessEnd, @greaterStart, less);
+
+        if lessEnd - lo < hi - greaterStart {
+            IntroSortRangeBy<T>(data, lo, lessEnd, budget, less);
+            lo = greaterStart;
+        }
+        else {
+            IntroSortRangeBy<T>(data, greaterStart, hi, budget, less);
+            hi = lessEnd;
+        }
+    }
+
+    InsertionSortRangeBy<T>(data, lo, hi, less);
 }
