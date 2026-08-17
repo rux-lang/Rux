@@ -1383,6 +1383,21 @@ private:
             }
             return TypeRef::MakeTuple(std::move(elems));
         }
+        // A callback parameter names its type parameters like any other type does, so `func(T, T) -> bool` has to be
+        // substituted through as well. Without this the parameter kept an unsubstituted `T` and no argument could ever
+        // match it. Lowering has resolved function types this way all along; only the analyzer was missing the case.
+        if (auto *t = dynamic_cast<const FunctionTypeExpr *>(&expr)) {
+            std::vector<TypeRef> paramTypes;
+            paramTypes.reserve(t->params.size());
+            for (const auto &param : t->params) {
+                paramTypes.push_back(ResolveTypeWithSubstitution(*param, substitutions));
+            }
+            TypeRef returnType = t->returnType ? ResolveTypeWithSubstitution(*t->returnType->get(), substitutions)
+                                               : TypeRef::MakeOpaque();
+            TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
+            functionType.isVariadic = t->isVariadic;
+            return functionType;
+        }
         return ResolveType(expr);
     }
 
