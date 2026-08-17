@@ -1,0 +1,152 @@
+import Core::Assert;
+
+// A function type names its type parameters like any other type does, so
+// `func(T, T) -> bool` has to be substituted along with the rest of a generic
+// signature. It used to be left alone, so the parameter kept an unsubstituted
+// `T` and no argument could ever match it: passing a `func(int32, int32) -> bool`
+// to a `Compare<int32>` was rejected as a type mismatch between two spellings
+// of the same type.
+
+struct Ranked {
+    key: int32;
+    origin: int32;
+}
+
+enum Ordering {
+    Less = 0,
+    Equal = 1,
+    Greater = 2
+}
+
+func LessInt32(a: int32, b: int32) -> bool {
+    return a < b;
+}
+
+func GreaterInt32(a: int32, b: int32) -> bool {
+    return b < a;
+}
+
+func LessRanked(a: Ranked, b: Ranked) -> bool {
+    return a.key < b.key;
+}
+
+func IsEven(value: int32) -> bool {
+    return value % 2 == 0;
+}
+
+func Double(value: int32) -> int32 {
+    return value * 2;
+}
+
+func CompareInt32(a: int32, b: int32) -> Ordering {
+    if a < b {
+        return Ordering::Less;
+    }
+    if b < a {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+// A two-argument callback whose operands are the type parameter.
+func Apply<T>(compare: func(T, T) -> bool, a: T, b: T) -> bool {
+    return compare(a, b);
+}
+
+// A one-argument predicate, applied to elements reached through a pointer.
+func CountIf<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
+    var found: uint = 0;
+    var i: uint = 0;
+    while i < length {
+        if predicate(data[i]) {
+            found++;
+        }
+        i++;
+    }
+    return found;
+}
+
+// A callback that actually drives an ordering, so the call is exercised many
+// times rather than once.
+func SortBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
+    if length < 2 {
+        return;
+    }
+
+    var i: uint = 1;
+    while i < length {
+        let key = data[i];
+        var j = i;
+        while j > 0 {
+            if !less(key, data[j - 1]) {
+                break;
+            }
+            data[j] = data[j - 1];
+            j--;
+        }
+        data[j] = key;
+        i++;
+    }
+}
+
+// A callback returning a type that is not the type parameter.
+func ThreeWay<T>(a: T, b: T, compare: func(T, T) -> Ordering) -> int {
+    return match compare(a, b) {
+        .Less => -1,
+        .Equal => 0,
+        .Greater => 1
+    };
+}
+
+// Two independent type parameters, one appearing only inside the callback.
+func TransformFirst<T, U>(data: *T, transform: func(T) -> U) -> U {
+    return transform(data[0]);
+}
+
+func Main() -> int {
+    // A callback over a primitive, in both directions.
+    Assert(Apply<int32>(LessInt32, 1, 2), "less-than callback accepts an ordered pair");
+    Assert(!Apply<int32>(LessInt32, 2, 1), "less-than callback rejects a reversed pair");
+    Assert(Apply<int32>(GreaterInt32, 2, 1), "a second callback of the same type is distinct");
+
+    // A callback over a user struct.
+    let low = Ranked { key: 1, origin: 0 };
+    let high = Ranked { key: 2, origin: 1 };
+    Assert(Apply<Ranked>(LessRanked, low, high), "callback over a struct compares its fields");
+    Assert(!Apply<Ranked>(LessRanked, high, low), "callback over a struct rejects a reversed pair");
+
+    // A predicate applied across a sequence.
+    var values: int32[6] = [1, 2, 3, 4, 5, 6];
+    Assert(CountIf<int32>(@values[0], 6, IsEven) == 3, "predicate counts matching elements");
+
+    // The callback drives a real ordering, ascending and descending.
+    var ascending: int32[6] = [5, 3, 9, 1, 7, 2];
+    SortBy<int32>(@ascending[0], 6, LessInt32);
+    Assert(ascending[0] == 1 && ascending[5] == 9, "callback orders ascending");
+
+    var descending: int32[6] = [5, 3, 9, 1, 7, 2];
+    SortBy<int32>(@descending[0], 6, GreaterInt32);
+    Assert(descending[0] == 9 && descending[5] == 1, "the same generic orders descending");
+
+    // Ordering a struct by a callback rather than by its own operator.
+    var ranked: Ranked[3] = [Ranked { key: 9, origin: 0 },
+                             Ranked { key: 1, origin: 1 },
+                             Ranked { key: 5, origin: 2 }];
+    SortBy<Ranked>(@ranked[0], 3, LessRanked);
+    Assert(ranked[0].key == 1 && ranked[2].key == 9, "callback orders a struct sequence");
+    Assert(ranked[0].origin == 1, "the whole element moved, not just its key");
+
+    // A callback whose return type is unrelated to the type parameter.
+    Assert(ThreeWay<int32>(1, 2, CompareInt32) == -1, "three-way callback reports less");
+    Assert(ThreeWay<int32>(2, 2, CompareInt32) == 0, "three-way callback reports equal");
+    Assert(ThreeWay<int32>(3, 2, CompareInt32) == 1, "three-way callback reports greater");
+
+    // Two type parameters, with the second reachable only through the callback.
+    Assert(TransformFirst<int32, int32>(@values[0], Double) == 2, "a second type parameter substitutes");
+
+    // A function value held in a local, then handed to the generic.
+    let chosen: func(int32, int32) -> bool = LessInt32;
+    Assert(Apply<int32>(chosen, 1, 2), "a function value in a local is accepted");
+
+    return 0;
+}
