@@ -1222,6 +1222,7 @@ private:
                                           resolvedArgs.size());
                     return TypeRef::MakeUnknown();
                 }
+                CheckTypeReferenceConstraints(expr, decl.typeParams, resolvedArgs, std::format("enum '{}'", t->name));
                 return EnumType(decl, resolvedArgs);
             }
 
@@ -1649,6 +1650,12 @@ private:
                     const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
+                    }
+                    // A candidate whose bounds the type arguments do not meet is not a candidate, so an overload set
+                    // separated by constraint picks the one that applies. The lone-overload path above deliberately
+                    // does not filter, so one constrained function reports its unmet bound rather than no match.
+                    if (!TypeArgumentsSatisfyBounds(decl->typeParams, substitutions)) {
+                        continue;
                     }
                     TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                                     TypeParameterNames(decl->typeParams));
@@ -2177,6 +2184,7 @@ private:
             currentTypeParams.clear();
         }
         AppendTypeParameterNames(currentTypeParams, d.typeParams);
+        const ScopedTypeParameterBounds boundScope(*this, &d.typeParams, !isMethod);
 
         if (d.returnType) {
             ValidateArrayType(*d.returnType->get());
@@ -2295,6 +2303,7 @@ private:
     void CheckStructDecl(const StructDecl &d) {
         auto savedTypeParams = currentTypeParams;
         currentTypeParams = TypeParameterNames(d.typeParams);
+        const ScopedTypeParameterBounds boundScope(*this, &d.typeParams);
 
         PushScope();
         for (const auto &tp : d.typeParams) {
@@ -2324,6 +2333,7 @@ private:
     void CheckEnumDecl(const EnumDecl &d) {
         const auto savedTypeParams = currentTypeParams;
         AppendTypeParameterNames(currentTypeParams, d.typeParams);
+        const ScopedTypeParameterBounds boundScope(*this, &d.typeParams, /*replaceEnclosing=*/false);
         const TypeRef baseType = EnumBaseType(d);
         if (!baseType.IsUnknown() && !baseType.IsInteger()) {
             EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
@@ -2409,6 +2419,11 @@ private:
         // A compound receiver (e.g. `int[]`) resolves through the type
         // expression rather than a named symbol.
         const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
+        // An extend block borrows the extended type's parameters, so it borrows their bounds too: a method body passing
+        // `T` on to a constrained generic is checked against what the struct declared rather than left unconstrained.
+        const auto extended = structDecls.find(typeName);
+        const ScopedTypeParameterBounds boundScope(
+            *this, extended == structDecls.end() ? nullptr : &extended->second->typeParams);
         const Symbol *extendedSymbol = currentScope->Lookup(typeName);
         if (d.extendedType) {
             ValidateArrayType(*d.extendedType);

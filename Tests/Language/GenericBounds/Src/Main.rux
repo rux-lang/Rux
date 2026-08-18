@@ -1,0 +1,81 @@
+/*
+    Compiler correctness test
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+import Core::Assert;
+
+interface Measured {
+    func Measure() -> int;
+}
+
+interface Named {
+    func Rank() -> int;
+}
+
+// An interface that requires nothing: every type argument satisfies it, so the bound only documents intent.
+interface Marker {}
+
+struct Square {
+    size: int;
+}
+
+extend Square : Measured {
+    func Measure(self: *Square) -> int {
+        return self.size * self.size;
+    }
+}
+
+extend Square : Named {
+    func Rank(self: *Square) -> int {
+        return 7;
+    }
+}
+
+struct Segment {
+    length: int;
+}
+
+// Conformance by declaring the required method: no `extend Segment : Measured` is written, and the bound below is
+// still satisfied, because the operations a constraint names are the ones a constrained generic can call.
+extend Segment {
+    func Measure(self: *Segment) -> int {
+        return self.length;
+    }
+}
+
+// Resolving a bound does not change what the generic compiles to: the body is instantiated per type argument exactly
+// as an unconstrained one is. Calling `Measure` through a `T`-typed value needs constraint evidence in lowering, and
+// arrives with that work rather than with bound resolution.
+func Scaled<T: Measured>(factor: int) -> int {
+    return factor * 2;
+}
+
+// A bound is satisfied by a type parameter that carries it, so the constraint travels through this call unchanged.
+func Forwarded<U: Measured>(factor: int) -> int {
+    return Scaled<U>(factor) + 1;
+}
+
+func Ranked<T: Measured + Named>(factor: int) -> int {
+    return factor + 3;
+}
+
+func Tagged<T: Marker>(value: T) -> int {
+    return 11;
+}
+
+func Main() -> int {
+    var square = Square { size: 5 };
+    Assert(square.Measure() == 25, "Expected the nominal implementation to measure the square");
+    Assert(square.Rank() == 7, "Expected the second implementation to rank the square");
+    Assert(Scaled<Square>(4) == 8, "Expected the constrained generic to run for a conforming type");
+    Assert(Forwarded<Square>(4) == 9, "Expected a forwarded bound to instantiate the callee");
+    Assert(Ranked<Square>(4) == 7, "Expected a doubly bounded generic to accept a type meeting both bounds");
+
+    var segment = Segment { length: 9 };
+    Assert(segment.Measure() == 9, "Expected the declared method to measure the segment");
+    Assert(Scaled<Segment>(6) == 12, "Expected a structurally conforming type to satisfy the bound");
+
+    Assert(Tagged<int>(1) == 11, "Expected an interface requiring nothing to accept any type argument");
+    return 0;
+}
