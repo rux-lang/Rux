@@ -268,12 +268,13 @@ LirReg HirToLirContext::EmitNamedLoad(std::string name, TypeRef type) {
     return r;
 }
 
-void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type) const {
+void HirToLirContext::EmitStore(LirReg val, LirReg ptr, TypeRef type, const bool isVolatile) const {
     LirInstr i;
     i.dst = LirNoReg;
     i.op = LirOpcode::Store;
     i.type = std::move(type);
     i.srcs = {val, ptr};
+    i.isVolatile = isVolatile;
     Emit(std::move(i));
 }
 

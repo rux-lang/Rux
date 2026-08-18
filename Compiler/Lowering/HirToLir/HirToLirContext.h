@@ -74,7 +74,7 @@ private:
     [[nodiscard]] LirReg EmitAlloca(TypeRef type, std::uint64_t count);
     [[nodiscard]] LirReg EmitLoad(LirReg ptr, TypeRef type);
     [[nodiscard]] LirReg EmitNamedLoad(std::string name, TypeRef type);
-    void EmitStore(LirReg value, LirReg ptr, TypeRef type) const;
+    void EmitStore(LirReg value, LirReg ptr, TypeRef type, bool isVolatile = false) const;
     [[nodiscard]] LirReg EmitBinary(LirOpcode op, LirReg left, LirReg right, TypeRef type);
     [[nodiscard]] LirReg EmitUnary(LirOpcode op, LirReg source, const TypeRef &type);
     [[nodiscard]] LirReg EmitCast(LirReg source, const TypeRef &fromType, TypeRef toType);

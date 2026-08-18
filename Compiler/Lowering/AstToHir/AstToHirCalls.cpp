@@ -381,6 +381,11 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
             return checked;
         }
+        if (calleeSymbol->intrinsicName == "Zeroize") {
+            if (HirExprPtr cleared = LowerZeroizeCall(call)) {
+                return cleared;
+            }
+        }
     }
     if (isAssertion || isPanic) {
         auto lowered = std::make_unique<HirCallExpr>();

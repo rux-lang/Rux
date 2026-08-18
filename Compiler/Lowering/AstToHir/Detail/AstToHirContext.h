@@ -76,6 +76,8 @@ protected:
     std::size_t iterationOrdinal = 0;
     /// The same for the operands and result a checked operation names.
     std::size_t checkedArithmeticOrdinal = 0;
+    /// The same for the bindings a zeroization loop names.
+    std::size_t zeroizationOrdinal = 0;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
@@ -127,6 +129,7 @@ protected:
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
     [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
+    [[nodiscard]] HirExprPtr LowerZeroizeCall(const CallExpr &call);
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
