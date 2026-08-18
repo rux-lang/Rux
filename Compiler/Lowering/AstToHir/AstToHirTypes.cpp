@@ -3,6 +3,7 @@
 
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Numeric/IntegerLiteral.h"
 #include "Semantic/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -253,15 +254,8 @@ TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
     return TypeRef::MakeChar();
 }
 
-std::string AstToHirContext::NumericLiteralSuffix(std::string_view text) {
-    static constexpr std::string_view suffixes[] = {"i8",  "i16", "i32", "i64", "u8", "u16",
-                                                    "u32", "u64", "f32", "f64", "i",  "u"};
-    for (auto suffix : suffixes) {
-        if (text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix) {
-            return std::string(suffix);
-        }
-    }
-    return {};
+std::string AstToHirContext::NumericLiteralSuffix(const std::string_view text) {
+    return std::string(NumericLiteralSuffixOf(text));
 }
 
 std::string AstToHirContext::StripNumericLiteralSuffixImpl(const std::string &text) {
@@ -489,6 +483,10 @@ std::optional<std::pair<std::int64_t, std::int64_t>> AstToHirContext::SignedInte
     }
 }
 
+/// Whether an unsuffixed literal is one `target` holds.
+///
+/// Lowering repeats this check because it re-derives a literal's type without analysis alongside it; both ask the one
+/// decoder, so both are exact at every width.
 bool AstToHirContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) const {
     bool negative = false;
     const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
@@ -501,28 +499,18 @@ bool AstToHirContext::UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeR
         }
         negative = true;
     }
-
-    const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-    if (!value) {
+    if (literal->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffixOf(literal->token.text).empty()) {
         return false;
     }
-
-    if (negative) {
-        const auto range = SignedIntegerRange(target);
-        if (!range) {
-            return false;
-        }
-        const auto minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
-        return *value <= minMagnitude;
+    if (!target.IsInteger()) {
+        return false;
     }
-
-    if (const auto max = UnsignedIntegerMax(target)) {
-        return *value <= *max;
+    const auto bits = PrimitiveBits(target.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+    const auto magnitude = DecodeIntegerLiteral(literal->token.text, WideInteger::MaxBits);
+    if (!bits || !magnitude) {
+        return false;
     }
-    if (const auto range = SignedIntegerRange(target)) {
-        return *value <= static_cast<std::uint64_t>(range->second);
-    }
-    return false;
+    return IntegerLiteralFits(*magnitude, negative, *bits, target.IsSigned());
 }
 
 bool AstToHirContext::IsNullLiteral(const Expr &expr) {

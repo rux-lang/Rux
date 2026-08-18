@@ -42,6 +42,10 @@ rux_add_interface_component(RuxSourceModel)
 
 rux_add_interface_component(RuxBuildInfo)
 
+rux_add_component(RuxNumeric
+    Numeric/IntegerLiteral.cpp
+    Numeric/WideInteger.cpp)
+
 rux_add_component(RuxReporting
     Reporting/Reporting.cpp)
 
@@ -99,7 +103,7 @@ target_link_libraries(RuxPackage PUBLIC RuxCrypto RuxTarget)
 rux_add_component(RuxLexer
     Lexer/Token.cpp
     Lexer/Lexer.cpp)
-target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxSourceModel)
+target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxNumeric RuxSourceModel)
 
 rux_add_component(RuxSyntax
     Syntax/Parser/Parser.cpp
@@ -145,7 +149,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticReceivers.cpp
     Semantic/SemanticTypeProperties.cpp
     Semantic/SemanticPrinter.cpp)
-target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxSyntax RuxDiagnostics)
+target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxNumeric RuxSyntax RuxDiagnostics)
 
 rux_add_component(RuxFormatter
     Formatter/Formatter.cpp)
@@ -209,7 +213,7 @@ rux_add_component(RuxCodeGenCommon
     CodeGen/Layout.cpp
     CodeGen/RcuModuleBuilder.cpp
     CodeGen/RuntimeFailure.cpp)
-target_link_libraries(RuxCodeGenCommon PUBLIC RuxLir RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenCommon PUBLIC RuxNumeric RuxLir RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/Assembler.cpp
@@ -321,7 +325,7 @@ if (WIN32)
     set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxCliReporting RuxReporting RuxSource
         RuxSystem RuxCrypto
         RuxPackage
-        RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
+        RuxNumeric RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY

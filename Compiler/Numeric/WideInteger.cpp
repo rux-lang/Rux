@@ -1,0 +1,225 @@
+#include "Numeric/WideInteger.h"
+
+#include <algorithm>
+
+namespace Rux {
+namespace {
+/// Clamp a requested width into the range a value can actually occupy.
+[[nodiscard]] std::uint32_t ClampWidth(const std::uint32_t width) noexcept {
+    return std::clamp<std::uint32_t>(width, 1, WideInteger::MaxBits);
+}
+
+/// The number of limbs a `width`-bit value spans, rounded up.
+[[nodiscard]] std::size_t LimbsFor(const std::uint32_t width) noexcept {
+    return (width + WideInteger::LimbBits - 1) / WideInteger::LimbBits;
+}
+
+/// @return the value of `digit` in `base`, or nullopt when it is not one of that base's digits
+[[nodiscard]] std::optional<unsigned> DigitValue(const char digit, const unsigned base) noexcept {
+    unsigned value = 0;
+    if (digit >= '0' && digit <= '9') {
+        value = static_cast<unsigned>(digit - '0');
+    }
+    else if (digit >= 'a' && digit <= 'f') {
+        value = static_cast<unsigned>(digit - 'a') + 10;
+    }
+    else if (digit >= 'A' && digit <= 'F') {
+        value = static_cast<unsigned>(digit - 'A') + 10;
+    }
+    else {
+        return std::nullopt;
+    }
+    return value < base ? std::optional{value} : std::nullopt;
+}
+} // namespace
+
+WideInteger WideInteger::Zero(const std::uint32_t width) noexcept {
+    WideInteger value;
+    value.width = ClampWidth(width);
+    return value;
+}
+
+WideInteger WideInteger::FromUnsigned(const std::uint64_t source, const std::uint32_t width) noexcept {
+    WideInteger value = Zero(width);
+    value.limbs[0] = static_cast<Limb>(source & 0xFFFFFFFFU);
+    value.limbs[1] = static_cast<Limb>(source >> LimbBits);
+    value.Normalize();
+    return value;
+}
+
+WideInteger WideInteger::AllOnes(const std::uint32_t width) noexcept {
+    WideInteger value = Zero(width);
+    value.limbs.fill(~Limb{0});
+    value.Normalize();
+    return value;
+}
+
+WideInteger WideInteger::MaxValue(const std::uint32_t width, const bool isSigned) noexcept {
+    const std::uint32_t clamped = ClampWidth(width);
+    if (!isSigned) {
+        return AllOnes(clamped);
+    }
+    // The top bit is the sign, so a signed width tops out one bit lower: every bit below the sign bit set.
+    WideInteger value = AllOnes(clamped);
+    const std::uint32_t signBit = clamped - 1;
+    value.limbs[signBit / LimbBits] &= ~(Limb{1} << (signBit % LimbBits));
+    return value;
+}
+
+WideInteger WideInteger::MinMagnitude(const std::uint32_t width, const bool isSigned) noexcept {
+    const std::uint32_t clamped = ClampWidth(width);
+    if (!isSigned) {
+        return Zero(clamped);
+    }
+    // 2^(width-1): the magnitude of the most negative value, one past the largest positive one.
+    WideInteger value = Zero(clamped);
+    const std::uint32_t signBit = clamped - 1;
+    value.limbs[signBit / LimbBits] = Limb{1} << (signBit % LimbBits);
+    return value;
+}
+
+void WideInteger::Normalize() noexcept {
+    const std::size_t used = LimbsFor(width);
+    for (std::size_t index = used; index < MaxLimbs; ++index) {
+        limbs[index] = 0;
+    }
+    if (const std::uint32_t topBits = width % LimbBits; topBits != 0) {
+        limbs[used - 1] &= (Limb{1} << topBits) - 1;
+    }
+}
+
+bool WideInteger::MultiplyAdd(const Limb factor, const Limb addend) noexcept {
+    const std::size_t used = LimbsFor(width);
+    std::uint64_t carry = addend;
+    for (std::size_t index = 0; index < used; ++index) {
+        const std::uint64_t product = static_cast<std::uint64_t>(limbs[index]) * factor + carry;
+        limbs[index] = static_cast<Limb>(product & 0xFFFFFFFFU);
+        carry = product >> LimbBits;
+    }
+    if (carry != 0) {
+        return false;
+    }
+    // A zero carry is not enough on its own: the top limb may lie only partly inside the width.
+    if (const std::uint32_t topBits = width % LimbBits; topBits != 0) {
+        return (limbs[used - 1] >> topBits) == 0;
+    }
+    return true;
+}
+
+WideInteger::Limb WideInteger::DivideBy(const Limb divisor) noexcept {
+    std::uint64_t remainder = 0;
+    for (std::size_t index = LimbsFor(width); index-- > 0;) {
+        const std::uint64_t current = (remainder << LimbBits) | limbs[index];
+        limbs[index] = static_cast<Limb>(current / divisor);
+        remainder = current % divisor;
+    }
+    return static_cast<Limb>(remainder);
+}
+
+std::optional<WideInteger> WideInteger::Parse(const std::string_view digits, const unsigned base,
+                                              const std::uint32_t width) {
+    if (base < 2 || base > 16) {
+        return std::nullopt;
+    }
+    WideInteger value = Zero(width);
+    bool sawDigit = false;
+    for (const char character : digits) {
+        if (character == '_') {
+            continue;
+        }
+        const auto digit = DigitValue(character, base);
+        if (!digit) {
+            return std::nullopt;
+        }
+        sawDigit = true;
+        if (!value.MultiplyAdd(static_cast<Limb>(base), static_cast<Limb>(*digit))) {
+            return std::nullopt;
+        }
+    }
+    return sawDigit ? std::optional{value} : std::nullopt;
+}
+
+bool WideInteger::IsZero() const noexcept {
+    return std::ranges::all_of(limbs, [](const Limb limb) { return limb == 0; });
+}
+
+bool WideInteger::BitSet(const std::uint32_t index) const noexcept {
+    if (index >= width) {
+        return false;
+    }
+    return (limbs[index / LimbBits] >> (index % LimbBits) & 1U) != 0;
+}
+
+std::uint64_t WideInteger::Word64(const std::size_t index) const noexcept {
+    const std::size_t low = index * 2;
+    if (low >= MaxLimbs) {
+        return 0;
+    }
+    const std::uint64_t high = low + 1 < MaxLimbs ? limbs[low + 1] : 0;
+    return static_cast<std::uint64_t>(limbs[low]) | (high << LimbBits);
+}
+
+std::optional<std::uint64_t> WideInteger::ToUnsigned() const noexcept {
+    for (std::size_t index = 2; index < MaxLimbs; ++index) {
+        if (limbs[index] != 0) {
+            return std::nullopt;
+        }
+    }
+    return Word64(0);
+}
+
+std::string WideInteger::ToDecimal() const {
+    if (IsZero()) {
+        return "0";
+    }
+    // Peel nine digits at a time: 10^9 is the largest power of ten a limb holds, so every division stays exact in the
+    // 64-bit arithmetic above. Digits come out least significant first and the whole string is reversed once.
+    constexpr Limb Chunk = 1000000000;
+    std::string digits;
+    WideInteger remaining = *this;
+    while (!remaining.IsZero()) {
+        Limb chunk = remaining.DivideBy(Chunk);
+        for (int written = 0; written < 9; ++written) {
+            digits.push_back(static_cast<char>('0' + chunk % 10));
+            chunk /= 10;
+        }
+    }
+    while (digits.size() > 1 && digits.back() == '0') {
+        digits.pop_back();
+    }
+    std::ranges::reverse(digits);
+    return digits;
+}
+
+WideInteger WideInteger::Negated() const noexcept {
+    WideInteger result = *this;
+    std::uint64_t carry = 1;
+    for (std::size_t index = 0; index < MaxLimbs; ++index) {
+        const std::uint64_t complemented = static_cast<std::uint64_t>(static_cast<Limb>(~limbs[index])) + carry;
+        result.limbs[index] = static_cast<Limb>(complemented & 0xFFFFFFFFU);
+        carry = complemented >> LimbBits;
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::Truncated(const std::uint32_t newWidth) const noexcept {
+    WideInteger result = *this;
+    result.width = ClampWidth(newWidth);
+    result.Normalize();
+    return result;
+}
+
+bool WideInteger::operator==(const WideInteger &other) const noexcept {
+    return limbs == other.limbs;
+}
+
+std::strong_ordering WideInteger::operator<=>(const WideInteger &other) const noexcept {
+    for (std::size_t index = MaxLimbs; index-- > 0;) {
+        if (limbs[index] != other.limbs[index]) {
+            return limbs[index] <=> other.limbs[index];
+        }
+    }
+    return std::strong_ordering::equal;
+}
+} // namespace Rux

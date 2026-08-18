@@ -3,6 +3,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 
 #include "Lexer/Lexer.h"
+#include "Numeric/IntegerLiteral.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 #include "Semantic/PrimitiveConstants.h"
@@ -474,56 +475,32 @@ private:
         return TypeRef::MakeChar();
     }
 
-    static std::string NumericLiteralSuffix(std::string_view text) {
-        static constexpr std::string_view suffixes[] = {"i8",  "i16", "i32", "i64", "u8", "u16",
-                                                        "u32", "u64", "f32", "f64", "i",  "u"};
-        for (auto suffix : suffixes) {
-            if (text.size() > suffix.size() && text.substr(text.size() - suffix.size()) == suffix) {
-                return std::string(suffix);
-            }
-        }
-        return {};
+    static std::string NumericLiteralSuffix(const std::string_view text) {
+        return std::string(NumericLiteralSuffixOf(text));
     }
 
+    /// The type a suffix names, built from the width and signedness the suffix table records rather than from a
+    /// second list of them here. A literal with no suffix takes the default: `int`, or `float64` when it has a point.
     static TypeRef SuffixedLiteralType(const Token &tok) {
-        const std::string suffix = NumericLiteralSuffix(tok.text);
-        if (suffix == "i8") {
-            return TypeRef::MakeInt8();
+        const NumericLiteralSuffixInfo *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(tok.text));
+        if (!suffix) {
+            return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
         }
-        if (suffix == "i16") {
-            return TypeRef::MakeInt16();
+        if (suffix->isFloat) {
+            return suffix->bits == 32 ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
         }
-        if (suffix == "i32") {
-            return TypeRef::MakeInt32();
+        if (suffix->bits == 0) {
+            return suffix->isSigned ? TypeRef::MakeInt() : TypeRef::MakeUInt();
         }
-        if (suffix == "i64") {
-            return TypeRef::MakeInt64();
+        for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+            const bool matches = primitive.bits == suffix->bits &&
+                                 primitive.category ==
+                                     (suffix->isSigned ? PrimitiveCategory::SignedInt : PrimitiveCategory::UnsignedInt);
+            if (matches) {
+                return TypeRef::MakePrimitive(primitive.kind);
+            }
         }
-        if (suffix == "i") {
-            return TypeRef::MakeInt();
-        }
-        if (suffix == "u8") {
-            return TypeRef::MakeUInt8();
-        }
-        if (suffix == "u16") {
-            return TypeRef::MakeUInt16();
-        }
-        if (suffix == "u32") {
-            return TypeRef::MakeUInt32();
-        }
-        if (suffix == "u64") {
-            return TypeRef::MakeUInt64();
-        }
-        if (suffix == "u") {
-            return TypeRef::MakeUInt();
-        }
-        if (suffix == "f32") {
-            return TypeRef::MakeFloat32();
-        }
-        if (suffix == "f64") {
-            return TypeRef::MakeFloat64();
-        }
-        return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
+        return TypeRef::MakeInt();
     }
 
     static std::optional<std::uint64_t> ParseUnsuffixedIntegerLiteral(const Token &tok) {
@@ -631,42 +608,50 @@ private:
         return value;
     }
 
-    static std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef &type) {
-        switch (type.kind) {
-        case TypeRef::Kind::UInt8:
-            return std::numeric_limits<std::uint8_t>::max();
-        case TypeRef::Kind::UInt16:
-            return std::numeric_limits<std::uint16_t>::max();
-        case TypeRef::Kind::UInt32:
-            return std::numeric_limits<std::uint32_t>::max();
-        case TypeRef::Kind::UInt64:
-        case TypeRef::Kind::UInt:
-            return std::numeric_limits<std::uint64_t>::max();
-        default:
+    /// The width and signedness `type` is range-checked at, with the target's pointer width filled in for `int` and
+    /// `uint`.
+    ///
+    /// @return nullopt when `type` is not an integer
+    std::optional<std::pair<std::uint32_t, bool>> IntegerRange(const TypeRef &type) const {
+        if (!type.IsInteger()) {
             return std::nullopt;
         }
-    }
-
-    static std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef &type) {
-        switch (type.kind) {
-        case TypeRef::Kind::Int8:
-            return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::min()),
-                             static_cast<std::int64_t>(std::numeric_limits<std::int8_t>::max())};
-        case TypeRef::Kind::Int16:
-            return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::min()),
-                             static_cast<std::int64_t>(std::numeric_limits<std::int16_t>::max())};
-        case TypeRef::Kind::Int32:
-            return std::pair{static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-                             static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())};
-        case TypeRef::Kind::Int64:
-        case TypeRef::Kind::Int:
-            return std::pair{std::numeric_limits<std::int64_t>::min(), std::numeric_limits<std::int64_t>::max()};
-        default:
+        const auto bits = PrimitiveBits(type.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+        if (!bits) {
             return std::nullopt;
         }
+        return std::pair{*bits, type.IsSigned()};
     }
 
-    static bool UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) {
+    /// Constant-expression folding still evaluates in a machine word, so these two answer only for the widths that
+    /// fit one. A literal is checked by `UnsuffixedIntegerLiteralFits` instead, which is exact at every width.
+    std::optional<std::uint64_t> UnsignedIntegerMax(const TypeRef &type) const {
+        const auto range = IntegerRange(type);
+        if (!range || range->second || range->first > 64) {
+            return std::nullopt;
+        }
+        return WideInteger::MaxValue(range->first, false).ToUnsigned();
+    }
+
+    std::optional<std::pair<std::int64_t, std::int64_t>> SignedIntegerRange(const TypeRef &type) const {
+        const auto range = IntegerRange(type);
+        if (!range || !range->second || range->first > 64) {
+            return std::nullopt;
+        }
+        const auto maximum = WideInteger::MaxValue(range->first, true).ToUnsigned();
+        const auto minMagnitude = WideInteger::MinMagnitude(range->first, true).ToUnsigned();
+        if (!maximum || !minMagnitude) {
+            return std::nullopt;
+        }
+        return std::pair{static_cast<std::int64_t>(~*minMagnitude + 1), static_cast<std::int64_t>(*maximum)};
+    }
+
+    /// Whether an unsuffixed literal is one `target` holds.
+    ///
+    /// The magnitude is decoded at the widest width there is and range-checked afterwards, so a literal too large for
+    /// its target is told apart from one that is not a literal at all, and both answers are exact however wide the
+    /// target is.
+    bool UnsuffixedIntegerLiteralFits(const Expr &expr, const TypeRef &target) const {
         bool negative = false;
         const LiteralExpr *literal = dynamic_cast<const LiteralExpr *>(&expr);
         if (!literal) {
@@ -678,28 +663,19 @@ private:
             }
             negative = true;
         }
-
-        const auto value = ParseUnsuffixedIntegerLiteral(literal->token);
-        if (!value) {
+        if (literal->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffixOf(literal->token.text).empty()) {
             return false;
         }
 
-        if (negative) {
-            const auto range = SignedIntegerRange(target);
-            if (!range) {
-                return false;
-            }
-            const auto minMagnitude = static_cast<std::uint64_t>(-(range->first + 1)) + 1;
-            return *value <= minMagnitude;
+        const auto range = IntegerRange(target);
+        if (!range) {
+            return false;
         }
-
-        if (const auto max = UnsignedIntegerMax(target)) {
-            return *value <= *max;
+        const auto magnitude = DecodeIntegerLiteral(literal->token.text, WideInteger::MaxBits);
+        if (!magnitude) {
+            return false;
         }
-        if (const auto range = SignedIntegerRange(target)) {
-            return *value <= static_cast<std::uint64_t>(range->second);
-        }
-        return false;
+        return IntegerLiteralFits(*magnitude, negative, range->first, range->second);
     }
 
     static bool IsNullLiteral(const Expr &expr) {
@@ -720,7 +696,7 @@ private:
                NumericLiteralSuffix(literal->token.text).empty();
     }
 
-    static bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) {
+    bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) const {
         return targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr) &&
                !UnsuffixedIntegerLiteralFits(expr, targetType);
     }
@@ -898,7 +874,7 @@ private:
         return std::nullopt;
     }
 
-    static bool ConstantFitsTarget(std::int64_t value, const TypeRef &target) {
+    bool ConstantFitsTarget(std::int64_t value, const TypeRef &target) const {
         if (const auto max = UnsignedIntegerMax(target)) {
             return value >= 0 && static_cast<std::uint64_t>(value) <= *max;
         }
