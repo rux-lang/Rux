@@ -102,6 +102,8 @@ std::optional<TypeRef> SemanticAnalyzerContext::ResolveStructTypeReference(const
                               typeArguments.size());
         return TypeRef::MakeUnknown();
     }
+    CheckTypeReferenceConstraints(expression, declaration->second->typeParams, typeArguments,
+                                  std::format("struct '{}'", name));
     std::string instantiatedName = name;
     for (std::size_t index = 0; index < typeArguments.size(); ++index) {
         instantiatedName += index == 0 ? "<" : ", ";

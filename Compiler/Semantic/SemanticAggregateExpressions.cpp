@@ -338,6 +338,8 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
     }
 
     const auto substitutions = StructTypeSubstitutions(declaration, expression.typeArgs);
+    CheckTypeArgumentConstraints(declaration.typeParams, substitutions, expression.location,
+                                 std::format("struct '{}'", expression.typeName));
     std::unordered_map<std::string, const StructDecl::Field *> fields;
     for (const auto &field : declaration.fields) {
         fields.emplace(field.name, &field);

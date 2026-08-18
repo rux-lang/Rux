@@ -62,6 +62,49 @@ protected:
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
                                       SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
+
+    /// One interface bound written on a generic parameter, resolved to the interface it names. `interface` is null when
+    /// the bound named nothing, or named something that is not an interface; the declaration site reports that, and
+    /// every use site then skips the bound rather than reporting the same mistake at each call.
+    struct ResolvedTypeBound {
+        std::string name;
+        const InterfaceDecl *interface = nullptr;
+        SourceLocation location;
+    };
+
+    [[nodiscard]] std::vector<ResolvedTypeBound> ResolveTypeParameterBounds(const TypeParameter &parameter,
+                                                                            bool report);
+    void DeclareTypeParameterBounds(const std::vector<TypeParameter> &parameters);
+
+    /// Holds the bounds of the type parameters a declaration owns for as long as that declaration is being checked,
+    /// then restores the enclosing declaration's. Bounds are scoped exactly like `currentTypeParams`, and a checker
+    /// that saved one without restoring the other would report the wrong declaration's promises. A null `parameters`
+    /// declares none of its own, which is how an extend block over a non-generic type enters.
+    class ScopedTypeParameterBounds {
+    public:
+        ScopedTypeParameterBounds(SemanticAnalyzerContext &owner, const std::vector<TypeParameter> *parameters,
+                                  bool replaceEnclosing = true);
+        ~ScopedTypeParameterBounds();
+
+        ScopedTypeParameterBounds(const ScopedTypeParameterBounds &) = delete;
+        ScopedTypeParameterBounds &operator=(const ScopedTypeParameterBounds &) = delete;
+
+    private:
+        SemanticAnalyzerContext &context;
+        std::unordered_map<std::string, std::vector<ResolvedTypeBound>> saved;
+    };
+
+    void CheckTypeArgumentConstraints(const std::vector<TypeParameter> &parameters,
+                                      const std::unordered_map<std::string, TypeRef> &substitutions,
+                                      SourceLocation location, const std::string &subject);
+    void CheckTypeReferenceConstraints(const TypeExpr &expression, const std::vector<TypeParameter> &parameters,
+                                       const std::vector<TypeRef> &typeArguments, const std::string &subject);
+    void CheckWrittenTypeArgumentConstraints(const std::vector<TypeParameter> &parameters,
+                                             const std::vector<TypeExprPtr> &typeArguments, SourceLocation location,
+                                             const std::string &subject);
+    [[nodiscard]] bool TypeArgumentsSatisfyBounds(const std::vector<TypeParameter> &parameters,
+                                                  const std::unordered_map<std::string, TypeRef> &substitutions);
+    [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
@@ -150,6 +193,10 @@ protected:
     const ImplDecl *currentImpl = nullptr;
     TypeRef currentExtendedType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
+    /// Interface bounds of the generic parameters currently in scope, keyed by parameter name. A type parameter passed
+    /// on as a type argument satisfies a bound exactly when its own declaration carries that bound, so a generic body
+    /// is checked once against what it promised rather than again at every instantiation.
+    std::unordered_map<std::string, std::vector<ResolvedTypeBound>> currentTypeParamBounds;
     const std::unordered_map<std::string, const StructDecl *> &structDecls;
     const std::unordered_map<std::string, const EnumDecl *> &enumDecls;
     const std::unordered_map<std::string, const UnionDecl *> &unionDecls;
@@ -195,6 +242,9 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
+    /// A type expression is resolved once per place it is read -- a parameter's type is resolved again for its symbol,
+    /// its signature, and each overload attempt -- so an unsatisfied bound is reported for the spelling, not per read.
+    std::unordered_set<const TypeExpr *> reportedTypeArgumentConstraints;
 
     void RegisterBuiltins();
     void IndexDeclarations();

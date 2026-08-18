@@ -210,6 +210,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             for (std::size_t i = 0; i < count; ++i) {
                 substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
             }
+            CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
+                                         std::format("function '{}'", ident->name));
             QueueGenericInstantiation(*decl, substitutions);
             TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                             TypeParameterNames(decl->typeParams));
@@ -455,6 +457,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                         for (std::size_t i = 0; i < substitutionCount; ++i) {
                             binding.substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
                         }
+                        CheckTypeArgumentConstraints(decl.typeParams, binding.substitutions, e->location,
+                                                     std::format("enum '{}'", decl.name));
                         callableBindings.insert_or_assign(e, std::move(binding));
                         return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
                     }
@@ -468,6 +472,10 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                         std::format("associated function on '{}' requires {}, but {} provided", path->segments[0],
                                     Counted(structIt->second->typeParams.size(), "type argument"),
                                     e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
+                }
+                else if (const auto generic = structDecls.find(path->segments[0]); generic != structDecls.end()) {
+                    CheckWrittenTypeArgumentConstraints(generic->second->typeParams, e->typeArgs, e->location,
+                                                        std::format("struct '{}'", path->segments[0]));
                 }
                 receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
                 const std::string &methodName = path->segments[1];
