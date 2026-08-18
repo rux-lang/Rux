@@ -131,6 +131,9 @@ bool AArch64FunctionEmitter::EmitWideConstant(const LirInstr &instruction) {
 }
 
 bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
+    if (EmitSoftwareFloatNegation(instruction)) {
+        return true;
+    }
     const TypeRef operandType = instruction.srcs.empty() ? instruction.type : TypeOfReg(instruction.srcs[0]);
     if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
         return false;
