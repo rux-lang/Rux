@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <doctest.h>
+#include <limits>
 
 using namespace Rux;
 
@@ -25,6 +26,40 @@ namespace {
         .exponent = exponent,
         .significand = WideInteger::FromUnsigned(significand, WideInteger::MaxBits),
     };
+}
+
+[[nodiscard]] std::int32_t Binary8Units(const std::uint8_t raw) {
+    const std::uint32_t exponent = (raw >> 3) & 0xF;
+    const std::uint32_t fraction = raw & 0x7;
+    const std::int32_t magnitude = exponent == 0 ? static_cast<std::int32_t>(fraction)
+                                                 : static_cast<std::int32_t>((8 + fraction) << (exponent - 1));
+    return (raw & 0x80) != 0 ? -magnitude : magnitude;
+}
+
+[[nodiscard]] std::uint8_t ReferenceBinary8Add(const std::uint8_t left, const std::uint8_t right) {
+    const std::int32_t sum = Binary8Units(left) + Binary8Units(right);
+    if (sum == 0) {
+        return Binary8Units(left) == 0 && Binary8Units(right) == 0 && (left & right & 0x80) != 0 ? 0x80 : 0;
+    }
+
+    const std::uint8_t sign = sum < 0 ? 0x80 : 0;
+    const std::int32_t magnitude = sum < 0 ? -sum : sum;
+    std::uint8_t best = 0;
+    std::int32_t bestDistance = std::numeric_limits<std::int32_t>::max();
+    // Treat the infinity encoding as the next even significand after the maximum finite value. This gives the IEEE
+    // overflow threshold while keeping the oracle entirely in integer arithmetic.
+    for (std::uint8_t candidate = 0; candidate <= 0x78; ++candidate) {
+        if (((candidate >> 3) & 0xF) == 0xF && candidate != 0x78) {
+            continue;
+        }
+        const std::int32_t distance = magnitude > Binary8Units(candidate) ? magnitude - Binary8Units(candidate)
+                                                                          : Binary8Units(candidate) - magnitude;
+        if (distance < bestDistance || (distance == bestDistance && (candidate & 1) == 0 && (best & 1) != 0)) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+    return sign | best;
 }
 } // namespace
 
@@ -100,4 +135,69 @@ TEST_CASE("software float packing supports every format and canonicalizes extend
     CHECK(canonical.IsCanonical());
     CHECK_EQ(canonical.ExponentField(), 1);
     CHECK_EQ(Word(canonical), 0x8000000000000000ULL);
+}
+
+TEST_CASE("software float addition and subtraction handle finite rounding") {
+    const FloatFormat &format = Format(8);
+    const auto encoding = [&](const std::uint8_t raw) {
+        return FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 8));
+    };
+    const auto add = [&](const std::uint8_t left, const std::uint8_t right) {
+        return static_cast<std::uint8_t>(Word(AddFloat(encoding(left), encoding(right))));
+    };
+    const auto subtract = [&](const std::uint8_t left, const std::uint8_t right) {
+        return static_cast<std::uint8_t>(Word(SubtractFloat(encoding(left), encoding(right))));
+    };
+
+    CHECK_EQ(add(0x38, 0x38), 0x40);
+    CHECK_EQ(add(0x3C, 0x3C), 0x44);
+    CHECK_EQ(add(0x01, 0x01), 0x02);
+    CHECK_EQ(add(0x38, 0x18), 0x38);
+    CHECK_EQ(add(0x39, 0x18), 0x3A);
+    CHECK_EQ(add(0x38, 0x1A), 0x39);
+    CHECK_EQ(add(0x77, 0x77), 0x78);
+    CHECK_EQ(add(0x38, 0xB8), 0x00);
+    CHECK_EQ(subtract(0x40, 0x38), 0x38);
+    CHECK_EQ(subtract(0x38, 0x40), 0xB8);
+    CHECK_EQ(subtract(0x3C, 0x3C), 0x00);
+}
+
+TEST_CASE("software float addition applies IEEE special-value rules") {
+    const FloatFormat &format = Format(32);
+    const auto encoding = [&](const std::uint32_t raw) {
+        return FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 32));
+    };
+
+    CHECK_EQ(Word(AddFloat(encoding(0x80000000), encoding(0x80000000))), 0x80000000);
+    CHECK_EQ(Word(AddFloat(encoding(0x00000000), encoding(0x80000000))), 0x00000000);
+    CHECK_EQ(Word(SubtractFloat(encoding(0x80000000), encoding(0x00000000))), 0x80000000);
+    CHECK_EQ(Word(AddFloat(encoding(0x7F800000), encoding(0x3F800000))), 0x7F800000);
+    CHECK_EQ(Word(SubtractFloat(encoding(0x3F800000), encoding(0x7F800000))), 0xFF800000);
+    CHECK_EQ(AddFloat(encoding(0x7F800000), encoding(0xFF800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(SubtractFloat(encoding(0x7F800000), encoding(0x7F800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(Word(AddFloat(encoding(0x7FC12345), encoding(0x3F800000))), 0x7FC12345);
+    CHECK_EQ(Word(AddFloat(encoding(0x7FA12345), encoding(0x7FC54321))), 0x7FE12345);
+}
+
+TEST_CASE("software float add and subtract match an exact binary8 oracle") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t leftRaw = 0; leftRaw <= 0xFF; ++leftRaw) {
+        const FloatEncoding left = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(leftRaw, 8));
+        if (!UnpackFloat(left).IsFinite()) {
+            continue;
+        }
+        for (std::uint32_t rightRaw = 0; rightRaw <= 0xFF; ++rightRaw) {
+            const FloatEncoding right = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(rightRaw, 8));
+            if (!UnpackFloat(right).IsFinite()) {
+                continue;
+            }
+            CAPTURE(leftRaw);
+            CAPTURE(rightRaw);
+            CHECK_EQ(Word(AddFloat(left, right)),
+                     ReferenceBinary8Add(static_cast<std::uint8_t>(leftRaw), static_cast<std::uint8_t>(rightRaw)));
+            CHECK_EQ(Word(SubtractFloat(left, right)),
+                     ReferenceBinary8Add(static_cast<std::uint8_t>(leftRaw),
+                                         static_cast<std::uint8_t>(rightRaw) ^ std::uint8_t{0x80}));
+        }
+    }
 }

@@ -40,4 +40,11 @@ void NormalizeFloat(UnpackedFloat &value) noexcept;
 /// Round to nearest with ties to even, encode overflow as infinity and gradual underflow as a subnormal or signed
 /// zero, and canonicalize float80's noncanonical raw forms.
 [[nodiscard]] FloatEncoding PackFloat(UnpackedFloat value) noexcept;
+
+/// Add two values of the same format with round-to-nearest, ties-to-even semantics. NaNs are quieted while retaining
+/// the first NaN operand's sign and payload.
+[[nodiscard]] FloatEncoding AddFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Subtract two values of the same format with the same special-value and rounding rules as `AddFloat`.
+[[nodiscard]] FloatEncoding SubtractFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
 } // namespace Rux
