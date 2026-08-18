@@ -478,6 +478,38 @@ WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
     return isSigned && IsNegative() ? Negated() : *this;
 }
 
+std::optional<WideInteger> WideInteger::ConvertedChecked(const std::uint32_t newWidth, const bool sourceSigned,
+                                                         const bool targetSigned) const noexcept {
+    const bool negative = sourceSigned && IsNegative();
+    if (negative && !targetSigned) {
+        return std::nullopt;
+    }
+    const WideInteger limit = negative ? MinMagnitude(newWidth, true) : MaxValue(newWidth, targetSigned);
+    if (Magnitude(sourceSigned) > limit) {
+        return std::nullopt;
+    }
+    return ConvertedWrapping(newWidth, sourceSigned);
+}
+
+WideInteger WideInteger::ConvertedSaturating(const std::uint32_t newWidth, const bool sourceSigned,
+                                             const bool targetSigned) const noexcept {
+    if (const auto converted = ConvertedChecked(newWidth, sourceSigned, targetSigned)) {
+        return *converted;
+    }
+    if (sourceSigned && IsNegative()) {
+        return targetSigned ? MinMagnitude(newWidth, true) : Zero(newWidth);
+    }
+    return MaxValue(newWidth, targetSigned);
+}
+
+WideInteger WideInteger::ConvertedWrapping(const std::uint32_t newWidth, const bool sourceSigned) const noexcept {
+    return Extended(newWidth, sourceSigned);
+}
+
+WideInteger WideInteger::ConvertedTruncating(const std::uint32_t newWidth) const noexcept {
+    return Truncated(newWidth);
+}
+
 WideInteger WideInteger::Truncated(const std::uint32_t newWidth) const noexcept {
     WideInteger result = *this;
     result.width = ClampWidth(newWidth);
