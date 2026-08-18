@@ -227,6 +227,14 @@ struct UnaryExpr : Expr {
     ExprPtr operand;
 };
 
+/// `expr?`
+///
+/// Propagate a failure: the expression evaluates to the success payload, and a failure returns from the enclosing
+/// function unchanged. Written tight against its operand, which is what separates it from the conditional operator.
+struct TryExpr : Expr {
+    ExprPtr operand;
+};
+
 // i++, i--
 struct PostfixExpr : Expr {
     TokenKind op; // PlusPlus or MinusMinus

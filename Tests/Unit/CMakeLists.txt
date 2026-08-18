@@ -83,6 +83,7 @@ set(RUX_TEST_SOURCES
     RuntimeFailureTests.cpp
     RegistryTests.cpp
     SemanticProgramIndexTests.cpp
+    SemanticPropagationDiagnosticsTests.cpp
     SemanticConstraintDiagnosticsTests.cpp
     SemanticControlFlowDiagnosticsTests.cpp
     SemanticNameDiagnosticsTests.cpp
