@@ -66,7 +66,7 @@ std::uint64_t CleanupPlanner::Register(const std::string &name, const TypeRef &t
     }
     assert(nextBindingId != std::numeric_limits<std::uint64_t>::max() && "cleanup binding identity overflow");
     const std::uint64_t bindingId = nextBindingId++;
-    scopes.back().push_back(HirDropAction{bindingId, name, type, glue->symbol, std::move(origin)});
+    scopes.back().push_back(HirDropAction{bindingId, name, type, glue->symbol, origin});
     assert(InvariantsHold());
     return bindingId;
 }
