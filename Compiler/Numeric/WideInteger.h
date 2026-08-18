@@ -95,6 +95,24 @@ public:
     [[nodiscard]] WideInteger BitwiseOr(const WideInteger &other) const noexcept;
     [[nodiscard]] WideInteger BitwiseXor(const WideInteger &other) const noexcept;
 
+    /// Logical left shift, yielding zero when `amount` is at least the width.
+    [[nodiscard]] WideInteger ShiftedLeft(std::uint32_t amount) const noexcept;
+
+    /// Right shift, with sign fill only when `isSigned` is true and this value is negative. An amount at least the
+    /// width yields zero or, for a signed negative value, all ones.
+    [[nodiscard]] WideInteger ShiftedRight(std::uint32_t amount, bool isSigned) const noexcept;
+
+    /// Rotate at the value's own width. Amounts are reduced modulo the width.
+    [[nodiscard]] WideInteger RotatedLeft(std::uint32_t amount) const noexcept;
+    [[nodiscard]] WideInteger RotatedRight(std::uint32_t amount) const noexcept;
+
+    /// Compare at each operand's own width, sign-extending to a common width for a signed comparison.
+    [[nodiscard]] std::strong_ordering Compare(const WideInteger &other, bool isSigned) const noexcept;
+
+    [[nodiscard]] std::uint32_t CountLeadingZeros() const noexcept;
+    [[nodiscard]] std::uint32_t CountTrailingZeros() const noexcept;
+    [[nodiscard]] std::uint32_t PopulationCount() const noexcept;
+
     /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
     [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
 
