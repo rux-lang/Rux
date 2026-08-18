@@ -32,7 +32,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
     std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
     : modules(inputModules)
     , deps(inputDependencies)
     , packageName(inputPackageName)
@@ -46,7 +46,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     , symbolIdentities(inputSymbolIdentities)
     , vtableIdentities(inputVtableIdentities)
     , typeLayouts(inputTypeLayouts)
-    , sizeOfValues(inputSizeOfValues)
+    , typeQueryValues(inputSizeOfValues)
     , programIndex(diags, inputSymbols)
     , globalScope(programIndex.GlobalScope())
     , packageModuleScopes(programIndex.Packages())

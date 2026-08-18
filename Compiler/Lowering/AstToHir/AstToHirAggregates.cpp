@@ -89,8 +89,8 @@ bool CompilerHasFeature(const std::string_view feature) {
 }
 } // namespace
 
-std::uint64_t AstToHirContext::ResolvedSizeOf(const SizeOfExpr &expression) {
-    if (const std::uint64_t *value = model.TryGetSizeOfValue(expression)) {
+std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression) {
+    if (const std::uint64_t *value = model.TryGetTypeQueryValue(expression)) {
         return *value;
     }
 
@@ -594,9 +594,9 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 }
 
 HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
-    if (const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(&expression)) {
+    if (const auto *sizeOf = dynamic_cast<const TypeQueryExpr *>(&expression)) {
         return CompilerLiteral(sizeOf->location, ResolvedExpressionType(*sizeOf),
-                               std::to_string(ResolvedSizeOf(*sizeOf)));
+                               std::to_string(ResolvedTypeQuery(*sizeOf)));
     }
     if (const auto *intrinsic = dynamic_cast<const IntrinsicExpr *>(&expression)) {
         return LowerIntrinsicExpr(*intrinsic);

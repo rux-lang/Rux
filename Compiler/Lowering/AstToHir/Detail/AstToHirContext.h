@@ -74,6 +74,8 @@ protected:
     std::size_t propagationOrdinal = 0;
     /// The same for the iterator and item bindings nested convention-driven loops introduce.
     std::size_t iterationOrdinal = 0;
+    /// The same for the operands and result a checked operation names.
+    std::size_t checkedArithmeticOrdinal = 0;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
@@ -124,6 +126,7 @@ protected:
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
+    [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
@@ -153,7 +156,7 @@ private:
     [[nodiscard]] HirExprPtr LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding);
-    [[nodiscard]] std::uint64_t ResolvedSizeOf(const SizeOfExpr &expression);
+    [[nodiscard]] std::uint64_t ResolvedTypeQuery(const TypeQueryExpr &expression);
     [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
     [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
     LookupEnumVariantInitializer(const std::string &typeName) const;

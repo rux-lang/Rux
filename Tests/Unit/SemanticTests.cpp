@@ -272,10 +272,10 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
     for (std::size_t i = 0; i < expected.size(); ++i) {
         const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[i].get());
         REQUIRE(binding != nullptr);
-        const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+        const auto *sizeOf = dynamic_cast<const TypeQueryExpr *>(binding->init.get());
         REQUIRE(sizeOf != nullptr);
 
-        const std::uint64_t *value = model.TryGetSizeOfValue(*sizeOf);
+        const std::uint64_t *value = model.TryGetTypeQueryValue(*sizeOf);
         const ResolvedTypeLayout *layout = model.TryGetLayout(*sizeOf->type);
         REQUIRE(value != nullptr);
         REQUIRE(layout != nullptr);
@@ -289,8 +289,8 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
     CHECK_EQ(substituted->size, 2);
     CHECK_EQ(substituted->alignment, 2);
 
-    SizeOfExpr nodeOutsideAnalyzedModules;
-    CHECK(model.TryGetSizeOfValue(nodeOutsideAnalyzedModules) == nullptr);
+    TypeQueryExpr nodeOutsideAnalyzedModules;
+    CHECK(model.TryGetTypeQueryValue(nodeOutsideAnalyzedModules) == nullptr);
 }
 
 TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
@@ -308,7 +308,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
     REQUIRE_EQ(main->body->stmts.size(), 1);
     const auto *binding = dynamic_cast<const LetStmt *>(main->body->stmts[0].get());
     REQUIRE(binding != nullptr);
-    const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+    const auto *sizeOf = dynamic_cast<const TypeQueryExpr *>(binding->init.get());
     REQUIRE(sizeOf != nullptr);
 
     std::unordered_map<const Expr *, TypeRef> expressionTypes{{sizeOf, TypeRef::MakeUInt64()}};
@@ -316,7 +316,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                                                                 {sizeOf->type.get(), TypeRef::MakeInt32()}};
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities{{main, {"Main"}}};
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts{{"int32", {4, 4}}};
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues{{sizeOf, 37}};
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues{{sizeOf, 37}};
 
     SemanticModel model{{},
                         {},
@@ -335,7 +335,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         std::move(typeLayouts),
                         {},
                         {},
-                        std::move(sizeOfValues)};
+                        std::move(typeQueryValues)};
     const HirPackage package = AstToHirLowering(model).Generate();
 
     REQUIRE_EQ(package.modules.size(), 1);
@@ -495,10 +495,10 @@ TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
     const SemanticModel model = analyzer.Analyze();
     REQUIRE(model.HasErrors());
     CHECK(std::ranges::any_of(model.diagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "cannot determine size of type 'Recursive'";
+        return diagnostic.message == "cannot determine the size of type 'Recursive'";
     }));
     CHECK(std::ranges::any_of(model.diagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "cannot determine size of type 'uint64[2305843009213693952]'";
+        return diagnostic.message == "cannot determine the size of type 'uint64[2305843009213693952]'";
     }));
 
     const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
@@ -508,9 +508,9 @@ TEST_CASE("semantic model omits recursive and invalid compile-time layouts") {
     for (const auto &statement : main->body->stmts) {
         const auto *binding = dynamic_cast<const LetStmt *>(statement.get());
         REQUIRE(binding != nullptr);
-        const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(binding->init.get());
+        const auto *sizeOf = dynamic_cast<const TypeQueryExpr *>(binding->init.get());
         REQUIRE(sizeOf != nullptr);
-        CHECK(model.TryGetSizeOfValue(*sizeOf) == nullptr);
+        CHECK(model.TryGetTypeQueryValue(*sizeOf) == nullptr);
         CHECK(model.TryGetLayout(*sizeOf->type) == nullptr);
     }
     CHECK(model.TryGetLayout(TypeRef::MakeNamed("Recursive")) == nullptr);

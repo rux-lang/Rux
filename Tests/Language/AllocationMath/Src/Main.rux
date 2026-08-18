@@ -1,0 +1,55 @@
+/*
+    Compiler correctness test
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+import Core::{ Assert, CheckedAdd, CheckedMul, CheckedSub };
+
+struct Header {
+    tag: uint32;
+    payload: uint64;
+}
+
+struct Packed {
+    first: uint8;
+    second: uint8;
+}
+
+// The shape of an allocation: a count times an element size, refused rather than wrapped.
+func ByteCount(count: uint64, elementSize: uint64, bytes: *var uint64) -> bool {
+    return CheckedMul(count, elementSize, bytes);
+}
+
+func Main() -> int {
+    Assert(sizeof(uint8) == 1u64, "Expected sizeof(uint8) to be 1");
+    Assert(sizeof(uint32) == 4u64, "Expected sizeof(uint32) to be 4");
+    Assert(sizeof(Header) == 16u64, "Expected the padded struct size");
+    Assert(sizeof(Packed) == 2u64, "Expected the unpadded struct size");
+
+    Assert(alignof(uint8) == 1u64, "Expected alignof(uint8) to be 1");
+    Assert(alignof(uint32) == 4u64, "Expected alignof(uint32) to be 4");
+    Assert(alignof(Header) == 8u64, "Expected the struct alignment to be its widest field's");
+    Assert(alignof(Packed) == 1u64, "Expected a byte-aligned struct");
+    Assert(alignof(Header[4]) == 8u64, "Expected an array to keep its element alignment");
+
+    var sum = 0u64;
+    Assert(!CheckedAdd(2u64, 3u64, @sum), "Expected 2 + 3 not to overflow");
+    Assert(sum == 5u64, "Expected the checked sum");
+    Assert(CheckedAdd(18446744073709551615u64, 1u64, @sum), "Expected the sum to overflow");
+    Assert(sum == 0u64, "Expected the wrapped sum to be written anyway");
+
+    var difference = 0u64;
+    Assert(!CheckedSub(9u64, 4u64, @difference), "Expected 9 - 4 not to overflow");
+    Assert(difference == 5u64, "Expected the checked difference");
+    Assert(CheckedSub(4u64, 9u64, @difference), "Expected a negative difference to be reported");
+
+    var bytes = 0u64;
+    Assert(!ByteCount(4u64, sizeof(Header), @bytes), "Expected a small allocation size to be exact");
+    Assert(bytes == 64u64, "Expected four headers to need 64 bytes");
+    Assert(ByteCount(18446744073709551615u64, 2u64, @bytes), "Expected an impossible allocation to be refused");
+    Assert(!ByteCount(0u64, 18446744073709551615u64, @bytes), "Expected an empty allocation not to overflow");
+    Assert(bytes == 0u64, "Expected an empty allocation to need no bytes");
+    Assert(!ByteCount(18446744073709551615u64, 1u64, @bytes), "Expected the largest exact product to be accepted");
+    Assert(bytes == 18446744073709551615u64, "Expected the largest exact product");
+    return 0;
+}

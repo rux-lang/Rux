@@ -376,6 +376,12 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
     const bool isAssertion =
         calleeSymbol && (calleeSymbol->intrinsicName == "Assert" || calleeSymbol->intrinsicName == "DebugAssert");
     const bool isPanic = calleeSymbol && calleeSymbol->intrinsicName == "Panic";
+    // A checked operation is emitted where it is called, so it never becomes a call at all.
+    if (calleeSymbol && !calleeSymbol->intrinsicName.empty()) {
+        if (HirExprPtr checked = LowerCheckedArithmeticCall(calleeSymbol->intrinsicName, call)) {
+            return checked;
+        }
+    }
     if (isAssertion || isPanic) {
         auto lowered = std::make_unique<HirCallExpr>();
         lowered->location = call.location;

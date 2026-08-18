@@ -172,7 +172,17 @@ struct PathExpr : Expr {
 };
 
 // sizeof(T)
-struct SizeOfExpr : Expr {
+/// `sizeof(T)` and `alignof(T)`
+///
+/// A compile-time query about a type's layout. Both fold to an unsigned constant during analysis, so neither reaches
+/// code generation as an operation.
+struct TypeQueryExpr : Expr {
+    enum class Query {
+        Size,
+        Alignment
+    };
+
+    Query query = Query::Size;
     TypeExprPtr type;
 };
 

@@ -110,7 +110,7 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "self";
     if (dynamic_cast<const PathExpr *>(&expression))
         return "path";
-    if (dynamic_cast<const SizeOfExpr *>(&expression))
+    if (dynamic_cast<const TypeQueryExpr *>(&expression))
         return "sizeof";
     if (dynamic_cast<const EnumShorthandExpr *>(&expression))
         return "enum shorthand";

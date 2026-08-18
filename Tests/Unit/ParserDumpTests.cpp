@@ -160,6 +160,43 @@ enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
     CHECK_EQ(output, expected);
 }
 
+TEST_CASE("AST dumps name each compile-time layout query") {
+    constexpr std::string_view source = R"(
+func Main() -> int {
+    let size = sizeof(int32);
+    let alignment = alignof(int32);
+    return 0;
+}
+)";
+
+    Lexer lexer(std::string(source), "layout.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "layout.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-layout.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    constexpr std::string_view expected = R"(Module "layout.rux"
+  FuncDecl 'Main' () -> int
+    Block [3 stmts]
+      LetStmt 'size' (let)
+        SizeOfExpr int32
+      LetStmt 'alignment' (let)
+        AlignOfExpr int32
+      ReturnStmt
+        LiteralExpr (int) '0'
+)";
+    CHECK_EQ(output, expected);
+}
+
 TEST_CASE("AST dumps separate the propagation operator from the conditional operator") {
     // The two share one token: written tight against its operand, `?` propagates a failure; separated, it opens a
     // conditional expression. The dump is where that decision becomes visible.

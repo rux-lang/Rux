@@ -42,7 +42,7 @@ public:
                                    std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                                    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
                                    std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
-                                   std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
+                                   std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
         : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
                                   inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
                                   inputValueConsumptions, inputCallableBindings, inputSymbolIdentities,
@@ -2011,6 +2011,10 @@ private:
         return LayoutOfTypeRef(ResolveTypeWithSubstitution(expr, substitutions), substitutions);
     }
 
+    std::optional<ResolvedTypeLayout> LayoutOfTypeExpression(const TypeExpr &expr) override {
+        return LayoutOfTypeExpr(expr);
+    }
+
     void RecordResolvedTypeLayouts() override {
         std::vector<TypeRef> resolvedTypes;
         resolvedTypes.reserve(typeNodeTypes.size() + expressionTypes.size() + patternTypes.size());
@@ -3206,18 +3210,8 @@ private:
             return current->type;
         }
 
-        if (auto *e = dynamic_cast<const SizeOfExpr *>(&expr)) {
-            ValidateArrayType(*e->type);
-            TypeRef t = ResolveType(*e->type);
-            if (!t.IsUnknown() && t.kind != TypeRef::Kind::TypeParam) {
-                if (const auto layout = LayoutOfTypeExpr(*e->type)) {
-                    sizeOfValues.insert_or_assign(e, layout->size);
-                }
-                else {
-                    EmitError(e->location, std::format("cannot determine size of type '{}'", t.ToString()));
-                }
-            }
-            return TypeRef::MakeUInt64();
+        if (auto *e = dynamic_cast<const TypeQueryExpr *>(&expr)) {
+            return CheckTypeQueryExpression(*e);
         }
 
         if (dynamic_cast<const IntrinsicExpr *>(&expr)) {
@@ -3564,11 +3558,11 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
     SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
                                             expressionTypes, typeNodeTypes, patternTypes, valueConsumptions,
                                             callableBindings, symbolIdentities, vtableIdentities, typeLayouts,
-                                            sizeOfValues);
+                                            typeQueryValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -3594,6 +3588,6 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),
                          analyzer.TakeDropGluePlans(),
-                         std::move(sizeOfValues)};
+                         std::move(typeQueryValues)};
 }
 } // namespace Rux
