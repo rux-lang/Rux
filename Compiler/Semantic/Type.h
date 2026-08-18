@@ -15,21 +15,41 @@ struct TypeRef {
         Bool8,
         Bool16,
         Bool32,
+        Bool64,
+        Bool128,
+        Bool256,
+        Bool512,
         Char8,
         Char16,
         Char32,
+        Char64,
+        Char128,
+        Char256,
+        Char512,
         Int8,
         Int16,
         Int32,
         Int64,
+        Int128,
+        Int256,
+        Int512,
         UInt8,
         UInt16,
         UInt32,
         UInt64,
+        UInt128,
+        UInt256,
+        UInt512,
         Int,
         UInt, // platform-dependent: 64-bit on x86-64, 32-bit on x86
+        Float8,
+        Float16,
         Float32,
         Float64,
+        Float80,
+        Float128,
+        Float256,
+        Float512,
         Str,              // String
         Pointer,          // *T  — inner[0] = pointee
         Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
@@ -67,6 +87,14 @@ struct TypeRef {
     // Factories
     static TypeRef MakeUnknown() {
         return {};
+    }
+
+    /// The one factory for a primitive kind. A primitive carries nothing but its kind, so a table that already knows
+    /// the kind builds the type from it rather than routing through a per-width named factory.
+    static TypeRef MakePrimitive(const Kind primitive) {
+        TypeRef t;
+        t.kind = primitive;
+        return t;
     }
 
     static TypeRef MakeOpaque() {
@@ -290,10 +318,8 @@ struct TypeRef {
         return kind == Kind::Opaque;
     }
 
-    [[nodiscard]] bool IsBool() const noexcept {
-        return kind == Kind::Bool8 || kind == Kind::Bool16 || kind == Kind::Bool32;
-    }
-
+    [[nodiscard]] bool IsBool() const noexcept;
+    [[nodiscard]] bool IsChar() const noexcept;
     [[nodiscard]] bool IsNumeric() const noexcept;
     [[nodiscard]] bool IsInteger() const noexcept;
 
@@ -321,6 +347,9 @@ struct TypeRef {
 
     [[nodiscard]] bool IsFloat() const noexcept;
     [[nodiscard]] bool IsSigned() const noexcept;
+
+    /// Whether this type is a primitive at all -- a bool, character, integer or float of any width.
+    [[nodiscard]] bool IsPrimitive() const noexcept;
 
     /// True when this type can be assigned to `other` (lenient: Unknown is compatible with anything).
     [[nodiscard]] bool IsAssignableTo(const TypeRef &other) const noexcept;

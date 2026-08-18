@@ -3,19 +3,14 @@
 
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
+#include "Semantic/PrimitiveCatalog.h"
+
 #include <algorithm>
 #include <array>
 #include <format>
 #include <utility>
 
 namespace Rux::SemanticDetail {
-namespace {
-constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
-    "int128",   "int256",   "int512", "uint128", "uint256", "uint512", "float8", "float16", "float80", "float128",
-    "float256", "float512", "bool64", "bool128", "bool256", "bool512", "char64", "char128", "char256", "char512",
-};
-} // namespace
-
 namespace {
 /// Whether lowering turns `expression` into a value and so reads a recorded type for it.
 /// `AstToHirContext::ResolvedExpressionType` treats a missing type fact for one of these as a broken invariant rather
@@ -122,7 +117,8 @@ std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropG
 }
 
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
-    return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
+    const PrimitiveInfo *info = FindPrimitive(name);
+    return info && !info->implemented;
 }
 
 void SemanticAnalyzerContext::EmitGenericArityError(const TypeExpr &expression, std::string subject,
@@ -161,7 +157,7 @@ std::optional<TypeRef> SemanticAnalyzerContext::ResolveStructTypeReference(const
 }
 
 void SemanticAnalyzerContext::RegisterBuiltins() {
-    auto add = [&](const char *name, TypeRef type) {
+    auto add = [&](const std::string_view name, TypeRef type) {
         Symbol symbol;
         symbol.kind = Symbol::Kind::Type;
         symbol.name = name;
@@ -169,30 +165,13 @@ void SemanticAnalyzerContext::RegisterBuiltins() {
         globalScope.Define(std::move(symbol), diags, "<builtin>");
     };
     add("opaque", TypeRef::MakeOpaque());
-    add("bool8", TypeRef::MakeBool8());
-    add("bool16", TypeRef::MakeBool16());
-    add("bool32", TypeRef::MakeBool32());
-    add("bool", TypeRef::MakeBool());
-    add("char8", TypeRef::MakeChar8());
-    add("char16", TypeRef::MakeChar16());
-    add("char32", TypeRef::MakeChar32());
-    add("char", TypeRef::MakeChar());
-    add("int8", TypeRef::MakeInt8());
-    add("int16", TypeRef::MakeInt16());
-    add("int32", TypeRef::MakeInt32());
-    add("int64", TypeRef::MakeInt64());
-    add("int", TypeRef::MakeInt());
-    add("byte", TypeRef::MakeByte());
-    add("uint8", TypeRef::MakeUInt8());
-    add("uint16", TypeRef::MakeUInt16());
-    add("uint32", TypeRef::MakeUInt32());
-    add("uint64", TypeRef::MakeUInt64());
-    add("uint", TypeRef::MakeUInt());
-    add("float32", TypeRef::MakeFloat32());
-    add("float64", TypeRef::MakeFloat64());
-    add("float", TypeRef::MakeFloat());
-    for (const std::string_view name : UnimplementedPrimitiveTypes) {
-        add(name.data(), TypeRef::MakeUnknown());
+    // A reserved primitive is still a declared name, so a use of it is diagnosed as unimplemented rather than as an
+    // unknown type; it binds to Unknown because it has no representation to bind to yet.
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        add(primitive.name, primitive.implemented ? TypeRef::MakePrimitive(primitive.kind) : TypeRef::MakeUnknown());
+    }
+    for (const PrimitiveAlias &alias : PrimitiveAliases()) {
+        add(alias.name, TypeRef::MakePrimitive(alias.kind));
     }
 }
 
