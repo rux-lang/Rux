@@ -1,0 +1,13 @@
+31:21: error: name 'Plain' is a type, not an interface, and cannot bound type parameter 'T'
+31:31: error: interface 'Displya' is not defined
+42:18: error: type argument 'Plain' does not satisfy interface bound 'Display' on type parameter 'T'
+47:17: error: no interface bound on type parameter 'T' provides method 'Measure'
+56:25: error: '?' propagates error type 'ParseError', but the enclosing function returns error type 'IoError'
+61:25: error: '?' propagates a Result, but the enclosing function returns nothing
+65:21: error: 'int32' cannot be propagated with '?' because it is neither a Result nor an Option
+65:5: warning: cannot infer type of 'value'
+75:5: error: iterator method 'Next' on 'Cursor' must take a mutable receiver
+82:17: error: cannot iterate over 'Plain'
+87:11: error: checked arithmetic intrinsic 'CheckedAdd' must be declared as 'func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool'
+89:11: error: zeroization intrinsic 'Zeroize' must be declared as 'func Zeroize(memory: *var uint8, length: uint64)'
+97:12: error: cannot determine the alignment of type 'Recursive'
