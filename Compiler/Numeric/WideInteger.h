@@ -84,6 +84,17 @@ public:
     /// it.
     [[nodiscard]] WideInteger Negated() const noexcept;
 
+    /// Wrapping addition at this value's width. The right operand is read as a bit pattern at the same width.
+    [[nodiscard]] WideInteger Added(const WideInteger &other) const noexcept;
+
+    /// Wrapping subtraction at this value's width. The right operand is read as a bit pattern at the same width.
+    [[nodiscard]] WideInteger Subtracted(const WideInteger &other) const noexcept;
+
+    [[nodiscard]] WideInteger BitwiseNot() const noexcept;
+    [[nodiscard]] WideInteger BitwiseAnd(const WideInteger &other) const noexcept;
+    [[nodiscard]] WideInteger BitwiseOr(const WideInteger &other) const noexcept;
+    [[nodiscard]] WideInteger BitwiseXor(const WideInteger &other) const noexcept;
+
     /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
     [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
 
