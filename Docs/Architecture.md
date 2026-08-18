@@ -63,7 +63,7 @@ These are maintained contracts, not a one-time migration record. Changes to them
 | `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs   |
 | `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                           |
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                                  | Crypto and Target                     |
-| `Numeric`              | Exact fixed-capacity wide integers and the one integer-literal suffix, base, and range model               | None                                  |
+| `Numeric`              | Exact wide integers; binary float formats/encodings; numeric-literal suffix, base, and range models        | None                                  |
 | `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel, Numeric, and Diagnostics |
 | `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target        |
 | `Semantic`             | Symbols, types, conditional compilation, and validated semantic model                                     | BuildInfo, Numeric, Syntax, Diagnostics |

@@ -3,6 +3,7 @@
 
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <format>
 
@@ -200,7 +201,14 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         if (!negatedIntegerLiterals.contains(literal)) {
             ValidateSuffixedIntegerLiteral(*literal, false);
         }
-        return LiteralType(literal->token);
+        const TypeRef type = LiteralType(literal->token);
+        if (const PrimitiveInfo *primitive = FindPrimitive(type.kind); primitive && !primitive->implemented) {
+            EmitError(literal->location,
+                      std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
+                                  primitive->name));
+            return type;
+        }
+        return type;
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
         // A minus and the literal under it are one written value, so the magnitude is checked against the negative

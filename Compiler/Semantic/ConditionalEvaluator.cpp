@@ -1,6 +1,7 @@
 // Compile-time evaluation for `#if` conditions: the target, build and compiler
 // values a condition can name, and the constants it can compare against.
 
+#include "Numeric/IntegerLiteral.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/ConditionalEvaluatorInternal.h"
 #include "Semantic/PrimitiveConstants.h"
@@ -253,7 +254,8 @@ std::optional<double> ParseFloatValue(std::string_view text) {
         std::size_t consumed = 0;
         const double result = std::stod(value, &consumed);
         const std::string_view suffix{value.data() + consumed, value.size() - consumed};
-        if (!suffix.empty() && suffix != "f32" && suffix != "f64") {
+        const NumericLiteralSuffixInfo *suffixInfo = FindNumericLiteralSuffix(suffix);
+        if (!suffix.empty() && (!suffixInfo || !suffixInfo->isFloat)) {
             return std::nullopt;
         }
         return result;

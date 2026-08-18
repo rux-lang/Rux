@@ -48,6 +48,7 @@ set(RUX_TEST_SOURCES
     DiagnosticsTests.cpp
     DocumentationTests.cpp
     EnumRepresentationTests.cpp
+    FloatFormatTests.cpp
     GoldenDiagnosticsTests.cpp
     InspectionOutputTests.cpp
     IterationLoweringTests.cpp

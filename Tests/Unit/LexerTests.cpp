@@ -145,8 +145,9 @@ TEST_CASE("Lexer rejects unknown escape sequences") {
 
 TEST_CASE("Lexer accepts numeric bases, separators, exponents, and every suffix") {
     static constexpr std::string_view literals[] = {
-        "0b1010_0101", "0o7_52", "0xFF_FF", "1_000", "1.25_00", "1e1_000", "1.5e+2", "1i",   "1i8",  "1i16",
-        "1i32",        "1i64",   "1u",      "1u8",   "1u16",    "1u32",    "1u64",   "1f32", "1f64",
+        "0b1010_0101", "0o7_52", "0xFF_FF", "1_000", "1.25_00", "1e1_000", "1.5e+2", "1i",   "1i8",
+        "1i16",        "1i32",   "1i64",    "1u",    "1u8",     "1u16",    "1u32",   "1u64", "1f8",
+        "1f16",        "1f32",   "1f64",    "1f80",  "1f128",   "1f256",   "1f512",
     };
     for (const auto literal : literals) {
         CAPTURE(literal);

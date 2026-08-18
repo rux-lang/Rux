@@ -35,7 +35,7 @@ struct NumericLiteralSuffixInfo {
 /// `u1` followed by stray digits.
 [[nodiscard]] std::string_view NumericLiteralSuffixOf(std::string_view text) noexcept;
 
-/// The suffixes quoted the way a diagnostic lists them: `'i', 'i8', ..., 'f64'`.
+/// The suffixes quoted the way a diagnostic lists them: `'i', 'i8', ..., 'f512'`.
 [[nodiscard]] std::string NumericLiteralSuffixList();
 
 /// A literal split into the parts that decode it.

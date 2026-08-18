@@ -569,42 +569,20 @@ AstToHirContext::StructTypeSubstitutions(const StructDecl &decl, const std::vect
 }
 
 TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
-    const std::string suffix = NumericLiteralSuffix(tok.text);
-    if (suffix == "i8") {
-        return TypeRef::MakeInt8();
+    const NumericLiteralSuffixInfo *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(tok.text));
+    if (!suffix) {
+        return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
     }
-    if (suffix == "i16") {
-        return TypeRef::MakeInt16();
+    if (suffix->bits == 0) {
+        return suffix->isSigned ? TypeRef::MakeInt() : TypeRef::MakeUInt();
     }
-    if (suffix == "i32") {
-        return TypeRef::MakeInt32();
-    }
-    if (suffix == "i64") {
-        return TypeRef::MakeInt64();
-    }
-    if (suffix == "i") {
-        return TypeRef::MakeInt();
-    }
-    if (suffix == "u8") {
-        return TypeRef::MakeUInt8();
-    }
-    if (suffix == "u16") {
-        return TypeRef::MakeUInt16();
-    }
-    if (suffix == "u32") {
-        return TypeRef::MakeUInt32();
-    }
-    if (suffix == "u64") {
-        return TypeRef::MakeUInt64();
-    }
-    if (suffix == "u") {
-        return TypeRef::MakeUInt();
-    }
-    if (suffix == "f32") {
-        return TypeRef::MakeFloat32();
-    }
-    if (suffix == "f64") {
-        return TypeRef::MakeFloat64();
+    const PrimitiveCategory category = suffix->isFloat  ? PrimitiveCategory::Float
+                                     : suffix->isSigned ? PrimitiveCategory::SignedInt
+                                                        : PrimitiveCategory::UnsignedInt;
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (primitive.bits == suffix->bits && primitive.category == category) {
+            return TypeRef::MakePrimitive(primitive.kind);
+        }
     }
     return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
 }
