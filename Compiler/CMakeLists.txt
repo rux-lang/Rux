@@ -123,6 +123,7 @@ rux_add_component(RuxSemantic
     Semantic/ConditionalStatementFolding.cpp
     Semantic/PrimitiveConstants.cpp
     Semantic/Type.cpp
+    Semantic/TypePropertyClassifier.cpp
     Semantic/SemanticAnalyzer.cpp
     Semantic/SemanticAnalyzerContext.cpp
     Semantic/SemanticAggregateExpressions.cpp
@@ -132,6 +133,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
     Semantic/SemanticReceivers.cpp
+    Semantic/SemanticTypeProperties.cpp
     Semantic/SemanticPrinter.cpp)
 target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxSyntax RuxDiagnostics)
 

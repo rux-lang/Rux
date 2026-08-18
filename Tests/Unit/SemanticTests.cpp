@@ -329,6 +329,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         std::move(symbolIdentities),
                         {},
                         std::move(typeLayouts),
+                        {},
                         std::move(sizeOfValues)};
     const HirPackage package = AstToHirLowering(model).Generate();
 
@@ -393,7 +394,9 @@ TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
                         std::move(symbolIdentities),
                         {},
                         {},
+                        {},
                         {}};
+
     const HirPackage package = AstToHirLowering(model).Generate();
 
     REQUIRE_EQ(package.modules.size(), 1);

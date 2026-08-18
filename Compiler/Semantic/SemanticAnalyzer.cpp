@@ -1,5 +1,4 @@
-// The semantic pass entry point: it drives conditional folding, indexing, and
-// the per-module checks that live in the sibling Semantic*.cpp files.
+// The semantic pass entry point drives conditional folding, indexing, and checks in sibling Semantic*.cpp files.
 
 #include "Semantic/SemanticAnalyzer.h"
 
@@ -3595,6 +3594,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(symbolIdentities),
                          std::move(vtableIdentities),
                          std::move(typeLayouts),
+                         analyzer.TakeTypeProperties(),
                          std::move(sizeOfValues)};
 }
 } // namespace Rux

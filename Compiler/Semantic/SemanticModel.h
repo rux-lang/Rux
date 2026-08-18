@@ -3,6 +3,7 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Semantic/CompileTimeContext.h"
 #include "Semantic/Type.h"
+#include "Semantic/TypeProperties.h"
 #include "Syntax/Ast/Ast.h"
 
 #include <optional>
@@ -114,6 +115,7 @@ struct SemanticModel {
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
+                  std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                   std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues);
 
     [[nodiscard]] bool HasErrors() const noexcept;
@@ -139,6 +141,13 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeRef &type) const noexcept;
     [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeExpr &typeNode) const noexcept;
 
+    /// Returns null only when analysis never encountered the type. Unresolved generic declarations retain an explicit
+    /// property record whose mobility is Unresolved.
+    [[nodiscard]] const TypeProperties *TryGetProperties(const TypeRef &type) const noexcept;
+    [[nodiscard]] const TypeProperties *TryGetProperties(const Expr &expression) const noexcept;
+    [[nodiscard]] const TypeProperties *TryGetProperties(const TypeExpr &typeNode) const noexcept;
+    [[nodiscard]] const TypeProperties *TryGetProperties(const Pattern &pattern) const noexcept;
+
     /// Returns the constant folded for an accepted sizeof expression. Rejected sizeof expressions deliberately have no
     /// usable value.
     [[nodiscard]] const std::uint64_t *TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept;
@@ -151,6 +160,7 @@ private:
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
+    std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
 };
 } // namespace Rux
