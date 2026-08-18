@@ -64,6 +64,8 @@ private:
     [[nodiscard]] bool IsRegPointerTo(LirReg reg, const TypeRef &pointee) const;
     [[nodiscard]] int FieldOffset(LirReg base, const std::string &fieldName) const;
     [[nodiscard]] bool EmitWideArithmetic(const LirInstr &instruction);
+    [[nodiscard]] bool EmitWideSoftwareFloatNegation(const LirInstr &instruction);
+    void EmitSoftwareFloatConstant(const LirInstr &instruction);
     void ZeroWide(std::int32_t destination, int size) const;
     void CopyWide(std::int32_t source, std::int32_t destination, int size) const;
     void NegateWide(std::int32_t value, int size) const;

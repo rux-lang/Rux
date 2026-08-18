@@ -111,6 +111,7 @@ set(RUX_TEST_SOURCES
     X86_64FramePlanTests.cpp
     X86_64WideIntegerTests.cpp
     X86_64RuntimeHelperTests.cpp
+    X86_64SoftwareFloatTests.cpp
 )
 
 if (TARGET RuxFormatter)

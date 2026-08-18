@@ -34,7 +34,7 @@ int X86_64FunctionEmitter::SizeOfRuntime(const TypeRef &type) const {
 }
 
 bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
-    if (IsWideInteger(type)) {
+    if (IsWideInteger(type) || (IsSoftwareFloat(type) && SizeOfRuntime(type) > 8)) {
         return true;
     }
     if (type.IsRange()) {
@@ -75,6 +75,9 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     const TypeRef operandType = !instruction.srcs.empty() && types.contains(instruction.srcs[0])
                                   ? types.at(instruction.srcs[0])
                                   : instruction.type;
+    if (EmitWideSoftwareFloatNegation(instruction)) {
+        return true;
+    }
     if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
         return false;
     }
@@ -944,6 +947,9 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             encoder.MovsdXmm0Rip(relocationOffset);
             hooks.AddTextRelocation(relocationOffset, symbol);
             encoder.MovsdXmm0Store(Disp(instruction.dst));
+        }
+        else if (IsSoftwareFloat(type)) {
+            EmitSoftwareFloatConstant(instruction);
         }
         else if (type.IsBool()) {
             encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);

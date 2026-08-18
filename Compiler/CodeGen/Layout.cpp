@@ -114,6 +114,14 @@ bool IsFloat(const TypeRef &t) {
     return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
 }
 
+bool IsNativeFloat(const TypeRef &t) {
+    return IsFloat(t);
+}
+
+bool IsSoftwareFloat(const TypeRef &t) {
+    return t.IsFloat() && !IsNativeFloat(t);
+}
+
 bool IsWideInteger(const TypeRef &t) {
     return t.IsInteger() && SizeOf(t) > 8;
 }
