@@ -23,8 +23,9 @@ struct TypeProperties {
 /// @return nullopt for any type outside the integer and boolean model, which is how folding declines to touch it
 std::optional<TypeProperties> Properties(const TypeRef &type) {
     if (type.IsBool()) {
-        return TypeProperties{TypedConstant::Kind::Boolean,
-                              static_cast<std::uint8_t>(type.SizeInBytes().value_or(0) * 8)};
+        // A bool is modeled one bit wide whatever it is stored at, because that is the only value it ever holds: the
+        // storage width says how much room it occupies, never how much of it carries the value.
+        return TypeProperties{TypedConstant::Kind::Boolean, 1};
     }
     if (!type.IsInteger()) {
         return std::nullopt;
@@ -341,12 +342,13 @@ std::optional<TypedConstant> CastConstant(const TypedConstant &value, const Type
     if (!target || target->width == 0) {
         return std::nullopt;
     }
-    std::uint64_t bits =
+    const std::uint64_t bits =
         value.GetKind() == TypedConstant::Kind::SignedInteger ? SignExtendedBits(value) : value.RawBits();
-    bits &= Mask(target->width);
     if (target->kind == TypedConstant::Kind::Boolean) {
-        bits = bits != 0 ? 1 : 0;
+        // The whole source value decides the truth, so `256 as bool` is true. Masking to the bool's storage width
+        // first would have asked about the low byte instead and disagreed with what the back ends emit.
+        return Make(targetType, bits != 0 ? 1 : 0);
     }
-    return Make(targetType, bits);
+    return Make(targetType, bits & Mask(target->width));
 }
 } // namespace Rux::Optimization

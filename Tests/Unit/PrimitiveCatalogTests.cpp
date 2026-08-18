@@ -146,18 +146,14 @@ TEST_CASE("TypeRef sizes agree with the catalog") {
 }
 
 TEST_CASE("the implemented widths are the ones with a representation today") {
-    const auto catalog = PrimitiveCatalog();
-    const auto reserved = std::ranges::count_if(catalog, [](const PrimitiveInfo &p) { return !p.implemented; });
-    CHECK_EQ(reserved, 20);
+    // One list, not two: a width is reserved exactly when it is named here, so implementing one is a single edit.
+    const std::unordered_set<std::string_view> reserved{
+        "bool128", "bool256", "bool512", "char64", "char128", "char256", "char512",  "int128",   "int256",   "int512",
+        "uint128", "uint256", "uint512", "float8", "float16", "float80", "float128", "float256", "float512",
+    };
 
-    for (const std::string_view name :
-         {"bool8", "bool16", "bool32", "char8", "char16", "char32", "int8", "int16", "int32", "int64", "int", "uint8",
-          "uint16", "uint32", "uint64", "uint", "float32", "float64"}) {
-        CHECK(Entry(name).implemented);
-    }
-    for (const std::string_view name : {"bool64",  "bool128", "bool256", "bool512",  "char64",   "char128", "char256",
-                                        "char512", "int128",  "int256",  "int512",   "uint128",  "uint256", "uint512",
-                                        "float8",  "float16", "float80", "float128", "float256", "float512"}) {
-        CHECK_FALSE(Entry(name).implemented);
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        CAPTURE(primitive.name);
+        CHECK_EQ(primitive.implemented, !reserved.contains(primitive.name));
     }
 }

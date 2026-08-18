@@ -119,6 +119,10 @@ const std::string &HirToLirContext::SymbolFor(const std::string &name) const {
     return it == externSymbols.end() ? name : it->second;
 }
 
+/// C's default argument promotions, which apply to the types C itself has.
+///
+/// A bool wider than `int` is not one of them: C has no such type, so there is nothing to promote it to and it is
+/// passed at its own width. The same holds for every bool at or above 32 bits.
 [[nodiscard]] std::optional<TypeRef> HirToLirContext::CVariadicPromotion(const TypeRef &type) {
     switch (type.kind) {
     case TypeRef::Kind::Float32:
@@ -326,6 +330,15 @@ LirReg HirToLirContext::EmitUnary(LirOpcode op, LirReg src, const TypeRef &type)
 }
 
 LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef toType) {
+    // A bool holds one of two values however wide its storage is, so a cast into one asks whether the source is
+    // non-zero rather than what its low bits are. Emitting the comparison here keeps the rule in one place and gives
+    // both back ends the normalized zero-or-one they already produce for every other comparison.
+    if (toType.IsBool() && !fromType.IsBool() && IsScalar(fromType)) {
+        const LirReg zero = EmitConst("0", fromType);
+        const LirReg tested = EmitBinary(LirOpcode::CmpNe, src, zero, TypeRef::MakeBool());
+        return TypeRef::MakeBool() == toType ? tested : EmitWidenBool(tested, toType);
+    }
+
     LirReg dst = NewReg();
     LirInstr i;
     i.dst = dst;
@@ -337,11 +350,26 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
     return dst;
 }
 
+/// Restate an already-normalized `bool8` at a wider bool's storage.
+///
+/// The value is zero or one either way, so this only changes the width it is stored at and can never lose or invent a
+/// bit -- which is why it stays a plain cast rather than going back through the zero test above.
+LirReg HirToLirContext::EmitWidenBool(const LirReg source, const TypeRef &toType) {
+    LirReg dst = NewReg();
+    LirInstr widen;
+    widen.dst = dst;
+    widen.op = LirOpcode::Cast;
+    widen.type = toType;
+    widen.srcs = {source};
+    widen.strArg = TypeRef::MakeBool().ToString();
+    Emit(std::move(widen));
+    return dst;
+}
+
 /// The types that live in a register and are held to a width: everything a comparison can widen one side of without
 /// changing what is being asked.
 bool HirToLirContext::IsScalar(const TypeRef &t) {
-    return t.IsNumeric() || t.IsBool() || t.kind == TypeRef::Kind::Char8 || t.kind == TypeRef::Kind::Char16 ||
-           t.kind == TypeRef::Kind::Char32;
+    return t.IsNumeric() || t.IsBool() || t.IsChar();
 }
 
 bool HirToLirContext::IsComparison(const TokenKind op) {

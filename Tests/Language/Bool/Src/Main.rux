@@ -39,6 +39,13 @@ func Main() -> int {
     Assert(yes32, "bool32 true");
     Assert(!no32, "bool32 false");
 
+    let yes64: bool64 = true;
+    let no64: bool64 = false;
+    Assert(yes64, "bool64 true");
+    Assert(!no64, "bool64 false");
+    Assert(bool64::Bits == 64, "bool64 occupies sixty-four bits");
+    Assert(bool64::Bytes == 8, "bool64 occupies eight bytes");
+
     // A bool of each width holds up as a condition, which is a test against zero
     // at whatever width the value really is.
     var reached = false;
@@ -111,6 +118,30 @@ func Main() -> int {
     let flag = 10 > 5 && 5 > 3;
     Assert(flag, "a chain assigned into a binding");
     Assert(Sees(@calls, flag), "a bool passed to a function and returned from it");
+
+    // A bool holds one of two values, so a cast into one asks whether the source
+    // is non-zero rather than what its low bits are. 256 has a zero low byte and
+    // is still true, at every width and whether the value is known while
+    // compiling or only at run time.
+    let lowByteZero: int32 = 256;
+    Assert((lowByteZero as bool), "a value with a zero low byte is still true");
+    Assert((256 as bool), "and so is the same value folded while compiling");
+    Assert((lowByteZero as bool64), "the rule does not change with the width");
+    Assert(!(0 as bool), "zero is the only thing that is false");
+    Assert(!((0 as int64) as bool64), "zero stays false at a wider source and target");
+
+    // A normalized bool reads back as one, never as the bits it was cast from.
+    Assert((lowByteZero as bool) as int32 == 1, "a true bool reads back as one");
+    Assert((2 as bool) as int32 == 1, "and so does one cast from any other value");
+    Assert((0 as bool) as int32 == 0, "a false bool reads back as zero");
+    Assert((lowByteZero as bool64) as int32 == 1, "a wide true bool reads back as one too");
+
+    // The widths convert between themselves without changing what they mean.
+    let widened: bool64 = yes8 as bool64;
+    Assert(widened, "a narrow true widens to a wide true");
+    let narrowed: bool8 = yes64 as bool8;
+    Assert(narrowed, "and a wide true narrows back");
+    Assert(!(no64 as bool8), "a wide false narrows to a false");
 
     // Assignment and mutation.
     var toggle = true;
