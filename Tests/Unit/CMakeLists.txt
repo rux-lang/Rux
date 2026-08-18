@@ -46,6 +46,7 @@ set(RUX_TEST_SOURCES
     CredentialsTests.cpp
     DiagnosticsTests.cpp
     DocumentationTests.cpp
+    EnumRepresentationTests.cpp
     GoldenDiagnosticsTests.cpp
     InspectionOutputTests.cpp
     IterationLoweringTests.cpp

@@ -1,0 +1,91 @@
+import Core::Assert;
+
+// A generic enum carrying a payload is wider than the word a tag and a payload are packed into, so it is built and
+// read as an aggregate: the tag at offset 0, the payload after it. The type a method returns has to say so as
+// plainly as the type a variant is built at -- when it did not, the caller decoded the returned value as a packed
+// word the method never wrote, and made the call itself under an ABI too narrow to carry the result. A single match
+// happened to survive that; matching the same method's result again did not.
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+struct Counter {
+    value: int32;
+    limit: int32;
+}
+
+extend Counter {
+    func Next(self: *var Counter) -> Option<int32> {
+        if self.value >= self.limit {
+            return Option::None<int32>();
+        }
+        let current = self.value;
+        self.value = self.value + 1i32;
+        return Option::Some<int32>(current);
+    }
+}
+
+struct Pairs {
+    index: int32;
+}
+
+extend Pairs {
+    // Two payloads put the second one past the first, which only an aggregate has room for.
+    func Next(self: *var Pairs) -> Option<int64> {
+        if self.index >= 2i32 {
+            return Option::None<int64>();
+        }
+        let current = self.index;
+        self.index = self.index + 1i32;
+        return Option::Some<int64>(current as int64 * 100i64);
+    }
+}
+
+func Sum(counter: *var Counter) -> int {
+    var total = 0;
+    var seen = 0;
+    while seen < 4 {
+        total = total + match counter.Next() {
+            .Some(value) => value as int,
+            .None => 0
+        };
+        seen = seen + 1;
+    }
+    return total;
+}
+
+func Main() -> int {
+    var counter = Counter { value: 0i32, limit: 3i32 };
+
+    // Matching the same method's result four times running: each match reads what that call returned.
+    let first = match counter.Next() { .Some(value) => value as int, .None => 90 };
+    let second = match counter.Next() { .Some(value) => value as int, .None => 90 };
+    let third = match counter.Next() { .Some(value) => value as int, .None => 90 };
+    let exhausted = match counter.Next() { .Some(value) => value as int, .None => 5 };
+    Assert(first == 0, "Expected the first call to yield 0");
+    Assert(second == 1, "Expected the second call to yield 1");
+    Assert(third == 2, "Expected the third call to yield 2");
+    Assert(exhausted == 5, "Expected the fourth call to yield None");
+
+    // The same again inside a loop, where the calls share one match site.
+    var looped = Counter { value: 0i32, limit: 3i32 };
+    Assert(Sum(@looped) == 3, "Expected a repeated match in a loop to sum 0 + 1 + 2");
+
+    // A returned value bound to a local first is the same shape as one matched straight away.
+    var bound = Counter { value: 7i32, limit: 9i32 };
+    let held = bound.Next();
+    Assert((match held { .Some(value) => value as int, .None => 0 }) == 7,
+           "Expected a bound result to match the shape it was returned in");
+
+    // A wider payload, matched repeatedly through its own method.
+    var pairs = Pairs { index: 0i32 };
+    let zero = match pairs.Next() { .Some(value) => value, .None => -1i64 };
+    let hundred = match pairs.Next() { .Some(value) => value, .None => -1i64 };
+    let none = match pairs.Next() { .Some(value) => value, .None => -1i64 };
+    Assert(zero == 0i64 && hundred == 100i64 && none == -1i64,
+           "Expected an int64 payload to survive being returned and matched");
+
+    return 0;
+}

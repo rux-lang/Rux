@@ -36,6 +36,9 @@ private:
 
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
     std::unordered_map<std::string, TypeRef> enumTagTypes;
+    /// Type parameters of every generic enum whose variants carry payloads, keyed by both the plain and the
+    /// module-qualified declaration name. An instantiation of one of these is what the layout marker describes.
+    std::unordered_map<std::string, std::vector<std::string>> genericPayloadEnums;
     CheckedLirBuilder *builder = nullptr;
     std::unordered_map<std::string, LirReg> locals;
     std::unordered_map<std::string, const HirConst *> globalConsts;
@@ -92,7 +95,9 @@ private:
     [[nodiscard]] bool IsInterfaceType(const TypeRef &type) const;
     [[nodiscard]] static bool IsSliceType(const TypeRef &type);
     [[nodiscard]] static bool IsArrayType(const TypeRef &type);
-    [[nodiscard]] static bool IsAggregateEnumType(const TypeRef &type);
+    [[nodiscard]] std::optional<std::uint64_t> EnumLayoutSize(const TypeRef &type) const;
+    [[nodiscard]] bool IsInstantiatedPayloadEnum(const TypeRef &type) const;
+    [[nodiscard]] bool IsAggregateEnumType(const TypeRef &type) const;
     [[nodiscard]] TypeRef EnumTagType(const TypeRef &enumType) const;
     [[nodiscard]] static bool IsStringSliceLiteral(const HirLiteralExpr &expression);
     [[nodiscard]] static TypeRef StringSliceElementType(const HirLiteralExpr &expression);

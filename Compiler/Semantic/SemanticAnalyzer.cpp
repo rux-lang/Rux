@@ -1367,16 +1367,21 @@ private:
                 }
             }
 
+            std::vector<TypeRef> resolvedArgs;
             TypeRef named = TypeRef::MakeNamed(t->name);
             named.name += "<";
             for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
                 if (i) {
                     named.name += ", ";
                 }
-                named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+                resolvedArgs.push_back(ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions));
+                named.name += resolvedArgs.back().ToString();
             }
             named.name += ">";
-            return named;
+            // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
+            // return type resolved while a signature is built -- carries the layout marker one resolved directly has.
+            const auto enumIt = enumDecls.find(t->name);
+            return enumIt == enumDecls.end() ? named : EnumType(*enumIt->second, resolvedArgs);
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
