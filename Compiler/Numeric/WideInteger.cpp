@@ -392,6 +392,55 @@ std::uint32_t WideInteger::PopulationCount() const noexcept {
     return count;
 }
 
+WideIntegerProduct WideInteger::MultipliedFull(const WideInteger &other) const noexcept {
+    std::array<Limb, MaxLimbs * 2> product{};
+    const std::size_t used = LimbsFor(width);
+    for (std::size_t leftIndex = 0; leftIndex < used; ++leftIndex) {
+        std::uint64_t carry = 0;
+        for (std::size_t rightIndex = 0; rightIndex < used; ++rightIndex) {
+            const std::size_t resultIndex = leftIndex + rightIndex;
+            const std::uint64_t partial =
+                static_cast<std::uint64_t>(limbs[leftIndex]) * other.limbs[rightIndex] + product[resultIndex] + carry;
+            product[resultIndex] = static_cast<Limb>(partial & 0xFFFFFFFFU);
+            carry = partial >> LimbBits;
+        }
+        product[leftIndex + used] = static_cast<Limb>(carry);
+    }
+
+    WideIntegerProduct result{Zero(width), Zero(width)};
+    for (std::uint32_t bit = 0; bit < width * 2; ++bit) {
+        if ((product[bit / LimbBits] & (Limb{1} << (bit % LimbBits))) == 0) {
+            continue;
+        }
+        WideInteger &half = bit < width ? result.low : result.high;
+        const std::uint32_t halfBit = bit < width ? bit : bit - width;
+        half.limbs[halfBit / LimbBits] |= Limb{1} << (halfBit % LimbBits);
+    }
+    result.low.Normalize();
+    result.high.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::MultipliedWrapping(const WideInteger &other) const noexcept {
+    return MultipliedFull(other).low;
+}
+
+std::optional<WideInteger> WideInteger::MultipliedChecked(const WideInteger &other,
+                                                          const bool isSigned) const noexcept {
+    if (!isSigned) {
+        const WideIntegerProduct product = MultipliedFull(other);
+        return product.high.IsZero() ? std::optional{product.low} : std::nullopt;
+    }
+
+    const bool negative = IsNegative() != other.IsNegative();
+    const WideIntegerProduct magnitude = Magnitude(true).MultipliedFull(other.Magnitude(true));
+    const WideInteger limit = negative ? MinMagnitude(width, true) : MaxValue(width, true);
+    if (!magnitude.high.IsZero() || magnitude.low > limit) {
+        return std::nullopt;
+    }
+    return negative ? magnitude.low.Negated() : magnitude.low;
+}
+
 WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
     return isSigned && IsNegative() ? Negated() : *this;
 }

@@ -182,6 +182,46 @@ TEST_CASE("wide bit counts respect the exact width") {
     CHECK_EQ(WideInteger::AllOnes(100).PopulationCount(), 100);
 }
 
+TEST_CASE("full-width multiplication preserves both halves of the product") {
+    const WideInteger maximum = WideInteger::AllOnes(128);
+    const WideIntegerProduct square = maximum.MultipliedFull(maximum);
+    CHECK_EQ(square.low.ToDecimal(), "1");
+    CHECK_EQ(square.high.ToDecimal(), "340282366920938463463374607431768211454");
+    CHECK_EQ(maximum.MultipliedWrapping(maximum).ToDecimal(), "1");
+
+    // Splitting occurs at the exact value width, not at the next limb boundary.
+    const WideInteger top100 = WideInteger::FromUnsigned(1, 100).ShiftedLeft(99);
+    const WideIntegerProduct crosses100 = top100.MultipliedFull(WideInteger::FromUnsigned(2, 100));
+    CHECK(crosses100.low.IsZero());
+    CHECK_EQ(crosses100.high.ToDecimal(), "1");
+
+    const WideIntegerProduct largest = WideInteger::AllOnes(512).MultipliedFull(WideInteger::AllOnes(512));
+    CHECK_EQ(largest.low.ToDecimal(), "1");
+    CHECK_EQ(largest.high, WideInteger::AllOnes(512).Subtracted(WideInteger::FromUnsigned(1, 512)));
+}
+
+TEST_CASE("checked multiplication applies unsigned and signed limits") {
+    const WideInteger one = WideInteger::FromUnsigned(1, 128);
+    const WideInteger two = WideInteger::FromUnsigned(2, 128);
+    const WideInteger three = WideInteger::FromUnsigned(3, 128);
+    const WideInteger unsignedMaximum = WideInteger::AllOnes(128);
+    CHECK_EQ(unsignedMaximum.MultipliedChecked(one, false), unsignedMaximum);
+    CHECK_FALSE(unsignedMaximum.MultipliedChecked(two, false).has_value());
+
+    const WideInteger signedMaximum = WideInteger::MaxValue(128, true);
+    const WideInteger signedMinimum = WideInteger::MinMagnitude(128, true);
+    CHECK_EQ(signedMaximum.MultipliedChecked(one, true), signedMaximum);
+    CHECK_FALSE(signedMaximum.MultipliedChecked(two, true).has_value());
+    CHECK_EQ(signedMinimum.MultipliedChecked(one, true), signedMinimum);
+    CHECK_FALSE(signedMinimum.MultipliedChecked(one.Negated(), true).has_value());
+
+    const WideInteger negativeTwo = two.Negated();
+    const auto negativeSix = negativeTwo.MultipliedChecked(three, true);
+    REQUIRE(negativeSix.has_value());
+    CHECK_EQ(*negativeSix, WideInteger::FromUnsigned(6, 128).Negated());
+    CHECK_EQ(WideInteger::Zero(128).MultipliedChecked(signedMinimum, true), WideInteger::Zero(128));
+}
+
 TEST_CASE("a value reads back as words and as a machine word when it fits") {
     const WideInteger small = Decimal("18446744073709551615", 128);
     REQUIRE(small.ToUnsigned().has_value());
