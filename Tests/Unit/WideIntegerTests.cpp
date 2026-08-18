@@ -278,6 +278,47 @@ TEST_CASE("wide division reports divide by zero and signed minimum overflow") {
     CHECK_EQ(unsignedMinimum.remainder, minimum);
 }
 
+TEST_CASE("checked wide conversions preserve only representable numeric values") {
+    const WideInteger negativeOne8 = WideInteger::AllOnes(8);
+    const auto signedWide = negativeOne8.ConvertedChecked(128, true, true);
+    REQUIRE(signedWide.has_value());
+    CHECK_EQ(*signedWide, WideInteger::AllOnes(128));
+    CHECK_FALSE(negativeOne8.ConvertedChecked(8, true, false).has_value());
+
+    const WideInteger unsigned255 = WideInteger::FromUnsigned(255, 8);
+    CHECK_FALSE(unsigned255.ConvertedChecked(8, false, true).has_value());
+    const auto widenedSigned = unsigned255.ConvertedChecked(16, false, true);
+    REQUIRE(widenedSigned.has_value());
+    CHECK_EQ(widenedSigned->ToDecimal(), "255");
+
+    for (const std::uint32_t width : {8U, 16U, 32U, 64U, 128U, 256U, 512U}) {
+        CAPTURE(width);
+        CHECK(WideInteger::MaxValue(width, false).ConvertedChecked(width, false, false).has_value());
+        CHECK(WideInteger::MaxValue(width, true).ConvertedChecked(width, true, true).has_value());
+        CHECK(WideInteger::MinMagnitude(width, true).ConvertedChecked(width, true, true).has_value());
+    }
+}
+
+TEST_CASE("saturating wide conversions choose the nearest target endpoint") {
+    CHECK_EQ(WideInteger::AllOnes(8).ConvertedSaturating(128, true, false), WideInteger::Zero(128));
+    CHECK_EQ(WideInteger::FromUnsigned(255, 8).ConvertedSaturating(8, false, true), WideInteger::MaxValue(8, true));
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ConvertedSaturating(8, true, true),
+             WideInteger::MinMagnitude(8, true));
+    CHECK_EQ(WideInteger::AllOnes(512).ConvertedSaturating(128, false, false), WideInteger::AllOnes(128));
+}
+
+TEST_CASE("wrapping and truncating conversions differ when a negative value widens") {
+    const WideInteger negativeOne8 = WideInteger::AllOnes(8);
+    CHECK_EQ(negativeOne8.ConvertedWrapping(128, true), WideInteger::AllOnes(128));
+    CHECK_EQ(negativeOne8.ConvertedTruncating(128).ToDecimal(), "255");
+    CHECK_EQ(negativeOne8.ConvertedWrapping(4, true), WideInteger::AllOnes(4));
+    CHECK_EQ(negativeOne8.ConvertedTruncating(4), WideInteger::AllOnes(4));
+
+    const WideInteger largest = WideInteger::AllOnes(512);
+    CHECK_EQ(largest.ConvertedWrapping(128, false), WideInteger::AllOnes(128));
+    CHECK_EQ(largest.ConvertedTruncating(128), WideInteger::AllOnes(128));
+}
+
 TEST_CASE("a value reads back as words and as a machine word when it fits") {
     const WideInteger small = Decimal("18446744073709551615", 128);
     REQUIRE(small.ToUnsigned().has_value());

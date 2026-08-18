@@ -139,6 +139,20 @@ public:
     /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
     [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
 
+    /// Preserve the numeric value when it is representable with the target width and signedness, or return nullopt.
+    [[nodiscard]] std::optional<WideInteger> ConvertedChecked(std::uint32_t newWidth, bool sourceSigned,
+                                                              bool targetSigned) const noexcept;
+
+    /// Preserve the numeric value when representable and otherwise clamp to the nearest target endpoint.
+    [[nodiscard]] WideInteger ConvertedSaturating(std::uint32_t newWidth, bool sourceSigned,
+                                                  bool targetSigned) const noexcept;
+
+    /// Preserve the numeric value modulo 2^newWidth, sign-extending a negative source when widening.
+    [[nodiscard]] WideInteger ConvertedWrapping(std::uint32_t newWidth, bool sourceSigned) const noexcept;
+
+    /// Copy the raw low bits, discarding high bits when narrowing and filling new bits with zero when widening.
+    [[nodiscard]] WideInteger ConvertedTruncating(std::uint32_t newWidth) const noexcept;
+
     /// The same value restated at `newWidth`, truncating any bit that no longer fits.
     [[nodiscard]] WideInteger Truncated(std::uint32_t newWidth) const noexcept;
 
