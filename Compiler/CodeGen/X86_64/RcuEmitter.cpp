@@ -143,7 +143,7 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const override {
-        if (IsWideInteger(t)) {
+        if (IsWideInteger(t) || (IsSoftwareFloat(t) && SizeOfRuntime(t) > 8)) {
             return true;
         }
         if (t.IsRange()) {

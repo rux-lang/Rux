@@ -25,6 +25,12 @@ namespace Rux::Layout {
 
 [[nodiscard]] bool IsFloat(const TypeRef &t);
 
+/// Alias that makes hardware-register decisions explicit at call sites.
+[[nodiscard]] bool IsNativeFloat(const TypeRef &t);
+
+/// Float widths lowered through software kernels and passed as raw integer/aggregate storage.
+[[nodiscard]] bool IsSoftwareFloat(const TypeRef &t);
+
 /// Multiword integer primitives travel through stack storage and aggregate ABI lanes rather than one machine register.
 [[nodiscard]] bool IsWideInteger(const TypeRef &t);
 
