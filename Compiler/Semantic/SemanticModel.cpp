@@ -75,6 +75,17 @@ const TypeRef &RequireSubstitution(const std::unordered_map<std::string, TypeRef
 }
 } // namespace
 
+std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type) {
+    const TypeRef &owner = type.kind == TypeRef::Kind::Pointer && !type.inner.empty() ? type.inner.front() : type;
+    std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
+    // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
+    // other generic instantiation shares one, so it reduces to the declaration that owns it.
+    if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !name.starts_with("Slice<")) {
+        name.resize(arguments);
+    }
+    return interfaceName + "@" + name;
+}
+
 std::string
 ResolvedCallableBinding::LinkerNameFor(const std::unordered_map<std::string, TypeRef> &concreteSubstitutions) const {
     if (linkerNameBase.empty()) {
@@ -119,6 +130,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
+                             std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                              std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                              std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
@@ -134,6 +146,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , callableBindings(std::move(inputCallableBindings))
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
+    , constraintWitnesses(std::move(inputConstraintWitnesses))
     , typeLayouts(std::move(inputTypeLayouts))
     , typeProperties(std::move(inputTypeProperties))
     , dropGluePlans(std::move(inputDropGluePlans))
@@ -178,6 +191,12 @@ const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &de
 const ResolvedVtableIdentity *SemanticModel::TryGetVtableIdentity(const ImplDecl &declaration) const noexcept {
     const auto identity = vtableIdentities.find(&declaration);
     return identity == vtableIdentities.end() ? nullptr : &identity->second;
+}
+
+const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const std::string &interfaceName,
+                                                                        const TypeRef &type) const noexcept {
+    const auto witness = constraintWitnesses.find(ConstraintWitnessKey(interfaceName, type));
+    return witness == constraintWitnesses.end() ? nullptr : &witness->second;
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {

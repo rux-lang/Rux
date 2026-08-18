@@ -285,6 +285,44 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
     if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
+
+        // A receiver whose type is a generic parameter carries exactly the operations its bounds declare. The concrete
+        // method is chosen per instantiation, so the call is checked against the interface's signature here and the
+        // witness recorded for each type argument is what lowering calls.
+        const TypeRef &receiverBase = receiverType.kind == TypeRef::Kind::Pointer && !receiverType.inner.empty()
+                                        ? receiverType.inner.front()
+                                        : receiverType;
+        if (receiverBase.kind == TypeRef::Kind::TypeParam) {
+            const auto constrained = LookupConstrainedOperation(receiverType, field->field);
+            if (!constrained) {
+                EmitMissingConstrainedOperation(field->location, receiverType, field->field);
+                return TypeRef::MakeUnknown();
+            }
+            const FuncDecl &operation = *constrained->operation;
+            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(operation);
+            bool callAccepted = argTypes.size() == paramTypes.size();
+            if (!callAccepted) {
+                emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), &operation,
+                               true);
+            }
+            else {
+                const auto parameters = VisibleParameters(operation, true);
+                for (std::size_t i = 0; i < paramTypes.size(); ++i) {
+                    if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() &&
+                        !CanAssignExprTo(*e->args[i], argTypes[i], paramTypes[i])) {
+                        callAccepted = false;
+                        emitArgumentTypeError(field->field, i, argTypes[i], paramTypes[i],
+                                              i < parameters.size() ? parameters[i] : nullptr, &operation);
+                    }
+                }
+            }
+            if (callAccepted) {
+                ConsumeCallArguments(*e, argTypes);
+            }
+            RecordConstrainedBinding(*e, *constrained, receiverType);
+            return ResolveInterfaceMethodReturnType(operation);
+        }
+
         if (const FuncDecl *method = LookupMethod(receiverType, field->field, argTypes)) {
             bool callAccepted = true;
             if (!method->warnMessage.empty()) {

@@ -399,6 +399,13 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         if (!function->intrinsicName.empty() && !function->body && !function->isAsm) {
             return;
         }
+        // A constrained generic exists only as its instantiations. Its body calls operations whose target is chosen per
+        // type argument, so the symbolic form has nothing to call -- the same reason a generic extend block below is
+        // lowered only through the instances its uses ask for.
+        if (std::ranges::any_of(function->typeParams,
+                                [](const TypeParameter &parameter) { return !parameter.bounds.empty(); })) {
+            return;
+        }
         HirFunc loweredFunction = LowerFunc(*function);
         loweredFunction.name = FunctionCalleeName(*function);
         module.funcs.push_back(std::move(loweredFunction));

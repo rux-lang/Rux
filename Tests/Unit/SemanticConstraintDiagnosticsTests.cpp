@@ -1,8 +1,11 @@
 #include "Lexer/Lexer.h"
+#include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,6 +23,68 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     return analyzer.Analyze().diagnostics;
 }
+
+/// Lower an accepted source, so what a constrained call becomes can be asserted rather than only that it was accepted.
+HirPackage LowerSource(const std::string &source) {
+    Lexer lexer(source, "constraints.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "constraints.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    return AstToHirLowering(model).Generate();
+}
+
+[[nodiscard]] bool HasFunction(const HirPackage &package, const std::string &name) {
+    REQUIRE_EQ(package.modules.size(), 1);
+    return std::ranges::any_of(package.modules.front().funcs,
+                               [&](const HirFunc &function) { return function.name == name; });
+}
+
+const HirFunc &RequireFunction(const HirPackage &package, const std::string &name) {
+    REQUIRE_EQ(package.modules.size(), 1);
+    for (const HirFunc &function : package.modules.front().funcs) {
+        if (function.name == name) {
+            return function;
+        }
+    }
+    FAIL("missing lowered function " << name);
+    throw std::runtime_error("missing lowered function");
+}
+
+/// The callee of the call a one-expression body returns.
+std::string ReturnedCalleeName(const HirFunc &function) {
+    REQUIRE(function.body.has_value());
+    REQUIRE_EQ(function.body->stmts.size(), 1);
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(function.body->stmts.front().get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *call = dynamic_cast<const HirCallExpr *>(returned->value->get());
+    REQUIRE(call != nullptr);
+    const auto *callee = dynamic_cast<const HirVarExpr *>(call->callee.get());
+    REQUIRE(callee != nullptr);
+    return callee->name;
+}
+
+/// One bound, a type that satisfies it nominally, a type that satisfies it by declaring the method, and a generic that
+/// calls the operation through its parameter.
+const std::string kMeasuredPrelude = R"(
+    interface Measured {
+        func Measure() -> int;
+    }
+    struct Square { size: int; }
+    extend Square : Measured {
+        func Measure(self: *Square) -> int { return self.size * self.size; }
+    }
+    struct Segment { length: int; }
+    extend Segment {
+        func Measure(self: *Segment) -> int { return self.length; }
+    }
+    func Total<T: Measured>(value: T) -> int { return value.Measure(); }
+)";
 
 /// A displayable type, its conforming implementation, and a generic that needs the bound. Every case below varies one
 /// part of this, so the shared prefix keeps each source down to what it is actually testing.
@@ -314,4 +379,105 @@ TEST_CASE("a generic enum checks the bound of its type argument once per written
     CHECK_EQ(diagnostics[0].message,
              "type argument 'Plain' does not satisfy interface bound 'Display' on type parameter 'T'");
     CHECK_EQ(diagnostics[0].notes[1], "type parameter 'T' of enum 'Slot' is bound by 'Display'");
+}
+
+TEST_CASE("a bound operation is callable through the type parameter it is declared on") {
+    const auto diagnostics = AnalyzeSource(kMeasuredPrelude + R"(
+        func Main() -> int {
+            let square = Square { size: 5 };
+            return Total<Square>(square);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("a call through a parameter that does not provide the operation names the bounds in scope") {
+    const auto unbounded = AnalyzeSource(R"(
+        func Loose<T>(value: T) -> int { return value.Measure(); }
+    )");
+
+    REQUIRE_EQ(unbounded.size(), 1);
+    CHECK_EQ(unbounded[0].message, "no interface bound on type parameter 'T' provides method 'Measure'");
+    REQUIRE_EQ(unbounded[0].notes.size(), 1);
+    CHECK_EQ(unbounded[0].notes[0], "type parameter 'T' has no interface bounds");
+    REQUIRE(unbounded[0].help.has_value());
+    CHECK_EQ(*unbounded[0].help, "add a bound whose interface declares 'Measure', as in 'T: SomeInterface'");
+
+    const auto wrongOperation = AnalyzeSource(kMeasuredPrelude + R"(
+        func Tight<T: Measured>(value: T) -> int { return value.Scale(2); }
+    )");
+
+    REQUIRE_EQ(wrongOperation.size(), 1);
+    CHECK_EQ(wrongOperation[0].message, "no interface bound on type parameter 'T' provides method 'Scale'");
+    CHECK_EQ(wrongOperation[0].notes[0], "type parameter 'T' is bound by 'Measured'");
+}
+
+TEST_CASE("a constrained call is checked against the signature its interface declares") {
+    const auto diagnostics = AnalyzeSource(R"(
+        interface Scaled {
+            func Times(factor: int) -> int;
+        }
+        func Apply<T: Scaled>(value: T) -> int { return value.Times(); }
+        func Mistyped<T: Scaled>(value: T) -> int { return value.Times(true); }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "call to 'Times' expects 1 argument, but 0 were provided");
+    CHECK_EQ(diagnostics[1].message, "argument 1 to 'Times' has type 'bool8', but parameter 'factor' requires 'int'");
+}
+
+TEST_CASE("each instantiation of a constrained generic calls the method of its own type argument") {
+    const HirPackage package = LowerSource(kMeasuredPrelude + R"(
+        func Main() -> int {
+            let square = Square { size: 5 };
+            let segment = Segment { length: 9 };
+            return Total<Square>(square) + Total<Segment>(segment);
+        }
+    )");
+
+    CHECK_EQ(ReturnedCalleeName(RequireFunction(package, "Total_Square")), "Square::Measure");
+    CHECK_EQ(ReturnedCalleeName(RequireFunction(package, "Total_Segment")), "Segment::Measure");
+}
+
+TEST_CASE("a constrained generic is emitted only as its instantiations") {
+    const HirPackage package = LowerSource(kMeasuredPrelude + R"(
+        func Main() -> int {
+            let square = Square { size: 5 };
+            return Total<Square>(square);
+        }
+    )");
+
+    CHECK(HasFunction(package, "Total_Square"));
+    // The symbolic form has no method to call for its bound, so lowering never emits it.
+    CHECK_FALSE(HasFunction(package, "Total"));
+}
+
+TEST_CASE("a bound forwarded to a second constrained generic reaches the same concrete method") {
+    const HirPackage package = LowerSource(kMeasuredPrelude + R"(
+        func Doubled<U: Measured>(value: U) -> int { return Total<U>(value) * 2; }
+        func Main() -> int {
+            let square = Square { size: 5 };
+            return Doubled<Square>(square);
+        }
+    )");
+
+    CHECK(HasFunction(package, "Doubled_Square"));
+    CHECK_EQ(ReturnedCalleeName(RequireFunction(package, "Total_Square")), "Square::Measure");
+    CHECK_FALSE(HasFunction(package, "Total_U"));
+}
+
+TEST_CASE("a method of a generic extend block calls the bound of the type it extends") {
+    const HirPackage package = LowerSource(kMeasuredPrelude + R"(
+        struct Cell<T: Measured> { item: T; }
+        extend Cell<T> {
+            func Inside(self: *Cell<T>) -> int { return self.item.Measure(); }
+        }
+        func Main() -> int {
+            let cell = Cell<Square> { item: Square { size: 4 } };
+            return cell.Inside();
+        }
+    )");
+
+    CHECK_EQ(ReturnedCalleeName(RequireFunction(package, "Cell::Inside_Square")), "Square::Measure");
 }

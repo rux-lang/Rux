@@ -45,6 +45,10 @@ struct ResolvedCallableBinding {
         Interface,
         Indirect,
         EnumVariant,
+        /// An operation of an interface bound, called on a value whose type is a generic parameter. The target is only
+        /// known per instantiation, so the selected declaration is the interface's method and the concrete one comes
+        /// from the constraint witness recorded for the substituted type.
+        Constrained,
     };
 
     DispatchKind dispatch = DispatchKind::Indirect;
@@ -65,12 +69,28 @@ struct ResolvedCallableBinding {
     bool linkerNameHasOverloadSignature = false;
     std::vector<TypeRef> linkerOverloadTypes;
     std::vector<std::string> linkerSpecializationParameters;
+    /// Constrained dispatch only: the bound whose operation is called, and that operation's slot in the interface.
+    std::string constraintInterface;
+    std::size_t constraintOperationIndex = 0;
 
     [[nodiscard]] std::string
     LinkerNameFor(const std::unordered_map<std::string, TypeRef> &concreteSubstitutions) const;
     [[nodiscard]] ResolvedCallableBinding
     Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const;
 };
+
+/// Which concrete method satisfies each operation of one interface bound, for one type argument that satisfied it.
+/// Analysis proves a bound at the use site, so the witness is what lets a constrained call be lowered to a direct call
+/// per instantiation instead of through a vtable. Entries are ordered by the interface's method declarations.
+struct ResolvedConstraintWitness {
+    std::string interfaceName;
+    std::string typeName;
+    std::vector<const FuncDecl *> operations;
+};
+
+/// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation
+/// reduce to the type that owns the methods, so `*Cell<int>` and `Cell<int>` name the same witness.
+[[nodiscard]] std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type);
 
 /// Final linker-visible identity of a declaration that emits or imports a symbol. Accepted generic calls record their
 /// concrete instance separately.
@@ -124,6 +144,7 @@ struct SemanticModel {
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
+                  std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                   std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
@@ -149,6 +170,11 @@ struct SemanticModel {
 
     /// Returns null for extend blocks that do not emit an interface vtable.
     [[nodiscard]] const ResolvedVtableIdentity *TryGetVtableIdentity(const ImplDecl &declaration) const noexcept;
+
+    /// Returns null when no use site proved that this type satisfies this bound, which is also the only case in which
+    /// no instantiation needs the witness.
+    [[nodiscard]] const ResolvedConstraintWitness *TryGetConstraintWitness(const std::string &interfaceName,
+                                                                           const TypeRef &type) const noexcept;
 
     /// Returns null when the type is unresolved, unsized, recursive, or was not validated in this analysis.
     /// Type-expression queries first use the resolved type fact for that AST node.
@@ -180,6 +206,7 @@ private:
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
+    std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;

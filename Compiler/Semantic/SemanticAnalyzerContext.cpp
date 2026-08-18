@@ -72,6 +72,10 @@ std::unordered_map<std::string, TypeProperties> SemanticAnalyzerContext::TakeTyp
     return std::move(typeProperties);
 }
 
+std::unordered_map<std::string, ResolvedConstraintWitness> SemanticAnalyzerContext::TakeConstraintWitnesses() {
+    return std::move(constraintWitnesses);
+}
+
 std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropGluePlans() {
     return std::move(dropGluePlans);
 }

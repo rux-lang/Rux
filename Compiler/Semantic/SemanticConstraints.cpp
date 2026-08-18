@@ -132,23 +132,120 @@ bool SemanticAnalyzerContext::TypeSatisfiesBound(const TypeRef &argument, const 
         return false;
     }
 
-    // `extend T: I` states the conformance outright. Without one, the methods themselves are what a constrained
-    // generic actually calls, so a type that declares every required method satisfies the bound as well: the call is
-    // resolved statically, and demanding a nominal declaration would reject code that compiles either way.
-    if (const auto implemented = typeImplementsInterfaces.find(typeName);
-        implemented != typeImplementsInterfaces.end() && implemented->second.contains(interface.name)) {
-        return true;
-    }
-
-    const auto methods = methodsByType.find(typeName);
+    // The operations themselves decide. `extend T: I` states the conformance outright, but its methods are indexed the
+    // same way a plain extend block's are, so one rule covers both: a type satisfies the bound when every operation the
+    // interface names has exactly one method to call. Naming that method here is also what makes the bound usable --
+    // lowering calls it directly per instantiation, so a conformance with no callable method would satisfy nothing.
+    ResolvedConstraintWitness witness;
+    witness.interfaceName = interface.name;
+    witness.typeName = typeName;
     for (const auto &required : interface.methods) {
-        if (methods == methodsByType.end() || !methods->second.contains(required->name)) {
+        const FuncDecl *operation = SelectBoundOperation(typeName, *required);
+        if (!operation) {
             reason = std::format("interface '{}' requires method '{}', which type '{}' does not implement",
                                  interface.name, required->name, argument.ToString());
             return false;
         }
+        witness.operations.push_back(operation);
     }
+    constraintWitnesses.insert_or_assign(ConstraintWitnessKey(interface.name, argument), std::move(witness));
     return true;
+}
+
+const FuncDecl *SemanticAnalyzerContext::SelectBoundOperation(const std::string &typeName,
+                                                              const FuncDecl &required) const {
+    const auto methods = methodsByType.find(typeName);
+    if (methods == methodsByType.end()) {
+        return nullptr;
+    }
+    const auto named = methods->second.find(required.name);
+    if (named == methods->second.end() || named->second.empty()) {
+        return nullptr;
+    }
+    if (named->second.size() == 1) {
+        return named->second.front();
+    }
+
+    // An overloaded name needs the overload the interface asked for. Written arity is what the interface states, since
+    // its own declaration carries no receiver, and an ambiguous name provides no single operation to call.
+    const auto writtenCount = [](const FuncDecl &function) {
+        std::size_t count = 0;
+        for (const Param &parameter : function.params) {
+            if (!parameter.IsReceiver()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    const FuncDecl *selected = nullptr;
+    for (const FuncDecl *candidate : named->second) {
+        if (writtenCount(*candidate) != writtenCount(required)) {
+            continue;
+        }
+        if (selected) {
+            return nullptr;
+        }
+        selected = candidate;
+    }
+    return selected;
+}
+
+std::optional<SemanticAnalyzerContext::ConstrainedOperation>
+SemanticAnalyzerContext::LookupConstrainedOperation(const TypeRef &receiverType, const std::string &methodName) const {
+    const TypeRef &receiver = receiverType.kind == TypeRef::Kind::Pointer && !receiverType.inner.empty()
+                                ? receiverType.inner.front()
+                                : receiverType;
+    if (receiver.kind != TypeRef::Kind::TypeParam) {
+        return std::nullopt;
+    }
+    const auto bounds = currentTypeParamBounds.find(receiver.name);
+    if (bounds == currentTypeParamBounds.end()) {
+        return std::nullopt;
+    }
+    for (const ResolvedTypeBound &bound : bounds->second) {
+        if (!bound.interface) {
+            continue;
+        }
+        for (std::size_t index = 0; index < bound.interface->methods.size(); ++index) {
+            if (bound.interface->methods[index]->name != methodName) {
+                continue;
+            }
+            return ConstrainedOperation{receiver.name, bound.name, bound.interface->methods[index].get(), index};
+        }
+    }
+    return std::nullopt;
+}
+
+void SemanticAnalyzerContext::RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
+                                                       const TypeRef &receiverType) {
+    RecordFunctionBinding(call, *operation.operation, ResolvedCallableBinding::DispatchKind::Constrained, {},
+                          receiverType);
+    ResolvedCallableBinding &binding = callableBindings.at(&call);
+    binding.constraintInterface = operation.interfaceName;
+    binding.constraintOperationIndex = operation.operationIndex;
+}
+
+void SemanticAnalyzerContext::EmitMissingConstrainedOperation(const SourceLocation location,
+                                                              const TypeRef &receiverType,
+                                                              const std::string &methodName) const {
+    const TypeRef &receiver = receiverType.kind == TypeRef::Kind::Pointer && !receiverType.inner.empty()
+                                ? receiverType.inner.front()
+                                : receiverType;
+    std::vector<std::string> notes;
+    std::string names;
+    if (const auto bounds = currentTypeParamBounds.find(receiver.name); bounds != currentTypeParamBounds.end()) {
+        for (const ResolvedTypeBound &bound : bounds->second) {
+            names += names.empty() ? "" : ", ";
+            names += std::format("'{}'", bound.name);
+        }
+    }
+    notes.push_back(names.empty() ? std::format("type parameter '{}' has no interface bounds", receiver.name)
+                                  : std::format("type parameter '{}' is bound by {}", receiver.name, names));
+    EmitError(
+        location,
+        std::format("no interface bound on type parameter '{}' provides method '{}'", receiver.name, methodName),
+        std::move(notes),
+        std::format("add a bound whose interface declares '{}', as in '{}: SomeInterface'", methodName, receiver.name));
 }
 
 void SemanticAnalyzerContext::CheckTypeArgumentConstraints(

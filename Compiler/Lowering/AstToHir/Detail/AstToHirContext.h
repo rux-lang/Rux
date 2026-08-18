@@ -143,6 +143,7 @@ private:
     [[nodiscard]] HirExprPtr LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundMethodCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] std::uint64_t ResolvedSizeOf(const SizeOfExpr &expression);

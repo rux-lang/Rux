@@ -293,6 +293,36 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
     return lowered;
 }
 
+/// A bound operation called on a value whose type was a generic parameter. The parameter is substituted by the time
+/// this instance is lowered, so the witness analysis recorded for that type argument names the method to call and the
+/// call is direct: a constrained generic never reaches a vtable.
+HirExprPtr AstToHirContext::LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+    const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
+    assert(field && binding.receiverType && "constrained binding is missing its receiver");
+    const TypeRef receiverType = *binding.receiverType;
+    const ResolvedConstraintWitness &witness =
+        RequireSemanticFact(model.TryGetConstraintWitness(binding.constraintInterface, receiverType));
+    assert(binding.constraintOperationIndex < witness.operations.size() &&
+           "constrained binding names an operation the witness does not cover");
+    const FuncDecl &method = *witness.operations[binding.constraintOperationIndex];
+
+    auto lowered = std::make_unique<HirCallExpr>();
+    lowered->location = call.location;
+    lowered->isNoReturn = method.isNoReturn;
+    auto callee = std::make_unique<HirVarExpr>();
+    callee->location = call.callee->location;
+    callee->name = ConcreteMethodCalleeName(witness.typeName, receiverType, method);
+    HirExprPtr self = LowerReceiverFor(method, LowerExpr(*field->object));
+    callee->type = MethodType(self->type, method);
+    lowered->args.push_back(std::move(self));
+    for (auto &argument : LowerBoundArguments(call, method, binding, callee->type, true)) {
+        lowered->args.push_back(std::move(argument));
+    }
+    lowered->type = callee->type.inner.back();
+    lowered->callee = std::move(callee);
+    return lowered;
+}
+
 HirExprPtr AstToHirContext::LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
     auto lowered = std::make_unique<HirCallExpr>();
     lowered->location = call.location;
@@ -386,6 +416,8 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         return LowerBoundMethodCall(call, binding);
     case Dispatch::Interface:
         return LowerBoundInterfaceCall(call, binding);
+    case Dispatch::Constrained:
+        return LowerBoundConstrainedCall(call, binding);
     case Dispatch::Indirect:
         return LowerBoundIndirectCall(call, binding);
     case Dispatch::EnumVariant:

@@ -3064,7 +3064,9 @@ private:
             (void)call;
             if (!binding.selectedDeclaration || binding.dispatch == ResolvedCallableBinding::DispatchKind::Interface ||
                 binding.dispatch == ResolvedCallableBinding::DispatchKind::Indirect ||
-                binding.dispatch == ResolvedCallableBinding::DispatchKind::EnumVariant) {
+                binding.dispatch == ResolvedCallableBinding::DispatchKind::EnumVariant ||
+                // A constrained call has one target per instantiation; lowering names it from the witness instead.
+                binding.dispatch == ResolvedCallableBinding::DispatchKind::Constrained) {
                 continue;
             }
             const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
@@ -3586,6 +3588,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(callableBindings),
                          std::move(symbolIdentities),
                          std::move(vtableIdentities),
+                         analyzer.TakeConstraintWitnesses(),
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),
                          analyzer.TakeDropGluePlans(),
