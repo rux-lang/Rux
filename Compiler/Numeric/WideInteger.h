@@ -9,6 +9,8 @@
 #include <string_view>
 
 namespace Rux {
+struct WideIntegerProduct;
+
 /// A fixed-capacity unsigned integer wide enough for every integer width the language spells, up to 512 bits.
 ///
 /// The value is held in 32-bit limbs, least significant first. A limb is half a machine word so that a limb-by-limb
@@ -113,6 +115,16 @@ public:
     [[nodiscard]] std::uint32_t CountTrailingZeros() const noexcept;
     [[nodiscard]] std::uint32_t PopulationCount() const noexcept;
 
+    /// The entire unsigned product split at this value's width. `low` and `high` each retain that width, so even two
+    /// 512-bit operands have room for every one of their 1024 result bits.
+    [[nodiscard]] WideIntegerProduct MultipliedFull(const WideInteger &other) const noexcept;
+
+    /// The low half of `MultipliedFull`, which is multiplication wrapping at this value's width.
+    [[nodiscard]] WideInteger MultipliedWrapping(const WideInteger &other) const noexcept;
+
+    /// The wrapped product when it is representable at this value's width and signedness, or nullopt on overflow.
+    [[nodiscard]] std::optional<WideInteger> MultipliedChecked(const WideInteger &other, bool isSigned) const noexcept;
+
     /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
     [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
 
@@ -145,5 +157,10 @@ private:
 
     std::array<Limb, MaxLimbs> limbs{};
     std::uint32_t width = MaxBits;
+};
+
+struct WideIntegerProduct {
+    WideInteger low;
+    WideInteger high;
 };
 } // namespace Rux
