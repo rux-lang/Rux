@@ -35,6 +35,35 @@ TEST_CASE("call diagnostics identify the argument and named parameter that disag
     CHECK(diagnostics[0].notes[0].contains("parameter 'right' declared at 'types-and-calls.rux':2:"));
 }
 
+TEST_CASE("a call argument written with the C address-of sigil is rejected") {
+    // The pair this pins: the program does not compile, and analysis leaves
+    // nothing untyped behind. Lowering treats a missing type fact on an
+    // accepted expression as a broken invariant rather than a reportable
+    // case, so an argument neither typed nor reported reaches it as a crash.
+    const std::string source = R"(
+        func Take(value: *var uint64) -> bool { return true; }
+        func Main() -> int {
+            var bytes = 0u64;
+            let flag = Take(&bytes);
+            return 0;
+        }
+    )";
+
+    Lexer lexer(source, "types-and-calls.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "types-and-calls.rux");
+    auto parsed = parser.Parse();
+    REQUIRE(parsed.HasErrors());
+
+    // The parser recovers the argument as '@bytes', so the call it belongs to
+    // still resolves and analysis has nothing of its own to add.
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const auto diagnostics = analyzer.Analyze().diagnostics;
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics[0].message);
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("call arity diagnostics distinguish required defaulted and variadic parameters") {
     const auto diagnostics = AnalyzeSource(R"(
         func Configure(required: int, optional: int = 0) {}

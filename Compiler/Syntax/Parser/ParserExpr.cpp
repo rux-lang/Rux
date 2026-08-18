@@ -152,6 +152,9 @@ ExprPtr Parser::ParseTernary() {
 
 ExprPtr Parser::ParseOr() {
     auto left = ParseAnd();
+    if (!left) {
+        return nullptr;
+    }
     while (Check(TokenKind::PipePipe)) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -172,6 +175,9 @@ ExprPtr Parser::ParseOr() {
 
 ExprPtr Parser::ParseAnd() {
     auto left = ParseBitOr();
+    if (!left) {
+        return nullptr;
+    }
     while (Check(TokenKind::AmpAmp)) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -192,6 +198,9 @@ ExprPtr Parser::ParseAnd() {
 
 ExprPtr Parser::ParseBitOr() {
     auto left = ParseBitXor();
+    if (!left) {
+        return nullptr;
+    }
     while (Check(TokenKind::Pipe)) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -212,6 +221,9 @@ ExprPtr Parser::ParseBitOr() {
 
 ExprPtr Parser::ParseBitXor() {
     auto left = ParseBitAnd();
+    if (!left) {
+        return nullptr;
+    }
     while (Check(TokenKind::Caret)) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -232,6 +244,9 @@ ExprPtr Parser::ParseBitXor() {
 
 ExprPtr Parser::ParseBitAnd() {
     auto left = ParseEquality();
+    if (!left) {
+        return nullptr;
+    }
     while (Check(TokenKind::Amp)) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -252,6 +267,9 @@ ExprPtr Parser::ParseBitAnd() {
 
 ExprPtr Parser::ParseEquality() {
     auto left = ParseComparison();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::Equal, TokenKind::BangEqual})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -272,6 +290,9 @@ ExprPtr Parser::ParseEquality() {
 
 ExprPtr Parser::ParseComparison() {
     auto left = ParseShift();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::Less, TokenKind::LessEqual, TokenKind::Greater, TokenKind::GreaterEqual})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -292,6 +313,9 @@ ExprPtr Parser::ParseComparison() {
 
 ExprPtr Parser::ParseCast() {
     auto left = ParseUnary();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
         const auto loc = CurrentLocation();
         if (Match(TokenKind::AsKeyword)) {
@@ -317,6 +341,9 @@ ExprPtr Parser::ParseCast() {
 
 ExprPtr Parser::ParseShift() {
     auto left = ParseAdd();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::LessLess, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -337,6 +364,9 @@ ExprPtr Parser::ParseShift() {
 
 ExprPtr Parser::ParseAdd() {
     auto left = ParseMul();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::Plus, TokenKind::Minus})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -357,6 +387,9 @@ ExprPtr Parser::ParseAdd() {
 
 ExprPtr Parser::ParseMul() {
     auto left = ParseExp();
+    if (!left) {
+        return nullptr;
+    }
     while (CheckAny({TokenKind::Star, TokenKind::Slash, TokenKind::Percent})) {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
@@ -378,6 +411,9 @@ ExprPtr Parser::ParseMul() {
 // ** is right-associative (exponentiation)
 ExprPtr Parser::ParseExp() {
     auto left = ParseCast();
+    if (!left) {
+        return nullptr;
+    }
 
     if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
         const auto loc = CurrentLocation();
@@ -403,6 +439,25 @@ ExprPtr Parser::ParseExp() {
 }
 
 ExprPtr Parser::ParseUnary() {
+    // C spells address-of '&', so report the rewrite where an expression
+    // starts and keep parsing as '@'. Recovering here is what stops the
+    // operand from cascading into "expected an expression".
+    if (Check(TokenKind::Amp)) {
+        const auto loc = CurrentLocation();
+        EmitError(loc, "'&' does not take an address; write '@' to take the address of a value");
+        Advance(); // consume '&', so the operand below parses as address-of
+        auto operand = ParseUnary();
+        if (!operand) {
+            EmitMissingExpression("after unary '&'");
+            return nullptr;
+        }
+        auto e = std::make_unique<UnaryExpr>();
+        e->location = loc;
+        e->op = TokenKind::At;
+        e->operand = std::move(operand);
+        return e;
+    }
+
     // '@' is address-of. It is unambiguous against the '@[Attr]' attribute
     // sigil: attributes are only parsed in declaration position, and there
     // the '@' is always followed by '['.

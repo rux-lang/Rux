@@ -1,0 +1,13 @@
+// C spells address-of `&`; Rux spells it `@`. The rewrite is reported once and
+// the argument still parses as an address, so the call it belongs to does not
+// cascade into "expected an expression" or an arity error.
+func Take(value: *var uint64) -> bool {
+    return true;
+}
+
+func Main() -> int {
+    var bytes = 0u64;
+    let flag = Take(&bytes);
+    let sum = 1 & 2;
+    return 0;
+}

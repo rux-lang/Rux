@@ -59,6 +59,7 @@ protected:
     void CheckTrackedRead(const Symbol &symbol, SourceLocation location);
     [[nodiscard]] TypeRef ReadTrackedSymbol(const Symbol &symbol, SourceLocation location);
     void RecordCheckedExpression(const Expr &expression, const TypeRef &type);
+    void ReportUntypedExpression(const Expr &expression) const;
     void MarkTrackedAssignment(const Expr &target, SourceLocation location);
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
