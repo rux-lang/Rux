@@ -228,6 +228,7 @@ rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/EncoderMemory.cpp
     CodeGen/X86_64/FramePlan.cpp
     CodeGen/X86_64/FunctionEmitter.cpp
+    CodeGen/X86_64/WideIntegerEmitter.cpp
     CodeGen/X86_64/RcuEmitter.cpp
     CodeGen/X86_64/RuntimeHelpers.cpp)
 target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)

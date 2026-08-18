@@ -25,6 +25,9 @@ namespace Rux::Layout {
 
 [[nodiscard]] bool IsFloat(const TypeRef &t);
 
+/// Multiword integer primitives travel through stack storage and aggregate ABI lanes rather than one machine register.
+[[nodiscard]] bool IsWideInteger(const TypeRef &t);
+
 /// The unsigned integer type of the same width, which is how a logical right shift reads its operand: `lshr` on a
 /// signed type is the one place a value's bits are widened by its width rather than by its signedness. Anything that is
 /// not a signed integer already reads that way and is returned unchanged.

@@ -114,6 +114,10 @@ bool IsFloat(const TypeRef &t) {
     return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
 }
 
+bool IsWideInteger(const TypeRef &t) {
+    return t.IsInteger() && SizeOf(t) > 8;
+}
+
 TypeRef UnsignedIntegerType(const TypeRef &type) {
     switch (type.kind) {
     case TypeRef::Kind::Int8:

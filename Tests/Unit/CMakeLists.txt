@@ -106,6 +106,7 @@ set(RUX_TEST_SOURCES
     X86_64AssemblyInstructionPrinterTests.cpp
     X86_64AssemblyModulePrinterTests.cpp
     X86_64FramePlanTests.cpp
+    X86_64WideIntegerTests.cpp
     X86_64RuntimeHelperTests.cpp
 )
 
