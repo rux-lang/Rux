@@ -277,6 +277,50 @@ TEST_CASE("expression diagnostics name their owning operator and delimiter") {
     }
 }
 
+TEST_CASE("a binary operator written where an expression starts reports its own misuse") {
+    // Each of these leads with a token that only joins two operands. The
+    // parser used to build the operator node with nothing on its left, which
+    // left an expression no later stage could type and no diagnostic to say
+    // why, so the report each case owns is what keeps the tree well formed.
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {"func F() { let value = Call(&count); }",
+         "'&' does not take an address; write '@' to take the address of a value"},
+        {"func F() { let value = &count; }", "'&' does not take an address; write '@' to take the address of a value"},
+        {"func F() { let value = Call(|count); }", "expected an expression after '(' in the argument list before '|'"},
+        {"func F() { let value = ^count; }", "expected an expression after '=' in the binding before '^'"},
+        {"func F() { let value = Call(as int); }", "expected an expression after '(' in the argument list before 'as'"},
+    };
+
+    for (const auto &testCase : cases) {
+        CAPTURE(testCase.source);
+        const auto parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
+}
+
+TEST_CASE("the C address-of spelling reports the rewrite once and recovers as '@'") {
+    // Recovering as address-of is what stops one rejected sigil from cascading
+    // into a missing argument and an arity error on the call that holds it.
+    const auto parsed = ParseSource("func F() { let flag = Take(&bytes); }");
+    CAPTURE(DiagnosticMessages(parsed));
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(parsed.diagnostics[0].message, "'&' does not take an address; write '@' to take the address of a value");
+    CHECK_EQ(parsed.diagnostics[0].location.column, 28);
+    CHECK_FALSE(HasDiagnosticContaining(parsed, "expected an expression"));
+}
+
+TEST_CASE("'&' between two operands stays the bitwise operator") {
+    const auto parsed = ParseSource("func F() { let value = left & right; let masked = left&right; }");
+    CAPTURE(DiagnosticMessages(parsed));
+    CHECK_FALSE(parsed.HasErrors());
+}
+
 TEST_CASE("statement diagnostics identify the condition, iterable, body, and terminator") {
     struct Case {
         std::string_view source;

@@ -16,6 +16,47 @@ constexpr std::array<std::string_view, 20> UnimplementedPrimitiveTypes{
 };
 } // namespace
 
+namespace {
+/// Whether lowering turns `expression` into a value and so reads a recorded type for it.
+/// `AstToHirContext::ResolvedExpressionType` treats a missing type fact for one of these as a broken invariant rather
+/// than a reportable case. `null` is the exception the invariant already allows: it carries no type of its own, and
+/// lowering gives it the one its context asks for without ever making that query.
+[[nodiscard]] bool LoweringRequiresType(const Expr &expression) {
+    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+        return literal->token.kind != TokenKind::NullKeyword;
+    }
+    return dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
+           dynamic_cast<const UnaryExpr *>(&expression) || dynamic_cast<const PostfixExpr *>(&expression) ||
+           dynamic_cast<const BinaryExpr *>(&expression) || dynamic_cast<const AssignExpr *>(&expression) ||
+           dynamic_cast<const TernaryExpr *>(&expression) || dynamic_cast<const IndexExpr *>(&expression) ||
+           dynamic_cast<const FieldExpr *>(&expression) || dynamic_cast<const CastExpr *>(&expression) ||
+           dynamic_cast<const IsExpr *>(&expression);
+}
+} // namespace
+
+/// An unknown type is dropped rather than recorded, so an expression left unknown by a run that reported nothing
+/// reaches lowering with no type fact at all -- and lowering has no route to report that. An error anywhere already
+/// stops the pipeline before lowering, so only a silently unknown type needs naming here.
+void SemanticAnalyzerContext::ReportUntypedExpression(const Expr &expression) const {
+    if (!LoweringRequiresType(expression)) {
+        return;
+    }
+    const bool reported = std::ranges::any_of(diags, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.severity == SemanticDiagnostic::Severity::Error;
+    });
+    if (!reported) {
+        EmitError(expression.location, "cannot determine the type of this expression");
+    }
+}
+
+void SemanticAnalyzerContext::RecordCheckedExpression(const Expr &expression, const TypeRef &type) {
+    if (type.IsUnknown()) {
+        ReportUntypedExpression(expression);
+        return;
+    }
+    expressionTypes.insert_or_assign(&expression, type);
+}
+
 std::string SemanticAnalyzerContext::SliceTypeName(const TypeRef &elementType) {
     return "Slice<" + elementType.ToString() + ">";
 }
