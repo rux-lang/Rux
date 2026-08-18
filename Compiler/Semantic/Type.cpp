@@ -73,12 +73,13 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (kind == Kind::Float32 && other.kind == Kind::Float64) {
         return true;
     }
-    // char widens implicitly: char8 → char16, char8/char16 → char32
-    if (kind == Kind::Char8 && (other.kind == Kind::Char16 || other.kind == Kind::Char32)) {
-        return true;
-    }
-    if (kind == Kind::Char16 && other.kind == Kind::Char32) {
-        return true;
+    // A character widens implicitly only to a wider character carrying the same thing. Every scalar-valued width
+    // holds the same code points, so widening one is exact. A code unit does not widen at all: `char8` and `char16`
+    // are units of different encodings, and a UTF-8 byte above 0x7F is not the UTF-16 word of the same number.
+    if (IsChar() && other.IsChar()) {
+        return CharacterDomainOf(kind) == CharacterDomain::ScalarValue &&
+               CharacterDomainOf(other.kind) == CharacterDomain::ScalarValue &&
+               PrimitiveSize(kind, DefaultPointerSize) <= PrimitiveSize(other.kind, DefaultPointerSize);
     }
     // int/uint interoperate with their fixed-width platform equivalents
     // (x86-64: 64-bit)

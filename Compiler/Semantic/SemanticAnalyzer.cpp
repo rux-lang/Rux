@@ -908,34 +908,6 @@ private:
         return false;
     }
 
-    static std::optional<std::uint32_t> CharTypeMaxCodePoint(const TypeRef &type) {
-        switch (type.kind) {
-        case TypeRef::Kind::Char8:
-            return 0xFF;
-        case TypeRef::Kind::Char16:
-            return 0xFFFF;
-        case TypeRef::Kind::Char32:
-            return 0x10FFFF;
-        default:
-            return std::nullopt;
-        }
-    }
-
-    static bool IsCharType(const TypeRef &type) noexcept {
-        switch (type.kind) {
-        case TypeRef::Kind::Char8:
-        case TypeRef::Kind::Char16:
-        case TypeRef::Kind::Char32:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    static bool IsSurrogateCodePoint(const std::uint64_t value) noexcept {
-        return value >= 0xD800 && value <= 0xDFFF;
-    }
-
     static std::optional<std::uint64_t> EvalConstCharCastValue(const Expr &expr) {
         if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr)) {
             if (literal->token.kind == TokenKind::CharLiteral) {
@@ -3285,27 +3257,37 @@ private:
         }
     }
 
+    /// Reject a constant that the target character width cannot hold.
+    ///
+    /// The width's own rule decides: a code unit accepts everything that fits in it, a scalar value stops at U+10FFFF
+    /// and refuses the surrogates. Every character width is covered, so a width gains this check by joining the
+    /// catalog rather than by being listed here.
     void ValidateCastConstant(const CastExpr &expression, const TypeRef &operandType,
                               const TypeRef &targetType) const override {
-        if (const auto maxCodePoint = CharTypeMaxCodePoint(targetType);
-            maxCodePoint && (operandType.IsInteger() || IsCharType(operandType))) {
-            if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
-                EmitError(expression.location,
-                          std::format("constant cast from '{}' to '{}' is outside the target type's range",
-                                      operandType.ToString(), targetType.ToString()));
-            }
-            else if (const auto charValue = EvalConstCharCastValue(*expression.operand)) {
-                if (*charValue > *maxCodePoint) {
-                    EmitError(expression.location,
-                              std::format("constant cast from '{}' to '{}' is outside the target type's range",
-                                          operandType.ToString(), targetType.ToString()));
-                }
-                else if (IsSurrogateCodePoint(*charValue)) {
-                    EmitError(expression.location,
-                              std::format("cast from '{}' to '{}' uses invalid surrogate code point U+{:04X}",
-                                          operandType.ToString(), targetType.ToString(), *charValue));
-                }
-            }
+        const auto maximum = MaxCharacterValue(targetType.kind);
+        if (!maximum || !(operandType.IsInteger() || operandType.IsChar())) {
+            return;
+        }
+        const auto outOfRange = [&] {
+            EmitError(expression.location,
+                      std::format("constant cast from '{}' to '{}' is outside the target type's range",
+                                  operandType.ToString(), targetType.ToString()));
+        };
+        if (const auto value = EvalConstInt(*expression.operand); value && *value < 0) {
+            outOfRange();
+            return;
+        }
+        const auto charValue = EvalConstCharCastValue(*expression.operand);
+        if (!charValue) {
+            return;
+        }
+        if (*charValue > *maximum) {
+            outOfRange();
+        }
+        else if (!IsValidCharacterValue(targetType.kind, *charValue)) {
+            EmitError(expression.location,
+                      std::format("cast from '{}' to '{}' uses invalid surrogate code point U+{:04X}",
+                                  operandType.ToString(), targetType.ToString(), *charValue));
         }
     }
 

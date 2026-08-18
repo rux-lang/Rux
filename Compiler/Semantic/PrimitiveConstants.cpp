@@ -108,10 +108,9 @@ std::optional<PrimitiveConstant> LookupPrimitiveConstant(const TypeRef &type, co
             return PrimitiveConstant{type, "0"};
         }
         if (name == "Max") {
-            const std::string value = type.kind == TypeRef::Kind::Char8  ? "255"
-                                    : type.kind == TypeRef::Kind::Char16 ? "65535"
-                                                                         : "1114111";
-            return PrimitiveConstant{type, value};
+            // The width's own ceiling: its last code unit, or U+10FFFF once the width carries scalar values, however
+            // much room it has beyond that.
+            return PrimitiveConstant{type, std::to_string(*MaxCharacterValue(type.kind))};
         }
         return std::nullopt;
     }

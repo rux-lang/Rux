@@ -1,0 +1,20 @@
+func Main() {
+    // A scalar-valued width refuses a surrogate, which is half of a UTF-16 pair
+    // rather than a character, and refuses anything past the last code point.
+    let surrogate32: char32 = 0xD800 as char32;
+    let surrogate64: char64 = 0xDFFF as char64;
+    let past32: char32 = 0x110000 as char32;
+    let past64: char64 = 0x110000 as char64;
+    let negative: char32 = -1 as char32;
+
+    // A code unit reaches its own width's maximum and no further.
+    let past8: char8 = 0x100 as char8;
+    let past16: char16 = 0x10000 as char16;
+
+    // The two encodings do not widen into each other, and a scalar value does
+    // not narrow back without a cast.
+    let unit: char8 = 'a' as char8;
+    let crossed: char16 = unit;
+    let scalar: char32 = 'a';
+    let narrowed: char16 = scalar;
+}

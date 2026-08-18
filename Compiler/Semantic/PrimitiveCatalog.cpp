@@ -30,7 +30,7 @@ constexpr std::array<PrimitiveInfo, 38> Catalog{{
     {K::Char8, "char8", C::Char, 8, 1, 1, true},
     {K::Char16, "char16", C::Char, 16, 2, 2, true},
     {K::Char32, "char32", C::Char, 32, 4, 4, true},
-    {K::Char64, "char64", C::Char, 64, 8, 8, false},
+    {K::Char64, "char64", C::Char, 64, 8, 8, true},
     {K::Char128, "char128", C::Char, 128, 16, 16, false},
     {K::Char256, "char256", C::Char, 256, 32, 16, false},
     {K::Char512, "char512", C::Char, 512, 64, 16, false},
@@ -63,6 +63,9 @@ constexpr std::array<PrimitiveInfo, 38> Catalog{{
     {K::Float256, "float256", C::Float, 256, 32, 16, false},
     {K::Float512, "float512", C::Float, 512, 64, 16, false},
 }};
+
+/// The last code point Unicode defines, and so the ceiling on every scalar-valued character width.
+constexpr std::uint32_t MaxScalarValue = 0x10FFFF;
 
 constexpr std::array<PrimitiveAlias, 4> Aliases{{
     {"bool", K::Bool8},
@@ -128,5 +131,42 @@ std::optional<std::uint32_t> PrimitiveAlign(const TypeRef::Kind kind, const std:
         return std::nullopt;
     }
     return info->align == PointerSized ? pointerSize : info->align;
+}
+
+std::optional<CharacterDomain> CharacterDomainOf(const TypeRef::Kind kind) noexcept {
+    const PrimitiveInfo *info = FindPrimitive(kind);
+    if (!info || info->category != PrimitiveCategory::Char) {
+        return std::nullopt;
+    }
+    // The two encoding widths carry units of that encoding; every wider character carries a scalar value, since
+    // nothing above `char32` has more of Unicode to reach.
+    return info->bits <= 16 ? CharacterDomain::CodeUnit : CharacterDomain::ScalarValue;
+}
+
+std::optional<std::uint32_t> MaxCharacterValue(const TypeRef::Kind kind) noexcept {
+    const auto domain = CharacterDomainOf(kind);
+    if (!domain) {
+        return std::nullopt;
+    }
+    if (*domain == CharacterDomain::ScalarValue) {
+        return MaxScalarValue;
+    }
+    const PrimitiveInfo *info = FindPrimitive(kind);
+    return info->bits == 8 ? 0xFFU : 0xFFFFU;
+}
+
+bool IsSurrogate(const std::uint64_t value) noexcept {
+    return value >= 0xD800 && value <= 0xDFFF;
+}
+
+bool IsValidCharacterValue(const TypeRef::Kind kind, const std::uint64_t value) noexcept {
+    const auto domain = CharacterDomainOf(kind);
+    if (!domain) {
+        return false;
+    }
+    if (value > *MaxCharacterValue(kind)) {
+        return false;
+    }
+    return *domain == CharacterDomain::CodeUnit || !IsSurrogate(value);
 }
 } // namespace Rux

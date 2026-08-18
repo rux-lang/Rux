@@ -150,11 +150,6 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
     }
 }
 
-bool IsCharacter(const TypeRef &type) noexcept {
-    return type.kind == TypeRef::Kind::Char8 || type.kind == TypeRef::Kind::Char16 ||
-           type.kind == TypeRef::Kind::Char32;
-}
-
 bool IsAssignablePlace(const Expr &expression) noexcept {
     if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const FieldExpr *>(&expression) ||
         dynamic_cast<const IndexExpr *>(&expression)) {
@@ -171,7 +166,7 @@ bool IsAddressValue(const TypeRef &type) noexcept {
 }
 
 bool IsCastValue(const TypeRef &type) noexcept {
-    return type.IsNumeric() || type.IsBool() || IsCharacter(type) || type.kind == TypeRef::Kind::Pointer;
+    return type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer;
 }
 } // namespace
 
@@ -399,14 +394,14 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
         }
     }
 
-    const auto isNumericOrChar = [](const TypeRef &type) { return type.IsNumeric() || IsCharacter(type); };
-    const auto isIntegerOrChar = [](const TypeRef &type) { return type.IsInteger() || IsCharacter(type); };
+    const auto isNumericOrChar = [](const TypeRef &type) { return type.IsNumeric() || type.IsChar(); };
+    const auto isIntegerOrChar = [](const TypeRef &type) { return type.IsInteger() || type.IsChar(); };
     const auto compatibleType = [&](const Expr &leftExpr, const TypeRef &leftType, const Expr &rightExpr,
                                     const TypeRef &rightType) -> std::optional<TypeRef> {
-        if ((leftType.IsInteger() && IsCharacter(rightType)) || (rightType.IsInteger() && IsCharacter(leftType))) {
+        if ((leftType.IsInteger() && rightType.IsChar()) || (rightType.IsInteger() && leftType.IsChar())) {
             return leftType.IsInteger() ? leftType : rightType;
         }
-        if (IsCharacter(leftType) && IsCharacter(rightType)) {
+        if (leftType.IsChar() && rightType.IsChar()) {
             return leftType;
         }
         if (leftType.IsInteger() && rightType.IsInteger()) {
@@ -478,7 +473,7 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     case TK::Pipe:
     case TK::Caret: {
         const auto isBitwiseOperand = [](const TypeRef &type) {
-            return type.IsInteger() || type.IsBool() || IsCharacter(type);
+            return type.IsInteger() || type.IsBool() || type.IsChar();
         };
         if (!isBitwiseOperand(left)) {
             EmitError(location,

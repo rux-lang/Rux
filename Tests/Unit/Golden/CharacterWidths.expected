@@ -1,0 +1,9 @@
+4:38: error: cast from 'int' to 'char32' uses invalid surrogate code point U+D800
+5:38: error: cast from 'int' to 'char64' uses invalid surrogate code point U+DFFF
+6:35: error: constant cast from 'int' to 'char32' is outside the target type's range
+7:35: error: constant cast from 'int' to 'char64' is outside the target type's range
+8:31: error: constant cast from 'int' to 'char32' is outside the target type's range
+11:30: error: constant cast from 'int' to 'char8' is outside the target type's range
+12:34: error: constant cast from 'int' to 'char16' is outside the target type's range
+17:5: error: cannot assign 'char8' to 'char16'
+19:5: error: cannot assign 'char32' to 'char16'

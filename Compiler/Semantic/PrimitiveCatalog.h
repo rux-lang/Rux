@@ -46,6 +46,16 @@ struct PrimitiveAlias {
     TypeRef::Kind kind = TypeRef::Kind::Unknown;
 };
 
+/// What a character width carries.
+///
+/// `char8` and `char16` hold one unit of an encoding -- a UTF-8 byte and a UTF-16 word -- so every value the width can
+/// hold is a valid one. `char32` and the wider characters hold a Unicode scalar value, so they stop at U+10FFFF and
+/// exclude the surrogate range, which encodes nothing on its own.
+enum class CharacterDomain : std::uint8_t {
+    CodeUnit,
+    ScalarValue,
+};
+
 /// Every primitive type, in declaration order within each family.
 [[nodiscard]] std::span<const PrimitiveInfo> PrimitiveCatalog() noexcept;
 
@@ -82,4 +92,24 @@ struct PrimitiveAlias {
 ///
 /// @return nullopt when `kind` is not a primitive
 [[nodiscard]] std::optional<std::uint32_t> PrimitiveAlign(TypeRef::Kind kind, std::uint32_t pointerSize) noexcept;
+
+/// What a character of this width carries.
+///
+/// @return nullopt when `kind` is not a character
+[[nodiscard]] std::optional<CharacterDomain> CharacterDomainOf(TypeRef::Kind kind) noexcept;
+
+/// The largest value a character of this width may hold: the width's own maximum for a code unit, U+10FFFF for a
+/// scalar value however much room the width has beyond it.
+///
+/// @return nullopt when `kind` is not a character
+[[nodiscard]] std::optional<std::uint32_t> MaxCharacterValue(TypeRef::Kind kind) noexcept;
+
+/// Whether `value` names a Unicode surrogate, U+D800 through U+DFFF. A surrogate is half of a UTF-16 pair and is a
+/// code unit rather than a character, so it is a value a scalar-valued width may not hold.
+[[nodiscard]] bool IsSurrogate(std::uint64_t value) noexcept;
+
+/// Whether `value` is one a character of this width may hold, by that width's own rule.
+///
+/// @return false when `kind` is not a character
+[[nodiscard]] bool IsValidCharacterValue(TypeRef::Kind kind, std::uint64_t value) noexcept;
 } // namespace Rux
