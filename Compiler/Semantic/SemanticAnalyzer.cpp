@@ -229,18 +229,12 @@ private:
 
     // Type resolution
     std::string GenericTypeName(const NamedTypeExpr &type) {
-        std::string name = type.name;
-        if (!type.typeArgs.empty()) {
-            name += "<";
-            for (std::size_t i = 0; i < type.typeArgs.size(); ++i) {
-                if (i) {
-                    name += ", ";
-                }
-                name += ResolveType(*type.typeArgs[i]).ToString();
-            }
-            name += ">";
+        std::vector<TypeRef> typeArgs;
+        typeArgs.reserve(type.typeArgs.size());
+        for (const auto &typeArg : type.typeArgs) {
+            typeArgs.push_back(ResolveType(*typeArg));
         }
-        return name;
+        return TypeRef::InstantiationName(type.name, typeArgs);
     }
 
     std::string BaseTypeName(const std::string &name) const override {
@@ -1368,20 +1362,15 @@ private:
             }
 
             std::vector<TypeRef> resolvedArgs;
-            TypeRef named = TypeRef::MakeNamed(t->name);
-            named.name += "<";
-            for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
-                if (i) {
-                    named.name += ", ";
-                }
-                resolvedArgs.push_back(ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions));
-                named.name += resolvedArgs.back().ToString();
+            resolvedArgs.reserve(t->typeArgs.size());
+            for (const auto &typeArg : t->typeArgs) {
+                resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
             }
-            named.name += ">";
             // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
             // return type resolved while a signature is built -- carries the layout marker one resolved directly has.
             const auto enumIt = enumDecls.find(t->name);
-            return enumIt == enumDecls.end() ? named : EnumType(*enumIt->second, resolvedArgs);
+            return enumIt != enumDecls.end() ? EnumType(*enumIt->second, resolvedArgs)
+                                             : TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
@@ -1931,19 +1920,7 @@ private:
     }
 
     TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) override {
-        std::string name = decl.name;
-        if (!typeArgs.empty()) {
-            name += '<';
-            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-                if (i) {
-                    name += ", ";
-                }
-                name += typeArgs[i].ToString();
-            }
-            name += '>';
-        }
-
-        TypeRef type = TypeRef::MakeNamed(std::move(name));
+        TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
         if (decl.typeParams.empty()) {
             type.inner.push_back(EnumBaseType(decl));
             return type;
