@@ -170,6 +170,18 @@ A64Status EncodeAddSubShifted(const A64Enc &enc, const A64Reg rd, const A64Reg r
     return A64Status::Ok;
 }
 
+/// ADC / ADCS / SBC / SBCS: sf | op | S | 11010000 | Rm | 000000 | Rn | Rd.
+A64Status EncodeAddSubCarry(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm, const bool subtract,
+                            const bool setFlags) {
+    const unsigned bits = rd.bits;
+    if (!ZrOperand(rd, bits) || !ZrOperand(rn, bits) || !ZrOperand(rm, bits)) {
+        return A64Status::InvalidRegister;
+    }
+    enc.Word(rd.Sf() << 31U | (subtract ? 1U : 0U) << 30U | (setFlags ? 1U : 0U) << 29U | 0xD0U << 21U |
+             std::uint32_t{rm.code} << 16U | std::uint32_t{rn.code} << 5U | rd.code);
+    return A64Status::Ok;
+}
+
 /// ADD / ADDS / SUB / SUBS (extended register): sf | op | S | 01011 | 00 | 1 | Rm | option | imm3 | Rn | Rd.
 A64Status EncodeAddSubExtended(const A64Enc &enc, const A64Reg rd, const A64Reg rn, const A64Reg rm,
                                const A64ExtendKind extend, const unsigned amount, const bool subtract,
@@ -529,6 +541,22 @@ A64Status A64Enc::Neg(const A64Reg rd, const A64Reg rm, const A64ShiftKind shift
 
 A64Status A64Enc::Negs(const A64Reg rd, const A64Reg rm, const A64ShiftKind shift, const unsigned amount) const {
     return Subs(rd, A64::Gpr(31, rd.bits), rm, shift, amount);
+}
+
+A64Status A64Enc::Adc(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeAddSubCarry(*this, rd, rn, rm, false, false);
+}
+
+A64Status A64Enc::Adcs(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeAddSubCarry(*this, rd, rn, rm, false, true);
+}
+
+A64Status A64Enc::Sbc(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeAddSubCarry(*this, rd, rn, rm, true, false);
+}
+
+A64Status A64Enc::Sbcs(const A64Reg rd, const A64Reg rn, const A64Reg rm) const {
+    return EncodeAddSubCarry(*this, rd, rn, rm, true, true);
 }
 
 A64Status A64Enc::AddExt(const A64Reg rd, const A64Reg rn, const A64Reg rm, const A64ExtendKind extend,

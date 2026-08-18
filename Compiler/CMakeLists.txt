@@ -251,6 +251,7 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/EncoderMemory.cpp
     CodeGen/AArch64/FramePlan.cpp
     CodeGen/AArch64/FunctionEmitter.cpp
+    CodeGen/AArch64/WideIntegerEmitter.cpp
     CodeGen/AArch64/RcuEmitter.cpp
     CodeGen/AArch64/RuntimeHelpers.cpp)
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)

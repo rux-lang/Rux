@@ -126,6 +126,9 @@ int AArch64FunctionEmitter::RuntimeAlign(const TypeRef &type) const {
 }
 
 bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
+    if (IsWideInteger(type)) {
+        return true;
+    }
     if (type.IsRange()) {
         return true;
     }
@@ -247,6 +250,9 @@ void AArch64FunctionEmitter::EmitFloatBits(const LirInstr &instruction) {
 }
 
 bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    if (EmitWideArithmetic(instruction)) {
+        return true;
+    }
     switch (instruction.op) {
     case LirOpcode::Add:
     case LirOpcode::Sub:
@@ -566,6 +572,9 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             const A64Reg value = hooks.FloatResultRegister(instruction.dst, FpReg(instruction.type, kFpTemp));
             hooks.LoadFloatConstant(value, instruction.type, instruction.strArg);
             hooks.StoreFpToSlot(value, instruction.dst);
+            return true;
+        }
+        if (EmitWideConstant(instruction)) {
             return true;
         }
         if (!IsRegisterValue(instruction.type)) {

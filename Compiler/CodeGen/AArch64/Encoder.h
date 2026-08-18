@@ -233,6 +233,13 @@ public:
     [[nodiscard]] A64Status Negs(A64Reg rd, A64Reg rm, A64ShiftKind shift = A64ShiftKind::Lsl,
                                  unsigned amount = 0) const;
 
+    /// Add/subtract with carry. The flag-setting forms propagate a multiword carry or borrow into the next limb; the
+    /// non-setting forms finish a carry accumulation without replacing the flags produced by a preceding ADDS.
+    [[nodiscard]] A64Status Adc(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Adcs(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Sbc(A64Reg rd, A64Reg rn, A64Reg rm) const;
+    [[nodiscard]] A64Status Sbcs(A64Reg rd, A64Reg rn, A64Reg rm) const;
+
     /// ADD / ADDS / SUB / SUBS (extended register). The extension names how much of `rm` is read and whether the rest
     /// is copied or replicated, so `rm` is a W register for every option but UXTX and SXTX; `amount` is a left shift of
     /// 0 to 4 applied after the extension. These are the only arithmetic forms that reach SP, which they read through

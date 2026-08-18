@@ -1,2 +1,5 @@
-// int128 is a reserved primitive type. Its representation and primitive
-// constants are not implemented yet.
+// Primitive constants are supplied directly by the compiler
+// int128::Min
+// int128::Max
+// int128::Bits
+// int128::Bytes

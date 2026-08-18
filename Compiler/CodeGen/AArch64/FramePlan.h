@@ -5,6 +5,7 @@
 #include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -74,6 +75,14 @@ public:
         return phiTemporarySize;
     }
 
+    [[nodiscard]] std::int32_t WideTemporaryOffset(const std::size_t index) const {
+        return wideTemporaryOffsets.at(index);
+    }
+
+    [[nodiscard]] int WideTemporarySize() const {
+        return wideTemporarySize;
+    }
+
     [[nodiscard]] Target::OS TargetOs() const {
         return targetOs;
     }
@@ -97,6 +106,8 @@ private:
     std::int32_t calleeSaveOffset = 0;
     std::int32_t phiTemporaryOffset = 0;
     int phiTemporarySize = 0;
+    std::array<std::int32_t, 3> wideTemporaryOffsets{};
+    int wideTemporarySize = 0;
     Target::OS targetOs = Target::OS::Linux;
 };
 
