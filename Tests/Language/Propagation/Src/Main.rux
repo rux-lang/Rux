@@ -1,0 +1,89 @@
+/*
+    Compiler correctness test
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+import Core::Assert;
+
+enum ParseError: int32 {
+    Empty,
+    Bad
+}
+
+// `Result` and `Option` are ordinary enums; `?` recognizes them by their variants.
+enum Result<T, E> {
+    Success(T),
+    Error(E)
+}
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+func Read(ok: bool) -> Result<int32, ParseError> {
+    if ok {
+        return Result::Success<int32, ParseError>(7i32);
+    }
+    return Result::Error<int32, ParseError>(ParseError::Bad);
+}
+
+func Lookup(ok: bool) -> Option<int32> {
+    if ok {
+        return Option::Some<int32>(4i32);
+    }
+    return Option::None<int32>();
+}
+
+// The success payload becomes the value of the expression; a failure returns from here unchanged.
+func Doubled(ok: bool) -> Result<int32, ParseError> {
+    let value = Read(ok)?;
+    return Result::Success<int32, ParseError>(value * 2i32);
+}
+
+// Two propagations in one expression, each evaluated once and bound separately.
+func Sum(first: bool, second: bool) -> Result<int32, ParseError> {
+    let total = Read(first)? + Read(second)?;
+    return Result::Success<int32, ParseError>(total);
+}
+
+// Propagation through a second function: the failure travels out of both without being rewritten.
+func Chained(ok: bool) -> Result<int32, ParseError> {
+    let value = Doubled(ok)?;
+    return Result::Success<int32, ParseError>(value + 1i32);
+}
+
+func Present(ok: bool) -> Option<int32> {
+    let value = Lookup(ok)?;
+    return Option::Some<int32>(value * 3i32);
+}
+
+func Payload(outcome: Result<int32, ParseError>) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Error(error) => -1i32
+    };
+}
+
+func Held(outcome: Option<int32>) -> int32 {
+    return match outcome {
+        .Some(value) => value,
+        .None => -1i32
+    };
+}
+
+func Main() -> int {
+    Assert(Payload(Doubled(true)) == 14i32, "Expected the success payload to reach the caller doubled");
+    Assert(Payload(Doubled(false)) == -1i32, "Expected the failure to propagate out of Doubled");
+
+    Assert(Payload(Sum(true, true)) == 14i32, "Expected both propagations to contribute their payloads");
+    Assert(Payload(Sum(false, true)) == -1i32, "Expected the first failure to leave before the second call");
+    Assert(Payload(Sum(true, false)) == -1i32, "Expected the second failure to propagate too");
+
+    Assert(Payload(Chained(true)) == 15i32, "Expected a payload propagated through two functions");
+    Assert(Payload(Chained(false)) == -1i32, "Expected a failure propagated through two functions");
+
+    Assert(Held(Present(true)) == 12i32, "Expected an Option payload to reach the caller");
+    Assert(Held(Present(false)) == -1i32, "Expected an absent Option to propagate as None");
+    return 0;
+}

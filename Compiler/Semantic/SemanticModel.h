@@ -88,6 +88,22 @@ struct ResolvedConstraintWitness {
     std::vector<const FuncDecl *> operations;
 };
 
+/// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variants and checks the
+/// enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
+struct ResolvedPropagation {
+    bool isResult = false;
+    /// The operand's enum declaration and the variants to test, and the declaration the early return constructs.
+    std::string enumName;
+    std::string successVariant;
+    std::string failureVariant;
+    std::string returnEnumName;
+    /// Payload of the success variant, which is what the expression evaluates to, and of the failure variant, which the
+    /// early return carries unchanged. A failure with no payload, such as `Option::None`, leaves the second unset.
+    TypeRef payloadType;
+    std::optional<TypeRef> failureType;
+    TypeRef returnType;
+};
+
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation
 /// reduce to the type that owns the methods, so `*Cell<int>` and `Cell<int>` name the same witness.
 [[nodiscard]] std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type);
@@ -145,6 +161,7 @@ struct SemanticModel {
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
+                  std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                   std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
@@ -175,6 +192,9 @@ struct SemanticModel {
     /// no instantiation needs the witness.
     [[nodiscard]] const ResolvedConstraintWitness *TryGetConstraintWitness(const std::string &interfaceName,
                                                                            const TypeRef &type) const noexcept;
+
+    /// Returns null for a rejected `?`, which has no early return to build.
+    [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
 
     /// Returns null when the type is unresolved, unsized, recursive, or was not validated in this analysis.
     /// Type-expression queries first use the resolved type fact for that AST node.
@@ -207,6 +227,7 @@ private:
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
+    std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;

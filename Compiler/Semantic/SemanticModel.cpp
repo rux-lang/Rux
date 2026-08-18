@@ -131,6 +131,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
+                             std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                              std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                              std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
@@ -147,6 +148,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
     , constraintWitnesses(std::move(inputConstraintWitnesses))
+    , propagations(std::move(inputPropagations))
     , typeLayouts(std::move(inputTypeLayouts))
     , typeProperties(std::move(inputTypeProperties))
     , dropGluePlans(std::move(inputDropGluePlans))
@@ -197,6 +199,11 @@ const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const st
                                                                         const TypeRef &type) const noexcept {
     const auto witness = constraintWitnesses.find(ConstraintWitnessKey(interfaceName, type));
     return witness == constraintWitnesses.end() ? nullptr : &witness->second;
+}
+
+const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {
+    const auto propagation = propagations.find(&expression);
+    return propagation == propagations.end() ? nullptr : &propagation->second;
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {

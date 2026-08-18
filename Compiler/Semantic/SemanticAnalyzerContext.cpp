@@ -76,6 +76,10 @@ std::unordered_map<std::string, ResolvedConstraintWitness> SemanticAnalyzerConte
     return std::move(constraintWitnesses);
 }
 
+std::unordered_map<const TryExpr *, ResolvedPropagation> SemanticAnalyzerContext::TakePropagations() {
+    return std::move(propagations);
+}
+
 std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropGluePlans() {
     return std::move(dropGluePlans);
 }

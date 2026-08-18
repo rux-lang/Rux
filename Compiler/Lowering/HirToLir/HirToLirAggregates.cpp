@@ -405,6 +405,18 @@ void HirToLirContext::StoreExprIntoSlot(const HirExpr &expr, LirReg slot, const 
         StoreEnumConstructIntoSlot(*initEnumExpr, slot);
         return;
     }
+    if (auto *initBlockExpr = dynamic_cast<const HirBlockExpr *>(&expr)) {
+        LowerBlock(initBlockExpr->block);
+        // A block that left the function reaches no slot. Storing anything after its terminator would put an
+        // instruction in a block the verifier has already closed.
+        if (IsTerminated()) {
+            return;
+        }
+        if (initBlockExpr->value) {
+            StoreExprIntoSlot(*initBlockExpr->value, slot, type);
+        }
+        return;
+    }
     if (auto *initLitExpr = dynamic_cast<const HirLiteralExpr *>(&expr);
         initLitExpr && IsStringSliceLiteral(*initLitExpr)) {
         StoreStringLiteralSlice(*initLitExpr, slot);

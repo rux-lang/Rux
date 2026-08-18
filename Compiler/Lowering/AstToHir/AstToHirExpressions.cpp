@@ -125,6 +125,10 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         return lowered;
     }
 
+    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+        return LowerTryExpr(*tryExpression);
+    }
+
     if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         auto lowered = std::make_unique<HirPostfixExpr>();
         lowered->location = postfix->location;
