@@ -90,6 +90,44 @@ TEST_CASE("negation is two's complement at the value's own width") {
     CHECK_EQ(mostNegative.Negated().ToDecimal(), mostNegative.ToDecimal());
 }
 
+TEST_CASE("wide addition and subtraction carry across every limb and wrap at the width") {
+    const WideInteger one = Decimal("1", 128);
+    const WideInteger lowWordMax = Decimal("18446744073709551615", 128);
+    CHECK_EQ(lowWordMax.Added(one).ToDecimal(), "18446744073709551616");
+    CHECK_EQ(lowWordMax.Added(one).Word64(0), 0);
+    CHECK_EQ(lowWordMax.Added(one).Word64(1), 1);
+    CHECK_EQ(WideInteger::AllOnes(128).Added(one), WideInteger::Zero(128));
+
+    const WideInteger highWord = Decimal("18446744073709551616", 128);
+    CHECK_EQ(highWord.Subtracted(one).ToDecimal(), "18446744073709551615");
+    CHECK_EQ(WideInteger::Zero(128).Subtracted(one), WideInteger::AllOnes(128));
+    CHECK_EQ(Decimal("123456789012345678901234567890", 128)
+                 .Added(Decimal("9876543210", 128))
+                 .Subtracted(Decimal("9876543210", 128))
+                 .ToDecimal(),
+             "123456789012345678901234567890");
+
+    // A partial top limb wraps at the bit width rather than at its 32-bit storage boundary.
+    CHECK_EQ(WideInteger::AllOnes(100).Added(WideInteger::FromUnsigned(1, 100)), WideInteger::Zero(100));
+    CHECK_EQ(WideInteger::Zero(100).Subtracted(WideInteger::FromUnsigned(1, 100)), WideInteger::AllOnes(100));
+}
+
+TEST_CASE("wide bitwise operations normalize their result") {
+    constexpr std::array leftWords{0xFFFF0000FFFF0000ULL, 0xAAAAAAAAAAAAAAAAULL};
+    constexpr std::array rightWords{0x0F0F0F0F0F0F0F0FULL, 0x5555555555555555ULL};
+    const WideInteger left = WideInteger::FromWords(leftWords, 100);
+    const WideInteger right = WideInteger::FromWords(rightWords, 100);
+
+    CHECK_EQ(left.BitwiseAnd(right).Word64(0), 0x0F0F00000F0F0000ULL);
+    CHECK_EQ(left.BitwiseAnd(right).Word64(1), 0);
+    CHECK_EQ(left.BitwiseOr(right).Word64(0), 0xFFFF0F0FFFFF0F0FULL);
+    CHECK_EQ(left.BitwiseOr(right).Word64(1), 0x0000000FFFFFFFFFULL);
+    CHECK_EQ(left.BitwiseXor(right).Word64(0), 0xF0F00F0FF0F00F0FULL);
+    CHECK_EQ(left.BitwiseXor(right).Word64(1), 0x0000000FFFFFFFFFULL);
+    CHECK_EQ(left.BitwiseNot().BitwiseNot(), left);
+    CHECK_EQ(WideInteger::Zero(100).BitwiseNot(), WideInteger::AllOnes(100));
+}
+
 TEST_CASE("a value reads back as words and as a machine word when it fits") {
     const WideInteger small = Decimal("18446744073709551615", 128);
     REQUIRE(small.ToUnsigned().has_value());

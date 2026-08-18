@@ -218,6 +218,66 @@ WideInteger WideInteger::Negated() const noexcept {
     return result;
 }
 
+WideInteger WideInteger::Added(const WideInteger &other) const noexcept {
+    WideInteger result = Zero(width);
+    std::uint64_t carry = 0;
+    for (std::size_t index = 0; index < LimbsFor(width); ++index) {
+        const std::uint64_t sum = static_cast<std::uint64_t>(limbs[index]) + other.limbs[index] + carry;
+        result.limbs[index] = static_cast<Limb>(sum & 0xFFFFFFFFU);
+        carry = sum >> LimbBits;
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::Subtracted(const WideInteger &other) const noexcept {
+    WideInteger result = Zero(width);
+    std::uint64_t borrow = 0;
+    for (std::size_t index = 0; index < LimbsFor(width); ++index) {
+        const std::uint64_t subtrahend = static_cast<std::uint64_t>(other.limbs[index]) + borrow;
+        result.limbs[index] = static_cast<Limb>(static_cast<std::uint64_t>(limbs[index]) - subtrahend);
+        borrow = static_cast<std::uint64_t>(limbs[index]) < subtrahend ? 1 : 0;
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::BitwiseNot() const noexcept {
+    WideInteger result = *this;
+    for (Limb &limb : result.limbs) {
+        limb = ~limb;
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::BitwiseAnd(const WideInteger &other) const noexcept {
+    WideInteger result = *this;
+    for (std::size_t index = 0; index < MaxLimbs; ++index) {
+        result.limbs[index] &= other.limbs[index];
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::BitwiseOr(const WideInteger &other) const noexcept {
+    WideInteger result = *this;
+    for (std::size_t index = 0; index < MaxLimbs; ++index) {
+        result.limbs[index] |= other.limbs[index];
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::BitwiseXor(const WideInteger &other) const noexcept {
+    WideInteger result = *this;
+    for (std::size_t index = 0; index < MaxLimbs; ++index) {
+        result.limbs[index] ^= other.limbs[index];
+    }
+    result.Normalize();
+    return result;
+}
+
 WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
     return isSigned && IsNegative() ? Negated() : *this;
 }
