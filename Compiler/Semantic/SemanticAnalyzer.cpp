@@ -2170,8 +2170,7 @@ private:
 
     void CheckFuncDecl(const FuncDecl &d, bool isMethod = false) {
         auto savedTypeParams = currentTypeParams;
-        const FuncDecl *savedFunctionDecl = currentFunctionDecl;
-        currentFunctionDecl = &d;
+        const FuncDecl *savedFunctionDecl = BeginTrackedFunction(d);
         if (!isMethod) {
             currentTypeParams.clear();
         }
@@ -2194,7 +2193,7 @@ private:
             sym.kind = Symbol::Kind::Type;
             sym.name = tp;
             sym.type = TypeRef::MakeTypeParam(tp);
-            Define(sym);
+            Define(std::move(sym));
         }
 
         const TypeRef savedSelfType = DeclareReceiver(d, isMethod);
@@ -2224,7 +2223,7 @@ private:
             sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
                                         : ResolveType(*param.type);
             sym.isMut = param.isMut;
-            Define(sym);
+            DefineTrackedLocal(std::move(sym), true);
             if (param.defaultValue) {
                 TypeRef paramType = ResolveType(*param.type);
                 TypeRef defaultType = CheckExpr(**param.defaultValue);
@@ -2260,7 +2259,7 @@ private:
         currentReturnType = savedRet;
         currentFunctionNoReturn = savedNoReturn;
         currentTypeParams = savedTypeParams;
-        currentFunctionDecl = savedFunctionDecl;
+        EndTrackedFunction(savedFunctionDecl);
     }
 
     // An `asm func` body is written for one architecture, and nothing in the
@@ -3098,9 +3097,7 @@ private:
                 callableBindings.erase(call);
             }
         }
-        if (!type.IsUnknown()) {
-            expressionTypes.insert_or_assign(&expr, type);
-        }
+        RecordCheckedExpression(expr, type);
         return type;
     }
 
@@ -3112,7 +3109,7 @@ private:
         if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
             Symbol *sym = currentScope->Lookup(e->name);
             if (sym) {
-                return sym->type;
+                return ReadTrackedSymbol(*sym, e->location);
             }
             EmitUndefinedName(e->location, e->name);
             return TypeRef::MakeUnknown();

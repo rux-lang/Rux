@@ -180,14 +180,22 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return LiteralType(literal->token);
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+        const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
+        checkingPlainAssignmentTarget = checkingPlainAssignmentTarget || unary->op == TokenKind::At;
         TypeRef operandType = CheckExpr(*unary->operand);
+        checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
             if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
                 return operandType;
             }
         }
         if (unary->op == TokenKind::At) {
+            checkingPlainAssignmentTarget = true;
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
+            checkingPlainAssignmentTarget = savedAssignmentTarget;
+            if (operandType.isMut) {
+                MarkTrackedAssignment(*unary->operand, unary->location);
+            }
             return TypeRef::MakePointer(std::move(operandType));
         }
         return CheckUnary(unary->op, operandType, unary->location);
@@ -207,9 +215,14 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location);
     }
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+        const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
+        checkingPlainAssignmentTarget = assignment->op == TokenKind::Assign;
         TypeRef target = CheckExpr(*assignment->target);
+        checkingPlainAssignmentTarget = savedAssignmentTarget;
         TypeRef value = CheckExpr(*assignment->value);
+        checkingPlainAssignmentTarget = assignment->op == TokenKind::Assign;
         const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (isAssignable && assignment->op != TokenKind::Assign && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
                                                assignment->location);
@@ -219,11 +232,18 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                                       OperatorName(assignment->op), result.ToString(), target.ToString()));
             }
         }
-        else if (isAssignable && !target.IsUnknown() && !value.IsUnknown() &&
-                 !CanAssignExprTo(*assignment->value, value, target)) {
-            EmitError(assignment->location, AssignmentErrorMessage(*assignment->value, target,
-                                                                   std::format("cannot assign '{}' to '{}'",
-                                                                               value.ToString(), target.ToString())));
+        else if (isAssignable) {
+            const bool compatible =
+                target.IsUnknown() || value.IsUnknown() || CanAssignExprTo(*assignment->value, value, target);
+            if (!compatible) {
+                EmitError(assignment->location,
+                          AssignmentErrorMessage(
+                              *assignment->value, target,
+                              std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+            }
+            else if (assignment->op == TokenKind::Assign) {
+                MarkTrackedAssignment(*assignment->target, assignment->location);
+            }
         }
         return TypeRef::MakeOpaque();
     }
