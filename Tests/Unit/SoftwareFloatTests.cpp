@@ -113,6 +113,54 @@ namespace {
     const WideInteger sign = WideInteger::FromUnsigned(1, format.valueBits).ShiftedLeft(format.valueBits - 1);
     return FloatEncoding::FromBits(format, encoding.Bits().BitwiseXor(sign));
 }
+
+[[nodiscard]] std::uint8_t ReferenceBinary8Divide(const std::uint8_t left, const std::uint8_t right) {
+    const std::int64_t leftValue = Binary8Units(left);
+    const std::int64_t rightValue = Binary8Units(right);
+    const bool negative = ((left ^ right) & 0x80) != 0;
+    if (leftValue == 0) {
+        return negative ? 0x80 : 0;
+    }
+
+    const std::int64_t numerator = (leftValue < 0 ? -leftValue : leftValue) * 512;
+    const std::int64_t denominator = rightValue < 0 ? -rightValue : rightValue;
+    std::uint8_t best = 0;
+    std::int64_t bestDistance = std::numeric_limits<std::int64_t>::max();
+    for (std::uint8_t candidate = 0; candidate <= 0x78; ++candidate) {
+        const std::int64_t distance = numerator > static_cast<std::int64_t>(Binary8Units(candidate)) * denominator
+                                        ? numerator - static_cast<std::int64_t>(Binary8Units(candidate)) * denominator
+                                        : static_cast<std::int64_t>(Binary8Units(candidate)) * denominator - numerator;
+        if (distance < bestDistance || (distance == bestDistance && (candidate & 1) == 0 && (best & 1) != 0)) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+    return (negative ? 0x80 : 0) | best;
+}
+
+[[nodiscard]] std::uint8_t ReferenceBinary8SquareRoot(const std::uint8_t raw) {
+    if (Binary8Units(raw) == 0) {
+        return raw;
+    }
+    const std::int64_t scaledValue = static_cast<std::int64_t>(Binary8Units(raw)) * 512;
+    std::uint8_t upper = 1;
+    while (static_cast<std::int64_t>(Binary8Units(upper)) * Binary8Units(upper) < scaledValue) {
+        ++upper;
+    }
+    if (static_cast<std::int64_t>(Binary8Units(upper)) * Binary8Units(upper) == scaledValue) {
+        return upper;
+    }
+    const std::uint8_t lower = upper - 1;
+    const std::int64_t midpointTwice = Binary8Units(lower) + Binary8Units(upper);
+    const std::int64_t comparison = 4 * scaledValue - midpointTwice * midpointTwice;
+    if (comparison < 0) {
+        return lower;
+    }
+    if (comparison > 0) {
+        return upper;
+    }
+    return (lower & 1) == 0 ? lower : upper;
+}
 } // namespace
 
 TEST_CASE("software float unpacking and packing preserves every binary8 encoding") {
@@ -329,5 +377,69 @@ TEST_CASE("software multiply and fused multiply-add retain full wide precision")
         const FloatEncoding maximum = FloatEncoding::MaxFinite(format);
         CHECK_EQ(MultiplyFloat(one, minimum).Bits(), minimum.Bits());
         CHECK_EQ(FusedMultiplyAddFloat(one, maximum, Negated(maximum)).Bits(), FloatEncoding::Zero(format).Bits());
+    }
+}
+
+TEST_CASE("software division and remainder match exact binary8 oracles") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t leftRaw = 0; leftRaw <= 0xFF; ++leftRaw) {
+        const FloatEncoding left = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(leftRaw, 8));
+        if (!UnpackFloat(left).IsFinite()) {
+            continue;
+        }
+        for (std::uint32_t rightRaw = 0; rightRaw <= 0xFF; ++rightRaw) {
+            const FloatEncoding right = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(rightRaw, 8));
+            if (!UnpackFloat(right).IsFinite() || Binary8Units(static_cast<std::uint8_t>(rightRaw)) == 0) {
+                continue;
+            }
+            CAPTURE(leftRaw);
+            CAPTURE(rightRaw);
+            CHECK_EQ(Word(DivideFloat(left, right)),
+                     ReferenceBinary8Divide(static_cast<std::uint8_t>(leftRaw), static_cast<std::uint8_t>(rightRaw)));
+            const std::int32_t remainder =
+                Binary8Units(static_cast<std::uint8_t>(leftRaw)) % Binary8Units(static_cast<std::uint8_t>(rightRaw));
+            CHECK_EQ(Word(RemainderFloat(left, right)),
+                     RoundBinary8(remainder, 1, remainder == 0 && (leftRaw & 0x80) != 0));
+        }
+    }
+}
+
+TEST_CASE("software square root matches an exact binary8 oracle") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t raw = 0; raw <= 0x77; ++raw) {
+        CAPTURE(raw);
+        const FloatEncoding value = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 8));
+        CHECK_EQ(Word(SquareRootFloat(value)), ReferenceBinary8SquareRoot(static_cast<std::uint8_t>(raw)));
+    }
+    CHECK_EQ(Word(SquareRootFloat(FloatEncoding::Zero(format, true))), 0x80);
+}
+
+TEST_CASE("software divide remainder and square root apply IEEE special rules") {
+    const FloatFormat &format = Format(32);
+    const auto encoding = [&](const std::uint32_t raw) {
+        return FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 32));
+    };
+
+    CHECK_EQ(DivideFloat(encoding(0), encoding(0)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(DivideFloat(encoding(0x7F800000), encoding(0x7F800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(Word(DivideFloat(encoding(0xBF800000), encoding(0))), 0xFF800000);
+    CHECK_EQ(Word(DivideFloat(encoding(0xBF800000), encoding(0x7F800000))), 0x80000000);
+    CHECK_EQ(RemainderFloat(encoding(0x7F800000), encoding(0x3F800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(RemainderFloat(encoding(0x3F800000), encoding(0)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(Word(RemainderFloat(encoding(0xBF800000), encoding(0x7F800000))), 0xBF800000);
+    CHECK_EQ(SquareRootFloat(encoding(0xBF800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(Word(SquareRootFloat(encoding(0x7F800000))), 0x7F800000);
+    CHECK_EQ(Word(DivideFloat(encoding(0x7FA12345), encoding(0x3F800000))), 0x7FE12345);
+}
+
+TEST_CASE("software divide remainder and square root retain wide precision") {
+    for (const FloatFormat &format : FloatFormats()) {
+        CAPTURE(format.name);
+        const FloatEncoding one = One(format);
+        const FloatEncoding minimum = FloatEncoding::MinPositiveSubnormal(format);
+        const FloatEncoding maximum = FloatEncoding::MaxFinite(format);
+        CHECK_EQ(DivideFloat(minimum, one).Bits(), minimum.Bits());
+        CHECK_EQ(RemainderFloat(maximum, one).Bits(), FloatEncoding::Zero(format).Bits());
+        CHECK_EQ(SquareRootFloat(one).Bits(), one.Bits());
     }
 }

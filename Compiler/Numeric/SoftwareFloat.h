@@ -54,4 +54,13 @@ void NormalizeFloat(UnpackedFloat &value) noexcept;
 /// Compute `left * right + addend` with a single final rounding step.
 [[nodiscard]] FloatEncoding FusedMultiplyAddFloat(const FloatEncoding &left, const FloatEncoding &right,
                                                   const FloatEncoding &addend) noexcept;
+
+/// Divide two values of the same format with one final ties-to-even rounding step.
+[[nodiscard]] FloatEncoding DivideFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Return `left - trunc(left / right) * right`, with the dividend's sign on every nonzero result and signed zero.
+[[nodiscard]] FloatEncoding RemainderFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Compute the correctly rounded square root of one value.
+[[nodiscard]] FloatEncoding SquareRootFloat(const FloatEncoding &value) noexcept;
 } // namespace Rux
