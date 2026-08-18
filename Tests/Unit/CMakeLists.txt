@@ -100,6 +100,7 @@ set(RUX_TEST_SOURCES
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticTests.cpp
     SemanticTypePropertyTests.cpp
+    SoftwareFloatTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
     UserMessageProcessTests.cpp

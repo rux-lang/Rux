@@ -47,6 +47,7 @@ rux_add_component(RuxNumeric
     Numeric/FloatFormat.cpp
     Numeric/FloatLiteral.cpp
     Numeric/IntegerLiteral.cpp
+    Numeric/SoftwareFloat.cpp
     Numeric/WideInteger.cpp)
 
 rux_add_component(RuxReporting
