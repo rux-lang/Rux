@@ -154,10 +154,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 std::unordered_map<std::string, TypeRef> candidateSubstitutions;
                 const std::size_t substitutionCount = std::min(candidate.typeParams.size(), e->typeArgs.size());
                 for (std::size_t index = 0; index < substitutionCount; ++index) {
-                    candidateSubstitutions.emplace(candidate.typeParams[index], ResolveType(*e->typeArgs[index]));
+                    candidateSubstitutions.emplace(candidate.typeParams[index].name, ResolveType(*e->typeArgs[index]));
                 }
-                const TypeRef candidateType = MakeFuncTypeWithSubstitution(
-                    candidate.params, candidate.returnType, candidateSubstitutions, candidate.typeParams);
+                const TypeRef candidateType =
+                    MakeFuncTypeWithSubstitution(candidate.params, candidate.returnType, candidateSubstitutions,
+                                                 TypeParameterNames(candidate.typeParams));
                 const std::size_t candidateParamCount =
                     candidateType.inner.empty() ? 0 : candidateType.inner.size() - 1;
                 std::size_t candidateRequiredCount = 0;
@@ -207,11 +208,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             std::unordered_map<std::string, TypeRef> substitutions;
             const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
-                substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
             }
             QueueGenericInstantiation(*decl, substitutions);
-            TypeRef funcType =
-                MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+            TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                            TypeParameterNames(decl->typeParams));
             const std::size_t paramCount =
                 funcType.kind == TypeRef::Kind::Func && !funcType.inner.empty() ? funcType.inner.size() - 1 : 0;
             const bool isVariadic = !decl->params.empty() && decl->params.back().isVariadic;
@@ -452,7 +453,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                         binding.selectedVariant = variant;
                         const std::size_t substitutionCount = std::min(decl.typeParams.size(), typeArgs.size());
                         for (std::size_t i = 0; i < substitutionCount; ++i) {
-                            binding.substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+                            binding.substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
                         }
                         callableBindings.insert_or_assign(e, std::move(binding));
                         return constructor.inner.empty() ? TypeRef::MakeUnknown() : constructor.inner.back();
@@ -586,7 +587,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 std::unordered_map<std::string, TypeRef> substitutions;
                 const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
                 for (std::size_t i = 0; i < count; ++i) {
-                    substitutions.emplace(decl->typeParams[i], ResolveType(*e->typeArgs[i]));
+                    substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
                 }
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));

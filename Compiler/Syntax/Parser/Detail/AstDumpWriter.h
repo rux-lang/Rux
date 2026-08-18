@@ -67,6 +67,7 @@ private:
     BlockCallback printBlock;
 
     void Pad() const;
+    void PrintTypeParameters(const std::vector<TypeParameter> &parameters);
     void PrintWhenDecl(const WhenDecl &decl);
     void PrintFuncDecl(const FuncDecl &decl);
     void PrintAsmShift(const AsmOperand &operand);

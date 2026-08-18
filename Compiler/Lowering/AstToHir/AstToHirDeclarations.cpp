@@ -257,7 +257,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
                                    const std::unordered_map<std::string, TypeRef> &substitutions,
                                    const std::string &overrideName) {
     auto savedTypeParams = currentTypeParams;
-    currentTypeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
+    currentTypeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     auto savedSubstitutions = currentSubstitutions;
     currentSubstitutions = substitutions;
     // The receiver's declared type is what `self` is throughout the body, so it has to be in place before the name, the
@@ -282,8 +282,8 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         for (const auto &tp : d.typeParams) {
             HirSymbol sym;
             sym.kind = HirSymbol::Kind::Type;
-            sym.name = tp;
-            sym.type = TypeRef::MakeTypeParam(tp);
+            sym.name = tp.name;
+            sym.type = TypeRef::MakeTypeParam(tp.name);
             Define(sym);
         }
     }
@@ -321,7 +321,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.isNoReturn = d.isNoReturn;
     hf.asmBody = d.asmBody;
     hf.callConv = d.callConv;
-    hf.typeParams = substitutions.empty() ? d.typeParams : std::vector<std::string>{};
+    hf.typeParams = substitutions.empty() ? TypeParameterNames(d.typeParams) : std::vector<std::string>{};
     hf.params = LowerParams(d.params);
     hf.returnType = retType;
     hf.body = std::move(body);
@@ -339,19 +339,19 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
 
 HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
     auto savedTypeParams = currentTypeParams;
-    currentTypeParams = d.typeParams;
+    currentTypeParams = TypeParameterNames(d.typeParams);
     PushScope();
     for (const auto &tp : d.typeParams) {
         HirSymbol sym;
         sym.kind = HirSymbol::Kind::Type;
-        sym.name = tp;
-        sym.type = TypeRef::MakeTypeParam(tp);
+        sym.name = tp.name;
+        sym.type = TypeRef::MakeTypeParam(tp.name);
         Define(sym);
     }
     HirStruct hs;
     hs.name = d.name;
     hs.isPublic = d.isPublic;
-    hs.typeParams = d.typeParams;
+    hs.typeParams = TypeParameterNames(d.typeParams);
     hs.location = d.location;
     for (const auto &f : d.fields) {
         HirStructField hf;
@@ -409,7 +409,7 @@ HirStruct AstToHirContext::LowerStructInstantiation(const StructDecl &d, const s
     auto savedSubstitutions = currentSubstitutions;
     currentSubstitutions.clear();
     for (std::size_t i = 0; i < d.typeParams.size() && i < typeArgs.size(); ++i) {
-        currentSubstitutions.insert_or_assign(d.typeParams[i], typeArgs[i]);
+        currentSubstitutions.insert_or_assign(d.typeParams[i].name, typeArgs[i]);
     }
     HirStruct instantiation = LowerStruct(d);
     currentSubstitutions = std::move(savedSubstitutions);
@@ -422,11 +422,11 @@ HirStruct AstToHirContext::LowerStructInstantiation(const StructDecl &d, const s
 
 HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
     const auto savedTypeParams = currentTypeParams;
-    currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
+    AppendTypeParameterNames(currentTypeParams, d.typeParams);
     HirEnum he;
     he.name = d.name;
     he.isPublic = d.isPublic;
-    he.typeParams = d.typeParams;
+    he.typeParams = TypeParameterNames(d.typeParams);
     he.baseType = EnumBaseType(d);
     he.location = d.location;
     std::int64_t next = 0;

@@ -107,7 +107,7 @@ std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) c
     const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
         const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
-        if (arg && arg->typeArgs.empty() && arg->name == structParams[i]) {
+        if (arg && arg->typeArgs.empty() && arg->name == structParams[i].name) {
             params.push_back(arg->name);
         }
     }
@@ -631,7 +631,7 @@ AstToHirContext::StructTypeSubstitutions(const StructDecl &decl, const std::vect
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(decl.typeParams[i], ResolveType(*typeArgs[i]));
+        substitutions.emplace(decl.typeParams[i].name, ResolveType(*typeArgs[i]));
     }
     return substitutions;
 }
@@ -867,7 +867,7 @@ TypeRef AstToHirContext::StructFieldType(const TypeRef &objectType, const std::s
     const auto &params = structIt->second->typeParams;
     const std::size_t count = std::min(params.size(), typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(params[i], typeArgs[i]);
+        substitutions.emplace(params[i].name, typeArgs[i]);
     }
 
     for (const auto &field : structIt->second->fields) {
@@ -899,7 +899,7 @@ std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitution
     const auto &params = structIt->second->typeParams;
     const std::size_t count = std::min(params.size(), args.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(params[i], args[i]);
+        substitutions.emplace(params[i].name, args[i]);
     }
     return substitutions;
 }
@@ -977,7 +977,7 @@ std::string AstToHirContext::ConcreteMethodCalleeName(const std::string &typeNam
     const auto structIt = structDecls.find(typeName);
     if (structIt != structDecls.end()) {
         for (const auto &param : structIt->second->typeParams) {
-            if (const auto it = substitutions.find(param); it != substitutions.end()) {
+            if (const auto it = substitutions.find(param.name); it != substitutions.end()) {
                 name += "_" + MangleTypeName(it->second);
             }
         }
@@ -1039,7 +1039,7 @@ TypeRef AstToHirContext::EnumVariantConstructorType(const EnumDecl &decl, const 
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+        substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
     }
     std::vector<TypeRef> params;
     params.reserve(variant.fields.size() + variant.namedFields.size());

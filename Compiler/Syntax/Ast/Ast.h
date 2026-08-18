@@ -483,6 +483,35 @@ struct Param {
     }
 };
 
+/// Bounds written after one generic parameter, as in `T: Display + Debug`. Resolution deliberately happens after
+/// parsing: each entry retains its source type expression so semantic analysis can distinguish unknown types,
+/// non-interface types, and valid interface declarations at the original spelling.
+struct TypeParameter {
+    SourceLocation location;
+    std::string name;
+    std::vector<TypeExprPtr> bounds;
+};
+
+/// Project the names needed by semantic and lowering code that does not consume bounds yet. L10 validates the bound
+/// expressions and L11 replaces this projection at the HIR boundary with resolved constraint evidence.
+[[nodiscard]] inline std::vector<std::string> TypeParameterNames(const std::vector<TypeParameter> &parameters) {
+    std::vector<std::string> names;
+    names.reserve(parameters.size());
+    for (const TypeParameter &parameter : parameters) {
+        names.push_back(parameter.name);
+    }
+    return names;
+}
+
+/// Append names without exposing constraint storage to a stage that still models generic parameters symbolically.
+inline void AppendTypeParameterNames(std::vector<std::string> &destination,
+                                     const std::vector<TypeParameter> &parameters) {
+    destination.reserve(destination.size() + parameters.size());
+    for (const TypeParameter &parameter : parameters) {
+        destination.push_back(parameter.name);
+    }
+}
+
 /// when cond { decls } else when cond { decls } else { decls }
 ///
 /// Conditional compilation at declaration level. The taken branch's items are spliced into the enclosing declaration
@@ -522,7 +551,7 @@ struct FuncDecl : Decl {
     bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
     std::string name;
-    std::vector<std::string> typeParams;
+    std::vector<TypeParameter> typeParams;
     std::vector<Param> params;
     std::optional<TypeExprPtr> returnType;
     std::unique_ptr<Block> body;   // null = signature only
@@ -538,7 +567,7 @@ struct FuncDecl : Decl {
 // struct Name { field: Type; ... }
 struct StructDecl : Decl {
     std::string name;
-    std::vector<std::string> typeParams;
+    std::vector<TypeParameter> typeParams;
 
     struct Field {
         SourceLocation location;
@@ -554,7 +583,7 @@ struct StructDecl : Decl {
 // enum Name<T> { Variant, Variant(Type, ...), ... }
 struct EnumDecl : Decl {
     std::string name;
-    std::vector<std::string> typeParams;
+    std::vector<TypeParameter> typeParams;
     TypeExprPtr baseType;
 
     struct Variant {

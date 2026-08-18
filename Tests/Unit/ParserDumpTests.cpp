@@ -126,6 +126,40 @@ asm func Raw() {
     CHECK_EQ(output, expected);
 }
 
+TEST_CASE("AST dumps render generic interface bounds in declaration order") {
+    constexpr std::string_view source = R"(
+func Convert<T: Display + Core::Debug, U>(value: T) -> U;
+struct Index<Key: Hash + Equal, Value> { key: Key; value: Value; }
+enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
+)";
+
+    Lexer lexer(std::string(source), "generic-bounds.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "generic-bounds.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-generic-bounds.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    constexpr std::string_view expected = R"(Module "generic-bounds.rux"
+  FuncDecl 'Convert'<T: Display + Core::Debug, U> (value: T) -> U [signature]
+  StructDecl 'Index'<Key: Hash + Equal, Value>
+    Field 'key' : Key
+    Field 'value' : Value
+  EnumDecl 'Result'<Value, Error: Display>
+    Variant 'Ok' (Value)
+    Variant 'Fail' (Error)
+)";
+    CHECK_EQ(output, expected);
+}
+
 TEST_CASE("AST statement and pattern dumps preserve their text contract") {
     constexpr std::string_view source = R"(
 func Main() -> int {

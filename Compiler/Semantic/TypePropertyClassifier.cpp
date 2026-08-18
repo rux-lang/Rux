@@ -120,7 +120,7 @@ TypeProperties TypePropertyClassifier::ClassifyStruct(const StructDecl &declarat
         return TypeProperties::Unresolved();
     }
 
-    const Substitutions substitutions = BindArguments(declaration.typeParams, arguments);
+    const Substitutions substitutions = BindArguments(TypeParameterNames(declaration.typeParams), arguments);
     TypeProperties result = TypeProperties::Copy();
     for (const StructDecl::Field &field : declaration.fields) {
         result = Combine(result, Classify(resolveType(*field.type, substitutions)));
@@ -134,7 +134,7 @@ TypeProperties TypePropertyClassifier::ClassifyEnum(const EnumDecl &declaration,
         return TypeProperties::Unresolved();
     }
 
-    const Substitutions substitutions = BindArguments(declaration.typeParams, arguments);
+    const Substitutions substitutions = BindArguments(TypeParameterNames(declaration.typeParams), arguments);
     TypeProperties result = TypeProperties::Copy();
     for (const EnumDecl::Variant &variant : declaration.variants) {
         for (const TypeExprPtr &field : variant.fields) {

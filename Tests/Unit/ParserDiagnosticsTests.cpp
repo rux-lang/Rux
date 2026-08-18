@@ -160,6 +160,64 @@ TEST_CASE("nested generics and function types retain valid declaration syntax") 
     CHECK_EQ(parsed.module.items.size(), 2);
 }
 
+TEST_CASE("generic declarations retain single and multiple interface bounds in the AST") {
+    const auto parsed = ParseSource(R"(
+        func Render<T: Display + Core::Debug, Context>(value: T, context: Context);
+        struct Table<Key: Hash + Equal, Value> { key: Key; value: Value; }
+        enum Outcome<Value, Error: Display> { Ok(Value), Fail(Error) }
+    )");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    REQUIRE_FALSE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE_EQ(function->typeParams.size(), 2);
+    CHECK_EQ(function->typeParams[0].name, "T");
+    CHECK_EQ(function->typeParams[1].name, "Context");
+    REQUIRE_EQ(function->typeParams[0].bounds.size(), 2);
+    CHECK(dynamic_cast<const NamedTypeExpr *>(function->typeParams[0].bounds[0].get()) != nullptr);
+    CHECK(dynamic_cast<const PathTypeExpr *>(function->typeParams[0].bounds[1].get()) != nullptr);
+    CHECK(function->typeParams[1].bounds.empty());
+
+    const auto *structure = dynamic_cast<const StructDecl *>(parsed.module.items[1].get());
+    REQUIRE(structure != nullptr);
+    REQUIRE_EQ(structure->typeParams.size(), 2);
+    CHECK_EQ(structure->typeParams[0].name, "Key");
+    CHECK_EQ(structure->typeParams[0].bounds.size(), 2);
+    CHECK(structure->typeParams[1].bounds.empty());
+
+    const auto *enumeration = dynamic_cast<const EnumDecl *>(parsed.module.items[2].get());
+    REQUIRE(enumeration != nullptr);
+    REQUIRE_EQ(enumeration->typeParams.size(), 2);
+    CHECK(enumeration->typeParams[0].bounds.empty());
+    CHECK_EQ(enumeration->typeParams[1].name, "Error");
+    CHECK_EQ(enumeration->typeParams[1].bounds.size(), 1);
+}
+
+TEST_CASE("generic bound diagnostics identify missing names and separators") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+    };
+
+    constexpr Case cases[] = {
+        {"func Missing<T:>(value: T);", "expected an interface bound after ':' before '>'"},
+        {"struct Trailing<T: Display +> {}", "expected an interface bound after '+' before '>'"},
+        {"enum Adjacent<T: Display Debug> { Value(T) }", "expected '+' between interface bounds before 'Debug'"},
+        {"func Invalid<T: *Value>();", "expected an interface name in the type parameter bound before '*'"},
+    };
+
+    for (const Case &testCase : cases) {
+        CAPTURE(testCase.source);
+        const ParseResult parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        CHECK_EQ(parsed.diagnostics.size(), 1);
+        CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
+    }
+}
+
 TEST_CASE("declaration recovery reaches fields and declarations after a malformed item") {
     const auto parsed = ParseSource(R"(
 struct Recovered {

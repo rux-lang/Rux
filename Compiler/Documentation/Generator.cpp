@@ -232,14 +232,22 @@ std::string TypeText(const TypeExpr *type) {
     return "?";
 }
 
-std::string TypeParams(const std::vector<std::string> &parameters) {
+std::string TypeParams(const std::vector<TypeParameter> &parameters) {
     if (parameters.empty())
         return {};
     std::string text = "<";
     for (std::size_t i = 0; i < parameters.size(); ++i) {
         if (i != 0)
             text += ", ";
-        text += parameters[i];
+        text += parameters[i].name;
+        if (!parameters[i].bounds.empty()) {
+            text += ": ";
+            for (std::size_t bound = 0; bound < parameters[i].bounds.size(); ++bound) {
+                if (bound != 0)
+                    text += " + ";
+                text += TypeText(parameters[i].bounds[bound].get());
+            }
+        }
     }
     return text + ">";
 }

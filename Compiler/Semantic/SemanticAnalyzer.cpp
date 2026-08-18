@@ -130,7 +130,7 @@ private:
     void ResolveDeclSignature(const Decl &decl) {
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = globalScope.Lookup(fn->name)) {
-                sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
+                sym->type = MakeFuncType(fn->params, fn->returnType, TypeParameterNames(fn->typeParams));
             }
         }
         else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
@@ -169,7 +169,7 @@ private:
     void ResolveDeclSignatureInScope(const Decl &decl, Scope &scope) {
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (Symbol *sym = scope.Lookup(fn->name)) {
-                sym->type = MakeFuncType(fn->params, fn->returnType, fn->typeParams);
+                sym->type = MakeFuncType(fn->params, fn->returnType, TypeParameterNames(fn->typeParams));
             }
         }
         else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
@@ -263,7 +263,7 @@ private:
         const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
             const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
-            if (arg && arg->typeArgs.empty() && arg->name == structParams[i]) {
+            if (arg && arg->typeArgs.empty() && arg->name == structParams[i].name) {
                 params.push_back(arg->name);
             }
         }
@@ -1491,7 +1491,7 @@ private:
         const auto &params = structIt->second->typeParams;
         const std::size_t count = std::min(params.size(), args.size());
         for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(params[i], args[i]);
+            substitutions.emplace(params[i].name, args[i]);
         }
         return substitutions;
     }
@@ -1557,8 +1557,9 @@ private:
         TypeRef savedSelfType = currentSelfType;
         currentSelfType =
             receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
-        TypeRef type = MakeFuncTypeWithSubstitution(method.params, method.returnType,
-                                                    MethodTypeSubstitutions(receiverType), method.typeParams);
+        TypeRef type =
+            MakeFuncTypeWithSubstitution(method.params, method.returnType, MethodTypeSubstitutions(receiverType),
+                                         TypeParameterNames(method.typeParams));
         currentSelfType = savedSelfType;
         return type;
     }
@@ -1610,10 +1611,10 @@ private:
             std::unordered_map<std::string, TypeRef> substitutions;
             const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
-                substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+                substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
             }
-            TypeRef funcType =
-                MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+            TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                            TypeParameterNames(decl->typeParams));
             if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                 return decl;
             }
@@ -1647,10 +1648,10 @@ private:
                     std::unordered_map<std::string, TypeRef> substitutions;
                     const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
                     for (std::size_t i = 0; i < count; ++i) {
-                        substitutions.emplace(decl->typeParams[i], ResolveType(*typeArgs[i]));
+                        substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
                     }
-                    TypeRef funcType =
-                        MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions, decl->typeParams);
+                    TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
+                                                                    TypeParameterNames(decl->typeParams));
                     if (funcType.kind != TypeRef::Kind::Func || funcType.inner.empty()) {
                         continue;
                     }
@@ -1700,7 +1701,7 @@ private:
     }
 
     TypeRef FunctionType(const FuncDecl &decl) {
-        return MakeFuncType(decl.params, decl.returnType, decl.typeParams);
+        return MakeFuncType(decl.params, decl.returnType, TypeParameterNames(decl.typeParams));
     }
 
     static std::optional<std::uint64_t> CheckedAlignUp(const std::uint64_t value, const std::uint64_t alignment) {
@@ -1759,14 +1760,14 @@ private:
             if (const auto structure = structDecls.find(baseName); structure != structDecls.end()) {
                 const std::size_t count = std::min(structure->second->typeParams.size(), typeArgs.size());
                 for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[structure->second->typeParams[i]] = typeArgs[i];
+                    localSubs[structure->second->typeParams[i].name] = typeArgs[i];
                 }
                 return finish(LayoutOfStruct(*structure->second, localSubs));
             }
             if (const auto enumeration = enumDecls.find(baseName); enumeration != enumDecls.end()) {
                 const std::size_t count = std::min(enumeration->second->typeParams.size(), typeArgs.size());
                 for (std::size_t i = 0; i < count; ++i) {
-                    localSubs[enumeration->second->typeParams[i]] = typeArgs[i];
+                    localSubs[enumeration->second->typeParams[i].name] = typeArgs[i];
                 }
                 return finish(LayoutOfEnum(*enumeration->second, localSubs));
             }
@@ -1938,7 +1939,7 @@ private:
         if (typeArgs.size() == decl.typeParams.size()) {
             std::unordered_map<std::string, TypeRef> substitutions;
             for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-                substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+                substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
             }
             if (const auto layout = LayoutOfEnum(decl, substitutions)) {
                 type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
@@ -2033,11 +2034,11 @@ private:
         if (!isMethod) {
             currentTypeParams.clear();
         }
-        currentTypeParams.insert(currentTypeParams.end(), decl.typeParams.begin(), decl.typeParams.end());
+        AppendTypeParameterNames(currentTypeParams, decl.typeParams);
 
         std::unordered_map<std::string, TypeRef> substitutions;
         for (std::size_t i = 0; i < decl.typeParams.size(); ++i) {
-            substitutions.emplace(decl.typeParams[i], TypeRef::MakeTypeParam(std::format("${}", i)));
+            substitutions.emplace(decl.typeParams[i].name, TypeRef::MakeTypeParam(std::format("${}", i)));
         }
 
         FunctionSignature signature;
@@ -2175,7 +2176,7 @@ private:
         if (!isMethod) {
             currentTypeParams.clear();
         }
-        currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
+        AppendTypeParameterNames(currentTypeParams, d.typeParams);
 
         if (d.returnType) {
             ValidateArrayType(*d.returnType->get());
@@ -2192,8 +2193,8 @@ private:
         for (const auto &tp : d.typeParams) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
-            sym.name = tp;
-            sym.type = TypeRef::MakeTypeParam(tp);
+            sym.name = tp.name;
+            sym.type = TypeRef::MakeTypeParam(tp.name);
             Define(std::move(sym));
         }
 
@@ -2293,14 +2294,14 @@ private:
 
     void CheckStructDecl(const StructDecl &d) {
         auto savedTypeParams = currentTypeParams;
-        currentTypeParams = d.typeParams;
+        currentTypeParams = TypeParameterNames(d.typeParams);
 
         PushScope();
         for (const auto &tp : d.typeParams) {
             Symbol sym;
             sym.kind = Symbol::Kind::Type;
-            sym.name = tp;
-            sym.type = TypeRef::MakeTypeParam(tp);
+            sym.name = tp.name;
+            sym.type = TypeRef::MakeTypeParam(tp.name);
             Define(sym);
         }
 
@@ -2322,7 +2323,7 @@ private:
 
     void CheckEnumDecl(const EnumDecl &d) {
         const auto savedTypeParams = currentTypeParams;
-        currentTypeParams.insert(currentTypeParams.end(), d.typeParams.begin(), d.typeParams.end());
+        AppendTypeParameterNames(currentTypeParams, d.typeParams);
         const TypeRef baseType = EnumBaseType(d);
         if (!baseType.IsUnknown() && !baseType.IsInteger()) {
             EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
@@ -2359,7 +2360,7 @@ private:
         std::unordered_map<std::string, TypeRef> substitutions;
         const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(decl.typeParams[i], typeArgs[i]);
+            substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
         }
         std::vector<TypeRef> params;
         params.reserve(variant.fields.size() + variant.namedFields.size());
@@ -2952,7 +2953,7 @@ private:
         const auto structure = structDecls.find(typeName);
         if (structure != structDecls.end()) {
             for (const auto &parameter : structure->second->typeParams) {
-                if (const auto substitution = substitutions.find(parameter); substitution != substitutions.end()) {
+                if (const auto substitution = substitutions.find(parameter.name); substitution != substitutions.end()) {
                     name += "_" + MangleTypeName(substitution->second);
                 }
             }
@@ -2978,7 +2979,7 @@ private:
             return;
         }
         if (const auto structure = structDecls.find(typeName); structure != structDecls.end()) {
-            binding.linkerSpecializationParameters = structure->second->typeParams;
+            binding.linkerSpecializationParameters = TypeParameterNames(structure->second->typeParams);
         }
     }
 
@@ -3073,7 +3074,7 @@ private:
                         }
                     }
                 }
-                binding.linkerSpecializationParameters = function->typeParams;
+                binding.linkerSpecializationParameters = TypeParameterNames(function->typeParams);
                 binding.linkerName = binding.LinkerNameFor(binding.substitutions);
                 continue;
             }
@@ -3415,8 +3416,8 @@ private:
             return;
         }
 
-        const bool isConcrete = std::ranges::all_of(decl.typeParams, [&](const std::string &param) {
-            const auto it = substitutions.find(param);
+        const bool isConcrete = std::ranges::all_of(decl.typeParams, [&](const TypeParameter &param) {
+            const auto it = substitutions.find(param.name);
             return it != substitutions.end() && !it->second.IsUnknown() && !ContainsTypeParam(it->second);
         });
         if (!isConcrete) {
@@ -3434,11 +3435,11 @@ private:
             PendingGenericInstantiation instantiation = std::move(pendingGenericInstantiations[processed++]);
 
             std::string key;
-            for (const std::string &param : instantiation.decl->typeParams) {
+            for (const TypeParameter &param : instantiation.decl->typeParams) {
                 if (!key.empty()) {
                     key += ";";
                 }
-                key += instantiation.substitutions.at(param).ToString();
+                key += instantiation.substitutions.at(param.name).ToString();
             }
             if (!validatedGenericInstantiations[instantiation.decl].insert(std::move(key)).second) {
                 continue;
