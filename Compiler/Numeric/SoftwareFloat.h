@@ -47,4 +47,11 @@ void NormalizeFloat(UnpackedFloat &value) noexcept;
 
 /// Subtract two values of the same format with the same special-value and rounding rules as `AddFloat`.
 [[nodiscard]] FloatEncoding SubtractFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Multiply two values of the same format with one final rounding step.
+[[nodiscard]] FloatEncoding MultiplyFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Compute `left * right + addend` with a single final rounding step.
+[[nodiscard]] FloatEncoding FusedMultiplyAddFloat(const FloatEncoding &left, const FloatEncoding &right,
+                                                  const FloatEncoding &addend) noexcept;
 } // namespace Rux
