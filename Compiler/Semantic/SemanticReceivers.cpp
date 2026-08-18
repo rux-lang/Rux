@@ -116,12 +116,12 @@ std::optional<TypeRef> SemanticAnalyzerContext::ResolveMethodReceiverType(const 
 /// The receiver reaches the method one of two ways and each has its own answer: a receiver that is already a pointer
 /// carries the permission in its own type, while a receiver named as a place is addressed at the call, and that address
 /// is writable only when the place is.
-void SemanticAnalyzerContext::CheckReceiverMutability(const CallExpr &call, const Expr &receiver,
+bool SemanticAnalyzerContext::CheckReceiverMutability(const CallExpr &call, const Expr &receiver,
                                                       const TypeRef &receiverType, const FuncDecl &method) {
     const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
     if (!declared || declared->kind != TypeRef::Kind::Pointer || declared->inner.empty() ||
         !declared->inner.front().isMut) {
-        return;
+        return true;
     }
     if (receiverType.kind == TypeRef::Kind::Pointer) {
         if (!receiverType.inner.empty() && !receiverType.inner.front().isMut) {
@@ -130,11 +130,12 @@ void SemanticAnalyzerContext::CheckReceiverMutability(const CallExpr &call, cons
                 std::format("cannot call '{}' through read-only pointer '{}'", method.name, receiverType.ToString()),
                 {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
                 std::format("declare the pointer as '{}'", declared->ToString()));
+            return false;
         }
-        return;
+        return true;
     }
     if (!PlaceIsImmutable(receiver)) {
-        return;
+        return true;
     }
     const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
     EmitError(call.location,
@@ -143,5 +144,6 @@ void SemanticAnalyzerContext::CheckReceiverMutability(const CallExpr &call, cons
               {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
               identifier ? std::format("declare '{}' with 'var' to make it mutable", identifier->name)
                          : std::optional<std::string>{});
+    return false;
 }
 } // namespace Rux::SemanticDetail

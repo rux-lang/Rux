@@ -154,6 +154,23 @@ TypeRef SemanticAnalyzerContext::CheckShortCircuitExpression(const BinaryExpr &e
     return CheckBinary(expression.op, left, right, *expression.left, *expression.right, expression.location);
 }
 
+TypeRef SemanticAnalyzerContext::CheckTernaryExpression(const TernaryExpr &expression) {
+    const TypeRef condition = CheckExpr(*expression.condition);
+    CheckBooleanCondition(condition, expression.condition->location, "?:");
+    const TrackedFlow branchEntry = SaveTrackedFlow();
+
+    const TypeRef thenType = CheckExpr(*expression.thenExpr);
+    ConsumeValue(*expression.thenExpr, thenType, ValueConsumptionKind::ConditionalArm, expression.thenExpr->location);
+    const TrackedFlow thenExit = SaveTrackedFlow();
+
+    RestoreTrackedFlow(branchEntry);
+    const TypeRef elseType = CheckExpr(*expression.elseExpr);
+    ConsumeValue(*expression.elseExpr, elseType, ValueConsumptionKind::ConditionalArm, expression.elseExpr->location);
+    const TrackedFlow elseExit = SaveTrackedFlow();
+    MergeTrackedFlows({thenExit, elseExit});
+    return thenType.IsUnknown() ? elseType : thenType;
+}
+
 TypeRef SemanticAnalyzerContext::CheckMatchExpression(const MatchExpr &expression) {
     const TypeRef subjectType = CheckExpr(*expression.subject);
     const TrackedFlow matchEntry = SaveTrackedFlow();
@@ -167,6 +184,7 @@ TypeRef SemanticAnalyzerContext::CheckMatchExpression(const MatchExpr &expressio
         PushScope();
         CheckPattern(*arm.pattern, subjectType);
         const TypeRef armType = CheckExpr(*arm.body);
+        ConsumeValue(*arm.body, armType, ValueConsumptionKind::ConditionalArm, arm.location);
         PopScope();
         patterns.push_back(arm.pattern.get());
         if (!coveredAll) {
@@ -242,5 +260,52 @@ std::optional<MoveStateTracker::Issue> SemanticAnalyzerContext::MoveTrackedExpre
         }
     }
     return moveStates.Move(MoveStateTracker::Temporary(&expression), location);
+}
+
+void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef &type, const ValueConsumptionKind kind,
+                                           const SourceLocation location) {
+    if (!trackedFlowReachable || !ClassifyTypeProperties(type).IsMoveOnly()) {
+        return;
+    }
+    if (!MoveTrackedExpression(expression, location)) {
+        valueConsumptions.insert_or_assign(&expression, ValueConsumption{kind, type, location});
+    }
+}
+
+void SemanticAnalyzerContext::ConsumeRecordedValue(const Expr &expression, const ValueConsumptionKind kind,
+                                                   const SourceLocation location) {
+    const auto type = expressionTypes.find(&expression);
+    if (type != expressionTypes.end()) {
+        ConsumeValue(expression, type->second, kind, location);
+    }
+}
+
+std::vector<TypeRef> SemanticAnalyzerContext::CheckCallArgumentValues(const CallExpr &call) {
+    std::vector<TypeRef> types;
+    types.reserve(call.args.size());
+    for (const auto &argument : call.args) {
+        const auto recorded = expressionTypes.find(argument.get());
+        const TypeRef type = recorded == expressionTypes.end() ? CheckExpr(*argument) : recorded->second;
+        types.push_back(type);
+    }
+    return types;
+}
+
+void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes) {
+    const std::size_t count = std::min(call.args.size(), argumentTypes.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        ConsumeValue(*call.args[index], argumentTypes[index], ValueConsumptionKind::Argument,
+                     call.args[index]->location);
+    }
+}
+
+void SemanticAnalyzerContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver,
+                                                    const TypeRef &receiverType, const FuncDecl &method) {
+    const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
+    if (!declared || declared->kind == TypeRef::Kind::Pointer ||
+        (declared->kind == TypeRef::Kind::Named && declared->name.starts_with("Slice<"))) {
+        return;
+    }
+    ConsumeValue(receiver, receiverType, ValueConsumptionKind::Receiver, call.location);
 }
 } // namespace Rux::SemanticDetail

@@ -90,6 +90,14 @@ struct ResolvedTypeLayout {
     std::uint64_t alignment = 1;
 };
 
+/// A by-value expression whose ownership transfers to a new storage location or callable. Lowering uses this fact to
+/// avoid treating a move as an implicit clone and later cleanup passes use it to suppress destruction of the source.
+struct ValueConsumption {
+    ValueConsumptionKind kind;
+    TypeRef type;
+    SourceLocation location;
+};
+
 /**
  * @brief Persistent output of semantic analysis.
  *
@@ -111,6 +119,7 @@ struct SemanticModel {
                   std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                   std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                   std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
+                  std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
@@ -125,6 +134,9 @@ struct SemanticModel {
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const Pattern &pattern) const noexcept;
+
+    /// Returns null for Copy expressions and expressions that are only borrowed or observed.
+    [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;
 
     /// Returns null for rejected calls and nodes outside the analyzed modules. Returned pointers remain valid for the
     /// lifetime of this model.
@@ -156,6 +168,7 @@ private:
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;

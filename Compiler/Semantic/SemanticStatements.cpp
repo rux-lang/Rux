@@ -185,12 +185,19 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             EmitWarning(letStatement->location, std::format("cannot infer type of '{}'", letStatement->name));
         }
 
+        const bool initializerAccepted =
+            letStatement->init && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
+            (!letStatement->type || CanAssignExprTo(*letStatement->init, initializerType, declarationType));
         if (letStatement->init && letStatement->type && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
-            !CanAssignExprTo(*letStatement->init, initializerType, declarationType)) {
+            !initializerAccepted) {
             EmitError(letStatement->location,
                       AssignmentErrorMessage(*letStatement->init, declarationType,
                                              std::format("cannot assign '{}' to '{}'", initializerType.ToString(),
                                                          declarationType.ToString())));
+        }
+        if (initializerAccepted) {
+            ConsumeValue(*letStatement->init, initializerType, ValueConsumptionKind::Initialization,
+                         letStatement->location);
         }
 
         if (letStatement->pattern) {
@@ -414,6 +421,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         if (currentFunctionNoReturn) {
             EmitError(returnStatement->location, "return is not allowed in a '#NoReturn' function");
         }
+        bool returnAccepted = false;
         if (returnStatement->value) {
             TypeRef valueType = CheckExpr(**returnStatement->value);
             if (currentReturnType.IsOpaque()) {
@@ -426,10 +434,16 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
                                                  std::format("'return' value must have type '{}', but found '{}'",
                                                              currentReturnType.ToString(), valueType.ToString())));
             }
+            else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
+                returnAccepted = true;
+            }
         }
         else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
             EmitError(returnStatement->location,
                       std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
+        }
+        if (returnAccepted) {
+            ConsumeRecordedValue(**returnStatement->value, ValueConsumptionKind::Return, returnStatement->location);
         }
         trackedFlowReachable = false;
     }

@@ -308,23 +308,31 @@ HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expressi
 }
 
 HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
+    const auto finish = [&](HirExprPtr lowered) {
+        if (lowered) {
+            if (const ValueConsumption *consumption = model.TryGetConsumption(expr)) {
+                lowered->consumption = consumption->kind;
+            }
+        }
+        return lowered;
+    };
     if (HirExprPtr basic = LowerBasicExpr(expr)) {
-        return basic;
+        return finish(std::move(basic));
     }
     if (HirExprPtr aggregate = LowerAggregateExpr(expr)) {
-        return aggregate;
+        return finish(std::move(aggregate));
     }
     if (auto *e = dynamic_cast<const CallExpr *>(&expr)) {
-        return LowerCallExpr(*e);
+        return finish(LowerCallExpr(*e));
     }
     if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {
         auto he = std::make_unique<HirBlockExpr>();
         he->location = e->location;
         he->block = LowerBlock(*e->block);
-        return he;
+        return finish(std::move(he));
     }
     if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
-        return LowerExpr(*e->operand);
+        return finish(LowerExpr(*e->operand));
     }
 
     // Keep a poison value so a failed result remains safe to inspect. The
@@ -333,7 +341,7 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     auto he = std::make_unique<HirLiteralExpr>();
     he->location = expr.location;
     he->value = "<expr>";
-    return he;
+    return finish(std::move(he));
 }
 
 } // namespace Rux::AstToHirDetail

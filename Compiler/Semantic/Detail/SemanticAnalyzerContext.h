@@ -21,6 +21,7 @@ public:
                             std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
                             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
                             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+                            std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
@@ -56,6 +57,13 @@ protected:
     void MarkTrackedAssignment(const Expr &target, SourceLocation location);
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
+    [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
+    void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
+    void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
+    [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
+    void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes);
+    void ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                               const FuncDecl &method);
 
     struct TrackedFlow {
         MoveStateTracker::Snapshot states;
@@ -77,6 +85,7 @@ protected:
     [[nodiscard]] TrackedLoop EndTrackedLoop();
     void RecordTrackedLoopExit(std::string_view label, bool isContinue);
     [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
+    [[nodiscard]] TypeRef CheckTernaryExpression(const TernaryExpr &expression);
     [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
 
     void CheckBlock(const Block &block);
@@ -112,6 +121,7 @@ protected:
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
+    std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
@@ -270,8 +280,8 @@ private:
     [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                              std::string_view operatorName);
     void CheckMutability(const Expr &target);
-    void CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
-                                 const FuncDecl &method);
+    [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                                               const FuncDecl &method);
     /// The receiver the method declares, resolved for this call's receiver type. Empty for an associated function,
     /// which takes none.
     [[nodiscard]] std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method);
