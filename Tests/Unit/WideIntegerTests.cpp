@@ -222,6 +222,62 @@ TEST_CASE("checked multiplication applies unsigned and signed limits") {
     CHECK_EQ(WideInteger::Zero(128).MultipliedChecked(signedMinimum, true), WideInteger::Zero(128));
 }
 
+TEST_CASE("unsigned wide division returns a quotient and remainder") {
+    const WideInteger maximum = WideInteger::AllOnes(128);
+    const WideInteger ten = WideInteger::FromUnsigned(10, 128);
+    const WideIntegerDivision decimal = maximum.Divided(ten, false);
+    REQUIRE(decimal.HasValue());
+    CHECK_EQ(decimal.quotient.ToDecimal(), "34028236692093846346337460743176821145");
+    CHECK_EQ(decimal.remainder.ToDecimal(), "5");
+    CHECK_EQ(decimal.quotient.MultipliedWrapping(ten).Added(decimal.remainder), maximum);
+
+    const WideInteger largest = WideInteger::AllOnes(512);
+    const WideIntegerDivision halved = largest.Divided(WideInteger::FromUnsigned(2, 512), false);
+    REQUIRE(halved.HasValue());
+    CHECK_EQ(halved.quotient, largest.ShiftedRight(1, false));
+    CHECK_EQ(halved.remainder.ToDecimal(), "1");
+}
+
+TEST_CASE("signed wide division truncates toward zero and gives the remainder the dividend sign") {
+    const WideInteger hundred = WideInteger::FromUnsigned(100, 128);
+    const WideInteger seven = WideInteger::FromUnsigned(7, 128);
+    const WideIntegerDivision negativeDividend = hundred.Negated().Divided(seven, true);
+    REQUIRE(negativeDividend.HasValue());
+    CHECK_EQ(negativeDividend.quotient.Magnitude(true).ToDecimal(), "14");
+    CHECK(negativeDividend.quotient.IsNegative());
+    CHECK_EQ(negativeDividend.remainder.Magnitude(true).ToDecimal(), "2");
+    CHECK(negativeDividend.remainder.IsNegative());
+
+    const WideIntegerDivision negativeDivisor = hundred.Divided(seven.Negated(), true);
+    REQUIRE(negativeDivisor.HasValue());
+    CHECK(negativeDivisor.quotient.IsNegative());
+    CHECK_EQ(negativeDivisor.remainder.ToDecimal(), "2");
+
+    const WideInteger minimum = WideInteger::MinMagnitude(128, true);
+    const WideIntegerDivision minimumByOne = minimum.Divided(WideInteger::FromUnsigned(1, 128), true);
+    REQUIRE(minimumByOne.HasValue());
+    CHECK_EQ(minimumByOne.quotient, minimum);
+    CHECK(minimumByOne.remainder.IsZero());
+}
+
+TEST_CASE("wide division reports divide by zero and signed minimum overflow") {
+    const WideInteger minimum = WideInteger::MinMagnitude(128, true);
+    const WideIntegerDivision zero = minimum.Divided(WideInteger::Zero(128), true);
+    CHECK_FALSE(zero.HasValue());
+    CHECK_EQ(zero.error, WideIntegerDivisionError::DivideByZero);
+    CHECK(zero.quotient.IsZero());
+    CHECK(zero.remainder.IsZero());
+
+    const WideIntegerDivision overflow = minimum.Divided(WideInteger::AllOnes(128), true);
+    CHECK_FALSE(overflow.HasValue());
+    CHECK_EQ(overflow.error, WideIntegerDivisionError::SignedOverflow);
+
+    const WideIntegerDivision unsignedMinimum = minimum.Divided(WideInteger::AllOnes(128), false);
+    REQUIRE(unsignedMinimum.HasValue());
+    CHECK(unsignedMinimum.quotient.IsZero());
+    CHECK_EQ(unsignedMinimum.remainder, minimum);
+}
+
 TEST_CASE("a value reads back as words and as a machine word when it fits") {
     const WideInteger small = Decimal("18446744073709551615", 128);
     REQUIRE(small.ToUnsigned().has_value());

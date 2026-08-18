@@ -10,6 +10,13 @@
 
 namespace Rux {
 struct WideIntegerProduct;
+struct WideIntegerDivision;
+
+enum class WideIntegerDivisionError {
+    None,
+    DivideByZero,
+    SignedOverflow,
+};
 
 /// A fixed-capacity unsigned integer wide enough for every integer width the language spells, up to 512 bits.
 ///
@@ -125,6 +132,10 @@ public:
     /// The wrapped product when it is representable at this value's width and signedness, or nullopt on overflow.
     [[nodiscard]] std::optional<WideInteger> MultipliedChecked(const WideInteger &other, bool isSigned) const noexcept;
 
+    /// Quotient and remainder with truncation toward zero for signed operands. Division by zero and the one signed
+    /// overflow (`minimum / -1`) are reported explicitly and carry zero-valued outputs.
+    [[nodiscard]] WideIntegerDivision Divided(const WideInteger &other, bool isSigned) const noexcept;
+
     /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
     [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
 
@@ -162,5 +173,15 @@ private:
 struct WideIntegerProduct {
     WideInteger low;
     WideInteger high;
+};
+
+struct WideIntegerDivision {
+    WideInteger quotient;
+    WideInteger remainder;
+    WideIntegerDivisionError error = WideIntegerDivisionError::None;
+
+    [[nodiscard]] bool HasValue() const noexcept {
+        return error == WideIntegerDivisionError::None;
+    }
 };
 } // namespace Rux

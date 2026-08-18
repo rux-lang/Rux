@@ -441,6 +441,39 @@ std::optional<WideInteger> WideInteger::MultipliedChecked(const WideInteger &oth
     return negative ? magnitude.low.Negated() : magnitude.low;
 }
 
+WideIntegerDivision WideInteger::Divided(const WideInteger &other, const bool isSigned) const noexcept {
+    if (other.IsZero()) {
+        return {Zero(width), Zero(width), WideIntegerDivisionError::DivideByZero};
+    }
+    if (isSigned && *this == MinMagnitude(width, true) && other == AllOnes(width)) {
+        return {Zero(width), Zero(width), WideIntegerDivisionError::SignedOverflow};
+    }
+
+    const bool quotientNegative = isSigned && IsNegative() != other.IsNegative();
+    const bool remainderNegative = isSigned && IsNegative();
+    const WideInteger dividend = Magnitude(isSigned);
+    const WideInteger divisor = other.Magnitude(isSigned);
+    WideInteger quotient = Zero(width);
+    WideInteger remainder = Zero(width);
+    for (std::uint32_t bit = width; bit-- > 0;) {
+        remainder = remainder.ShiftedLeft(1);
+        if (dividend.BitSet(bit)) {
+            remainder.limbs[0] |= 1;
+        }
+        if (remainder >= divisor) {
+            remainder = remainder.Subtracted(divisor);
+            quotient.limbs[bit / LimbBits] |= Limb{1} << (bit % LimbBits);
+        }
+    }
+    if (quotientNegative) {
+        quotient = quotient.Negated();
+    }
+    if (remainderNegative) {
+        remainder = remainder.Negated();
+    }
+    return {quotient, remainder, WideIntegerDivisionError::None};
+}
+
 WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
     return isSigned && IsNegative() ? Negated() : *this;
 }
