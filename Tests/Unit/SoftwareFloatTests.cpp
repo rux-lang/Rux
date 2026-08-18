@@ -443,3 +443,92 @@ TEST_CASE("software divide remainder and square root retain wide precision") {
         CHECK_EQ(SquareRootFloat(one).Bits(), one.Bits());
     }
 }
+
+TEST_CASE("software float comparison orders every binary8 pair") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t leftRaw = 0; leftRaw <= 0xFF; ++leftRaw) {
+        const FloatEncoding left = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(leftRaw, 8));
+        for (std::uint32_t rightRaw = 0; rightRaw <= 0xFF; ++rightRaw) {
+            const FloatEncoding right = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(rightRaw, 8));
+            CAPTURE(leftRaw);
+            CAPTURE(rightRaw);
+            FloatComparison expected = FloatComparison::Equal;
+            const bool unordered =
+                left.Classify() == FloatClass::QuietNaN || left.Classify() == FloatClass::SignalingNaN ||
+                right.Classify() == FloatClass::QuietNaN || right.Classify() == FloatClass::SignalingNaN;
+            if (unordered) {
+                expected = FloatComparison::Unordered;
+            }
+            else if (Binary8Units(static_cast<std::uint8_t>(leftRaw)) <
+                     Binary8Units(static_cast<std::uint8_t>(rightRaw))) {
+                expected = FloatComparison::Less;
+            }
+            else if (Binary8Units(static_cast<std::uint8_t>(leftRaw)) >
+                     Binary8Units(static_cast<std::uint8_t>(rightRaw))) {
+                expected = FloatComparison::Greater;
+            }
+            CHECK_EQ(CompareFloat(left, right), expected);
+        }
+    }
+}
+
+TEST_CASE("software integer to float conversion matches the exact binary8 oracle") {
+    const FloatFormat &format = Format(8);
+    for (std::int32_t integer = -32768; integer <= 32767; ++integer) {
+        CAPTURE(integer);
+        const WideInteger bits = WideInteger::FromUnsigned(static_cast<std::uint16_t>(integer), 16);
+        CHECK_EQ(Word(IntegerToFloat(bits, true, format)), RoundBinary8(static_cast<std::int64_t>(integer) * 512, 1));
+    }
+    for (std::uint32_t integer = 0; integer <= 65535; ++integer) {
+        CAPTURE(integer);
+        CHECK_EQ(Word(IntegerToFloat(WideInteger::FromUnsigned(integer, 16), false, format)),
+                 RoundBinary8(static_cast<std::int64_t>(integer) * 512, 1));
+    }
+}
+
+TEST_CASE("software float to integer conversion truncates and reports invalid values") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t raw = 0; raw <= 0xFF; ++raw) {
+        const FloatEncoding encoding = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 8));
+        if (!UnpackFloat(encoding).IsFinite()) {
+            continue;
+        }
+        CAPTURE(raw);
+        const FloatToIntegerResult converted = FloatToInteger(encoding, 16, true);
+        REQUIRE(converted.HasValue());
+        const std::int32_t expected = Binary8Units(static_cast<std::uint8_t>(raw)) / 512;
+        CHECK_EQ(converted.value, WideInteger::FromUnsigned(static_cast<std::uint16_t>(expected), 16));
+    }
+
+    const auto encoding = [&](const std::uint8_t raw) {
+        return FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 8));
+    };
+    CHECK_EQ(FloatToInteger(encoding(0x78), 32, true).error, FloatConversionError::NonFinite);
+    CHECK_EQ(FloatToInteger(encoding(0x7C), 32, true).error, FloatConversionError::NonFinite);
+    CHECK_EQ(FloatToInteger(encoding(0x77), 8, true).error, FloatConversionError::OutOfRange);
+    CHECK_EQ(FloatToInteger(encoding(0xF0), 8, true).value, WideInteger::FromUnsigned(0x80, 8));
+    CHECK(FloatToInteger(encoding(0xB0), 8, false).HasValue());
+    CHECK_EQ(FloatToInteger(encoding(0xB8), 8, false).error, FloatConversionError::OutOfRange);
+}
+
+TEST_CASE("software cross-float conversion preserves binary8 values and wide identities") {
+    const FloatFormat &binary8 = Format(8);
+    const FloatFormat &binary16 = Format(16);
+    for (std::uint32_t raw = 0; raw <= 0xFF; ++raw) {
+        CAPTURE(raw);
+        const FloatEncoding source = FloatEncoding::FromBits(binary8, WideInteger::FromUnsigned(raw, 8));
+        CHECK_EQ(ConvertFloat(ConvertFloat(source, binary16), binary8).Bits(), source.Bits());
+    }
+
+    for (const FloatFormat &format : FloatFormats()) {
+        CAPTURE(format.name);
+        const FloatEncoding one = One(format);
+        CHECK_EQ(CompareFloat(one, One(binary8)), FloatComparison::Equal);
+        CHECK_EQ(ConvertFloat(one, binary8).Bits(), One(binary8).Bits());
+    }
+
+    const WideInteger maximum = WideInteger::AllOnes(512);
+    CHECK(IntegerToFloat(maximum, false, Format(512)).Classify() == FloatClass::Normal);
+    CHECK_EQ(FloatToInteger(IntegerToFloat(maximum, false, Format(512)), 512, false).error,
+             FloatConversionError::OutOfRange);
+}

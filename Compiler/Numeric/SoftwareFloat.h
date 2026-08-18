@@ -2,6 +2,7 @@
 
 #include "Numeric/FloatEncoding.h"
 
+#include <compare>
 #include <cstdint>
 
 namespace Rux {
@@ -23,6 +24,28 @@ struct UnpackedFloat {
     [[nodiscard]] bool IsFinite() const noexcept {
         return classification == FloatClass::Zero || classification == FloatClass::Subnormal ||
                classification == FloatClass::Normal;
+    }
+};
+
+enum class FloatComparison : std::uint8_t {
+    Less,
+    Equal,
+    Greater,
+    Unordered,
+};
+
+enum class FloatConversionError : std::uint8_t {
+    None,
+    NonFinite,
+    OutOfRange,
+};
+
+struct FloatToIntegerResult {
+    WideInteger value;
+    FloatConversionError error = FloatConversionError::None;
+
+    [[nodiscard]] bool HasValue() const noexcept {
+        return error == FloatConversionError::None;
     }
 };
 
@@ -63,4 +86,19 @@ void NormalizeFloat(UnpackedFloat &value) noexcept;
 
 /// Compute the correctly rounded square root of one value.
 [[nodiscard]] FloatEncoding SquareRootFloat(const FloatEncoding &value) noexcept;
+
+/// Compare values of any two formats. All NaNs and noncanonical invalid encodings are unordered; signed zeros are
+/// equal.
+[[nodiscard]] FloatComparison CompareFloat(const FloatEncoding &left, const FloatEncoding &right) noexcept;
+
+/// Round an integer bit pattern to the requested float format.
+[[nodiscard]] FloatEncoding IntegerToFloat(const WideInteger &value, bool sourceSigned,
+                                           const FloatFormat &format) noexcept;
+
+/// Convert a float to an integer by truncating toward zero, reporting non-finite and unrepresentable values.
+[[nodiscard]] FloatToIntegerResult FloatToInteger(const FloatEncoding &value, std::uint32_t targetWidth,
+                                                  bool targetSigned) noexcept;
+
+/// Convert between any two float formats, preserving signs and special classes and rounding finite values once.
+[[nodiscard]] FloatEncoding ConvertFloat(const FloatEncoding &value, const FloatFormat &targetFormat) noexcept;
 } // namespace Rux
