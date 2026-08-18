@@ -1,0 +1,98 @@
+// Rendered diagnostics for the language features the compiler grew for the package set: generic constraints, failure
+// propagation, the iterator convention, and the intrinsics an allocator and a secret-bearing buffer need.
+
+interface Display {
+    func Show() -> int32;
+}
+
+enum ParseError: int32 {
+    Bad
+}
+
+enum IoError: int32 {
+    Closed
+}
+
+enum Result<T, E> {
+    Success(T),
+    Error(E)
+}
+
+enum Option<T> {
+    Some(T),
+    None
+}
+
+struct Plain {
+    value: int32;
+}
+
+// The bound names something that is not an interface, and something that is not defined at all.
+func Constrained<T: Plain, U: Displya>(first: T, second: U) -> int32 {
+    return 0i32;
+}
+
+func Render<T: Display>(value: T) -> int32 {
+    return 0i32;
+}
+
+// A type argument that provides none of the operations the bound names.
+func Unsatisfied() -> int32 {
+    let plain = Plain { value: 1i32 };
+    return Render<Plain>(plain);
+}
+
+// An operation no bound on the parameter provides.
+func Missing<T: Display>(value: T) -> int32 {
+    return value.Measure();
+}
+
+func Read(ok: bool) -> Result<int32, ParseError> {
+    return Result::Success<int32, ParseError>(1i32);
+}
+
+// Propagation out of a function that returns neither the same failure nor any at all.
+func Rethrown(ok: bool) -> Result<int32, IoError> {
+    let value = Read(ok)?;
+    return Result::Success<int32, IoError>(value);
+}
+
+func Discarded(ok: bool) {
+    let value = Read(ok)?;
+}
+
+func NotPropagatable() -> Result<int32, ParseError> {
+    let value = 3i32?;
+    return Result::Success<int32, ParseError>(value);
+}
+
+// An iterator whose `Next` cannot advance the value it is called on.
+struct Cursor {
+    value: int32;
+}
+
+extend Cursor {
+    func Next(self: *Cursor) -> Option<int32> {
+        return Option::None<int32>();
+    }
+}
+
+func Walk() {
+    let plain = Plain { value: 1i32 };
+    for item in plain {
+    }
+}
+
+// Intrinsics the compiler emits itself, declared with signatures it cannot emit for.
+intrinsic func CheckedAdd(left: uint32, right: uint64, result: *var uint64) -> bool;
+
+intrinsic func Zeroize(memory: *uint8, length: uint64);
+
+// A layout query about a type that has none.
+struct Recursive {
+    next: Recursive;
+}
+
+func Sized() -> uint64 {
+    return alignof(Recursive);
+}
