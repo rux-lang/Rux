@@ -19,8 +19,8 @@ class TypedConstantFactory;
  * being recovered later: adding two `int8` constants must wrap where an `int8` wraps. The value is held as raw bits
  * masked to that width, which makes wrapping the default and sign-extension something a reader asks for explicitly.
  *
- * Only integers and booleans are modelled. Floating point is deliberately absent, since folding it would have to
- * reproduce the target's rounding.
+ * Integer and floating values both retain their complete target bit patterns, so folding uses the same width,
+ * signedness, rounding, and exceptional-value rules as runtime evaluation.
  */
 class TypedConstant {
 public:
@@ -28,6 +28,7 @@ public:
         Boolean,
         SignedInteger,
         UnsignedInteger,
+        Floating,
     };
 
     /// Named `GetKind` because `Kind` is already the nested enumeration.

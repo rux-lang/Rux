@@ -1,4 +1,7 @@
+#include "Numeric/FloatEncoding.h"
+#include "Numeric/FloatParsing.h"
 #include "Optimization/ConstantEvaluator.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <array>
 #include <doctest.h>
@@ -25,6 +28,7 @@ struct WidthCase {
     std::string_view maximum;
     std::string_view minimum;
 };
+
 } // namespace
 
 TEST_CASE("typed constants parse booleans and supported integer literal forms") {
@@ -208,5 +212,53 @@ TEST_CASE("integer casts sign-extend, reinterpret, and truncate like runtime sto
     CHECK(CastConstant(lowByteZero, TypeRef::MakePrimitive(TypeRef::Kind::Bool64))->BooleanValue() == true);
     CHECK(CastConstant(Constant("0", TypeRef::MakeUInt16()), TypeRef::MakeBool8())->BooleanValue() == false);
     CHECK(CastConstant(Constant("true", TypeRef::MakeBool8()), TypeRef::MakeUInt64())->ToLiteral() == "1");
-    CHECK_FALSE(CastConstant(wide, TypeRef::MakeFloat64()).has_value());
+    const auto asFloat = CastConstant(wide, TypeRef::MakeFloat64());
+    REQUIRE(asFloat.has_value());
+    CHECK_EQ(CastConstant(*asFloat, TypeRef::MakeUInt32())->ToLiteral(), "65535");
+}
+
+TEST_CASE("floating constants use exact decimal rounding at every width") {
+    const TypeRef float8 = TypeRef::MakePrimitive(TypeRef::Kind::Float8);
+    CHECK_EQ(Constant("1.0625", float8).RawBits(), 0x38);
+    CHECK_EQ(Constant("1.1875", float8).RawBits(), 0x3A);
+    CHECK_EQ(Constant("0.1", TypeRef::MakeFloat32()).RawBits(), 0x3DCCCCCD);
+    CHECK_EQ(Constant("0.1", TypeRef::MakeFloat64()).RawBits(), 0x3FB999999999999AULL);
+    CHECK_EQ(Constant("1e1000", float8).RawBits(), 0x78);
+    CHECK_EQ(Constant("-1e-1000", float8).RawBits(), 0x80);
+
+    for (const FloatFormat &format : FloatFormats()) {
+        CAPTURE(format.name);
+        const TypeRef type = TypeRef::MakePrimitive(FindPrimitive("float" + std::to_string(format.valueBits))->kind);
+        const TypedConstant value = Constant("0.1", type);
+        CHECK_EQ(Constant(value.ToLiteral(), type).Bits(), value.Bits());
+        CHECK_EQ(Constant("1.5", type).Bits(), ParseFloatEncoding("1.5", format)->Bits());
+    }
+}
+
+TEST_CASE("floating constant arithmetic mirrors software runtime kernels") {
+    const TypeRef float8 = TypeRef::MakePrimitive(TypeRef::Kind::Float8);
+    const TypedConstant one = Constant("1.0", float8);
+    const TypedConstant half = Constant("0.5", float8);
+    CHECK_EQ(Binary(TokenKind::Plus, one, half).RawBits(), 0x3C);
+    CHECK_EQ(Binary(TokenKind::Minus, one, half).RawBits(), 0x30);
+    CHECK_EQ(Binary(TokenKind::Star, Constant("1.5", float8), Constant("1.5", float8)).RawBits(), 0x41);
+    CHECK_EQ(Binary(TokenKind::Slash, one, Constant("3.0", float8)).RawBits(), 0x2B);
+    CHECK_EQ(Binary(TokenKind::Percent, Constant("5.0", float8), Constant("2.0", float8)).RawBits(), 0x38);
+    CHECK(Binary(TokenKind::Less, half, one).BooleanValue() == true);
+    CHECK(Binary(TokenKind::BangEqual, Constant("nan", float8), Constant("nan", float8)).BooleanValue() == true);
+    CHECK(Binary(TokenKind::Equal, Constant("nan", float8), Constant("nan", float8)).BooleanValue() == false);
+    CHECK_EQ(EvaluateUnary(TokenKind::Minus, one)->RawBits(), 0xB8);
+}
+
+TEST_CASE("floating constant casts share checked software conversions") {
+    const TypeRef float8 = TypeRef::MakePrimitive(TypeRef::Kind::Float8);
+    const TypeRef float16 = TypeRef::MakePrimitive(TypeRef::Kind::Float16);
+    REQUIRE(CastConstant(Constant("127", TypeRef::MakeInt16()), float8).has_value());
+    CHECK_EQ(CastConstant(Constant("127", TypeRef::MakeInt16()), float8)->RawBits(), 0x70);
+    CHECK_EQ(CastConstant(Constant("-5.5", float8), TypeRef::MakeInt8())->ToLiteral(), "-5");
+    CHECK_FALSE(CastConstant(Constant("240.0", float8), TypeRef::MakeInt8()).has_value());
+    CHECK_FALSE(CastConstant(Constant("infinity", float8), TypeRef::MakeInt32()).has_value());
+    CHECK_EQ(CastConstant(Constant("1.5", float8), float16)->RawBits(), 0x3E00);
+    CHECK(CastConstant(Constant("nan", float8), TypeRef::MakeBool())->BooleanValue() == true);
+    CHECK(CastConstant(Constant("-0.0", float8), TypeRef::MakeBool())->BooleanValue() == false);
 }

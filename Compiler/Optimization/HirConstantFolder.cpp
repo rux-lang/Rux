@@ -606,7 +606,9 @@ bool HirConstantFolder::SimplifyBinary(HirExprPtr &expr) {
     const auto left = Constant(*binary->left);
     const auto right = Constant(*binary->right);
     const auto is = [](const std::optional<TypedConstant> &value, const std::uint64_t bits) {
-        return value && value->GetKind() != TypedConstant::Kind::Boolean &&
+        return value &&
+               (value->GetKind() == TypedConstant::Kind::SignedInteger ||
+                value->GetKind() == TypedConstant::Kind::UnsignedInteger) &&
                value->Bits() == WideInteger::FromUnsigned(bits, value->Width());
     };
     const auto makeLiteral = [&expr, binary](const TypedConstant &value) {

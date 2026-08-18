@@ -1,6 +1,9 @@
 #include "Optimization/ConstantEvaluator.h"
 
+#include "Numeric/FloatParsing.h"
 #include "Numeric/IntegerLiteral.h"
+#include "Numeric/SoftwareFloat.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <utility>
 
@@ -16,6 +19,7 @@ namespace {
 struct TypeProperties {
     TypedConstant::Kind kind;
     std::uint32_t width;
+    const FloatFormat *floatFormat = nullptr;
 };
 
 /// The width and signedness the evaluator models a type at.
@@ -28,7 +32,13 @@ std::optional<TypeProperties> Properties(const TypeRef &type) {
         return TypeProperties{TypedConstant::Kind::Boolean, 1};
     }
     if (!type.IsInteger()) {
-        return std::nullopt;
+        if (!type.IsFloat()) {
+            return std::nullopt;
+        }
+        const PrimitiveInfo *primitive = FindPrimitive(type.kind);
+        const FloatFormat *format = primitive ? FindFloatFormat(primitive->bits) : nullptr;
+        return format ? std::optional{TypeProperties{TypedConstant::Kind::Floating, format->valueBits, format}}
+                      : std::nullopt;
     }
     return TypeProperties{type.IsSigned() ? TypedConstant::Kind::SignedInteger : TypedConstant::Kind::UnsignedInteger,
                           static_cast<std::uint32_t>(type.SizeInBytes().value_or(0) * 8)};
@@ -53,6 +63,15 @@ TypedConstant MakeBoolean(const bool value) {
 bool SameIntegerType(const TypedConstant &left, const TypedConstant &right) {
     return left.GetKind() != TypedConstant::Kind::Boolean && left.GetKind() == right.GetKind() &&
            left.Width() == right.Width();
+}
+
+bool SameFloatType(const TypedConstant &left, const TypedConstant &right) {
+    return left.GetKind() == TypedConstant::Kind::Floating && right.GetKind() == TypedConstant::Kind::Floating &&
+           left.Width() == right.Width();
+}
+
+const FloatFormat &FormatOf(const TypedConstant &value) {
+    return *FindFloatFormat(value.Width());
 }
 
 /// The shift distance, when it is one the result is defined for.
@@ -107,6 +126,9 @@ std::string TypedConstant::ToLiteral() const {
     if (kind == Kind::SignedInteger && bits.IsNegative()) {
         return "-" + bits.Magnitude(true).ToDecimal();
     }
+    if (kind == Kind::Floating) {
+        return FormatFloatEncoding(FloatEncoding::FromBits(*FindFloatFormat(width), bits));
+    }
     return bits.ToDecimal();
 }
 
@@ -120,6 +142,10 @@ std::optional<TypedConstant> ParseConstant(const std::string_view literal, const
             return Make(type, literal == "true" ? 1 : 0);
         }
         return std::nullopt;
+    }
+    if (properties->kind == TypedConstant::Kind::Floating) {
+        const auto encoding = ParseFloatEncoding(literal, *properties->floatFormat);
+        return encoding ? std::optional{Make(type, encoding->Bits())} : std::nullopt;
     }
 
     const auto parts = SplitIntegerLiteral(literal);
@@ -150,6 +176,16 @@ std::optional<TypedConstant> EvaluateUnary(const TokenKind op, const TypedConsta
     if (operand.GetKind() == TypedConstant::Kind::Boolean) {
         if (op == TokenKind::Bang) {
             return MakeBoolean(operand.Bits().IsZero());
+        }
+        return std::nullopt;
+    }
+    if (operand.GetKind() == TypedConstant::Kind::Floating) {
+        if (op == TokenKind::Plus) {
+            return operand;
+        }
+        if (op == TokenKind::Minus) {
+            const WideInteger sign = WideInteger::FromUnsigned(1, operand.Width()).ShiftedLeft(operand.Width() - 1);
+            return Make(operand.Type(), operand.Bits().BitwiseXor(sign));
         }
         return std::nullopt;
     }
@@ -189,6 +225,44 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
         }
     }
     if (left.GetKind() == TypedConstant::Kind::Boolean || right.GetKind() == TypedConstant::Kind::Boolean) {
+        return std::nullopt;
+    }
+    if (SameFloatType(left, right)) {
+        const FloatFormat &format = FormatOf(left);
+        const FloatEncoding lhs = FloatEncoding::FromBits(format, left.Bits());
+        const FloatEncoding rhs = FloatEncoding::FromBits(format, right.Bits());
+        switch (op) {
+        case TokenKind::Plus:
+            return Make(left.Type(), AddFloat(lhs, rhs).Bits());
+        case TokenKind::Minus:
+            return Make(left.Type(), SubtractFloat(lhs, rhs).Bits());
+        case TokenKind::Star:
+            return Make(left.Type(), MultiplyFloat(lhs, rhs).Bits());
+        case TokenKind::Slash:
+            return Make(left.Type(), DivideFloat(lhs, rhs).Bits());
+        case TokenKind::Percent:
+            return Make(left.Type(), RemainderFloat(lhs, rhs).Bits());
+        case TokenKind::Equal:
+            return MakeBoolean(CompareFloat(lhs, rhs) == FloatComparison::Equal);
+        case TokenKind::BangEqual:
+            return MakeBoolean(CompareFloat(lhs, rhs) != FloatComparison::Equal);
+        case TokenKind::Less:
+            return MakeBoolean(CompareFloat(lhs, rhs) == FloatComparison::Less);
+        case TokenKind::LessEqual: {
+            const FloatComparison comparison = CompareFloat(lhs, rhs);
+            return MakeBoolean(comparison == FloatComparison::Less || comparison == FloatComparison::Equal);
+        }
+        case TokenKind::Greater:
+            return MakeBoolean(CompareFloat(lhs, rhs) == FloatComparison::Greater);
+        case TokenKind::GreaterEqual: {
+            const FloatComparison comparison = CompareFloat(lhs, rhs);
+            return MakeBoolean(comparison == FloatComparison::Greater || comparison == FloatComparison::Equal);
+        }
+        default:
+            return std::nullopt;
+        }
+    }
+    if (left.GetKind() == TypedConstant::Kind::Floating || right.GetKind() == TypedConstant::Kind::Floating) {
         return std::nullopt;
     }
     if (!SameIntegerType(left, right) && op != TokenKind::LessLess && op != TokenKind::GreaterGreater &&
@@ -275,7 +349,28 @@ std::optional<TypedConstant> CastConstant(const TypedConstant &value, const Type
     if (target->kind == TypedConstant::Kind::Boolean) {
         // The whole source value decides the truth, so `256 as bool` is true. Masking to the bool's storage width
         // first would have asked about the low byte instead and disagreed with what the back ends emit.
+        if (value.GetKind() == TypedConstant::Kind::Floating) {
+            const FloatEncoding encoding = FloatEncoding::FromBits(FormatOf(value), value.Bits());
+            return Make(targetType, encoding.Classify() == FloatClass::Zero ? 0 : 1);
+        }
         return Make(targetType, value.Bits().IsZero() ? 0 : 1);
+    }
+    if (target->kind == TypedConstant::Kind::Floating) {
+        FloatEncoding converted = FloatEncoding::Zero(*target->floatFormat);
+        if (value.GetKind() == TypedConstant::Kind::Floating) {
+            converted = ConvertFloat(FloatEncoding::FromBits(FormatOf(value), value.Bits()), *target->floatFormat);
+        }
+        else {
+            const bool sourceSigned = value.GetKind() == TypedConstant::Kind::SignedInteger;
+            converted = IntegerToFloat(value.Bits(), sourceSigned, *target->floatFormat);
+        }
+        return Make(targetType, converted.Bits());
+    }
+    if (value.GetKind() == TypedConstant::Kind::Floating) {
+        const FloatToIntegerResult converted =
+            FloatToInteger(FloatEncoding::FromBits(FormatOf(value), value.Bits()), target->width,
+                           target->kind == TypedConstant::Kind::SignedInteger);
+        return converted.HasValue() ? std::optional{Make(targetType, converted.value)} : std::nullopt;
     }
     const bool sourceSigned = value.GetKind() == TypedConstant::Kind::SignedInteger;
     return Make(targetType, value.Bits().ConvertedWrapping(target->width, sourceSigned));
