@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Semantic/Detail/MoveStateTracker.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Semantic/SemanticProgramIndex.h"
 
@@ -45,7 +46,16 @@ protected:
 
     void PushScope();
     void PopScope();
-    bool Define(Symbol symbol) const;
+    Symbol *Define(Symbol symbol);
+    Symbol *DefineTrackedLocal(Symbol symbol, bool initialized);
+    [[nodiscard]] const FuncDecl *BeginTrackedFunction(const FuncDecl &function);
+    void EndTrackedFunction(const FuncDecl *previousFunction);
+    void CheckTrackedRead(const Symbol &symbol, SourceLocation location);
+    [[nodiscard]] TypeRef ReadTrackedSymbol(const Symbol &symbol, SourceLocation location);
+    void RecordCheckedExpression(const Expr &expression, const TypeRef &type);
+    void MarkTrackedAssignment(const Expr &target, SourceLocation location);
+    [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
+                                                                               SourceLocation location);
 
     void CheckBlock(const Block &block);
     void CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType);
@@ -117,6 +127,9 @@ protected:
     const std::unordered_map<const FuncDecl *, Scope *> &functionDeclScopes;
     const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
     Scope *currentScope;
+    MoveStateTracker moveStates;
+    std::vector<MoveStateTracker> savedMoveStates;
+    bool checkingPlainAssignmentTarget = false;
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 

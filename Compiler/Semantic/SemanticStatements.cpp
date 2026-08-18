@@ -105,15 +105,13 @@ void SemanticAnalyzerContext::EmitUndefinedName(const SourceLocation location, c
 
 void SemanticAnalyzerContext::PushScope() {
     currentScope = &programIndex.CreateScope(*currentScope);
+    moveStates.BeginScope();
 }
 
 void SemanticAnalyzerContext::PopScope() {
     assert(currentScope->Parent() != nullptr && "cannot pop global scope");
+    moveStates.EndScope();
     currentScope = currentScope->Parent();
-}
-
-bool SemanticAnalyzerContext::Define(Symbol symbol) const {
-    return currentScope->Define(std::move(symbol), diags, currentFile);
 }
 
 void SemanticAnalyzerContext::CheckBlock(const Block &block) {
@@ -188,7 +186,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         symbol.location = letStatement->location;
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
-        Define(std::move(symbol));
+        DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr);
     }
     else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
         TypeRef condition = CheckExpr(*ifStatement->condition);
@@ -289,7 +287,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             variable.location = forStatement->location;
             variable.type = elementType;
             variable.isMut = false;
-            Define(std::move(variable));
+            DefineTrackedLocal(std::move(variable), true);
         }
         if (!forStatement->label.empty()) {
             activeLabels.insert(forStatement->label);
@@ -373,7 +371,7 @@ void SemanticAnalyzerContext::CheckLetPattern(const Pattern &pattern, const Type
         symbol.location = identifierPattern->location;
         symbol.type = type;
         symbol.isMut = isMutable;
-        Define(std::move(symbol));
+        DefineTrackedLocal(std::move(symbol), true);
     }
     else if (dynamic_cast<const WildcardPattern *>(&pattern)) {}
     else if (const auto *tuplePattern = dynamic_cast<const TuplePattern *>(&pattern)) {
@@ -419,7 +417,7 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
         symbol.location = identifierPattern->location;
         symbol.type = subjectType;
         symbol.isMut = false;
-        Define(std::move(symbol));
+        DefineTrackedLocal(std::move(symbol), true);
     }
     else if (const auto *literalPattern = dynamic_cast<const LiteralPattern *>(&pattern)) {
         const TypeRef literalType = LiteralType(literalPattern->value);

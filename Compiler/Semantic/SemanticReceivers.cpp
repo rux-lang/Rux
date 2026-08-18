@@ -8,6 +8,7 @@
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <format>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -42,7 +43,7 @@ TypeRef SemanticAnalyzerContext::DeclareReceiver(const FuncDecl &declaration, co
         self.location = receiver ? receiver->location : declaration.location;
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         self.isMut = receiver != nullptr && receiver->isMut;
-        Define(self);
+        DefineTrackedLocal(std::move(self), true);
     }
     return savedSelfType;
 }
