@@ -37,6 +37,25 @@ struct HirDropAction {
     SourceLocation origin;
 };
 
+/// A completed subobject that must be destroyed if evaluation of a later aggregate component exits early.
+struct HirPartialDropAction {
+    enum class Kind {
+        Field,
+        Element,
+        TupleElement,
+        EnumPayload,
+    };
+
+    Kind kind = Kind::Element;
+    std::size_t ordinal = 0;
+    std::string name;
+    TypeRef type;
+    std::string glueSymbol;
+    SourceLocation origin;
+};
+
+using HirFailureCleanup = std::vector<HirPartialDropAction>;
+
 // HIR Block
 struct HirBlock {
     SourceLocation location;
@@ -162,6 +181,10 @@ struct HirAssignExpr : HirExpr {
     TokenKind op;
     HirExprPtr target;
     HirExprPtr value;
+    /// For plain assignment, destroy the old target after evaluating `value` and before storing it. A nonzero binding
+    /// identity makes the action conditional; the completed store then marks that binding live, allowing assignment to
+    /// initialize previously uninitialized or moved storage.
+    std::optional<HirDropAction> overwriteCleanup;
 };
 
 // cond ? thenExpr : elseExpr
@@ -232,17 +255,23 @@ struct HirStructInitField {
 struct HirStructInitExpr : HirExpr {
     std::string typeName;
     std::vector<HirStructInitField> fields;
+    /// Entry i destroys components completed before field i when evaluation of field i exits early.
+    std::vector<HirFailureCleanup> failureCleanups;
 };
 
 // [a, b, c]
 struct HirArrayExpr : HirExpr {
     TypeRef elementType;
     std::vector<HirExprPtr> elements;
+    /// Entry i destroys elements [0, i) in reverse order if element i does not finish initialization.
+    std::vector<HirFailureCleanup> failureCleanups;
 };
 
 // (a, b, c)
 struct HirTupleExpr : HirExpr {
     std::vector<HirExprPtr> elements;
+    /// Entry i destroys tuple elements [0, i) in reverse order if element i exits early.
+    std::vector<HirFailureCleanup> failureCleanups;
 };
 
 // expr as Type
@@ -285,6 +314,8 @@ struct HirMatchExpr : HirExpr {
 struct HirEnumConstructExpr : HirExpr {
     std::vector<HirExprPtr> payloads;
     std::string discriminant;
+    /// Entry i destroys payloads [0, i) in reverse order if payload i exits early.
+    std::vector<HirFailureCleanup> failureCleanups;
 };
 
 // HIR Statements
@@ -356,6 +387,8 @@ struct HirForStmt : HirStmt {
     TypeRef varType;
     HirExprPtr iterable;
     HirBlock body;
+    /// Nonzero for an owned induction value; every iteration marks this flag live before entering the body.
+    std::uint64_t bindingId = 0;
     /// True when `variable` names a mutable variable already in scope, which the loop reuses as its induction variable
     /// rather than introducing a fresh binding. The loop then mutates that outer variable, so its final value persists
     /// after the loop (e.g. `for k in k..7` leaves k == 7).
@@ -377,11 +410,13 @@ struct HirReturnStmt : HirStmt {
 // break [label];
 struct HirBreakStmt : HirStmt {
     std::string label;
+    std::vector<HirDropAction> cleanups;
 };
 
 // continue [label];
 struct HirContinueStmt : HirStmt {
     std::string label;
+    std::vector<HirDropAction> cleanups;
 };
 
 /// local declaration inside a block (func, const, type alias declared locally)

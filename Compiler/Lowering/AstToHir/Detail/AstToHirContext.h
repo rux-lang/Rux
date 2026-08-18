@@ -101,7 +101,14 @@ protected:
     [[nodiscard]] std::vector<HirDropAction> CurrentScopeCleanups() const;
     [[nodiscard]] std::vector<HirDropAction> FunctionCleanups() const;
     void AppendCurrentScopeCleanups(HirBlock &block) const;
+    [[nodiscard]] std::uint64_t BindingId(const HirExpr &expression) const;
     [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
+    [[nodiscard]] std::optional<HirDropAction> OverwriteCleanup(const HirExpr &target, SourceLocation origin) const;
+    [[nodiscard]] std::optional<HirPartialDropAction> PartialCleanup(HirPartialDropAction::Kind kind,
+                                                                     const TypeRef &type, std::size_t ordinal,
+                                                                     std::string name, SourceLocation origin) const;
+    static void AppendFailureCleanup(std::vector<HirFailureCleanup> &edges,
+                                     const std::vector<HirPartialDropAction> &completed);
     void CollectDecl(const Decl &decl);
     [[nodiscard]] TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                        const std::vector<std::string> &typeParams = {});

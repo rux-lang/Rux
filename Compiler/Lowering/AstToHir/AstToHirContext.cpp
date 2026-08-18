@@ -113,7 +113,7 @@ void AstToHirContext::AppendCurrentScopeCleanups(HirBlock &block) const {
     }
 }
 
-std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) const {
+std::uint64_t AstToHirContext::BindingId(const HirExpr &expression) const {
     std::string_view name;
     if (const auto *variable = dynamic_cast<const HirVarExpr *>(&expression)) {
         name = variable->name;
@@ -126,6 +126,37 @@ std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) cons
     }
     const HirSymbol *symbol = currentScope->Lookup(std::string(name));
     return symbol && symbol->kind == HirSymbol::Kind::Var ? symbol->bindingId : 0;
+}
+
+std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) const {
+    return BindingId(expression);
+}
+
+std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const HirExpr &target, SourceLocation origin) const {
+    const std::uint64_t bindingId = BindingId(target);
+    if (const std::optional<HirDropAction> action = cleanupPlanner.ActionFor(bindingId)) {
+        return action;
+    }
+    const DropGluePlan *glue = model.TryGetDropGlue(target.type);
+    if (!glue) {
+        return std::nullopt;
+    }
+    return HirDropAction{0, "<place>", target.type, glue->symbol, std::move(origin)};
+}
+
+std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPartialDropAction::Kind kind,
+                                                                    const TypeRef &type, const std::size_t ordinal,
+                                                                    std::string name, SourceLocation origin) const {
+    const DropGluePlan *glue = model.TryGetDropGlue(type);
+    if (!glue) {
+        return std::nullopt;
+    }
+    return HirPartialDropAction{kind, ordinal, std::move(name), type, glue->symbol, std::move(origin)};
+}
+
+void AstToHirContext::AppendFailureCleanup(std::vector<HirFailureCleanup> &edges,
+                                           const std::vector<HirPartialDropAction> &completed) {
+    edges.emplace_back(completed.rbegin(), completed.rend());
 }
 
 void AstToHirContext::RegisterBuiltins() {

@@ -492,8 +492,15 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         auto lowered = std::make_unique<HirArrayExpr>();
         lowered->location = array->location;
         lowered->elementType = targetType.inner[0];
-        for (const auto &element : array->elements) {
+        std::vector<HirPartialDropAction> completed;
+        for (std::size_t index = 0; index < array->elements.size(); ++index) {
+            const auto &element = array->elements[index];
+            AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(LowerExprAs(*element, targetType.inner[0]));
+            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::Element, targetType.inner[0], index, {},
+                                              element->location)) {
+                completed.push_back(std::move(*cleanup));
+            }
         }
         lowered->type = targetType;
         return lowered;
@@ -504,8 +511,15 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             auto lowered = std::make_unique<HirArrayExpr>();
             lowered->location = array->location;
             lowered->elementType = *sliceElement;
-            for (const auto &element : array->elements) {
+            std::vector<HirPartialDropAction> completed;
+            for (std::size_t index = 0; index < array->elements.size(); ++index) {
+                const auto &element = array->elements[index];
+                AppendFailureCleanup(lowered->failureCleanups, completed);
                 lowered->elements.push_back(LowerExprAs(*element, *sliceElement));
+                if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::Element, *sliceElement, index, {},
+                                                  element->location)) {
+                    completed.push_back(std::move(*cleanup));
+                }
             }
             lowered->type = TypeRef::MakeArray(*sliceElement, array->elements.size());
 
@@ -523,8 +537,14 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         tuple && targetType.kind == TypeRef::Kind::Tuple && tuple->elements.size() == targetType.inner.size()) {
         auto lowered = std::make_unique<HirTupleExpr>();
         lowered->location = tuple->location;
+        std::vector<HirPartialDropAction> completed;
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {
+            AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(LowerExprAs(*tuple->elements[i], targetType.inner[i]));
+            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, targetType.inner[i], i, {},
+                                              tuple->elements[i]->location)) {
+                completed.push_back(std::move(*cleanup));
+            }
         }
         lowered->type = targetType;
         return lowered;
@@ -591,11 +611,19 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                 lowered->discriminant = LookupEnumVariantDiscriminant(initializer->typeName.substr(0, separator),
                                                                       initializer->typeName.substr(separator + 2))
                                             .value_or("0");
-                for (const auto &field : variant->namedFields) {
+                std::vector<HirPartialDropAction> completed;
+                for (std::size_t index = 0; index < variant->namedFields.size(); ++index) {
+                    const auto &field = variant->namedFields[index];
                     const auto initialized = std::ranges::find_if(
                         initializer->fields, [&](const auto &candidate) { return candidate.name == field.name; });
                     if (initialized != initializer->fields.end()) {
-                        lowered->payloads.push_back(LowerExprAs(*initialized->value, ResolveType(*field.type)));
+                        const TypeRef fieldType = ResolveType(*field.type);
+                        AppendFailureCleanup(lowered->failureCleanups, completed);
+                        lowered->payloads.push_back(LowerExprAs(*initialized->value, fieldType));
+                        if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, fieldType, index,
+                                                          field.name, initialized->location)) {
+                            completed.push_back(std::move(*cleanup));
+                        }
                     }
                 }
                 return lowered;
@@ -608,11 +636,19 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         lowered->location = initializer->location;
         lowered->typeName = GenericStructInitName(*initializer);
         lowered->type = ResolvedExpressionType(*initializer);
-        for (const auto &field : initializer->fields) {
+        std::vector<HirPartialDropAction> completed;
+        for (std::size_t index = 0; index < initializer->fields.size(); ++index) {
+            const auto &field = initializer->fields[index];
+            const TypeRef fieldType = StructInitFieldType(*initializer, field.name);
+            AppendFailureCleanup(lowered->failureCleanups, completed);
             HirStructInitField loweredField;
             loweredField.name = field.name;
-            loweredField.value = LowerExprAs(*field.value, StructInitFieldType(*initializer, field.name));
+            loweredField.value = LowerExprAs(*field.value, fieldType);
             lowered->fields.push_back(std::move(loweredField));
+            if (auto cleanup =
+                    PartialCleanup(HirPartialDropAction::Kind::Field, fieldType, index, field.name, field.location)) {
+                completed.push_back(std::move(*cleanup));
+            }
         }
         return lowered;
     }
@@ -687,8 +723,17 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         if (lowered->type.kind == TypeRef::Kind::Array && !lowered->type.inner.empty()) {
             lowered->elementType = lowered->type.inner[0];
         }
-        for (const auto &element : array->elements) {
+        std::vector<HirPartialDropAction> completed;
+        for (std::size_t index = 0; index < array->elements.size(); ++index) {
+            const auto &element = array->elements[index];
+            AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(LowerExpr(*element));
+            const TypeRef elementType =
+                lowered->elementType.IsUnknown() ? lowered->elements.back()->type : lowered->elementType;
+            if (auto cleanup =
+                    PartialCleanup(HirPartialDropAction::Kind::Element, elementType, index, {}, element->location)) {
+                completed.push_back(std::move(*cleanup));
+            }
         }
         return lowered;
     }
@@ -696,8 +741,17 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         auto lowered = std::make_unique<HirTupleExpr>();
         lowered->location = tuple->location;
         lowered->type = ResolvedExpressionType(*tuple);
-        for (const auto &element : tuple->elements) {
+        std::vector<HirPartialDropAction> completed;
+        for (std::size_t index = 0; index < tuple->elements.size(); ++index) {
+            const auto &element = tuple->elements[index];
+            AppendFailureCleanup(lowered->failureCleanups, completed);
             lowered->elements.push_back(LowerExpr(*element));
+            const TypeRef elementType =
+                index < lowered->type.inner.size() ? lowered->type.inner[index] : lowered->elements.back()->type;
+            if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::TupleElement, elementType, index, {},
+                                              element->location)) {
+                completed.push_back(std::move(*cleanup));
+            }
         }
         return lowered;
     }

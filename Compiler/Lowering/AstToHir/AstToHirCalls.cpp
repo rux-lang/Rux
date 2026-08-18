@@ -319,8 +319,14 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     auto lowered = std::make_unique<HirEnumConstructExpr>();
     lowered->location = call.location;
     lowered->type = constructor.inner.back();
+    std::vector<HirPartialDropAction> completed;
     for (std::size_t i = 0; i < call.args.size(); ++i) {
+        AppendFailureCleanup(lowered->failureCleanups, completed);
         lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
+        if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor.inner[i], i, {},
+                                          call.args[i]->location)) {
+            completed.push_back(std::move(*cleanup));
+        }
     }
     lowered->discriminant = LookupEnumVariantDiscriminant(declaration->name, binding.selectedVariant->name).value();
     return lowered;
