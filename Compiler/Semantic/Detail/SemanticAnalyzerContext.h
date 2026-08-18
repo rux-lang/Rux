@@ -187,6 +187,8 @@ protected:
     [[nodiscard]] TypeRef CheckTypeQueryExpression(const TypeQueryExpr &expression);
     [[nodiscard]] static bool IsCheckedArithmeticIntrinsic(std::string_view intrinsicName);
     void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
+    [[nodiscard]] static bool IsZeroizeIntrinsic(std::string_view intrinsicName);
+    void ValidateZeroizeIntrinsic(const FuncDecl &declaration);
 
     /// How a `for` loop reads a subject. An array, a slice and a range are driven directly; anything else is driven
     /// through the iterator convention, either because it is an iterator or because it hands one out.

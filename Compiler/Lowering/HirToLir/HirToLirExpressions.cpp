@@ -322,7 +322,7 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
         val = EmitCastIfNeeded(val, e.value->type, e.type);
     }
     const LirReg ptr = LowerLValue(*e.target);
-    EmitStore(val, ptr, e.type);
+    EmitStore(val, ptr, e.type, e.isVolatile);
     return val;
 }
 

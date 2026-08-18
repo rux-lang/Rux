@@ -219,7 +219,8 @@ InstructionSet FindDeadStores(const LirFunc &function, const Registers &localAll
             }
             else if (instruction->op == LirOpcode::Store && instruction->srcs.size() == 2 &&
                      localAllocas.contains(instruction->srcs[1])) {
-                if (!live.contains(instruction->srcs[1])) {
+                // A volatile store is required to happen, so no later read decides whether it survives.
+                if (!live.contains(instruction->srcs[1]) && !instruction->isVolatile) {
                     deadStores.insert(&*instruction);
                 }
                 live.erase(instruction->srcs[1]);

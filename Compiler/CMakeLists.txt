@@ -130,6 +130,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticAnalyzerContext.cpp
     Semantic/SemanticAggregateExpressions.cpp
     Semantic/SemanticAllocationMath.cpp
+    Semantic/SemanticZeroization.cpp
     Semantic/SemanticBasicExpressions.cpp
     Semantic/SemanticCallExpressions.cpp
     Semantic/SemanticConstraints.cpp
@@ -185,6 +186,7 @@ rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHirDeclarations.cpp
     Lowering/AstToHir/AstToHirExpressions.cpp
     Lowering/AstToHir/AstToHirAllocationMath.cpp
+    Lowering/AstToHir/AstToHirZeroization.cpp
     Lowering/AstToHir/AstToHirIteration.cpp
     Lowering/AstToHir/AstToHirPropagation.cpp
     Lowering/AstToHir/AstToHirStatements.cpp

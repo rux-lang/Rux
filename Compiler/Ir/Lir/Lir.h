@@ -154,6 +154,9 @@ struct LirInstr {
     std::vector<std::pair<LirReg, std::uint32_t>> phiPreds;  // Phi: (reg, block_index)
     CallingConvention callConv = CallingConvention::Default; // for Call instructions
     bool isCVariadic = false;                                // direct call to a C-style variadic extern
+    /// A store whose only purpose is that it happens. Zeroizing a secret writes memory nothing reads afterwards, which
+    /// is exactly the shape dead-store elimination removes, so the write says so about itself.
+    bool isVolatile = false;
     /// Present only with isCVariadic. AArch64 platform variants need the declaration boundary to promote and/or place
     /// anonymous arguments correctly.
     std::optional<std::uint32_t> cVariadicFixedParamCount;

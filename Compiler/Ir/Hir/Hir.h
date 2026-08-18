@@ -185,6 +185,8 @@ struct HirAssignExpr : HirExpr {
     /// identity makes the action conditional; the completed store then marks that binding live, allowing assignment to
     /// initialize previously uninitialized or moved storage.
     std::optional<HirDropAction> overwriteCleanup;
+    /// Set for a write that must reach memory even though nothing reads it back, which is what zeroizing a secret is.
+    bool isVolatile = false;
 };
 
 // cond ? thenExpr : elseExpr
