@@ -344,20 +344,17 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
     else if (const auto *forStatement = dynamic_cast<const ForStmt *>(&statement)) {
         TypeRef iterableType = CheckExpr(*forStatement->iterable);
         const TrackedFlow loopEntry = SaveTrackedFlow();
-        TypeRef elementType;
-        if (iterableType.IsIterableRange() && !iterableType.inner.empty()) {
-            elementType = iterableType.inner[0];
-        }
-        else if (iterableType.IsRange()) {
+        TypeRef elementType = TypeRef::MakeUnknown();
+        if (iterableType.IsRange() && !iterableType.IsIterableRange()) {
             EmitError(forStatement->iterable->location,
                       std::format("range type '{}' has no initial value and is not iterable", iterableType.ToString()));
-            elementType = TypeRef::MakeUnknown();
         }
-        else if (auto sliceElement = IndexElementType(iterableType)) {
-            elementType = *sliceElement;
+        else if (auto shape = IterationShapeOf(iterableType)) {
+            elementType = shape->itemType;
+            RecordIteration(*forStatement, *shape);
         }
-        else {
-            elementType = TypeRef::MakeUnknown();
+        else if (!iterableType.IsUnknown()) {
+            EmitNotIterable(forStatement->iterable->location, iterableType);
         }
 
         Symbol *outerVariable = currentScope->Lookup(forStatement->variable);

@@ -3590,6 +3590,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(vtableIdentities),
                          analyzer.TakeConstraintWitnesses(),
                          analyzer.TakePropagations(),
+                         analyzer.TakeIterations(),
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),
                          analyzer.TakeDropGluePlans(),

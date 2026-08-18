@@ -37,6 +37,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
     [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
+    [[nodiscard]] std::unordered_map<const ForStmt *, ResolvedIteration> TakeIterations();
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
@@ -182,6 +183,31 @@ protected:
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
+
+    /// How a `for` loop reads a subject. An array, a slice and a range are driven directly; anything else is driven
+    /// through the iterator convention, either because it is an iterator or because it hands one out.
+    struct IterationShape {
+        enum class Kind {
+            Range,
+            Indexed,
+            Iterator,
+            Iterable
+        };
+
+        Kind kind = Kind::Indexed;
+        TypeRef itemType = TypeRef::MakeUnknown();
+        TypeRef iteratorType = TypeRef::MakeUnknown();
+        const FuncDecl *advance = nullptr;
+        const FuncDecl *entry = nullptr;
+    };
+
+    [[nodiscard]] const FuncDecl *LookupIteratorAdvance(const TypeRef &type) const;
+    [[nodiscard]] const FuncDecl *LookupIterableEntry(const TypeRef &type) const;
+    [[nodiscard]] std::optional<TypeRef> IteratorItemType(const TypeRef &iteratorType, const FuncDecl &advance);
+    [[nodiscard]] std::optional<IterationShape> IterationShapeOf(const TypeRef &subject);
+    void EmitNotIterable(SourceLocation location, const TypeRef &subject) const;
+    void ValidateIteratorConvention(const FuncDecl &declaration, bool isMethod);
+    void RecordIteration(const ForStmt &statement, const IterationShape &shape);
     [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
     [[nodiscard]] std::optional<TypeRef> CheckAggregateExpression(const Expr &expression);
     void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,
@@ -217,6 +243,8 @@ protected:
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
+    std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
 
     SemanticProgramIndex programIndex;

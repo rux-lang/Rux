@@ -80,6 +80,10 @@ std::unordered_map<const TryExpr *, ResolvedPropagation> SemanticAnalyzerContext
     return std::move(propagations);
 }
 
+std::unordered_map<const ForStmt *, ResolvedIteration> SemanticAnalyzerContext::TakeIterations() {
+    return std::move(iterations);
+}
+
 std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropGluePlans() {
     return std::move(dropGluePlans);
 }
