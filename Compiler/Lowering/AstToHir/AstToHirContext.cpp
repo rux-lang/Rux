@@ -93,7 +93,7 @@ void AstToHirContext::Define(HirSymbol symbol) const {
 
 std::uint64_t AstToHirContext::RegisterCleanupBinding(const std::string &name, const TypeRef &type,
                                                       SourceLocation origin) {
-    return cleanupPlanner.Register(name, type, std::move(origin));
+    return cleanupPlanner.Register(name, type, origin);
 }
 
 std::vector<HirDropAction> AstToHirContext::CurrentScopeCleanups() const {
@@ -141,7 +141,7 @@ std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const HirExpr &ta
     if (!glue) {
         return std::nullopt;
     }
-    return HirDropAction{0, "<place>", target.type, glue->symbol, std::move(origin)};
+    return HirDropAction{0, "<place>", target.type, glue->symbol, origin};
 }
 
 std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPartialDropAction::Kind kind,
@@ -151,7 +151,7 @@ std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPar
     if (!glue) {
         return std::nullopt;
     }
-    return HirPartialDropAction{kind, ordinal, std::move(name), type, glue->symbol, std::move(origin)};
+    return HirPartialDropAction{kind, ordinal, std::move(name), type, glue->symbol, origin};
 }
 
 void AstToHirContext::AppendFailureCleanup(std::vector<HirFailureCleanup> &edges,
