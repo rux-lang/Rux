@@ -147,7 +147,7 @@ std::optional<TypedConstant> LocalConstant(const LirBlock &block, const LirReg r
 }
 
 bool SameConstant(const TypedConstant &left, const TypedConstant &right) {
-    return left.GetKind() == right.GetKind() && left.Width() == right.Width() && left.RawBits() == right.RawBits();
+    return left.GetKind() == right.GetKind() && left.Width() == right.Width() && left.Bits() == right.Bits();
 }
 
 /// The single block a switch must reach when its subject is a known constant, falling through to the default when no

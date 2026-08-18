@@ -18,7 +18,7 @@ struct KnownValue {
 using Values = std::unordered_map<LirReg, KnownValue>;
 
 bool SameConstant(const TypedConstant &left, const TypedConstant &right) {
-    return left.GetKind() == right.GetKind() && left.Width() == right.Width() && left.RawBits() == right.RawBits();
+    return left.GetKind() == right.GetKind() && left.Width() == right.Width() && left.Bits() == right.Bits();
 }
 
 bool SameValue(const KnownValue &left, const KnownValue &right) {
