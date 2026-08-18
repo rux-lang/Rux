@@ -58,6 +58,9 @@ protected:
     void MarkTrackedAssignment(const Expr &target, SourceLocation location);
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
+    [[nodiscard]] bool ValidateMoveSource(const Expr &expression, const TypeRef &type, SourceLocation location);
+    [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
+                                      SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);

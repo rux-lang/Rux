@@ -1,3 +1,4 @@
+#include "Semantic/Detail/MovePlace.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <format>
@@ -259,12 +260,56 @@ std::optional<MoveStateTracker::Issue> SemanticAnalyzerContext::MoveTrackedExpre
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
         }
     }
+    if (dynamic_cast<const SelfExpr *>(&expression)) {
+        if (Symbol *symbol = currentScope->Lookup("self"); symbol && symbol->kind == Symbol::Kind::Var) {
+            return moveStates.Move(MoveStateTracker::Local(symbol), location);
+        }
+    }
     return moveStates.Move(MoveStateTracker::Temporary(&expression), location);
+}
+
+bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const TypeRef &type,
+                                                 const SourceLocation location) {
+    if (!ClassifyTypeProperties(type).IsMoveOnly()) {
+        return true;
+    }
+    const MovePlace place = AnalyzeMovePlace(expression);
+    if (place.IsBorrowedStorage()) {
+        EmitError(location, std::format("cannot move '{}' out of borrowed pointer storage", place.Display()),
+                  {"borrowed pointers do not transfer ownership of the value they address"},
+                  "move the owning value or clone the pointed-to value explicitly");
+        return false;
+    }
+    if (place.IsComplete()) {
+        return true;
+    }
+
+    EmitError(location,
+              std::format("cannot move {} out of droppable value '{}'", place.LastProjectionDescription(),
+                          place.ContainerDisplay()),
+              {"partial moves would leave the aggregate with only some fields initialized"},
+              "move the complete aggregate or borrow or clone the component explicitly");
+    return false;
+}
+
+bool SemanticAnalyzerContext::RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
+                                             const SourceLocation location) {
+    if (!ClassifyTypeProperties(type).IsMoveOnly() || !SameStoragePlace(target, value)) {
+        return false;
+    }
+    const std::string place = AnalyzeMovePlace(target).Display();
+    EmitError(location, std::format("cannot move '{}' into itself", place),
+              {"the assignment source and destination identify the same move-only storage"},
+              "remove the assignment or assign a distinct value");
+    return true;
 }
 
 void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef &type, const ValueConsumptionKind kind,
                                            const SourceLocation location) {
     if (!trackedFlowReachable || !ClassifyTypeProperties(type).IsMoveOnly()) {
+        return;
+    }
+    if (!ValidateMoveSource(expression, type, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {

@@ -245,6 +245,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                               std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
             }
             else if (assignment->op == TokenKind::Assign) {
+                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location)) {
+                    return TypeRef::MakeOpaque();
+                }
                 ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 MarkTrackedAssignment(*assignment->target, assignment->location);
             }
