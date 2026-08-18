@@ -159,8 +159,9 @@ private:
     // Shared declaration helpers
     Param ParseParam(bool allowVariadic = false);
     std::vector<Param> ParseParamList(bool allowVariadic = false);
-    std::vector<std::string> ParseTypeParams(); ///< <T, U, ...>
-    std::vector<TypeExprPtr> ParseTypeArgs();   ///< <int32, T[], ...>
+    std::vector<TypeParameter> ParseTypeParams(); ///< <T, U: Display + Debug, ...>
+    TypeExprPtr ParseInterfaceBound();            ///< Display or Namespace::Display
+    std::vector<TypeExprPtr> ParseTypeArgs();     ///< <int32, T[], ...>
 
     // Type expressions
     TypeExprPtr ParseType(std::optional<std::string> help = {});

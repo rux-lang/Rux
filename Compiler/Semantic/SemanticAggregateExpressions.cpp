@@ -140,7 +140,7 @@ SemanticAnalyzerContext::StructTypeSubstitutions(const StructDecl &declaration,
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(declaration.typeParams.size(), typeArguments.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(declaration.typeParams[i], ResolveType(*typeArguments[i]));
+        substitutions.emplace(declaration.typeParams[i].name, ResolveType(*typeArguments[i]));
     }
     return substitutions;
 }
@@ -167,7 +167,7 @@ TypeRef SemanticAnalyzerContext::StructFieldType(const TypeRef &objectType, cons
     const auto &parameters = structure->second->typeParams;
     const std::size_t count = std::min(parameters.size(), typeArguments.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(parameters[i], typeArguments[i]);
+        substitutions.emplace(parameters[i].name, typeArguments[i]);
     }
 
     for (const auto &field : structure->second->fields) {

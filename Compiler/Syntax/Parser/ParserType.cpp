@@ -174,13 +174,14 @@ TypeExprPtr Parser::ParseFunctionType() {
     return t;
 }
 
-std::vector<std::string> Parser::ParseTypeParams() {
-    std::vector<std::string> params;
+std::vector<TypeParameter> Parser::ParseTypeParams() {
+    std::vector<TypeParameter> parameters;
     ExpectBefore(TokenKind::Less, "'<' to start the type parameter list");
-    while (!Check(TokenKind::Greater) && !IsAtEnd()) {
+    while (!CheckCloseAngle() && !IsAtEnd()) {
         if (!Check(TokenKind::Ident)) {
             EmitExpected(CurrentLocation(), "a type parameter name");
-            while (!CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::LeftBrace, TokenKind::Semicolon}) &&
+            while (!CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                              TokenKind::GreaterGreaterGreater, TokenKind::LeftBrace, TokenKind::Semicolon}) &&
                    !IsAtEnd()) {
                 Advance();
             }
@@ -189,18 +190,85 @@ std::vector<std::string> Parser::ParseTypeParams() {
             }
             break;
         }
-        params.push_back(Advance().text);
+
+        const Token parameterToken = Advance();
+        TypeParameter parameter;
+        parameter.location = parameterToken.location;
+        parameter.name = parameterToken.text;
+        if (Match(TokenKind::Colon)) {
+            bool needsBound = true;
+            bool attemptedBound = false;
+            while (!CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                              TokenKind::GreaterGreaterGreater}) &&
+                   !IsAtEnd()) {
+                if (!needsBound) {
+                    EmitExpected(CurrentLocation(), "'+' between interface bounds",
+                                 "separate multiple bounds with '+'");
+                }
+
+                attemptedBound = true;
+                bool parsedBound = false;
+                if (TypeExprPtr bound = ParseInterfaceBound()) {
+                    parameter.bounds.push_back(std::move(bound));
+                    parsedBound = true;
+                }
+                else {
+                    while (!CheckAny({TokenKind::Plus, TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                                      TokenKind::GreaterGreaterGreater}) &&
+                           !IsAtEnd()) {
+                        Advance();
+                    }
+                }
+
+                needsBound = false;
+                if (Match(TokenKind::Plus)) {
+                    needsBound = true;
+                    if (parsedBound && CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                                                 TokenKind::GreaterGreaterGreater})) {
+                        EmitExpected(CurrentLocation(), "an interface bound after '+'",
+                                     "add the next interface name or remove the trailing '+'");
+                        needsBound = false;
+                    }
+                    continue;
+                }
+                if (!Check(TokenKind::Ident)) {
+                    break;
+                }
+            }
+            if (!attemptedBound && !IsAtEnd() &&
+                CheckAny({TokenKind::Comma, TokenKind::Greater, TokenKind::GreaterGreater,
+                          TokenKind::GreaterGreaterGreater})) {
+                EmitExpected(CurrentLocation(), "an interface bound after ':'",
+                             "add an interface name after the type parameter constraint");
+            }
+        }
+        parameters.push_back(std::move(parameter));
+
         if (Match(TokenKind::Comma)) {
             continue;
         }
-        if (Check(TokenKind::Greater) || IsAtEnd()) {
+        if (CheckCloseAngle() || IsAtEnd()) {
             break;
         }
         EmitExpected(CurrentLocation(), "',' between type parameters",
                      "separate adjacent type parameter names with ','");
     }
-    ExpectBefore(TokenKind::Greater, "'>' to close the type parameter list");
-    return params;
+    if (CheckCloseAngle()) {
+        ConsumeCloseAngle();
+    }
+    else {
+        ExpectBefore(TokenKind::Greater, "'>' to close the type parameter list");
+    }
+    return parameters;
+}
+
+TypeExprPtr Parser::ParseInterfaceBound() {
+    if (!Check(TokenKind::Ident)) {
+        EmitExpected(CurrentLocation(), "an interface name in the type parameter bound",
+                     "bounds name interfaces, for example 'T: Display + Debug'");
+        return nullptr;
+    }
+    return ParseBaseType("add the interface name after ':' or '+'");
 }
 
 std::vector<TypeExprPtr> Parser::ParseTypeArgs() {

@@ -340,7 +340,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
                 const auto &parameters = enumIt->second->typeParams;
                 const std::size_t count = std::min(parameters.size(), typeArguments.size());
                 for (std::size_t i = 0; i < count; ++i) {
-                    substitutions.emplace(parameters[i], typeArguments[i]);
+                    substitutions.emplace(parameters[i].name, typeArguments[i]);
                 }
                 for (const auto &unitVariant : enumIt->second->variants) {
                     if (unitVariant.fields.empty() && unitVariant.namedFields.empty()) {

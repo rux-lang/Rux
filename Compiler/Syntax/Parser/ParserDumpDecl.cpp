@@ -21,6 +21,31 @@ void DeclarationPrinter::Pad() const {
     writer.Pad();
 }
 
+void DeclarationPrinter::PrintTypeParameters(const std::vector<TypeParameter> &parameters) {
+    if (parameters.empty()) {
+        return;
+    }
+    out << '<';
+    for (std::size_t parameterIndex = 0; parameterIndex < parameters.size(); ++parameterIndex) {
+        if (parameterIndex != 0) {
+            out << ", ";
+        }
+        const TypeParameter &parameter = parameters[parameterIndex];
+        out << parameter.name;
+        if (parameter.bounds.empty()) {
+            continue;
+        }
+        out << ": ";
+        for (std::size_t boundIndex = 0; boundIndex < parameter.bounds.size(); ++boundIndex) {
+            if (boundIndex != 0) {
+                out << " + ";
+            }
+            out << TypeString(parameter.bounds[boundIndex].get());
+        }
+    }
+    out << '>';
+}
+
 std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     if (!type) {
         return "<null>";
@@ -166,16 +191,7 @@ void DeclarationPrinter::PrintFuncDecl(const FuncDecl &decl) {
         out << "asm ";
     }
     out << "FuncDecl '" << decl.name << "'";
-    if (!decl.typeParams.empty()) {
-        out << '<';
-        for (std::size_t index = 0; index < decl.typeParams.size(); ++index) {
-            if (index) {
-                out << ", ";
-            }
-            out << decl.typeParams[index];
-        }
-        out << '>';
-    }
+    PrintTypeParameters(decl.typeParams);
     out << " (";
     for (std::size_t index = 0; index < decl.params.size(); ++index) {
         if (index) {
@@ -305,16 +321,7 @@ void DeclarationPrinter::PrintStructDecl(const StructDecl &decl) {
         out << "pub ";
     }
     out << "StructDecl '" << decl.name << "'";
-    if (!decl.typeParams.empty()) {
-        out << '<';
-        for (std::size_t index = 0; index < decl.typeParams.size(); ++index) {
-            if (index) {
-                out << ", ";
-            }
-            out << decl.typeParams[index];
-        }
-        out << '>';
-    }
+    PrintTypeParameters(decl.typeParams);
     out << '\n';
     ++indent;
     for (const auto &field : decl.fields) {
@@ -333,16 +340,7 @@ void DeclarationPrinter::PrintEnumDecl(const EnumDecl &decl) {
         out << "pub ";
     }
     out << "EnumDecl '" << decl.name << "'";
-    if (!decl.typeParams.empty()) {
-        out << '<';
-        for (std::size_t index = 0; index < decl.typeParams.size(); ++index) {
-            if (index) {
-                out << ", ";
-            }
-            out << decl.typeParams[index];
-        }
-        out << '>';
-    }
+    PrintTypeParameters(decl.typeParams);
     if (decl.baseType) {
         out << " : " << TypeString(decl.baseType.get());
     }

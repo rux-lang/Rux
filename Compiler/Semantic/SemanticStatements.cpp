@@ -667,7 +667,7 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             const auto &parameters = enumDeclaration->typeParams;
             const std::size_t count = std::min(parameters.size(), typeArguments.size());
             for (std::size_t index = 0; index < count; ++index) {
-                substitutions.emplace(parameters[index], typeArguments[index]);
+                substitutions.emplace(parameters[index].name, typeArguments[index]);
             }
         }
         std::unordered_set<std::string> namedArguments;

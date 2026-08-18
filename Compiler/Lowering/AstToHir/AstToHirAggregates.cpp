@@ -445,7 +445,7 @@ TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, c
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::size_t count = std::min(structure->second->typeParams.size(), expression.typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(structure->second->typeParams[i], ResolveType(*expression.typeArgs[i]));
+        substitutions.emplace(structure->second->typeParams[i].name, ResolveType(*expression.typeArgs[i]));
     }
     for (const auto &field : structure->second->fields) {
         if (field.name == fieldName) {

@@ -222,8 +222,8 @@ HirExprPtr AstToHirContext::LowerBoundDirectCall(const CallExpr &call, const Res
     }
 
     const FuncDecl &function = SelectedFunction(binding);
-    const TypeRef functionType =
-        MakeFuncTypeWithSubstitution(function.params, function.returnType, binding.substitutions, function.typeParams);
+    const TypeRef functionType = MakeFuncTypeWithSubstitution(
+        function.params, function.returnType, binding.substitutions, TypeParameterNames(function.typeParams));
     auto lowered = std::make_unique<HirCallExpr>();
     lowered->location = call.location;
     lowered->isNoReturn = function.isNoReturn;
@@ -282,8 +282,8 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
                                                [&](const auto &candidate) { return candidate.get() == &method; });
     assert(methodIt != interface->second->methods.end() && "bound interface method has no vtable slot");
 
-    const TypeRef functionType =
-        MakeFuncTypeWithSubstitution(method.params, method.returnType, binding.substitutions, method.typeParams);
+    const TypeRef functionType = MakeFuncTypeWithSubstitution(method.params, method.returnType, binding.substitutions,
+                                                              TypeParameterNames(method.typeParams));
     auto lowered = std::make_unique<HirInterfaceCallExpr>();
     lowered->location = call.location;
     lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
@@ -313,7 +313,7 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     std::vector<TypeRef> typeArguments;
     typeArguments.reserve(declaration->typeParams.size());
     for (const auto &parameter : declaration->typeParams) {
-        typeArguments.push_back(binding.substitutions.at(parameter));
+        typeArguments.push_back(binding.substitutions.at(parameter.name));
     }
     const TypeRef constructor = EnumVariantConstructorType(*declaration, *binding.selectedVariant, typeArguments);
     auto lowered = std::make_unique<HirEnumConstructExpr>();

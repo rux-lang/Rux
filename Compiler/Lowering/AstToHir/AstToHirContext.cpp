@@ -228,7 +228,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Func;
         symbol.name = function->name;
-        symbol.type = MakeFuncType(function->params, function->returnType, function->typeParams);
+        symbol.type = MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
         symbol.isNoReturn = function->isNoReturn;
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);

@@ -9,11 +9,11 @@ namespace Rux::SemanticDetail {
 namespace {
 using Substitutions = std::unordered_map<std::string, TypeRef>;
 
-Substitutions BindTypeArguments(const std::vector<std::string> &parameters, const std::vector<TypeRef> &arguments) {
+Substitutions BindTypeArguments(const std::vector<TypeParameter> &parameters, const std::vector<TypeRef> &arguments) {
     Substitutions substitutions;
     const std::size_t count = std::min(parameters.size(), arguments.size());
     for (std::size_t index = 0; index < count; ++index) {
-        substitutions.emplace(parameters[index], arguments[index]);
+        substitutions.emplace(parameters[index].name, arguments[index]);
     }
     return substitutions;
 }
