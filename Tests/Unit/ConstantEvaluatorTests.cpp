@@ -86,6 +86,60 @@ TEST_CASE("integer arithmetic wraps to every declared unsigned width") {
               .ToLiteral() == "243");
 }
 
+TEST_CASE("constant evaluation uses the same arithmetic through 512 bits") {
+    const TypeRef uint128 = TypeRef::MakePrimitive(TypeRef::Kind::UInt128);
+    const TypeRef int128 = TypeRef::MakePrimitive(TypeRef::Kind::Int128);
+    const TypeRef uint256 = TypeRef::MakePrimitive(TypeRef::Kind::UInt256);
+    const TypeRef uint512 = TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
+    constexpr std::string_view uint128Maximum = "340282366920938463463374607431768211455";
+    constexpr std::string_view int128Maximum = "170141183460469231731687303715884105727";
+    constexpr std::string_view int128Minimum = "-170141183460469231731687303715884105728";
+    constexpr std::string_view uint512Maximum =
+        "1340780792994259709957402499820584612747936582059239337772356144372176403007354697680187429816690342"
+        "7690031858186486050853753882811946569946433649006084095";
+
+    CHECK(Constant(uint512Maximum, uint512).ToLiteral() == uint512Maximum);
+    CHECK(Binary(TokenKind::Plus, Constant(uint128Maximum, uint128), Constant("1", uint128)).ToLiteral() == "0");
+    CHECK(Binary(TokenKind::Plus, Constant(int128Maximum, int128), Constant("1", int128)).ToLiteral() == int128Minimum);
+    CHECK(Binary(TokenKind::Minus, Constant(int128Minimum, int128), Constant("1", int128)).ToLiteral() ==
+          int128Maximum);
+    CHECK(Binary(TokenKind::Star, Constant("1606938044258990275541962092341162602522202993782792835301376", uint256),
+                 Constant("1267650600228229401496703205376", uint256))
+              .ToLiteral() == "0");
+    CHECK(Binary(TokenKind::Slash, Constant(uint128Maximum, uint128), Constant("10", uint128)).ToLiteral() ==
+          "34028236692093846346337460743176821145");
+    CHECK(Binary(TokenKind::Percent, Constant(uint128Maximum, uint128), Constant("10", uint128)).ToLiteral() == "5");
+    CHECK(Binary(TokenKind::StarStar, Constant("2", uint128), Constant("127", uint128)).ToLiteral() ==
+          "170141183460469231731687303715884105728");
+    CHECK(Binary(TokenKind::Greater, Constant(uint512Maximum, uint512), Constant(uint128Maximum, uint512))
+              .BooleanValue() == true);
+}
+
+TEST_CASE("wide constant shifts and casts preserve complete bit patterns") {
+    const TypeRef int128 = TypeRef::MakePrimitive(TypeRef::Kind::Int128);
+    const TypeRef int256 = TypeRef::MakePrimitive(TypeRef::Kind::Int256);
+    const TypeRef uint128 = TypeRef::MakePrimitive(TypeRef::Kind::UInt128);
+    const TypeRef uint512 = TypeRef::MakePrimitive(TypeRef::Kind::UInt512);
+    const TypeRef uint16 = TypeRef::MakeUInt16();
+    constexpr std::string_view uint512Maximum =
+        "1340780792994259709957402499820584612747936582059239337772356144372176403007354697680187429816690342"
+        "7690031858186486050853753882811946569946433649006084095";
+
+    CHECK(Binary(TokenKind::LessLess, Constant("1", uint128), Constant("127", uint16)).ToLiteral() ==
+          "170141183460469231731687303715884105728");
+    CHECK(Binary(TokenKind::GreaterGreater, Constant("-8", int128), Constant("2", uint16)).ToLiteral() == "-2");
+    CHECK(Binary(TokenKind::GreaterGreaterGreater, Constant("-8", int128), Constant("2", uint16)).ToLiteral() ==
+          "85070591730234615865843651857942052862");
+
+    const auto negativeWide = CastConstant(Constant("-1", int128), int256);
+    REQUIRE(negativeWide.has_value());
+    CHECK_EQ(negativeWide->ToLiteral(), "-1");
+    const auto narrowed = CastConstant(Constant(uint512Maximum, uint512), uint128);
+    REQUIRE(narrowed.has_value());
+    CHECK_EQ(narrowed->ToLiteral(), "340282366920938463463374607431768211455");
+    CHECK(CastConstant(Constant("18446744073709551616", uint128), TypeRef::MakeBool8())->BooleanValue() == true);
+}
+
 TEST_CASE("division traps remain unfurled for every signed width") {
     const std::array cases{
         WidthCase{TypeRef::MakeInt8(), "127", "-128"},

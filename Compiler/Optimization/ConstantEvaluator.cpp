@@ -1,21 +1,21 @@
 #include "Optimization/ConstantEvaluator.h"
 
-#include <charconv>
+#include "Numeric/IntegerLiteral.h"
+
 #include <utility>
 
 namespace Rux::Optimization {
 class TypedConstantFactory {
 public:
-    static TypedConstant Make(const TypeRef &type, const TypedConstant::Kind kind, const std::uint8_t width,
-                              const std::uint64_t bits) {
-        return TypedConstant(type, kind, width, bits);
+    static TypedConstant Make(const TypeRef &type, const TypedConstant::Kind kind, WideInteger bits) {
+        return TypedConstant(type, kind, std::move(bits));
     }
 };
 
 namespace {
 struct TypeProperties {
     TypedConstant::Kind kind;
-    std::uint8_t width;
+    std::uint32_t width;
 };
 
 /// The width and signedness the evaluator models a type at.
@@ -31,22 +31,17 @@ std::optional<TypeProperties> Properties(const TypeRef &type) {
         return std::nullopt;
     }
     return TypeProperties{type.IsSigned() ? TypedConstant::Kind::SignedInteger : TypedConstant::Kind::UnsignedInteger,
-                          static_cast<std::uint8_t>(type.SizeInBytes().value_or(0) * 8)};
+                          static_cast<std::uint32_t>(type.SizeInBytes().value_or(0) * 8)};
 }
 
-/// The low `width` bits set. Every stored value is masked to this, which is what makes wrapping the default.
-std::uint64_t Mask(const std::uint8_t width) {
-    return width == 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << width) - 1;
-}
-
-/// Whether the top bit of the value's own width is set, which is its sign bit and not bit 63.
-bool SignBit(const TypedConstant &value) {
-    return (value.RawBits() & (std::uint64_t{1} << (value.Width() - 1))) != 0;
+TypedConstant Make(const TypeRef &type, WideInteger bits) {
+    const TypeProperties properties = *Properties(type);
+    return TypedConstantFactory::Make(type, properties.kind, bits.ConvertedTruncating(properties.width));
 }
 
 TypedConstant Make(const TypeRef &type, const std::uint64_t bits) {
     const TypeProperties properties = *Properties(type);
-    return TypedConstantFactory::Make(type, properties.kind, properties.width, bits);
+    return Make(type, WideInteger::FromUnsigned(bits, properties.width));
 }
 
 TypedConstant MakeBoolean(const bool value) {
@@ -64,57 +59,55 @@ bool SameIntegerType(const TypedConstant &left, const TypedConstant &right) {
 ///
 /// @return nullopt for a negative or too-large distance, leaving the shift in HIR rather than folding to a value the
 /// target would not produce
-std::optional<std::uint64_t> ShiftAmount(const TypedConstant &value, const std::uint8_t width) {
+std::optional<std::uint32_t> ShiftAmount(const TypedConstant &value, const std::uint32_t width) {
     if (value.GetKind() == TypedConstant::Kind::Boolean ||
-        (value.GetKind() == TypedConstant::Kind::SignedInteger && SignBit(value))) {
+        (value.GetKind() == TypedConstant::Kind::SignedInteger && value.Bits().IsNegative())) {
         return std::nullopt;
     }
-    if (value.RawBits() >= width) {
+    const auto amount = value.Bits().ToUnsigned();
+    if (!amount || *amount >= width) {
         return std::nullopt;
     }
-    return value.RawBits();
-}
-
-/// The value widened to 64 bits with its sign, so a signed operation computes in the same arithmetic the target would
-/// use before the result is masked back down.
-std::uint64_t SignExtendedBits(const TypedConstant &value) {
-    if (value.GetKind() != TypedConstant::Kind::SignedInteger || !SignBit(value)) {
-        return value.RawBits();
-    }
-    return value.RawBits() | ~Mask(value.Width());
+    return static_cast<std::uint32_t>(*amount);
 }
 } // namespace
 
-TypedConstant::TypedConstant(TypeRef inputType, const Kind inputKind, const std::uint8_t inputWidth,
-                             const std::uint64_t inputBits)
+TypedConstant::TypedConstant(TypeRef inputType, const Kind inputKind, WideInteger inputBits)
     : type(std::move(inputType))
     , kind(inputKind)
-    , width(inputWidth)
-    , bits(inputBits & Mask(inputWidth)) {
+    , width(inputBits.Width())
+    , bits(std::move(inputBits)) {
 }
 
 std::optional<bool> TypedConstant::BooleanValue() const noexcept {
-    return kind == Kind::Boolean ? std::optional{bits != 0} : std::nullopt;
+    return kind == Kind::Boolean ? std::optional{!bits.IsZero()} : std::nullopt;
 }
 
 std::optional<std::int64_t> TypedConstant::SignedValue() const noexcept {
-    if (kind != Kind::SignedInteger) {
+    if (kind != Kind::SignedInteger || width > 64) {
         return std::nullopt;
     }
-    if (!SignBit(*this)) {
-        return static_cast<std::int64_t>(bits);
+    const auto magnitude = bits.Magnitude(true).ToUnsigned();
+    if (!magnitude) {
+        return std::nullopt;
     }
-    return -1 - static_cast<std::int64_t>((~bits) & Mask(width));
+    if (!bits.IsNegative()) {
+        return static_cast<std::int64_t>(*magnitude);
+    }
+    if (*magnitude == (std::uint64_t{1} << 63)) {
+        return INT64_MIN;
+    }
+    return -static_cast<std::int64_t>(*magnitude);
 }
 
 std::string TypedConstant::ToLiteral() const {
     if (const auto value = BooleanValue()) {
         return *value ? "true" : "false";
     }
-    if (const auto value = SignedValue()) {
-        return std::to_string(*value);
+    if (kind == Kind::SignedInteger && bits.IsNegative()) {
+        return "-" + bits.Magnitude(true).ToDecimal();
     }
-    return std::to_string(bits);
+    return bits.ToDecimal();
 }
 
 std::optional<TypedConstant> ParseConstant(const std::string_view literal, const TypeRef &type) {
@@ -129,72 +122,34 @@ std::optional<TypedConstant> ParseConstant(const std::string_view literal, const
         return std::nullopt;
     }
 
-    std::string normalized;
-    normalized.reserve(literal.size());
-    for (const char c : literal) {
-        if (c != '_') {
-            normalized.push_back(c);
-        }
-    }
-    std::string_view digits = normalized;
-    bool negative = false;
-    if (!digits.empty() && (digits.front() == '-' || digits.front() == '+')) {
-        negative = digits.front() == '-';
-        digits.remove_prefix(1);
-    }
-
-    int base = 10;
-    if (digits.size() > 2 && digits[0] == '0') {
-        if (digits[1] == 'x' || digits[1] == 'X') {
-            base = 16;
-        }
-        else if (digits[1] == 'b' || digits[1] == 'B') {
-            base = 2;
-        }
-        else if (digits[1] == 'o' || digits[1] == 'O') {
-            base = 8;
-        }
-        if (base != 10) {
-            digits.remove_prefix(2);
-        }
-    }
-    if (digits.empty()) {
+    const auto parts = SplitIntegerLiteral(literal);
+    if (!parts || !parts->suffix.empty()) {
         return std::nullopt;
     }
-
-    std::uint64_t magnitude = 0;
-    const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), magnitude, base);
-    if (error != std::errc{} || end != digits.data() + digits.size()) {
+    const auto magnitude = WideInteger::Parse(parts->digits, parts->base, WideInteger::MaxBits);
+    const bool isSigned = properties->kind == TypedConstant::Kind::SignedInteger;
+    if (!magnitude) {
         return std::nullopt;
     }
-
-    const std::uint64_t mask = Mask(properties->width);
-    if (negative) {
-        if (properties->kind != TypedConstant::Kind::SignedInteger) {
-            return std::nullopt;
-        }
-        const std::uint64_t minimumMagnitude = std::uint64_t{1} << (properties->width - 1);
-        if (magnitude > minimumMagnitude) {
-            return std::nullopt;
-        }
-        return Make(type, std::uint64_t{0} - magnitude);
-    }
-    if (magnitude > mask) {
+    // HIR keeps the unary minus separate from its literal, including for the one magnitude that only fits after that
+    // minus is applied. Admit that bit pattern here so `-128i8` can fold; semantic analysis has already rejected a
+    // source-level positive `128i8`.
+    const bool pendingMinimum =
+        isSigned && !parts->negative && *magnitude == WideInteger::MinMagnitude(properties->width, true);
+    if (!pendingMinimum && !IntegerLiteralFits(*magnitude, parts->negative, properties->width, isSigned)) {
         return std::nullopt;
     }
-    if (properties->kind == TypedConstant::Kind::SignedInteger) {
-        const std::uint64_t minimumMagnitude = std::uint64_t{1} << (properties->width - 1);
-        if (magnitude > minimumMagnitude) {
-            return std::nullopt;
-        }
+    WideInteger bits = magnitude->ConvertedTruncating(properties->width);
+    if (parts->negative) {
+        bits = bits.Negated();
     }
-    return Make(type, magnitude);
+    return Make(type, bits);
 }
 
 std::optional<TypedConstant> EvaluateUnary(const TokenKind op, const TypedConstant &operand) {
     if (operand.GetKind() == TypedConstant::Kind::Boolean) {
         if (op == TokenKind::Bang) {
-            return MakeBoolean(operand.RawBits() == 0);
+            return MakeBoolean(operand.Bits().IsZero());
         }
         return std::nullopt;
     }
@@ -202,9 +157,9 @@ std::optional<TypedConstant> EvaluateUnary(const TokenKind op, const TypedConsta
     case TokenKind::Plus:
         return operand;
     case TokenKind::Minus:
-        return Make(operand.Type(), std::uint64_t{0} - operand.RawBits());
+        return Make(operand.Type(), operand.Bits().Negated());
     case TokenKind::Tilde:
-        return Make(operand.Type(), ~operand.RawBits());
+        return Make(operand.Type(), operand.Bits().BitwiseNot());
     default:
         return std::nullopt;
     }
@@ -212,15 +167,15 @@ std::optional<TypedConstant> EvaluateUnary(const TokenKind op, const TypedConsta
 
 std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConstant &left, const TypedConstant &right) {
     if (left.GetKind() == TypedConstant::Kind::Boolean && right.GetKind() == TypedConstant::Kind::Boolean) {
-        const bool lhs = left.RawBits() != 0;
-        const bool rhs = right.RawBits() != 0;
+        const bool lhs = !left.Bits().IsZero();
+        const bool rhs = !right.Bits().IsZero();
         switch (op) {
         case TokenKind::Amp:
-            return Make(left.Type(), left.RawBits() & right.RawBits());
+            return Make(left.Type(), left.Bits().BitwiseAnd(right.Bits()));
         case TokenKind::Pipe:
-            return Make(left.Type(), left.RawBits() | right.RawBits());
+            return Make(left.Type(), left.Bits().BitwiseOr(right.Bits()));
         case TokenKind::Caret:
-            return Make(left.Type(), left.RawBits() ^ right.RawBits());
+            return Make(left.Type(), left.Bits().BitwiseXor(right.Bits()));
         case TokenKind::AmpAmp:
             return MakeBoolean(lhs && rhs);
         case TokenKind::PipePipe:
@@ -241,53 +196,44 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
         return std::nullopt;
     }
 
-    const std::uint64_t lhs = left.RawBits();
-    const std::uint64_t rhs = right.RawBits();
+    const WideInteger &lhs = left.Bits();
+    const WideInteger &rhs = right.Bits();
+    const bool isSigned = left.GetKind() == TypedConstant::Kind::SignedInteger;
     switch (op) {
     case TokenKind::Plus:
-        return Make(left.Type(), lhs + rhs);
+        return Make(left.Type(), lhs.Added(rhs));
     case TokenKind::Minus:
-        return Make(left.Type(), lhs - rhs);
+        return Make(left.Type(), lhs.Subtracted(rhs));
     case TokenKind::Star:
-        return Make(left.Type(), lhs * rhs);
+        return Make(left.Type(), lhs.MultipliedWrapping(rhs));
     case TokenKind::StarStar: {
-        if (right.GetKind() == TypedConstant::Kind::SignedInteger && SignBit(right)) {
+        if (right.GetKind() == TypedConstant::Kind::SignedInteger && rhs.IsNegative()) {
             return Make(left.Type(), 0);
         }
-        std::uint64_t base = lhs;
-        std::uint64_t exponent = rhs;
-        std::uint64_t result = 1;
-        while (exponent != 0) {
-            if ((exponent & 1) != 0) {
-                result *= base;
+        WideInteger base = lhs;
+        WideInteger result = WideInteger::FromUnsigned(1, left.Width());
+        for (std::uint32_t bit = 0; bit < right.Width(); ++bit) {
+            if (rhs.BitSet(bit)) {
+                result = result.MultipliedWrapping(base);
             }
-            base *= base;
-            exponent >>= 1;
+            base = base.MultipliedWrapping(base);
         }
         return Make(left.Type(), result);
     }
     case TokenKind::Slash:
-    case TokenKind::Percent:
-        if (rhs == 0) {
+    case TokenKind::Percent: {
+        const WideIntegerDivision division = lhs.Divided(rhs, isSigned);
+        if (!division.HasValue()) {
             return std::nullopt;
         }
-        if (left.GetKind() == TypedConstant::Kind::SignedInteger) {
-            const std::int64_t signedLeft = *left.SignedValue();
-            const std::int64_t signedRight = *right.SignedValue();
-            const std::int64_t minimum = left.Width() == 64 ? INT64_MIN : -(std::int64_t{1} << (left.Width() - 1));
-            if (signedLeft == minimum && signedRight == -1) {
-                return std::nullopt;
-            }
-            return Make(left.Type(), static_cast<std::uint64_t>(op == TokenKind::Slash ? signedLeft / signedRight
-                                                                                       : signedLeft % signedRight));
-        }
-        return Make(left.Type(), op == TokenKind::Slash ? lhs / rhs : lhs % rhs);
+        return Make(left.Type(), op == TokenKind::Slash ? division.quotient : division.remainder);
+    }
     case TokenKind::Amp:
-        return Make(left.Type(), lhs & rhs);
+        return Make(left.Type(), lhs.BitwiseAnd(rhs));
     case TokenKind::Pipe:
-        return Make(left.Type(), lhs | rhs);
+        return Make(left.Type(), lhs.BitwiseOr(rhs));
     case TokenKind::Caret:
-        return Make(left.Type(), lhs ^ rhs);
+        return Make(left.Type(), lhs.BitwiseXor(rhs));
     case TokenKind::LessLess:
     case TokenKind::GreaterGreater:
     case TokenKind::GreaterGreaterGreater: {
@@ -296,16 +242,10 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
             return std::nullopt;
         }
         if (op == TokenKind::LessLess) {
-            return Make(left.Type(), lhs << *amount);
+            return Make(left.Type(), lhs.ShiftedLeft(*amount));
         }
-        if (op == TokenKind::GreaterGreaterGreater || left.GetKind() == TypedConstant::Kind::UnsignedInteger) {
-            return Make(left.Type(), lhs >> *amount);
-        }
-        if (*amount == 0 || !SignBit(left)) {
-            return Make(left.Type(), lhs >> *amount);
-        }
-        const std::uint64_t fill = Mask(left.Width()) ^ (Mask(left.Width()) >> *amount);
-        return Make(left.Type(), (lhs >> *amount) | fill);
+        const bool arithmetic = op != TokenKind::GreaterGreaterGreater && isSigned;
+        return Make(left.Type(), lhs.ShiftedRight(*amount, arithmetic));
     }
     case TokenKind::Equal:
         return MakeBoolean(lhs == rhs);
@@ -315,21 +255,11 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
     case TokenKind::LessEqual:
     case TokenKind::Greater:
     case TokenKind::GreaterEqual: {
-        bool result = false;
-        if (left.GetKind() == TypedConstant::Kind::SignedInteger) {
-            const std::int64_t signedLeft = *left.SignedValue();
-            const std::int64_t signedRight = *right.SignedValue();
-            result = op == TokenKind::Less      ? signedLeft < signedRight
-                   : op == TokenKind::LessEqual ? signedLeft <= signedRight
-                   : op == TokenKind::Greater   ? signedLeft > signedRight
-                                                : signedLeft >= signedRight;
-        }
-        else {
-            result = op == TokenKind::Less      ? lhs < rhs
-                   : op == TokenKind::LessEqual ? lhs <= rhs
-                   : op == TokenKind::Greater   ? lhs > rhs
-                                                : lhs >= rhs;
-        }
+        const std::strong_ordering ordering = lhs.Compare(rhs, isSigned);
+        const bool result = op == TokenKind::Less      ? ordering == std::strong_ordering::less
+                          : op == TokenKind::LessEqual ? ordering != std::strong_ordering::greater
+                          : op == TokenKind::Greater   ? ordering == std::strong_ordering::greater
+                                                       : ordering != std::strong_ordering::less;
         return MakeBoolean(result);
     }
     default:
@@ -342,13 +272,12 @@ std::optional<TypedConstant> CastConstant(const TypedConstant &value, const Type
     if (!target || target->width == 0) {
         return std::nullopt;
     }
-    const std::uint64_t bits =
-        value.GetKind() == TypedConstant::Kind::SignedInteger ? SignExtendedBits(value) : value.RawBits();
     if (target->kind == TypedConstant::Kind::Boolean) {
         // The whole source value decides the truth, so `256 as bool` is true. Masking to the bool's storage width
         // first would have asked about the low byte instead and disagreed with what the back ends emit.
-        return Make(targetType, bits != 0 ? 1 : 0);
+        return Make(targetType, value.Bits().IsZero() ? 0 : 1);
     }
-    return Make(targetType, bits & Mask(target->width));
+    const bool sourceSigned = value.GetKind() == TypedConstant::Kind::SignedInteger;
+    return Make(targetType, value.Bits().ConvertedWrapping(target->width, sourceSigned));
 }
 } // namespace Rux::Optimization

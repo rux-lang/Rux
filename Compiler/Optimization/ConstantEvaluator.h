@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "Numeric/WideInteger.h"
 #include "Semantic/Type.h"
 
 #include <cstdint>
@@ -35,14 +36,18 @@ public:
     }
 
     /// Width in bits, and the width the stored bits are masked to.
-    [[nodiscard]] std::uint8_t Width() const noexcept {
+    [[nodiscard]] std::uint32_t Width() const noexcept {
         return width;
     }
 
-    /// The value as stored: masked to `Width`, and therefore not sign-extended even when the kind is signed.
-    /// `SignedValue` is what applies the sign.
-    [[nodiscard]] std::uint64_t RawBits() const noexcept {
+    /// The complete stored bit pattern, masked to `Width` and never sign-extended.
+    [[nodiscard]] const WideInteger &Bits() const noexcept {
         return bits;
+    }
+
+    /// The low machine word. Kept for narrow optimizer queries; use `Bits` whenever high words affect identity.
+    [[nodiscard]] std::uint64_t RawBits() const noexcept {
+        return bits.Word64(0);
     }
 
     [[nodiscard]] const TypeRef &Type() const noexcept {
@@ -52,8 +57,7 @@ public:
     /// The value, or nullopt when this constant is not a boolean.
     [[nodiscard]] std::optional<bool> BooleanValue() const noexcept;
 
-    /// The value sign-extended out of `Width`, or nullopt when the kind is not a signed integer. An unsigned constant
-    /// is read through `RawBits`.
+    /// The signed value when both the kind and magnitude fit a host `int64_t`, or nullopt otherwise.
     [[nodiscard]] std::optional<std::int64_t> SignedValue() const noexcept;
 
     /// Render back to source spelling, so a folded expression can be substituted into HIR as an ordinary literal.
@@ -61,12 +65,12 @@ public:
 
 private:
     friend class TypedConstantFactory;
-    TypedConstant(TypeRef inputType, Kind inputKind, std::uint8_t inputWidth, std::uint64_t inputBits);
+    TypedConstant(TypeRef inputType, Kind inputKind, WideInteger inputBits);
 
     TypeRef type;
     Kind kind;
-    std::uint8_t width;
-    std::uint64_t bits;
+    std::uint32_t width;
+    WideInteger bits;
 };
 
 /// These helpers intentionally return no value for operations that must remain in HIR, including traps and inputs
