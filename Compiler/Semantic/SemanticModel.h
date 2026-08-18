@@ -2,6 +2,7 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Semantic/CompileTimeContext.h"
+#include "Semantic/DropGlue.h"
 #include "Semantic/Type.h"
 #include "Semantic/TypeProperties.h"
 #include "Syntax/Ast/Ast.h"
@@ -125,6 +126,7 @@ struct SemanticModel {
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
+                  std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
                   std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues);
 
     [[nodiscard]] bool HasErrors() const noexcept;
@@ -160,6 +162,12 @@ struct SemanticModel {
     [[nodiscard]] const TypeProperties *TryGetProperties(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeProperties *TryGetProperties(const Pattern &pattern) const noexcept;
 
+    /// Returns the preordered destruction recipe for a concrete droppable type, or null for Copy/unresolved types.
+    [[nodiscard]] const DropGluePlan *TryGetDropGlue(const TypeRef &type) const noexcept;
+
+    /// Returns every synthesized recipe keyed by concrete type spelling. Entries remain valid for this model's life.
+    [[nodiscard]] const std::unordered_map<std::string, DropGluePlan> &DropGluePlans() const noexcept;
+
     /// Returns the constant folded for an accepted sizeof expression. Rejected sizeof expressions deliberately have no
     /// usable value.
     [[nodiscard]] const std::uint64_t *TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept;
@@ -174,6 +182,7 @@ private:
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
+    std::unordered_map<std::string, DropGluePlan> dropGluePlans;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
 };
 } // namespace Rux

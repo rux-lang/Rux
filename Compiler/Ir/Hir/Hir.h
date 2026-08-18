@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "Semantic/DropGlue.h"
 #include "Semantic/Type.h"
 #include "Semantic/TypeProperties.h"
 #include "SourceModel/SourceLocation.h"
@@ -513,6 +514,7 @@ struct HirModule {
 
 struct HirPackage {
     std::vector<HirModule> modules;
+    std::vector<DropGluePlan> dropGlues;
 };
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;

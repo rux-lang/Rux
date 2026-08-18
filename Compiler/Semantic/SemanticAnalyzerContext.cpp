@@ -72,6 +72,10 @@ std::unordered_map<std::string, TypeProperties> SemanticAnalyzerContext::TakeTyp
     return std::move(typeProperties);
 }
 
+std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropGluePlans() {
+    return std::move(dropGluePlans);
+}
+
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
     return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
 }
@@ -202,6 +206,7 @@ void SemanticAnalyzerContext::Run() {
     }
     ValidatePendingGenericInstantiations();
     RecordResolvedTypeProperties();
+    SynthesizeResolvedDropGlue();
     RecordResolvedTypeLayouts();
     BuildFinalSymbolIdentities();
 }

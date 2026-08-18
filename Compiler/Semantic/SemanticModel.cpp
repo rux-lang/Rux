@@ -121,6 +121,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                              std::unordered_map<std::string, TypeProperties> inputTypeProperties,
+                             std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
                              std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
@@ -135,6 +136,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , vtableIdentities(std::move(inputVtableIdentities))
     , typeLayouts(std::move(inputTypeLayouts))
     , typeProperties(std::move(inputTypeProperties))
+    , dropGluePlans(std::move(inputDropGluePlans))
     , sizeOfValues(std::move(inputSizeOfValues)) {
 }
 
@@ -206,6 +208,15 @@ const TypeProperties *SemanticModel::TryGetProperties(const TypeExpr &typeNode) 
 const TypeProperties *SemanticModel::TryGetProperties(const Pattern &pattern) const noexcept {
     const TypeRef *type = TryGetType(pattern);
     return type ? TryGetProperties(*type) : nullptr;
+}
+
+const DropGluePlan *SemanticModel::TryGetDropGlue(const TypeRef &type) const noexcept {
+    const auto glue = dropGluePlans.find(type.ToString());
+    return glue == dropGluePlans.end() ? nullptr : &glue->second;
+}
+
+const std::unordered_map<std::string, DropGluePlan> &SemanticModel::DropGluePlans() const noexcept {
+    return dropGluePlans;
 }
 
 const std::uint64_t *SemanticModel::TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept {

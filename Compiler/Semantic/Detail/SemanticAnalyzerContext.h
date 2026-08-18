@@ -34,6 +34,7 @@ public:
 
     void Run();
     [[nodiscard]] std::unordered_map<std::string, TypeProperties> TakeTypeProperties();
+    [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
@@ -127,6 +128,7 @@ protected:
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
+    std::unordered_map<std::string, DropGluePlan> dropGluePlans;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
 
     SemanticProgramIndex programIndex;
@@ -257,6 +259,11 @@ private:
     virtual void ValidatePendingGenericInstantiations() = 0;
     virtual void RecordResolvedTypeLayouts() = 0;
     void RecordResolvedTypeProperties();
+    void SynthesizeResolvedDropGlue();
+    [[nodiscard]] std::vector<DropGlueStep> BuildDropGlueSteps(const TypeRef &type,
+                                                               std::unordered_set<std::string> &activeTypes);
+    [[nodiscard]] bool TypeImplementsDrop(const std::string &baseName) const;
+    [[nodiscard]] static std::string DropGlueSymbol(const TypeRef &type);
     virtual void BuildFinalSymbolIdentities() = 0;
 
     [[nodiscard]] TypeRef CheckUnary(TokenKind op, const TypeRef &operand, SourceLocation location);

@@ -3572,6 +3572,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(vtableIdentities),
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),
+                         analyzer.TakeDropGluePlans(),
                          std::move(sizeOfValues)};
 }
 } // namespace Rux
