@@ -134,6 +134,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticConstraints.cpp
     Semantic/SemanticMoveState.cpp
     Semantic/SemanticDropGlue.cpp
+    Semantic/SemanticIteration.cpp
     Semantic/SemanticStatements.cpp
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp

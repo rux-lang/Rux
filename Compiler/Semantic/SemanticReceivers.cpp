@@ -35,6 +35,7 @@ TypeRef SemanticAnalyzerContext::DeclareReceiver(const FuncDecl &declaration, co
         }
     }
     CheckReceiverPlacement(declaration, isMethod);
+    ValidateIteratorConvention(declaration, isMethod);
 
     if (isMethod) {
         Symbol self;

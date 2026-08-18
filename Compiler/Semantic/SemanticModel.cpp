@@ -132,6 +132,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                              std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
+                             std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                              std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                              std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
@@ -149,6 +150,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , vtableIdentities(std::move(inputVtableIdentities))
     , constraintWitnesses(std::move(inputConstraintWitnesses))
     , propagations(std::move(inputPropagations))
+    , iterations(std::move(inputIterations))
     , typeLayouts(std::move(inputTypeLayouts))
     , typeProperties(std::move(inputTypeProperties))
     , dropGluePlans(std::move(inputDropGluePlans))
@@ -204,6 +206,11 @@ const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const st
 const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {
     const auto propagation = propagations.find(&expression);
     return propagation == propagations.end() ? nullptr : &propagation->second;
+}
+
+const ResolvedIteration *SemanticModel::TryGetIteration(const ForStmt &statement) const noexcept {
+    const auto iteration = iterations.find(&statement);
+    return iteration == iterations.end() ? nullptr : &iteration->second;
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {
