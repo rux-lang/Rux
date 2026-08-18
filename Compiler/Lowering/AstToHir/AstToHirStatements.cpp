@@ -123,6 +123,13 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = dynamic_cast<const ForStmt *>(&stmt)) {
+        // A subject the iterator convention drives is desugared into the calls that drive it. An array, a slice and a
+        // range keep the direct loop, which the back ends already lower without any call at all.
+        if (const ResolvedIteration *iteration = model.TryGetIteration(*statement);
+            iteration && (iteration->kind == ResolvedIteration::Kind::Iterator ||
+                          iteration->kind == ResolvedIteration::Kind::Iterable)) {
+            return LowerIteratorFor(*statement, *iteration);
+        }
         auto lowered = std::make_unique<HirForStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;

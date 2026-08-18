@@ -179,7 +179,7 @@ protected:
         std::optional<TypeRef> failure;
     };
 
-    [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type) const;
+    [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type);
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
@@ -199,11 +199,22 @@ protected:
         TypeRef iteratorType = TypeRef::MakeUnknown();
         const FuncDecl *advance = nullptr;
         const FuncDecl *entry = nullptr;
+        /// What `Next` reports, and the enum declaration that reports it.
+        TypeRef reportedType = TypeRef::MakeUnknown();
+        const EnumDecl *reportedDeclaration = nullptr;
     };
 
     [[nodiscard]] const FuncDecl *LookupIteratorAdvance(const TypeRef &type) const;
     [[nodiscard]] const FuncDecl *LookupIterableEntry(const TypeRef &type) const;
-    [[nodiscard]] std::optional<TypeRef> IteratorItemType(const TypeRef &iteratorType, const FuncDecl &advance);
+
+    /// What one `Next` reports: the item it carries, the Option type it is wrapped in, and that enum's declaration.
+    struct ReportedItem {
+        TypeRef itemType;
+        TypeRef reportedType;
+        const EnumDecl *declaration = nullptr;
+    };
+
+    [[nodiscard]] std::optional<ReportedItem> ReportedItemOf(const TypeRef &iteratorType, const FuncDecl &advance);
     [[nodiscard]] std::optional<IterationShape> IterationShapeOf(const TypeRef &subject);
     void EmitNotIterable(SourceLocation location, const TypeRef &subject) const;
     void ValidateIteratorConvention(const FuncDecl &declaration, bool isMethod);

@@ -122,6 +122,12 @@ struct ResolvedIteration {
     TypeRef iteratorType;
     const FuncDecl *advance = nullptr;
     const FuncDecl *entry = nullptr;
+    /// What `Next` reports, and the enum it reports it with: the loop matches the item variant to continue and the end
+    /// variant to leave.
+    TypeRef reportedType;
+    std::string optionEnumName;
+    std::string someVariant;
+    std::string noneVariant;
 };
 
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation

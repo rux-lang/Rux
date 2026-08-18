@@ -72,6 +72,8 @@ protected:
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     /// Distinguishes the bindings two propagations in one expression introduce; only their uniqueness matters.
     std::size_t propagationOrdinal = 0;
+    /// The same for the iterator and item bindings nested convention-driven loops introduce.
+    std::size_t iterationOrdinal = 0;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
@@ -122,6 +124,8 @@ protected:
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
+    [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
+    [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);

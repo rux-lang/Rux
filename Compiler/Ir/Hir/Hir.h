@@ -400,6 +400,12 @@ struct HirMatchStmt : HirStmt {
     std::vector<HirMatchArm> arms;
 };
 
+/// A nested scope, which source has no syntax for. A desugaring that needs a binding of its own -- the iterator a `for`
+/// over a user-written container advances -- puts it here so the binding lives exactly as long as the construct does.
+struct HirScopeStmt : HirStmt {
+    HirBlock block;
+};
+
 // return [expr];
 struct HirReturnStmt : HirStmt {
     std::optional<HirExprPtr> value;

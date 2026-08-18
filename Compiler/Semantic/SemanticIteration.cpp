@@ -13,6 +13,9 @@ namespace Rux::SemanticDetail {
 namespace {
 constexpr std::string_view kNextMethod = "Next";
 constexpr std::string_view kIterateMethod = "Iterate";
+/// The variants a `Next` reports with. They are `Option`'s, named here because the loop matches them by name.
+constexpr std::string_view kOptionSomeVariant = "Some";
+constexpr std::string_view kOptionNoneVariant = "None";
 
 /// The parameters a method declares besides its receiver.
 [[nodiscard]] std::size_t WrittenParameterCount(const FuncDecl &declaration) {
@@ -57,7 +60,8 @@ const FuncDecl *SemanticAnalyzerContext::LookupIteratorAdvance(const TypeRef &ty
     return nullptr;
 }
 
-std::optional<TypeRef> SemanticAnalyzerContext::IteratorItemType(const TypeRef &iteratorType, const FuncDecl &advance) {
+std::optional<SemanticAnalyzerContext::ReportedItem>
+SemanticAnalyzerContext::ReportedItemOf(const TypeRef &iteratorType, const FuncDecl &advance) {
     if (!advance.returnType) {
         return std::nullopt;
     }
@@ -66,7 +70,7 @@ std::optional<TypeRef> SemanticAnalyzerContext::IteratorItemType(const TypeRef &
     if (!reported || reported->kind != PropagationShape::Kind::Option) {
         return std::nullopt;
     }
-    return reported->payload;
+    return ReportedItem{reported->payload, returned, reported->declaration};
 }
 
 const FuncDecl *SemanticAnalyzerContext::LookupIterableEntry(const TypeRef &type) const {
@@ -105,11 +109,13 @@ SemanticAnalyzerContext::IterationShapeOf(const TypeRef &subject) {
     }
 
     if (const FuncDecl *advance = LookupIteratorAdvance(subject)) {
-        if (auto item = IteratorItemType(subject, *advance)) {
+        if (auto reported = ReportedItemOf(subject, *advance)) {
             shape.kind = IterationShape::Kind::Iterator;
-            shape.itemType = std::move(*item);
+            shape.itemType = std::move(reported->itemType);
             shape.iteratorType = subject;
             shape.advance = advance;
+            shape.reportedType = std::move(reported->reportedType);
+            shape.reportedDeclaration = reported->declaration;
             return shape;
         }
         return std::nullopt;
@@ -120,12 +126,14 @@ SemanticAnalyzerContext::IterationShapeOf(const TypeRef &subject) {
     if (const FuncDecl *entry = LookupIterableEntry(subject)) {
         const TypeRef iteratorType = ResolveMethodReturnType(subject, *entry);
         if (const FuncDecl *advance = LookupIteratorAdvance(iteratorType)) {
-            if (auto item = IteratorItemType(iteratorType, *advance)) {
+            if (auto reported = ReportedItemOf(iteratorType, *advance)) {
                 shape.kind = IterationShape::Kind::Iterable;
-                shape.itemType = std::move(*item);
+                shape.itemType = std::move(reported->itemType);
                 shape.iteratorType = iteratorType;
                 shape.advance = advance;
                 shape.entry = entry;
+                shape.reportedType = std::move(reported->reportedType);
+                shape.reportedDeclaration = reported->declaration;
                 return shape;
             }
         }
@@ -153,6 +161,12 @@ void SemanticAnalyzerContext::RecordIteration(const ForStmt &statement, const It
     iteration.iteratorType = shape.iteratorType;
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
+    iteration.reportedType = shape.reportedType;
+    if (shape.reportedDeclaration) {
+        iteration.optionEnumName = shape.reportedDeclaration->name;
+        iteration.someVariant = std::string(kOptionSomeVariant);
+        iteration.noneVariant = std::string(kOptionNoneVariant);
+    }
     iterations.insert_or_assign(&statement, std::move(iteration));
 }
 
@@ -214,7 +228,7 @@ void SemanticAnalyzerContext::ValidateIteratorConvention(const FuncDecl &declara
             return;
         }
         const FuncDecl *advance = LookupIteratorAdvance(iteratorType);
-        if (advance && IteratorItemType(iteratorType, *advance)) {
+        if (advance && ReportedItemOf(iteratorType, *advance)) {
             return;
         }
         EmitError(

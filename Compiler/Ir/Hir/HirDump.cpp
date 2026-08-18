@@ -311,6 +311,11 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         DumpBlock(out, s->body, indent + "  ");
         return;
     }
+    if (auto *s = dynamic_cast<const HirScopeStmt *>(&stmt)) {
+        out << indent << "scope\n";
+        DumpBlock(out, s->block, indent + "  ");
+        return;
+    }
     if (auto *s = dynamic_cast<const HirMatchStmt *>(&stmt)) {
         out << std::format("{}match {}\n", indent, PrintExpr(*s->subject));
         for (const auto &arm : s->arms) {

@@ -4,6 +4,7 @@
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <format>
+#include <unordered_map>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -26,7 +27,7 @@ constexpr std::string_view kOptionNone = "None";
 } // namespace
 
 std::optional<SemanticAnalyzerContext::PropagationShape>
-SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) const {
+SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) {
     if (type.kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
@@ -51,14 +52,26 @@ SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) const {
     PropagationShape shape;
     shape.declaration = &enumeration;
     shape.kind = isResult ? PropagationShape::Kind::Result : PropagationShape::Kind::Option;
-    // The payload and the failure travel as the type arguments of their own variants, so a `Result` with no arguments
-    // left to name -- the generic declaration read inside itself -- has neither, and propagation stays unresolved
-    // rather than guessing at one.
-    if (!arguments.empty()) {
-        shape.payload = arguments.front();
+
+    // A generic declaration carries the payload and the failure as its type arguments; one written for a single type
+    // carries them as the fields of the variants themselves. Reading the fields covers both, because a generic
+    // variant's field is the parameter the argument substitutes.
+    std::unordered_map<std::string, TypeRef> substitutions;
+    for (std::size_t index = 0; index < arguments.size() && index < enumeration.typeParams.size(); ++index) {
+        substitutions.emplace(enumeration.typeParams[index].name, arguments[index]);
     }
-    if (shape.kind == PropagationShape::Kind::Result && arguments.size() >= 2) {
-        shape.failure = arguments[1];
+    const auto payloadOf = [&](const std::string_view variantName) -> std::optional<TypeRef> {
+        const EnumDecl::Variant *variant = FindVariant(enumeration, variantName);
+        if (!variant || variant->fields.empty()) {
+            return std::nullopt;
+        }
+        return ResolveTypeWithSubstitution(*variant->fields.front(), substitutions);
+    };
+    if (const auto payload = payloadOf(shape.kind == PropagationShape::Kind::Result ? kResultSuccess : kOptionSome)) {
+        shape.payload = *payload;
+    }
+    if (shape.kind == PropagationShape::Kind::Result) {
+        shape.failure = payloadOf(kResultError);
     }
     return shape;
 }
