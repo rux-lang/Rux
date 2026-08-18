@@ -9,8 +9,8 @@ interface Measured {
     func Measure() -> int;
 }
 
-interface Named {
-    func Rank() -> int;
+interface Scaled {
+    func Times(factor: int) -> int;
 }
 
 // An interface that requires nothing: every type argument satisfies it, so the bound only documents intent.
@@ -26,9 +26,9 @@ extend Square : Measured {
     }
 }
 
-extend Square : Named {
-    func Rank(self: *Square) -> int {
-        return 7;
+extend Square : Scaled {
+    func Times(self: *Square, factor: int) -> int {
+        return self.size * factor;
     }
 }
 
@@ -44,37 +44,51 @@ extend Segment {
     }
 }
 
-// Resolving a bound does not change what the generic compiles to: the body is instantiated per type argument exactly
-// as an unconstrained one is. Calling `Measure` through a `T`-typed value needs constraint evidence in lowering, and
-// arrives with that work rather than with bound resolution.
-func Scaled<T: Measured>(factor: int) -> int {
-    return factor * 2;
+// Each instantiation calls the method of its own type argument, resolved statically: no vtable is involved, and the
+// symbolic form of this function is never emitted at all.
+func Total<T: Measured>(value: T) -> int {
+    return value.Measure();
 }
 
-// A bound is satisfied by a type parameter that carries it, so the constraint travels through this call unchanged.
-func Forwarded<U: Measured>(factor: int) -> int {
-    return Scaled<U>(factor) + 1;
+// A bound is satisfied by a type parameter that carries it, so the constraint travels through this call unchanged and
+// the inner instantiation reaches the same concrete method.
+func Doubled<U: Measured>(value: U) -> int {
+    return Total<U>(value) * 2;
 }
 
-func Ranked<T: Measured + Named>(factor: int) -> int {
-    return factor + 3;
+// Two bounds on one parameter, each contributing its own operation.
+func Both<T: Measured + Scaled>(value: T, factor: int) -> int {
+    return value.Measure() + value.Times(factor);
 }
 
 func Tagged<T: Marker>(value: T) -> int {
     return 11;
 }
 
+struct Cell<T: Measured> {
+    item: T;
+}
+
+// A method of a generic extend block calls the bound the extended type declared.
+extend Cell<T> {
+    func Inside(self: *Cell<T>) -> int {
+        return self.item.Measure();
+    }
+}
+
 func Main() -> int {
     var square = Square { size: 5 };
     Assert(square.Measure() == 25, "Expected the nominal implementation to measure the square");
-    Assert(square.Rank() == 7, "Expected the second implementation to rank the square");
-    Assert(Scaled<Square>(4) == 8, "Expected the constrained generic to run for a conforming type");
-    Assert(Forwarded<Square>(4) == 9, "Expected a forwarded bound to instantiate the callee");
-    Assert(Ranked<Square>(4) == 7, "Expected a doubly bounded generic to accept a type meeting both bounds");
+    Assert(Total<Square>(square) == 25, "Expected the bound operation to resolve to the square's method");
+    Assert(Doubled<Square>(square) == 50, "Expected a forwarded bound to reach the same method");
+    Assert(Both<Square>(square, 3) == 40, "Expected each bound to contribute its own operation");
 
     var segment = Segment { length: 9 };
-    Assert(segment.Measure() == 9, "Expected the declared method to measure the segment");
-    Assert(Scaled<Segment>(6) == 12, "Expected a structurally conforming type to satisfy the bound");
+    Assert(Total<Segment>(segment) == 9, "Expected a structurally conforming type to satisfy the bound");
+    Assert(Doubled<Segment>(segment) == 18, "Expected the second instantiation to call its own method");
+
+    var cell = Cell<Square> { item: square };
+    Assert(cell.Inside() == 25, "Expected a generic extend block to call the bound of the type it extends");
 
     Assert(Tagged<int>(1) == 11, "Expected an interface requiring nothing to accept any type argument");
     return 0;

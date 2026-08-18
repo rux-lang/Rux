@@ -35,6 +35,7 @@ public:
     void Run();
     [[nodiscard]] std::unordered_map<std::string, TypeProperties> TakeTypeProperties();
     [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
+    [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
@@ -105,6 +106,22 @@ protected:
     [[nodiscard]] bool TypeArgumentsSatisfyBounds(const std::vector<TypeParameter> &parameters,
                                                   const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason);
+    [[nodiscard]] const FuncDecl *SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const;
+
+    /// The bound operation a constrained receiver's method name resolves to, and where it sits in its interface.
+    struct ConstrainedOperation {
+        std::string parameterName;
+        std::string interfaceName;
+        const FuncDecl *operation = nullptr;
+        std::size_t operationIndex = 0;
+    };
+
+    [[nodiscard]] std::optional<ConstrainedOperation> LookupConstrainedOperation(const TypeRef &receiverType,
+                                                                                 const std::string &methodName) const;
+    void EmitMissingConstrainedOperation(SourceLocation location, const TypeRef &receiverType,
+                                         const std::string &methodName) const;
+    void RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
+                                  const TypeRef &receiverType);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
@@ -175,6 +192,9 @@ protected:
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
+    /// One entry per (bound, concrete type) pair a use site proved, so lowering can call the satisfying method directly
+    /// in each instantiation instead of dispatching through the interface.
+    std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
 
     SemanticProgramIndex programIndex;
