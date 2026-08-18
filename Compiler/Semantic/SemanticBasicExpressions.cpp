@@ -1,6 +1,7 @@
 // Checking for literals, names, operators and assignment, including the
 // mutability rules an assignment target has to satisfy.
 
+#include "Numeric/IntegerLiteral.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
 #include <format>
@@ -170,11 +171,46 @@ bool IsCastValue(const TypeRef &type) noexcept {
 }
 } // namespace
 
+void SemanticAnalyzerContext::ValidateSuffixedIntegerLiteral(const LiteralExpr &literal, const bool negative) {
+    if (literal.token.kind != TokenKind::IntLiteral) {
+        return;
+    }
+    const NumericLiteralSuffixInfo *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(literal.token.text));
+    if (!suffix || suffix->isFloat) {
+        return;
+    }
+    // A pointer-sized suffix takes the target's width, which is what the value will actually be stored at.
+    const std::uint32_t bits =
+        suffix->bits != 0 ? suffix->bits : static_cast<std::uint32_t>(context.target.pointer_size * 8);
+    const auto magnitude = DecodeIntegerLiteral(literal.token.text, WideInteger::MaxBits);
+    if (!magnitude) {
+        // Beyond even the widest width there is, so no suffix could have held it.
+        EmitError(literal.location,
+                  std::format("integer literal is out of range for type '{}'", LiteralType(literal.token).ToString()));
+        return;
+    }
+    if (!IntegerLiteralFits(*magnitude, negative, bits, suffix->isSigned)) {
+        EmitError(literal.location,
+                  std::format("integer literal is out of range for type '{}'", LiteralType(literal.token).ToString()));
+    }
+}
+
 std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr &expression) {
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
+        if (!negatedIntegerLiterals.contains(literal)) {
+            ValidateSuffixedIntegerLiteral(*literal, false);
+        }
         return LiteralType(literal->token);
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+        // A minus and the literal under it are one written value, so the magnitude is checked against the negative
+        // end of the range rather than the positive one: `-128i8` is in range where `128i8` is not.
+        if (unary->op == TokenKind::Minus) {
+            if (const auto *operand = dynamic_cast<const LiteralExpr *>(unary->operand.get())) {
+                negatedIntegerLiterals.insert(operand);
+                ValidateSuffixedIntegerLiteral(*operand, true);
+            }
+        }
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         checkingPlainAssignmentTarget = checkingPlainAssignmentTarget || unary->op == TokenKind::At;
         TypeRef operandType = CheckExpr(*unary->operand);

@@ -1,0 +1,7 @@
+4:17: error: integer literal is out of range for type 'uint8'
+5:18: error: integer literal is out of range for type 'uint16'
+6:23: error: integer literal is out of range for type 'int8'
+7:26: error: integer literal is out of range for type 'int8'
+8:18: error: integer literal is out of range for type 'uint64'
+17:5: error: integer literal is out of range for type 'uint8'
+18:5: error: integer literal is out of range for type 'uint16'

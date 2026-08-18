@@ -311,6 +311,12 @@ protected:
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 
+    /// Report a suffixed integer literal whose magnitude the suffix's own type cannot hold.
+    ///
+    /// An unsuffixed literal is checked against whatever it is being assigned to; a suffixed one names its type
+    /// itself, so nothing else ever checks it.
+    void ValidateSuffixedIntegerLiteral(const LiteralExpr &literal, bool negative);
+
 private:
     struct DeferredUnaryCheck {
         TokenKind op;
@@ -330,6 +336,10 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
+
+    /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked
+    /// so the literal's own check knows its magnitude is a negative one. `-128i8` is in range while `128i8` is not.
+    std::unordered_set<const LiteralExpr *> negatedIntegerLiterals;
     /// A type expression is resolved once per place it is read -- a parameter's type is resolved again for its symbol,
     /// its signature, and each overload attempt -- so an unsatisfied bound is reported for the spelling, not per read.
     std::unordered_set<const TypeExpr *> reportedTypeArgumentConstraints;

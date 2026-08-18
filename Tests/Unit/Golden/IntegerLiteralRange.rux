@@ -1,0 +1,19 @@
+func Main() {
+    // A suffixed literal names its own type, so nothing else checks it and the
+    // magnitude has to be checked against the width the suffix chose.
+    let past8 = 256u8;
+    let past16 = 65536u16;
+    let pastSigned8 = 128i8;
+    let pastNegative8 = -129i8;
+    let past64 = 18446744073709551616u64;
+
+    // The boundary values themselves are in range, including the most negative
+    // one, which is written as a magnitude one past the largest positive one.
+    let last8 = 255u8;
+    let lastSigned8 = 127i8;
+    let leastSigned8 = -128i8;
+
+    // An unsuffixed literal is checked against whatever it is assigned to.
+    let target: uint8 = 256;
+    let negativeTarget: uint16 = -1;
+}

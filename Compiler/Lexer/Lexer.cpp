@@ -1,5 +1,7 @@
 #include "Lexer/Lexer.h"
 
+#include "Numeric/IntegerLiteral.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -704,13 +706,9 @@ void Lexer::ConsumeNumberSuffix(const SourceLocation start) {
     }
 
     const std::string_view suffix(source.data() + suffixStart, pos - suffixStart);
-    static constexpr std::string_view validSuffixes[] = {
-        "i", "i8", "i16", "i32", "i64", "u", "u8", "u16", "u32", "u64", "f32", "f64",
-    };
-    if (std::find(std::begin(validSuffixes), std::end(validSuffixes), suffix) == std::end(validSuffixes)) {
+    if (FindNumericLiteralSuffix(suffix) == nullptr) {
         EmitError(start, std::format("numeric literal suffix '{}' is not recognized", suffix),
-                  "use 'i', 'i8', 'i16', 'i32', 'i64', 'u', 'u8', 'u16', 'u32', 'u64', 'f32', or 'f64'",
-                  std::string(LiteralDocumentation));
+                  std::format("use {}", NumericLiteralSuffixList()), std::string(LiteralDocumentation));
     }
 }
 
