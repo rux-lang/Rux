@@ -620,17 +620,19 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     if (hf.isAsm) {
         lf.isAsm = true;
         lf.asmBody = hf.asmBody;
-        for (const auto &[name, type, isVariadic] : hf.params) {
-            lf.params.push_back({LirNoReg, type, name});
+        for (const auto &param : hf.params) {
+            lf.params.push_back({LirNoReg, param.type, param.name});
         }
         return lf;
     }
     CheckedLirBuilder functionBuilder(lf);
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
-    for (const auto &[name, type, isVariadic] : hf.params) {
+    for (const auto &param : hf.params) {
+        const std::string &name = param.name;
+        const TypeRef &type = param.type;
         const LirReg pr = builder->DefineParameter();
-        if (isVariadic) {
+        if (param.isVariadic) {
             locals[name] = pr;
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }

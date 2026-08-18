@@ -26,6 +26,17 @@ using HirExprPtr = std::unique_ptr<HirExpr>;
 using HirStmtPtr = std::unique_ptr<HirStmt>;
 using HirPatternPtr = std::unique_ptr<HirPattern>;
 
+/// One compiler-inserted destruction of a named binding. The action is conditional on the binding's drop flag: a
+/// successful initialization sets the flag and a consuming expression clears it after evaluating the source value.
+struct HirDropAction {
+    std::uint64_t bindingId = 0;
+    std::string name;
+    TypeRef type;
+    std::string glueSymbol;
+    /// Declaration site retained for cleanup diagnostics and later drop-glue lowering.
+    SourceLocation origin;
+};
+
 // HIR Block
 struct HirBlock {
     SourceLocation location;
@@ -51,6 +62,8 @@ struct HirLiteralPattern : HirPattern {
 struct HirBindingPattern : HirPattern {
     std::string name;
     TypeRef type;
+    /// Nonzero only when this pattern owns a value whose destruction is scheduled at the enclosing scope exit.
+    std::uint64_t bindingId = 0;
 };
 
 // lo..hi
@@ -100,6 +113,10 @@ struct HirExpr {
     TypeRef type;
     SourceLocation location;
     std::optional<ValueConsumptionKind> consumption;
+    /// The storage identity invalidated after this expression has been evaluated. Zero denotes a consumed temporary
+    /// or aggregate value that is not backed by a named binding. Cleanup lowering uses this identity as a drop flag,
+    /// so a path that consumes a local cannot destroy the same value again at scope exit.
+    std::uint64_t consumedBindingId = 0;
     virtual ~HirExpr() = default;
 };
 
@@ -255,6 +272,8 @@ struct HirMatchArm {
     SourceLocation location;
     HirPatternPtr pattern;
     HirExprPtr body;
+    /// Pattern bindings are destroyed after the arm body has produced its value.
+    std::vector<HirDropAction> cleanups;
 };
 
 // match expr { pat => expr, ... }
@@ -287,6 +306,13 @@ struct HirLetStmt : HirStmt {
     HirPatternPtr pattern;
     TypeRef type;
     HirExprPtr init;
+    /// Identity of the conditional drop flag established by this declaration, or zero for a Copy binding.
+    std::uint64_t bindingId = 0;
+};
+
+// Compiler-inserted cleanup on ordinary block fallthrough.
+struct HirDropStmt : HirStmt {
+    HirDropAction action;
 };
 
 // if cond { } else if cond { } else { }
@@ -344,6 +370,8 @@ struct HirMatchStmt : HirStmt {
 // return [expr];
 struct HirReturnStmt : HirStmt {
     std::optional<HirExprPtr> value;
+    /// Cleanups run after evaluating `value` and clearing its consumed binding, but before control leaves the function.
+    std::vector<HirDropAction> cleanups;
 };
 
 // break [label];
@@ -370,6 +398,8 @@ struct HirParam {
     std::string name;
     TypeRef type;
     bool isVariadic = false;
+    /// Identity of an initially live parameter drop flag; Copy and borrowed parameters retain zero.
+    std::uint64_t bindingId = 0;
 };
 
 // func [asm] Name<T>(params) -> RetType { body }

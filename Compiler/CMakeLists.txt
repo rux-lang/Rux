@@ -175,6 +175,7 @@ rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHir.cpp
     Lowering/AstToHir/AstToHirAggregates.cpp
     Lowering/AstToHir/AstToHirCalls.cpp
+    Lowering/AstToHir/CleanupPlanner.cpp
     Lowering/AstToHir/AstToHirContext.cpp
     Lowering/AstToHir/AstToHirDeclarations.cpp
     Lowering/AstToHir/AstToHirExpressions.cpp

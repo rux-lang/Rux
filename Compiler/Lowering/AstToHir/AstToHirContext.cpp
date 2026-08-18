@@ -47,6 +47,7 @@ AstToHirContext::AstToHirContext(const SemanticModel &inputModel, const std::vec
     , context(inputCompileTimeContext)
     , globalScope(nullptr)
     , currentScope(&globalScope)
+    , cleanupPlanner(inputModel)
     , diagnostics(outputDiagnostics) {
 }
 
@@ -74,6 +75,7 @@ void AstToHirContext::PushScope() {
     ownedScopes.push_back(std::make_unique<HirScope>(currentScope));
     currentScope = ownedScopes.back().get();
     constIntegerScopes.emplace_back();
+    cleanupPlanner.PushScope();
 }
 
 void AstToHirContext::PopScope() {
@@ -82,10 +84,48 @@ void AstToHirContext::PopScope() {
     if (constIntegerScopes.size() > 1) {
         constIntegerScopes.pop_back();
     }
+    cleanupPlanner.PopScope();
 }
 
 void AstToHirContext::Define(HirSymbol symbol) const {
     currentScope->Define(std::move(symbol));
+}
+
+std::uint64_t AstToHirContext::RegisterCleanupBinding(const std::string &name, const TypeRef &type,
+                                                      SourceLocation origin) {
+    return cleanupPlanner.Register(name, type, std::move(origin));
+}
+
+std::vector<HirDropAction> AstToHirContext::CurrentScopeCleanups() const {
+    return cleanupPlanner.CurrentScopeActions();
+}
+
+std::vector<HirDropAction> AstToHirContext::FunctionCleanups() const {
+    return cleanupPlanner.FunctionExitActions();
+}
+
+void AstToHirContext::AppendCurrentScopeCleanups(HirBlock &block) const {
+    for (HirDropAction action : CurrentScopeCleanups()) {
+        auto cleanup = std::make_unique<HirDropStmt>();
+        cleanup->location = block.location;
+        cleanup->action = std::move(action);
+        block.stmts.push_back(std::move(cleanup));
+    }
+}
+
+std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) const {
+    std::string_view name;
+    if (const auto *variable = dynamic_cast<const HirVarExpr *>(&expression)) {
+        name = variable->name;
+    }
+    else if (dynamic_cast<const HirSelfExpr *>(&expression)) {
+        name = "self";
+    }
+    if (name.empty()) {
+        return 0;
+    }
+    const HirSymbol *symbol = currentScope->Lookup(std::string(name));
+    return symbol && symbol->kind == HirSymbol::Kind::Var ? symbol->bindingId : 0;
 }
 
 void AstToHirContext::RegisterBuiltins() {

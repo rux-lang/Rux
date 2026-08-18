@@ -245,6 +245,9 @@ std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &par
         hp.name = p.name;
         hp.isVariadic = p.isVariadic;
         hp.type = p.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type))) : ResolveType(*p.type);
+        if (const HirSymbol *symbol = currentScope->Lookup(hp.name)) {
+            hp.bindingId = symbol->bindingId;
+        }
         out.push_back(std::move(hp));
     }
     return out;
@@ -274,6 +277,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         currentFunctionName = declModulePath.empty() ? d.name : declModulePath + "::" + d.name;
     }
     PushScope();
+    const CleanupPlanner::FunctionToken cleanupFunction = cleanupPlanner.BeginFunction();
     if (substitutions.empty()) {
         for (const auto &tp : d.typeParams) {
             HirSymbol sym;
@@ -289,6 +293,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         self.name = "self";
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         self.isMut = true;
+        self.bindingId = RegisterCleanupBinding(self.name, self.type, d.location);
         Define(self);
     }
     for (const auto &param : d.params) {
@@ -301,11 +306,13 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         sym.type =
             param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type))) : ResolveType(*param.type);
         sym.isMut = param.isMut;
+        sym.bindingId = RegisterCleanupBinding(sym.name, sym.type, param.location);
         Define(sym);
     }
     std::optional<HirBlock> body;
     if (d.body) {
         body = LowerBlock(*d.body);
+        AppendCurrentScopeCleanups(*body);
     }
     HirFunc hf;
     hf.name = overrideName.empty() ? d.name : overrideName;
@@ -320,6 +327,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.body = std::move(body);
     hf.location = d.location;
 
+    cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
     currentSelfType = savedSelfType;
     currentReturnType = savedRet;
