@@ -47,6 +47,17 @@ WideInteger WideInteger::FromUnsigned(const std::uint64_t source, const std::uin
     return value;
 }
 
+WideInteger WideInteger::FromWords(const std::span<const std::uint64_t> words, const std::uint32_t width) noexcept {
+    WideInteger value = Zero(width);
+    const std::size_t count = std::min(words.size(), MaxLimbs / 2);
+    for (std::size_t index = 0; index < count; ++index) {
+        value.limbs[index * 2] = static_cast<Limb>(words[index] & 0xFFFFFFFFU);
+        value.limbs[index * 2 + 1] = static_cast<Limb>(words[index] >> LimbBits);
+    }
+    value.Normalize();
+    return value;
+}
+
 WideInteger WideInteger::AllOnes(const std::uint32_t width) noexcept {
     WideInteger value = Zero(width);
     value.limbs.fill(~Limb{0});
@@ -143,6 +154,10 @@ bool WideInteger::IsZero() const noexcept {
     return std::ranges::all_of(limbs, [](const Limb limb) { return limb == 0; });
 }
 
+bool WideInteger::IsNegative() const noexcept {
+    return BitSet(width - 1);
+}
+
 bool WideInteger::BitSet(const std::uint32_t index) const noexcept {
     if (index >= width) {
         return false;
@@ -203,9 +218,31 @@ WideInteger WideInteger::Negated() const noexcept {
     return result;
 }
 
+WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
+    return isSigned && IsNegative() ? Negated() : *this;
+}
+
 WideInteger WideInteger::Truncated(const std::uint32_t newWidth) const noexcept {
     WideInteger result = *this;
     result.width = ClampWidth(newWidth);
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::Extended(const std::uint32_t newWidth, const bool isSigned) const noexcept {
+    const std::uint32_t clamped = ClampWidth(newWidth);
+    if (clamped <= width) {
+        return Truncated(clamped);
+    }
+
+    WideInteger result = *this;
+    const bool fill = isSigned && IsNegative();
+    result.width = clamped;
+    if (fill) {
+        for (std::uint32_t index = width; index < clamped; ++index) {
+            result.limbs[index / LimbBits] |= Limb{1} << (index % LimbBits);
+        }
+    }
     result.Normalize();
     return result;
 }

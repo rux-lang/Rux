@@ -104,6 +104,36 @@ TEST_CASE("a value reads back as words and as a machine word when it fits") {
     CHECK_EQ(wide.Word64(2), 0);
 }
 
+TEST_CASE("little-endian words are normalized to the requested width") {
+    constexpr std::array words{0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL, 0xFFFFFFFFFFFFFFFFULL};
+    const WideInteger value = WideInteger::FromWords(words, 100);
+    CHECK_EQ(value.Width(), 100);
+    CHECK_EQ(value.Word64(0), words[0]);
+    CHECK_EQ(value.Word64(1), 0x0000000876543210ULL);
+    CHECK_EQ(value.Word64(2), 0);
+}
+
+TEST_CASE("signedness helpers interpret the top bit without changing the stored pattern") {
+    const WideInteger positive = WideInteger::FromUnsigned(0x7F, 8);
+    CHECK_FALSE(positive.IsNegative());
+    CHECK_EQ(positive.Magnitude(true), positive);
+    CHECK_EQ(positive.Extended(128, true).ToDecimal(), "127");
+
+    const WideInteger negative = WideInteger::FromUnsigned(0x80, 8);
+    CHECK(negative.IsNegative());
+    CHECK_EQ(negative.Magnitude(true).ToDecimal(), "128");
+    CHECK_EQ(negative.Magnitude(false), negative);
+    CHECK_EQ(negative.Extended(128, true).Word64(0), 0xFFFFFFFFFFFFFF80ULL);
+    CHECK_EQ(negative.Extended(128, true).Word64(1), 0xFFFFFFFFFFFFFFFFULL);
+    CHECK_EQ(negative.Extended(128, false).ToDecimal(), "128");
+
+    // The sign bit need not coincide with a limb boundary.
+    const WideInteger partial = WideInteger::FromUnsigned(0x100, 9);
+    CHECK(partial.IsNegative());
+    CHECK_EQ(partial.Extended(16, true).Word64(0), 0xFF00);
+    CHECK_EQ(partial.Extended(8, true).ToDecimal(), "0");
+}
+
 TEST_CASE("truncating keeps the low bits and nothing above them") {
     CHECK_EQ(Decimal("511", 128).Truncated(8).ToDecimal(), "255");
     CHECK_EQ(Decimal("256", 128).Truncated(8).ToDecimal(), "0");
