@@ -90,6 +90,8 @@ private:
                                                                    const TypeRef &rhsType);
     [[nodiscard]] std::optional<A64Reg> LoadUnaryOperand(const LirInstr &instruction, const TypeRef &type);
     [[nodiscard]] std::optional<BinaryOperands> LoadFloatOperands(const LirInstr &instruction, const TypeRef &type);
+    [[nodiscard]] bool EmitSoftwareFloatNegation(const LirInstr &instruction);
+    [[nodiscard]] bool EmitSoftwareFloatConstant(const LirInstr &instruction);
     [[nodiscard]] bool EmitWideArithmetic(const LirInstr &instruction);
     [[nodiscard]] bool EmitWideConstant(const LirInstr &instruction);
     void LoadWideWord(A64Reg destination, LirReg value, int word);

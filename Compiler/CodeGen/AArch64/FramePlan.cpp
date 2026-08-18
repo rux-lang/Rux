@@ -56,7 +56,7 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
-        if (IsWideInteger(type)) {
+        if (IsWideInteger(type) || (IsSoftwareFloat(type) && RuntimeSize(type) > 8)) {
             return true;
         }
         if (type.IsRange()) {

@@ -22,6 +22,7 @@ set(RUX_TEST_SOURCES
     AArch64RcuRuntimeTests.cpp
     AArch64RcuVariadicAbiTests.cpp
     AArch64RuntimeHelperTests.cpp
+    AArch64SoftwareFloatTests.cpp
     AArch64WideIntegerTests.cpp
     AllocationMathTests.cpp
     ArtifactTests.cpp
