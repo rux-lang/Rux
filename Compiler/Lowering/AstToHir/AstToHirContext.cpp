@@ -4,6 +4,8 @@
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include "Semantic/PrimitiveCatalog.h"
+
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
@@ -160,7 +162,7 @@ void AstToHirContext::AppendFailureCleanup(std::vector<HirFailureCleanup> &edges
 }
 
 void AstToHirContext::RegisterBuiltins() {
-    const auto add = [this](const char *name, TypeRef type) {
+    const auto add = [this](const std::string_view name, TypeRef type) {
         HirSymbol symbol;
         symbol.kind = HirSymbol::Kind::Type;
         symbol.name = name;
@@ -168,28 +170,16 @@ void AstToHirContext::RegisterBuiltins() {
         globalScope.Define(std::move(symbol));
     };
     add("opaque", TypeRef::MakeOpaque());
-    add("bool8", TypeRef::MakeBool8());
-    add("bool16", TypeRef::MakeBool16());
-    add("bool32", TypeRef::MakeBool32());
-    add("bool", TypeRef::MakeBool());
-    add("char8", TypeRef::MakeChar8());
-    add("char16", TypeRef::MakeChar16());
-    add("char32", TypeRef::MakeChar32());
-    add("char", TypeRef::MakeChar());
-    add("int8", TypeRef::MakeInt8());
-    add("int16", TypeRef::MakeInt16());
-    add("int32", TypeRef::MakeInt32());
-    add("int64", TypeRef::MakeInt64());
-    add("int", TypeRef::MakeInt());
-    add("byte", TypeRef::MakeByte());
-    add("uint8", TypeRef::MakeUInt8());
-    add("uint16", TypeRef::MakeUInt16());
-    add("uint32", TypeRef::MakeUInt32());
-    add("uint64", TypeRef::MakeUInt64());
-    add("uint", TypeRef::MakeUInt());
-    add("float32", TypeRef::MakeFloat32());
-    add("float64", TypeRef::MakeFloat64());
-    add("float", TypeRef::MakeFloat());
+    // Semantic analysis has already rejected any use of a reserved primitive, so lowering binds only the spellings
+    // that carry a representation.
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (primitive.implemented) {
+            add(primitive.name, TypeRef::MakePrimitive(primitive.kind));
+        }
+    }
+    for (const PrimitiveAlias &alias : PrimitiveAliases()) {
+        add(alias.name, TypeRef::MakePrimitive(alias.kind));
+    }
 }
 
 void AstToHirContext::CollectModule(const Module &module) {

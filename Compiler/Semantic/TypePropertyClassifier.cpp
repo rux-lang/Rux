@@ -21,29 +21,15 @@ TypePropertyClassifier::TypePropertyClassifier(
 }
 
 TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
+    // Every primitive is a Copy type at every width, so the catalog answers for the whole family.
+    if (type.IsPrimitive()) {
+        return TypeProperties::Copy();
+    }
     switch (type.kind) {
     case TypeRef::Kind::Unknown:
     case TypeRef::Kind::TypeParam:
         return TypeProperties::Unresolved();
     case TypeRef::Kind::Opaque:
-    case TypeRef::Kind::Bool8:
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char8:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Char32:
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::Int64:
-    case TypeRef::Kind::UInt8:
-    case TypeRef::Kind::UInt16:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::UInt64:
-    case TypeRef::Kind::Int:
-    case TypeRef::Kind::UInt:
-    case TypeRef::Kind::Float32:
-    case TypeRef::Kind::Float64:
     case TypeRef::Kind::Str:
     case TypeRef::Kind::Pointer:
     case TypeRef::Kind::RangeFull:
@@ -65,8 +51,10 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     }
     case TypeRef::Kind::Named:
         return ClassifyNamed(type);
+    default:
+        // Every primitive was already classified above.
+        return TypeProperties::Unresolved();
     }
-    return TypeProperties::Unresolved();
 }
 
 TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {

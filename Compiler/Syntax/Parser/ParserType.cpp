@@ -307,7 +307,8 @@ std::vector<TypeExprPtr> Parser::ParseTypeArgs() {
 }
 
 /// Language aliases are normalized so extension and intrinsic binding keys match their resolved receiver types (for
-/// example, `bool[]` and `bool8[]`).
+/// example, `bool[]` and `bool8[]`). The parser sits below the semantic type system, so this repeats rather than
+/// reads the primitive catalog's alias table; `PrimitiveCatalogTests` fails if the two ever disagree.
 static std::string NormalizePrimitiveName(const std::string &name) {
     if (name == "bool") {
         return "bool8";

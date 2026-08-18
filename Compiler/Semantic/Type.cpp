@@ -1,62 +1,53 @@
 #include "Semantic/Type.h"
 
+#include "Semantic/PrimitiveCatalog.h"
 #include "Target/Layout.h"
 
 namespace Rux {
+namespace {
+/// The size a type of unknown target has. `TypeRef` is target-agnostic, so a pointer-sized primitive answers for the
+/// 64-bit targets the compiler is hosted and tested on; a caller that has a target reads `PrimitiveSize` directly.
+constexpr std::uint32_t DefaultPointerSize = 8;
+
+/// @return the family `kind` belongs to, or nullopt when `kind` is not a primitive
+std::optional<PrimitiveCategory> CategoryOf(const TypeRef::Kind kind) noexcept {
+    const PrimitiveInfo *info = FindPrimitive(kind);
+    return info ? std::optional{info->category} : std::nullopt;
+}
+
+bool IsCategory(const TypeRef::Kind kind, const PrimitiveCategory category) noexcept {
+    return CategoryOf(kind) == category;
+}
+} // namespace
+
 // TypeRef implementation
+bool TypeRef::IsBool() const noexcept {
+    return IsCategory(kind, PrimitiveCategory::Bool);
+}
+
+bool TypeRef::IsChar() const noexcept {
+    return IsCategory(kind, PrimitiveCategory::Char);
+}
+
 bool TypeRef::IsNumeric() const noexcept {
-    switch (kind) {
-    case Kind::Int8:
-    case Kind::Int16:
-    case Kind::Int32:
-    case Kind::Int64:
-    case Kind::Int:
-    case Kind::UInt8:
-    case Kind::UInt16:
-    case Kind::UInt32:
-    case Kind::UInt64:
-    case Kind::UInt:
-    case Kind::Float32:
-    case Kind::Float64:
-        return true;
-    default:
-        return false;
-    }
+    return IsInteger() || IsFloat();
 }
 
 bool TypeRef::IsInteger() const noexcept {
-    switch (kind) {
-    case Kind::Int8:
-    case Kind::Int16:
-    case Kind::Int32:
-    case Kind::Int64:
-    case Kind::Int:
-    case Kind::UInt8:
-    case Kind::UInt16:
-    case Kind::UInt32:
-    case Kind::UInt64:
-    case Kind::UInt:
-        return true;
-    default:
-        return false;
-    }
+    const auto category = CategoryOf(kind);
+    return category == PrimitiveCategory::SignedInt || category == PrimitiveCategory::UnsignedInt;
 }
 
 bool TypeRef::IsFloat() const noexcept {
-    return kind == Kind::Float32 || kind == Kind::Float64;
+    return IsCategory(kind, PrimitiveCategory::Float);
 }
 
 bool TypeRef::IsSigned() const noexcept {
-    switch (kind) {
-    case Kind::Int8:
-    case Kind::Int16:
-    case Kind::Int32:
-    case Kind::Int64:
-    case Kind::Int:
-        return true;
-    default:
-        return false;
-    }
+    return IsCategory(kind, PrimitiveCategory::SignedInt);
+}
+
+bool TypeRef::IsPrimitive() const noexcept {
+    return FindPrimitive(kind) != nullptr;
 }
 
 bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
@@ -147,33 +138,15 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
 }
 
 std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
+    if (const auto primitive = PrimitiveSize(kind, DefaultPointerSize)) {
+        return *primitive;
+    }
     switch (kind) {
     case Kind::Unknown:
     case Kind::TypeParam:
         return std::nullopt;
     case Kind::Opaque:
         return 0;
-    case Kind::Bool8:
-    case Kind::Char8:
-    case Kind::Int8:
-    case Kind::UInt8:
-        return 1;
-    case Kind::Bool16:
-    case Kind::Char16:
-    case Kind::Int16:
-    case Kind::UInt16:
-        return 2;
-    case Kind::Bool32:
-    case Kind::Char32:
-    case Kind::Int32:
-    case Kind::UInt32:
-    case Kind::Float32:
-        return 4;
-    case Kind::Int64:
-    case Kind::UInt64:
-    case Kind::Int:
-    case Kind::UInt:
-    case Kind::Float64:
     case Kind::Pointer:
     case Kind::Str:
     case Kind::Func:
@@ -227,8 +200,10 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
             return inner[0].SizeInBytes();
         }
         return std::nullopt;
+    default:
+        // Every primitive was already answered from the catalog above.
+        return std::nullopt;
     }
-    return std::nullopt;
 }
 
 std::string TypeRef::InstantiationName(const std::string_view base, const std::vector<TypeRef> &typeArgs) {
@@ -248,49 +223,16 @@ std::string TypeRef::InstantiationName(const std::string_view base, const std::v
 }
 
 std::string TypeRef::ToString() const {
+    if (const PrimitiveInfo *primitive = FindPrimitive(kind)) {
+        return std::string(primitive->name);
+    }
     switch (kind) {
     case Kind::Unknown:
         return "?";
     case Kind::Opaque:
         return "opaque";
-    case Kind::Bool8:
-        return "bool8";
-    case Kind::Bool16:
-        return "bool16";
-    case Kind::Bool32:
-        return "bool32";
-    case Kind::Char8:
-        return "char8";
-    case Kind::Char16:
-        return "char16";
-    case Kind::Char32:
-        return "char32";
     case Kind::Str:
         return "String";
-    case Kind::Int8:
-        return "int8";
-    case Kind::Int16:
-        return "int16";
-    case Kind::Int32:
-        return "int32";
-    case Kind::Int64:
-        return "int64";
-    case Kind::Int:
-        return "int";
-    case Kind::UInt8:
-        return "uint8";
-    case Kind::UInt16:
-        return "uint16";
-    case Kind::UInt32:
-        return "uint32";
-    case Kind::UInt64:
-        return "uint64";
-    case Kind::UInt:
-        return "uint";
-    case Kind::Float32:
-        return "float32";
-    case Kind::Float64:
-        return "float64";
     case Kind::Named:
         return name;
     case Kind::TypeParam:
@@ -349,8 +291,10 @@ std::string TypeRef::ToString() const {
         s += inner.empty() ? "opaque" : inner.back().ToString();
         return s;
     }
+    default:
+        // Every primitive was already spelled from the catalog above.
+        return "?";
     }
-    return "?";
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {

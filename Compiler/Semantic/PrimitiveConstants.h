@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Semantic/CompileTimeContext.h"
+#include "Semantic/PrimitiveCatalog.h"
 #include "Semantic/Type.h"
 
 #include <optional>
@@ -14,8 +15,6 @@ struct PrimitiveConstant {
     TypeRef type;
     std::string value;
 };
-
-[[nodiscard]] std::optional<TypeRef> PrimitiveTypeFromName(std::string_view name);
 
 [[nodiscard]] std::optional<PrimitiveConstant> LookupPrimitiveConstant(const TypeRef &type, std::string_view name,
                                                                        const CompileTimeContext &context);

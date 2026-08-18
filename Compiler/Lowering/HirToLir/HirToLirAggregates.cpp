@@ -1,6 +1,7 @@
 // Aggregate initialization, pattern, and match lowering.
 
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <cassert>
 #include <format>
@@ -289,53 +290,8 @@ TypeRef HirToLirContext::SliceElementTypeFromType(const TypeRef &type) {
         constexpr std::string_view prefix = "Slice<";
         if (type.name.starts_with(prefix) && type.name.ends_with(">")) {
             const std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-            if (elemName == "bool" || elemName == "bool8") {
-                return TypeRef::MakeBool();
-            }
-            if (elemName == "char8") {
-                return TypeRef::MakeChar8();
-            }
-            if (elemName == "char16") {
-                return TypeRef::MakeChar16();
-            }
-            if (elemName == "char32" || elemName == "char") {
-                return TypeRef::MakeChar();
-            }
-            if (elemName == "int8") {
-                return TypeRef::MakeInt8();
-            }
-            if (elemName == "int16") {
-                return TypeRef::MakeInt16();
-            }
-            if (elemName == "int32") {
-                return TypeRef::MakeInt32();
-            }
-            if (elemName == "int64") {
-                return TypeRef::MakeInt64();
-            }
-            if (elemName == "int") {
-                return TypeRef::MakeInt();
-            }
-            if (elemName == "byte" || elemName == "uint8") {
-                return TypeRef::MakeUInt8();
-            }
-            if (elemName == "uint16") {
-                return TypeRef::MakeUInt16();
-            }
-            if (elemName == "uint32") {
-                return TypeRef::MakeUInt32();
-            }
-            if (elemName == "uint64") {
-                return TypeRef::MakeUInt64();
-            }
-            if (elemName == "uint") {
-                return TypeRef::MakeUInt();
-            }
-            if (elemName == "float32") {
-                return TypeRef::MakeFloat32();
-            }
-            if (elemName == "float64") {
-                return TypeRef::MakeFloat64();
+            if (const auto primitive = PrimitiveTypeFromName(elemName)) {
+                return *primitive;
             }
             return TypeRef::MakeNamed(elemName);
         }

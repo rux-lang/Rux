@@ -54,6 +54,7 @@ set(RUX_TEST_SOURCES
     LayoutTests.cpp
     LexerTests.cpp
     LinearScanTests.cpp
+    PrimitiveCatalogTests.cpp
     LinkerTests.cpp
     RcuLinkGraphTests.cpp
     RcuObjectLayoutTests.cpp

@@ -1,5 +1,7 @@
 #include "Semantic/PrimitiveConstants.h"
 
+#include "Semantic/PrimitiveCatalog.h"
+
 #include <cstdint>
 #include <format>
 
@@ -7,43 +9,16 @@ namespace Rux {
 namespace {
 /// The width the target stores this type at.
 ///
-/// Read from the target rather than the host, because a pointer-sized type's limits are the target's: `usize::Max` must
-/// differ between a 32- and a 64-bit target compiled from the same machine.
+/// Read from the target rather than the host, because a pointer-sized type's limits are the target's: `usize::Max`
+/// must differ between a 32- and a 64-bit target compiled from the same machine.
 ///
-/// @return nullopt for a type with no fixed width
+/// @return nullopt for a type that is not a primitive, or whose representation is still reserved
 std::optional<std::uint32_t> StorageBits(const TypeRef &type, const CompileTimeContext &context) {
-    using K = TypeRef::Kind;
-    switch (type.kind) {
-    case K::Bool8:
-    case K::Char8:
-    case K::Int8:
-    case K::UInt8:
-        return 8;
-    case K::Bool16:
-    case K::Char16:
-    case K::Int16:
-    case K::UInt16:
-        return 16;
-    case K::Bool32:
-    case K::Char32:
-    case K::Int32:
-    case K::UInt32:
-    case K::Float32:
-        return 32;
-    case K::Int64:
-    case K::UInt64:
-    case K::Float64:
-        return 64;
-    case K::Int:
-    case K::UInt:
-        return static_cast<std::uint32_t>(context.target.pointer_size * 8);
-    default:
+    const PrimitiveInfo *info = FindPrimitive(type.kind);
+    if (!info || !info->implemented) {
         return std::nullopt;
     }
-}
-
-bool IsCharacter(const TypeRef::Kind kind) {
-    return kind == TypeRef::Kind::Char8 || kind == TypeRef::Kind::Char16 || kind == TypeRef::Kind::Char32;
+    return PrimitiveBits(type.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
 }
 
 /// The minimum of a signed integer of this width, rendered as a literal. Built as text rather than computed in a host
@@ -102,46 +77,6 @@ std::optional<std::string_view> FloatConstant(const TypeRef::Kind kind, const st
 }
 } // namespace
 
-std::optional<TypeRef> PrimitiveTypeFromName(const std::string_view name) {
-    if (name == "bool" || name == "bool8")
-        return TypeRef::MakeBool8();
-    if (name == "bool16")
-        return TypeRef::MakeBool16();
-    if (name == "bool32")
-        return TypeRef::MakeBool32();
-    if (name == "char8")
-        return TypeRef::MakeChar8();
-    if (name == "char16")
-        return TypeRef::MakeChar16();
-    if (name == "char" || name == "char32")
-        return TypeRef::MakeChar32();
-    if (name == "int8")
-        return TypeRef::MakeInt8();
-    if (name == "int16")
-        return TypeRef::MakeInt16();
-    if (name == "int32")
-        return TypeRef::MakeInt32();
-    if (name == "int64")
-        return TypeRef::MakeInt64();
-    if (name == "int")
-        return TypeRef::MakeInt();
-    if (name == "byte" || name == "uint8")
-        return TypeRef::MakeUInt8();
-    if (name == "uint16")
-        return TypeRef::MakeUInt16();
-    if (name == "uint32")
-        return TypeRef::MakeUInt32();
-    if (name == "uint64")
-        return TypeRef::MakeUInt64();
-    if (name == "uint")
-        return TypeRef::MakeUInt();
-    if (name == "float32")
-        return TypeRef::MakeFloat32();
-    if (name == "float" || name == "float64")
-        return TypeRef::MakeFloat64();
-    return std::nullopt;
-}
-
 std::optional<PrimitiveConstant> LookupPrimitiveConstant(const TypeRef &type, const std::string_view name,
                                                          const CompileTimeContext &context) {
     const auto bits = StorageBits(type, context);
@@ -168,7 +103,7 @@ std::optional<PrimitiveConstant> LookupPrimitiveConstant(const TypeRef &type, co
         return std::nullopt;
     }
 
-    if (IsCharacter(type.kind)) {
+    if (type.IsChar()) {
         if (name == "Min") {
             return PrimitiveConstant{type, "0"};
         }

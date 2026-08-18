@@ -123,6 +123,7 @@ rux_add_component(RuxSemantic
     Semantic/ConditionalStatementFolding.cpp
     Semantic/MoveStateTracker.cpp
     Semantic/MovePlace.cpp
+    Semantic/PrimitiveCatalog.cpp
     Semantic/PrimitiveConstants.cpp
     Semantic/Type.cpp
     Semantic/TypePropertyClassifier.cpp
