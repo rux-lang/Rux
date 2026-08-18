@@ -80,6 +80,7 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
         }
     }
     LirPackage pkg;
+    pkg.dropGlues = hir.dropGlues;
     for (const auto &mod : hir.modules) {
         pkg.modules.push_back(LowerModule(mod));
     }

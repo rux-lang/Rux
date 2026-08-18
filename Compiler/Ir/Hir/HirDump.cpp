@@ -326,12 +326,54 @@ static void DumpFuncSignature(std::ostream &out, const HirFunc &f, const std::st
                        params.empty() ? "()" : "(" + params + ")", ret);
 }
 
+static std::string_view DropGlueKindName(const DropGlueStep::Kind kind) {
+    switch (kind) {
+    case DropGlueStep::Kind::InvokeDrop:
+        return "invoke-drop";
+    case DropGlueStep::Kind::Field:
+        return "field";
+    case DropGlueStep::Kind::TupleElement:
+        return "tuple-element";
+    case DropGlueStep::Kind::ArrayElements:
+        return "array-elements";
+    case DropGlueStep::Kind::EnumVariant:
+        return "enum-variant";
+    }
+    return "unknown";
+}
+
+static void DumpDropGlueSteps(std::ostream &out, const std::vector<DropGlueStep> &steps, const std::string &indent) {
+    for (const DropGlueStep &step : steps) {
+        out << std::format("{}{} {}", indent, DropGlueKindName(step.kind), step.type.ToString());
+        if (!step.name.empty()) {
+            out << std::format(" '{}'", step.name);
+        }
+        if (step.kind == DropGlueStep::Kind::Field || step.kind == DropGlueStep::Kind::TupleElement ||
+            step.kind == DropGlueStep::Kind::EnumVariant) {
+            out << std::format(" #{}", step.ordinal);
+        }
+        if (step.kind == DropGlueStep::Kind::ArrayElements) {
+            out << std::format(" count {}", step.count);
+            out << (step.reverse ? " order reverse" : " order forward");
+        }
+        out << '\n';
+        DumpDropGlueSteps(out, step.children, indent + "  ");
+    }
+}
+
 bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &path) {
     std::ofstream out(path);
     if (!out) {
         return false;
     }
     out << "=== High-level Intermediate Representation ===\n";
+    if (!package.dropGlues.empty()) {
+        out << "\nDrop glue\n---------\n";
+        for (const DropGluePlan &plan : package.dropGlues) {
+            out << std::format("{} for {}\n", plan.symbol, plan.type.ToString());
+            DumpDropGlueSteps(out, plan.steps, "  ");
+        }
+    }
     for (const auto &mod : package.modules) {
         out << '\n';
         out << std::format("Module \"{}\"\n", mod.name);

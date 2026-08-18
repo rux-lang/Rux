@@ -4,6 +4,7 @@
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <utility>
@@ -61,6 +62,11 @@ HirPackage AstToHirContext::Run() {
     for (const Module *module : modules) {
         package.modules.push_back(LowerModule(*module));
     }
+    package.dropGlues.reserve(model.DropGluePlans().size());
+    for (const auto &[_, plan] : model.DropGluePlans()) {
+        package.dropGlues.push_back(plan);
+    }
+    std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
     return package;
 }
 

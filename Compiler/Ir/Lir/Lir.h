@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Semantic/DropGlue.h"
 #include "Semantic/Type.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -322,5 +323,6 @@ struct LirModule {
 
 struct LirPackage {
     std::vector<LirModule> modules;
+    std::vector<DropGluePlan> dropGlues;
 };
 } // namespace Rux
