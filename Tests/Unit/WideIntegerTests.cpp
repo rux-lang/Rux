@@ -128,6 +128,60 @@ TEST_CASE("wide bitwise operations normalize their result") {
     CHECK_EQ(WideInteger::Zero(100).BitwiseNot(), WideInteger::AllOnes(100));
 }
 
+TEST_CASE("wide shifts cross limbs and distinguish logical from arithmetic fill") {
+    const WideInteger one = WideInteger::FromUnsigned(1, 128);
+    CHECK_EQ(one.ShiftedLeft(64).Word64(0), 0);
+    CHECK_EQ(one.ShiftedLeft(64).Word64(1), 1);
+    CHECK_EQ(one.ShiftedLeft(127), WideInteger::MinMagnitude(128, true));
+    CHECK_EQ(one.ShiftedLeft(128), WideInteger::Zero(128));
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ShiftedRight(127, false), one);
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ShiftedRight(127, true).Word64(0), 0xFFFFFFFFFFFFFFFFULL);
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ShiftedRight(127, true).Word64(1), 0xFFFFFFFFFFFFFFFFULL);
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ShiftedRight(128, false), WideInteger::Zero(128));
+    CHECK_EQ(WideInteger::MinMagnitude(128, true).ShiftedRight(128, true), WideInteger::AllOnes(128));
+
+    const WideInteger partial = WideInteger::FromUnsigned(1, 100).ShiftedLeft(99);
+    CHECK(partial.IsNegative());
+    CHECK_EQ(partial.ShiftedRight(99, false).ToDecimal(), "1");
+    CHECK_EQ(partial.ShiftedRight(99, true), WideInteger::AllOnes(100));
+}
+
+TEST_CASE("wide rotates wrap bits at arbitrary widths") {
+    const WideInteger one128 = WideInteger::FromUnsigned(1, 128);
+    CHECK_EQ(one128.RotatedLeft(1).ToDecimal(), "2");
+    CHECK_EQ(one128.RotatedLeft(127), WideInteger::MinMagnitude(128, true));
+    CHECK_EQ(one128.RotatedRight(1), WideInteger::MinMagnitude(128, true));
+    CHECK_EQ(one128.RotatedLeft(128), one128);
+    CHECK_EQ(one128.RotatedRight(257), WideInteger::MinMagnitude(128, true));
+
+    const WideInteger one100 = WideInteger::FromUnsigned(1, 100);
+    CHECK_EQ(one100.RotatedRight(1), one100.ShiftedLeft(99));
+    CHECK_EQ(one100.RotatedRight(1).RotatedLeft(1), one100);
+}
+
+TEST_CASE("wide comparison applies signedness at each operand width") {
+    const WideInteger unsignedMaximum = WideInteger::AllOnes(128);
+    const WideInteger zero = WideInteger::Zero(128);
+    CHECK(unsignedMaximum.Compare(zero, false) == std::strong_ordering::greater);
+    CHECK(unsignedMaximum.Compare(zero, true) == std::strong_ordering::less);
+    CHECK(WideInteger::FromUnsigned(0xFF, 8).Compare(WideInteger::AllOnes(128), true) == std::strong_ordering::equal);
+    CHECK(WideInteger::FromUnsigned(0x80, 8).Compare(WideInteger::FromUnsigned(0x81, 8), true) ==
+          std::strong_ordering::less);
+}
+
+TEST_CASE("wide bit counts respect the exact width") {
+    CHECK_EQ(WideInteger::Zero(128).CountLeadingZeros(), 128);
+    CHECK_EQ(WideInteger::Zero(128).CountTrailingZeros(), 128);
+    CHECK_EQ(WideInteger::Zero(128).PopulationCount(), 0);
+    CHECK_EQ(WideInteger::FromUnsigned(1, 128).CountLeadingZeros(), 127);
+    CHECK_EQ(WideInteger::FromUnsigned(1, 128).CountTrailingZeros(), 0);
+    CHECK_EQ(WideInteger::FromUnsigned(0x100000000ULL, 128).CountTrailingZeros(), 32);
+    CHECK_EQ(WideInteger::AllOnes(128).PopulationCount(), 128);
+    CHECK_EQ(WideInteger::AllOnes(100).CountLeadingZeros(), 0);
+    CHECK_EQ(WideInteger::AllOnes(100).CountTrailingZeros(), 0);
+    CHECK_EQ(WideInteger::AllOnes(100).PopulationCount(), 100);
+}
+
 TEST_CASE("a value reads back as words and as a machine word when it fits") {
     const WideInteger small = Decimal("18446744073709551615", 128);
     REQUIRE(small.ToUnsigned().has_value());

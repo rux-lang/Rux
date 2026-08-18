@@ -1,6 +1,7 @@
 #include "Numeric/WideInteger.h"
 
 #include <algorithm>
+#include <bit>
 
 namespace Rux {
 namespace {
@@ -276,6 +277,119 @@ WideInteger WideInteger::BitwiseXor(const WideInteger &other) const noexcept {
     }
     result.Normalize();
     return result;
+}
+
+WideInteger WideInteger::ShiftedLeft(const std::uint32_t amount) const noexcept {
+    if (amount >= width) {
+        return Zero(width);
+    }
+    WideInteger result = Zero(width);
+    const std::size_t wholeLimbs = amount / LimbBits;
+    const std::uint32_t partialBits = amount % LimbBits;
+    const std::size_t used = LimbsFor(width);
+    for (std::size_t source = 0; source < used; ++source) {
+        const std::size_t destination = source + wholeLimbs;
+        if (destination >= used) {
+            break;
+        }
+        result.limbs[destination] |= limbs[source] << partialBits;
+        if (partialBits != 0 && destination + 1 < used) {
+            result.limbs[destination + 1] |= limbs[source] >> (LimbBits - partialBits);
+        }
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::ShiftedRight(const std::uint32_t amount, const bool isSigned) const noexcept {
+    const bool fill = isSigned && IsNegative();
+    if (amount >= width) {
+        return fill ? AllOnes(width) : Zero(width);
+    }
+    WideInteger result = Zero(width);
+    const std::size_t wholeLimbs = amount / LimbBits;
+    const std::uint32_t partialBits = amount % LimbBits;
+    const std::size_t used = LimbsFor(width);
+    for (std::size_t destination = 0; destination + wholeLimbs < used; ++destination) {
+        const std::size_t source = destination + wholeLimbs;
+        result.limbs[destination] = limbs[source] >> partialBits;
+        if (partialBits != 0 && source + 1 < used) {
+            result.limbs[destination] |= limbs[source + 1] << (LimbBits - partialBits);
+        }
+    }
+    if (fill) {
+        for (std::uint32_t index = width - amount; index < width; ++index) {
+            result.limbs[index / LimbBits] |= Limb{1} << (index % LimbBits);
+        }
+    }
+    result.Normalize();
+    return result;
+}
+
+WideInteger WideInteger::RotatedLeft(const std::uint32_t amount) const noexcept {
+    const std::uint32_t rotation = amount % width;
+    if (rotation == 0) {
+        return *this;
+    }
+    return ShiftedLeft(rotation).BitwiseOr(ShiftedRight(width - rotation, false));
+}
+
+WideInteger WideInteger::RotatedRight(const std::uint32_t amount) const noexcept {
+    const std::uint32_t rotation = amount % width;
+    if (rotation == 0) {
+        return *this;
+    }
+    return ShiftedRight(rotation, false).BitwiseOr(ShiftedLeft(width - rotation));
+}
+
+std::strong_ordering WideInteger::Compare(const WideInteger &other, const bool isSigned) const noexcept {
+    if (!isSigned) {
+        return *this <=> other;
+    }
+    const std::uint32_t commonWidth = std::max(width, other.width);
+    const WideInteger left = Extended(commonWidth, true);
+    const WideInteger right = other.Extended(commonWidth, true);
+    if (left.IsNegative() != right.IsNegative()) {
+        return left.IsNegative() ? std::strong_ordering::less : std::strong_ordering::greater;
+    }
+    return left <=> right;
+}
+
+std::uint32_t WideInteger::CountLeadingZeros() const noexcept {
+    const std::size_t used = LimbsFor(width);
+    const std::uint32_t topBits = width % LimbBits == 0 ? LimbBits : width % LimbBits;
+    std::uint32_t count = 0;
+    for (std::size_t index = used; index-- > 0;) {
+        const std::uint32_t available = index == used - 1 ? topBits : LimbBits;
+        if (limbs[index] == 0) {
+            count += available;
+            continue;
+        }
+        count += std::countl_zero(limbs[index]) - (LimbBits - available);
+        break;
+    }
+    return count;
+}
+
+std::uint32_t WideInteger::CountTrailingZeros() const noexcept {
+    std::uint32_t count = 0;
+    for (std::size_t index = 0; index < LimbsFor(width); ++index) {
+        if (limbs[index] == 0) {
+            count += LimbBits;
+            continue;
+        }
+        count += std::countr_zero(limbs[index]);
+        break;
+    }
+    return std::min(count, width);
+}
+
+std::uint32_t WideInteger::PopulationCount() const noexcept {
+    std::uint32_t count = 0;
+    for (std::size_t index = 0; index < LimbsFor(width); ++index) {
+        count += std::popcount(limbs[index]);
+    }
+    return count;
 }
 
 WideInteger WideInteger::Magnitude(const bool isSigned) const noexcept {
