@@ -2,6 +2,7 @@
 
 #include "Lexer/Token.h"
 #include "Semantic/Type.h"
+#include "Semantic/TypeProperties.h"
 #include "SourceModel/SourceLocation.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
@@ -97,6 +98,7 @@ struct HirGuardedPattern : HirPattern {
 struct HirExpr {
     TypeRef type;
     SourceLocation location;
+    std::optional<ValueConsumptionKind> consumption;
     virtual ~HirExpr() = default;
 };
 

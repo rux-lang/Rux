@@ -37,6 +37,7 @@ public:
                                    std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
                                    std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
                                    std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+                                   std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
                                    std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
                                    std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                                    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
@@ -44,8 +45,8 @@ public:
                                    std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues)
         : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
                                   inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
-                                  inputCallableBindings, inputSymbolIdentities, inputVtableIdentities, inputTypeLayouts,
-                                  inputSizeOfValues) {
+                                  inputValueConsumptions, inputCallableBindings, inputSymbolIdentities,
+                                  inputVtableIdentities, inputTypeLayouts, inputSizeOfValues) {
     }
 
 private:
@@ -3259,11 +3260,7 @@ private:
         }
 
         if (auto *e = dynamic_cast<const TernaryExpr *>(&expr)) {
-            TypeRef cond = CheckExpr(*e->condition);
-            CheckBooleanCondition(cond, e->condition->location, "?:");
-            TypeRef thenT = CheckExpr(*e->thenExpr);
-            TypeRef elseT = CheckExpr(*e->elseExpr);
-            return thenT.IsUnknown() ? elseT : thenT;
+            return CheckTernaryExpression(*e);
         }
 
         if (auto *e = dynamic_cast<const RangeExpr *>(&expr)) {
@@ -3544,14 +3541,16 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
     SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
-                                            expressionTypes, typeNodeTypes, patternTypes, callableBindings,
-                                            symbolIdentities, vtableIdentities, typeLayouts, sizeOfValues);
+                                            expressionTypes, typeNodeTypes, patternTypes, valueConsumptions,
+                                            callableBindings, symbolIdentities, vtableIdentities, typeLayouts,
+                                            sizeOfValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -3567,6 +3566,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(expressionTypes),
                          std::move(typeNodeTypes),
                          std::move(patternTypes),
+                         std::move(valueConsumptions),
                          std::move(callableBindings),
                          std::move(symbolIdentities),
                          std::move(vtableIdentities),

@@ -131,11 +131,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             std::move(notes));
     };
     if (auto *ident = dynamic_cast<const IdentExpr *>(e->callee.get())) {
-        std::vector<TypeRef> argTypes;
-        argTypes.reserve(e->args.size());
-        for (const auto &arg : e->args) {
-            argTypes.push_back(CheckExpr(*arg));
-        }
+        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
         // `#Error`/`#Warn` emit a diagnostic here rather than resolving as
         // an ordinary call; they contribute no value and no runtime code.
@@ -194,7 +190,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 emitOverloadError(ident->name, argTypes, sym->funcOverloads);
                 return TypeRef::MakeUnknown();
             }
-            if (e->typeArgs.size() != decl->typeParams.size()) {
+            bool callAccepted = e->typeArgs.size() == decl->typeParams.size();
+            if (!callAccepted) {
                 EmitError(e->location,
                           std::format("function '{}' requires {}, but {} provided", ident->name,
                                       Counted(decl->typeParams.size(), "type argument"),
@@ -227,6 +224,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             const bool arityOk = isVariadic ? argTypes.size() >= requiredCount
                                             : (argTypes.size() >= requiredCount && argTypes.size() <= paramCount);
             if (!arityOk) {
+                callAccepted = false;
                 emitArityError(ident->name, requiredCount, paramCount, isVariadic, argTypes.size(), decl);
             }
             else {
@@ -235,6 +233,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     const TypeRef &paramType = funcType.inner[i];
                     if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
+                        callAccepted = false;
                         emitArgumentTypeError(ident->name, i, argTypes[i], paramType,
                                               i < parameters.size() ? parameters[i] : nullptr, decl);
                     }
@@ -247,6 +246,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     if (isSingleSpread) {
                         if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
                             argTypes[paramCount] != sliceType) {
+                            callAccepted = false;
                             emitArgumentTypeError(ident->name, paramCount, argTypes[paramCount], sliceType,
                                                   &decl->params.back(), decl, true);
                         }
@@ -254,6 +254,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     else {
                         for (std::size_t i = paramCount; i < argTypes.size(); ++i) {
                             if (dynamic_cast<const SpreadExpr *>(e->args[i].get())) {
+                                callAccepted = false;
                                 EmitError(e->args[i]->location,
                                           std::format("spread argument to '{}' must be the only argument for variadic "
                                                       "parameter '{}'",
@@ -262,12 +263,16 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                             }
                             else if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
                                      !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
+                                callAccepted = false;
                                 emitArgumentTypeError(ident->name, i, argTypes[i], varElemType, &decl->params.back(),
                                                       decl, true);
                             }
                         }
                     }
                 }
+            }
+            if (callAccepted) {
+                ConsumeCallArguments(*e, argTypes);
             }
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
             return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
@@ -276,12 +281,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
 
     if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
-        std::vector<TypeRef> argTypes;
-        argTypes.reserve(e->args.size());
-        for (const auto &arg : e->args) {
-            argTypes.push_back(CheckExpr(*arg));
-        }
+        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
         if (const FuncDecl *method = LookupMethod(receiverType, field->field, argTypes)) {
+            bool callAccepted = true;
             if (!method->warnMessage.empty()) {
                 EmitWarning(e->location, method->warnMessage);
             }
@@ -291,6 +293,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
 
             if (argTypes.size() != paramTypes.size()) {
+                callAccepted = false;
                 emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), method,
                                true);
             }
@@ -301,13 +304,18 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     const TypeRef &paramType = paramTypes[i];
                     if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argType, paramType)) {
+                        callAccepted = false;
                         emitArgumentTypeError(field->field, i, argType, paramType,
                                               i < parameters.size() ? parameters[i] : nullptr, method);
                     }
                 }
             }
 
-            CheckReceiverMutability(*e, *field->object, receiverType, *method);
+            callAccepted = CheckReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
+            if (callAccepted) {
+                ConsumeMethodReceiver(*e, *field->object, receiverType, *method);
+                ConsumeCallArguments(*e, argTypes);
+            }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                   MethodTypeSubstitutions(receiverType), receiverType);
             return ResolveMethodReturnType(receiverType, *method);
@@ -350,6 +358,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
             const bool arityOk =
                 isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
+            bool callAccepted = arityOk;
 
             if (!arityOk) {
                 emitArityError(field->field, paramTypes.size(), paramTypes.size(), isVariadic, argTypes.size(), method,
@@ -362,6 +371,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     const TypeRef &paramType = paramTypes[i];
                     if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                         !CanAssignExprTo(*e->args[i], argType, paramType)) {
+                        callAccepted = false;
                         emitArgumentTypeError(field->field, i, argType, paramType,
                                               i < parameters.size() ? parameters[i] : nullptr, method);
                     }
@@ -372,6 +382,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     for (std::size_t i = paramTypes.size(); i < argTypes.size(); ++i) {
                         if (!argTypes[i].IsUnknown() && !varElemType.IsUnknown() &&
                             !CanAssignExprTo(*e->args[i], argTypes[i], varElemType)) {
+                            callAccepted = false;
                             emitArgumentTypeError(field->field, i, argTypes[i], varElemType, &method->params.back(),
                                                   method, true);
                         }
@@ -379,6 +390,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 }
             }
 
+            if (callAccepted) {
+                ConsumeCallArguments(*e, argTypes);
+            }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {}, receiverType);
             return ResolveInterfaceMethodReturnType(*method);
         }
@@ -406,11 +420,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                         }
                         const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
                         const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
-                        std::vector<TypeRef> argTypes;
-                        argTypes.reserve(e->args.size());
-                        for (const auto &arg : e->args) {
-                            argTypes.push_back(CheckExpr(*arg));
-                        }
+                        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
+                        bool callAccepted = argTypes.size() == paramCount;
                         if (argTypes.size() != paramCount) {
                             emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
                                            paramCount, false, argTypes.size());
@@ -420,6 +431,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                                 const TypeRef &paramType = constructor.inner[i];
                                 if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() &&
                                     !CanAssignExprTo(*e->args[i], argTypes[i], paramType)) {
+                                    callAccepted = false;
                                     EmitError(e->args[i]->location,
                                               std::format("argument {} to enum variant '{}::{}' has type '{}', but "
                                                           "field {} requires '{}'",
@@ -430,6 +442,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                                                            variant->location.column)});
                                 }
                             }
+                        }
+                        if (callAccepted) {
+                            ConsumeCallArguments(*e, argTypes);
                         }
                         ResolvedCallableBinding binding;
                         binding.dispatch = ResolvedCallableBinding::DispatchKind::EnumVariant;
@@ -455,13 +470,10 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 }
                 receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
                 const std::string &methodName = path->segments[1];
-                std::vector<TypeRef> argTypes;
-                argTypes.reserve(e->args.size());
-                for (const auto &arg : e->args) {
-                    argTypes.push_back(CheckExpr(*arg));
-                }
+                const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                 if (const FuncDecl *method = LookupMethod(receiverType, methodName, argTypes)) {
                     std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+                    bool callAccepted = argTypes.size() == paramTypes.size();
                     if (argTypes.size() != paramTypes.size()) {
                         emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),
                                        paramTypes.size(), false, argTypes.size(), method, true);
@@ -473,11 +485,15 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                             const TypeRef &paramType = paramTypes[i];
                             if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                                 !CanAssignExprTo(*e->args[i], argType, paramType)) {
+                                callAccepted = false;
                                 emitArgumentTypeError(std::format("{}::{}", path->segments[0], methodName), i, argType,
                                                       paramType, i < parameters.size() ? parameters[i] : nullptr,
                                                       method);
                             }
                         }
+                    }
+                    if (callAccepted) {
+                        ConsumeCallArguments(*e, argTypes);
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
                                           MethodTypeSubstitutions(receiverType), receiverType);
@@ -526,11 +542,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
     }
 
     TypeRef calleeType = CheckExpr(*e->callee);
-    std::vector<TypeRef> argTypes;
-    argTypes.reserve(e->args.size());
-    for (const auto &arg : e->args) {
-        argTypes.push_back(CheckExpr(*arg));
-    }
+    const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
 
     if (calleeType.kind == TypeRef::Kind::Func && !calleeType.inner.empty()) {
         const std::size_t paramCount = calleeType.inner.size() - 1;
@@ -546,6 +558,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             emitArityError(callableName, paramCount, paramCount, calleeType.isVariadic, argTypes.size());
         }
         else {
+            bool callAccepted = true;
             // Only the fixed parameters are type-checked; trailing
             // C-variadic arguments accept any type.
             for (std::size_t i = 0; i < paramCount; ++i) {
@@ -553,12 +566,16 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 const TypeRef &paramType = calleeType.inner[i];
                 if (!argType.IsUnknown() && !paramType.IsUnknown() &&
                     !CanAssignExprTo(*e->args[i], argType, paramType)) {
+                    callAccepted = false;
                     const Param *parameter = nullptr;
                     if (calleeSymbol && calleeSymbol->externDecl && i < calleeSymbol->externDecl->params.size()) {
                         parameter = &calleeSymbol->externDecl->params[i];
                     }
                     emitArgumentTypeError(callableName, i, argType, paramType, parameter);
                 }
+            }
+            if (callAccepted) {
+                ConsumeCallArguments(*e, argTypes);
             }
         }
         if (calleeSymbol && calleeSymbol->externDecl) {

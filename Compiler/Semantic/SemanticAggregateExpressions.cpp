@@ -231,6 +231,9 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                         {std::format("field '{}' declared at line {}, column {}", field.name,
                                      expectedField->location.line, expectedField->location.column)});
                 }
+                else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
+                    ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
+                }
             }
             return;
         }
@@ -300,6 +303,9 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                         {std::format("field '{}' declared at line {}, column {}", field.name,
                                      expectedField->second->location.line, expectedField->second->location.column)});
                 }
+                else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
+                    ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
+                }
             }
 
             for (const auto &field : variant->namedFields) {
@@ -367,6 +373,9 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                                       field.name, expression.typeName, valueType.ToString(), fieldType.ToString())),
                       {std::format("field '{}' declared at line {}, column {}", field.name,
                                    expectedField->second->location.line, expectedField->second->location.column)});
+        }
+        else if (!valueType.IsUnknown() && !fieldType.IsUnknown()) {
+            ConsumeValue(*field.value, valueType, ValueConsumptionKind::Aggregate, field.location);
         }
     }
 
@@ -530,6 +539,7 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
         for (std::size_t index = 0; index < array->elements.size(); ++index) {
             const auto &element = array->elements[index];
             const TypeRef type = CheckExpr(*element);
+            bool elementAccepted = !type.IsUnknown();
             if (elementType.IsUnknown()) {
                 elementType = type;
                 inferredFrom = index;
@@ -542,11 +552,15 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                     inferredExpression = element.get();
                 }
                 else {
+                    elementAccepted = false;
                     EmitError(
                         element->location,
                         std::format("array element {} has type '{}', but element {} established element type '{}'",
                                     index + 1, type.ToString(), inferredFrom + 1, elementType.ToString()));
                 }
+            }
+            if (elementAccepted) {
+                ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
             }
         }
         return TypeRef::MakeArray(elementType, array->elements.size());
@@ -555,7 +569,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
     if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
         std::vector<TypeRef> elementTypes;
         for (const auto &element : tuple->elements) {
-            elementTypes.push_back(CheckExpr(*element));
+            const TypeRef type = CheckExpr(*element);
+            ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
+            elementTypes.push_back(type);
         }
         return TypeRef::MakeTuple(std::move(elementTypes));
     }

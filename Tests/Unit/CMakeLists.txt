@@ -60,6 +60,7 @@ set(RUX_TEST_SOURCES
     ManifestValidationTests.cpp
     ManifestTests.cpp
     MoveStateTests.cpp
+    MoveConsumptionTests.cpp
     OptimizerRegressionTests.cpp
     OptimizerTests.cpp
     OsTests.cpp

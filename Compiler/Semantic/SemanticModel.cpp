@@ -115,6 +115,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                              std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                              std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
+                             std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
@@ -128,6 +129,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , expressionTypes(std::move(inputExpressionTypes))
     , typeNodeTypes(std::move(inputTypeNodeTypes))
     , patternTypes(std::move(inputPatternTypes))
+    , valueConsumptions(std::move(inputValueConsumptions))
     , callableBindings(std::move(inputCallableBindings))
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
@@ -154,6 +156,11 @@ const TypeRef *SemanticModel::TryGetType(const TypeExpr &typeNode) const noexcep
 const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept {
     const auto type = patternTypes.find(&pattern);
     return type == patternTypes.end() ? nullptr : &type->second;
+}
+
+const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression) const noexcept {
+    const auto consumption = valueConsumptions.find(&expression);
+    return consumption == valueConsumptions.end() ? nullptr : &consumption->second;
 }
 
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {

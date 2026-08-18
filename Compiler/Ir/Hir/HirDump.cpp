@@ -13,8 +13,17 @@ namespace Rux {
 // Dump
 static std::string PrintPattern(const HirPattern &pat);
 static std::string PrintExpr(const HirExpr &expr);
+static std::string PrintExprCore(const HirExpr &expr);
 
 static std::string PrintExpr(const HirExpr &expr) {
+    std::string text = PrintExprCore(expr);
+    if (expr.consumption) {
+        text = std::format("move<{}>({})", ValueConsumptionKindName(*expr.consumption), text);
+    }
+    return text;
+}
+
+static std::string PrintExprCore(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
         return e->value;
     }
