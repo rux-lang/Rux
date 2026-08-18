@@ -138,6 +138,10 @@ struct Token {
     TokenKind kind = TokenKind::Unknown;
     std::string text; ///< original source spelling
     SourceLocation location;
+    /// Whether whitespace, a newline or a comment separates this token from the one before it. Only `?` reads it: `x?`
+    /// propagates a failure while `x ? a : b` selects between two values, and the separation is what tells them apart.
+    /// Defaults to separated, so a token built by hand rather than scanned keeps the older of the two meanings.
+    bool precededBySpace = true;
 
     // Convenience predicates
     [[nodiscard]] bool Is(const TokenKind k) const noexcept {

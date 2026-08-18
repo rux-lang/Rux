@@ -137,6 +137,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticStatements.cpp
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
+    Semantic/SemanticPropagation.cpp
     Semantic/SemanticReceivers.cpp
     Semantic/SemanticTypeProperties.cpp
     Semantic/SemanticPrinter.cpp)

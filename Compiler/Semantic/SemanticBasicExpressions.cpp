@@ -200,6 +200,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         }
         return CheckUnary(unary->op, operandType, unary->location);
     }
+    if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+        return CheckTryExpression(*tryExpression);
+    }
     if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
         const bool isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));

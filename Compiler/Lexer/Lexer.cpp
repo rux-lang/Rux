@@ -285,12 +285,17 @@ std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view 
 
 void Lexer::ScanAll() {
     while (!IsAtEnd()) {
+        const std::size_t beforeTrivia = pos;
         SkipWhitespace();
         if (IsAtEnd()) {
             break;
         }
 
+        // Whether anything separated this token from the previous one, which is the only thing that distinguishes the
+        // propagation `?` from the conditional operator's.
+        const bool separated = pos != beforeTrivia || tokens.empty();
         if (Token tok = NextToken(); tok.kind != TokenKind::Unknown || !tok.text.empty()) {
+            tok.precededBySpace = separated;
             tokens.push_back(std::move(tok));
         }
     }

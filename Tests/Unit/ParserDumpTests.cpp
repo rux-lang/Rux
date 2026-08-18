@@ -160,6 +160,75 @@ enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
     CHECK_EQ(output, expected);
 }
 
+TEST_CASE("AST dumps separate the propagation operator from the conditional operator") {
+    // The two share one token: written tight against its operand, `?` propagates a failure; separated, it opens a
+    // conditional expression. The dump is where that decision becomes visible.
+    constexpr std::string_view source = R"(
+func Main() -> int {
+    let propagated = Read()?;
+    let chained = Read()?.field;
+    let selected = ready ? first : second;
+    let nested = Read(ready ? first : second)?;
+    return 0;
+}
+)";
+
+    Lexer lexer(std::string(source), "propagation.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "propagation.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-propagation.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    constexpr std::string_view expected = R"(Module "propagation.rux"
+  FuncDecl 'Main' () -> int
+    Block [5 stmts]
+      LetStmt 'propagated' (let)
+        TryExpr
+          CallExpr
+            Callee
+              IdentExpr 'Read'
+      LetStmt 'chained' (let)
+        FieldExpr '.field'
+          TryExpr
+            CallExpr
+              Callee
+                IdentExpr 'Read'
+      LetStmt 'selected' (let)
+        TernaryExpr
+          Condition
+            IdentExpr 'ready'
+          Then
+            IdentExpr 'first'
+          Else
+            IdentExpr 'second'
+      LetStmt 'nested' (let)
+        TryExpr
+          CallExpr
+            Callee
+              IdentExpr 'Read'
+            Args [1]
+              TernaryExpr
+                Condition
+                  IdentExpr 'ready'
+                Then
+                  IdentExpr 'first'
+                Else
+                  IdentExpr 'second'
+      ReturnStmt
+        LiteralExpr (int) '0'
+)";
+    CHECK_EQ(output, expected);
+}
+
 TEST_CASE("AST statement and pattern dumps preserve their text contract") {
     constexpr std::string_view source = R"(
 func Main() -> int {

@@ -162,6 +162,25 @@ protected:
                                                   const TypeRef &subjectType) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
+
+    /// A type `?` can propagate from, recognized by its variants rather than by a built-in identity: `Result` carries a
+    /// payload and a failure, `Option` only a payload.
+    struct PropagationShape {
+        enum class Kind {
+            Result,
+            Option
+        };
+
+        Kind kind = Kind::Result;
+        const EnumDecl *declaration = nullptr;
+        TypeRef payload = TypeRef::MakeUnknown();
+        std::optional<TypeRef> failure;
+    };
+
+    [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type) const;
+    [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
+    [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
+    [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
     [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
     [[nodiscard]] std::optional<TypeRef> CheckAggregateExpression(const Expr &expression);
     void ValidateDeferredBasicExpressionChecks(const FuncDecl &declaration,

@@ -562,6 +562,19 @@ ExprPtr Parser::ParsePostfix() {
             left = std::move(e);
             continue;
         }
+        // Failure propagation: expr?
+        //
+        // The same token opens a conditional expression, so the spelling decides which one this is: `Read()?` is a
+        // propagation and `ready ? a : b` is a conditional. Only the tight form is postfix, so the conditional keeps
+        // its own parse below at its own precedence.
+        if (Check(TokenKind::Question) && !Peek().precededBySpace) {
+            Advance();
+            auto e = std::make_unique<TryExpr>();
+            e->location = loc;
+            e->operand = std::move(left);
+            left = std::move(e);
+            continue;
+        }
         // Post-increment / post-decrement: expr++ or expr--
         if (Check(TokenKind::PlusPlus) || Check(TokenKind::MinusMinus)) {
             const TokenKind op = Advance().kind;

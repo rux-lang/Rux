@@ -169,6 +169,15 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
+        Pad();
+        out << "TryExpr\n";
+        ++indent;
+        if (tryExpression->operand) {
+            Print(*tryExpression->operand);
+        }
+        --indent;
+    }
     else if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
         Pad();
         out << "BinaryExpr " << OperatorString(binary->op) << '\n';
