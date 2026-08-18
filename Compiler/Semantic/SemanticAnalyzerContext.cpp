@@ -49,14 +49,6 @@ void SemanticAnalyzerContext::ReportUntypedExpression(const Expr &expression) co
     }
 }
 
-void SemanticAnalyzerContext::RecordCheckedExpression(const Expr &expression, const TypeRef &type) {
-    if (type.IsUnknown()) {
-        ReportUntypedExpression(expression);
-        return;
-    }
-    expressionTypes.insert_or_assign(&expression, type);
-}
-
 std::string SemanticAnalyzerContext::SliceTypeName(const TypeRef &elementType) {
     return "Slice<" + elementType.ToString() + ">";
 }

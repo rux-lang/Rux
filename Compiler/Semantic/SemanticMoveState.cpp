@@ -221,6 +221,9 @@ TypeRef SemanticAnalyzerContext::ReadTrackedSymbol(const Symbol &symbol, const S
 
 void SemanticAnalyzerContext::RecordCheckedExpression(const Expr &expression, const TypeRef &type) {
     if (type.IsUnknown()) {
+        // An expression lowering will ask a type for has to have one; reporting it here is what keeps that invariant a
+        // diagnostic rather than a crash further down.
+        ReportUntypedExpression(expression);
         return;
     }
     expressionTypes.insert_or_assign(&expression, type);
