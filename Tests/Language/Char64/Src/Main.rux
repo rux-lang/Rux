@@ -1,0 +1,49 @@
+import Core::Assert;
+
+func Main() -> int {
+    // char64 carries a Unicode scalar value, the same thing char32 carries, in
+    // twice the room. What it holds is decided by Unicode, not by the width, so
+    // its ceiling is the last code point rather than its own last value.
+    Assert(char64::Bits == 64, "char64 occupies sixty-four bits");
+    Assert(char64::Bytes == 8, "char64 occupies eight bytes");
+    Assert(char64::Min as uint64 == 0u64, "char64 starts at zero");
+    Assert(char64::Max as uint64 == 0x10FFFFu64, "char64 stops at the last code point");
+
+    // The values a scalar-valued width holds, across the planes.
+    let letter: char64 = 'A' as char64;
+    Assert(letter as uint64 == 65u64, "char64 'A' is 65");
+    let euro: char64 = c32'\u{20AC}' as char64;
+    Assert(euro as uint64 == 0x20ACu64, "char64 holds a first-plane code point");
+    let face: char64 = c32'\u{1F600}' as char64;
+    Assert(face as uint64 == 0x1F600u64, "char64 holds a code point above the first plane");
+    let last: char64 = c32'\u{10FFFF}' as char64;
+    Assert(last as uint64 == 0x10FFFFu64, "char64 holds the last code point");
+
+    // A scalar value widens implicitly into a wider scalar value, because every
+    // such width holds the same code points and the widening cannot lose one.
+    let widened: char64 = c32'\u{1F600}';
+    Assert(widened as uint64 == 0x1F600u64, "char32 widens to char64 without a cast");
+    Assert(widened == face, "the widened value is the one it came from");
+
+    // Comparison and ordering follow the code points, as at every other width.
+    Assert(letter == 'A' as char64, "char64 equality");
+    Assert(letter != euro, "char64 inequality");
+    Assert(letter < euro, "char64 less-than follows the code point");
+    Assert(face > euro, "char64 orders a later plane above an earlier one");
+    Assert(last >= face, "char64 greater-than-or-equal");
+
+    // Casting to the integer widths and back.
+    Assert(face as int64 == 128512, "char64 casts to int64");
+    Assert(0x1F600u64 as char64 as uint64 == 0x1F600u64, "uint64 casts to char64 and back");
+
+    // Narrowing to a narrower scalar value keeps the low bits rather than
+    // re-encoding, which is what every other narrowing character cast does.
+    Assert(face as char32 as uint32 == 0x1F600u32, "char64 narrows to char32 when it fits");
+
+    // Assignment and mutation.
+    var cursor: char64 = 'a' as char64;
+    cursor = face;
+    Assert(cursor as uint64 == 0x1F600u64, "char64 var mutation");
+
+    return 0;
+}

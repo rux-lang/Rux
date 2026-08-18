@@ -272,7 +272,9 @@ std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view 
                     return std::nullopt;
                 }
             }
-            if (codePoint > 0x10FFFF) {
+            // The same two rules the escape scanner reports on: above the last code point, and the surrogate range,
+            // which is half of a UTF-16 pair rather than a character.
+            if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
                 return std::nullopt;
             }
             return codePoint;

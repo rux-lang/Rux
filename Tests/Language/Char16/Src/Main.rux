@@ -49,5 +49,17 @@ func Main() -> int {
     cursor = c16'\u{E9}';
     Assert(cursor as uint32 == 0xE9u32, "char16 var mutation");
 
+
+    // char16 is a UTF-16 code unit, so every value it can hold is a valid one.
+    // A surrogate is a code unit and nothing else -- half of the pair that
+    // encodes a code point above the first plane -- so a char16 holds one and
+    // the scalar-valued widths refuse it.
+    let high: char16 = 0xD800 as char16;
+    let low: char16 = 0xDFFF as char16;
+    Assert(high as uint32 == 0xD800u32, "char16 holds a high surrogate code unit");
+    Assert(low as uint32 == 0xDFFFu32, "char16 holds a low surrogate code unit");
+    Assert(char16::Max as uint32 == 0xFFFFu32, "char16 reaches its own last code unit");
+    Assert(high < low, "surrogate code units order by value");
+
     return 0;
 }
