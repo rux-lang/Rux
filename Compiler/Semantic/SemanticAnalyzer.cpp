@@ -280,62 +280,11 @@ private:
         if (str == "opaque") {
             return TypeRef::MakeOpaque();
         }
-        if (str == "bool8" || str == "bool") {
-            return TypeRef::MakeBool8();
-        }
-        if (str == "bool16") {
-            return TypeRef::MakeBool16();
-        }
-        if (str == "bool32") {
-            return TypeRef::MakeBool32();
-        }
-        if (str == "char8") {
-            return TypeRef::MakeChar8();
-        }
-        if (str == "char16") {
-            return TypeRef::MakeChar16();
-        }
-        if (str == "char32" || str == "char") {
-            return TypeRef::MakeChar32();
-        }
         if (str == "String") {
             return TypeRef::MakeStr();
         }
-        if (str == "int8") {
-            return TypeRef::MakeInt8();
-        }
-        if (str == "int16") {
-            return TypeRef::MakeInt16();
-        }
-        if (str == "int32") {
-            return TypeRef::MakeInt32();
-        }
-        if (str == "int64") {
-            return TypeRef::MakeInt64();
-        }
-        if (str == "int") {
-            return TypeRef::MakeInt();
-        }
-        if (str == "byte" || str == "uint8") {
-            return TypeRef::MakeUInt8();
-        }
-        if (str == "uint16") {
-            return TypeRef::MakeUInt16();
-        }
-        if (str == "uint32") {
-            return TypeRef::MakeUInt32();
-        }
-        if (str == "uint64") {
-            return TypeRef::MakeUInt64();
-        }
-        if (str == "uint") {
-            return TypeRef::MakeUInt();
-        }
-        if (str == "float32") {
-            return TypeRef::MakeFloat32();
-        }
-        if (str == "float64" || str == "float") {
-            return TypeRef::MakeFloat64();
+        if (const auto primitive = PrimitiveTypeFromName(str)) {
+            return *primitive;
         }
 
         if (str[0] == '*') {

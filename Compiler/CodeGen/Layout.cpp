@@ -1,5 +1,7 @@
 #include "CodeGen/Layout.h"
 
+#include "Semantic/PrimitiveCatalog.h"
+
 #include <charconv>
 
 namespace Rux::Layout {
@@ -34,23 +36,12 @@ std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
 }
 
 int SizeOf(const TypeRef &t) {
+    // Every primitive is sized by the catalog, so a width added there needs no case here. The backend compiles for a
+    // 64-bit target, which is what a pointer-sized primitive answers at.
+    if (const auto primitive = PrimitiveSize(t.kind, 8)) {
+        return static_cast<int>(*primitive);
+    }
     switch (t.kind) {
-    case TypeRef::Kind::Bool8: // Bool == Bool8
-    case TypeRef::Kind::Char8:
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::UInt8:
-        return 1;
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::UInt16:
-        return 2;
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char32: // Char == Char32
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::Float32:
-        return 4;
     case TypeRef::Kind::Opaque:
         return 0;
     case TypeRef::Kind::Tuple: {
@@ -109,11 +100,17 @@ int AlignOf(const TypeRef &t) {
     if (t.kind == TypeRef::Kind::Array) {
         return t.inner.empty() ? 1 : AlignOf(t.inner[0]);
     }
+    // A primitive states its own alignment, which for the wide widths is below its size; everything else takes the
+    // record rule's natural alignment, capped at a doubleword.
+    if (const auto primitive = PrimitiveAlign(t.kind, 8)) {
+        return static_cast<int>(*primitive);
+    }
     const int size = SizeOf(t);
     return size > 0 ? std::min(size, 8) : 1;
 }
 
 bool IsFloat(const TypeRef &t) {
+    // Only the widths a machine floating-point register holds; the software-lowered ones are not register floats.
     return t.kind == TypeRef::Kind::Float32 || t.kind == TypeRef::Kind::Float64;
 }
 

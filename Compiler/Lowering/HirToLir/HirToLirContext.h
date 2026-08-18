@@ -81,6 +81,7 @@ private:
     [[nodiscard]] LirReg EmitBinary(LirOpcode op, LirReg left, LirReg right, TypeRef type);
     [[nodiscard]] LirReg EmitUnary(LirOpcode op, LirReg source, const TypeRef &type);
     [[nodiscard]] LirReg EmitCast(LirReg source, const TypeRef &fromType, TypeRef toType);
+    [[nodiscard]] LirReg EmitWidenBool(LirReg source, const TypeRef &toType);
     [[nodiscard]] static bool IsScalar(const TypeRef &type);
     [[nodiscard]] static bool IsComparison(TokenKind op);
     [[nodiscard]] LirReg EmitCastIfNeeded(LirReg source, const TypeRef &fromType, const TypeRef &toType);

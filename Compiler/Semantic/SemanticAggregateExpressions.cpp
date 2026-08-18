@@ -45,30 +45,11 @@ std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) cons
         }
         return BaseTypeName(named->name);
     }
-    switch (named->kind) {
-    case TypeRef::Kind::Bool8:
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char8:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Char32:
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::Int64:
-    case TypeRef::Kind::UInt8:
-    case TypeRef::Kind::UInt16:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::UInt64:
-    case TypeRef::Kind::Int:
-    case TypeRef::Kind::UInt:
-    case TypeRef::Kind::Float32:
-    case TypeRef::Kind::Float64:
-    case TypeRef::Kind::Str:
+    // Every primitive names its own method set, so a width added to the catalog joins without a case here.
+    if (named->IsPrimitive() || named->kind == TypeRef::Kind::Str) {
         return named->ToString();
-    default:
-        return {};
     }
+    return {};
 }
 
 std::optional<TypeRef> SemanticAnalyzerContext::SliceElementType(const TypeRef &type) const {

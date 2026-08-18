@@ -1,5 +1,6 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Semantic/PrimitiveCatalog.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
@@ -1098,10 +1099,14 @@ TEST_CASE("same function signature in distinct modules remains valid") {
 }
 
 TEST_CASE("documented primitive names report when their implementation is unavailable") {
-    constexpr std::array<std::string_view, 20> types{
-        "int128",   "int256",   "int512", "uint128", "uint256", "uint512", "float8", "float16", "float80", "float128",
-        "float256", "float512", "bool64", "bool128", "bool256", "bool512", "char64", "char128", "char256", "char512",
-    };
+    // Taken from the catalog rather than repeated, so implementing a width moves it out of this test by itself.
+    std::vector<std::string_view> types;
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (!primitive.implemented) {
+            types.push_back(primitive.name);
+        }
+    }
+    REQUIRE_FALSE(types.empty());
 
     std::string source;
     for (std::size_t i = 0; i < types.size(); ++i) {

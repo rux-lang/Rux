@@ -28,8 +28,10 @@ struct WidthCase {
 } // namespace
 
 TEST_CASE("typed constants parse booleans and supported integer literal forms") {
+    // A bool is one bit wide however wide it is stored, so every width models the same two values.
     const auto boolean = Constant("true", TypeRef::MakeBool16());
-    CHECK(boolean.Width() == 16);
+    CHECK(boolean.Width() == 1);
+    CHECK(Constant("true", TypeRef::MakePrimitive(TypeRef::Kind::Bool64)).Width() == 1);
     CHECK(boolean.BooleanValue() == true);
     const auto no = Constant("false", TypeRef::MakeBool16());
     CHECK(Binary(TokenKind::AmpAmp, boolean, no).BooleanValue() == false);
@@ -145,8 +147,12 @@ TEST_CASE("integer casts sign-extend, reinterpret, and truncate like runtime sto
     const auto wide = Constant("65535", TypeRef::MakeUInt32());
     CHECK(CastConstant(wide, TypeRef::MakeUInt8())->ToLiteral() == "255");
 
+    // A cast to bool asks whether the whole source value is non-zero, so a value whose low byte is zero is still
+    // true. Truncating to the bool's storage width first would have answered about the low byte instead.
     const auto lowByteZero = Constant("256", TypeRef::MakeUInt16());
-    CHECK(CastConstant(lowByteZero, TypeRef::MakeBool8())->BooleanValue() == false);
+    CHECK(CastConstant(lowByteZero, TypeRef::MakeBool8())->BooleanValue() == true);
+    CHECK(CastConstant(lowByteZero, TypeRef::MakePrimitive(TypeRef::Kind::Bool64))->BooleanValue() == true);
+    CHECK(CastConstant(Constant("0", TypeRef::MakeUInt16()), TypeRef::MakeBool8())->BooleanValue() == false);
     CHECK(CastConstant(Constant("true", TypeRef::MakeBool8()), TypeRef::MakeUInt64())->ToLiteral() == "1");
     CHECK_FALSE(CastConstant(wide, TypeRef::MakeFloat64()).has_value());
 }
