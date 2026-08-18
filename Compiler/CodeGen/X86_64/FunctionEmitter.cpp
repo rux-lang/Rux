@@ -4,6 +4,10 @@
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/Encoder.h"
 
+#include <algorithm>
+#include <limits>
+#include <vector>
+
 namespace Rux {
 using namespace Layout;
 
@@ -30,6 +34,9 @@ int X86_64FunctionEmitter::SizeOfRuntime(const TypeRef &type) const {
 }
 
 bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
+    if (IsWideInteger(type)) {
+        return true;
+    }
     if (type.IsRange()) {
         return true;
     }
@@ -63,7 +70,490 @@ int X86_64FunctionEmitter::FieldOffset(const LirReg base, const std::string &fie
     return FieldOffsetOf(type->second, fieldName, layouts, interfaceNames);
 }
 
+bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
+    const auto &types = framePlan.RegisterTypes();
+    const TypeRef operandType = !instruction.srcs.empty() && types.contains(instruction.srcs[0])
+                                  ? types.at(instruction.srcs[0])
+                                  : instruction.type;
+    if (!IsWideInteger(operandType) && !IsWideInteger(instruction.type)) {
+        return false;
+    }
+    const TypeRef wideType = IsWideInteger(operandType) ? operandType : instruction.type;
+    const int size = SizeOf(wideType);
+    const int words = size / 8;
+    const std::int32_t destination = Disp(instruction.dst);
+    const auto source = [&](const std::size_t index) { return Disp(instruction.srcs.at(index)); };
+
+    switch (instruction.op) {
+    case LirOpcode::Add:
+    case LirOpcode::Sub:
+    case LirOpcode::And:
+    case LirOpcode::Or:
+    case LirOpcode::Xor:
+        for (int word = 0; word < words; ++word) {
+            encoder.MovRaxLoad(source(0) + word * 8);
+            encoder.MovR10Load(source(1) + word * 8);
+            if (instruction.op == LirOpcode::Add) {
+                if (word == 0) {
+                    encoder.AddRaxR10();
+                }
+                else {
+                    encoder.Byte(0x4C);
+                    encoder.Byte(0x11);
+                    encoder.Byte(0xD0); // adc rax, r10
+                }
+            }
+            else if (instruction.op == LirOpcode::Sub) {
+                if (word == 0) {
+                    encoder.SubRaxR10();
+                }
+                else {
+                    encoder.Byte(0x4C);
+                    encoder.Byte(0x19);
+                    encoder.Byte(0xD0); // sbb rax, r10
+                }
+            }
+            else if (instruction.op == LirOpcode::And) {
+                encoder.AndRaxR10();
+            }
+            else if (instruction.op == LirOpcode::Or) {
+                encoder.OrRaxR10();
+            }
+            else {
+                encoder.XorRaxR10();
+            }
+            encoder.MovRaxStore(destination + word * 8);
+        }
+        return true;
+    case LirOpcode::Mul:
+        MultiplyWide(source(0), source(1), destination, size);
+        return true;
+    case LirOpcode::Div:
+    case LirOpcode::Mod: {
+        const std::int32_t remainder = -framePlan.WideTemporaryOffset(0);
+        const std::int32_t dividend = -framePlan.WideTemporaryOffset(1);
+        const std::int32_t divisor = -framePlan.WideTemporaryOffset(2);
+
+        encoder.MovEaxImm32(0);
+        for (int word = 0; word < words; ++word) {
+            encoder.MovR10Load(source(1) + word * 8);
+            encoder.OrRaxR10();
+        }
+        encoder.TestRaxRax();
+        const std::uint32_t nonZeroDivisor = JumpIf(0x85);
+        encoder.Ud2();
+        PatchHere(nonZeroDivisor);
+
+        if (wideType.IsSigned()) {
+            std::vector<std::uint32_t> notOverflow;
+            encoder.MovRaxImm64(std::numeric_limits<std::int64_t>::min());
+            encoder.MovR10Load(source(0) + size - 8);
+            encoder.CmpRaxR10();
+            notOverflow.push_back(JumpIf(0x85));
+            encoder.MovEaxImm32(0);
+            for (int word = 0; word < words - 1; ++word) {
+                encoder.MovR10Load(source(0) + word * 8);
+                encoder.CmpRaxR10();
+                notOverflow.push_back(JumpIf(0x85));
+            }
+            encoder.MovRaxImm64(-1);
+            for (int word = 0; word < words; ++word) {
+                encoder.MovR10Load(source(1) + word * 8);
+                encoder.CmpRaxR10();
+                notOverflow.push_back(JumpIf(0x85));
+            }
+            encoder.Ud2();
+            for (const std::uint32_t patch : notOverflow) {
+                PatchHere(patch);
+            }
+        }
+
+        CopyWide(source(0), dividend, size);
+        CopyWide(source(1), divisor, size);
+        if (wideType.IsSigned()) {
+            encoder.MovRaxLoad(dividend + size - 8);
+            encoder.TestRaxRax();
+            const std::uint32_t dividendPositive = JumpIf(0x89);
+            NegateWide(dividend, size);
+            PatchHere(dividendPositive);
+            encoder.MovRaxLoad(divisor + size - 8);
+            encoder.TestRaxRax();
+            const std::uint32_t divisorPositive = JumpIf(0x89);
+            NegateWide(divisor, size);
+            PatchHere(divisorPositive);
+        }
+
+        ZeroWide(destination, size);
+        ZeroWide(remainder, size);
+        encoder.Byte(0x48);
+        encoder.Byte(0xC7);
+        encoder.Byte(0xC1); // mov rcx, width
+        encoder.Dword(static_cast<std::uint32_t>(size * 8));
+        const std::uint32_t divideLoop = encoder.Size();
+
+        for (int word = 0; word < words; ++word) {
+            encoder.Byte(0x48);
+            encoder.Byte(0xD1);
+            encoder.Byte(word == 0 ? 0xA5 : 0x95); // shl/rcl quotient
+            encoder.Dword(static_cast<std::uint32_t>(destination + word * 8));
+        }
+        for (int word = 0; word < words; ++word) {
+            encoder.Byte(0x48);
+            encoder.Byte(0xD1);
+            encoder.Byte(word == 0 ? 0xA5 : 0x95); // shl/rcl dividend, leaving its top bit in carry
+            encoder.Dword(static_cast<std::uint32_t>(dividend + word * 8));
+        }
+        for (int word = 0; word < words; ++word) {
+            encoder.Byte(0x48);
+            encoder.Byte(0xD1);
+            encoder.Byte(0x95); // rcl remainder, consuming the dividend bit
+            encoder.Dword(static_cast<std::uint32_t>(remainder + word * 8));
+        }
+
+        std::vector<std::uint32_t> remainderLess;
+        std::vector<std::uint32_t> remainderGreater;
+        for (int word = words - 1; word >= 0; --word) {
+            encoder.MovRaxLoad(remainder + word * 8);
+            encoder.MovR10Load(divisor + word * 8);
+            encoder.CmpRaxR10();
+            remainderLess.push_back(JumpIf(0x82));
+            remainderGreater.push_back(JumpIf(0x87));
+        }
+        for (const std::uint32_t patch : remainderGreater) {
+            PatchHere(patch);
+        }
+        for (int word = 0; word < words; ++word) {
+            encoder.MovRaxLoad(remainder + word * 8);
+            encoder.MovR10Load(divisor + word * 8);
+            if (word == 0) {
+                encoder.SubRaxR10();
+            }
+            else {
+                encoder.Byte(0x4C);
+                encoder.Byte(0x19);
+                encoder.Byte(0xD0); // sbb rax, r10
+            }
+            encoder.MovRaxStore(remainder + word * 8);
+        }
+        encoder.Byte(0x48);
+        encoder.Byte(0x83);
+        encoder.Byte(0x8D); // or qword [rbp + quotient], 1
+        encoder.Dword(static_cast<std::uint32_t>(destination));
+        encoder.Byte(0x01);
+        for (const std::uint32_t patch : remainderLess) {
+            PatchHere(patch);
+        }
+        encoder.Byte(0x48);
+        encoder.Byte(0xFF);
+        encoder.Byte(0xC9); // dec rcx
+        encoder.Byte(0x0F);
+        encoder.Byte(0x85);
+        const std::uint32_t divideRepeat = encoder.Size();
+        encoder.Dword(0);
+        encoder.Patch32(divideRepeat,
+                        static_cast<std::int32_t>(divideLoop) - static_cast<std::int32_t>(divideRepeat + 4));
+
+        if (instruction.op == LirOpcode::Mod) {
+            CopyWide(remainder, destination, size);
+            if (wideType.IsSigned()) {
+                encoder.MovRaxLoad(source(0) + size - 8);
+                encoder.TestRaxRax();
+                const std::uint32_t positive = JumpIf(0x89);
+                NegateWide(destination, size);
+                PatchHere(positive);
+            }
+        }
+        else if (wideType.IsSigned()) {
+            encoder.MovRaxLoad(source(0) + size - 8);
+            encoder.MovR10Load(source(1) + size - 8);
+            encoder.XorRaxR10();
+            encoder.TestRaxRax();
+            const std::uint32_t positive = JumpIf(0x89);
+            NegateWide(destination, size);
+            PatchHere(positive);
+        }
+        return true;
+    }
+    case LirOpcode::Pow: {
+        const std::int32_t base = -framePlan.WideTemporaryOffset(0);
+        const std::int32_t exponent = -framePlan.WideTemporaryOffset(1);
+        const std::int32_t product = -framePlan.WideTemporaryOffset(2);
+        ZeroWide(destination, size);
+        encoder.MovEaxImm32(1);
+        encoder.MovRaxStore(destination);
+        if (wideType.IsSigned()) {
+            encoder.MovRaxLoad(source(1) + size - 8);
+            encoder.TestRaxRax();
+            const std::uint32_t nonNegative = JumpIf(0x89);
+            ZeroWide(destination, size);
+            std::uint32_t done;
+            encoder.Jmp(done);
+            PatchHere(nonNegative);
+            CopyWide(source(0), base, size);
+            CopyWide(source(1), exponent, size);
+            const std::uint32_t loop = encoder.Size();
+            encoder.MovEaxImm32(0);
+            for (int word = 0; word < words; ++word) {
+                encoder.MovR10Load(exponent + word * 8);
+                encoder.OrRaxR10();
+            }
+            encoder.TestRaxRax();
+            const std::uint32_t exponentZero = JumpIf(0x84);
+            encoder.Byte(0x48);
+            encoder.Byte(0xF7);
+            encoder.Byte(0x85); // test qword [rbp + exponent], 1
+            encoder.Dword(static_cast<std::uint32_t>(exponent));
+            encoder.Dword(1);
+            const std::uint32_t skipMultiply = JumpIf(0x84);
+            MultiplyWide(destination, base, product, size);
+            CopyWide(product, destination, size);
+            PatchHere(skipMultiply);
+            MultiplyWide(base, base, product, size);
+            CopyWide(product, base, size);
+            for (int word = words - 1; word >= 0; --word) {
+                encoder.Byte(0x48);
+                encoder.Byte(0xD1);
+                encoder.Byte(word == words - 1 ? 0xAD : 0x9D); // shr/rcr exponent
+                encoder.Dword(static_cast<std::uint32_t>(exponent + word * 8));
+            }
+            encoder.Byte(0xE9);
+            const std::uint32_t repeat = encoder.Size();
+            encoder.Dword(0);
+            encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
+            PatchHere(exponentZero);
+            PatchHere(done);
+            return true;
+        }
+        CopyWide(source(0), base, size);
+        CopyWide(source(1), exponent, size);
+        const std::uint32_t loop = encoder.Size();
+        encoder.MovEaxImm32(0);
+        for (int word = 0; word < words; ++word) {
+            encoder.MovR10Load(exponent + word * 8);
+            encoder.OrRaxR10();
+        }
+        encoder.TestRaxRax();
+        const std::uint32_t done = JumpIf(0x84);
+        encoder.Byte(0x48);
+        encoder.Byte(0xF7);
+        encoder.Byte(0x85);
+        encoder.Dword(static_cast<std::uint32_t>(exponent));
+        encoder.Dword(1);
+        const std::uint32_t skipMultiply = JumpIf(0x84);
+        MultiplyWide(destination, base, product, size);
+        CopyWide(product, destination, size);
+        PatchHere(skipMultiply);
+        MultiplyWide(base, base, product, size);
+        CopyWide(product, base, size);
+        for (int word = words - 1; word >= 0; --word) {
+            encoder.Byte(0x48);
+            encoder.Byte(0xD1);
+            encoder.Byte(word == words - 1 ? 0xAD : 0x9D);
+            encoder.Dword(static_cast<std::uint32_t>(exponent + word * 8));
+        }
+        encoder.Byte(0xE9);
+        const std::uint32_t repeat = encoder.Size();
+        encoder.Dword(0);
+        encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
+        PatchHere(done);
+        return true;
+    }
+    case LirOpcode::Neg:
+        CopyWide(source(0), destination, size);
+        NegateWide(destination, size);
+        return true;
+    case LirOpcode::BitNot:
+        for (int word = 0; word < words; ++word) {
+            encoder.MovRaxLoad(source(0) + word * 8);
+            encoder.NotRax();
+            encoder.MovRaxStore(destination + word * 8);
+        }
+        return true;
+    case LirOpcode::Not: {
+        encoder.MovEaxImm32(0);
+        for (int word = 0; word < words; ++word) {
+            encoder.MovR10Load(source(0) + word * 8);
+            encoder.OrRaxR10();
+        }
+        encoder.TestRaxRax();
+        encoder.SeteAl();
+        encoder.MovzxRaxAl();
+        hooks.StoreA(instruction.dst, TypeRef::MakeBool());
+        return true;
+    }
+    case LirOpcode::Shl:
+    case LirOpcode::Shr:
+    case LirOpcode::Lshr: {
+        CopyWide(source(0), destination, size);
+        if (const auto physical = framePlan.PhysicalRegisters().find(instruction.srcs[1]);
+            physical != framePlan.PhysicalRegisters().end()) {
+            encoder.MovR11PhysReg(physical->second);
+            encoder.MovRcxR11();
+        }
+        else {
+            encoder.MovRcxLoad(source(1));
+        }
+        encoder.Byte(0x48);
+        encoder.Byte(0x81);
+        encoder.Byte(0xE1); // and rcx, width - 1
+        encoder.Dword(static_cast<std::uint32_t>(size * 8 - 1));
+        encoder.Byte(0x48);
+        encoder.Byte(0x85);
+        encoder.Byte(0xC9); // test rcx, rcx
+        const std::uint32_t done = JumpIf(0x84);
+        const std::uint32_t loop = encoder.Size();
+        if (instruction.op == LirOpcode::Shl) {
+            for (int word = 0; word < words; ++word) {
+                encoder.Byte(0x48);
+                encoder.Byte(0xD1);
+                encoder.Byte(word == 0 ? 0xA5 : 0x95); // shl/rcl qword [rbp + disp32], 1
+                encoder.Dword(static_cast<std::uint32_t>(destination + word * 8));
+            }
+        }
+        else {
+            for (int word = words - 1; word >= 0; --word) {
+                encoder.Byte(0x48);
+                encoder.Byte(0xD1);
+                const bool top = word == words - 1;
+                const std::uint8_t modRm =
+                    top ? (instruction.op == LirOpcode::Shr && wideType.IsSigned() ? 0xBD : 0xAD) : 0x9D;
+                encoder.Byte(modRm); // sar/shr/rcr qword [rbp + disp32], 1
+                encoder.Dword(static_cast<std::uint32_t>(destination + word * 8));
+            }
+        }
+        encoder.Byte(0x48);
+        encoder.Byte(0xFF);
+        encoder.Byte(0xC9); // dec rcx
+        encoder.Byte(0x0F);
+        encoder.Byte(0x85);
+        const std::uint32_t repeat = encoder.Size();
+        encoder.Dword(0);
+        encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
+        PatchHere(done);
+        return true;
+    }
+    case LirOpcode::CmpEq:
+    case LirOpcode::CmpNe: {
+        encoder.MovEaxImm32(instruction.op == LirOpcode::CmpEq ? 1 : 0);
+        std::vector<std::uint32_t> differences;
+        for (int word = 0; word < words; ++word) {
+            encoder.MovR10Load(source(0) + word * 8);
+            encoder.MovRaxLoad(source(1) + word * 8);
+            encoder.CmpRaxR10();
+            differences.push_back(JumpIf(0x85)); // jne different
+        }
+        encoder.MovEaxImm32(instruction.op == LirOpcode::CmpEq ? 1 : 0);
+        std::uint32_t done;
+        encoder.Jmp(done);
+        for (const std::uint32_t difference : differences) {
+            PatchHere(difference);
+        }
+        encoder.MovEaxImm32(instruction.op == LirOpcode::CmpEq ? 0 : 1);
+        PatchHere(done);
+        hooks.StoreA(instruction.dst, TypeRef::MakeBool());
+        return true;
+    }
+    case LirOpcode::CmpLt:
+    case LirOpcode::CmpLe:
+    case LirOpcode::CmpGt:
+    case LirOpcode::CmpGe: {
+        std::vector<std::uint32_t> less;
+        std::vector<std::uint32_t> greater;
+        for (int word = words - 1; word >= 0; --word) {
+            encoder.MovRaxLoad(source(0) + word * 8);
+            encoder.MovR10Load(source(1) + word * 8);
+            encoder.CmpRaxR10();
+            const bool signedWord = word == words - 1 && wideType.IsSigned();
+            less.push_back(JumpIf(signedWord ? 0x8C : 0x82));    // jl/jb
+            greater.push_back(JumpIf(signedWord ? 0x8F : 0x87)); // jg/ja
+        }
+        const bool equalResult = instruction.op == LirOpcode::CmpLe || instruction.op == LirOpcode::CmpGe;
+        encoder.MovEaxImm32(equalResult ? 1 : 0);
+        std::uint32_t equalDone;
+        encoder.Jmp(equalDone);
+        for (const std::uint32_t patch : less) {
+            PatchHere(patch);
+        }
+        const bool lessResult = instruction.op == LirOpcode::CmpLt || instruction.op == LirOpcode::CmpLe;
+        encoder.MovEaxImm32(lessResult ? 1 : 0);
+        std::uint32_t lessDone;
+        encoder.Jmp(lessDone);
+        for (const std::uint32_t patch : greater) {
+            PatchHere(patch);
+        }
+        const bool greaterResult = instruction.op == LirOpcode::CmpGt || instruction.op == LirOpcode::CmpGe;
+        encoder.MovEaxImm32(greaterResult ? 1 : 0);
+        PatchHere(equalDone);
+        PatchHere(lessDone);
+        hooks.StoreA(instruction.dst, TypeRef::MakeBool());
+        return true;
+    }
+    case LirOpcode::Cast: {
+        const TypeRef &destinationType = instruction.type;
+        if (destinationType.IsBool()) {
+            encoder.MovEaxImm32(0);
+            for (int word = 0; word < words; ++word) {
+                encoder.MovR10Load(source(0) + word * 8);
+                encoder.OrRaxR10();
+            }
+            encoder.TestRaxRax();
+            encoder.SetneAl();
+            encoder.MovzxRaxAl();
+            hooks.StoreA(instruction.dst, destinationType);
+            return true;
+        }
+        if (IsWideInteger(destinationType)) {
+            const int destinationSize = SizeOf(destinationType);
+            if (!IsWideInteger(operandType)) {
+                hooks.LoadA(instruction.srcs[0], operandType);
+                encoder.MovRaxStore(destination);
+                if (operandType.IsSigned()) {
+                    encoder.Byte(0x48);
+                    encoder.Byte(0xC1);
+                    encoder.Byte(0xF8);
+                    encoder.Byte(0x3F); // sar rax, 63
+                }
+                else {
+                    encoder.MovEaxImm32(0);
+                }
+                for (int offset = 8; offset < destinationSize; offset += 8) {
+                    encoder.MovRaxStore(destination + offset);
+                }
+                return true;
+            }
+            const int copiedSize = std::min(size, destinationSize);
+            CopyWide(source(0), destination, copiedSize);
+            if (destinationSize > copiedSize) {
+                encoder.MovEaxImm32(0);
+                if (wideType.IsSigned()) {
+                    encoder.MovR10Load(source(0) + size - 8);
+                    encoder.Byte(0x4C);
+                    encoder.Byte(0x89);
+                    encoder.Byte(0xD0); // mov rax, r10
+                    encoder.Byte(0x48);
+                    encoder.Byte(0xC1);
+                    encoder.Byte(0xF8);
+                    encoder.Byte(0x3F); // sar rax, 63
+                }
+                for (int offset = copiedSize; offset < destinationSize; offset += 8) {
+                    encoder.MovRaxStore(destination + offset);
+                }
+            }
+            return true;
+        }
+        encoder.MovRaxLoad(source(0));
+        hooks.StoreA(instruction.dst, destinationType);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
+    if (EmitWideArithmetic(instruction)) {
+        return true;
+    }
     const auto &registerTypes = framePlan.RegisterTypes();
     const auto &physicalRegisters = framePlan.PhysicalRegisters();
     switch (instruction.op) {
@@ -458,6 +948,27 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         else if (type.IsBool()) {
             encoder.MovEaxImm32((instruction.strArg == "true" || instruction.strArg == "1") ? 1 : 0);
             hooks.StoreA(instruction.dst, type);
+        }
+        else if (IsWideInteger(type)) {
+            const std::string &literal = instruction.strArg.empty() ? "0" : instruction.strArg;
+            const auto parts = SplitIntegerLiteral(literal);
+            WideInteger value = WideInteger::Zero(static_cast<std::uint32_t>(size * 8));
+            if (parts) {
+                if (const auto magnitude =
+                        WideInteger::Parse(parts->digits, parts->base, static_cast<std::uint32_t>(size * 8))) {
+                    value = parts->negative ? magnitude->Negated() : *magnitude;
+                }
+            }
+            for (int offset = 0; offset < size; offset += 8) {
+                const std::uint64_t word = value.Word64(static_cast<std::size_t>(offset / 8));
+                if (word <= 0x7FFF'FFFF) {
+                    encoder.MovEaxImm32(static_cast<std::int32_t>(word));
+                }
+                else {
+                    encoder.MovRaxImm64(static_cast<std::int64_t>(word));
+                }
+                encoder.MovRaxStore(Disp(instruction.dst) + offset);
+            }
         }
         else {
             const std::string &value = instruction.strArg.empty() ? "0" : instruction.strArg;

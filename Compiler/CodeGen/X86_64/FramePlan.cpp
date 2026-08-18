@@ -30,6 +30,7 @@ public:
         PlanHiddenReturn();
         PlanParameters();
         PlanInstructions();
+        PlanWideTemporaries();
         PlanPhiTemporary();
 
         plan.frameSize = AlignUp(nextOffset, 16);
@@ -59,6 +60,9 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
+        if (IsWideInteger(type)) {
+            return true;
+        }
         if (type.IsRange()) {
             return true;
         }
@@ -193,6 +197,24 @@ private:
                 const int size = RuntimeSize(instruction.type);
                 AllocateSlot(instruction.dst, size > 0 ? size : 8);
             }
+        }
+    }
+
+    void PlanWideTemporaries() {
+        int largest = 0;
+        for (const LirBlock &block : func.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                if (IsWideInteger(instruction.type)) {
+                    largest = std::max(largest, RuntimeSize(instruction.type));
+                }
+            }
+        }
+        if (largest == 0) {
+            return;
+        }
+        plan.wideTemporarySize = largest;
+        for (std::int32_t &offset : plan.wideTemporaryOffsets) {
+            offset = AllocateRegion(largest);
         }
     }
 

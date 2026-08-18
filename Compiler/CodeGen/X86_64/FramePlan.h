@@ -5,6 +5,7 @@
 #include "Ir/Lir/Lir.h"
 #include "Target/Target.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -63,6 +64,14 @@ public:
         return phiTemporarySize;
     }
 
+    [[nodiscard]] std::int32_t WideTemporaryOffset(const std::size_t index) const {
+        return wideTemporaryOffsets.at(index);
+    }
+
+    [[nodiscard]] std::int32_t WideTemporarySize() const {
+        return wideTemporarySize;
+    }
+
 private:
     friend class X86_64FramePlanner;
     friend X86_64FramePlan PlanX86_64Frame(const LirFunc &, const Layout::LayoutMap &,
@@ -78,6 +87,8 @@ private:
     std::int32_t hiddenReturnOffset = 0;
     std::int32_t phiTemporaryOffset = 0;
     std::int32_t phiTemporarySize = 0;
+    std::array<std::int32_t, 3> wideTemporaryOffsets{};
+    std::int32_t wideTemporarySize = 0;
 };
 
 [[nodiscard]] X86_64FramePlan PlanX86_64Frame(const LirFunc &func, const Layout::LayoutMap &layouts,

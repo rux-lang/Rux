@@ -364,6 +364,22 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
     const std::int32_t temporary = -framePlan.PhiTemporaryOffset();
     for (const PhiMoveStep &step : ResolvePhiMoves(std::move(moves))) {
         const int size = hooks.SizeOfRuntime(step.type);
+        if (size > 16) {
+            if (step.kind == PhiMoveStep::Kind::SaveDestination) {
+                for (int offset = 0; offset < size; offset += 8) {
+                    encoder.MovRaxLoad(Disp(step.dst) + offset);
+                    encoder.MovRaxStore(temporary + offset);
+                }
+            }
+            else {
+                const std::int32_t source = step.sourceIsTemporary ? temporary : Disp(step.src);
+                for (int offset = 0; offset < size; offset += 8) {
+                    encoder.MovRaxLoad(source + offset);
+                    encoder.MovRaxStore(Disp(step.dst) + offset);
+                }
+            }
+            continue;
+        }
         if (step.kind == PhiMoveStep::Kind::SaveDestination) {
             hooks.LoadA(step.dst, step.type);
             if (size == 16) {
