@@ -122,6 +122,16 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckTryExpression(const TryExpr
         return operand->payload;
     }
 
+    ResolvedPropagation propagation;
+    propagation.isResult = operand->kind == PropagationShape::Kind::Result;
+    propagation.enumName = operand->declaration->name;
+    propagation.successVariant = propagation.isResult ? std::string(kResultSuccess) : std::string(kOptionSome);
+    propagation.failureVariant = propagation.isResult ? std::string(kResultError) : std::string(kOptionNone);
+    propagation.returnEnumName = enclosing->declaration->name;
+    propagation.payloadType = operand->payload;
+    propagation.failureType = operand->failure;
+    propagation.returnType = currentReturnType;
+    propagations.insert_or_assign(&expression, std::move(propagation));
     return operand->payload;
 }
 } // namespace Rux::SemanticDetail

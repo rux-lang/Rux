@@ -70,6 +70,8 @@ protected:
     std::string currentFunctionName;
     std::string currentModulePath;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
+    /// Distinguishes the bindings two propagations in one expression introduce; only their uniqueness matters.
+    std::size_t propagationOrdinal = 0;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     std::vector<std::string> currentTypeParams;
@@ -119,6 +121,7 @@ protected:
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);

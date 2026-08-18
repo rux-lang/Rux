@@ -182,6 +182,7 @@ rux_add_component(RuxLowering
     Lowering/AstToHir/AstToHirContext.cpp
     Lowering/AstToHir/AstToHirDeclarations.cpp
     Lowering/AstToHir/AstToHirExpressions.cpp
+    Lowering/AstToHir/AstToHirPropagation.cpp
     Lowering/AstToHir/AstToHirStatements.cpp
     Lowering/AstToHir/AstToHirTypes.cpp
     Lowering/HirToLir/CheckedLirBuilder.cpp

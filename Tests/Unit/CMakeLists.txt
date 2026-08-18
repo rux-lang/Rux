@@ -74,6 +74,7 @@ set(RUX_TEST_SOURCES
     PeLinkerTests.cpp
     PlatformAsmTests.cpp
     ProcessTests.cpp
+    PropagationLoweringTests.cpp
     PrimitiveConstantsTests.cpp
     PublicationValidationTests.cpp
     ReporterTests.cpp

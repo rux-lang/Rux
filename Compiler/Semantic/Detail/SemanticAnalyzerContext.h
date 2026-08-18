@@ -36,6 +36,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, TypeProperties> TakeTypeProperties();
     [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
+    [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
@@ -214,6 +215,8 @@ protected:
     /// One entry per (bound, concrete type) pair a use site proved, so lowering can call the satisfying method directly
     /// in each instantiation instead of dispatching through the interface.
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
+    /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
+    std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
 
     SemanticProgramIndex programIndex;

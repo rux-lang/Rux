@@ -118,6 +118,8 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "intrinsic";
     if (dynamic_cast<const UnaryExpr *>(&expression))
         return "unary";
+    if (dynamic_cast<const TryExpr *>(&expression))
+        return "propagation";
     if (dynamic_cast<const PostfixExpr *>(&expression))
         return "postfix";
     if (dynamic_cast<const BinaryExpr *>(&expression))
