@@ -61,6 +61,58 @@ namespace {
     }
     return sign | best;
 }
+
+[[nodiscard]] std::uint8_t RoundBinary8(const std::int64_t numerator, const std::int64_t scale,
+                                        const bool negativeZero = false) {
+    if (numerator == 0) {
+        return negativeZero ? 0x80 : 0;
+    }
+    const std::uint8_t sign = numerator < 0 ? 0x80 : 0;
+    const std::int64_t magnitude = numerator < 0 ? -numerator : numerator;
+    std::uint8_t best = 0;
+    std::int64_t bestDistance = std::numeric_limits<std::int64_t>::max();
+    for (std::uint8_t candidate = 0; candidate <= 0x78; ++candidate) {
+        const std::int64_t candidateValue = static_cast<std::int64_t>(Binary8Units(candidate)) * scale;
+        const std::int64_t distance =
+            magnitude > candidateValue ? magnitude - candidateValue : candidateValue - magnitude;
+        if (distance < bestDistance || (distance == bestDistance && (candidate & 1) == 0 && (best & 1) != 0)) {
+            best = candidate;
+            bestDistance = distance;
+        }
+    }
+    return sign | best;
+}
+
+[[nodiscard]] std::uint8_t ReferenceBinary8Multiply(const std::uint8_t left, const std::uint8_t right) {
+    const bool negativeZero = Binary8Units(left) == 0 && Binary8Units(right) != 0
+                                ? ((left ^ right) & 0x80) != 0
+                                : Binary8Units(right) == 0 && ((left ^ right) & 0x80) != 0;
+    return RoundBinary8(static_cast<std::int64_t>(Binary8Units(left)) * Binary8Units(right), 512, negativeZero);
+}
+
+[[nodiscard]] std::uint8_t ReferenceBinary8Fma(const std::uint8_t left, const std::uint8_t right,
+                                               const std::uint8_t addend) {
+    const std::int64_t product = static_cast<std::int64_t>(Binary8Units(left)) * Binary8Units(right);
+    const std::int64_t sum = product + static_cast<std::int64_t>(Binary8Units(addend)) * 512;
+    const bool productNegative = ((left ^ right) & 0x80) != 0;
+    const bool negativeZero = product == 0 && Binary8Units(addend) == 0 && productNegative && (addend & 0x80) != 0;
+    return RoundBinary8(sum, 512, negativeZero);
+}
+
+[[nodiscard]] FloatEncoding One(const FloatFormat &format) {
+    WideInteger bits =
+        WideInteger::FromUnsigned(format.exponentBias, format.valueBits).ShiftedLeft(format.SignificandFieldBits());
+    if (format.explicitIntegerBit) {
+        bits = bits.BitwiseOr(WideInteger::FromUnsigned(1, format.valueBits).ShiftedLeft(format.FractionBits()));
+    }
+    return FloatEncoding::FromBits(format, bits);
+}
+
+[[nodiscard]] FloatEncoding Negated(const FloatEncoding &encoding) {
+    const FloatFormat &format = encoding.Format();
+    const WideInteger sign = WideInteger::FromUnsigned(1, format.valueBits).ShiftedLeft(format.valueBits - 1);
+    return FloatEncoding::FromBits(format, encoding.Bits().BitwiseXor(sign));
+}
 } // namespace
 
 TEST_CASE("software float unpacking and packing preserves every binary8 encoding") {
@@ -199,5 +251,83 @@ TEST_CASE("software float add and subtract match an exact binary8 oracle") {
                      ReferenceBinary8Add(static_cast<std::uint8_t>(leftRaw),
                                          static_cast<std::uint8_t>(rightRaw) ^ std::uint8_t{0x80}));
         }
+    }
+}
+
+TEST_CASE("software float multiplication matches an exact binary8 oracle") {
+    const FloatFormat &format = Format(8);
+    for (std::uint32_t leftRaw = 0; leftRaw <= 0xFF; ++leftRaw) {
+        const FloatEncoding left = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(leftRaw, 8));
+        if (!UnpackFloat(left).IsFinite()) {
+            continue;
+        }
+        for (std::uint32_t rightRaw = 0; rightRaw <= 0xFF; ++rightRaw) {
+            const FloatEncoding right = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(rightRaw, 8));
+            if (!UnpackFloat(right).IsFinite()) {
+                continue;
+            }
+            CAPTURE(leftRaw);
+            CAPTURE(rightRaw);
+            CHECK_EQ(Word(MultiplyFloat(left, right)),
+                     ReferenceBinary8Multiply(static_cast<std::uint8_t>(leftRaw), static_cast<std::uint8_t>(rightRaw)));
+        }
+    }
+}
+
+TEST_CASE("software fused multiply-add rounds once against an exact binary8 oracle") {
+    const FloatFormat &format = Format(8);
+    constexpr std::array<std::uint8_t, 16> addends{0x00, 0x80, 0x01, 0x81, 0x08, 0x88, 0x18, 0x98,
+                                                   0x38, 0xB8, 0x55, 0xD5, 0x70, 0xF0, 0x77, 0xF7};
+    std::uint32_t fusedDifferences = 0;
+    for (std::uint32_t leftRaw = 0; leftRaw <= 0xFF; ++leftRaw) {
+        const FloatEncoding left = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(leftRaw, 8));
+        if (!UnpackFloat(left).IsFinite()) {
+            continue;
+        }
+        for (std::uint32_t rightRaw = 0; rightRaw <= 0xFF; ++rightRaw) {
+            const FloatEncoding right = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(rightRaw, 8));
+            if (!UnpackFloat(right).IsFinite()) {
+                continue;
+            }
+            for (const std::uint8_t addendRaw : addends) {
+                const FloatEncoding addend = FloatEncoding::FromBits(format, WideInteger::FromUnsigned(addendRaw, 8));
+                CAPTURE(leftRaw);
+                CAPTURE(rightRaw);
+                CAPTURE(addendRaw);
+                const FloatEncoding fused = FusedMultiplyAddFloat(left, right, addend);
+                CHECK_EQ(Word(fused), ReferenceBinary8Fma(static_cast<std::uint8_t>(leftRaw),
+                                                          static_cast<std::uint8_t>(rightRaw), addendRaw));
+                fusedDifferences += fused.Bits() != AddFloat(MultiplyFloat(left, right), addend).Bits();
+            }
+        }
+    }
+    CHECK_GT(fusedDifferences, 0);
+}
+
+TEST_CASE("software multiplication applies IEEE special-value rules") {
+    const FloatFormat &format = Format(32);
+    const auto encoding = [&](const std::uint32_t raw) {
+        return FloatEncoding::FromBits(format, WideInteger::FromUnsigned(raw, 32));
+    };
+
+    CHECK_EQ(MultiplyFloat(encoding(0x00000000), encoding(0x7F800000)).Classify(), FloatClass::QuietNaN);
+    CHECK_EQ(Word(MultiplyFloat(encoding(0xFF800000), encoding(0x40000000))), 0xFF800000);
+    CHECK_EQ(Word(MultiplyFloat(encoding(0x80000000), encoding(0xC0000000))), 0x00000000);
+    CHECK_EQ(Word(MultiplyFloat(encoding(0x7FA12345), encoding(0x7FC54321))), 0x7FE12345);
+    CHECK_EQ(FusedMultiplyAddFloat(encoding(0x7F800000), encoding(0x00000000), encoding(0x3F800000)).Classify(),
+             FloatClass::QuietNaN);
+    CHECK_EQ(FusedMultiplyAddFloat(encoding(0x7F800000), encoding(0x40000000), encoding(0xFF800000)).Classify(),
+             FloatClass::QuietNaN);
+    CHECK_EQ(Word(FusedMultiplyAddFloat(encoding(0x7F800000), encoding(0xC0000000), encoding(0x3F800000))), 0xFF800000);
+}
+
+TEST_CASE("software multiply and fused multiply-add retain full wide precision") {
+    for (const FloatFormat &format : FloatFormats()) {
+        CAPTURE(format.name);
+        const FloatEncoding one = One(format);
+        const FloatEncoding minimum = FloatEncoding::MinPositiveSubnormal(format);
+        const FloatEncoding maximum = FloatEncoding::MaxFinite(format);
+        CHECK_EQ(MultiplyFloat(one, minimum).Bits(), minimum.Bits());
+        CHECK_EQ(FusedMultiplyAddFloat(one, maximum, Negated(maximum)).Bits(), FloatEncoding::Zero(format).Bits());
     }
 }
