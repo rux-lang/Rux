@@ -117,7 +117,14 @@ void SemanticAnalyzerContext::PopScope() {
 void SemanticAnalyzerContext::CheckBlock(const Block &block) {
     PushScope();
     for (const auto &statement : block.stmts) {
+        if (trackedFlowReachable) {
+            CheckStatement(*statement);
+            continue;
+        }
+
+        const TrackedFlow unreachableEntry = SaveTrackedFlow();
         CheckStatement(*statement);
+        RestoreTrackedFlow(unreachableEntry);
     }
     PopScope();
 }
@@ -143,6 +150,17 @@ void SemanticAnalyzerContext::CheckBooleanCondition(const TypeRef &type, const S
 void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(&statement)) {
         CheckExpr(*expressionStatement->expr);
+        if (const auto *call = dynamic_cast<const CallExpr *>(expressionStatement->expr.get())) {
+            const auto binding = callableBindings.find(call);
+            const auto *function = binding == callableBindings.end()
+                                     ? nullptr
+                                     : dynamic_cast<const FuncDecl *>(binding->second.selectedDeclaration);
+            const auto *callee = dynamic_cast<const IdentExpr *>(call->callee.get());
+            const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
+            if ((function && function->isNoReturn) || (symbol && symbol->intrinsicName == "Panic")) {
+                trackedFlowReachable = false;
+            }
+        }
     }
     else if (const auto *letStatement = dynamic_cast<const LetStmt *>(&statement)) {
         if (letStatement->type) {
@@ -194,19 +212,33 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             EmitError(ifStatement->condition->location,
                       std::format("condition for 'if' must have type 'bool', but found '{}'", condition.ToString()));
         }
+        TrackedFlow fallthrough = SaveTrackedFlow();
+        std::vector<TrackedFlow> exits;
+
+        RestoreTrackedFlow(fallthrough);
         CheckBlock(*ifStatement->thenBlock);
+        exits.push_back(SaveTrackedFlow());
         for (const auto &elseIf : ifStatement->elseIfs) {
+            RestoreTrackedFlow(fallthrough);
             TypeRef elseIfCondition = CheckExpr(*elseIf.condition);
             if (!elseIfCondition.IsUnknown() && !elseIfCondition.IsBool()) {
                 EmitError(elseIf.condition->location,
                           std::format("condition for 'else if' must have type 'bool', but found '{}'",
                                       elseIfCondition.ToString()));
             }
+            fallthrough = SaveTrackedFlow();
             CheckBlock(*elseIf.block);
+            exits.push_back(SaveTrackedFlow());
         }
         if (ifStatement->elseBlock) {
+            RestoreTrackedFlow(fallthrough);
             CheckBlock(*ifStatement->elseBlock);
+            exits.push_back(SaveTrackedFlow());
         }
+        else {
+            exits.push_back(std::move(fallthrough));
+        }
+        MergeTrackedFlows(exits);
     }
     else if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
         if (!whileStatement->label.empty()) {
@@ -219,9 +251,27 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
                       std::format("condition for 'while' must have type 'bool', but found '{}'", condition.ToString()));
         }
 
+        const TrackedFlow loopEntry = SaveTrackedFlow();
+        BeginTrackedLoop(whileStatement->label);
         ++loopDepth;
         CheckBlock(*whileStatement->body);
         --loopDepth;
+        const TrackedFlow bodyExit = SaveTrackedFlow();
+        TrackedLoop loop = EndTrackedLoop();
+        const auto *literal = dynamic_cast<const LiteralExpr *>(whileStatement->condition.get());
+        const bool alwaysTrue =
+            literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
+        const bool alwaysFalse =
+            literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "false";
+        std::vector<TrackedFlow> exits = std::move(loop.breaks);
+        if (!alwaysTrue) {
+            exits.push_back(loopEntry);
+        }
+        if (!alwaysTrue && !alwaysFalse) {
+            exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
+            exits.push_back(bodyExit);
+        }
+        MergeTrackedFlows(exits);
         if (!whileStatement->label.empty()) {
             activeLabels.erase(whileStatement->label);
         }
@@ -231,16 +281,40 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             activeLabels.insert(doWhileStatement->label);
         }
 
+        const TrackedFlow loopEntry = SaveTrackedFlow();
+        BeginTrackedLoop(doWhileStatement->label);
         ++loopDepth;
         CheckBlock(*doWhileStatement->body);
         --loopDepth;
+        const TrackedFlow bodyExit = SaveTrackedFlow();
+        TrackedLoop loop = EndTrackedLoop();
+        std::vector<TrackedFlow> iterationExits = loop.continues;
+        iterationExits.push_back(bodyExit);
+        MergeTrackedFlows(iterationExits);
 
-        TypeRef condition = CheckExpr(*doWhileStatement->condition);
+        TypeRef condition;
+        if (trackedFlowReachable) {
+            condition = CheckExpr(*doWhileStatement->condition);
+        }
+        else {
+            const TrackedFlow unreachableExit = SaveTrackedFlow();
+            RestoreTrackedFlow(loopEntry);
+            condition = CheckExpr(*doWhileStatement->condition);
+            RestoreTrackedFlow(unreachableExit);
+        }
         if (!condition.IsUnknown() && !condition.IsBool()) {
             EmitError(
                 doWhileStatement->condition->location,
                 std::format("condition for 'do-while' must have type 'bool', but found '{}'", condition.ToString()));
         }
+        const auto *literal = dynamic_cast<const LiteralExpr *>(doWhileStatement->condition.get());
+        const bool alwaysTrue =
+            literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
+        std::vector<TrackedFlow> exits = std::move(loop.breaks);
+        if (!alwaysTrue) {
+            exits.push_back(SaveTrackedFlow());
+        }
+        MergeTrackedFlows(exits);
 
         if (!doWhileStatement->label.empty()) {
             activeLabels.erase(doWhileStatement->label);
@@ -250,15 +324,19 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         if (!loopStatement->label.empty()) {
             activeLabels.insert(loopStatement->label);
         }
+        BeginTrackedLoop(loopStatement->label);
         ++loopDepth;
         CheckBlock(*loopStatement->body);
         --loopDepth;
+        TrackedLoop loop = EndTrackedLoop();
+        MergeTrackedFlows(loop.breaks);
         if (!loopStatement->label.empty()) {
             activeLabels.erase(loopStatement->label);
         }
     }
     else if (const auto *forStatement = dynamic_cast<const ForStmt *>(&statement)) {
         TypeRef iterableType = CheckExpr(*forStatement->iterable);
+        const TrackedFlow loopEntry = SaveTrackedFlow();
         TypeRef elementType;
         if (iterableType.IsIterableRange() && !iterableType.inner.empty()) {
             elementType = iterableType.inner[0];
@@ -292,26 +370,45 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         if (!forStatement->label.empty()) {
             activeLabels.insert(forStatement->label);
         }
+        BeginTrackedLoop(forStatement->label);
         ++loopDepth;
         CheckBlock(*forStatement->body);
         --loopDepth;
+        TrackedLoop loop = EndTrackedLoop();
         if (!forStatement->label.empty()) {
             activeLabels.erase(forStatement->label);
         }
         PopScope();
+        const TrackedFlow bodyExit = SaveTrackedFlow();
+        std::vector<TrackedFlow> exits = {loopEntry, bodyExit};
+        exits.insert(exits.end(), loop.breaks.begin(), loop.breaks.end());
+        exits.insert(exits.end(), loop.continues.begin(), loop.continues.end());
+        MergeTrackedFlows(exits);
     }
     else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
         const TypeRef subjectType = CheckExpr(*matchStatement->subject);
+        const TrackedFlow matchEntry = SaveTrackedFlow();
+        std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;
         patterns.reserve(matchStatement->arms.size());
+        bool coveredAll = false;
         for (const auto &arm : matchStatement->arms) {
             patterns.push_back(arm.pattern.get());
+            RestoreTrackedFlow(matchEntry);
             PushScope();
             CheckPattern(*arm.pattern, subjectType);
             CheckExpr(*arm.body);
             PopScope();
+            if (!coveredAll) {
+                exits.push_back(SaveTrackedFlow());
+            }
+            coveredAll = coveredAll || PatternMatchesEveryValue(*arm.pattern);
         }
         ValidateMatchPatterns(patterns, subjectType);
+        if (!MatchPatternsAreExhaustive(patterns, subjectType)) {
+            exits.push_back(matchEntry);
+        }
+        MergeTrackedFlows(exits);
     }
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
         if (currentFunctionNoReturn) {
@@ -334,6 +431,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             EmitError(returnStatement->location,
                       std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
         }
+        trackedFlowReachable = false;
     }
     else if (const auto *breakStatement = dynamic_cast<const BreakStmt *>(&statement)) {
         if (loopDepth == 0) {
@@ -343,6 +441,10 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
             EmitError(statement.location,
                       std::format("'break' refers to unknown loop label '{}'", breakStatement->label));
         }
+        else {
+            RecordTrackedLoopExit(breakStatement->label, false);
+            trackedFlowReachable = false;
+        }
     }
     else if (const auto *continueStatement = dynamic_cast<const ContinueStmt *>(&statement)) {
         if (loopDepth == 0) {
@@ -351,6 +453,10 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         else if (!continueStatement->label.empty() && !activeLabels.contains(continueStatement->label)) {
             EmitError(statement.location,
                       std::format("'continue' refers to unknown loop label '{}'", continueStatement->label));
+        }
+        else {
+            RecordTrackedLoopExit(continueStatement->label, true);
+            trackedFlowReachable = false;
         }
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
@@ -656,54 +762,51 @@ void SemanticAnalyzerContext::ValidateMatchPatterns(const MatchExpr &expression,
     ValidateMatchPatterns(patterns, subjectType);
 }
 
+bool SemanticAnalyzerContext::MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
+                                                         const TypeRef &subjectType) const {
+    if (std::ranges::any_of(patterns,
+                            [](const Pattern *pattern) { return pattern && PatternMatchesEveryValue(*pattern); })) {
+        return true;
+    }
+    if (subjectType.IsBool()) {
+        bool hasTrue = false;
+        bool hasFalse = false;
+        for (const Pattern *pattern : patterns) {
+            const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
+            hasTrue = hasTrue || (literal && literal->value.text == "true");
+            hasFalse = hasFalse || (literal && literal->value.text == "false");
+        }
+        return hasTrue && hasFalse;
+    }
+    if (subjectType.kind != TypeRef::Kind::Named) {
+        return false;
+    }
+
+    const std::string enumName = BaseTypeName(subjectType.name);
+    const auto declaration = enumDecls.find(enumName);
+    if (declaration == enumDecls.end()) {
+        return false;
+    }
+    std::unordered_set<std::string> covered;
+    for (const Pattern *pattern : patterns) {
+        const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
+        if (enumerator && !enumerator->path.empty()) {
+            const std::string &variantName = enumerator->path.back();
+            if (const auto *variant = LookupEnumVariant(enumName, variantName);
+                variant && EnumPatternCoversVariant(*enumerator, *variant)) {
+                covered.insert(variantName);
+            }
+        }
+    }
+    return std::ranges::all_of(declaration->second->variants,
+                               [&](const auto &variant) { return covered.contains(variant.name); });
+}
+
 bool SemanticAnalyzerContext::BlockDefinitelyReturns(const Block &block) const {
     std::function<bool(const Block &)> blockReturns;
     std::function<bool(const Expr &)> expressionReturns;
     std::function<bool(const Stmt &)> statementReturns;
     std::function<bool(const Block &, std::string_view, bool)> containsBreak;
-    const auto matchIsExhaustive = [&](const std::vector<const Pattern *> &patterns) {
-        if (std::ranges::any_of(patterns,
-                                [](const Pattern *pattern) { return pattern && PatternMatchesEveryValue(*pattern); })) {
-            return true;
-        }
-        if (patterns.empty()) {
-            return false;
-        }
-        const auto type = patternTypes.find(patterns.front());
-        if (type == patternTypes.end()) {
-            return false;
-        }
-        if (type->second.IsBool()) {
-            bool hasTrue = false;
-            bool hasFalse = false;
-            for (const Pattern *pattern : patterns) {
-                const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
-                hasTrue = hasTrue || (literal && literal->value.text == "true");
-                hasFalse = hasFalse || (literal && literal->value.text == "false");
-            }
-            return hasTrue && hasFalse;
-        }
-        if (type->second.kind != TypeRef::Kind::Named) {
-            return false;
-        }
-        const auto declaration = enumDecls.find(BaseTypeName(type->second.name));
-        if (declaration == enumDecls.end()) {
-            return false;
-        }
-        std::unordered_set<std::string> covered;
-        for (const Pattern *pattern : patterns) {
-            const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
-            if (enumerator && !enumerator->path.empty()) {
-                const std::string &variantName = enumerator->path.back();
-                if (const auto *variant = LookupEnumVariant(BaseTypeName(type->second.name), variantName);
-                    variant && EnumPatternCoversVariant(*enumerator, *variant)) {
-                    covered.insert(variantName);
-                }
-            }
-        }
-        return std::ranges::all_of(declaration->second->variants,
-                                   [&](const auto &variant) { return covered.contains(variant.name); });
-    };
     expressionReturns = [&](const Expr &expression) {
         const auto *blockExpression = dynamic_cast<const BlockExpr *>(&expression);
         return blockExpression && blockReturns(*blockExpression->block);
@@ -781,7 +884,8 @@ bool SemanticAnalyzerContext::BlockDefinitelyReturns(const Block &block) const {
             for (const auto &arm : match->arms) {
                 patterns.push_back(arm.pattern.get());
             }
-            return matchIsExhaustive(patterns) &&
+            const auto type = patterns.empty() ? patternTypes.end() : patternTypes.find(patterns.front());
+            return type != patternTypes.end() && MatchPatternsAreExhaustive(patterns, type->second) &&
                    std::ranges::all_of(match->arms, [&](const auto &arm) { return expressionReturns(*arm.body); });
         }
         if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {

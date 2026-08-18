@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -27,11 +28,17 @@ public:
         Uninitialized,
         Initialized,
         Moved,
+        MaybeUninitialized,
+        MaybeMoved,
+        MaybeUnavailable,
     };
 
     enum class IssueKind {
         Uninitialized,
         Moved,
+        PossiblyUninitialized,
+        PossiblyMoved,
+        PossiblyUnavailable,
     };
 
     struct Issue {
@@ -67,6 +74,8 @@ public:
     [[nodiscard]] const Record *TryGet(Identity identity) const;
     [[nodiscard]] Snapshot Save() const;
     void Restore(const Snapshot &snapshot);
+    [[nodiscard]] static Snapshot Merge(std::span<const Snapshot> snapshots);
+    [[nodiscard]] static Snapshot Project(const Snapshot &source, const Snapshot &shape);
 
 private:
     struct IdentityHash {
@@ -77,5 +86,6 @@ private:
     std::vector<std::vector<Identity>> scopes;
 
     [[nodiscard]] static std::optional<Issue> IssueFor(const Record &record);
+    [[nodiscard]] static State MergeStates(State left, State right);
 };
 } // namespace Rux::SemanticDetail

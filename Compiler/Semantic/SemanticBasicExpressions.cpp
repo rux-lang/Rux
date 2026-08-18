@@ -210,6 +210,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return operandType;
     }
     if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+        if (binary->op == TokenKind::AmpAmp || binary->op == TokenKind::PipePipe) {
+            return CheckShortCircuitExpression(*binary);
+        }
         TypeRef left = CheckExpr(*binary->left);
         TypeRef right = CheckExpr(*binary->right);
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location);

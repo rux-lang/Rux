@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <ranges>
 
 namespace Rux::SemanticDetail {
 MoveStateTracker::Identity MoveStateTracker::Local(const void *address) noexcept {
@@ -110,6 +111,39 @@ void MoveStateTracker::Restore(const Snapshot &snapshot) {
     }
 }
 
+MoveStateTracker::Snapshot MoveStateTracker::Merge(const std::span<const Snapshot> snapshots) {
+    if (snapshots.empty()) {
+        return {};
+    }
+
+    Snapshot result = snapshots.front();
+    for (SnapshotEntry &entry : result.entries) {
+        for (const Snapshot &snapshot : snapshots.subspan(1)) {
+            const auto other = std::ranges::find(snapshot.entries, entry.identity, &SnapshotEntry::identity);
+            if (other == snapshot.entries.end()) {
+                continue;
+            }
+            const State merged = MergeStates(entry.record.state, other->record.state);
+            if (entry.record.state == State::Initialized && other->record.state != State::Initialized) {
+                entry.record.previousTransition = other->record.previousTransition;
+            }
+            entry.record.state = merged;
+        }
+    }
+    return result;
+}
+
+MoveStateTracker::Snapshot MoveStateTracker::Project(const Snapshot &source, const Snapshot &shape) {
+    Snapshot result = shape;
+    for (SnapshotEntry &entry : result.entries) {
+        const auto record = std::ranges::find(source.entries, entry.identity, &SnapshotEntry::identity);
+        if (record != source.entries.end()) {
+            entry.record = record->record;
+        }
+    }
+    return result;
+}
+
 std::size_t MoveStateTracker::IdentityHash::operator()(const Identity identity) const noexcept {
     const std::size_t address = std::hash<const void *>{}(identity.address);
     const std::size_t kind = static_cast<std::size_t>(identity.kind);
@@ -123,6 +157,32 @@ std::optional<MoveStateTracker::Issue> MoveStateTracker::IssueFor(const Record &
     if (record.state == State::Moved) {
         return Issue{IssueKind::Moved, record.previousTransition};
     }
+    if (record.state == State::MaybeUninitialized) {
+        return Issue{IssueKind::PossiblyUninitialized, record.previousTransition};
+    }
+    if (record.state == State::MaybeMoved) {
+        return Issue{IssueKind::PossiblyMoved, record.previousTransition};
+    }
+    if (record.state == State::MaybeUnavailable) {
+        return Issue{IssueKind::PossiblyUnavailable, record.previousTransition};
+    }
     return std::nullopt;
+}
+
+MoveStateTracker::State MoveStateTracker::MergeStates(const State left, const State right) {
+    if (left == right) {
+        return left;
+    }
+    if (left == State::MaybeUnavailable || right == State::MaybeUnavailable) {
+        return State::MaybeUnavailable;
+    }
+
+    const auto has = [left, right](const State state) { return left == state || right == state; };
+    const bool mayMove = has(State::Moved) || has(State::MaybeMoved);
+    const bool mayBeUninitialized = has(State::Uninitialized) || has(State::MaybeUninitialized);
+    if (mayMove && mayBeUninitialized) {
+        return State::MaybeUnavailable;
+    }
+    return mayMove ? State::MaybeMoved : State::MaybeUninitialized;
 }
 } // namespace Rux::SemanticDetail
