@@ -4,6 +4,7 @@
 #include <compare>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -36,6 +37,9 @@ public:
     /// `value` at `width` bits, truncated to it when it does not fit.
     [[nodiscard]] static WideInteger FromUnsigned(std::uint64_t value, std::uint32_t width) noexcept;
 
+    /// Little-endian 64-bit `words` at `width` bits, truncated to it when they do not fit. Missing words are zero.
+    [[nodiscard]] static WideInteger FromWords(std::span<const std::uint64_t> words, std::uint32_t width) noexcept;
+
     /// Every bit below `width` set: the largest value the width holds, read as unsigned.
     [[nodiscard]] static WideInteger AllOnes(std::uint32_t width) noexcept;
 
@@ -61,6 +65,9 @@ public:
 
     [[nodiscard]] bool IsZero() const noexcept;
 
+    /// Whether the top bit is set, which means the bit pattern is negative when its type is signed.
+    [[nodiscard]] bool IsNegative() const noexcept;
+
     /// Whether bit `index` is set. A bit at or above the width is always zero.
     [[nodiscard]] bool BitSet(std::uint32_t index) const noexcept;
 
@@ -77,8 +84,15 @@ public:
     /// it.
     [[nodiscard]] WideInteger Negated() const noexcept;
 
+    /// The unsigned magnitude obtained by interpreting this bit pattern with the requested signedness.
+    [[nodiscard]] WideInteger Magnitude(bool isSigned) const noexcept;
+
     /// The same value restated at `newWidth`, truncating any bit that no longer fits.
     [[nodiscard]] WideInteger Truncated(std::uint32_t newWidth) const noexcept;
+
+    /// The same value restated at a wider width. A signed negative value is sign-extended; every other value is
+    /// zero-extended. Narrowing is identical to `Truncated`.
+    [[nodiscard]] WideInteger Extended(std::uint32_t newWidth, bool isSigned) const noexcept;
 
     [[nodiscard]] bool operator==(const WideInteger &other) const noexcept;
 
