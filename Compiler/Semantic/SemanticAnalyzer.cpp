@@ -3314,27 +3314,7 @@ private:
             return TypeRef::MakeBool();
         }
         if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {
-            const TypeRef subjectType = CheckExpr(*e->subject);
-            TypeRef resultType = TypeRef::MakeUnknown();
-            for (const auto &arm : e->arms) {
-                PushScope();
-                CheckPattern(*arm.pattern, subjectType);
-                TypeRef armType = CheckExpr(*arm.body);
-                PopScope();
-
-                if (resultType.IsUnknown()) {
-                    resultType = armType;
-                }
-                else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
-                    EmitError(arm.location,
-                              AssignmentErrorMessage(*arm.body, resultType,
-                                                     std::format("match arm type mismatch: "
-                                                                 "expected '{}', found '{}'",
-                                                                 resultType.ToString(), armType.ToString())));
-                }
-            }
-            ValidateMatchPatterns(*e, subjectType);
-            return resultType;
+            return CheckMatchExpression(*e);
         }
 
         if (auto *e = dynamic_cast<const BlockExpr *>(&expr)) {

@@ -57,12 +57,36 @@ protected:
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
 
+    struct TrackedFlow {
+        MoveStateTracker::Snapshot states;
+        bool reachable;
+    };
+
+    [[nodiscard]] TrackedFlow SaveTrackedFlow() const;
+    void RestoreTrackedFlow(const TrackedFlow &flow);
+    void MergeTrackedFlows(const std::vector<TrackedFlow> &flows);
+
+    struct TrackedLoop {
+        std::string label;
+        MoveStateTracker::Snapshot shape;
+        std::vector<TrackedFlow> breaks;
+        std::vector<TrackedFlow> continues;
+    };
+
+    void BeginTrackedLoop(std::string_view label);
+    [[nodiscard]] TrackedLoop EndTrackedLoop();
+    void RecordTrackedLoopExit(std::string_view label, bool isContinue);
+    [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
+    [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
+
     void CheckBlock(const Block &block);
     void CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType);
     void CheckBooleanCondition(const TypeRef &type, SourceLocation location, std::string_view construct) const;
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     void ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
     void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
+    [[nodiscard]] bool MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
+                                                  const TypeRef &subjectType) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
     [[nodiscard]] TypeRef CheckCallExpression(const CallExpr &expression);
@@ -129,6 +153,10 @@ protected:
     Scope *currentScope;
     MoveStateTracker moveStates;
     std::vector<MoveStateTracker> savedMoveStates;
+    bool trackedFlowReachable = true;
+    std::vector<bool> savedTrackedFlowReachability;
+    std::vector<TrackedLoop> trackedLoops;
+    std::vector<std::vector<TrackedLoop>> savedTrackedLoops;
     bool checkingPlainAssignmentTarget = false;
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
