@@ -802,13 +802,27 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             }
         }
 
+        std::vector<TypeRef> resolvedArgs;
+        resolvedArgs.reserve(t->typeArgs.size());
+        for (const auto &typeArg : t->typeArgs) {
+            resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
+        }
+
+        // An enum instantiation is composed in exactly one place, so that a type reached through a substitution
+        // carries the same layout marker as one resolved directly. Spelling the name out here instead dropped that
+        // marker, and lowering then read one enum two ways: an aggregate where a variant was built, a tag and payload
+        // packed into a single word where the value was matched.
+        if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+            return EnumType(*enumIt->second, resolvedArgs);
+        }
+
         TypeRef named = TypeRef::MakeNamed(t->name);
         named.name += "<";
-        for (std::size_t i = 0; i < t->typeArgs.size(); ++i) {
+        for (std::size_t i = 0; i < resolvedArgs.size(); ++i) {
             if (i) {
                 named.name += ", ";
             }
-            named.name += ResolveTypeWithSubstitution(*t->typeArgs[i], substitutions).ToString();
+            named.name += resolvedArgs[i].ToString();
         }
         named.name += ">";
         NoteStructInstantiation(named);
@@ -1157,7 +1171,13 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         return type;
     }
     if (typeArgs.size() == decl.typeParams.size()) {
-        type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), ResolvedLayout(type).size));
+        // The marker is how the instantiation's size travels to lowering, which reads it to decide whether the enum
+        // is wider than the word a tag and payload are packed into. Mirrors SemanticAnalyzer::EnumType, the other
+        // builder of this type: an instantiation whose layout is not knowable yet -- a type argument still a
+        // parameter -- carries no marker from either, and is not lowered until it has been substituted.
+        if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
+            type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+        }
     }
     return type;
 }

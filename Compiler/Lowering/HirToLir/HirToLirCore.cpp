@@ -4,10 +4,28 @@
 #include "Lowering/HirToLir/HirToLirContext.h"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
+#include <string_view>
 #include <utility>
 
 namespace Rux::HirToLirDetail {
+namespace {
+/// Whether `text` names `identifier` as a whole word, so that a type argument list mentioning `T` is told apart from
+/// one mentioning `Tag`.
+[[nodiscard]] bool ContainsIdentifier(const std::string_view text, const std::string_view identifier) {
+    const auto isWordCharacter = [](const char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_';
+    };
+    for (std::size_t pos = text.find(identifier); pos != std::string_view::npos; pos = text.find(identifier, pos + 1)) {
+        const std::size_t end = pos + identifier.size();
+        if ((pos == 0 || !isWordCharacter(text[pos - 1])) && (end == text.size() || !isWordCharacter(text[end]))) {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
 
 HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagnostic> &outputDiagnostics)
     : targetContext(target)
@@ -26,6 +44,7 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
     // declared base type, which may be a single byte. Collected package-wide because a match may name an enum
     // declared in another module.
     enumTagTypes.clear();
+    genericPayloadEnums.clear();
     for (const auto &mod : hir.modules) {
         for (const auto &declaration : mod.enums) {
             const bool packsPayload = std::ranges::any_of(
@@ -36,6 +55,12 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
             }
             enumTagTypes[declaration.name] = tagType;
             enumTagTypes[mod.name + "::" + declaration.name] = tagType;
+            // Collected on the same terms, and for the same reason, as the tag widths above: which of these an
+            // instantiation belongs to is what says a missing layout marker is a bug rather than a compact enum.
+            if (packsPayload && !declaration.typeParams.empty()) {
+                genericPayloadEnums[declaration.name] = declaration.typeParams;
+                genericPayloadEnums[mod.name + "::" + declaration.name] = declaration.typeParams;
+            }
         }
     }
     for (const auto &mod : hir.modules) {
@@ -413,9 +438,47 @@ bool HirToLirContext::IsArrayType(const TypeRef &type) {
     return type.kind == TypeRef::Kind::Array;
 }
 
-bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Named && !type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array &&
-           type.SizeInBytes().value_or(0) > 8;
+/// Whether a type names an instantiation of a generic enum that carries payloads -- the shape whose size the front
+/// end records as a layout marker. A type argument still naming one of the declaration's own parameters is the
+/// generic declaration rather than an instantiation of it, and has no layout until it has been substituted.
+bool HirToLirContext::IsInstantiatedPayloadEnum(const TypeRef &type) const {
+    if (type.kind != TypeRef::Kind::Named || !type.name.ends_with('>')) {
+        return false;
+    }
+    const std::size_t open = type.name.find('<');
+    if (open == std::string::npos) {
+        return false;
+    }
+    const auto declared = genericPayloadEnums.find(type.name.substr(0, open));
+    if (declared == genericPayloadEnums.end()) {
+        return false;
+    }
+    const std::string_view args(type.name.data() + open + 1, type.name.size() - open - 2);
+    return std::ranges::none_of(declared->second,
+                                [&](const std::string &param) { return ContainsIdentifier(args, param); });
+}
+
+/// How many bytes an enum instantiation occupies, read from the layout marker the front end attaches to the type.
+///
+/// This is the only place that marker is read, because the answer decides the enum's representation and a construct
+/// and a match that disagreed about it would build one shape and decode another. A generic enum with payloads that
+/// reaches lowering without a marker is a front-end bug rather than a compact enum, and is reported as one: silently
+/// treating it as compact is what turned a returned `Option<int32>` into a packed word its callee never wrote.
+std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type) const {
+    if (type.kind != TypeRef::Kind::Named) {
+        return std::nullopt;
+    }
+    if (!type.inner.empty() && type.inner[0].kind == TypeRef::Kind::Array) {
+        return type.SizeInBytes();
+    }
+    if (IsInstantiatedPayloadEnum(type)) {
+        BuilderFailure(std::format("enum type '{}' reached lowering without a layout marker", type.name));
+    }
+    return std::nullopt;
+}
+
+bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) const {
+    return EnumLayoutSize(type).value_or(0) > 8;
 }
 
 /// The type an enum's tag is stored as, which is what a match has to read it back as. Defaults to a full word, so an
