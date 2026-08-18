@@ -18,7 +18,8 @@ static std::string PrintExprCore(const HirExpr &expr);
 static std::string PrintExpr(const HirExpr &expr) {
     std::string text = PrintExprCore(expr);
     if (expr.consumption) {
-        text = std::format("move<{}>({})", ValueConsumptionKindName(*expr.consumption), text);
+        const std::string binding = expr.consumedBindingId == 0 ? "" : std::format(", #{}", expr.consumedBindingId);
+        text = std::format("move<{}{}>({})", ValueConsumptionKindName(*expr.consumption), binding, text);
     }
     return text;
 }
@@ -227,6 +228,11 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         out << '\n';
         return;
     }
+    if (auto *s = dynamic_cast<const HirDropStmt *>(&stmt)) {
+        out << std::format("{}drop-if-live #{} {}: {} using {}\n", indent, s->action.bindingId, s->action.name,
+                           s->action.type.ToString(), s->action.glueSymbol);
+        return;
+    }
     if (auto *s = dynamic_cast<const HirIfStmt *>(&stmt)) {
         out << std::format("{}if {}\n", indent, PrintExpr(*s->condition));
         DumpBlock(out, s->thenBlock, indent + "  ");
@@ -266,6 +272,10 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         for (const auto &arm : s->arms) {
             out << std::format("{}  {} =>\n", indent, PrintPattern(*arm.pattern));
             out << std::format("{}    {}\n", indent, PrintExpr(*arm.body));
+            for (const auto &cleanup : arm.cleanups) {
+                out << std::format("{}    drop-if-live #{} {}: {} using {}\n", indent, cleanup.bindingId, cleanup.name,
+                                   cleanup.type.ToString(), cleanup.glueSymbol);
+            }
         }
         return;
     }
@@ -275,6 +285,10 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         }
         else {
             out << indent << "return\n";
+        }
+        for (const auto &cleanup : s->cleanups) {
+            out << std::format("{}  drop-if-live #{} {}: {} using {}\n", indent, cleanup.bindingId, cleanup.name,
+                               cleanup.type.ToString(), cleanup.glueSymbol);
         }
         return;
     }

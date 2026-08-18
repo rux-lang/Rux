@@ -4,6 +4,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <doctest.h>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,6 +21,30 @@ std::vector<SemanticDiagnostic> AnalyzeConsumptionDiagnostics(const std::string 
     REQUIRE_FALSE(parsed.HasErrors());
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     return analyzer.Analyze().diagnostics;
+}
+
+HirPackage LowerConsumptionHir(const std::string &source) {
+    Lexer lexer(source, "move_cleanup.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "move_cleanup.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    return AstToHirLowering(model).Generate();
+}
+
+const HirFunc &RequireFunction(const HirPackage &package, const std::string &name) {
+    REQUIRE_EQ(package.modules.size(), 1);
+    for (const HirFunc &function : package.modules.front().funcs) {
+        if (function.name == name) {
+            return function;
+        }
+    }
+    FAIL("missing lowered function " << name);
+    throw std::runtime_error("missing lowered function");
 }
 } // namespace
 
@@ -188,4 +213,115 @@ TEST_CASE("rejected by-value contexts do not move their operands") {
     for (const SemanticDiagnostic &diagnostic : diagnostics) {
         CHECK(diagnostic.message.find("used after it was moved") == std::string::npos);
     }
+}
+
+TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration order") {
+    const HirPackage package = LowerConsumptionHir(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func Take(value: Handle) {}
+
+        func Finish(parameter: Handle) {
+            let first = Handle { value: 1 };
+            if true {
+                let first = Handle { value: 2 };
+                first;
+            }
+            let last = Handle { value: 3 };
+            Take(last);
+        }
+    )");
+
+    const HirFunc &finish = RequireFunction(package, "Finish");
+    REQUIRE(finish.body.has_value());
+    REQUIRE_EQ(finish.params.size(), 1);
+    CHECK_NE(finish.params[0].bindingId, 0);
+
+    const HirBlock &body = *finish.body;
+    REQUIRE_EQ(body.stmts.size(), 7);
+    const auto *first = dynamic_cast<const HirLetStmt *>(body.stmts[0].get());
+    const auto *nestedStatement = dynamic_cast<const HirIfStmt *>(body.stmts[1].get());
+    const auto *last = dynamic_cast<const HirLetStmt *>(body.stmts[2].get());
+    const auto *take = dynamic_cast<const HirExprStmt *>(body.stmts[3].get());
+    REQUIRE(first != nullptr);
+    REQUIRE(nestedStatement != nullptr);
+    REQUIRE(last != nullptr);
+    REQUIRE(take != nullptr);
+
+    REQUIRE_EQ(nestedStatement->thenBlock.stmts.size(), 3);
+    const auto *nestedLet = dynamic_cast<const HirLetStmt *>(nestedStatement->thenBlock.stmts[0].get());
+    const auto *nestedDrop = dynamic_cast<const HirDropStmt *>(nestedStatement->thenBlock.stmts[2].get());
+    REQUIRE(nestedLet != nullptr);
+    REQUIRE(nestedDrop != nullptr);
+    CHECK_EQ(nestedLet->name, first->name);
+    CHECK_NE(nestedLet->bindingId, first->bindingId);
+    CHECK_EQ(nestedDrop->action.bindingId, nestedLet->bindingId);
+    CHECK_EQ(nestedDrop->action.origin.line, nestedLet->location.line);
+
+    const auto *dropLast = dynamic_cast<const HirDropStmt *>(body.stmts[4].get());
+    const auto *dropFirst = dynamic_cast<const HirDropStmt *>(body.stmts[5].get());
+    const auto *dropParameter = dynamic_cast<const HirDropStmt *>(body.stmts[6].get());
+    REQUIRE(dropLast != nullptr);
+    REQUIRE(dropFirst != nullptr);
+    REQUIRE(dropParameter != nullptr);
+    CHECK_EQ(dropLast->action.bindingId, last->bindingId);
+    CHECK_EQ(dropFirst->action.bindingId, first->bindingId);
+    CHECK_EQ(dropParameter->action.bindingId, finish.params[0].bindingId);
+
+    const auto *call = dynamic_cast<const HirCallExpr *>(take->expr.get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    CHECK_EQ(call->args[0]->consumedBindingId, last->bindingId);
+    CHECK_EQ(dropLast->action.bindingId, call->args[0]->consumedBindingId);
+}
+
+TEST_CASE("returns evaluate their value before conditionally destroying every live scope") {
+    const HirPackage package = LowerConsumptionHir(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func Choose(parameter: Handle, selectNested: bool) -> Handle {
+            let outer = Handle { value: 1 };
+            if selectNested {
+                let nested = Handle { value: 2 };
+                return nested;
+            }
+            return parameter;
+        }
+    )");
+
+    const HirFunc &choose = RequireFunction(package, "Choose");
+    REQUIRE(choose.body.has_value());
+    REQUIRE_EQ(choose.params.size(), 2);
+    const HirBlock &body = *choose.body;
+    REQUIRE_EQ(body.stmts.size(), 5);
+    const auto *outer = dynamic_cast<const HirLetStmt *>(body.stmts[0].get());
+    const auto *conditional = dynamic_cast<const HirIfStmt *>(body.stmts[1].get());
+    const auto *returnParameter = dynamic_cast<const HirReturnStmt *>(body.stmts[2].get());
+    REQUIRE(outer != nullptr);
+    REQUIRE(conditional != nullptr);
+    REQUIRE(returnParameter != nullptr);
+
+    REQUIRE_EQ(conditional->thenBlock.stmts.size(), 3);
+    const auto *nested = dynamic_cast<const HirLetStmt *>(conditional->thenBlock.stmts[0].get());
+    const auto *returnNested = dynamic_cast<const HirReturnStmt *>(conditional->thenBlock.stmts[1].get());
+    REQUIRE(nested != nullptr);
+    REQUIRE(returnNested != nullptr);
+    REQUIRE(returnNested->value.has_value());
+    REQUIRE_EQ(returnNested->cleanups.size(), 3);
+    CHECK_EQ(returnNested->cleanups[0].bindingId, nested->bindingId);
+    CHECK_EQ(returnNested->cleanups[1].bindingId, outer->bindingId);
+    CHECK_EQ(returnNested->cleanups[2].bindingId, choose.params[0].bindingId);
+    CHECK_EQ((*returnNested->value)->consumedBindingId, nested->bindingId);
+
+    REQUIRE(returnParameter->value.has_value());
+    REQUIRE_EQ(returnParameter->cleanups.size(), 2);
+    CHECK_EQ(returnParameter->cleanups[0].bindingId, outer->bindingId);
+    CHECK_EQ(returnParameter->cleanups[1].bindingId, choose.params[0].bindingId);
+    CHECK_EQ((*returnParameter->value)->consumedBindingId, choose.params[0].bindingId);
+    CHECK_NE(nested->bindingId, outer->bindingId);
+    CHECK_NE(outer->bindingId, choose.params[0].bindingId);
 }

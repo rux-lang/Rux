@@ -32,6 +32,7 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
         }
         loweredBlock.stmts.push_back(LowerStmt(*statement));
     }
+    AppendCurrentScopeCleanups(loweredBlock);
     PopScope();
     return loweredBlock;
 }
@@ -65,6 +66,8 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         symbol.name = statement->name;
         symbol.type = lowered->type;
         symbol.isMut = statement->isMut;
+        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, statement->location);
+        lowered->bindingId = symbol.bindingId;
         Define(std::move(symbol));
         return lowered;
     }
@@ -153,6 +156,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             PushScope();
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
             loweredArm.body = LowerExpr(*arm.body);
+            loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
             lowered->arms.push_back(std::move(loweredArm));
         }
@@ -165,6 +169,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         if (statement->value) {
             lowered->value = LowerExprAs(**statement->value, currentReturnType);
         }
+        lowered->cleanups = FunctionCleanups();
         return lowered;
     }
 
@@ -229,6 +234,8 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         symbol.name = identifier->name;
         symbol.type = type;
         symbol.isMut = isMutable;
+        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        lowered->bindingId = symbol.bindingId;
         Define(std::move(symbol));
         return lowered;
     }
@@ -274,6 +281,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         symbol.kind = HirSymbol::Kind::Var;
         symbol.name = identifier->name;
         symbol.type = subjectType;
+        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        lowered->bindingId = symbol.bindingId;
         Define(std::move(symbol));
         return lowered;
     }

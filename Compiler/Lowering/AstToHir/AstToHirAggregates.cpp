@@ -712,6 +712,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             PushScope();
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
             loweredArm.body = LowerExpr(*arm.body);
+            loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
             lowered->arms.push_back(std::move(loweredArm));
         }

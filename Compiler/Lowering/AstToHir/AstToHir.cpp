@@ -312,6 +312,7 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         if (lowered) {
             if (const ValueConsumption *consumption = model.TryGetConsumption(expr)) {
                 lowered->consumption = consumption->kind;
+                lowered->consumedBindingId = ConsumedBindingId(*lowered);
             }
         }
         return lowered;

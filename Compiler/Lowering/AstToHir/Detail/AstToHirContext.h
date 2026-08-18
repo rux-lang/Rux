@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Lowering/AstToHir/Detail/CleanupPlanner.h"
 
 #include <cstdint>
 #include <memory>
@@ -27,6 +28,7 @@ struct HirSymbol {
     TypeRef type;
     bool isMut = false;
     bool isNoReturn = false;
+    std::uint64_t bindingId = 0;
     std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
 };
@@ -87,12 +89,19 @@ protected:
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
+    CleanupPlanner cleanupPlanner;
     std::string declModulePath;
     std::vector<Diagnostic> &diagnostics;
 
     void PushScope();
     void PopScope();
     void Define(HirSymbol symbol) const;
+    [[nodiscard]] std::uint64_t RegisterCleanupBinding(const std::string &name, const TypeRef &type,
+                                                       SourceLocation origin);
+    [[nodiscard]] std::vector<HirDropAction> CurrentScopeCleanups() const;
+    [[nodiscard]] std::vector<HirDropAction> FunctionCleanups() const;
+    void AppendCurrentScopeCleanups(HirBlock &block) const;
+    [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
     void CollectDecl(const Decl &decl);
     [[nodiscard]] TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
                                        const std::vector<std::string> &typeParams = {});
