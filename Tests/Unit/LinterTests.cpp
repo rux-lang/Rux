@@ -1,6 +1,8 @@
 #include "Linter/Linter.h"
 
 #include <doctest.h>
+#include <string>
+#include <vector>
 
 using namespace Rux;
 
@@ -267,4 +269,152 @@ TEST_CASE("linter preserves source locations and warning counts for naming diagn
     CHECK(result.diagnostics[1].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[1].location.line == 1);
     CHECK(result.diagnostics[1].location.column == 15);
+}
+
+namespace {
+/// The messages one lint run produced, which is what every documentation case below asserts against.
+std::vector<std::string> Messages(const Rux::Linting::LintResult &result) {
+    std::vector<std::string> messages;
+    messages.reserve(result.diagnostics.size());
+    for (const Diagnostic &diagnostic : result.diagnostics) {
+        messages.push_back(diagnostic.message);
+    }
+    return messages;
+}
+} // namespace
+
+TEST_CASE("a public declaration without documentation is reported") {
+    const std::string source = R"(
+pub struct Handle {
+    value: int32;
+}
+
+pub func Open() -> int32 {
+    return 0i32;
+}
+
+pub const Limit = 8;
+
+pub interface Reader {
+    func Read() -> int32;
+}
+
+pub type Count = int32;
+)";
+
+    const auto messages = Messages(Rux::Linting::Lint(source, "docs.rux"));
+    REQUIRE_EQ(messages.size(), 5);
+    CHECK_EQ(messages[0], "public struct 'Handle' has no documentation comment");
+    CHECK_EQ(messages[1], "public function 'Open' has no documentation comment");
+    CHECK_EQ(messages[2], "public constant 'Limit' has no documentation comment");
+    CHECK_EQ(messages[3], "public interface 'Reader' has no documentation comment");
+    CHECK_EQ(messages[4], "public type alias 'Count' has no documentation comment");
+}
+
+TEST_CASE("a declaration that is not published owes no documentation") {
+    const std::string source = R"(
+struct Handle {
+    value: int32;
+}
+
+func Open() -> int32 {
+    return 0i32;
+}
+)";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "docs.rux")).empty());
+}
+
+TEST_CASE("documentation without an API page is reported") {
+    const std::string source = R"(
+/// Opens the handle.
+pub func Open() -> int32 {
+    return 0i32;
+}
+)";
+
+    const auto messages = Messages(Rux::Linting::Lint(source, "docs.rux"));
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "documentation for public function 'Open' names no API page");
+}
+
+TEST_CASE("documentation naming its API page is accepted") {
+    const std::string source = R"(
+/// Opens the handle.
+///
+/// https://rux-lang.dev/docs/api/filesystem/open
+pub func Open() -> int32 {
+    return 0i32;
+}
+)";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "docs.rux")).empty());
+}
+
+TEST_CASE("an undocumented public declaration can allow the rule deliberately") {
+    const std::string source = R"(
+#Allow("docs.missing")
+pub func Open() -> int32 {
+    return 0i32;
+}
+
+/// Closes the handle.
+#Allow("docs.api-url")
+pub func Close() -> int32 {
+    return 0i32;
+}
+)";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "docs.rux")).empty());
+}
+
+TEST_CASE("a comment line wider than the limit is reported once, with its width") {
+    // 121 columns of comment: one past the limit, which is the boundary worth pinning.
+    const std::string wide = "// " + std::string(118, 'x') + "\nfunc Main() -> int { return 0; }\n";
+
+    const auto messages = Messages(Rux::Linting::Lint(wide, "width.rux"));
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "comment line is 121 columns wide, over the limit of 120");
+
+    const std::string exact = "// " + std::string(117, 'x') + "\nfunc Main() -> int { return 0; }\n";
+    CHECK(Messages(Rux::Linting::Lint(exact, "width.rux")).empty());
+}
+
+TEST_CASE("comment width is counted in columns rather than bytes") {
+    // Each character is two bytes, so a byte count would report 240 for a line that reads as 120 columns.
+    const std::string source = "// " + [] {
+        std::string text;
+        for (int index = 0; index < 117; ++index) {
+            text += "é";
+        }
+        return text;
+    }() + "\nfunc Main() -> int { return 0; }\n";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "width.rux")).empty());
+}
+
+TEST_CASE("a wide line inside a block comment is reported too") {
+    const std::string source = "/*\n" + std::string(121, 'x') + "\n*/\nfunc Main() -> int { return 0; }\n";
+
+    const auto messages = Messages(Rux::Linting::Lint(source, "width.rux"));
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "comment line is 121 columns wide, over the limit of 120");
+}
+
+TEST_CASE("a wide line of code is left to the formatter") {
+    const std::string source = "func Main() -> int { let value = 0; " + std::string(100, ' ') + "return value; }\n";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "width.rux")).empty());
+}
+
+TEST_CASE("an unknown lint rule is rejected where it is written") {
+    const std::string source = R"(
+#Allow("docs.mising")
+pub func Open() -> int32 { return 0i32; }
+)";
+    const auto result = Rux::Linting::Lint(source, "allow.rux");
+
+    REQUIRE(result.HasErrors());
+    CHECK_EQ(result.diagnostics.front().message,
+             "unknown lint rule 'docs.mising'; valid rules are: naming.type, docs.missing, docs.api-url");
 }

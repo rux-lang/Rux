@@ -268,6 +268,26 @@ bool Allows(const Decl &decl, const std::string_view rule) {
     return std::ranges::find(decl.allowedLints, rule) != decl.allowedLints.end();
 }
 
+/// The prefix every published API link shares. A doc comment that names one is what makes a declaration findable from
+/// its own source; the page it points at may not exist yet, which is a website concern rather than a source one.
+constexpr std::string_view kApiLinkPrefix = "https://rux-lang.dev/docs/api/";
+
+/// How wide a line of source may be. The formatter wraps code to this; a comment is the one thing it cannot rewrap, so
+/// the width is the author's to keep.
+constexpr std::size_t kMaximumColumns = 120;
+
+/// Columns rather than bytes: a comment written in any language should be judged by what a reader sees, and a UTF-8
+/// continuation byte is not a column of its own.
+[[nodiscard]] std::size_t ColumnWidth(const std::string_view line) {
+    std::size_t columns = 0;
+    for (const char character : line) {
+        if ((static_cast<unsigned char>(character) & 0xC0U) != 0x80U) {
+            ++columns;
+        }
+    }
+    return columns;
+}
+
 /// Whether the name is an operator spelling rather than an identifier, and so exempt from naming conventions that only
 /// make sense for words.
 bool IsSymbolicOperatorName(const std::string_view name) {
@@ -321,8 +341,28 @@ private:
         Warn(loc, std::format("{} '{}' should be {}", description, name, ConventionName(convention)), std::move(help));
     }
 
+    /// What a published declaration owes its readers: a comment at all, and a link to the page that documents it. Both
+    /// are checked here rather than per declaration kind, because the rule is the same for every one of them.
+    void CheckDocumentation(const Decl &decl, const std::string_view description, const std::string_view name) {
+        if (!decl.isPublic) {
+            return;
+        }
+        if (decl.documentation.empty()) {
+            if (!Allows(decl, "docs.missing")) {
+                Warn(decl.location, std::format("public {} '{}' has no documentation comment", description, name),
+                     "describe it with a '///' comment above the declaration");
+            }
+            return;
+        }
+        if (decl.documentation.find(kApiLinkPrefix) == std::string::npos && !Allows(decl, "docs.api-url")) {
+            Warn(decl.location, std::format("documentation for public {} '{}' names no API page", description, name),
+                 std::format("end the comment with its page, as in '{}<package>/<name>'", kApiLinkPrefix));
+        }
+    }
+
     void VisitDecl(const Decl &decl, const std::span<const std::string> siblingNames) {
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
+            CheckDocumentation(decl, "function", fn->name);
             if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
                 WarnNaming(fn->location, "function name", fn->name, NamingConvention::PascalCase, siblingNames);
             }
@@ -337,6 +377,7 @@ private:
             }
         }
         else if (const auto *st = dynamic_cast<const StructDecl *>(&decl)) {
+            CheckDocumentation(decl, "struct", st->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(st->name)) {
                 WarnNaming(st->location, "struct name", st->name, NamingConvention::PascalCase, siblingNames);
@@ -349,6 +390,7 @@ private:
             }
         }
         else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
+            CheckDocumentation(decl, "enum", en->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(en->name)) {
                 WarnNaming(en->location, "enum name", en->name, NamingConvention::PascalCase, siblingNames);
@@ -368,6 +410,7 @@ private:
             }
         }
         else if (const auto *un = dynamic_cast<const UnionDecl *>(&decl)) {
+            CheckDocumentation(decl, "union", un->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(un->name)) {
                 WarnNaming(un->location, "union name", un->name, NamingConvention::PascalCase, siblingNames);
@@ -380,6 +423,7 @@ private:
             }
         }
         else if (const auto *iface = dynamic_cast<const InterfaceDecl *>(&decl)) {
+            CheckDocumentation(decl, "interface", iface->name);
             if (!IsPascalCase(iface->name)) {
                 WarnNaming(iface->location, "interface name", iface->name, NamingConvention::PascalCase, siblingNames);
             }
@@ -422,6 +466,7 @@ private:
             }
         }
         else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
+            CheckDocumentation(decl, "constant", cnst->name);
             if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name)) {
                 WarnNaming(cnst->location, "constant name", cnst->name, NamingConvention::PascalCase, siblingNames);
             }
@@ -430,6 +475,7 @@ private:
             }
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
+            CheckDocumentation(decl, "type alias", alias->name);
             if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
                 WarnNaming(alias->location, "type alias name", alias->name, NamingConvention::PascalCase, siblingNames);
             }
@@ -740,7 +786,54 @@ bool LintResult::HasErrors() const noexcept {
     return std::ranges::any_of(diagnostics, [](const Diagnostic &diagnostic) { return diagnostic.IsError(); });
 }
 
+/// Comment lines wider than the limit, reported against the source text rather than the tree: a comment is the one
+/// thing the formatter cannot rewrap, and its width is a property of the line it was written on.
+///
+/// Only lines whose content begins a comment are judged. A trailing comment after code is left alone, because the width
+/// there is the code's as much as the comment's, and moving the comment is not always the fix.
+[[nodiscard]] std::vector<Diagnostic> CheckCommentWidths(const std::string_view source, const std::string &sourceName) {
+    std::vector<Diagnostic> diagnostics;
+    std::uint32_t lineNumber = 0;
+    std::size_t offset = 0;
+    bool insideBlockComment = false;
+    while (offset <= source.size()) {
+        ++lineNumber;
+        const std::size_t end = source.find('\n', offset);
+        std::string_view line = source.substr(offset, (end == std::string_view::npos ? source.size() : end) - offset);
+        if (!line.empty() && line.back() == '\r') {
+            line.remove_suffix(1);
+        }
+
+        const std::string_view trimmed = line.substr(std::min(line.find_first_not_of(" \t"), line.size()));
+        const bool startsComment = trimmed.starts_with("//") || trimmed.starts_with("/*");
+        if ((insideBlockComment || startsComment) && ColumnWidth(line) > kMaximumColumns) {
+            Diagnostic wide;
+            wide.severity = Diagnostic::Severity::Warning;
+            wide.sourceName = sourceName;
+            wide.location = SourceLocation{lineNumber, static_cast<std::uint32_t>(kMaximumColumns + 1)};
+            wide.message = std::format("comment line is {} columns wide, over the limit of {}", ColumnWidth(line),
+                                       kMaximumColumns);
+            wide.help = "wrap the comment so every line fits";
+            diagnostics.push_back(std::move(wide));
+        }
+
+        if (insideBlockComment) {
+            insideBlockComment = line.find("*/") == std::string_view::npos;
+        }
+        else if (startsComment && trimmed.starts_with("/*")) {
+            insideBlockComment = trimmed.find("*/") == std::string_view::npos;
+        }
+
+        if (end == std::string_view::npos) {
+            break;
+        }
+        offset = end + 1;
+    }
+    return diagnostics;
+}
+
 LintResult Lint(std::string source, std::string sourceName) {
+    std::vector<Diagnostic> commentWidths = CheckCommentWidths(source, sourceName);
     Lexer lexer(std::move(source), sourceName);
     auto lexed = lexer.Tokenize();
     LintResult result{std::move(lexed.diagnostics)};
@@ -763,6 +856,8 @@ LintResult Lint(std::string source, std::string sourceName) {
 
     result.diagnostics.insert(result.diagnostics.end(), std::make_move_iterator(styleVisitor.diagnostics.begin()),
                               std::make_move_iterator(styleVisitor.diagnostics.end()));
+    result.diagnostics.insert(result.diagnostics.end(), std::make_move_iterator(commentWidths.begin()),
+                              std::make_move_iterator(commentWidths.end()));
 
     return result;
 }

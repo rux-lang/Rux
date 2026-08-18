@@ -3,6 +3,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <memory>
 #include <optional>
@@ -13,6 +14,21 @@
 namespace Rux {
 /// Canonical string key owned by the type parser and used for intrinsic and extension binding names.
 std::string ImplTypeName(const TypeExpr &type);
+
+/// Every rule `#Allow` accepts. Naming one the linter does not have is a typo that would otherwise silence nothing, so
+/// the list lives beside the parse rather than in the linter: a source is rejected before it is ever linted.
+constexpr std::array<std::string_view, 3> kLintRules{"naming.type", "docs.missing", "docs.api-url"};
+
+[[nodiscard]] static std::string LintRuleList() {
+    std::string list;
+    for (const std::string_view rule : kLintRules) {
+        if (!list.empty()) {
+            list += ", ";
+        }
+        list += rule;
+    }
+    return list;
+}
 
 // Attribute parsing
 static std::string DecodeStringLiteralText(const std::string &text) {
@@ -167,8 +183,8 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
         }
         else {
             std::string rule = DecodeStringLiteralText(Advance().text);
-            if (rule != "naming.type") {
-                EmitError(nameLoc, std::format("unknown lint rule '{}'; valid rules are: naming.type", rule));
+            if (std::ranges::find(kLintRules, rule) == kLintRules.end()) {
+                EmitError(nameLoc, std::format("unknown lint rule '{}'; valid rules are: {}", rule, LintRuleList()));
             }
             else if (std::find(attrs.allowedLints.begin(), attrs.allowedLints.end(), rule) !=
                      attrs.allowedLints.end()) {
@@ -329,9 +345,9 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     }
     decl->allowedLints.insert(decl->allowedLints.end(), attrs.allowedLints.begin(), attrs.allowedLints.end());
 
-    if (!attrs.allowedLints.empty() && !dynamic_cast<TypeAliasDecl *>(decl.get()) &&
-        !dynamic_cast<StructDecl *>(decl.get()) && !dynamic_cast<EnumDecl *>(decl.get()) &&
-        !dynamic_cast<UnionDecl *>(decl.get())) {
+    const bool namesATypeRule = std::ranges::find(attrs.allowedLints, "naming.type") != attrs.allowedLints.end();
+    if (namesATypeRule && !dynamic_cast<TypeAliasDecl *>(decl.get()) && !dynamic_cast<StructDecl *>(decl.get()) &&
+        !dynamic_cast<EnumDecl *>(decl.get()) && !dynamic_cast<UnionDecl *>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.type\")' can only be applied to a type declaration");
     }
     if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
