@@ -380,8 +380,9 @@ TEST_CASE("values order by magnitude") {
 }
 
 TEST_CASE("the suffix table names every integer and float width that has a literal") {
-    for (const std::string_view suffix : {"i", "i8", "i16", "i32", "i64", "i128", "i256", "i512", "u", "u8", "u16",
-                                          "u32", "u64", "u128", "u256", "u512", "f32", "f64"}) {
+    for (const std::string_view suffix :
+         {"i",   "i8",   "i16",  "i32",  "i64", "i128", "i256", "i512", "u",   "u8",   "u16",  "u32",
+          "u64", "u128", "u256", "u512", "f8",  "f16",  "f32",  "f64",  "f80", "f128", "f256", "f512"}) {
         CAPTURE(suffix);
         CHECK(FindNumericLiteralSuffix(suffix) != nullptr);
     }
@@ -398,6 +399,9 @@ TEST_CASE("the longest suffix wins so a wide one is not read as a narrow one") {
     CHECK_EQ(NumericLiteralSuffixOf("42"), "");
     // Hexadecimal digits are not a suffix, however much they look like one.
     CHECK_EQ(NumericLiteralSuffixOf("0xff"), "");
+    CHECK_EQ(NumericLiteralSuffixOf("0xff8"), "");
+    CHECK_EQ(NumericLiteralSuffixOf("0xff128"), "");
+    CHECK_EQ(NumericLiteralSuffixOf("0xFFu8"), "u8");
 }
 
 TEST_CASE("a literal splits into its sign, base, digits and suffix") {

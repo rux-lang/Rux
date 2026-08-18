@@ -43,6 +43,9 @@ rux_add_interface_component(RuxSourceModel)
 rux_add_interface_component(RuxBuildInfo)
 
 rux_add_component(RuxNumeric
+    Numeric/FloatEncoding.cpp
+    Numeric/FloatFormat.cpp
+    Numeric/FloatLiteral.cpp
     Numeric/IntegerLiteral.cpp
     Numeric/WideInteger.cpp)
 

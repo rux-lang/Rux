@@ -487,7 +487,12 @@ private:
             return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
         }
         if (suffix->isFloat) {
-            return suffix->bits == 32 ? TypeRef::MakeFloat32() : TypeRef::MakeFloat64();
+            for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+                if (primitive.bits == suffix->bits && primitive.category == PrimitiveCategory::Float) {
+                    return TypeRef::MakePrimitive(primitive.kind);
+                }
+            }
+            return TypeRef::MakeFloat64();
         }
         if (suffix->bits == 0) {
             return suffix->isSigned ? TypeRef::MakeInt() : TypeRef::MakeUInt();
