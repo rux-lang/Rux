@@ -1,0 +1,122 @@
+/*
+    Compiler correctness test
+    Copyright © 2026 Rux Contributors
+    Licensed under the MIT License
+*/
+import Core::Assert;
+
+// The end of iteration is reported with an ordinary enum; nothing here is built in.
+enum Option {
+    Some(int32),
+    None
+}
+
+// An iterator: `Next` advances the receiver and reports either the next item or the end.
+struct Counter {
+    value: int32;
+    limit: int32;
+}
+
+extend Counter {
+    func Next(self: *var Counter) -> Option {
+        if self.value >= self.limit {
+            return Option::None;
+        }
+        let current = self.value;
+        self.value = self.value + 1i32;
+        return Option::Some(current);
+    }
+}
+
+// A container: it is not an iterator itself, it hands one out, so two loops over it are independent.
+struct Span {
+    limit: int32;
+}
+
+extend Span {
+    func Iterate(self: *Span) -> Counter {
+        return Counter { value: 0i32, limit: self.limit };
+    }
+}
+
+func SumIterator(limit: int32) -> int32 {
+    var counter = Counter { value: 0i32, limit: limit };
+    var total = 0i32;
+    for item in counter {
+        total = total + item;
+    }
+    return total;
+}
+
+func SumContainer(limit: int32) -> int32 {
+    let span = Span { limit: limit };
+    var total = 0i32;
+    for item in span {
+        total = total + item;
+    }
+    return total;
+}
+
+// Two loops over one container each get their own iterator, so the second starts from the beginning.
+func SumTwice(limit: int32) -> int32 {
+    let span = Span { limit: limit };
+    var total = 0i32;
+    for item in span {
+        total = total + item;
+    }
+    for item in span {
+        total = total + item;
+    }
+    return total;
+}
+
+func Selective(limit: int32) -> int32 {
+    var counter = Counter { value: 0i32, limit: limit };
+    var total = 0i32;
+    for item in counter {
+        if item >= 4i32 {
+            break;
+        }
+        if item == 1i32 {
+            continue;
+        }
+        total = total + item;
+    }
+    return total;
+}
+
+func Nested(limit: int32) -> int32 {
+    var count = 0i32;
+    var outer = Counter { value: 0i32, limit: limit };
+    for first in outer {
+        var inner = Counter { value: 0i32, limit: limit };
+        for second in inner {
+            count = count + 1i32;
+        }
+    }
+    return count;
+}
+
+// An array, a slice and a range keep their own iteration, which the convention leaves untouched.
+func SumArray() -> int32 {
+    let values: int32[4] = [1i32, 2i32, 3i32, 4i32];
+    var total = 0i32;
+    for value in values {
+        total = total + value;
+    }
+    for index in 0..4 {
+        total = total + index as int32;
+    }
+    return total;
+}
+
+func Main() -> int {
+    Assert(SumIterator(4i32) == 6i32, "Expected an iterator loop to visit every item once");
+    Assert(SumIterator(0i32) == 0i32, "Expected an iterator that reports the end at once to run no body");
+    Assert(SumContainer(4i32) == 6i32, "Expected a container to be iterated through the iterator it hands out");
+    Assert(SumTwice(3i32) == 6i32, "Expected two loops over one container to be independent");
+    Assert(Selective(10i32) == 5i32, "Expected break and continue to work inside a convention-driven loop");
+    Assert(Nested(3i32) == 9i32, "Expected nested loops to advance their own iterators");
+    Assert(SumArray() == 16i32, "Expected arrays and ranges to keep their own iteration");
+    return 0;
+}

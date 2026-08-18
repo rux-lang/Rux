@@ -94,6 +94,10 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         return;
     }
 
+    if (auto *s = dynamic_cast<const HirScopeStmt *>(&stmt)) {
+        LowerBlock(s->block);
+        return;
+    }
     if (auto *s = dynamic_cast<const HirMatchStmt *>(&stmt)) {
         LowerMatch(*s);
         return;
