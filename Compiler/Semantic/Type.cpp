@@ -231,6 +231,22 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     return std::nullopt;
 }
 
+std::string TypeRef::InstantiationName(const std::string_view base, const std::vector<TypeRef> &typeArgs) {
+    std::string name(base);
+    if (typeArgs.empty()) {
+        return name;
+    }
+    name += '<';
+    for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i) {
+            name += ", ";
+        }
+        name += typeArgs[i].ToString();
+    }
+    name += '>';
+    return name;
+}
+
 std::string TypeRef::ToString() const {
     switch (kind) {
     case Kind::Unknown:

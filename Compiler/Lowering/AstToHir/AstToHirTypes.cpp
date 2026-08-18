@@ -65,18 +65,12 @@ TypeRef AstToHirContext::MakeFuncTypeWithSubstitution(const std::vector<Param> &
 }
 
 std::string AstToHirContext::GenericTypeName(const NamedTypeExpr &type) {
-    std::string name = type.name;
-    if (!type.typeArgs.empty()) {
-        name += "<";
-        for (std::size_t i = 0; i < type.typeArgs.size(); ++i) {
-            if (i) {
-                name += ", ";
-            }
-            name += ResolveType(*type.typeArgs[i]).ToString();
-        }
-        name += ">";
+    std::vector<TypeRef> typeArgs;
+    typeArgs.reserve(type.typeArgs.size());
+    for (const auto &typeArg : type.typeArgs) {
+        typeArgs.push_back(ResolveType(*typeArg));
     }
-    return name;
+    return TypeRef::InstantiationName(type.name, typeArgs);
 }
 
 std::string AstToHirContext::SliceTypeName(const TypeRef &elemType) {
@@ -816,15 +810,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             return EnumType(*enumIt->second, resolvedArgs);
         }
 
-        TypeRef named = TypeRef::MakeNamed(t->name);
-        named.name += "<";
-        for (std::size_t i = 0; i < resolvedArgs.size(); ++i) {
-            if (i) {
-                named.name += ", ";
-            }
-            named.name += resolvedArgs[i].ToString();
-        }
-        named.name += ">";
+        TypeRef named = TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
         NoteStructInstantiation(named);
         return named;
     }
@@ -1153,19 +1139,7 @@ TypeRef AstToHirContext::EnumBaseType(const EnumDecl &decl) {
 }
 
 TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs) {
-    std::string name = decl.name;
-    if (!typeArgs.empty()) {
-        name += '<';
-        for (std::size_t i = 0; i < typeArgs.size(); ++i) {
-            if (i) {
-                name += ", ";
-            }
-            name += typeArgs[i].ToString();
-        }
-        name += '>';
-    }
-
-    TypeRef type = TypeRef::MakeNamed(std::move(name));
+    TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
     if (decl.typeParams.empty()) {
         type.inner.push_back(EnumBaseType(decl));
         return type;

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Rux {
@@ -325,6 +326,11 @@ struct TypeRef {
     [[nodiscard]] bool IsAssignableTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
+
+    /// The name a generic instantiation is identified by: `Base<Arg, Arg>`, or plain `Base` with no arguments. One
+    /// spelling, because a type is recorded, looked up, and compared by this string, and two spellings of it are two
+    /// types as far as every table keyed by it is concerned.
+    [[nodiscard]] static std::string InstantiationName(std::string_view base, const std::vector<TypeRef> &typeArgs);
 
     bool operator==(const TypeRef &other) const noexcept;
 
