@@ -174,9 +174,23 @@ private:
     echo.returnType = int128;
     LirBlock echoBlock;
     echoBlock.label = "entry";
+    LirInstr echoAlloca;
+    echoAlloca.op = LirOpcode::Alloca;
+    echoAlloca.dst = 1;
+    echoAlloca.type = int128;
+    LirInstr echoStore;
+    echoStore.op = LirOpcode::Store;
+    echoStore.type = int128;
+    echoStore.srcs = {0, 1};
+    LirInstr echoLoad;
+    echoLoad.op = LirOpcode::Load;
+    echoLoad.dst = 2;
+    echoLoad.type = int128;
+    echoLoad.srcs = {1};
+    echoBlock.instrs = {echoAlloca, echoStore, echoLoad};
     echoBlock.term.emplace();
     echoBlock.term->kind = LirTermKind::Return;
-    echoBlock.term->retVal = 0;
+    echoBlock.term->retVal = 2;
     echoBlock.term->retType = int128;
     echo.blocks.push_back(std::move(echoBlock));
 
@@ -186,9 +200,16 @@ private:
     echo512.returnType = uint512;
     LirBlock echo512Block;
     echo512Block.label = "entry";
+    LirInstr echo512Alloca = echoAlloca;
+    echo512Alloca.type = uint512;
+    LirInstr echo512Store = echoStore;
+    echo512Store.type = uint512;
+    LirInstr echo512Load = echoLoad;
+    echo512Load.type = uint512;
+    echo512Block.instrs = {echo512Alloca, echo512Store, echo512Load};
     echo512Block.term.emplace();
     echo512Block.term->kind = LirTermKind::Return;
-    echo512Block.term->retVal = 0;
+    echo512Block.term->retVal = 2;
     echo512Block.term->retType = uint512;
     echo512.blocks.push_back(std::move(echo512Block));
 

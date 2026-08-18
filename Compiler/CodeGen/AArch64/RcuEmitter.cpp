@@ -480,6 +480,9 @@ private:
     // register. What counts as an aggregate is a property of the LIR type
     // rather than of the machine, so this is the x86-64 rule unchanged.
     [[nodiscard]] bool IsAggregate(const TypeRef &t) const override {
+        if (IsWideInteger(t)) {
+            return true;
+        }
         if (t.IsRange()) {
             return true;
         }

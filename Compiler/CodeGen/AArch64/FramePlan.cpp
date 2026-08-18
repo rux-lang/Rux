@@ -37,6 +37,7 @@ public:
         PlanCalleeSaves();
         PlanParameters();
         PlanInstructions();
+        PlanWideTemporaries();
         PlanPhiTemporary();
         plan.frameSize = AlignUp(nextOffset, 16);
         return std::move(plan);
@@ -55,6 +56,9 @@ private:
     }
 
     [[nodiscard]] bool IsAggregate(const TypeRef &type) const {
+        if (IsWideInteger(type)) {
+            return true;
+        }
         if (type.IsRange()) {
             return true;
         }
@@ -255,6 +259,24 @@ private:
                 plan.registerTypes[instruction.dst] = instruction.type;
                 AllocateSlot(instruction.dst, SlotSize(instruction.type));
             }
+        }
+    }
+
+    void PlanWideTemporaries() {
+        int largest = 0;
+        for (const LirBlock &block : func.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                if (IsWideInteger(instruction.type)) {
+                    largest = std::max(largest, RuntimeSize(instruction.type));
+                }
+            }
+        }
+        if (largest == 0) {
+            return;
+        }
+        plan.wideTemporarySize = largest;
+        for (std::int32_t &offset : plan.wideTemporaryOffsets) {
+            offset = AllocateRegion(largest);
         }
     }
 

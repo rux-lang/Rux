@@ -75,7 +75,7 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
     const TypeRef operandType = !instruction.srcs.empty() && types.contains(instruction.srcs[0])
                                   ? types.at(instruction.srcs[0])
                                   : instruction.type;
-    if (!IsWideInteger(operandType) && !IsWideInteger(instruction.type)) {
+    if (instruction.dst == LirNoReg || (!IsWideInteger(operandType) && !IsWideInteger(instruction.type))) {
         return false;
     }
     const TypeRef wideType = IsWideInteger(operandType) ? operandType : instruction.type;

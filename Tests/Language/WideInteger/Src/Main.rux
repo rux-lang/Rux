@@ -1,0 +1,52 @@
+import Core::Assert;
+
+func Add128(left: uint128, right: uint128) -> uint128 {
+    return left + right;
+}
+
+func Echo128(value: uint128) -> uint128 {
+    return value;
+}
+
+func Echo256(value: int256) -> int256 {
+    return value;
+}
+
+func Echo512(value: uint512) -> uint512 {
+    return value;
+}
+
+func Main() -> int {
+    let maximum: uint128 = 340282366920938463463374607431768211455u128;
+    let ten: uint128 = 10u128;
+    Assert(Add128(maximum, 1u128) == 0u128, "uint128 addition wraps");
+    Assert(maximum - ten == 340282366920938463463374607431768211445u128, "uint128 subtraction");
+    Assert(ten * ten == 100u128, "uint128 multiplication");
+    Assert(100u128 / 7u128 == 14u128, "uint128 division");
+    Assert(100u128 % 7u128 == 2u128, "uint128 remainder");
+    Assert((maximum & 255u128) == 255u128, "uint128 bitwise and");
+    Assert((1u128 << 100) == 1267650600228229401496703205376u128, "uint128 left shift");
+    Assert((1u128 << 100) >> 100 == 1u128, "uint128 logical right shift");
+    Assert(maximum > ten, "uint128 comparison");
+    Assert(Echo128(maximum) == maximum, "uint128 register-lane argument and return");
+
+    let negative: int128 = -100i128;
+    Assert(negative / 7i128 == -14i128, "int128 division truncates toward zero");
+    Assert(negative % 7i128 == -2i128, "int128 remainder keeps the dividend sign");
+    Assert(negative >> 3 == -13i128, "int128 arithmetic right shift");
+    Assert((-1i128 >>> 127) == 1i128, "int128 logical right shift");
+
+    let signed256: int256 = -123456789012345678901234567890i256;
+    Assert(Echo256(signed256) == signed256, "int256 indirect argument and return");
+
+    let maximum512: uint512 =
+        13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512;
+    Assert(Echo512(maximum512) == maximum512, "uint512 indirect argument and return");
+    Assert(maximum512 + 1u512 == 0u512, "uint512 addition wraps");
+
+    let widened: int128 = -7i64 as int128;
+    Assert(widened == -7i128, "narrow signed values sign-extend");
+    let narrowed: uint64 = maximum as uint64;
+    Assert(narrowed == 18446744073709551615u64, "wide values truncate to their low bits");
+    return 0;
+}

@@ -39,6 +39,9 @@ int AArch64CallPlanner::RuntimeAlign(const TypeRef &type) const {
 }
 
 bool AArch64CallPlanner::IsAggregate(const TypeRef &type) const {
+    if (IsWideInteger(type)) {
+        return true;
+    }
     if (type.IsRange()) {
         return true;
     }
