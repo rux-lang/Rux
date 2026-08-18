@@ -15,6 +15,39 @@ static std::string PrintPattern(const HirPattern &pat);
 static std::string PrintExpr(const HirExpr &expr);
 static std::string PrintExprCore(const HirExpr &expr);
 
+static std::string PartialDropName(const HirPartialDropAction &action) {
+    switch (action.kind) {
+    case HirPartialDropAction::Kind::Field:
+        return "field:" + action.name;
+    case HirPartialDropAction::Kind::Element:
+        return std::format("element:{}", action.ordinal);
+    case HirPartialDropAction::Kind::TupleElement:
+        return std::format("tuple:{}", action.ordinal);
+    case HirPartialDropAction::Kind::EnumPayload:
+        return action.name.empty() ? std::format("payload:{}", action.ordinal) : "payload:" + action.name;
+    }
+    return "component";
+}
+
+static std::string PrintFailureCleanups(const std::vector<HirFailureCleanup> &edges) {
+    std::string text;
+    for (std::size_t edge = 0; edge < edges.size(); ++edge) {
+        if (edges[edge].empty()) {
+            continue;
+        }
+        text += text.empty() ? " rollback{" : ", ";
+        text += std::format("{}:[", edge);
+        for (std::size_t action = 0; action < edges[edge].size(); ++action) {
+            if (action != 0) {
+                text += ", ";
+            }
+            text += PartialDropName(edges[edge][action]);
+        }
+        text += "]";
+    }
+    return text.empty() ? text : text + "}";
+}
+
 static std::string PrintExpr(const HirExpr &expr) {
     std::string text = PrintExprCore(expr);
     if (expr.consumption) {
@@ -54,7 +87,11 @@ static std::string PrintExprCore(const HirExpr &expr) {
         return std::format("({} {} {})", PrintExpr(*e->left), OpStr(e->op), PrintExpr(*e->right));
     }
     if (auto *e = dynamic_cast<const HirAssignExpr *>(&expr)) {
-        return std::format("{} {} {}", PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
+        std::string assignment = std::format("{} {} {}", PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
+        if (e->overwriteCleanup) {
+            assignment = std::format("overwrite<{}>({})", e->overwriteCleanup->glueSymbol, assignment);
+        }
+        return assignment;
     }
     if (auto *e = dynamic_cast<const HirTernaryExpr *>(&expr)) {
         return std::format("{} ? {} : {}", PrintExpr(*e->condition), PrintExpr(*e->thenExpr), PrintExpr(*e->elseExpr));
@@ -88,7 +125,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
             }
             s += e->fields[i].name + ": " + PrintExpr(*e->fields[i].value);
         }
-        return s + " }";
+        return s + " }" + PrintFailureCleanups(e->failureCleanups);
     }
     if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
         std::string s = "[";
@@ -98,7 +135,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
             }
             s += PrintExpr(*e->elements[i]);
         }
-        return s + "]";
+        return s + "]" + PrintFailureCleanups(e->failureCleanups);
     }
     if (auto *e = dynamic_cast<const HirTupleExpr *>(&expr)) {
         std::string s = "(";
@@ -108,7 +145,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
             }
             s += PrintExpr(*e->elements[i]);
         }
-        return s + ")";
+        return s + ")" + PrintFailureCleanups(e->failureCleanups);
     }
     if (auto *e = dynamic_cast<const HirCastExpr *>(&expr)) {
         return std::format("{} as {}", PrintExpr(*e->operand), e->targetType.ToString());
@@ -134,7 +171,7 @@ static std::string PrintExprCore(const HirExpr &expr) {
             }
             s += PrintExpr(*e->payloads[i]);
         }
-        return s + ")#" + e->discriminant;
+        return s + ")#" + e->discriminant + PrintFailureCleanups(e->failureCleanups);
     }
     if (dynamic_cast<const HirBlockExpr *>(&expr)) {
         return "{ ... }";
@@ -208,6 +245,13 @@ static void DumpBlock(std::ostream &out, const HirBlock &block, const std::strin
 
 static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &indent);
 
+static void DumpCleanups(std::ostream &out, const std::vector<HirDropAction> &cleanups, const std::string &indent) {
+    for (const auto &cleanup : cleanups) {
+        out << std::format("{}drop-if-live #{} {}: {} using {}\n", indent, cleanup.bindingId, cleanup.name,
+                           cleanup.type.ToString(), cleanup.glueSymbol);
+    }
+}
+
 static void DumpBlock(std::ostream &out, const HirBlock &block, const std::string &indent) {
     for (const auto &stmt : block.stmts) {
         DumpStmt(out, *stmt, indent);
@@ -272,10 +316,7 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         for (const auto &arm : s->arms) {
             out << std::format("{}  {} =>\n", indent, PrintPattern(*arm.pattern));
             out << std::format("{}    {}\n", indent, PrintExpr(*arm.body));
-            for (const auto &cleanup : arm.cleanups) {
-                out << std::format("{}    drop-if-live #{} {}: {} using {}\n", indent, cleanup.bindingId, cleanup.name,
-                                   cleanup.type.ToString(), cleanup.glueSymbol);
-            }
+            DumpCleanups(out, arm.cleanups, indent + "    ");
         }
         return;
     }
@@ -286,18 +327,17 @@ static void DumpStmt(std::ostream &out, const HirStmt &stmt, const std::string &
         else {
             out << indent << "return\n";
         }
-        for (const auto &cleanup : s->cleanups) {
-            out << std::format("{}  drop-if-live #{} {}: {} using {}\n", indent, cleanup.bindingId, cleanup.name,
-                               cleanup.type.ToString(), cleanup.glueSymbol);
-        }
+        DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
     if (auto *s = dynamic_cast<const HirBreakStmt *>(&stmt)) {
         out << indent << (s->label.empty() ? "break" : "break " + s->label) << "\n";
+        DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
     if (auto *s = dynamic_cast<const HirContinueStmt *>(&stmt)) {
         out << indent << (s->label.empty() ? "continue" : "continue " + s->label) << "\n";
+        DumpCleanups(out, s->cleanups, indent + "  ");
         return;
     }
     if (auto *s = dynamic_cast<const HirLocalDecl *>(&stmt)) {

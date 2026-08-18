@@ -16,6 +16,11 @@ class CleanupPlanner {
 public:
     struct FunctionToken {
         std::optional<std::size_t> previousBase;
+        std::optional<std::size_t> previousLoopBase;
+    };
+
+    struct LoopToken {
+        std::size_t index = 0;
     };
 
     explicit CleanupPlanner(const SemanticModel &semanticModel);
@@ -27,6 +32,8 @@ public:
     /// monomorphization recursively lowers a new body while the caller's body is still active.
     [[nodiscard]] FunctionToken BeginFunction();
     void EndFunction(FunctionToken token);
+    [[nodiscard]] LoopToken BeginLoop(std::string label);
+    void EndLoop(LoopToken token);
 
     /// Register an initialized or potentially initialized named binding. Copy and unresolved values return zero and
     /// never enter the cleanup stack because the semantic model has no destruction recipe for them.
@@ -37,6 +44,8 @@ public:
 
     /// Return every frame owned by the active function, innermost first and each in reverse declaration order.
     [[nodiscard]] std::vector<HirDropAction> FunctionExitActions() const;
+    [[nodiscard]] std::vector<HirDropAction> LoopExitActions(const std::string &label) const;
+    [[nodiscard]] std::optional<HirDropAction> ActionFor(std::uint64_t bindingId) const;
 
     /// Introspection used by lowering invariants and focused ownership tests without exposing mutable planner state.
     [[nodiscard]] bool HasActiveFunction() const noexcept;
@@ -48,6 +57,14 @@ private:
     std::vector<std::vector<HirDropAction>> scopes;
     /// Index of the active function's parameter frame, excluding every surrounding recursively lowered function.
     std::optional<std::size_t> functionBase;
+
+    struct LoopBoundary {
+        std::string label;
+        std::size_t scopeDepth = 0;
+    };
+
+    std::vector<LoopBoundary> loops;
+    std::optional<std::size_t> loopBase;
     /// Zero stays reserved for Copy values and consumed temporaries that do not own named storage.
     std::uint64_t nextBindingId = 1;
 

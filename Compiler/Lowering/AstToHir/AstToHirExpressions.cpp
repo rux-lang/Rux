@@ -166,6 +166,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->op = assignment->op;
         lowered->target = LowerExpr(*assignment->target);
         lowered->value = LowerExprAs(*assignment->value, lowered->target->type);
+        if (assignment->op == TokenKind::Assign) {
+            lowered->overwriteCleanup = OverwriteCleanup(*lowered->target, assignment->location);
+        }
         // Assignment's semantic result is opaque because it is not a value,
         // while HIR needs the checked place type to select the store width.
         static_cast<void>(ResolvedExpressionType(*assignment));

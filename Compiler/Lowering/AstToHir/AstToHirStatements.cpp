@@ -95,7 +95,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = statement->location;
         lowered->label = statement->label;
         lowered->condition = LowerExpr(*statement->condition);
+        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
+        cleanupPlanner.EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -103,7 +105,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirDoWhileStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
+        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
+        cleanupPlanner.EndLoop(cleanupLoop);
         lowered->condition = LowerExpr(*statement->condition);
         return lowered;
     }
@@ -112,7 +116,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirLoopStmt>();
         lowered->location = statement->location;
         lowered->label = statement->label;
+        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
         lowered->body = LowerBlock(*statement->body);
+        cleanupPlanner.EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -133,16 +139,21 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         HirSymbol *outer = currentScope->Lookup(statement->variable);
         lowered->reusesOuterVar =
             outer != nullptr && outer->kind == HirSymbol::Kind::Var && outer->isMut && outer->type == elementType;
+        const CleanupPlanner::LoopToken cleanupLoop = cleanupPlanner.BeginLoop(statement->label);
         PushScope();
         if (!lowered->reusesOuterVar) {
             HirSymbol variable;
             variable.kind = HirSymbol::Kind::Var;
             variable.name = statement->variable;
             variable.type = elementType;
+            variable.bindingId = RegisterCleanupBinding(variable.name, variable.type, statement->location);
+            lowered->bindingId = variable.bindingId;
             Define(std::move(variable));
         }
         lowered->body = LowerBlock(*statement->body);
+        AppendCurrentScopeCleanups(lowered->body);
         PopScope();
+        cleanupPlanner.EndLoop(cleanupLoop);
         return lowered;
     }
 
@@ -177,6 +188,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirBreakStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
+        lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
         return lowered;
     }
 
@@ -184,6 +196,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirContinueStmt>();
         lowered->location = stmt.location;
         lowered->label = statement->label;
+        lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
         return lowered;
     }
 

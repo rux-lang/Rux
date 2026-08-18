@@ -25,15 +25,34 @@ void CleanupPlanner::PopScope() {
 
 CleanupPlanner::FunctionToken CleanupPlanner::BeginFunction() {
     assert(!scopes.empty() && "a cleanup function requires a parameter scope");
-    FunctionToken token{functionBase};
+    FunctionToken token{functionBase, loopBase};
     functionBase = scopes.size() - 1;
+    loopBase = loops.size();
     assert(InvariantsHold());
     return token;
 }
 
 void CleanupPlanner::EndFunction(const FunctionToken token) {
     assert(functionBase && *functionBase < scopes.size() && "cleanup function boundary is not active");
+    assert(loopBase && loops.size() == *loopBase && "cleanup loops must end before their function");
     functionBase = token.previousBase;
+    loopBase = token.previousLoopBase;
+    assert(InvariantsHold());
+}
+
+CleanupPlanner::LoopToken CleanupPlanner::BeginLoop(std::string label) {
+    assert(functionBase && loopBase && "cleanup loop requires an active function");
+    const LoopToken token{loops.size()};
+    loops.push_back(LoopBoundary{std::move(label), scopes.size()});
+    assert(InvariantsHold());
+    return token;
+}
+
+void CleanupPlanner::EndLoop(const LoopToken token) {
+    static_cast<void>(token);
+    assert(loopBase && token.index >= *loopBase && token.index + 1 == loops.size() &&
+           "cleanup loops must end in nesting order");
+    loops.pop_back();
     assert(InvariantsHold());
 }
 
@@ -91,6 +110,43 @@ std::vector<HirDropAction> CleanupPlanner::FunctionExitActions() const {
     return actions;
 }
 
+std::vector<HirDropAction> CleanupPlanner::LoopExitActions(const std::string &label) const {
+    std::vector<HirDropAction> actions;
+    if (!loopBase) {
+        return actions;
+    }
+    const LoopBoundary *boundary = nullptr;
+    for (std::size_t index = loops.size(); index > *loopBase; --index) {
+        const LoopBoundary &loop = loops[index - 1];
+        if (label.empty() || loop.label == label) {
+            boundary = &loop;
+            break;
+        }
+    }
+    if (!boundary) {
+        return actions;
+    }
+
+    for (std::size_t index = scopes.size(); index > boundary->scopeDepth; --index) {
+        AppendReverseFrame(actions, index - 1);
+    }
+    return actions;
+}
+
+std::optional<HirDropAction> CleanupPlanner::ActionFor(const std::uint64_t bindingId) const {
+    if (bindingId == 0) {
+        return std::nullopt;
+    }
+    for (auto scope = scopes.rbegin(); scope != scopes.rend(); ++scope) {
+        for (auto action = scope->rbegin(); action != scope->rend(); ++action) {
+            if (action->bindingId == bindingId) {
+                return *action;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 bool CleanupPlanner::HasActiveFunction() const noexcept {
     return functionBase.has_value();
 }
@@ -102,6 +158,14 @@ std::size_t CleanupPlanner::ScopeDepth() const noexcept {
 bool CleanupPlanner::InvariantsHold() const {
     if (functionBase && *functionBase >= scopes.size()) {
         return false;
+    }
+    if (loopBase && (!functionBase || *loopBase > loops.size())) {
+        return false;
+    }
+    for (std::size_t index = loopBase.value_or(loops.size()); index < loops.size(); ++index) {
+        if (loops[index].scopeDepth < *functionBase || loops[index].scopeDepth > scopes.size()) {
+            return false;
+        }
     }
     std::unordered_set<std::uint64_t> identities;
     for (const auto &scope : scopes) {
