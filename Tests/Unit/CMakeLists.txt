@@ -86,6 +86,7 @@ set(RUX_TEST_SOURCES
     SemanticOperatorAssignmentDiagnosticsTests.cpp
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticTests.cpp
+    SemanticTypePropertyTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
     UserMessageProcessTests.cpp

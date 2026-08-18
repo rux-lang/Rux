@@ -119,6 +119,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
+                             std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                              std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
@@ -131,6 +132,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
     , typeLayouts(std::move(inputTypeLayouts))
+    , typeProperties(std::move(inputTypeProperties))
     , sizeOfValues(std::move(inputSizeOfValues)) {
 }
 
@@ -177,6 +179,26 @@ const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeExpr &typeNode) const noexcept {
     const TypeRef *type = TryGetType(typeNode);
     return type ? TryGetLayout(*type) : nullptr;
+}
+
+const TypeProperties *SemanticModel::TryGetProperties(const TypeRef &type) const noexcept {
+    const auto properties = typeProperties.find(type.ToString());
+    return properties == typeProperties.end() ? nullptr : &properties->second;
+}
+
+const TypeProperties *SemanticModel::TryGetProperties(const Expr &expression) const noexcept {
+    const TypeRef *type = TryGetType(expression);
+    return type ? TryGetProperties(*type) : nullptr;
+}
+
+const TypeProperties *SemanticModel::TryGetProperties(const TypeExpr &typeNode) const noexcept {
+    const TypeRef *type = TryGetType(typeNode);
+    return type ? TryGetProperties(*type) : nullptr;
+}
+
+const TypeProperties *SemanticModel::TryGetProperties(const Pattern &pattern) const noexcept {
+    const TypeRef *type = TryGetType(pattern);
+    return type ? TryGetProperties(*type) : nullptr;
 }
 
 const std::uint64_t *SemanticModel::TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept {

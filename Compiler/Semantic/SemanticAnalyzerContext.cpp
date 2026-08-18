@@ -66,6 +66,10 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
 
 SemanticAnalyzerContext::~SemanticAnalyzerContext() = default;
 
+std::unordered_map<std::string, TypeProperties> SemanticAnalyzerContext::TakeTypeProperties() {
+    return std::move(typeProperties);
+}
+
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
     return std::ranges::find(UnimplementedPrimitiveTypes, name) != UnimplementedPrimitiveTypes.end();
 }
@@ -195,6 +199,7 @@ void SemanticAnalyzerContext::Run() {
         CheckModule(*module);
     }
     ValidatePendingGenericInstantiations();
+    RecordResolvedTypeProperties();
     RecordResolvedTypeLayouts();
     BuildFinalSymbolIdentities();
 }

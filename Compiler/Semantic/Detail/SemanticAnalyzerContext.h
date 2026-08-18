@@ -31,6 +31,7 @@ public:
     SemanticAnalyzerContext &operator=(const SemanticAnalyzerContext &) = delete;
 
     void Run();
+    [[nodiscard]] std::unordered_map<std::string, TypeProperties> TakeTypeProperties();
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
@@ -81,6 +82,7 @@ protected:
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
+    std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
 
     SemanticProgramIndex programIndex;
@@ -203,6 +205,7 @@ private:
     virtual void CheckModuleInScope(const Module &module, Scope &scope) = 0;
     virtual void ValidatePendingGenericInstantiations() = 0;
     virtual void RecordResolvedTypeLayouts() = 0;
+    void RecordResolvedTypeProperties();
     virtual void BuildFinalSymbolIdentities() = 0;
 
     [[nodiscard]] TypeRef CheckUnary(TokenKind op, const TypeRef &operand, SourceLocation location);
