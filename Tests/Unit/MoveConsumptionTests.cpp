@@ -481,3 +481,58 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
     REQUIRE_EQ(choice->failureCleanups[1].size(), 1);
     CHECK_EQ(choice->failureCleanups[1][0].kind, HirPartialDropAction::Kind::EnumPayload);
 }
+
+TEST_CASE("partial and self moves are rejected before ownership state changes") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+        struct Owner { handle: Handle; }
+
+        func Take(value: Handle) {}
+
+        func Invalid(var handle: Handle, var owner: Owner, values: Handle[2], pointer: *Handle) {
+            Take(owner.handle);
+            Take(values[0]);
+            Take(*pointer);
+            handle = handle;
+            owner.handle = owner.handle;
+        }
+    )");
+
+    const std::vector<std::string> expected = {
+        "cannot move field 'handle' out of droppable value 'owner'",
+        "cannot move indexed element [0] out of droppable value 'values'",
+        "cannot move '*pointer' out of borrowed pointer storage",
+        "cannot move 'handle' into itself",
+        "cannot move 'owner.handle' into itself",
+    };
+    REQUIRE_EQ(diagnostics.size(), expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        CHECK_EQ(diagnostics[index].message, expected[index]);
+    }
+}
+
+TEST_CASE("complete moved bindings can be reinitialized and consumed again") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func NewHandle(value: int32) -> Handle { return Handle { value: value }; }
+        func Take(value: Handle) {}
+
+        func Valid() {
+            var reused = NewHandle(1);
+            Take(reused);
+            reused = NewHandle(2);
+            Take(reused);
+
+            var initializedLater: Handle;
+            initializedLater = NewHandle(3);
+            Take(initializedLater);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
