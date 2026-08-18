@@ -4,6 +4,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Semantic/SemanticProgramIndex.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -26,7 +27,7 @@ public:
                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
                             std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
-                            std::unordered_map<const SizeOfExpr *, std::uint64_t> &inputSizeOfValues);
+                            std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues);
     virtual ~SemanticAnalyzerContext();
 
     SemanticAnalyzerContext(const SemanticAnalyzerContext &) = delete;
@@ -183,6 +184,9 @@ protected:
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
+    [[nodiscard]] TypeRef CheckTypeQueryExpression(const TypeQueryExpr &expression);
+    [[nodiscard]] static bool IsCheckedArithmeticIntrinsic(std::string_view intrinsicName);
+    void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
 
     /// How a `for` loop reads a subject. An array, a slice and a range are driven directly; anything else is driven
     /// through the iterator convention, either because it is an iterator or because it hands one out.
@@ -256,7 +260,7 @@ protected:
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
     /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> &sizeOfValues;
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> &typeQueryValues;
 
     SemanticProgramIndex programIndex;
     Scope &globalScope;
@@ -334,6 +338,8 @@ private:
     void CheckLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
 
     virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
+    /// The target layout of a written type, or nothing when it has none: recursive, unsized, or not yet validated.
+    [[nodiscard]] virtual std::optional<ResolvedTypeLayout> LayoutOfTypeExpression(const TypeExpr &expression) = 0;
     virtual TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
     virtual TypeRef CheckExpr(const Expr &expression) = 0;

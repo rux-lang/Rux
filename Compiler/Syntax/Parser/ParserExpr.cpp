@@ -665,14 +665,15 @@ ExprPtr Parser::ParsePrimary() {
         e->location = loc;
         return e;
     }
-    // Compile-time size query: sizeof(T)
-    if (Check(TokenKind::Ident) && Peek().text == "sizeof") {
-        Advance();
-        auto e = std::make_unique<SizeOfExpr>();
+    // Compile-time layout queries: sizeof(T) and alignof(T)
+    if (Check(TokenKind::Ident) && (Peek().text == "sizeof" || Peek().text == "alignof")) {
+        const std::string spelling = Advance().text;
+        auto e = std::make_unique<TypeQueryExpr>();
         e->location = loc;
-        ExpectBefore(TokenKind::LeftParen, "'(' after 'sizeof'");
-        e->type = ParseType("add the queried type inside 'sizeof(...)'");
-        ExpectBefore(TokenKind::RightParen, "')' after the 'sizeof' type");
+        e->query = spelling == "sizeof" ? TypeQueryExpr::Query::Size : TypeQueryExpr::Query::Alignment;
+        ExpectBefore(TokenKind::LeftParen, std::format("'(' after '{}'", spelling));
+        e->type = ParseType(std::format("add the queried type inside '{}(...)'", spelling));
+        ExpectBefore(TokenKind::RightParen, std::format("')' after the '{}' type", spelling));
         return e;
     }
     // Compiler-injected intrinsic value: #target, #build, #source, ... The

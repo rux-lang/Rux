@@ -192,7 +192,7 @@ struct SemanticModel {
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                   std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
-                  std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues);
+                  std::unordered_map<const TypeQueryExpr *, std::uint64_t> inputSizeOfValues);
 
     [[nodiscard]] bool HasErrors() const noexcept;
 
@@ -246,7 +246,7 @@ struct SemanticModel {
 
     /// Returns the constant folded for an accepted sizeof expression. Rejected sizeof expressions deliberately have no
     /// usable value.
-    [[nodiscard]] const std::uint64_t *TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept;
+    [[nodiscard]] const std::uint64_t *TryGetTypeQueryValue(const TypeQueryExpr &expression) const noexcept;
 
 private:
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
@@ -262,6 +262,6 @@ private:
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
-    std::unordered_map<const SizeOfExpr *, std::uint64_t> sizeOfValues;
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
 };
 } // namespace Rux

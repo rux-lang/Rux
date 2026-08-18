@@ -126,9 +126,10 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         out << "'\n";
     }
-    else if (const auto *sizeOf = dynamic_cast<const SizeOfExpr *>(&expression)) {
+    else if (const auto *query = dynamic_cast<const TypeQueryExpr *>(&expression)) {
         Pad();
-        out << "SizeOfExpr " << TypeString(sizeOf->type.get()) << '\n';
+        out << (query->query == TypeQueryExpr::Query::Size ? "SizeOfExpr " : "AlignOfExpr ")
+            << TypeString(query->type.get()) << '\n';
     }
     else if (const auto *shorthand = dynamic_cast<const EnumShorthandExpr *>(&expression)) {
         Pad();

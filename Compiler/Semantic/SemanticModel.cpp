@@ -136,7 +136,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                              std::unordered_map<std::string, TypeProperties> inputTypeProperties,
                              std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
-                             std::unordered_map<const SizeOfExpr *, std::uint64_t> inputSizeOfValues)
+                             std::unordered_map<const TypeQueryExpr *, std::uint64_t> inputSizeOfValues)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
     , modules(std::move(inputModules))
@@ -154,7 +154,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , typeLayouts(std::move(inputTypeLayouts))
     , typeProperties(std::move(inputTypeProperties))
     , dropGluePlans(std::move(inputDropGluePlans))
-    , sizeOfValues(std::move(inputSizeOfValues)) {
+    , typeQueryValues(std::move(inputSizeOfValues)) {
 }
 
 bool SemanticModel::HasErrors() const noexcept {
@@ -252,8 +252,8 @@ const std::unordered_map<std::string, DropGluePlan> &SemanticModel::DropGluePlan
     return dropGluePlans;
 }
 
-const std::uint64_t *SemanticModel::TryGetSizeOfValue(const SizeOfExpr &expression) const noexcept {
-    const auto value = sizeOfValues.find(&expression);
-    return value == sizeOfValues.end() ? nullptr : &value->second;
+const std::uint64_t *SemanticModel::TryGetTypeQueryValue(const TypeQueryExpr &expression) const noexcept {
+    const auto value = typeQueryValues.find(&expression);
+    return value == typeQueryValues.end() ? nullptr : &value->second;
 }
 } // namespace Rux
