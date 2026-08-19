@@ -1,0 +1,122 @@
+// Mapping and unmapping address space.
+//
+// There is no `Brk` here. Darwin's `brk` and `sbrk` have been unavailable to 64-bit code since the beginning, and
+// the previous version of this package declared one anyway, through a trap number that was never valid on Apple
+// Silicon. Mapping is the only way to get address space on this system.
+
+import macOS::{ IsError, Normalize, madvise, mmap, mprotect, munmap };
+
+/// `PROT_NONE`: the pages may not be touched at all.
+///
+/// https://rux-lang.dev/docs/api/macos/protection-none
+const ProtectionNone: int32 = 0x00;
+
+/// `PROT_READ`: the pages may be read.
+///
+/// https://rux-lang.dev/docs/api/macos/protection-read
+const ProtectionRead: int32 = 0x01;
+
+/// `PROT_WRITE`: the pages may be written.
+///
+/// https://rux-lang.dev/docs/api/macos/protection-write
+const ProtectionWrite: int32 = 0x02;
+
+/// `PROT_EXEC`: the pages may be executed.
+///
+/// Apple Silicon refuses a mapping that is writable and executable at once unless the process carries the
+/// `com.apple.security.cs.allow-jit` entitlement and uses `MAP_JIT`, which this package does not wrap.
+///
+/// https://rux-lang.dev/docs/api/macos/protection-execute
+const ProtectionExecute: int32 = 0x04;
+
+/// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
+///
+/// https://rux-lang.dev/docs/api/macos/map-shared
+const MapShared: int32 = 0x0001;
+
+/// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
+///
+/// https://rux-lang.dev/docs/api/macos/map-private
+const MapPrivate: int32 = 0x0002;
+
+/// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
+///
+/// https://rux-lang.dev/docs/api/macos/map-fixed
+const MapFixed: int32 = 0x0010;
+
+/// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
+///
+/// https://rux-lang.dev/docs/api/macos/map-anonymous
+const MapAnonymous: int32 = 0x1000;
+
+/// `MADV_FREE`: the pages may be reclaimed, and read back as zero if they are.
+///
+/// https://rux-lang.dev/docs/api/macos/advise-free
+const AdviseFree: int32 = 5;
+
+/// `MADV_DONTNEED`: the pages are not needed soon. Advisory on Darwin, as on FreeBSD.
+///
+/// https://rux-lang.dev/docs/api/macos/advise-dont-need
+const AdviseDontNeed: int32 = 4;
+
+/// `MADV_WILLNEED`: the pages will be read soon.
+///
+/// https://rux-lang.dev/docs/api/macos/advise-will-need
+const AdviseWillNeed: int32 = 3;
+
+/// Creates a mapping and returns its address, or a negative error number.
+///
+/// `address` is a hint unless `MapFixed` is set. `fd` is the object to map, or `-1` with `MapAnonymous`.
+///
+/// libSystem reports failure here as `MAP_FAILED`, which is `-1` cast to a pointer rather than a small negative
+/// number, so the failure is folded into the same normalized form every other wrapper uses. Test the result with
+/// `IsError`, not for a sign: a valid address may have its top bit set.
+///
+/// # Safety
+///
+/// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
+///
+/// https://rux-lang.dev/docs/api/macos/mmap
+func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+    let mapped = mmap(address, length, protection, flags, fd, offset as int64) as int64;
+    return Normalize(mapped);
+}
+
+/// Releases the mapping that begins at `address` and spans `length` bytes.
+///
+/// Returns zero, or a negative error number.
+///
+/// # Safety
+///
+/// Every pointer into the range becomes invalid.
+///
+/// https://rux-lang.dev/docs/api/macos/munmap
+func Munmap(address: *opaque, length: uint) -> int64 {
+    return Normalize(munmap(address, length) as int64);
+}
+
+/// Changes what may be done with the pages covering a range.
+///
+/// `address` must be page-aligned. Returns zero, or a negative error number.
+///
+/// # Safety
+///
+/// Apple Silicon refuses to make a range writable and executable at once without the JIT entitlement.
+///
+/// https://rux-lang.dev/docs/api/macos/mprotect
+func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+    return Normalize(mprotect(address, length, protection) as int64);
+}
+
+/// Tells the kernel how the pages covering a range are about to be used.
+///
+/// Advice is advice, with the exception of `AdviseFree`, which actually releases.
+///
+/// # Safety
+///
+/// `AdviseFree` loses whatever the range held.
+///
+/// https://rux-lang.dev/docs/api/macos/madvise
+func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+    return Normalize(madvise(address, length, advice) as int64);
+}
