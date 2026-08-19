@@ -1,0 +1,40 @@
+/// A cursor that yields a sequence of items one at a time.
+///
+/// The compiler drives iteration by shape rather than through this interface: a `for` loop accepts any type with a
+/// `func Next(self: *var Self) -> Option<Item>`, which advances the cursor and reports either the next item or that
+/// the sequence has ended. The item type is whatever that `Option` carries, and it differs per iterator, so the
+/// method cannot be written here — an interface has no way to name a type its implementor chooses.
+///
+/// What this interface adds is the name. `extend MyCursor : Iterator` records that a type means to be an iterator
+/// and documents which of its methods carry the protocol, and a bound written `<T: Iterator>` says what a generic
+/// expects of its argument. Neither is required to iterate, and a bound on it grants no operations, so a generic that
+/// needs to advance a cursor itself should take the concrete iterator type.
+///
+/// An iterator is consumed as it is read: `Next` mutates it, and an iterator that has reported `None` keeps
+/// reporting `None`. Nothing here promises an iterator can be restarted or copied.
+///
+/// # Safety
+///
+/// An iterator borrows whatever it walks over. Modifying that container while an iterator over it is alive — growing
+/// a vector, rehashing a map, freeing the storage — leaves the iterator pointing at storage that has moved or gone,
+/// and reading it afterwards is undefined. Finish with the iterator before touching the container.
+///
+/// https://rux-lang.dev/docs/api/core/iterator
+interface Iterator {}
+
+/// A value that can hand out an `Iterator` over its contents.
+///
+/// As with `Iterator`, the compiler matches this by shape: a `for` loop accepts any type with a `func Iterate()` that
+/// returns an iterator, and calls it once at the top of the loop. The returned type differs per container, so the
+/// method cannot be written here either.
+///
+/// `extend MyContainer : Iterable` records the intent and names the protocol; iterating does not require it. Arrays,
+/// slices and ranges are iterated directly by the compiler and implement nothing.
+///
+/// # Safety
+///
+/// The iterator handed out borrows the container, so the container must outlive it and must not be modified while it
+/// is alive. See `Iterator`.
+///
+/// https://rux-lang.dev/docs/api/core/iterable
+interface Iterable {}

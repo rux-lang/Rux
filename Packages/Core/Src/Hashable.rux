@@ -1,0 +1,24 @@
+/// Hashing: the 64-bit summary a table uses to find a value quickly.
+///
+/// The bound a generic writes when it keys a hash table or a set on its element type.
+///
+/// The one rule an implementation must keep is agreement with equality: two values that are equal must hash the same.
+/// The converse is not required, and unequal values sharing a hash is an ordinary collision rather than a fault.
+/// Hashing the same value twice in one program run must give the same answer, so an implementation must read only the
+/// value itself — not an address, not a counter, not the clock.
+///
+/// A hash is not a checksum and not a digest: it is not stable across program runs, across compiler versions, or
+/// across targets, and nothing that outlives the process should be keyed on one. `Rux/Hash` supplies the named,
+/// documented algorithms for that, and `Rux/Crypto` the ones that must resist an adversary.
+///
+/// https://rux-lang.dev/docs/api/core/hashable
+interface Hashable {
+    /// The hash of this value.
+    ///
+    /// Borrows the value and takes ownership of nothing, so hashing leaves it usable.
+    ///
+    /// Cannot fail. Every value of the type has a hash, and the same value always gives the same one within a run.
+    ///
+    /// https://rux-lang.dev/docs/api/core/hashable/hash
+    func Hash() -> uint64;
+}

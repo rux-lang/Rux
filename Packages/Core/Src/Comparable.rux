@@ -1,0 +1,26 @@
+/// Ordering: which of two values of one type comes first.
+///
+/// The bound a generic writes when it needs to sort, search a sorted sequence, or find an extreme. `Self` in the
+/// signature is the implementing type, so a value is only ever ordered against another of its own type.
+///
+/// An implementation must be a total order: exactly one of less, equal or greater holds for any pair; reversing the
+/// operands reverses the answer; and the relation is transitive, for the ordering and for the equality it reports.
+/// A type with a value that compares unordered against everything, the way a floating-point NaN does, cannot promise
+/// this and should not implement it. Algorithms that sort or search assume all three and may otherwise loop, drop
+/// elements, or read past their bounds.
+///
+/// A type implementing both this and `Equatable` must keep them agreeable: `Compare` reports `Equal` exactly when
+/// `Equals` reports true.
+///
+/// https://rux-lang.dev/docs/api/core/comparable
+interface Comparable {
+    /// Compares this value against `other`.
+    ///
+    /// Borrows both operands and takes ownership of neither. `other` must not be null.
+    ///
+    /// Returns `Less` when this value comes first, `Greater` when `other` does, and `Equal` when neither does. Cannot
+    /// fail: a total order places every pair.
+    ///
+    /// https://rux-lang.dev/docs/api/core/comparable/compare
+    func Compare(other: *Self) -> Ordering;
+}
