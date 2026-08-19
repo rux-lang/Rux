@@ -1,0 +1,152 @@
+// The Unicode file and device interface.
+//
+// Every entry point here is the `W` form, which takes UTF-16. The `A` forms in `Kernel` convert through the process
+// code page, which is lossy for any name the page cannot express and differs between machines -- so a path that
+// works on one system fails on another for reasons the program cannot see. A path is not text the program chose; it
+// is text a user or a file system chose, and the `W` forms are the only ones that carry all of it.
+//
+// A failing call here reports `InvalidHandleValue` where it returns a handle and zero where it returns a `Bool`,
+// with the reason in `GetLastError`.
+
+import Windows::{ Bool, Dword, Handle };
+
+/// `GENERIC_READ`: the handle may read.
+///
+/// https://rux-lang.dev/docs/api/windows/generic-read
+#Allow("naming.const")
+const GENERIC_READ: uint32 = 0x80000000;
+
+/// `GENERIC_WRITE`: the handle may write.
+///
+/// https://rux-lang.dev/docs/api/windows/generic-write
+#Allow("naming.const")
+const GENERIC_WRITE: uint32 = 0x40000000;
+
+/// `FILE_SHARE_READ`: other openers may read while this handle is open.
+///
+/// Windows denies sharing by default, which is the opposite of every Unix. A file opened without this cannot be
+/// opened for reading by anything else, including the same process.
+///
+/// https://rux-lang.dev/docs/api/windows/file-share-read
+#Allow("naming.const")
+const FILE_SHARE_READ: uint32 = 0x00000001;
+
+/// `FILE_SHARE_WRITE`: other openers may write while this handle is open.
+///
+/// https://rux-lang.dev/docs/api/windows/file-share-write
+#Allow("naming.const")
+const FILE_SHARE_WRITE: uint32 = 0x00000002;
+
+/// `FILE_SHARE_DELETE`: the file may be renamed or deleted while this handle is open.
+///
+/// https://rux-lang.dev/docs/api/windows/file-share-delete
+#Allow("naming.const")
+const FILE_SHARE_DELETE: uint32 = 0x00000004;
+
+/// `FILE_ATTRIBUTE_NORMAL`: no attributes beyond being an ordinary file.
+///
+/// https://rux-lang.dev/docs/api/windows/file-attribute-normal
+#Allow("naming.const")
+const FILE_ATTRIBUTE_NORMAL: uint32 = 0x00000080;
+
+/// `FILE_FLAG_DELETE_ON_CLOSE`: remove the file when its last handle closes.
+///
+/// https://rux-lang.dev/docs/api/windows/file-flag-delete-on-close
+#Allow("naming.const")
+const FILE_FLAG_DELETE_ON_CLOSE: uint32 = 0x04000000;
+
+/// `FILE_FLAG_WRITE_THROUGH`: writes reach the device before the call returns.
+///
+/// https://rux-lang.dev/docs/api/windows/file-flag-write-through
+#Allow("naming.const")
+const FILE_FLAG_WRITE_THROUGH: uint32 = 0x80000000;
+
+/// `MOVEFILE_REPLACE_EXISTING`: let the move overwrite an existing target.
+///
+/// https://rux-lang.dev/docs/api/windows/move-file-replace-existing
+#Allow("naming.const")
+const MOVEFILE_REPLACE_EXISTING: uint32 = 0x00000001;
+
+/// `MOVEFILE_WRITE_THROUGH`: do not return until the move has reached the disk.
+///
+/// With `MOVEFILE_REPLACE_EXISTING`, this is what makes publishing a file under its final name durable.
+///
+/// https://rux-lang.dev/docs/api/windows/move-file-write-through
+#Allow("naming.const")
+const MOVEFILE_WRITE_THROUGH: uint32 = 0x00000008;
+
+#Link("Kernel32.dll")
+extern {
+    // Creates or opens a file or device, taking a UTF-16 path
+    //
+    // Returns InvalidHandleValue on failure, not null. The share mode is not a default: passing zero denies every
+    // other opener, which is Windows' behaviour and not most callers' intent.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+    func CreateFileW(fileName: *char16, desiredAccess: uint32, shareMode: uint32, securityAttributes: *var opaque,
+                     creationDisposition: uint32, flagsAndAttributes: uint32, templateFile: *var opaque) -> *var opaque;
+
+    // Deletes a file, taking a UTF-16 path
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
+    func DeleteFileW(fileName: *char16) -> int32;
+
+    // Moves or renames a file or directory, taking UTF-16 paths
+    //
+    // With MOVEFILE_REPLACE_EXISTING this replaces the target atomically within a volume, which is how a file is
+    // published under its final name. Across volumes it copies and deletes instead, which is not atomic.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw
+    func MoveFileExW(existingFileName: *char16, newFileName: *char16, flags: uint32) -> int32;
+
+    // Copies a file, taking UTF-16 paths
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilew
+    func CopyFileW(existingFileName: *char16, newFileName: *char16, failIfExists: int32) -> int32;
+
+    // Creates a directory, taking a UTF-16 path
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
+    func CreateDirectoryW(pathName: *char16, securityAttributes: *var opaque) -> int32;
+
+    // Removes an empty directory, taking a UTF-16 path
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectoryw
+    func RemoveDirectoryW(pathName: *char16) -> int32;
+
+    // Reads a file's attributes, taking a UTF-16 path
+    //
+    // Returns 0xFFFFFFFF on failure, which is INVALID_FILE_ATTRIBUTES and not an attribute value.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw
+    func GetFileAttributesW(fileName: *char16) -> uint32;
+
+    // Sets a file's attributes, taking a UTF-16 path
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesw
+    func SetFileAttributesW(fileName: *char16, fileAttributes: uint32) -> int32;
+
+    // Reads the current directory into a UTF-16 buffer
+    //
+    // Returns the length written, or the length required when the buffer is too small -- a return larger than the
+    // buffer is not a failure but a request to call again.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
+    func GetCurrentDirectoryW(bufferLength: uint32, buffer: *var char16) -> uint32;
+
+    // Sets the current directory, taking a UTF-16 path
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
+    func SetCurrentDirectoryW(pathName: *char16) -> int32;
+
+    // Flushes a file handle's writes to the device
+    //
+    // Returns zero on failure. This is what makes a write durable; FILE_FLAG_WRITE_THROUGH is the alternative that
+    // does it on every write instead.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+    func FlushFileBuffers(file: *var opaque) -> int32;
+
+    // Sets the size of a file to the handle's current position
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setendoffile
+    func SetEndOfFile(file: *var opaque) -> int32;
+
+    // Writes UTF-16 to a console screen buffer
+    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    func WriteConsoleW(consoleOutput: *var opaque, buffer: *opaque, numberOfCharsToWrite: uint32,
+                       numberOfCharsWritten: *var uint32, reserved: *var opaque) -> int32;
+
+    // Reads UTF-16 from a console input buffer
+    // https://learn.microsoft.com/en-us/windows/console/readconsole
+    func ReadConsoleW(consoleInput: *var opaque, buffer: *var opaque, numberOfCharsToRead: uint32,
+                      numberOfCharsRead: *var uint32, inputControl: *var opaque) -> int32;
+}

@@ -1,0 +1,143 @@
+import Core::{ OperatingSystem, #target };
+
+when #target.os == OperatingSystem::Windows {
+    import Windows::{
+        FileTime,
+        FileTimeTicks,
+        FileTimeTicksPerSecond,
+        FileTimeToUnixEpochSeconds,
+        GetRandom,
+        GetSystemTimePreciseAsFileTime,
+        GetFileAttributesW,
+        MEM_COMMIT,
+        MEM_RELEASE,
+        MEM_RESERVE,
+        PAGE_NOACCESS,
+        PAGE_READWRITE,
+        QueryPerformanceCounter,
+        QueryPerformanceFrequency,
+        VirtualAlloc,
+        VirtualFree,
+        VirtualProtect
+    };
+
+    // Each declaration is called, so a wrong symbol name, a wrong argument order, or a library that does not export
+    // it fails here rather than at some caller's expense. The reserve-then-commit split and the two different
+    // failure sentinels are what a binding to this platform most easily gets wrong.
+
+    func Main() -> int {
+        // Reserving takes address space without backing it; committing gives it storage. A reserved page may not be
+        // touched, which is why the write below happens only after the commit.
+        const Size: uint = 65536;
+        let reserved = VirtualAlloc(null, Size, MEM_RESERVE, PAGE_NOACCESS);
+        if reserved == null {
+            return 1;
+        }
+
+        let committed = VirtualAlloc(reserved, Size, MEM_COMMIT, PAGE_READWRITE);
+        if committed != reserved {
+            return 2;
+        }
+
+        let bytes = committed as *var uint8;
+        *bytes = 0xA5;
+        *(bytes + Size - 1) = 0x5A;
+        if *bytes != 0xA5 || *(bytes + Size - 1) != 0x5A {
+            return 3;
+        }
+
+        // Changing protection writes back what it was, which is what the previous-protection argument is for.
+        var previous = 0u32;
+        if VirtualProtect(committed, Size, PAGE_NOACCESS, @previous) == 0 {
+            return 4;
+        }
+        if previous != PAGE_READWRITE {
+            return 5;
+        }
+
+        // MEM_RELEASE requires a size of zero and the exact base address.
+        if VirtualFree(reserved, 0, MEM_RELEASE) == 0 {
+            return 6;
+        }
+
+        // The entropy source fills the whole buffer or fails; there is no short count.
+        var seed: uint64[4] = [0, 0, 0, 0];
+        if !GetRandom(@seed[0] as *var opaque, 32) {
+            return 7;
+        }
+        if seed[0] == 0 && seed[1] == 0 && seed[2] == 0 && seed[3] == 0 {
+            return 8;
+        }
+
+        // A second draw must not repeat the first, which is the cheapest check that this is a generator at all.
+        var second: uint64[4] = [0, 0, 0, 0];
+        if !GetRandom(@second[0] as *var opaque, 32) {
+            return 9;
+        }
+        if seed[0] == second[0] && seed[1] == second[1] && seed[2] == second[2] && seed[3] == second[3] {
+            return 10;
+        }
+
+        // A request the 32-bit count cannot express is refused rather than truncated.
+        if GetRandom(@seed[0] as *var opaque, 4294967296u64) {
+            return 11;
+        }
+
+        // The performance counter is monotonic and its frequency is fixed.
+        var frequency = 0i64;
+        if QueryPerformanceFrequency(@frequency) == 0 || frequency <= 0 {
+            return 12;
+        }
+
+        var first = 0i64;
+        if QueryPerformanceCounter(@first) == 0 {
+            return 13;
+        }
+        var spin = 0i64;
+        while spin < 1000000 {
+            spin = spin + 1;
+        }
+        var later = 0i64;
+        if QueryPerformanceCounter(@later) == 0 {
+            return 14;
+        }
+        if later < first {
+            return 15;
+        }
+
+        // The wall clock counts 100-nanosecond ticks from 1601, and reassembling the two words has to give a
+        // plausible present-day instant once the epochs are reconciled.
+        var stamp = FileTime { lowDateTime: 0, highDateTime: 0 };
+        GetSystemTimePreciseAsFileTime(@stamp);
+        let ticks = FileTimeTicks(@stamp);
+        if ticks == 0 {
+            return 16;
+        }
+        let unixSeconds = ticks / FileTimeTicksPerSecond - FileTimeToUnixEpochSeconds;
+        if unixSeconds < 1700000000u64 || unixSeconds > 4000000000u64 {
+            return 17;
+        }
+
+        // A path that does not exist reports the invalid-attributes sentinel rather than an attribute value.
+        //
+        // The path is built one UTF-16 code unit at a time because Rux has no UTF-16 string literal: a literal is a
+        // `Slice<char8>`, and handing its bytes to a `W` entry point would be passing UTF-8 to a call that reads
+        // pairs of bytes as code units. That is the mistake this module exists to prevent, so the test does not
+        // quietly make it.
+        var path: char16[24] = [
+            'K' as char16, ':' as char16, '\\' as char16, 'n' as char16, 'o' as char16, '-' as char16,
+            's' as char16, 'u' as char16, 'c' as char16, 'h' as char16, '-' as char16, 'p' as char16,
+            'a' as char16, 't' as char16, 'h' as char16, '-' as char16, '2' as char16, 'f' as char16,
+            '8' as char16, 'c' as char16, '1' as char16, 'e' as char16, '\0' as char16, '\0' as char16
+        ];
+        if GetFileAttributesW(@path[0]) != 0xFFFFFFFFu32 {
+            return 18;
+        }
+
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

@@ -1,0 +1,107 @@
+// The Win32 ABI's fundamental types, handles and structures.
+//
+// Every name here is Win32's own, because that is what a reader porting code or reading Microsoft's documentation
+// will look for. A `HANDLE` is an opaque pointer-sized value the kernel owns; nothing here interprets one, and the
+// only thing a caller may do with it is pass it back or close it.
+//
+// The two invalid values are not the same. A handle-returning call reports failure as `InvalidHandleValue`, which is
+// `-1` cast to a pointer, while an allocation-returning one reports it as null. Testing the wrong one is the classic
+// Win32 mistake, so each declaration says which it uses.
+
+/// An opaque kernel object reference.
+///
+/// Pointer-sized and owned by the kernel. A handle is valid until `CloseHandle` takes it, after which the number may
+/// be reused by the next object opened -- so a stale handle does not fail, it addresses something else.
+///
+/// https://rux-lang.dev/docs/api/windows/handle
+type Handle = *var opaque;
+
+/// A module reference, as `LoadLibraryW` returns one.
+///
+/// https://rux-lang.dev/docs/api/windows/module-handle
+type ModuleHandle = *var opaque;
+
+/// Win32's `BOOL`: a 32-bit integer where zero is false and anything else is true.
+///
+/// Not a one-byte boolean, and not `bool`. A call returning one reports failure as zero and success as anything
+/// else, which is why comparing against `1` is wrong.
+///
+/// https://rux-lang.dev/docs/api/windows/bool
+type Bool = int32;
+
+/// Win32's `DWORD`: a 32-bit unsigned integer.
+///
+/// https://rux-lang.dev/docs/api/windows/dword
+type Dword = uint32;
+
+/// A UTF-16 code unit, which is what every `*W` entry point takes.
+///
+/// Not a character: a scalar outside the basic plane occupies two of these.
+///
+/// https://rux-lang.dev/docs/api/windows/wide-char
+type WideChar = char16;
+
+/// An `NTSTATUS`: the status code the native and cryptographic interfaces report with.
+///
+/// Zero and above is success; below zero is failure. This is a different scheme from `GetLastError`, and a value of
+/// one must never be read as the other.
+///
+/// https://rux-lang.dev/docs/api/windows/nt-status
+type NtStatus = int32;
+
+/// The value a handle-returning call reports failure with.
+///
+/// `-1` cast to a pointer, which is not null. `CreateFileW` and `FindFirstFileW` report failure this way; a
+/// memory-returning call such as `VirtualAlloc` reports null instead.
+///
+/// https://rux-lang.dev/docs/api/windows/invalid-handle-value
+const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
+
+// Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
+struct FileTime {
+    lowDateTime: uint32;
+    highDateTime: uint32;
+}
+
+// The standard input device. Initially, this is the console input buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdInputHandle: uint32 = 0xFFFFFFF6;
+
+// The standard output device. Initially, this is the active console screen buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdOutputHandle: uint32 = 0xFFFFFFF5;
+
+// The standard error device. Initially, this is the active console screen buffer
+// https://learn.microsoft.com/en-us/windows/console/getstdhandle
+const StdErrorHandle: uint32 = 0xFFFFFFF4;
+
+// Specifies a date and time, using individual members for the month, day, year, weekday, hour, minute, second,
+// and millisecond.
+// The time is either in coordinated universal time (UTC) or local time, depending on the function that is being called.
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime
+struct SystemTime {
+    year: uint16;
+    month: uint16;
+    dayOfWeek: uint16;
+    day: uint16;
+    hour: uint16;
+    minute: uint16;
+    second: uint16;
+    milliseconds: uint16;
+}
+
+// Contains information about the file that is found by the FindFirstFile, FindFirstFileEx, or FindNextFile function.
+// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
+struct Win32FindDataA {
+    fileAttributes: uint32;
+    creationTime: FileTime;
+    lastAccessTime: FileTime;
+    lastWriteTime: FileTime;
+    fileSizeHigh: uint32;
+    fileSizeLow: uint32;
+    reserved0: uint32;
+    reserved1: uint32;
+    fileName: char8[260];
+    alternateFileName: char8[14];
+}
