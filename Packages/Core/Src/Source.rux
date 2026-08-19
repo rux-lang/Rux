@@ -1,13 +1,33 @@
-// Location of the expression that reads this compiler-provided value
+// Where the reading expression is written, as ordinary values available while compiling.
+//
+// `#source` is not one value: each field is filled in from the place it is read, so passing `#source.line` to a
+// function reports the caller's line rather than the function's. That is what makes it usable for a logging or
+// assertion helper, which wants to name the site that called it.
+
+/// The location of the expression that reads it.
+///
+/// Every field is fixed while compiling, from the read's own position. A field read produces no runtime code beyond
+/// the constant it folds to; the text fields borrow the compiler's own storage, which outlives the program.
+///
+/// https://rux-lang.dev/docs/api/core/source
 struct Source {
+    /// The one-based line of the reading expression.
     line: uint;
+    /// The one-based column of the reading expression.
     column: uint;
+    /// The source file as the build named it, which is the spelling a diagnostic uses.
     file: Slice<char8>;
+    /// The file's last path component, with its extension.
     fileName: Slice<char8>;
+    /// The file's path, relative to the package root where the file belongs to one.
     filePath: Slice<char8>;
+    /// The enclosing function, qualified with its type for a method.
     function: Slice<char8>;
+    /// The enclosing module path, relative to the package root.
     module: Slice<char8>;
 }
 
-// Compile-time value
+/// The reading expression's own location, as a compile-time value.
+///
+/// https://rux-lang.dev/docs/api/core/source
 intrinsic #source: Source;

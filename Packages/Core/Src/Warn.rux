@@ -1,2 +1,0 @@
-// Emits compilation warning
-intrinsic func #Warn(message: Slice<char8>);

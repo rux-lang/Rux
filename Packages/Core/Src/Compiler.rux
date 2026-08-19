@@ -1,16 +1,47 @@
-/// A semantic version represented by its numeric core components.
+// The compiler performing the build, and the version type it reports itself with.
+//
+// `#compiler` is what a package uses to require a language feature rather than to guess at one from a version
+// number, which is what `HasFeature` is for. `SemanticVersion` lives here because the compiler's version is the
+// first thing that needed one; it is an ordinary value type usable for any version.
+
+/// A semantic version, as its three numeric core components.
+///
+/// Carries the core only: a pre-release tag or build metadata is not represented, so two versions differing only in
+/// those compare equal. Copy, owns nothing, and allocates nothing.
+///
+/// Ordered by precedence, major component first, as semantic versioning defines it.
+///
+/// https://rux-lang.dev/docs/api/core/semantic-version
 struct SemanticVersion {
+    /// The major component, which changes when compatibility does.
     major: uint;
+    /// The minor component.
     minor: uint;
+    /// The patch component.
     patch: uint;
 }
 
 extend SemanticVersion {
+    /// A version with the given components.
+    ///
+    /// All three are read by value; the version is returned by copy and borrows nothing.
+    ///
+    /// Cannot fail: every triple of components is a version. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/new
     func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
         return SemanticVersion { major: major, minor: minor, patch: patch };
     }
 
-    /// Compares version precedence, returning -1, 0 or 1.
+    /// Compares precedence with `other`.
+    ///
+    /// `self` is borrowed and `other` is read by value. Returns a negative value when `self` precedes `other`, zero
+    /// when the two have the same precedence, and a positive value when `self` follows it. Components are compared
+    /// major first, and the first difference decides.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/compare
     func Compare(self: *SemanticVersion, other: SemanticVersion) -> int {
         if self.major < other.major { return -1; }
         if self.major > other.major { return 1; }
@@ -21,59 +52,130 @@ extend SemanticVersion {
         return 0;
     }
 
+    /// Whether the two versions have the same precedence.
+    ///
+    /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/is-equal-to
     func IsEqualTo(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
+    /// Whether this version precedes `other`.
+    ///
+    /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/is-less-than
     func IsLessThan(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
+    /// Whether this version precedes `other` or matches it.
+    ///
+    /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/is-at-most
     func IsAtMost(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
+    /// Whether this version follows `other`.
+    ///
+    /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/is-greater-than
     func IsGreaterThan(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
+    /// Whether this version follows `other` or matches it, which is how a minimum requirement is written.
+    ///
+    /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/is-at-least
     func IsAtLeast(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 
+    /// Equality by precedence, the operator spelling of `IsEqualTo`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/equals
     func ==(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
+    /// Inequality by precedence.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/not-equals
     func !=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) != 0;
     }
 
+    /// Precedence ordering, the operator spelling of `IsLessThan`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/less-than
     func <(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
+    /// Precedence ordering, the operator spelling of `IsAtMost`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/less-than-or-equal
     func <=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
+    /// Precedence ordering, the operator spelling of `IsGreaterThan`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/greater-than
     func >(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
+    /// Precedence ordering, the operator spelling of `IsAtLeast`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/semantic-version/greater-than-or-equal
     func >=(self: *SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 }
 
-/// Properties and feature queries for the compiler performing the build.
+/// Properties of the compiler performing the build.
+///
+/// Fixed when compiling begins. Reading a field produces no runtime code.
+///
+/// https://rux-lang.dev/docs/api/core/compiler
 struct Compiler {
+    /// The compiler's own version.
     version: SemanticVersion;
 }
 
 extend Compiler {
+    /// Whether this compiler provides the named language or library feature.
+    ///
+    /// `self` is borrowed and `feature` must be a string literal, since this is answered while compiling. Prefer it
+    /// to comparing `version`: a feature name says what the code needs, and stays right when the feature arrives in a
+    /// release the comparison did not anticipate.
+    ///
+    /// Cannot fail: an unknown name is absent rather than an error. Costs nothing in the built program.
+    ///
+    /// https://rux-lang.dev/docs/api/core/compiler/has-feature
     intrinsic func HasFeature(self: *Compiler, feature: Slice<char8>) -> bool;
 }
 
-// Compile-time value
+/// The compiler performing the build, as a compile-time value.
+///
+/// https://rux-lang.dev/docs/api/core/compiler
 intrinsic #compiler: Compiler;

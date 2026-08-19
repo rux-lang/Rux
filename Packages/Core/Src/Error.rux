@@ -1,2 +1,0 @@
-// Emits compilation error
-intrinsic func #Error(message: Slice<char8>);

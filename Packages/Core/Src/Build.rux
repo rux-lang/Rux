@@ -1,37 +1,86 @@
-// High-level mode of the active build profile
+// What the active build is doing, as ordinary values available while compiling.
+//
+// `#build` answers questions about the build rather than about the machine it targets, which is `#target`'s job: the
+// profile chosen, what the profile implies, what artifact is coming out, and when it was made. Reading one costs
+// nothing at run time, because the value is folded where it is written.
+//
+// The timestamp is fixed once per build rather than read per expression, so every use of it in one build agrees. That
+// makes it usable as a build identity and unusable as a clock.
+
+/// The high-level mode of the active build profile.
+///
+/// A profile is a name, and more than one profile may share a mode; this is the part a package can branch on without
+/// knowing which profiles a project defined.
+///
+/// https://rux-lang.dev/docs/api/core/build-mode
 enum BuildMode: uint8 {
+    /// Unoptimized, with debug assertions and debug information on by default.
     Debug = 0,
+    /// Optimized, with debug assertions removed by default.
     Release = 1
 }
 
-// Optimization preference of the active build profile
+/// What the active build asked the optimizer to favor.
+///
+/// https://rux-lang.dev/docs/api/core/optimization-mode
 enum OptimizationMode: uint8 {
+    /// No optimization: the output follows the source as closely as it can.
     None = 0,
+    /// Smaller output preferred where it costs speed.
     Size = 1,
+    /// Faster output preferred where it costs size.
     Speed = 2
 }
 
-// Artifact produced by the active build
+/// The kind of artifact the active build produces.
+///
+/// https://rux-lang.dev/docs/api/core/output-kind
 enum OutputKind: uint8 {
+    /// A program with an entry point.
     Executable = 0,
+    /// A library linked at load time and shipped as its own file.
     SharedLibrary = 1,
+    /// A library linked into whatever uses it, as compiled code.
     StaticLibrary = 2,
+    /// A library linked into whatever uses it, as source compiled with it.
     SourceLibrary = 3
 }
 
-// Properties of the active build profile and output.
+/// Properties of the active build profile and its output.
+///
+/// Every field is fixed when compiling begins and is the same everywhere in one build. Reading one produces no
+/// runtime code, so a branch on a field is decided while compiling and the untaken side is not emitted.
+///
+/// https://rux-lang.dev/docs/api/core/build
 struct Build {
+    /// The profile's name as the project spelled it, which may be a project-defined profile rather than one of the
+    /// two standard ones.
     profile: Slice<char8>;
+    /// The mode the profile implies, which is what a package should branch on.
     mode: BuildMode;
+    /// What the profile asked the optimizer to favor.
     optimization: OptimizationMode;
+    /// Whether `DebugAssert` checks are kept. False means they are removed without their arguments being evaluated.
     debugAssertions: bool;
+    /// Whether debug information is emitted alongside the output.
     debugInfo: bool;
+    /// Whether this build is a test build, which is how a package tells a test-only path from a shipped one.
     isTest: bool;
+    /// The artifact being produced.
     outputKind: OutputKind;
+    /// When the build started, in seconds since the Unix epoch. Fixed once per build, so it identifies the build and
+    /// does not measure time.
     timestamp: uint64;
+    /// The build's start date as `YYYY-MM-DD`.
     date: Slice<char8>;
+    /// The build's start time as `HH:MM:SS`.
     time: Slice<char8>;
 }
 
-// Compile-time value
+/// The active build, as a compile-time value.
+///
+/// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
+/// is never resolved or type-checked and may name things this build does not have.
+///
+/// https://rux-lang.dev/docs/api/core/build
 intrinsic #build: Build;

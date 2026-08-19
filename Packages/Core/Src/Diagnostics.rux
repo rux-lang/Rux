@@ -1,0 +1,71 @@
+// The four ways a program says something is wrong: two that stop it while it runs, and two that stop it being built.
+//
+// `Assert` and `Panic` report and terminate. Neither unwinds, so no destructor runs on the way out -- a program that
+// panics is not a program whose invariants still hold, and running cleanup code written on the assumption that they do
+// is how one failure becomes several. Anything that must be released on a failing path has to be released by a caller
+// that saw the failure, which is what `Result<T, E>` is for.
+//
+// `#Error` and `#Warn` produce no runtime code at all. They are evaluated where they are written, so a configuration
+// the package does not support is rejected while compiling rather than discovered by whoever runs the result.
+//
+// All four take their message as a `Slice<char8>`, which a string literal already is.
+
+/// Terminates the program unless `condition` holds.
+///
+/// `condition` and `message` are read by value; nothing is returned and nothing is taken ownership of. `message`
+/// should say what was expected rather than what was found, since the value that failed is not printed.
+///
+/// Reports the message, the enclosing function, and the file, line and column of the call, then terminates. Does not
+/// unwind: no destructor runs, and no caller observes the failure. Present in every build, so it is the right check
+/// for a contract that must hold in a released program.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/assert
+intrinsic func Assert(condition: bool, message: Slice<char8>);
+
+/// Terminates the program unless `condition` holds, in builds that keep debug assertions.
+///
+/// `condition` and `message` are read by value. Identical to `Assert` where it is kept, and removed entirely where it
+/// is not: a release build does not evaluate `condition`, so an argument with a side effect will not have it, and an
+/// expensive check costs nothing.
+///
+/// Reports and terminates exactly as `Assert` does. Does not unwind.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/debug-assert
+intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
+
+/// Terminates the program, reporting `message`.
+///
+/// `message` is read by value; this never returns. Use it where a case is unreachable by construction rather than
+/// unlikely -- a caller who could have handled the failure should have been given a `Result<T, E>` instead.
+///
+/// Reports the message, the enclosing function, and the file, line and column of the call, then terminates. Does not
+/// unwind: no destructor runs.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/panic
+intrinsic func Panic(message: Slice<char8>);
+
+/// Rejects the build where it is written, reporting `message`.
+///
+/// `message` must be a string literal, since this is evaluated while compiling. Produces no runtime code and never
+/// returns a value. A directive inside a `when` branch that was not taken never fires.
+///
+/// Cannot fail at run time, because it does not reach run time. Costs nothing in the built program.
+///
+/// https://rux-lang.dev/docs/api/core/error
+intrinsic func #Error(message: Slice<char8>);
+
+/// Reports `message` as a compilation warning where it is written, without rejecting the build.
+///
+/// `message` must be a string literal. Produces no runtime code. A directive inside a `when` branch that was not
+/// taken never fires, so a warning about one target does not appear when building for another.
+///
+/// Cannot fail. Costs nothing in the built program.
+///
+/// https://rux-lang.dev/docs/api/core/warn
+intrinsic func #Warn(message: Slice<char8>);
