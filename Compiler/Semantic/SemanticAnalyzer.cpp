@@ -1821,9 +1821,31 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
+    /// Whether any variant of `decl` carries a payload, which is what makes the enum an aggregate rather than the
+    /// integer its discriminant is stored as.
+    static bool EnumCarriesPayload(const EnumDecl &decl) {
+        return std::ranges::any_of(decl.variants, [](const EnumDecl::Variant &variant) {
+            return !variant.fields.empty() || !variant.namedFields.empty();
+        });
+    }
+
     TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) override {
         TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
         if (decl.typeParams.empty()) {
+            // `inner` carries how large the value is, and nothing reads it as the tag -- the tag's own type is kept
+            // beside the declaration. An enum that is only a discriminant is the size of that discriminant, so its
+            // base type says it. One carrying a payload is wider than its tag, and only the layout knows by how much;
+            // recording the tag there instead sized the whole value as the tag, so a call took the tag alone and left
+            // the payload behind.
+            if (EnumCarriesPayload(decl)) {
+                if (const auto layout = LayoutOfEnum(decl)) {
+                    type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+                    // Record it under the name too: lowering builds this type a second time and reads the size back
+                    // from here, having no layout machinery of its own.
+                    typeLayouts.insert_or_assign(type.name, *layout);
+                    return type;
+                }
+            }
             type.inner.push_back(EnumBaseType(decl));
             return type;
         }
