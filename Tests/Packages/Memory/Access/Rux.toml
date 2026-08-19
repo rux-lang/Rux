@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Access"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Memory: alignment, unaligned access, byte order and zeroization"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Memory = { Path = "../../../../Packages/Memory" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Memory"
