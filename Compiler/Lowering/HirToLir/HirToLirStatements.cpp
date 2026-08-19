@@ -15,9 +15,19 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         if (s->init) {
             StoreExprIntoSlot(*s->init, slot, s->type);
         }
+        // Marked live only once the initializer has been stored: an initializer that consumed another binding has to
+        // have cleared that one first, and one that left the function never reaches this at all.
+        if (!IsTerminated()) {
+            MarkBindingLive(s->bindingId, true);
+        }
         if (s->pattern) {
             BindLetPattern(*s->pattern, slot, s->type);
         }
+        return;
+    }
+
+    if (auto *s = dynamic_cast<const HirDropStmt *>(&stmt)) {
+        EmitCleanup(s->action);
         return;
     }
 
@@ -29,6 +39,9 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
     if (auto *s = dynamic_cast<const HirReturnStmt *>(&stmt)) {
         if (s->value) {
             LirReg val = LowerExpr(**s->value);
+            // The returned value is in hand and its binding is already released, so every cleanup below leaves it
+            // alone and destroys only what the function still owns.
+            EmitCleanups(s->cleanups);
             TypeRef retType = builder->Function().returnType;
             if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
                 LirReg casted = NewReg();
@@ -44,12 +57,14 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             Return({val}, retType);
         }
         else {
+            EmitCleanups(s->cleanups);
             Return(std::nullopt, TypeRef::MakeOpaque());
         }
         return;
     }
 
     if (auto *s = dynamic_cast<const HirBreakStmt *>(&stmt)) {
+        EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).breakTarget);
         }
@@ -60,6 +75,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
     }
 
     if (auto *s = dynamic_cast<const HirContinueStmt *>(&stmt)) {
+        EmitCleanups(s->cleanups);
         if (!s->label.empty()) {
             Jump(labelTargets.at(s->label).continueTarget);
         }

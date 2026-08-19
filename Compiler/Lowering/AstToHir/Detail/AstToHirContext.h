@@ -270,6 +270,9 @@ private:
     [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                                        const FuncDecl &method);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
+    void ResolveDropGlue(HirPackage &package);
+    void ResolveDropGlueSteps(std::vector<DropGlueStep> &steps);
+    [[nodiscard]] std::string DropMethodSymbol(const TypeRef &type);
 
     [[nodiscard]] static std::uint32_t DecodeUtf8CodePoint(const std::string &text, std::size_t index);
     static void AppendUtf8(std::string &output, std::uint32_t codePoint);

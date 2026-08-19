@@ -120,29 +120,32 @@ std::vector<DropGlueStep> SemanticAnalyzerContext::BuildDropGlueSteps(const Type
             const Substitutions substitutions = BindTypeArguments(declaration.typeParams, arguments);
             for (std::size_t variantIndex = 0; variantIndex < declaration.variants.size(); ++variantIndex) {
                 const EnumDecl::Variant &variant = declaration.variants[variantIndex];
-                std::vector<DropGlueStep> payload;
-                for (std::size_t offset = 0; offset < variant.namedFields.size(); ++offset) {
-                    const std::size_t index = variant.namedFields.size() - offset - 1;
-                    const EnumDecl::Variant::NamedField &field = variant.namedFields[index];
-                    TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
-                    std::vector<DropGlueStep> children = BuildDropGlueSteps(fieldType, activeTypes);
-                    if (!children.empty()) {
-                        payload.push_back(AggregateStep(DropGlueStep::Kind::Field, std::move(fieldType), field.name,
-                                                        index, std::move(children)));
-                    }
+                // One list for both spellings of a payload, in the order a construction of the variant writes them,
+                // so a child step's ordinal indexes the same sequence its offset is measured along.
+                std::vector<TypeRef> payloadTypes;
+                for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
+                    payloadTypes.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
                 }
-                for (std::size_t offset = 0; offset < variant.fields.size(); ++offset) {
-                    const std::size_t index = variant.fields.size() - offset - 1;
-                    TypeRef fieldType = ResolveTypeWithSubstitution(*variant.fields[index], substitutions);
-                    std::vector<DropGlueStep> children = BuildDropGlueSteps(fieldType, activeTypes);
+                for (const auto &field : variant.fields) {
+                    payloadTypes.push_back(ResolveTypeWithSubstitution(*field, substitutions));
+                }
+
+                std::vector<DropGlueStep> payload;
+                for (std::size_t offset = 0; offset < payloadTypes.size(); ++offset) {
+                    const std::size_t index = payloadTypes.size() - offset - 1;
+                    const bool named = index < variant.namedFields.size();
+                    std::vector<DropGlueStep> children = BuildDropGlueSteps(payloadTypes[index], activeTypes);
                     if (!children.empty()) {
-                        payload.push_back(AggregateStep(DropGlueStep::Kind::TupleElement, std::move(fieldType), {},
-                                                        index, std::move(children)));
+                        payload.push_back(AggregateStep(
+                            named ? DropGlueStep::Kind::Field : DropGlueStep::Kind::TupleElement, payloadTypes[index],
+                            named ? variant.namedFields[index].name : std::string{}, index, std::move(children)));
                     }
                 }
                 if (!payload.empty()) {
-                    steps.push_back(AggregateStep(DropGlueStep::Kind::EnumVariant, type, variant.name, variantIndex,
-                                                  std::move(payload)));
+                    DropGlueStep step = AggregateStep(DropGlueStep::Kind::EnumVariant, type, variant.name, variantIndex,
+                                                      std::move(payload));
+                    step.payloadTypes = std::move(payloadTypes);
+                    steps.push_back(std::move(step));
                 }
             }
         }

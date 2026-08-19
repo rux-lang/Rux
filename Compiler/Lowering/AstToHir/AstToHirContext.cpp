@@ -70,7 +70,68 @@ HirPackage AstToHirContext::Run() {
         package.dropGlues.push_back(plan);
     }
     std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
+    ResolveDropGlue(package);
     return package;
+}
+
+/// Fill in the parts of a destruction recipe that only lowering can answer: which symbol a type's own `Drop` reaches
+/// the linker under, and which tag value a variant is stored with.
+///
+/// The plan is walked here rather than while it is built because naming a generic implementation's `Drop` is also what
+/// instantiates it. Nothing else calls it -- destruction has no call site in source -- so a `Vector<File>` that is only
+/// ever dropped would otherwise name a body that was never lowered.
+void AstToHirContext::ResolveDropGlue(HirPackage &package) {
+    if (package.modules.empty()) {
+        return;
+    }
+    // Every name the package already emitted, so that naming a `Drop` an ordinary call site had already instantiated
+    // resolves to that body instead of lowering a second one under the same symbol.
+    generatedMonomorphizedFuncNames.clear();
+    for (const HirModule &module : package.modules) {
+        for (const HirFunc &function : module.funcs) {
+            generatedMonomorphizedFuncNames.insert(function.name);
+        }
+        for (const HirImplBlock &implementation : module.impls) {
+            for (const std::string &name : implementation.methodLinkerNames) {
+                generatedMonomorphizedFuncNames.insert(name);
+            }
+        }
+    }
+    for (DropGluePlan &plan : package.dropGlues) {
+        ResolveDropGlueSteps(plan.steps);
+    }
+    // An instantiation requested above belongs to whichever module is lowered last: every module has already been
+    // lowered, and a function has to live in one of them to be emitted at all.
+    for (HirFunc &instance : monomorphizedFuncs) {
+        package.modules.back().funcs.push_back(std::move(instance));
+    }
+    monomorphizedFuncs.clear();
+}
+
+void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
+    for (DropGlueStep &step : steps) {
+        if (step.kind == DropGlueStep::Kind::InvokeDrop) {
+            step.dropSymbol = DropMethodSymbol(step.type);
+        }
+        else if (step.kind == DropGlueStep::Kind::EnumVariant) {
+            step.discriminant = LookupEnumVariantDiscriminant(NamedBaseTypeName(step.type), step.name)
+                                    .value_or(std::to_string(step.ordinal));
+        }
+        ResolveDropGlueSteps(step.children);
+    }
+}
+
+std::string AstToHirContext::DropMethodSymbol(const TypeRef &type) {
+    const std::string typeName = NamedBaseTypeName(type);
+    const auto byType = methodsByType.find(typeName);
+    if (byType == methodsByType.end()) {
+        return {};
+    }
+    const auto byName = byType->second.find("Drop");
+    if (byName == byType->second.end() || byName->second.empty()) {
+        return {};
+    }
+    return ConcreteMethodCalleeName(typeName, type, *byName->second.front());
 }
 
 void AstToHirContext::PushScope() {

@@ -48,6 +48,7 @@ set(RUX_TEST_SOURCES
     CredentialsTests.cpp
     DiagnosticsTests.cpp
     DocumentationTests.cpp
+    DropGlueLoweringTests.cpp
     EnumRepresentationTests.cpp
     FloatFormatTests.cpp
     GoldenDiagnosticsTests.cpp

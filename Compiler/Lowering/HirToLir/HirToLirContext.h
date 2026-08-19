@@ -44,6 +44,9 @@ private:
     std::unordered_map<std::string, const HirConst *> globalConsts;
     std::unordered_map<std::string, LocalConstValue> localConsts;
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
+    /// The bool slot standing for "this binding still owns its value", one per droppable binding of the function being
+    /// lowered. A cleanup reads it, a consuming expression clears it, and an initialization sets it.
+    std::unordered_map<std::uint64_t, LirReg> dropFlags;
     std::uint32_t breakTarget = 0;
     std::uint32_t continueTarget = 0;
     std::unordered_map<std::string, LabelTargets> labelTargets;
@@ -110,6 +113,19 @@ private:
     void CollectConstContents(const HirConst &constant, LirConstDecl &declaration) const;
     [[nodiscard]] LirFunc LowerFunc(const HirFunc &function, std::string_view nameOverride = "");
 
+    [[nodiscard]] std::vector<LirFunc> SynthesizeDropGlue(const std::vector<DropGluePlan> &plans);
+    [[nodiscard]] LirFunc SynthesizeDropGlueFunc(const DropGluePlan &plan);
+    void EmitDropGlueSteps(const std::vector<DropGlueStep> &steps, LirReg base);
+    void EmitDropGlueStep(const DropGlueStep &step, LirReg base);
+    void EmitDropGlueArrayElements(const DropGlueStep &step, LirReg base);
+    void EmitDropGlueEnumVariant(const DropGlueStep &step, LirReg base);
+    void EmitDropGlueCall(const std::string &symbol, LirReg address);
+    [[nodiscard]] LirReg DropFlagSlot(std::uint64_t bindingId);
+    void MarkBindingLive(std::uint64_t bindingId, bool live);
+    void ClearConsumedBinding(const HirExpr &expression);
+    void EmitCleanup(const HirDropAction &action);
+    void EmitCleanups(const std::vector<HirDropAction> &actions);
+
     void LowerBlock(const HirBlock &block);
     void LowerStmt(const HirStmt &statement);
     void LowerIf(const HirIfStmt &statement);
@@ -125,6 +141,7 @@ private:
     LirReg LowerPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
                         const std::vector<LirReg> *enumPayload = nullptr, LirReg subjectSlot = LirNoReg);
     LirReg LowerExpr(const HirExpr &expression);
+    LirReg LowerExprValue(const HirExpr &expression);
     LirReg LowerPostfix(const HirPostfixExpr &expression);
     LirReg LowerUnary(const HirUnaryExpr &expression);
     LirReg LowerBinary(const HirBinaryExpr &expression);
@@ -138,6 +155,7 @@ private:
     void CopySliceValue(LirReg sourceSlot, LirReg destinationSlot, const TypeRef &sliceType);
     void StoreTernaryInit(const HirTernaryExpr &expression, LirReg slot, const TypeRef &type);
     void StoreExprIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
+    void StoreExprValueIntoSlot(const HirExpr &expression, LirReg slot, const TypeRef &type);
     LirReg LowerTernary(const HirTernaryExpr &expression);
     void StoreMatchInit(const HirMatchExpr &expression, LirReg slot, const TypeRef &type);
     LirReg LowerMatchExpr(const HirMatchExpr &expression);
