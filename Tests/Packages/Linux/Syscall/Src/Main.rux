@@ -29,7 +29,7 @@ func Main() -> int {
         return 2;
     }
 
-    let readError = Read(-1, null, 0);
+    let readError = Read(-1, null as *var opaque, 0);
     if !IsError(readError) || Errno(readError) == 0 {
         return 3;
     }

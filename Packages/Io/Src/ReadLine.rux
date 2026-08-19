@@ -18,7 +18,7 @@ func ReadStdinByte(buffer: *char8) -> int64 {
         return bytesRead as int64;
     } else {
         while true {
-            let result = Read(StdIn, buffer as *opaque, 1);
+            let result = Read(StdIn, buffer as *var opaque, 1);
             if result != -4 {
                 return result;
             }

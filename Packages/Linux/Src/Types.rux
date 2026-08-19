@@ -1,0 +1,57 @@
+// The kernel ABI's own types: what a Linux system call takes and gives back.
+//
+// These are the types the kernel interface is written in, not the ones libc presents. They are the same on both
+// supported architectures, because the kernel's 64-bit ABI fixes each width rather than letting the C data model
+// choose: `long` questions do not arise here the way they do in `Rux/C`.
+//
+// A structure below is laid out as the kernel lays it out, and is passed by address to the call that fills it.
+
+/// A process identifier, as `getpid` and its relatives report one.
+///
+/// Signed, because several calls overload the negative range to mean a process group.
+///
+/// https://rux-lang.dev/docs/api/linux/process-id
+type ProcessId = int32;
+
+/// A file descriptor, as the kernel numbers one.
+///
+/// Signed and small. A syscall taking one receives it sign-extended to a full register, which `SignExtendFd` does.
+///
+/// https://rux-lang.dev/docs/api/linux/file-descriptor
+type FileDescriptor = int32;
+
+/// A byte offset within a file, which the 64-bit ABI makes 64 bits everywhere.
+///
+/// https://rux-lang.dev/docs/api/linux/file-offset
+type FileOffset = int64;
+
+/// A file's type and permission bits, as `open` and `stat` carry them.
+///
+/// https://rux-lang.dev/docs/api/linux/file-mode
+type FileMode = uint32;
+
+/// A user identifier.
+///
+/// https://rux-lang.dev/docs/api/linux/user-id
+type UserId = uint32;
+
+/// A group identifier.
+///
+/// https://rux-lang.dev/docs/api/linux/group-id
+type GroupId = uint32;
+
+/// A duration or an instant, as seconds and nanoseconds.
+///
+/// Both fields are 64 bits under the kernel's 64-bit ABI, whichever architecture. `nanoseconds` is in `[0, 999999999]`
+/// for a value the kernel produced; a value the caller builds must normalize it, since a call given more than a
+/// second's worth of nanoseconds reports `EINVAL` rather than carrying.
+///
+/// Passed by address to every call that reads or fills one.
+///
+/// https://rux-lang.dev/docs/api/linux/timespec
+struct Timespec {
+    /// Whole seconds.
+    seconds: int64;
+    /// Nanoseconds within the second, in `[0, 999999999]`.
+    nanoseconds: int64;
+}
