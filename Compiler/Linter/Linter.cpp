@@ -467,7 +467,7 @@ private:
         }
         else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
             CheckDocumentation(decl, "constant", cnst->name);
-            if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name)) {
+            if (!IsIntrinsicName(cnst->name) && !IsPascalCase(cnst->name) && !Allows(decl, "naming.const")) {
                 WarnNaming(cnst->location, "constant name", cnst->name, NamingConvention::PascalCase, siblingNames);
             }
             if (cnst->value) {

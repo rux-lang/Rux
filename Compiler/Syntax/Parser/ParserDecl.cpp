@@ -17,7 +17,7 @@ std::string ImplTypeName(const TypeExpr &type);
 
 /// Every rule `#Allow` accepts. Naming one the linter does not have is a typo that would otherwise silence nothing, so
 /// the list lives beside the parse rather than in the linter: a source is rejected before it is ever linted.
-constexpr std::array<std::string_view, 3> kLintRules{"naming.type", "docs.missing", "docs.api-url"};
+constexpr std::array<std::string_view, 4> kLintRules{"naming.type", "naming.const", "docs.missing", "docs.api-url"};
 
 [[nodiscard]] static std::string LintRuleList() {
     std::string list;
@@ -179,7 +179,8 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     if (name == "Allow") {
         attrs.allowLocation = attributeLoc;
         if (!Check(TokenKind::StringLiteral)) {
-            EmitExpected(CurrentLocation(), "a lint rule string in '#Allow'", "use '#Allow(\"naming.type\")'");
+            EmitExpected(CurrentLocation(), "a lint rule string in '#Allow'",
+                         "use '#Allow(\"naming.type\")' or '#Allow(\"naming.const\")'");
         }
         else {
             std::string rule = DecodeStringLiteralText(Advance().text);
@@ -349,6 +350,12 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
     if (namesATypeRule && !dynamic_cast<TypeAliasDecl *>(decl.get()) && !dynamic_cast<StructDecl *>(decl.get()) &&
         !dynamic_cast<EnumDecl *>(decl.get()) && !dynamic_cast<UnionDecl *>(decl.get())) {
         EmitError(attrs.allowLocation, "'#Allow(\"naming.type\")' can only be applied to a type declaration");
+    }
+    // A raw binding keeps the spelling the platform published, and for a constant that is a C macro's own name --
+    // `SEEK_SET`, `O_RDONLY`, `FILE_ATTRIBUTE_NORMAL` -- which no reader porting code would recognize renamed.
+    const bool namesAConstRule = std::ranges::find(attrs.allowedLints, "naming.const") != attrs.allowedLints.end();
+    if (namesAConstRule && !dynamic_cast<ConstDecl *>(decl.get())) {
+        EmitError(attrs.allowLocation, "'#Allow(\"naming.const\")' can only be applied to a constant declaration");
     }
     if (attrs.usedLink && !dynamic_cast<ExternFuncDecl *>(decl.get()) && !dynamic_cast<ExternBlockDecl *>(decl.get())) {
         EmitError(attrs.linkLocation, "'#Link' can only be applied to an extern function or extern block");
