@@ -1,0 +1,143 @@
+import Core::{ AddChecked, AddSaturating, AddWrapping, Assert, MaximumOf, MinimumOf, MulChecked, MulSaturating,
+               MulWrapping, SubChecked, SubSaturating, SubWrapping };
+
+// Every check below runs at one width and is called once per width, so a helper
+// that is right for `int8` and wrong for `int512` is caught rather than averaged
+// away. Each takes the limits from the compiler's own constants and compares
+// them against the ones the generic helpers derive.
+
+func CheckUnsigned<T>(zero: T, one: T, two: T, maximum: T) -> int32 {
+    // The derived limits agree with the type's own.
+    if MaximumOf<T>(zero) != maximum { return 1; }
+    if MinimumOf<T>(zero) != zero { return 2; }
+
+    // Addition: exact below the limit, overflowing at it, and wrapping to zero.
+    var out = zero;
+    if AddChecked<T>(one, one, @out) { return 3; }
+    if out != two { return 4; }
+    if !AddChecked<T>(maximum, one, @out) { return 5; }
+    if out != zero { return 6; }
+    if AddChecked<T>(maximum, zero, @out) { return 7; }
+    if out != maximum { return 8; }
+
+    // Subtraction: nothing below zero to hold a negative difference.
+    if SubChecked<T>(two, one, @out) { return 9; }
+    if out != one { return 10; }
+    if !SubChecked<T>(zero, one, @out) { return 11; }
+    if out != maximum { return 12; }
+    if SubChecked<T>(maximum, maximum, @out) { return 13; }
+    if out != zero { return 14; }
+
+    // Multiplication, including the operand that cannot overflow.
+    if MulChecked<T>(maximum, one, @out) { return 15; }
+    if out != maximum { return 16; }
+    if MulChecked<T>(maximum, zero, @out) { return 17; }
+    if out != zero { return 18; }
+    if !MulChecked<T>(maximum, two, @out) { return 19; }
+
+    // Wrapping says the same thing without reporting it.
+    if AddWrapping<T>(maximum, one) != zero { return 20; }
+    if SubWrapping<T>(zero, one) != maximum { return 21; }
+    if MulWrapping<T>(maximum, two) != maximum - one { return 22; }
+
+    // Saturating clamps to the end it ran past.
+    if AddSaturating<T>(maximum, one) != maximum { return 23; }
+    if AddSaturating<T>(one, one) != two { return 24; }
+    if SubSaturating<T>(zero, one) != zero { return 25; }
+    if SubSaturating<T>(two, one) != one { return 26; }
+    if MulSaturating<T>(maximum, two) != maximum { return 27; }
+    if MulSaturating<T>(one, two) != two { return 28; }
+    return 0;
+}
+
+func CheckSigned<T>(zero: T, one: T, two: T, minimum: T, maximum: T) -> int32 {
+    let negativeOne = zero - one;
+
+    if MaximumOf<T>(zero) != maximum { return 1; }
+    if MinimumOf<T>(zero) != minimum { return 2; }
+
+    // Addition overflows at either end.
+    var out = zero;
+    if AddChecked<T>(one, one, @out) { return 3; }
+    if out != two { return 4; }
+    if !AddChecked<T>(maximum, one, @out) { return 5; }
+    if out != minimum { return 6; }
+    if !AddChecked<T>(minimum, negativeOne, @out) { return 7; }
+    if out != maximum { return 8; }
+    if AddChecked<T>(maximum, negativeOne, @out) { return 9; }
+    if out != maximum - one { return 10; }
+
+    // Subtraction likewise, and the most negative value has no negation.
+    if SubChecked<T>(two, one, @out) { return 11; }
+    if out != one { return 12; }
+    if !SubChecked<T>(minimum, one, @out) { return 13; }
+    if out != maximum { return 14; }
+    if !SubChecked<T>(maximum, negativeOne, @out) { return 15; }
+    if SubChecked<T>(zero, maximum, @out) { return 16; }
+    if out != minimum + one { return 17; }
+
+    // Multiplication, including the one pair whose quotient cannot be taken:
+    // the most negative value by -1, which must be reported rather than divided.
+    if MulChecked<T>(maximum, one, @out) { return 18; }
+    if out != maximum { return 19; }
+    if !MulChecked<T>(minimum, negativeOne, @out) { return 20; }
+    if !MulChecked<T>(negativeOne, minimum, @out) { return 21; }
+    if MulChecked<T>(minimum, one, @out) { return 22; }
+    if out != minimum { return 23; }
+    if MulChecked<T>(negativeOne, maximum, @out) { return 24; }
+    if out != minimum + one { return 25; }
+    if !MulChecked<T>(maximum, two, @out) { return 26; }
+    if MulChecked<T>(zero, minimum, @out) { return 27; }
+    if out != zero { return 28; }
+
+    // Wrapping.
+    if AddWrapping<T>(maximum, one) != minimum { return 29; }
+    if SubWrapping<T>(minimum, one) != maximum { return 30; }
+    if MulWrapping<T>(minimum, negativeOne) != minimum { return 31; }
+
+    // Saturating clamps toward whichever limit the true answer ran past.
+    if AddSaturating<T>(maximum, one) != maximum { return 32; }
+    if AddSaturating<T>(minimum, negativeOne) != minimum { return 33; }
+    if SubSaturating<T>(minimum, one) != minimum { return 34; }
+    if SubSaturating<T>(maximum, negativeOne) != maximum { return 35; }
+    if MulSaturating<T>(maximum, two) != maximum { return 36; }
+    if MulSaturating<T>(minimum, two) != minimum { return 37; }
+    if MulSaturating<T>(maximum, negativeOne) != minimum + one { return 38; }
+    if MulSaturating<T>(minimum, negativeOne) != maximum { return 39; }
+    return 0;
+}
+
+func Main() -> int {
+    // Every unsigned width, narrowest to widest, including the pointer-sized one.
+    Assert(CheckUnsigned<uint8>(0u8, 1u8, 2u8, uint8::Max) == 0, "uint8 arithmetic");
+    Assert(CheckUnsigned<uint16>(0u16, 1u16, 2u16, uint16::Max) == 0, "uint16 arithmetic");
+    Assert(CheckUnsigned<uint32>(0u32, 1u32, 2u32, uint32::Max) == 0, "uint32 arithmetic");
+    Assert(CheckUnsigned<uint64>(0u64, 1u64, 2u64, uint64::Max) == 0, "uint64 arithmetic");
+    Assert(CheckUnsigned<uint128>(0u128, 1u128, 2u128, uint128::Max) == 0, "uint128 arithmetic");
+    Assert(CheckUnsigned<uint256>(0u256, 1u256, 2u256, uint256::Max) == 0, "uint256 arithmetic");
+    Assert(CheckUnsigned<uint512>(0u512, 1u512, 2u512, uint512::Max) == 0, "uint512 arithmetic");
+    Assert(CheckUnsigned<uint>(0u, 1u, 2u, uint::Max) == 0, "uint arithmetic");
+
+    // Every signed width.
+    Assert(CheckSigned<int8>(0i8, 1i8, 2i8, int8::Min, int8::Max) == 0, "int8 arithmetic");
+    Assert(CheckSigned<int16>(0i16, 1i16, 2i16, int16::Min, int16::Max) == 0, "int16 arithmetic");
+    Assert(CheckSigned<int32>(0i32, 1i32, 2i32, int32::Min, int32::Max) == 0, "int32 arithmetic");
+    Assert(CheckSigned<int64>(0i64, 1i64, 2i64, int64::Min, int64::Max) == 0, "int64 arithmetic");
+    Assert(CheckSigned<int128>(0i128, 1i128, 2i128, int128::Min, int128::Max) == 0, "int128 arithmetic");
+    Assert(CheckSigned<int256>(0i256, 1i256, 2i256, int256::Min, int256::Max) == 0, "int256 arithmetic");
+    Assert(CheckSigned<int512>(0i512, 1i512, 2i512, int512::Min, int512::Max) == 0, "int512 arithmetic");
+    Assert(CheckSigned<int>(0, 1, 2, int::Min, int::Max) == 0, "int arithmetic");
+
+    // The limits themselves, read from the compiler rather than derived, are the
+    // ones every width's arithmetic wraps around.
+    Assert(uint8::Max + 1u8 == 0u8, "uint8 wraps at its maximum");
+    Assert(uint128::Max + 1u128 == 0u128, "uint128 wraps at its maximum");
+    Assert(uint512::Max + 1u512 == 0u512, "uint512 wraps at its maximum");
+    Assert(int128::Max + 1i128 == int128::Min, "int128 wraps from its maximum to its minimum");
+    Assert(int512::Max + 1i512 == int512::Min, "int512 wraps from its maximum to its minimum");
+    Assert(uint256::Min == 0u256, "an unsigned minimum is zero");
+    Assert(int256::Bits == 256, "a width reports its own size in bits");
+    Assert(int256::Bytes == 32, "a width reports its own size in bytes");
+
+    return 0;
+}
