@@ -1,0 +1,78 @@
+import Core::{ Assert, #target };
+import C::{ EDOM, EILSEQ, ERANGE, FILE, c_bool, c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar,
+            c_short, c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, Errno, ErrnoLocation, intptr_t, ptrdiff_t,
+            size_t, ssize_t, uintptr_t, wchar_t };
+import C::{ fopen, malloc };
+
+// The widths are what these aliases exist for: a binding written against them has to land on the same layout the C
+// runtime was built with. Each is checked against its own size rather than against another alias, so a pair that is
+// wrong in the same direction is still caught.
+
+func Main() -> int {
+    // The fixed-width fundamentals, which every supported target agrees on.
+    Assert(sizeof(c_schar) == 1, "signed char is one byte");
+    Assert(sizeof(c_uchar) == 1, "unsigned char is one byte");
+    Assert(sizeof(c_char) == 1, "char is one byte");
+    Assert(sizeof(c_short) == 2, "short is two bytes");
+    Assert(sizeof(c_ushort) == 2, "unsigned short is two bytes");
+    Assert(sizeof(c_int) == 4, "int is four bytes");
+    Assert(sizeof(c_uint) == 4, "unsigned int is four bytes");
+    Assert(sizeof(c_longlong) == 8, "long long is eight bytes");
+    Assert(sizeof(c_ulonglong) == 8, "unsigned long long is eight bytes");
+    Assert(sizeof(c_float) == 4, "float is four bytes");
+    Assert(sizeof(c_double) == 8, "double is eight bytes");
+    Assert(sizeof(c_bool) == 1, "_Bool is one byte");
+
+    // The pointer-sized family, which follows the target rather than a constant.
+    Assert(sizeof(size_t) * 8u64 == #target.pointerBits, "size_t is pointer-sized");
+    Assert(sizeof(ssize_t) * 8u64 == #target.pointerBits, "ssize_t is pointer-sized");
+    Assert(sizeof(ptrdiff_t) * 8u64 == #target.pointerBits, "ptrdiff_t is pointer-sized");
+    Assert(sizeof(intptr_t) * 8u64 == #target.pointerBits, "intptr_t is pointer-sized");
+    Assert(sizeof(uintptr_t) * 8u64 == #target.pointerBits, "uintptr_t is pointer-sized");
+
+    // The two the data models disagree about, which is the whole reason a binding cannot assume a width.
+    when #target.dataModel {
+        .LLP64 => {
+            Assert(sizeof(c_long) == 4, "long is four bytes under LLP64");
+            Assert(sizeof(c_ulong) == 4, "unsigned long is four bytes under LLP64");
+            Assert(sizeof(wchar_t) == 2, "wchar_t is a UTF-16 code unit under LLP64");
+        }
+        else => {
+            Assert(sizeof(c_long) == 8, "long is eight bytes under LP64");
+            Assert(sizeof(c_ulong) == 8, "unsigned long is eight bytes under LP64");
+            Assert(sizeof(wchar_t) == 4, "wchar_t is a scalar value under LP64");
+        }
+    }
+
+    // An unsigned alias must not be signed, and the other way round: the widths above pass either way.
+    let unsignedMax: c_uint = 4294967295u32;
+    Assert(unsignedMax > 0u32, "unsigned int holds its whole range");
+    let negative: c_int = -1i32;
+    Assert(negative < 0i32, "int is signed");
+
+    // errno is reached through the platform's own accessor, and the address is stable within a thread.
+    Assert(ErrnoLocation() != null, "the errno accessor reports an address");
+    Assert(ErrnoLocation() == ErrnoLocation(), "the address is the same one every time");
+
+    *ErrnoLocation() = 0i32;
+    Assert(Errno() == 0i32, "errno reads what was written through its address");
+
+    // A call that fails reports through it. Which value it leaves is the platform's business; that it left one is
+    // not, so only the clearing and the setting are checked.
+    //
+    // The call is `malloc`, from the same runtime `errno` is read from. A stream call would not do on Windows, where
+    // `C::StdIo` is still bound to the legacy runtime and sets an `errno` this one cannot see.
+    let refused = malloc(18446744073709551615u64);
+    Assert(refused == null, "an allocation of the whole address space is refused");
+    Assert(Errno() != 0i32, "a failing call sets errno");
+
+    // The three values C itself mandates.
+    Assert(EDOM != 0i32 && ERANGE != 0i32 && EILSEQ != 0i32, "the standard error numbers are defined");
+    Assert(EDOM != ERANGE && ERANGE != EILSEQ && EDOM != EILSEQ, "and are distinct from one another");
+
+    // A stream is its own type: it is produced as a `*FILE` and consumed as one, and a `*opaque` would have compiled
+    // whatever the call actually returned.
+    let missing: *FILE = fopen("no-such-file-e4f1c0.txt".data, "rb".data);
+    Assert(missing == null, "opening a file that does not exist fails");
+    return 0;
+}
