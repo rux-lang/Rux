@@ -1,3 +1,0 @@
-intrinsic func Assert(condition: bool, message: Slice<char8>);
-
-intrinsic func DebugAssert(condition: bool, message: Slice<char8>);

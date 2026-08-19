@@ -1,11 +1,44 @@
-// User-defined values from [Build.Defines] and --define.
+// User-defined build values, read while compiling.
+//
+// A project sets these in `[Build.Defines]` or on the command line with `--define`, which is how a build carries a
+// choice that is neither a target property nor a profile property -- a feature switch, a vendor name, a limit.
+//
+// Everything here is answered while compiling and produces no runtime code. A name that was never defined is absent
+// rather than empty, which `Has` is for: `Get` on an absent name yields an empty value that an intentionally empty
+// definition also yields.
+
+/// The set of user-defined build values.
+///
+/// Carries no fields: the values live in the build rather than in the value, and are reached through the two queries
+/// below. `#config` is the only instance.
+///
+/// https://rux-lang.dev/docs/api/core/config
 struct Config {}
 
 extend Config {
+    /// The value defined for `name`, or an empty slice when none was.
+    ///
+    /// `self` is borrowed and `name` must be a string literal, since this is answered while compiling. Returns a
+    /// borrowed view of the build's own storage, which outlives the program.
+    ///
+    /// An absent name and a name defined as empty both yield an empty slice; use `Has` to tell them apart.
+    ///
+    /// Cannot fail. Costs nothing in the built program.
+    ///
+    /// https://rux-lang.dev/docs/api/core/config/get
     intrinsic func Get(self: *Config, name: Slice<char8>) -> Slice<char8>;
 
+    /// Whether `name` was defined at all, whatever its value.
+    ///
+    /// `self` is borrowed and `name` must be a string literal. Answered while compiling.
+    ///
+    /// Cannot fail. Costs nothing in the built program.
+    ///
+    /// https://rux-lang.dev/docs/api/core/config/has
     intrinsic func Has(self: *Config, name: Slice<char8>) -> bool;
 }
 
-// Compile-time value
+/// The build's user-defined values, as a compile-time value.
+///
+/// https://rux-lang.dev/docs/api/core/config
 intrinsic #config: Config;

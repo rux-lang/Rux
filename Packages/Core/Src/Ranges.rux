@@ -1,29 +1,84 @@
-// 0..10
+// The six ranges, one per combination of ends the syntax can leave out or close over.
+//
+// A range is a pair of bounds and nothing else: it owns no storage, allocates nothing, and is `Copy` whenever its
+// bound type is. `for index in 0..count` iterates one directly, and an index expression takes one to name a
+// subsequence, so the same six types serve both.
+//
+// Every range is half-open unless its name says otherwise, so `0..n` covers exactly `n` values and two adjacent
+// ranges meeting at a bound neither skip nor repeat it. The `Inclusive` pair closes the upper end instead, which is
+// what a range reaching a type's maximum needs -- `0..=uint8::Max` is expressible and `0..256u8` is not.
+//
+// The ranges carry no methods. A range type in a type position resolves to the compiler's own built-in form rather
+// than to the declaration below, so an `extend` block on one cannot reach its fields; a caller reads `start` and
+// `end` directly, which is what the compiler's own iteration and indexing do.
+
+/// A half-open range: every value from `start` up to but not including `end`. Written `start..end`.
+///
+/// Both bounds are held by value. The range borrows nothing and owns nothing, so it stays valid however long its
+/// bounds outlive their source. A range whose `start` is not below its `end` is empty rather than invalid.
+///
+/// https://rux-lang.dev/docs/api/core/range
 struct Range<T> {
+    /// The first value the range covers.
     start: T;
+    /// The first value past the range, which the range does not cover.
     end: T;
 }
 
-// 0..=10
+
+/// A closed range: every value from `start` through `end`, including both. Written `start..=end`.
+///
+/// Both bounds are held by value. This is the range to reach a type's maximum with, which a half-open range cannot
+/// name without an `end` one past it.
+///
+/// https://rux-lang.dev/docs/api/core/range-inclusive
 struct RangeInclusive<T> {
+    /// The first value the range covers.
     start: T;
+    /// The last value the range covers, which the range does cover.
     end: T;
 }
 
-// 5..
+
+/// A range open at the top: every value from `start` upward. Written `start..`.
+///
+/// The bound is held by value. Iterating one never ends on its own; the loop leaves through `break`, `return`, or the
+/// bound type running out.
+///
+/// https://rux-lang.dev/docs/api/core/range-from
 struct RangeFrom<T> {
+    /// The first value the range covers.
     start: T;
 }
 
-// ..10
+
+/// A range open at the bottom: every value below `end`. Written `..end`.
+///
+/// The bound is held by value. Used to name a prefix of a sequence, where the lower bound is the sequence's own
+/// beginning.
+///
+/// https://rux-lang.dev/docs/api/core/range-to
 struct RangeTo<T> {
+    /// The first value past the range, which the range does not cover.
     end: T;
 }
 
-// ..=10
+
+/// A range open at the bottom and closed at the top: every value through `end`. Written `..=end`.
+///
+/// The bound is held by value.
+///
+/// https://rux-lang.dev/docs/api/core/range-to-inclusive
 struct RangeToInclusive<T> {
+    /// The last value the range covers, which the range does cover.
     end: T;
 }
 
-// ..
+
+/// A range with no bounds at all: everything. Written `..`.
+///
+/// Carries nothing, so it names a whole sequence without naming its length -- which is what makes it the range to
+/// take a view of a sequence whose length the caller does not have.
+///
+/// https://rux-lang.dev/docs/api/core/range-full
 struct RangeFull {}
