@@ -10,16 +10,30 @@ rux add Rux/Windows
 
 ## What it provides
 
-- **Files** — `CreateFileA` and `CreateFileW`, `ReadFile`, `WriteFile`, `CloseHandle`, the `CopyFileA` / `MoveFileA` / `DeleteFileA` set, `GetFileSizeEx`, `SetFilePointerEx`, and `GetFileAttributesA` / `SetFileAttributesA`.
-- **Directories** — `CreateDirectoryA` and `RemoveDirectoryA`, `GetCurrentDirectoryA` and `SetCurrentDirectoryA`, and the `FindFirstFileA` / `FindNextFileA` / `FindClose` walk.
-- **Console** — `AllocConsole`, `GetStdHandle`, `GetConsoleMode`, `ReadConsoleA`, `WriteConsoleA` and `WriteConsoleW`, plus `Beep`.
-- **Memory** — the process heap through `GetProcessHeap`, `HeapAlloc`, `HeapReAlloc` and `HeapFree`, and the block operations `RtlCopyMemory`, `RtlZeroMemory`, `RtlFillMemory` and `RtlCompareMemory`.
-- **Process, thread and time** — `ExitProcess`, `GetCurrentProcessId`, `GetCurrentThreadId`, `Sleep`, `GetTickCount64`, and `GetSystemTime` / `GetLocalTime`.
-- **Dynamic loading** — `LoadLibraryA`, `GetProcAddress` and `FreeLibrary`.
-- **Text encoding** — `MultiByteToWideChar` and `WideCharToMultiByte`, with code pages named by the `CodePage` enum rather than passed as bare numbers.
-- **Types and constants** — `FileTime`, `SystemTime` and `Win32FindDataA`; the `CreationDisposition` enum; and the standard handles `StdInputHandle`, `StdOutputHandle` and `StdErrorHandle`.
+| Module      | Covers                                                                              |
+| ----------- | ------------------------------------------------------------------------------------ |
+| `Types`     | `Handle`, `ModuleHandle`, `Bool`, `Dword`, `WideChar`, `NtStatus`, `FileTime`, `SystemTime`, and `InvalidHandleValue` |
+| `Constants` | the code pages and the file-creation dispositions                                      |
+| `Kernel`    | the Kernel32 entry points, including the `A` forms kept for compatibility              |
+| `File`      | the Unicode `W` file, directory and console entry points, with the access, share and move flags |
+| `Memory`    | `VirtualAlloc`, `VirtualFree`, `VirtualProtect`, `VirtualLock`, and the state and protection flags |
+| `Entropy`   | `BCryptGenRandom` behind a `GetRandom` that either fills the buffer or fails            |
+| `Clock`     | `QueryPerformanceCounter`, `QueryPerformanceFrequency`, the precise wall clock, and the epoch conversion |
 
-Failure is reported the Win32 way rather than through an errno: a `bool32` or a sentinel return says that a call failed, and the reason is retrieved separately with `GetLastError`.
+The module names describe where each declaration comes from; they are not part of an import path.
+
+**Prefer the `W` entry points.** The `A` forms convert through the process code page, which cannot express every name
+a file system can hold and differs between machines — so a path that works on one system fails on another for reasons
+the program cannot see. A path is text a user or a file system chose, not text the program chose. The `A` forms stay
+declared because existing callers use them, and each is now marked.
+
+Two failure sentinels, and they are not the same. A handle-returning call reports `InvalidHandleValue`, which is `-1`
+cast to a pointer; a memory-returning call reports null. `BCryptGenRandom` reports neither — it returns an `NTSTATUS`,
+which `GetLastError` knows nothing about.
+
+Windows separates reserving address space from committing storage to it, which no other supported system does. A
+reserved page may not be touched; committing is what makes it usable. `MEM_RELEASE` requires a size of zero and the
+exact base address the reservation returned.
 
 ## Platform
 

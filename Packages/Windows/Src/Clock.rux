@@ -1,0 +1,68 @@
+// Precise time, and the two clocks worth telling apart.
+//
+// `QueryPerformanceCounter` is the monotonic one: it counts at a fixed rate from an arbitrary point and never goes
+// backwards, which makes it what a duration is measured with. Its unit is not seconds and not fixed across machines,
+// so a count means nothing until it is divided by `QueryPerformanceFrequency`, which is constant while the system
+// runs and only has to be read once.
+//
+// `GetSystemTimePreciseAsFileTime` is the wall clock: 100-nanosecond ticks since 1601, which can jump when the
+// system clock is set. It is what a timestamp anyone else will see is taken from, and never what a duration is
+// measured with.
+
+import Windows::{ Dword, FileTime };
+
+/// How many `FileTime` ticks make one second.
+///
+/// A `FileTime` counts 100-nanosecond intervals, so this is ten million. It is the conversion every wall-clock
+/// reading here needs.
+///
+/// https://rux-lang.dev/docs/api/windows/file-time-ticks-per-second
+const FileTimeTicksPerSecond: uint64 = 10000000;
+
+/// Seconds between the `FileTime` epoch of 1601 and the Unix epoch of 1970.
+///
+/// Windows counts from a different year than everything else, and this is what converts between them. The gap
+/// includes the leap days of the intervening centuries, which is why it is not a round number.
+///
+/// https://rux-lang.dev/docs/api/windows/file-time-to-unix-epoch-seconds
+const FileTimeToUnixEpochSeconds: uint64 = 11644473600;
+
+#Link("Kernel32.dll")
+extern {
+    // Reads the monotonic performance counter
+    //
+    // Writes the current count and returns nonzero. It cannot fail on any system this package supports, and the
+    // count is guaranteed not to go backwards -- unlike the wall clock, which can. The unit is whatever
+    // QueryPerformanceFrequency reports and is not seconds.
+    // https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter
+    func QueryPerformanceCounter(count: *var int64) -> int32;
+
+    // Reads how many performance-counter ticks make one second
+    //
+    // Fixed while the system runs, so a caller reads it once rather than per measurement.
+    // https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency
+    func QueryPerformanceFrequency(frequency: *var int64) -> int32;
+
+    // Reads the current wall-clock time at the highest resolution the system offers
+    //
+    // Writes 100-nanosecond intervals since January 1, 1601 UTC. The plain GetSystemTimeAsFileTime is cheaper and
+    // coarser, advancing only at the scheduler's tick.
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimepreciseasfiletime
+    func GetSystemTimePreciseAsFileTime(time: *var FileTime);
+
+    // Reads the current wall-clock time at the system tick's resolution
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimeasfiletime
+    func GetSystemTimeAsFileTime(time: *var FileTime);
+}
+
+/// The whole 64-bit value a `FileTime` splits across two fields.
+///
+/// `time` is borrowed and read. Win32 splits the count into a high and a low word because the structure predates
+/// 64-bit alignment guarantees; this puts it back together.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/windows/file-time-ticks
+func FileTimeTicks(time: *FileTime) -> uint64 {
+    return ((time.highDateTime as uint64) << 32) | (time.lowDateTime as uint64);
+}

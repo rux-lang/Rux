@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Platform"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Windows: Unicode files, virtual memory, BCrypt entropy and the precise clock"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Windows = { Path = "../../../../Packages/Windows" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Windows"
