@@ -1,0 +1,171 @@
+import Core::{ Assert, ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN, IsSignNegative,
+               IsNegativeZero, IsSignPositive, IsSignedType, IsZero, SignOf };
+
+// The conversions are checked in both directions across every boundary that can lose a value: narrower, wider, and
+// same-width-different-signedness, which is the pair a round trip alone cannot see. The classification predicates are
+// checked against every kind of float there is, including the two zeros, which compare equal and must still be told
+// apart.
+
+// A value that fits converts exactly and reports nothing lost.
+func CheckExact<From, To>(value: From, expected: To, zero: To) -> int32 {
+    var result = zero;
+    if ConvertChecked<From, To>(value, @result) { return 1; }
+    if result != expected { return 2; }
+
+    // Wrapping produces the same answer when nothing had to wrap.
+    result = zero;
+    ConvertWrapping<From, To>(value, @result);
+    if result != expected { return 3; }
+
+    // So does saturating, since the value is inside the range it would clamp to.
+    result = zero;
+    ConvertSaturating<From, To>(value, @result);
+    if result != expected { return 4; }
+    return 0;
+}
+
+// A value that does not fit is reported, and each spelling then disposes of it differently.
+func CheckLost<From, To>(value: From, wrapped: To, saturated: To, zero: To) -> int32 {
+    var result = zero;
+    if !ConvertChecked<From, To>(value, @result) { return 1; }
+    // The lossy answer is written even when the loss is reported, so a caller who wants it does not convert twice.
+    if result != wrapped { return 2; }
+
+    result = zero;
+    ConvertWrapping<From, To>(value, @result);
+    if result != wrapped { return 3; }
+
+    result = zero;
+    ConvertSaturating<From, To>(value, @result);
+    if result != saturated { return 4; }
+    return 0;
+}
+
+func CheckFloat<T>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int32 {
+    // Nothing is a NaN but a NaN.
+    if !IsNaN<T>(nan) { return 1; }
+    if IsNaN<T>(zero) { return 2; }
+    if IsNaN<T>(one) { return 3; }
+    if IsNaN<T>(infinity) { return 4; }
+
+    // Both zeros are zero, and nothing else is.
+    if !IsZero<T>(zero) { return 5; }
+    if !IsZero<T>(negativeZero) { return 6; }
+    if IsZero<T>(one) { return 7; }
+    if IsZero<T>(infinity) { return 8; }
+    if IsZero<T>(nan) { return 9; }
+
+    // An infinity doubles to itself; so does a zero, which is why it is excluded.
+    if !IsInfinite<T>(infinity) { return 10; }
+    if !IsInfinite<T>(zero - infinity) { return 11; }
+    if IsInfinite<T>(zero) { return 12; }
+    if IsInfinite<T>(one) { return 13; }
+    if IsInfinite<T>(nan) { return 14; }
+
+    // Finite is everything the other two are not.
+    if !IsFinite<T>(zero) { return 15; }
+    if !IsFinite<T>(negativeZero) { return 16; }
+    if !IsFinite<T>(one) { return 17; }
+    if IsFinite<T>(infinity) { return 18; }
+    if IsFinite<T>(nan) { return 19; }
+
+    // The sign a comparison cannot see.
+    if !IsNegativeZero<T>(negativeZero) { return 20; }
+    if IsNegativeZero<T>(zero) { return 21; }
+    if IsNegativeZero<T>(one) { return 22; }
+    if IsNegativeZero<T>(nan) { return 23; }
+    if negativeZero != zero { return 24; }
+
+    // Signs, including the two that only differ by one.
+    if !IsSignNegative<T>(zero - one) { return 25; }
+    if !IsSignNegative<T>(negativeZero) { return 26; }
+    if !IsSignNegative<T>(zero - infinity) { return 27; }
+    if IsSignNegative<T>(one) { return 28; }
+    if IsSignNegative<T>(zero) { return 29; }
+    if IsSignNegative<T>(nan) { return 30; }
+
+    // Positive is not the negation of negative: a NaN is neither.
+    if !IsSignPositive<T>(one) { return 31; }
+    if !IsSignPositive<T>(zero) { return 32; }
+    if !IsSignPositive<T>(infinity) { return 33; }
+    if IsSignPositive<T>(negativeZero) { return 34; }
+    if IsSignPositive<T>(zero - one) { return 35; }
+    if IsSignPositive<T>(nan) { return 36; }
+
+    // A sign is reported without losing which zero it came from.
+    if SignOf<T>(one) != one { return 37; }
+    if SignOf<T>(one + one) != one { return 38; }
+    if SignOf<T>(zero - one) != zero - one { return 39; }
+    if SignOf<T>(infinity) != one { return 40; }
+    if !IsZero<T>(SignOf<T>(zero)) { return 41; }
+    if !IsNegativeZero<T>(SignOf<T>(negativeZero)) { return 42; }
+    if !IsNaN<T>(SignOf<T>(nan)) { return 43; }
+    return 0;
+}
+
+func Main() -> int {
+    // A type reports its own signedness, at every width.
+    Assert(IsSignedType<int8>(0i8), "int8 is signed");
+    Assert(IsSignedType<int64>(0i64), "int64 is signed");
+    Assert(IsSignedType<int128>(0i128), "int128 is signed");
+    Assert(IsSignedType<int512>(0i512), "int512 is signed");
+    Assert(!IsSignedType<uint8>(0u8), "uint8 is unsigned");
+    Assert(!IsSignedType<uint64>(0u64), "uint64 is unsigned");
+    Assert(!IsSignedType<uint512>(0u512), "uint512 is unsigned");
+
+    // Narrowing: what fits, and what does not.
+    Assert(CheckExact<int32, uint8>(200i32, 200u8, 0u8) == 0, "a value inside the narrower range");
+    Assert(CheckLost<int32, uint8>(300i32, 44u8, 255u8, 0u8) == 0, "a magnitude past the narrower maximum");
+    Assert(CheckLost<int32, uint8>(-1i32, 255u8, 0u8, 0u8) == 0, "a negative value converted to an unsigned type");
+    Assert(CheckExact<int32, int8>(-128i32, -128i8, 0i8) == 0, "the narrower minimum itself");
+    Assert(CheckLost<int32, int8>(-129i32, 127i8, -128i8, 0i8) == 0, "one past the narrower minimum");
+
+    // Widening never loses anything, sign included.
+    Assert(CheckExact<int32, int64>(-5i32, -5i64, 0i64) == 0, "a negative value widened");
+    Assert(CheckExact<uint8, uint512>(255u8, 255u512, 0u512) == 0, "a value widened to the widest type");
+    Assert(CheckExact<int8, int128>(-128i8, -128i128, 0i128) == 0, "the narrowest minimum widened");
+
+    // Same width, different signedness: the pair a round trip alone cannot see, because both ends wrap to the same
+    // bit pattern and convert back to exactly what they started as.
+    Assert(CheckLost<int64, uint64>(-1i64, 18446744073709551615u64, 0u64, 0u64) == 0, "minus one is no unsigned value");
+    Assert(CheckLost<uint64, int64>(9223372036854775808u64, -9223372036854775808i64, 9223372036854775807i64, 0i64) == 0,
+           "the value one above the signed maximum");
+    Assert(CheckExact<uint64, int64>(9223372036854775807u64, 9223372036854775807i64, 0i64) == 0,
+           "the signed maximum itself converts either way");
+    Assert(CheckLost<int128, uint128>(0i128 - 1i128, 0u128 - 1u128, 0u128, 0u128) == 0, "minus one at 128 bits");
+
+    // Floats to integers: a fraction is a loss, and so is a magnitude the integer cannot hold.
+    Assert(CheckExact<float64, int32>(2.0f64, 2i32, 0i32) == 0, "a float that is a whole number");
+    Assert(CheckExact<float64, int32>(-2.0f64, -2i32, 0i32) == 0, "a negative whole number");
+    var truncated = 0i32;
+    Assert(ConvertChecked<float64, int32>(1.5f64, @truncated), "a fraction cannot be an integer");
+    Assert(truncated == 1i32, "the truncated answer is written even so");
+
+    // Narrowing a float: exact when the value has room, lossy when it does not.
+    var narrowed = 0.0f32;
+    Assert(!ConvertChecked<float64, float32>(0.5f64, @narrowed), "a float with room in the narrower format");
+    Assert(narrowed == 0.5f32, "and it arrives unchanged");
+    Assert(ConvertChecked<float64, float32>(0.1f64, @narrowed), "a float narrowed past its precision");
+
+    // Neither a NaN nor an infinity survives a conversion to an integer, and each says so.
+    let zero64 = 0.0f64;
+    let one64 = 1.0f64;
+    let infinity64 = one64 / zero64;
+    let nan64 = zero64 / zero64;
+    var target = 0i32;
+    Assert(ConvertChecked<float64, int32>(nan64, @target), "a NaN is no integer");
+    ConvertSaturating<float64, int32>(nan64, @target);
+    Assert(target == 0i32, "a NaN has no nearest value and saturates to zero");
+    Assert(ConvertChecked<float64, int32>(infinity64, @target), "an infinity is no integer");
+    ConvertSaturating<float64, int32>(infinity64, @target);
+    Assert(target == 2147483647i32, "an infinity saturates to the maximum");
+    ConvertSaturating<float64, int32>(zero64 - infinity64, @target);
+    Assert(target == -2147483648i32, "a negative infinity saturates to the minimum");
+
+    // Classification, at each float width the language currently admits.
+    let zero32 = 0.0f32;
+    let one32 = 1.0f32;
+    Assert(CheckFloat<float32>(zero32, -0.0f32, one32, one32 / zero32, zero32 / zero32) == 0, "float32 classification");
+    Assert(CheckFloat<float64>(zero64, -0.0f64, one64, infinity64, nan64) == 0, "float64 classification");
+    return 0;
+}

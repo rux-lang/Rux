@@ -1,0 +1,105 @@
+// Conversions between primitive types that report what the cast alone does not: whether the value survived.
+//
+// `as` always produces a value of the destination type, wrapping or truncating whatever did not fit and saying
+// nothing about it. That is the right default for the places a conversion is known to be safe, and the wrong one
+// everywhere else -- an index narrowed to a smaller width, a signed count handed to an unsigned parameter, a
+// measurement rounded to a narrower float. These say what happened.
+//
+// Every check here is a round trip: convert, convert back, and compare in the source type. Nothing compares a value
+// of one type against a value of another, so no comparison has to decide which of two widths or signednesses to use.
+// The round trip catches truncation on its own, and one further test catches the pairs it cannot see -- a value and
+// its conversion that disagree in sign, which is how `-1` reaches `uint64` and how `2^63` reaches `int64` while
+// converting back to exactly what they started as.
+//
+// A float source needs no special case. A NaN never equals itself, so the round trip reports it; an infinity converts
+// back to something finite; and a float narrowed past its precision comes back a different number.
+
+/// Whether the integer type of `sample` has values below zero.
+///
+/// `sample` is read by value and only its type matters; its value is never used. Returns the answer by copy.
+///
+/// A type's own all-ones pattern is what answers this: read as a signed type it is `-1`, and read as an unsigned one
+/// it is the maximum. Nothing has to be told which it has.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-signed-type
+func IsSignedType<T>(sample: T) -> bool {
+    let zero = sample - sample;
+    return (zero - 1) < zero;
+}
+
+/// Converts a primitive value to another primitive type and reports whether the true value was representable.
+///
+/// `value` is read by value. `result` receives the conversion the machine produced, which is the true value when this
+/// returns `false` and the wrapped, truncated or rounded one when it returns `true`; it is written in both cases, so
+/// a caller who wants the lossy answer does not have to convert again.
+///
+/// Returns `true` when the conversion lost the value: a magnitude too large for the destination, a negative value
+/// converted to an unsigned type, a value above the signed range converted to a signed type of the same width, a
+/// float with a fractional part converted to an integer, or a float narrowed past its precision. A NaN and an
+/// infinity are both reported, since neither survives a round trip.
+///
+/// Runs in constant time and allocates nothing. Never traps, so the caller decides what a lost value means.
+///
+/// # Safety
+///
+/// `result` must be non-null. This is not checked.
+///
+/// https://rux-lang.dev/docs/api/core/convert-checked
+func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
+    *result = value as To;
+    // Converting back lands on the value it started from exactly when nothing was lost on the way out -- with one
+    // exception, below, that the round trip cannot see.
+    if (*result as From) != value {
+        return true;
+    }
+    // A value and its conversion that disagree in sign came back equal only because both conversions wrapped the same
+    // way: `-1` and `uint64::Max` are one bit pattern, and so are `2^63` and `int64::Min`.
+    return (value < (0 as From)) != (*result < (0 as To));
+}
+
+/// Converts a primitive value to another primitive type, keeping whatever fits.
+///
+/// `value` is read by value; `result` receives the destination type's own answer, wrapping an integer around its
+/// range, truncating a float toward zero, and rounding a narrowed float. This is what `as` does, named so that
+/// discarding the rest on purpose reads differently from discarding it by accident.
+///
+/// Cannot fail: every value has a wrapped conversion. Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// `result` must be non-null. This is not checked.
+///
+/// https://rux-lang.dev/docs/api/core/convert-wrapping
+func ConvertWrapping<From, To>(value: From, result: *var To) {
+    *result = value as To;
+}
+
+/// Converts a primitive value to an integer type, clamping to that type's range instead of wrapping.
+///
+/// `value` is read by value; `result` receives the nearest representable value: the destination's maximum for a value
+/// too large, its minimum for one too small, and the exact conversion for one that fits. A NaN has no nearest value
+/// and yields zero.
+///
+/// `To` must be an integer type. A floating destination has no limits to clamp against and is not supported; use
+/// `ConvertChecked` and decide what to do with the report.
+///
+/// Cannot fail: the answer is always the nearest representable value. Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// `result` must be non-null. This is not checked.
+///
+/// https://rux-lang.dev/docs/api/core/convert-saturating
+func ConvertSaturating<From, To>(value: From, result: *var To) {
+    if !ConvertChecked<From, To>(value, result) {
+        return;
+    }
+    // A NaN is not above or below the range; it is outside the ordering entirely, so neither limit is nearer.
+    if value != value {
+        *result = 0 as To;
+        return;
+    }
+    *result = value < (0 as From) ? MinimumOf<To>(*result) : MaximumOf<To>(*result);
+}
