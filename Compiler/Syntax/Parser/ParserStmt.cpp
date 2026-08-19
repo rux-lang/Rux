@@ -203,12 +203,32 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
     if (isCompileTime && Check(TokenKind::LeftBrace) && NextBraceIsMatchArms()) {
         s->matchSubject = std::move(subject);
 
+        // An arm body is a block or a single expression. A statement written bare is the mistake worth naming: it
+        // reads like it should work, and every token of it would otherwise be reported one at a time as the arm
+        // failed to parse and the next arm started in the middle of it.
+        const auto startsStatementNotExpression = [&]() {
+            return CheckAny({TokenKind::ReturnKeyword, TokenKind::LetKeyword, TokenKind::VarKeyword,
+                             TokenKind::IfKeyword, TokenKind::WhileKeyword, TokenKind::ForKeyword,
+                             TokenKind::LoopKeyword, TokenKind::BreakKeyword, TokenKind::ContinueKeyword,
+                             TokenKind::WhenKeyword});
+        };
         auto parseArmBody = [&]() -> std::unique_ptr<Block> {
             if (Check(TokenKind::LeftBrace)) {
                 return ParseBlock("the 'when' arm body");
             }
             auto block = std::make_unique<Block>();
             block->location = CurrentLocation();
+            if (startsStatementNotExpression()) {
+                EmitError(CurrentLocation(), "a 'when' arm body that is a statement must be written as a block, as in "
+                                             "'.Windows => { return 1; }'");
+                // Skip the rest of the statement so the next arm starts where it should, taking the terminator with
+                // it: left behind, a ';' would be read as the start of another arm and reported all over again.
+                while (!CheckAny({TokenKind::Comma, TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
+                    Advance();
+                }
+                Match(TokenKind::Semicolon);
+                return block;
+            }
             auto exprStmt = std::make_unique<ExprStmt>();
             exprStmt->location = CurrentLocation();
             exprStmt->expr = ParseRequiredExpr("after '=>' in the 'when' arm");
@@ -219,6 +239,10 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
         ExpectBefore(TokenKind::LeftBrace, "'{' to start the 'when' match arms");
         bool sawElse = false;
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            // Where this arm started. An arm whose body does not parse consumes nothing, and without this the loop
+            // would run forever building empty arms -- which is what a statement written as a bare arm body used to
+            // do, since a `return` is not an expression and left the cursor where it was.
+            const std::size_t armStart = pos;
             IfStmt::MatchArm arm;
             arm.location = CurrentLocation();
             if (Match(TokenKind::ElseKeyword)) {
@@ -238,6 +262,12 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
             s->matchArms.push_back(std::move(arm));
 
             Match(TokenKind::Comma); // optional separator; required only to end a bare-expression arm
+            if (pos == armStart) {
+                EmitError(CurrentLocation(),
+                          "expected a 'when' match arm, or '}' to close the match; an arm body that is a statement "
+                          "rather than an expression needs braces, as in '.Windows => { return 1; }'");
+                break;
+            }
             if (sawElse && !Check(TokenKind::RightBrace)) {
                 EmitError(CurrentLocation(), "the 'else' arm must be last in a 'when' match");
             }
