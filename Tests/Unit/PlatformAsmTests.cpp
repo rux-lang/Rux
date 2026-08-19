@@ -159,11 +159,13 @@ std::string ReadFileText(const std::filesystem::path &path) {
     return std::filesystem::path(RUX_TESTS_DIR) / "Packages" / platform / test / "Rux.toml";
 }
 
-// The words the three system-call wrappers are built from. `MOV` between two
+// The words the two system-call wrappers are built from. `MOV` between two
 // X registers is `ORR Xd, XZR, Xm`, which is why the shuffle is one opcode with
 // the source register moving through the Rm field.
-constexpr std::uint32_t MovX8FromX0 = 0xAA0003E8;  // mov x8, x0
-constexpr std::uint32_t MovX16FromX0 = 0xAA0003F0; // mov x16, x0
+//
+// Darwin's `mov x16, x0` and `svc #0x80` are gone with the package that wrote them: Apple does not support the trap
+// interface, and that package now binds libSystem.
+constexpr std::uint32_t MovX8FromX0 = 0xAA0003E8; // mov x8, x0
 constexpr std::uint32_t MovDownOne[] = {
     0xAA0103E0, // mov x0, x1
     0xAA0203E1, // mov x1, x2
@@ -173,7 +175,6 @@ constexpr std::uint32_t MovDownOne[] = {
     0xAA0603E5, // mov x5, x6
 };
 constexpr std::uint32_t Svc0 = 0xD4000001;       // svc #0
-constexpr std::uint32_t Svc0x80 = 0xD4001001;    // svc #0x80
 constexpr std::uint32_t CnegX0OnCs = 0xDA803400; // cneg x0, x0, cs
 constexpr std::uint32_t Ret = 0xD65F03C0;        // ret
 
@@ -231,56 +232,87 @@ void CheckWrappers(const AssembledSource &source, const std::uint32_t numberMove
 } // namespace
 
 TEST_CASE("Linux AArch64 system-call wrappers trap through x8 and return the kernel's result") {
-    const AssembledSource linux = AssembleSourceFor(PackageSource("Linux", "Linux.rux"), "linux-aarch64");
+    const AssembledSource linux = AssembleSourceFor(PackageSource("Linux", "Syscall.rux"), "linux-aarch64");
     CHECK(linux.diagnostics.empty());
     // Linux hands back either a non-negative result or -errno, so nothing
     // follows the trap but the return.
     CheckWrappers(linux, MovX8FromX0, Svc0, /*carryMeansError=*/false);
 }
 
-TEST_CASE("macOS AArch64 system-call wrappers trap through x16 and normalize a carry error") {
-    const AssembledSource macos = AssembleSourceFor(PackageSource("macOS", "MacOS.rux"), "macos-aarch64");
-    CHECK(macos.diagnostics.empty());
-    CheckWrappers(macos, MovX16FromX0, Svc0x80, /*carryMeansError=*/true);
+TEST_CASE("macOS writes no inline assembly at all, because Apple does not support the trap interface") {
+    // This package used to issue `svc #0x80` with a Darwin trap number. Apple does not support that: the numbers are
+    // private, they have changed between releases, and on Apple Silicon the interface is not reachable from ordinary
+    // code, so the AArch64 half was binding something that cannot be called. Every call goes through libSystem now,
+    // and the guard against a regression is that no source in the package writes the keyword.
+    const std::filesystem::path macosSource =
+        std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR)) / "macOS" / "Src";
+    REQUIRE(std::filesystem::is_directory(macosSource));
+
+    bool bindsLibSystem = false;
+    for (const auto &entry : std::filesystem::recursive_directory_iterator(macosSource)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".rux") {
+            continue;
+        }
+        const std::string text = ReadFileText(entry.path());
+        INFO(entry.path().string());
+        CHECK(text.find("asm func") == std::string::npos);
+        if (text.find("libSystem.B.dylib") != std::string::npos) {
+            bindsLibSystem = true;
+        }
+    }
+    CHECK_MESSAGE(bindsLibSystem, "the package binds no library, so it reaches the system some other way");
 }
 
 TEST_CASE("FreeBSD AArch64 BSD system-call wrappers assemble through x8 and normalize a carry error") {
-    const AssembledSource bsd = AssembleSourceFor(PackageSource("FreeBSD", "FreeBSD.rux"), "freebsd-aarch64");
+    const AssembledSource bsd = AssembleSourceFor(PackageSource("FreeBSD", "Syscall.rux"), "freebsd-aarch64");
     CHECK(bsd.diagnostics.empty());
     CheckWrappers(bsd, MovX8FromX0, Svc0, /*carryMeansError=*/true);
 }
 
 TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface") {
-    const AssembledSource bsd = AssembleSourceFor(PackageSource("FreeBSD", "FreeBSD.rux"), "freebsd-aarch64");
-    CHECK(bsd.diagnostics.empty());
-
-    const std::map<std::string, std::string> expected = {
-        {"SysExit", "1"},
-        {"SysRead", "3"},
-        {"SysWrite", "4"},
-        {"SysClose", "6"},
-        {"SysBrk", "17"},
-        {"SysGetPid", "20"},
-        {"SysMunmap", "73"},
-        {"SysClockGetTime", "232"},
-        {"SysNanosleep", "240"},
-        {"SysMmap", "477"},
-        {"ClockRealtime", "0"},
-        {"ClockMonotonic", "4"},
-        {"ProtectionNone", "0x00"},
-        {"ProtectionRead", "0x01"},
-        {"ProtectionWrite", "0x02"},
-        {"ProtectionExecute", "0x04"},
-        {"MapShared", "0x0001"},
-        {"MapPrivate", "0x0002"},
-        {"MapFixed", "0x0010"},
-        {"MapAnonymous", "0x1000"},
+    // The constants now live in the module that owns the domain, so each group is read from the file that declares
+    // it. That the numbers are unchanged by the split is the whole point of checking them here.
+    const std::map<std::string, std::map<std::string, std::string>> expected = {
+        {"Syscall.rux",
+         {
+             {"SysExit", "1"},
+             {"SysRead", "3"},
+             {"SysWrite", "4"},
+             {"SysClose", "6"},
+             {"SysBrk", "17"},
+             {"SysGetPid", "20"},
+             {"SysMunmap", "73"},
+             {"SysClockGetTime", "232"},
+             {"SysNanosleep", "240"},
+             {"SysMmap", "477"},
+         }},
+        {"Clock.rux",
+         {
+             {"ClockRealtime", "0"},
+             {"ClockMonotonic", "4"},
+         }},
+        {"Memory.rux",
+         {
+             {"ProtectionNone", "0x00"},
+             {"ProtectionRead", "0x01"},
+             {"ProtectionWrite", "0x02"},
+             {"ProtectionExecute", "0x04"},
+             {"MapShared", "0x0001"},
+             {"MapPrivate", "0x0002"},
+             {"MapFixed", "0x0010"},
+             {"MapAnonymous", "0x1000"},
+         }},
     };
-    for (const auto &[name, value] : expected) {
-        INFO("FreeBSD constant ", name);
-        const auto found = bsd.constants.find(name);
-        REQUIRE(found != bsd.constants.end());
-        CHECK_EQ(found->second, value);
+    for (const auto &[file, constants] : expected) {
+        const AssembledSource module = AssembleSourceFor(PackageSource("FreeBSD", file), "freebsd-aarch64");
+        INFO("FreeBSD module ", file);
+        CHECK(module.diagnostics.empty());
+        for (const auto &[name, value] : constants) {
+            INFO("FreeBSD constant ", name);
+            const auto found = module.constants.find(name);
+            REQUIRE(found != module.constants.end());
+            CHECK_EQ(found->second, value);
+        }
     }
 }
 
@@ -367,5 +399,7 @@ TEST_CASE("every first-party asm func has a body for the architecture being comp
                           " for ", arch);
         }
     }
-    CHECK_MESSAGE(sourcesWithAsm >= 5, "a package source writing inline assembly went unchecked");
+    // Four: the two syscall modules, and the two Math sources that reach for an instruction the language has no
+    // operator for. macOS was the fifth until it moved to libSystem, which is what the case above guards.
+    CHECK_MESSAGE(sourcesWithAsm >= 4, "a package source writing inline assembly went unchecked");
 }
