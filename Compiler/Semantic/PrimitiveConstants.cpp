@@ -1,5 +1,6 @@
 #include "Semantic/PrimitiveConstants.h"
 
+#include "Numeric/WideInteger.h"
 #include "Semantic/PrimitiveCatalog.h"
 
 #include <cstdint>
@@ -21,27 +22,20 @@ std::optional<std::uint32_t> StorageBits(const TypeRef &type, const CompileTimeC
     return PrimitiveBits(type.kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
 }
 
-/// The minimum of a signed integer of this width, rendered as a literal. Built as text rather than computed in a host
-/// integer so a width the host cannot represent is still exact.
+/// The limits of an integer of this width, rendered as decimal text.
+///
+/// Computed in a `WideInteger` rather than a machine word: past 64 bits a host integer cannot hold the value at all,
+/// and shifting one by the width is undefined, which is how every width above 64 previously reported zero.
 std::string SignedMin(const std::uint32_t bits) {
-    if (bits == 64) {
-        return "-9223372036854775808";
-    }
-    return std::format("-{}", std::uint64_t{1} << (bits - 1));
+    return "-" + WideInteger::MinMagnitude(bits, true).ToDecimal();
 }
 
 std::string SignedMax(const std::uint32_t bits) {
-    if (bits == 64) {
-        return "9223372036854775807";
-    }
-    return std::to_string((std::uint64_t{1} << (bits - 1)) - 1);
+    return WideInteger::MaxValue(bits, true).ToDecimal();
 }
 
 std::string UnsignedMax(const std::uint32_t bits) {
-    if (bits == 64) {
-        return "18446744073709551615";
-    }
-    return std::to_string((std::uint64_t{1} << bits) - 1);
+    return WideInteger::MaxValue(bits, false).ToDecimal();
 }
 
 std::optional<std::string_view> FloatConstant(const TypeRef::Kind kind, const std::string_view name) {
