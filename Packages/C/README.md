@@ -15,6 +15,7 @@ rux add Rux/C
 | Module   | Covers                                                                     |
 | -------- | -------------------------------------------------------------------------- |
 | `Types`  | the C ABI's own types, `errno` access, and the opaque handles              |
+| `String` | `<string.h>` — counted memory operations and terminated byte strings       |
 | `StdIo`  | `<stdio.h>` — streams, `printf` family, `fopen`/`fclose`, positioning       |
 | `StdLib` | `<stdlib.h>` — allocation, conversion, process control, sorting, searching |
 | `Math`   | `<math.h>` — the elementary functions in both `double` and `float` forms   |
@@ -31,6 +32,14 @@ position is a `*fpos_t`, both declared with no fields, so one handle cannot be p
 > `StdIo` and `Time` are still bound to the legacy `msvcrt.dll`, which is the only one exporting the formatted-output
 > family. The two keep separate state, so an `errno` set by a stream call is not the `errno` this package reads. Do
 > not read `errno` after a call made through `StdIo` or `Time` on Windows.
+
+`String` holds two families that are not alike. The `mem*` calls take a length and touch exactly that many
+bytes; the `str*` calls take none and stop at the first zero byte, which means the caller has promised there
+is one. Where both forms exist the counted one is the one to reach for, and `Rux/Memory` and `Rux/Text` do
+these jobs with lengths that are checked. Each declaration records what it requires of its arguments,
+including the traps worth naming: `strncpy` does not terminate a source that fills the count, `strcat` walks
+the destination from its start on every call, and `strtok` keeps its position in storage shared by the whole
+program.
 
 Each module selects the right declarations for the target at compile time, so the same import works across the supported platforms.
 

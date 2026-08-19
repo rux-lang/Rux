@@ -13,24 +13,24 @@ func Main() -> int {
     *(block + 63) = 0xC3;
     Assert(*block == 0x5A, "malloc first byte");
     Assert(*(block + 63) == 0xC3, "malloc last byte");
-    free(block as *opaque);
+    free(block as *var opaque);
 
     // calloc zero-initializes the whole array of num * size bytes.
     let zeroed = calloc(4, 8) as *uint8;
     Assert(zeroed != null as *uint8, "calloc(4, 8)");
     Assert(*zeroed == 0, "calloc first byte is zero");
     Assert(*(zeroed + 31) == 0, "calloc last byte is zero");
-    free(zeroed as *opaque);
+    free(zeroed as *var opaque);
 
     // realloc grows a block while preserving the bytes already stored in it.
     let grow = malloc(8) as *var uint8;
     *grow = 0x11;
     *(grow + 7) = 0x22;
-    let bigger = realloc(grow as *opaque, 32) as *uint8;
+    let bigger = realloc(grow as *var opaque, 32) as *uint8;
     Assert(bigger != null as *uint8, "realloc(32)");
     Assert(*bigger == 0x11, "realloc preserves first byte");
     Assert(*(bigger + 7) == 0x22, "realloc preserves last byte");
-    free(bigger as *opaque);
+    free(bigger as *var opaque);
 
     // Integer absolute value across the three widths.
     Assert(abs(-7) == 7, "abs(-7)");

@@ -1,0 +1,339 @@
+// C's `<string.h>`: raw memory operations, and the byte-string operations that read until a terminator.
+//
+// Two families live in one header for historical reasons, and they are not alike. The `mem*` calls take a length and
+// touch exactly that many bytes. The `str*` calls take no length and stop at the first zero byte, which means the
+// caller has promised there is one -- and that promise, not the call, is what usually fails. Where both forms exist,
+// the counted one is the one to reach for.
+//
+// Every declaration here names the exact symbol the C runtime exports, and is written against the C ABI types, so a
+// length is a `size_t` and a returned comparison is a `c_int`. Byte strings are `*char8` rather than `*c_char`: the
+// two are the same width, and `char8` is what a Rux string literal's `.data` already yields.
+//
+// Nothing here is a safe interface, and none of it is what Rux code should reach for first -- `Rux/Memory` and
+// `Rux/Text` do these jobs with lengths that are checked. This module exists to talk to C.
+//
+// The notes below are plain comments rather than `///` documentation because an external block does not accept a doc
+// comment on its declarations, which is why every module of this package is written the same way.
+
+import Core::{ #target, #Error };
+import C::{ c_int, size_t };
+
+// `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
+// from `C::CRuntime`. These declarations are all exported by the Universal CRT under their standard names, so this
+// module binds the same runtime `StdLib` and `Math` do.
+when #target.os {
+    .FreeBSD => const StringLib = "libc.so.7";
+    .Linux => const StringLib = "libc.so.6";
+    .macOS => const StringLib = "libSystem.B.dylib";
+    .Windows => const StringLib = "ucrtbase.dll";
+    else => #Error("Unsupported operating system")
+}
+
+#Link(StringLib)
+extern {
+    // Finds the first byte equal to `ch` within the first `count` bytes.
+    //
+    // `ptr` is borrowed for the call and `count` bytes of it are read. `ch` is converted to an `unsigned char`
+    // before comparison, so only its low eight bits matter. Returns a pointer into `ptr`, valid for as long as
+    // `ptr` is, or null when no byte matches.
+    //
+    // Runs in time proportional to `count` and allocates nothing.
+    //
+    // # Safety
+    //
+    // `ptr` must be readable for `count` bytes. A `count` larger than the object reads past it.
+    //
+    // https://en.cppreference.com/c/string/byte/memchr
+    func memchr(ptr: *opaque, ch: c_int, count: size_t) -> *opaque;
+
+    // Compares the first `count` bytes of two objects.
+    //
+    // Both are borrowed for the call. Returns a negative value when `lhs` orders first, zero when the two ranges
+    // are identical, and a positive value otherwise; the magnitude means nothing. Bytes are compared as
+    // `unsigned char`, so the result does not depend on whether plain `char` is signed.
+    //
+    // Runs in time proportional to `count` and allocates nothing. Not constant-time: it stops at the first
+    // difference, so it must not be used to compare secrets.
+    //
+    // # Safety
+    //
+    // Both pointers must be readable for `count` bytes.
+    //
+    // https://en.cppreference.com/c/string/byte/memcmp
+    func memcmp(lhs: *opaque, rhs: *opaque, count: size_t) -> c_int;
+
+    // Copies `count` bytes from `src` to `dest`.
+    //
+    // `src` is borrowed and read; `dest` is borrowed and written. Returns `dest`. The two ranges must not overlap --
+    // that is what `memmove` is for, and overlapping them here is undefined rather than merely unpredictable.
+    //
+    // Runs in time proportional to `count` and allocates nothing.
+    //
+    // # Safety
+    //
+    // `dest` must be writable for `count` bytes, `src` readable for `count`, and the two must not overlap.
+    //
+    // https://en.cppreference.com/c/string/byte/memcpy
+    func memcpy(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
+
+    // Copies `count` bytes from `src` to `dest`, correctly even when the two overlap.
+    //
+    // `src` is borrowed and read; `dest` is borrowed and written. Returns `dest`. Behaves as though the source were
+    // copied to a temporary first, so sliding a range within one buffer works in either direction.
+    //
+    // Runs in time proportional to `count` and allocates nothing.
+    //
+    // # Safety
+    //
+    // `dest` must be writable for `count` bytes and `src` readable for `count`.
+    //
+    // https://en.cppreference.com/c/string/byte/memmove
+    func memmove(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
+
+    // Writes `ch` to each of the first `count` bytes of `dest`.
+    //
+    // `dest` is borrowed and written. `ch` is converted to an `unsigned char`, so only its low eight bits are
+    // stored. Returns `dest`.
+    //
+    // Runs in time proportional to `count` and allocates nothing.
+    //
+    // # Safety
+    //
+    // `dest` must be writable for `count` bytes. This is not the call for clearing a secret: a compiler is entitled
+    // to delete a write nothing reads back, and `Core::Zeroize` is the one that is not.
+    //
+    // https://en.cppreference.com/c/string/byte/memset
+    func memset(dest: *var opaque, ch: c_int, count: size_t) -> *var opaque;
+
+    // The length of a byte string, not counting its terminator.
+    //
+    // `str` is borrowed and read up to and including its first zero byte. Returns the count of bytes before it.
+    //
+    // Runs in time proportional to the result and allocates nothing.
+    //
+    // # Safety
+    //
+    // `str` must be non-null and must contain a zero byte. Without one this reads until it faults or wraps.
+    //
+    // https://en.cppreference.com/c/string/byte/strlen
+    func strlen(str: *char8) -> size_t;
+
+    // Compares two byte strings.
+    //
+    // Both are borrowed and read to their terminators. Returns a negative value when `lhs` orders first, zero when
+    // the two are equal, and a positive value otherwise. Bytes are compared as `unsigned char`.
+    //
+    // Runs in time proportional to the shorter string and allocates nothing. Not constant-time.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strcmp
+    func strcmp(lhs: *char8, rhs: *char8) -> c_int;
+
+    // Compares at most `count` bytes of two byte strings.
+    //
+    // Both are borrowed. Stops at `count` bytes or at either terminator, whichever comes first. Returns the same
+    // three-way answer `strcmp` does.
+    //
+    // Runs in time proportional to `count` and allocates nothing. Not constant-time.
+    //
+    // # Safety
+    //
+    // Both must be readable until a terminator or `count` bytes, whichever comes first.
+    //
+    // https://en.cppreference.com/c/string/byte/strncmp
+    func strncmp(lhs: *char8, rhs: *char8, count: size_t) -> c_int;
+
+    // Copies a byte string, terminator included.
+    //
+    // `src` is borrowed and read to its terminator; `dest` is borrowed and written. Returns `dest`.
+    //
+    // Runs in time proportional to the source length and allocates nothing.
+    //
+    // # Safety
+    //
+    // `dest` must have room for the source's length plus one, which this call has no way to check and does not.
+    // Getting that wrong is the classic buffer overrun; prefer `memcpy` with a length the caller computed.
+    //
+    // https://en.cppreference.com/c/string/byte/strcpy
+    func strcpy(dest: *var char8, src: *char8) -> *var char8;
+
+    // Copies at most `count` bytes of a byte string, padding with zeros.
+    //
+    // `src` is borrowed; `dest` is borrowed and written. Returns `dest`. Writes exactly `count` bytes: shorter
+    // sources are zero-padded to fill them.
+    //
+    // Runs in time proportional to `count` and allocates nothing.
+    //
+    // # Safety
+    //
+    // `dest` must be writable for `count` bytes. This does **not** terminate the result when the source is `count`
+    // bytes or longer, which is the trap in its name: it is not a bounded `strcpy`.
+    //
+    // https://en.cppreference.com/c/string/byte/strncpy
+    func strncpy(dest: *var char8, src: *char8, count: size_t) -> *var char8;
+
+    // Appends a byte string to the end of another.
+    //
+    // `src` is borrowed; `dest` is borrowed, read to its terminator, and then written from there. Returns `dest`.
+    //
+    // Runs in time proportional to the sum of the two lengths, since it finds the destination's end first.
+    //
+    // # Safety
+    //
+    // `dest` must be terminated and must have room for both lengths plus one. Repeated appending is quadratic and
+    // is a common accident: each call walks the destination from its start.
+    //
+    // https://en.cppreference.com/c/string/byte/strcat
+    func strcat(dest: *var char8, src: *char8) -> *var char8;
+
+    // Appends at most `count` bytes of a byte string to the end of another.
+    //
+    // `src` is borrowed; `dest` is borrowed and written. Returns `dest`. Always terminates the result, so it writes
+    // up to `count + 1` bytes past the destination's existing end.
+    //
+    // Runs in time proportional to the destination's length plus `count`.
+    //
+    // # Safety
+    //
+    // `dest` must be terminated and must have room for its own length plus `count` plus one. `count` bounds what is
+    // taken from the source, not the size of the destination.
+    //
+    // https://en.cppreference.com/c/string/byte/strncat
+    func strncat(dest: *var char8, src: *char8, count: size_t) -> *var char8;
+
+    // Finds the first occurrence of a byte in a byte string.
+    //
+    // `str` is borrowed. `ch` is converted to a `char` before comparison, and a `ch` of zero finds the terminator
+    // rather than failing. Returns a pointer into `str`, or null when the byte does not occur.
+    //
+    // Runs in time proportional to the string's length and allocates nothing.
+    //
+    // # Safety
+    //
+    // `str` must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strchr
+    func strchr(str: *char8, ch: c_int) -> *char8;
+
+    // Finds the last occurrence of a byte in a byte string.
+    //
+    // `str` is borrowed. A `ch` of zero finds the terminator. Returns a pointer into `str`, or null when the byte
+    // does not occur.
+    //
+    // Runs in time proportional to the string's length and allocates nothing.
+    //
+    // # Safety
+    //
+    // `str` must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strrchr
+    func strrchr(str: *char8, ch: c_int) -> *char8;
+
+    // Finds the first occurrence of one byte string within another.
+    //
+    // Both are borrowed. An empty needle matches at the start. Returns a pointer into `haystack`, or null when the
+    // needle does not occur.
+    //
+    // Complexity is unspecified by the standard and is quadratic in the worst case on common implementations.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strstr
+    func strstr(haystack: *char8, needle: *char8) -> *char8;
+
+    // The length of the leading run of bytes drawn only from `accept`.
+    //
+    // Both are borrowed. Returns the index of the first byte of `str` not present in `accept`, which is the
+    // string's length when every byte is.
+    //
+    // Runs in time proportional to the product of the two lengths on a naive implementation.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strspn
+    func strspn(str: *char8, accept: *char8) -> size_t;
+
+    // The length of the leading run of bytes drawn from none of `reject`.
+    //
+    // Both are borrowed. Returns the index of the first byte of `str` present in `reject`, which is the string's
+    // length when none is.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strcspn
+    func strcspn(str: *char8, reject: *char8) -> size_t;
+
+    // Finds the first byte of `str` that occurs in `accept`.
+    //
+    // Both are borrowed. Returns a pointer into `str`, or null when no byte of it occurs in `accept`.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated.
+    //
+    // https://en.cppreference.com/c/string/byte/strpbrk
+    func strpbrk(str: *char8, accept: *char8) -> *char8;
+
+    // The implementation's message for an error number.
+    //
+    // `code` is read by value. Returns a pointer to storage the runtime owns, which the next call to this function
+    // may overwrite; copy it before making another. The message for an unrecognized code is unspecified but is
+    // never null.
+    //
+    // # Safety
+    //
+    // The returned storage is neither the caller's to free nor safe to hold across another call to this function,
+    // and this call is not thread-safe on every platform.
+    //
+    // https://en.cppreference.com/c/string/byte/strerror
+    func strerror(code: c_int) -> *char8;
+
+    // Compares two byte strings by the current locale's collation order.
+    //
+    // Both are borrowed. Returns the same three-way answer `strcmp` does, but ordered as the locale says rather
+    // than by byte value. With the default "C" locale this is `strcmp`.
+    //
+    // # Safety
+    //
+    // Both must be non-null and terminated. The answer depends on global locale state, so it is not a stable
+    // ordering to persist or to key a container on.
+    //
+    // https://en.cppreference.com/c/string/byte/strcoll
+    func strcoll(lhs: *char8, rhs: *char8) -> c_int;
+
+    // Transforms a byte string so that comparing two transformed strings byte-wise orders them by locale.
+    //
+    // `src` is borrowed; `dest` is borrowed and written with at most `count` bytes including the terminator.
+    // Returns the length the transform needs, not counting the terminator: a result at or above `count` means
+    // nothing usable was written and the call should be repeated with a larger buffer.
+    //
+    // # Safety
+    //
+    // `dest` must be writable for `count` bytes, and may be null only when `count` is zero.
+    //
+    // https://en.cppreference.com/c/string/byte/strxfrm
+    func strxfrm(dest: *var char8, src: *char8, count: size_t) -> size_t;
+
+    // Splits a byte string into tokens separated by any byte of `delimiters`.
+    //
+    // `str` is borrowed and **modified**: a terminator is written over each delimiter found. Pass the string on the
+    // first call and null on each call after it to continue the same scan. Returns the next token, or null when
+    // none is left.
+    //
+    // # Safety
+    //
+    // The scan's position is kept in storage shared by the whole program, so two interleaved scans destroy each
+    // other and no two threads may use this at once. The string must be writable, which rules out a literal.
+    //
+    // https://en.cppreference.com/c/string/byte/strtok
+    func strtok(str: *var char8, delimiters: *char8) -> *char8;
+}
