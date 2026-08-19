@@ -71,6 +71,7 @@ set(RUX_TEST_SOURCES
     MoveStateTests.cpp
     MoveConsumptionTests.cpp
     OptimizerRegressionTests.cpp
+    OperandWideningLoweringTests.cpp
     OptimizerTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp
