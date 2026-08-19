@@ -1,0 +1,116 @@
+// What a floating-point value is: a number, a zero with a sign, an infinity, or nothing at all.
+//
+// Every predicate here is arithmetic. None reads the value's bits, which is what lets one implementation serve every
+// float width the language spells, including the ones lowered in software, whose storage carries padding no generic
+// function could locate a sign bit inside of. The identities they rest on are IEEE's own:
+//
+//   value != value              only a NaN is unequal to itself
+//   value == value - value      only a zero is its own difference; a NaN and an infinity both give a NaN
+//   value == value + value      only a zero and an infinity double to themselves
+//   1 / value < 0               a zero's sign, which comparison cannot see, is the sign of the infinity it divides into
+//
+// Not answered here: whether a finite value is normal or subnormal. Telling those apart needs the format's smallest
+// normal value, which is a per-width constant rather than something arithmetic recovers, so it belongs with the
+// per-width constants rather than in a function generic over all of them.
+
+/// Whether the value is not a number.
+///
+/// `value` is read by value. Returns `true` for every NaN, quiet or signaling, and `false` for everything else --
+/// including both infinities, which are outside the finite range but are still ordered against it.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-nan
+func IsNaN<T>(value: T) -> bool {
+    return value != value;
+}
+
+/// Whether the value is either zero.
+///
+/// `value` is read by value. Both `+0.0` and `-0.0` report `true`, since the two compare equal; `IsNegativeZero`
+/// separates them. A NaN and an infinity report `false`, because subtracting either from itself gives a NaN.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-zero
+func IsZero<T>(value: T) -> bool {
+    return value == value - value;
+}
+
+/// Whether the value is an infinity, of either sign.
+///
+/// `value` is read by value. A zero is excluded explicitly: it is the other value that doubles to itself.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-infinite
+func IsInfinite<T>(value: T) -> bool {
+    return !IsZero<T>(value) && value == value + value;
+}
+
+/// Whether the value is an ordinary number: neither a NaN nor an infinity.
+///
+/// `value` is read by value. Every zero and every subnormal is finite.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-finite
+func IsFinite<T>(value: T) -> bool {
+    return !IsNaN<T>(value) && !IsInfinite<T>(value);
+}
+
+/// Whether the value is the zero that carries a minus sign.
+///
+/// `value` is read by value. `-0.0` reports `true` and `+0.0` reports `false`, though the two compare equal; every
+/// other value, NaN included, reports `false`.
+///
+/// The sign of a zero is invisible to comparison, so it is read from the infinity the zero divides into: `1 / -0.0`
+/// is negative infinity and `1 / +0.0` is positive infinity. The division is exact and traps nothing, because
+/// dividing by zero is a defined floating-point operation rather than an error.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-negative-zero
+func IsNegativeZero<T>(value: T) -> bool {
+    return IsZero<T>(value) && (1 as T) / value < (0 as T);
+}
+
+/// Whether the value carries a minus sign.
+///
+/// `value` is read by value. Every negative number reports `true`, and so does `-0.0` -- which is why this is named
+/// for the sign rather than for the comparison: `-0.0 < 0` is false. A NaN reports `false` whichever sign its
+/// encoding carries, since a NaN is outside the ordering and its sign has no arithmetic meaning.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-sign-negative
+func IsSignNegative<T>(value: T) -> bool {
+    return value < (0 as T) || IsNegativeZero<T>(value);
+}
+
+/// Whether the value carries a plus sign.
+///
+/// `value` is read by value. Every positive number reports `true`, and so does `+0.0`. A NaN reports `false`, so this
+/// is not the negation of `IsSignNegative`: a NaN carries neither sign for these purposes.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-sign-positive
+func IsSignPositive<T>(value: T) -> bool {
+    return value > (0 as T) || (IsZero<T>(value) && !IsNegativeZero<T>(value));
+}
+
+/// The value's sign as one of `-1`, `+1`, or the zero it started from.
+///
+/// `value` is read by value; the answer is returned by copy in the same type. A zero returns itself, so `-0.0`
+/// returns `-0.0` and its sign is not lost. A NaN returns itself, since it has no sign to report.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/sign-of
+func SignOf<T>(value: T) -> T {
+    if IsNaN<T>(value) || IsZero<T>(value) {
+        return value;
+    }
+    return value < (0 as T) ? (0 as T) - (1 as T) : 1 as T;
+}

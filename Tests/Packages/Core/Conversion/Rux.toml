@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Conversion"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Core: checked primitive conversion and floating classification"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Core"
