@@ -1,0 +1,2 @@
+20:20: error: method 'Equals' of interface 'Equatable' names 'Self', so it can only be called where the implementing type is known
+20:5: warning: cannot infer type of 'same'

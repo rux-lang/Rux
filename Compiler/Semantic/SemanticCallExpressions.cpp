@@ -299,7 +299,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 return TypeRef::MakeUnknown();
             }
             const FuncDecl &operation = *constrained->operation;
-            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(operation);
+            const std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(operation, receiverBase);
             bool callAccepted = argTypes.size() == paramTypes.size();
             if (!callAccepted) {
                 emitArityError(field->field, paramTypes.size(), paramTypes.size(), false, argTypes.size(), &operation,
@@ -320,7 +320,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 ConsumeCallArguments(*e, argTypes);
             }
             RecordConstrainedBinding(*e, *constrained, receiverType);
-            return ResolveInterfaceMethodReturnType(operation);
+            return ResolveInterfaceMethodReturnType(operation, receiverBase);
         }
 
         if (const FuncDecl *method = LookupMethod(receiverType, field->field, argTypes)) {
@@ -395,7 +395,17 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
         }
 
         if (const FuncDecl *method = LookupInterfaceMethod(receiverType, field->field)) {
-            std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method);
+            // Through an interface value the implementing type is not known, so a method naming `Self` has no meaning
+            // here: two values of the same interface may hold different types, and the call would pair them up.
+            if (InterfaceMethodMentionsSelf(*method)) {
+                EmitError(field->location,
+                          std::format("method '{}' of interface '{}' names 'Self', so it can only be called where the "
+                                      "implementing type is known",
+                                      field->field, receiverType.ToString()),
+                          {}, "call it through a generic parameter bounded by the interface");
+                return TypeRef::MakeUnknown();
+            }
+            std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method, receiverType);
             const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
             const bool arityOk =
                 isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
@@ -435,7 +445,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 ConsumeCallArguments(*e, argTypes);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {}, receiverType);
-            return ResolveInterfaceMethodReturnType(*method);
+            return ResolveInterfaceMethodReturnType(*method, receiverType);
         }
     }
 
