@@ -1,0 +1,126 @@
+// Destruction has to run, run once, and run only where the value still lives.
+//
+// A `Drop` body has no way to report anything, so every check below counts instead: each tracked value holds a pointer
+// to a counter and bumps it as it is destroyed. The count after a construct is what says destruction happened at the
+// right place -- and, for a value that was moved away, that it did not happen twice.
+
+import Core::{ Assert, Drop, Option };
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+}
+
+extend Tracked : Drop {
+    func Drop(self: *var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+struct Pair {
+    first: Tracked;
+    second: Tracked;
+}
+
+func MakeTracked(counter: *var Counter) -> Tracked {
+    return Tracked { counter: counter };
+}
+
+// A value that reaches the end of its scope is destroyed there.
+func ScopeExit(counter: *var Counter) {
+    let tracked = MakeTracked(counter);
+}
+
+// A value handed to another binding has one owner, so it is destroyed once.
+func MoveToBinding(counter: *var Counter) {
+    let first = MakeTracked(counter);
+    let second = first;
+}
+
+// A value returned to the caller is not destroyed in the callee.
+func MoveOut(counter: *var Counter) -> Tracked {
+    let tracked = MakeTracked(counter);
+    return tracked;
+}
+
+// A value moved away on one path only: the flag, not the source text, decides whether the scope destroys it.
+func ConditionalMove(counter: *var Counter, away: bool) {
+    let tracked = MakeTracked(counter);
+    if away {
+        let taken = tracked;
+        return;
+    }
+}
+
+// Every field of an aggregate is destroyed with it.
+func NestedFields(counter: *var Counter) {
+    let pair = Pair { first: MakeTracked(counter), second: MakeTracked(counter) };
+}
+
+// A value left behind by an assignment is destroyed before the new one takes its place.
+func Overwrite(counter: *var Counter) {
+    var tracked = MakeTracked(counter);
+    tracked = MakeTracked(counter);
+}
+
+// Every element of an array is destroyed, and the array's own length is what says how many.
+func ArrayElements(counter: *var Counter) {
+    let tracked: Tracked[3] = [MakeTracked(counter), MakeTracked(counter), MakeTracked(counter)];
+}
+
+// The payload an option carries is destroyed with it; the empty case has nothing to destroy.
+func OptionPayload(counter: *var Counter, carried: bool) {
+    if carried {
+        let held = Option::Some<Tracked>(MakeTracked(counter));
+        return;
+    }
+    let empty = Option::None<Tracked>();
+}
+
+func Main() -> int {
+    var counter = Counter { count: 0 };
+
+    ScopeExit(@counter);
+    Assert(counter.count == 1, "a value is destroyed when its scope ends");
+
+    counter.count = 0;
+    MoveToBinding(@counter);
+    Assert(counter.count == 1, "a value handed to another binding is destroyed once");
+
+    counter.count = 0;
+    let returned = MoveOut(@counter);
+    Assert(counter.count == 0, "a returned value is not destroyed by the callee");
+
+    counter.count = 0;
+    ConditionalMove(@counter, true);
+    Assert(counter.count == 1, "a value moved away on a taken path is destroyed once");
+
+    counter.count = 0;
+    ConditionalMove(@counter, false);
+    Assert(counter.count == 1, "a value the taken path never moved is destroyed at scope exit");
+
+    counter.count = 0;
+    NestedFields(@counter);
+    Assert(counter.count == 2, "every field of an aggregate is destroyed with it");
+
+    counter.count = 0;
+    Overwrite(@counter);
+    Assert(counter.count == 2, "an overwritten value and its replacement are both destroyed");
+
+    counter.count = 0;
+    ArrayElements(@counter);
+    Assert(counter.count == 3, "every element of an array is destroyed with it");
+
+    counter.count = 0;
+    OptionPayload(@counter, true);
+    Assert(counter.count == 1, "the value an option carries is destroyed with the option");
+
+    counter.count = 0;
+    OptionPayload(@counter, false);
+    Assert(counter.count == 0, "an empty option has nothing to destroy");
+
+    return 0;
+}

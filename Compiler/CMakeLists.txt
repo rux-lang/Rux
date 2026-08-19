@@ -208,6 +208,7 @@ rux_add_component(RuxLowering
     Lowering/HirToLir/CheckedLirBuilder.cpp
     Lowering/HirToLir/HirToLirAggregates.cpp
     Lowering/HirToLir/HirToLirCore.cpp
+    Lowering/HirToLir/HirToLirDrop.cpp
     Lowering/HirToLir/HirToLirExpressions.cpp
     Lowering/HirToLir/HirToLirStatements.cpp)
 target_link_libraries(RuxLowering PUBLIC

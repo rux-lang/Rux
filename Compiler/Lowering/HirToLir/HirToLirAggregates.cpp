@@ -94,6 +94,8 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         Branch(matched, bodyBlock, nextBlock);
         SetBlock(bodyBlock);
         LowerExpr(*arm.body);
+        // A pattern binding owns whatever it matched out of the subject, and the arm is the whole of its life.
+        EmitCleanups(arm.cleanups);
         if (!IsTerminated()) {
             Jump(mergeBlock);
         }
@@ -332,7 +334,7 @@ void HirToLirContext::StoreTernaryInit(const HirTernaryExpr &e, LirReg slot, con
     SetBlock(mergeBlock);
 }
 
-void HirToLirContext::StoreExprIntoSlot(const HirExpr &expr, LirReg slot, const TypeRef &type) {
+void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, const TypeRef &type) {
     if (auto *init = dynamic_cast<const HirStructInitExpr *>(&expr)) {
         StoreStructInit(*init, slot);
         return;

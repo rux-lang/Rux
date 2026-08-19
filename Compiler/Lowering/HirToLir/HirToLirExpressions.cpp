@@ -8,7 +8,7 @@
 
 namespace Rux::HirToLirDetail {
 
-LirReg HirToLirContext::LowerExpr(const HirExpr &expr) {
+LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
         if (IsStringSliceLiteral(*e)) {
             return LowerStringLiteralSlice(*e);
@@ -304,6 +304,11 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     }
 
     LirReg val = LowerExpr(*e.value);
+    // Whatever the target held is destroyed once the new value exists and before it is stored, so an assignment from
+    // a value the target itself owns part of still reads live storage. The store below then re-establishes ownership.
+    if (e.overwriteCleanup) {
+        EmitCleanup(*e.overwriteCleanup);
+    }
     if (e.op != TokenKind::Assign) {
         // Compound assignment: load current value, compute, then store.
         const LirReg current = LowerExpr(*e.target);
@@ -323,6 +328,9 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     }
     const LirReg ptr = LowerLValue(*e.target);
     EmitStore(val, ptr, e.type, e.isVolatile);
+    if (e.overwriteCleanup) {
+        MarkBindingLive(e.overwriteCleanup->bindingId, true);
+    }
     return val;
 }
 

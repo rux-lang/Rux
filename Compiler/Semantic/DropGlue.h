@@ -24,6 +24,14 @@ struct DropGlueStep {
     std::uint64_t ordinal = 0;
     std::uint64_t count = 0;
     bool reverse = false;
+    /// Linker name of the type's own `Drop::Drop`, resolved while lowering because that is where a generic
+    /// implementation is instantiated. Empty for every kind but InvokeDrop.
+    std::string dropSymbol;
+    /// The tag value an EnumVariant step tests for, resolved with the same lookup a construction of that variant uses.
+    std::string discriminant;
+    /// Every payload an EnumVariant step's variant carries, in construction order, named fields first. Destruction
+    /// needs the ones it will not touch too: a payload's offset follows the sizes of the payloads before it.
+    std::vector<TypeRef> payloadTypes;
     std::vector<DropGlueStep> children;
 };
 

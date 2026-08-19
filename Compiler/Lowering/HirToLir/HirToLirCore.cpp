@@ -109,6 +109,14 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
     for (const auto &mod : hir.modules) {
         pkg.modules.push_back(LowerModule(mod));
     }
+    // Glue is synthesized once the modules are lowered, because a plan describes a type rather than a module and every
+    // cleanup in the package names the same symbol for it. It joins the last module for the same reason a monomorphized
+    // instance does: a function has to belong to one to be emitted.
+    if (!pkg.modules.empty()) {
+        for (LirFunc &glue : SynthesizeDropGlue(hir.dropGlues)) {
+            pkg.modules.back().funcs.push_back(std::move(glue));
+        }
+    }
     return pkg;
 }
 
@@ -717,6 +725,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         }
         return lf;
     }
+    dropFlags.clear();
     CheckedLirBuilder functionBuilder(lf);
     builder = &functionBuilder;
     SetBlock(NewBlock("entry"));
@@ -749,6 +758,11 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
             locals[name] = slot;
             lf.params.push_back({pr, type, name});
         }
+    }
+    // A parameter taken by value arrives owning what it holds, so its flag starts set and the caller's copy of that
+    // ownership is already gone.
+    for (const auto &param : hf.params) {
+        MarkBindingLive(param.bindingId, true);
     }
     if (hf.body) {
         LowerBlock(*hf.body);
