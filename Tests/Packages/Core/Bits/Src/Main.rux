@@ -1,0 +1,180 @@
+import Core::{ Assert, BitAt, BitWidthOf, CountOnes, CountZeros, FromBigEndian, FromLittleEndian, IsPowerOfTwo,
+               LeadingOnes, LeadingZeros, LoadBigEndian, LoadLittleEndian, ReverseBits, ReverseBytes, RotateLeft,
+               RotateRight, ShiftRightLogical, StoreBigEndian, StoreLittleEndian, ToBigEndian, ToLittleEndian,
+               TrailingOnes, TrailingZeros };
+
+// Every check runs at one width and is called once per width, so an operation that is right for `uint8` and wrong for
+// `int512` is caught rather than averaged away. The signed checks matter most: `>>` is arithmetic on a signed type,
+// and every operation that reads bits as bits has to see the same thing at either signedness.
+
+func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
+    let bits = BitWidthOf<T>(zero);
+    let two = one + one;
+
+    // The width follows from the type alone.
+    if bits != sizeof(T) * 8u64 { return 1; }
+
+    // Counting, at both ends of the range.
+    if CountOnes<T>(zero) != 0u32 { return 2; }
+    if CountOnes<T>(allOnes) != bits as uint32 { return 3; }
+    if CountOnes<T>(one) != 1u32 { return 4; }
+    if CountZeros<T>(zero) != bits as uint32 { return 5; }
+    if CountZeros<T>(allOnes) != 0u32 { return 6; }
+
+    // A value with no set bit has every bit leading and trailing it.
+    if LeadingZeros<T>(zero) != bits as uint32 { return 7; }
+    if TrailingZeros<T>(zero) != bits as uint32 { return 8; }
+    if LeadingOnes<T>(allOnes) != bits as uint32 { return 9; }
+    if TrailingOnes<T>(allOnes) != bits as uint32 { return 10; }
+
+    // One at the bottom: nothing below it, everything but one bit above it.
+    if TrailingZeros<T>(one) != 0u32 { return 11; }
+    if LeadingZeros<T>(one) != bits as uint32 - 1u32 { return 12; }
+    if TrailingOnes<T>(one) != 1u32 { return 13; }
+    if LeadingOnes<T>(one) != 0u32 { return 14; }
+
+    // Two is one bit up, whatever the width.
+    if TrailingZeros<T>(two) != 1u32 { return 15; }
+    if LeadingZeros<T>(two) != bits as uint32 - 2u32 { return 16; }
+
+    // Reading individual bits, including past the end.
+    if !BitAt<T>(one, 0u64) { return 17; }
+    if BitAt<T>(one, 1u64) { return 18; }
+    if !BitAt<T>(allOnes, bits - 1u64) { return 19; }
+    if BitAt<T>(allOnes, bits) { return 20; }
+
+    // A logical shift brings zeros in at either signedness, which is the whole reason it exists.
+    if ShiftRightLogical<T>(allOnes, 1u64) != (one << (bits - 1u64)) - one { return 21; }
+    if ShiftRightLogical<T>(allOnes, bits) != zero { return 22; }
+    if ShiftRightLogical<T>(allOnes, 0u64) != allOnes { return 23; }
+    if CountOnes<T>(ShiftRightLogical<T>(allOnes, 1u64)) != bits as uint32 - 1u32 { return 24; }
+
+    // Rotation loses nothing: the top bit comes back at the bottom and a full turn is the identity.
+    if RotateLeft<T>(one, bits - 1u64) != one << (bits - 1u64) { return 25; }
+    if RotateLeft<T>(one << (bits - 1u64), 1u64) != one { return 26; }
+    if RotateRight<T>(one, 1u64) != one << (bits - 1u64) { return 27; }
+    if RotateLeft<T>(allOnes, 3u64) != allOnes { return 28; }
+    if RotateLeft<T>(two, bits) != two { return 29; }
+    if RotateRight<T>(RotateLeft<T>(two, 5u64), 5u64) != two { return 30; }
+
+    // Reversal is its own inverse, and moves the lowest bit to the highest place.
+    if ReverseBits<T>(one) != one << (bits - 1u64) { return 31; }
+    if ReverseBits<T>(ReverseBits<T>(two)) != two { return 32; }
+    if ReverseBits<T>(allOnes) != allOnes { return 33; }
+    if ReverseBytes<T>(ReverseBytes<T>(two)) != two { return 34; }
+    if ReverseBytes<T>(allOnes) != allOnes { return 35; }
+    if ReverseBytes<T>(zero) != zero { return 36; }
+
+    // A byte reversal moves the lowest byte to the highest place; at one byte wide there is nothing to move.
+    if bits == 8u64 {
+        if ReverseBytes<T>(one) != one { return 37; }
+    }
+    else {
+        if ReverseBytes<T>(one) != one << (bits - 8u64) { return 38; }
+    }
+
+    // Exactly one bit set, asked about bits rather than magnitude.
+    if IsPowerOfTwo<T>(zero) { return 39; }
+    if !IsPowerOfTwo<T>(one) { return 40; }
+    if !IsPowerOfTwo<T>(two) { return 41; }
+    if IsPowerOfTwo<T>(one + two) { return 42; }
+    if bits > 8u64 && !IsPowerOfTwo<T>(one << (bits - 1u64)) { return 43; }
+
+    // Converting to a named order and back is the identity, whichever order this target has.
+    if FromLittleEndian<T>(ToLittleEndian<T>(two)) != two { return 44; }
+    if FromBigEndian<T>(ToBigEndian<T>(two)) != two { return 45; }
+    if ToLittleEndian<T>(allOnes) != allOnes { return 46; }
+    return 0;
+}
+
+func CheckBytes<T>(value: T, zero: T) -> int32 {
+    var buffer: byte[64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ];
+    var restored = zero;
+
+    // A round trip through bytes gives back the value, in either order.
+    StoreLittleEndian<T>(value, @buffer[0]);
+    LoadLittleEndian<T>(@buffer[0], @restored);
+    if restored != value { return 1; }
+
+    restored = zero;
+    StoreBigEndian<T>(value, @buffer[0]);
+    LoadBigEndian<T>(@buffer[0], @restored);
+    if restored != value { return 2; }
+
+    // The two orders write the same bytes backwards from each other.
+    var little: byte[64] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ];
+    StoreLittleEndian<T>(value, @little[0]);
+    var index = 0u64;
+    while index < sizeof(T) {
+        if little[index] != buffer[sizeof(T) - index - 1u64] { return 3; }
+        index = index + 1u64;
+    }
+
+    // Reading a big-endian pattern back through the other order gives the byte-reversed value.
+    restored = zero;
+    LoadLittleEndian<T>(@buffer[0], @restored);
+    if restored != ReverseBytes<T>(value) { return 4; }
+
+    // Writing is not allowed to touch a byte past the value's own width.
+    if buffer[sizeof(T)] != 0 { return 5; }
+    return 0;
+}
+
+func Main() -> int {
+    if CheckWidth<uint8>(0u8, 1u8, 255u8) != 0 { return CheckWidth<uint8>(0u8, 1u8, 255u8); }
+    if CheckWidth<uint16>(0u16, 1u16, 65535u16) != 0 { return 100 + CheckWidth<uint16>(0u16, 1u16, 65535u16); }
+    if CheckWidth<uint32>(0u32, 1u32, 4294967295u32) != 0 {
+        return 200 + CheckWidth<uint32>(0u32, 1u32, 4294967295u32);
+    }
+    if CheckWidth<uint64>(0u64, 1u64, 18446744073709551615u64) != 0 {
+        return 300 + CheckWidth<uint64>(0u64, 1u64, 18446744073709551615u64);
+    }
+    if CheckWidth<int8>(0i8, 1i8, -1i8) != 0 { return 400 + CheckWidth<int8>(0i8, 1i8, -1i8); }
+    if CheckWidth<int16>(0i16, 1i16, -1i16) != 0 { return 500 + CheckWidth<int16>(0i16, 1i16, -1i16); }
+    if CheckWidth<int32>(0i32, 1i32, -1i32) != 0 { return 600 + CheckWidth<int32>(0i32, 1i32, -1i32); }
+    if CheckWidth<int64>(0i64, 1i64, -1i64) != 0 { return 700 + CheckWidth<int64>(0i64, 1i64, -1i64); }
+    if CheckWidth<uint128>(0u128, 1u128, 0u128 - 1u128) != 0 {
+        return 800 + CheckWidth<uint128>(0u128, 1u128, 0u128 - 1u128);
+    }
+    if CheckWidth<int128>(0i128, 1i128, 0i128 - 1i128) != 0 {
+        return 900 + CheckWidth<int128>(0i128, 1i128, 0i128 - 1i128);
+    }
+    if CheckWidth<uint256>(0u256, 1u256, 0u256 - 1u256) != 0 {
+        return 1000 + CheckWidth<uint256>(0u256, 1u256, 0u256 - 1u256);
+    }
+    if CheckWidth<uint512>(0u512, 1u512, 0u512 - 1u512) != 0 {
+        return 1100 + CheckWidth<uint512>(0u512, 1u512, 0u512 - 1u512);
+    }
+
+    // Known answers, so a rule that is self-consistent at every width but wrong is still caught.
+    Assert(CountOnes<uint32>(0xF0F0F0F0u32) == 16u32, "counting set bits");
+    Assert(LeadingZeros<uint32>(0x00FF0000u32) == 8u32, "counting the clear bits above the highest set one");
+    Assert(TrailingZeros<uint32>(0x00FF0000u32) == 16u32, "counting the clear bits below the lowest set one");
+    Assert(ReverseBytes<uint32>(0x01020304u32) == 0x04030201u32, "reversing bytes");
+    Assert(ReverseBits<uint8>(0b1000_0001u8) == 0b1000_0001u8, "reversing a palindrome leaves it alone");
+    Assert(ReverseBits<uint8>(0b1100_0000u8) == 0b0000_0011u8, "reversing bits");
+    Assert(RotateLeft<uint8>(0b1000_0001u8, 1u64) == 0b0000_0011u8, "rotating past the top wraps to the bottom");
+    Assert(RotateRight<uint8>(0b1000_0001u8, 1u64) == 0b1100_0000u8, "rotating past the bottom wraps to the top");
+    Assert(ShiftRightLogical<int8>(-1i8, 4u64) == 15i8, "a logical shift brings zeros in, not sign bits");
+    Assert(-1i8 >> 4 == -1i8, "an ordinary shift still copies the sign bit down");
+
+    Assert(CheckBytes<uint16>(0x0102u16, 0u16) == 0, "byte conversion at 16 bits");
+    Assert(CheckBytes<uint32>(0x01020304u32, 0u32) == 0, "byte conversion at 32 bits");
+    Assert(CheckBytes<uint64>(0x0102030405060708u64, 0u64) == 0, "byte conversion at 64 bits");
+    Assert(CheckBytes<int32>(-2i32, 0i32) == 0, "byte conversion of a negative value");
+    Assert(CheckBytes<uint128>(0u128 - 3u128, 0u128) == 0, "byte conversion at 128 bits");
+    Assert(CheckBytes<uint256>(0u256 - 3u256, 0u256) == 0, "byte conversion at 256 bits");
+
+    // A single byte has one order, so both spellings agree and neither reverses anything.
+    var single: byte[2] = [0, 0];
+    StoreBigEndian<uint8>(0x7Fu8, @single[0]);
+    Assert(single[0] == 0x7F, "one byte is written as itself");
+    Assert(single[1] == 0, "one byte is all that is written");
+    return 0;
+}

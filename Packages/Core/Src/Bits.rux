@@ -1,0 +1,268 @@
+// Bit-level operations on integers, at every integer width the language spells.
+//
+// Like the arithmetic beside them, these are written once and generic over the integer type rather than repeated per
+// width, and they derive what they need from one operand: `sizeof(T) * 8` is the width, `value - value` is the type's
+// zero, and `zero + 1` is its one.
+//
+// Signedness is the thing to be careful about here, because `>>` is arithmetic on a signed type: it copies the sign
+// bit down instead of bringing zeros in. Every operation below that has to see a value's bits as bits rather than as
+// a number goes through `ShiftRightLogical`, which brings zeros in at either signedness. Reading a single bit with
+// `(value >> index) & 1` needs no such care -- whatever arithmetic shift replicated above bit zero is masked away.
+//
+// Nothing here is a machine instruction. A back end may recognize some of these shapes, but the count and reversal
+// operations are written as loops over the width so that a 512-bit type behaves exactly like an 8-bit one.
+
+/// The number of bits in the integer type of `sample`.
+///
+/// `sample` is read by value and only its type matters; its value is never used. Returns the width by copy.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/bit-width-of
+func BitWidthOf<T>(sample: T) -> uint64 {
+    return sizeof(T) * 8u64;
+}
+
+/// Shifts an integer right, bringing zeros in at the top whatever its signedness.
+///
+/// `value` and `amount` are read by value; the result is returned by copy. This is what `>>` does for an unsigned
+/// type and what it deliberately does not do for a signed one, where `>>` replicates the sign bit instead. An
+/// `amount` at or beyond the type's width yields zero rather than being left undefined.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/shift-right-logical
+func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
+    let zero = value - value;
+    if amount == 0u64 {
+        return value;
+    }
+    let bits = sizeof(T) * 8u64;
+    if amount >= bits {
+        return zero;
+    }
+    // Every bit the shift kept lives below `bits - amount`, so a mask of that many ones drops whatever an arithmetic
+    // shift replicated above them. Building the mask by subtraction works at either signedness: the one bit above the
+    // mask is the sign bit only when the mask spans the whole type, which `amount == 0` has already been sent home.
+    let mask = ((zero + 1) << (bits - amount)) - 1;
+    return (value >> amount) & mask;
+}
+
+/// Whether the bit at `index` is set, counting from the least significant bit.
+///
+/// `value` and `index` are read by value. An `index` at or beyond the type's width reads no bit and reports `false`.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/bit-at
+func BitAt<T>(value: T, index: uint64) -> bool {
+    let zero = value - value;
+    if index >= sizeof(T) * 8u64 {
+        return false;
+    }
+    // Masking with one leaves nothing for an arithmetic shift to have replicated, so signedness does not matter here.
+    return ((value >> index) & (zero + 1)) != zero;
+}
+
+/// The number of set bits.
+///
+/// `value` is read by value. Returns a count between zero and the type's width.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/count-ones
+func CountOnes<T>(value: T) -> uint32 {
+    let bits = sizeof(T) * 8u64;
+    var count = 0u32;
+    var index = 0u64;
+    while index < bits {
+        if BitAt<T>(value, index) {
+            count = count + 1u32;
+        }
+        index = index + 1u64;
+    }
+    return count;
+}
+
+/// The number of clear bits.
+///
+/// `value` is read by value. Returns a count between zero and the type's width: the exact complement of `CountOnes`.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/count-zeros
+func CountZeros<T>(value: T) -> uint32 {
+    return (sizeof(T) * 8u64) as uint32 - CountOnes<T>(value);
+}
+
+/// The number of clear bits above the highest set bit.
+///
+/// `value` is read by value. A zero value has no set bit, so every bit counts and the answer is the type's width.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/leading-zeros
+func LeadingZeros<T>(value: T) -> uint32 {
+    var count = 0u32;
+    var index = sizeof(T) * 8u64;
+    while index > 0u64 {
+        index = index - 1u64;
+        if BitAt<T>(value, index) {
+            return count;
+        }
+        count = count + 1u32;
+    }
+    return count;
+}
+
+/// The number of clear bits below the lowest set bit.
+///
+/// `value` is read by value. A zero value has no set bit, so the answer is the type's width.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/trailing-zeros
+func TrailingZeros<T>(value: T) -> uint32 {
+    let bits = sizeof(T) * 8u64;
+    var index = 0u64;
+    while index < bits {
+        if BitAt<T>(value, index) {
+            return index as uint32;
+        }
+        index = index + 1u64;
+    }
+    return bits as uint32;
+}
+
+/// The number of set bits above the highest clear bit.
+///
+/// `value` is read by value. An all-ones value has no clear bit, so the answer is the type's width.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/leading-ones
+func LeadingOnes<T>(value: T) -> uint32 {
+    var count = 0u32;
+    var index = sizeof(T) * 8u64;
+    while index > 0u64 {
+        index = index - 1u64;
+        if !BitAt<T>(value, index) {
+            return count;
+        }
+        count = count + 1u32;
+    }
+    return count;
+}
+
+/// The number of set bits below the lowest clear bit.
+///
+/// `value` is read by value. An all-ones value has no clear bit, so the answer is the type's width.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/trailing-ones
+func TrailingOnes<T>(value: T) -> uint32 {
+    let bits = sizeof(T) * 8u64;
+    var index = 0u64;
+    while index < bits {
+        if !BitAt<T>(value, index) {
+            return index as uint32;
+        }
+        index = index + 1u64;
+    }
+    return bits as uint32;
+}
+
+/// Rotates an integer's bits toward the most significant end, wrapping the ones that run off.
+///
+/// `value` and `amount` are read by value; the result is returned by copy. `amount` is taken modulo the type's width,
+/// so no rotation is out of range and rotating by the width is the identity.
+///
+/// Cannot fail: no bit is lost, unlike a shift. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/rotate-left
+func RotateLeft<T>(value: T, amount: uint64) -> T {
+    let bits = sizeof(T) * 8u64;
+    let shift = amount % bits;
+    if shift == 0u64 {
+        return value;
+    }
+    // The bits that ran off the top are exactly the ones a logical shift of the complementary distance keeps.
+    return (value << shift) | ShiftRightLogical<T>(value, bits - shift);
+}
+
+/// Rotates an integer's bits toward the least significant end, wrapping the ones that run off.
+///
+/// `value` and `amount` are read by value; the result is returned by copy. `amount` is taken modulo the type's width.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/rotate-right
+func RotateRight<T>(value: T, amount: uint64) -> T {
+    let bits = sizeof(T) * 8u64;
+    let shift = amount % bits;
+    if shift == 0u64 {
+        return value;
+    }
+    return ShiftRightLogical<T>(value, shift) | (value << (bits - shift));
+}
+
+/// The value with its bits in the opposite order: bit zero becomes the highest bit and back again.
+///
+/// `value` is read by value; the result is returned by copy.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/reverse-bits
+func ReverseBits<T>(value: T) -> T {
+    let zero = value - value;
+    let one = zero + 1;
+    let bits = sizeof(T) * 8u64;
+    var result = zero;
+    var index = 0u64;
+    while index < bits {
+        if BitAt<T>(value, index) {
+            result = result | (one << (bits - index - 1u64));
+        }
+        index = index + 1u64;
+    }
+    return result;
+}
+
+/// The value with its bytes in the opposite order, leaving the bits within each byte where they were.
+///
+/// `value` is read by value; the result is returned by copy. This is the operation that turns a little-endian value
+/// into the big-endian one with the same bytes, and is what the endian conversions are built from.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/reverse-bytes
+func ReverseBytes<T>(value: T) -> T {
+    let zero = value - value;
+    let bytes = sizeof(T);
+    if bytes <= 1u64 {
+        return value;
+    }
+    var result = zero;
+    var index = 0u64;
+    while index < bytes {
+        // Each byte is read out at the bottom, where nothing an arithmetic shift replicated can reach it, and put
+        // back at the position mirroring the one it came from.
+        let extracted = ShiftRightLogical<T>(value, index * 8u64) & (zero + 255);
+        result = result | (extracted << ((bytes - index - 1u64) * 8u64));
+        index = index + 1u64;
+    }
+    return result;
+}
+
+/// Whether the value has exactly one bit set.
+///
+/// `value` is read by value. Zero has no bit set and is not a power of two; for a signed type the most negative
+/// value has exactly one bit set and is reported as one, because this asks about bits rather than about magnitude.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/is-power-of-two
+func IsPowerOfTwo<T>(value: T) -> bool {
+    return CountOnes<T>(value) == 1u32;
+}
