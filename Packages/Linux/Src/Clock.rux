@@ -1,0 +1,52 @@
+// Reading a clock, and waiting on one.
+//
+// Which clock is being read matters more than the reading: `ClockMonotonic` counts forward from an arbitrary point
+// and never jumps, while `ClockRealtime` tracks wall time and can move in either direction when something sets it.
+// A duration is measured with the first; a timestamp anyone else will see is taken from the second.
+
+import Linux::{ SysClockGetTime, SysNanosleep, Syscall2, Timespec };
+
+/// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-realtime
+const ClockRealtime: int32 = 0;
+
+/// `CLOCK_MONOTONIC`: time since an unspecified point, which never goes backwards.
+///
+/// Not comparable between boots, and not the clock to record a timestamp with. It is the one to measure a duration
+/// with, because setting the system clock cannot affect it.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-monotonic
+const ClockMonotonic: int32 = 1;
+
+/// Reads `clockId` into `time`.
+///
+/// `clockId` is read by value; `time` is borrowed and written. Returns zero, or a negative error number -- `EINVAL`
+/// for a clock this kernel does not have.
+///
+/// # Safety
+///
+/// `time` must be non-null and writable.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-get-time
+func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
+    return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
+}
+
+/// Suspends the caller for the requested duration.
+///
+/// `request` is borrowed and read; `remaining` is borrowed and written when the wait was cut short, and may be null
+/// when the caller does not care. Returns zero, or a negative error number.
+///
+/// A signal interrupts the wait and reports `EINTR` with the unslept time in `remaining`, which is what makes the
+/// second argument worth passing: resuming means calling again with what came back, not with the original request.
+/// The wait is against `ClockRealtime` but is not affected by the clock being set.
+///
+/// # Safety
+///
+/// `request` must be non-null, and its nanoseconds must be under one second or the call reports `EINVAL`.
+///
+/// https://rux-lang.dev/docs/api/linux/nanosleep
+func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
+    return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
+}

@@ -1,0 +1,107 @@
+// Mapping and unmapping address space, and moving the program break.
+//
+// These are the calls an allocator is built on. Nothing here tracks what it hands out: an address returned by `Mmap`
+// is valid until `Munmap` releases exactly the range that was mapped, and this package has no way to notice a caller
+// releasing a range it never mapped.
+
+import Linux::{ SignExtendFd, SysBrk, SysMmap, SysMunmap, Syscall1, Syscall2, Syscall6 };
+
+/// `PROT_NONE`: the pages may not be touched at all.
+///
+/// https://rux-lang.dev/docs/api/linux/protection-none
+const ProtectionNone: int32 = 0;
+
+/// `PROT_READ`: the pages may be read.
+///
+/// https://rux-lang.dev/docs/api/linux/protection-read
+const ProtectionRead: int32 = 1;
+
+/// `PROT_WRITE`: the pages may be written.
+///
+/// https://rux-lang.dev/docs/api/linux/protection-write
+const ProtectionWrite: int32 = 2;
+
+/// `PROT_EXEC`: the pages may be executed.
+///
+/// https://rux-lang.dev/docs/api/linux/protection-execute
+const ProtectionExecute: int32 = 4;
+
+/// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
+///
+/// https://rux-lang.dev/docs/api/linux/map-shared
+const MapShared: int32 = 1;
+
+/// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
+///
+/// https://rux-lang.dev/docs/api/linux/map-private
+const MapPrivate: int32 = 2;
+
+/// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
+///
+/// Dangerous by design: it silently unmaps anything already at the address, which may be someone else's mapping.
+///
+/// https://rux-lang.dev/docs/api/linux/map-fixed
+const MapFixed: int32 = 16;
+
+/// `MAP_ANONYMOUS`: the mapping is backed by zeroed pages rather than by a file.
+///
+/// The descriptor argument is then unused and is conventionally `-1`.
+///
+/// https://rux-lang.dev/docs/api/linux/map-anonymous
+const MapAnonymous: int32 = 32;
+
+/// Creates a mapping and returns its address, or a negative error number.
+///
+/// `address` is a hint unless `MapFixed` is set, and null asks the kernel to choose. `length` is rounded up to a
+/// whole number of pages. `fd` is the object to map, or `-1` with `MapAnonymous`. `offset` must be page-aligned.
+///
+/// Returns the mapping's address as an integer. Testing it needs `Errors::IsError` rather than a sign test: a valid
+/// address may have its top bit set, and only the kernel's reserved `-4095` through `-1` range is a failure.
+///
+/// The mapping outlives nothing on its own -- it stays until `Munmap` releases it or the process ends.
+///
+/// # Safety
+///
+/// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
+///
+/// https://rux-lang.dev/docs/api/linux/mmap
+func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+    return Syscall6(
+        SysMmap,
+        address as uint64,
+        length as uint64,
+        protection as uint64,
+        flags as uint64,
+        SignExtendFd(fd),
+        offset
+    );
+}
+
+/// Releases the mapping that begins at `address` and spans `length` bytes.
+///
+/// `address` must be page-aligned; `length` is rounded up to whole pages. Returns zero, or a negative error number.
+///
+/// Releasing a range that was never mapped succeeds and does nothing, so this cannot be used to discover whether a
+/// range was mapped.
+///
+/// # Safety
+///
+/// Every pointer into the range becomes invalid, and the address space may be handed to a later mapping at once.
+///
+/// https://rux-lang.dev/docs/api/linux/munmap
+func Munmap(address: *opaque, length: uint) -> int64 {
+    return Syscall2(SysMunmap, address as uint64, length as uint64);
+}
+
+/// Sets the program break and returns where it ended up.
+///
+/// `address` is the requested new break, or null to ask where it is. Returns the resulting break, which is the old
+/// one when the request could not be met -- this call reports failure by not moving rather than by an error number.
+///
+/// The break is a single process-wide value. Anything else in the process that uses it, including a C runtime that
+/// was linked in, is using the same one.
+///
+/// https://rux-lang.dev/docs/api/linux/brk
+func Brk(address: *opaque) -> int64 {
+    return Syscall1(SysBrk, address as uint64);
+}

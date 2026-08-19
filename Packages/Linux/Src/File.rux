@@ -1,0 +1,69 @@
+// Reading and writing through a file descriptor, and the three descriptors a process starts with.
+//
+// The wrappers here name their arguments and nothing more: each returns the kernel's raw result, which is a byte
+// count or a small negative error number. A short count is not an error and not an end of file -- a read that returns
+// fewer bytes than asked for has to be called again, which is the caller's loop to write.
+
+import Linux::{ FileDescriptor, SignExtendFd, SysClose, SysRead, SysWrite, Syscall1, Syscall3 };
+
+/// The descriptor a process reads its input from, unless something reassigned it.
+///
+/// https://rux-lang.dev/docs/api/linux/std-in
+const StdIn: int32 = 0;
+
+/// The descriptor a process writes its output to.
+///
+/// https://rux-lang.dev/docs/api/linux/std-out
+const StdOut: int32 = 1;
+
+/// The descriptor a process writes its diagnostics to, which is separate so it survives a redirected output.
+///
+/// https://rux-lang.dev/docs/api/linux/std-err
+const StdErr: int32 = 2;
+
+/// Reads up to `count` bytes from `fd` into `buffer`.
+///
+/// `fd` and `count` are read by value; `buffer` is borrowed and written. Returns the number of bytes actually read,
+/// zero at end of file, or a negative error number.
+///
+/// A count smaller than `count` is ordinary and is not an end of file: a pipe, a terminal, or a signal can each cut a
+/// read short. Only zero means the source has ended.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `count` bytes. The kernel checks the address and reports `EFAULT` rather than
+/// faulting, but it does not check the length against anything the caller knows.
+///
+/// https://rux-lang.dev/docs/api/linux/read
+func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
+    return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
+}
+
+/// Writes up to `count` bytes from `buffer` to `fd`.
+///
+/// `fd` and `count` are read by value; `buffer` is borrowed and read. Returns the number of bytes actually written,
+/// or a negative error number.
+///
+/// A count smaller than `count` is ordinary, and the rest has to be written by calling again from where this
+/// stopped. Writing to a pipe whose reader has closed raises `SIGPIPE` before this can report `EPIPE`.
+///
+/// # Safety
+///
+/// `buffer` must be readable for `count` bytes.
+///
+/// https://rux-lang.dev/docs/api/linux/write
+func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
+    return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
+}
+
+/// Closes `fd` and releases what the kernel held for it.
+///
+/// `fd` is read by value. Returns zero, or a negative error number.
+///
+/// A failure does not mean the descriptor is still open: on Linux it is released whatever this reports, so retrying
+/// a failed close can close a descriptor another thread has since opened under the same number.
+///
+/// https://rux-lang.dev/docs/api/linux/close
+func Close(fd: FileDescriptor) -> int64 {
+    return Syscall1(SysClose, SignExtendFd(fd));
+}

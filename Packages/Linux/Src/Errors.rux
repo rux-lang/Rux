@@ -1,0 +1,204 @@
+// How a Linux system call reports failure, and the numbers it reports.
+//
+// There is no `errno` here. The kernel returns the error in the result register as a small negative number, and libc
+// is what turns that into a positive `errno` and a `-1` return. This package calls the kernel directly, so a caller
+// tests the raw result with `IsError` and reads the number with `Errno`.
+//
+// The reserved range is `-4095` through `-1`. Nothing else is an error, which is what makes `mmap` workable: a
+// mapping address is an unsigned value that may legitimately have its top bit set, and only the last page of the
+// address space could collide with the error range, which the kernel never hands out.
+//
+// The names keep the kernel's own spelling. `EINVAL` is what a man page names and what a reader porting code will
+// look for, and there is no Rux name for it that would be clearer. The values below are the architecture-independent
+// ones from `asm-generic/errno-base.h` and `asm-generic/errno.h`, which both supported architectures use.
+
+/// `EPERM`: the operation is not permitted to this caller.
+///
+/// https://rux-lang.dev/docs/api/linux/eperm
+#Allow("naming.const")
+const EPERM: int64 = 1;
+
+/// `ENOENT`: no such file or directory.
+///
+/// https://rux-lang.dev/docs/api/linux/enoent
+#Allow("naming.const")
+const ENOENT: int64 = 2;
+
+/// `ESRCH`: no such process.
+///
+/// https://rux-lang.dev/docs/api/linux/esrch
+#Allow("naming.const")
+const ESRCH: int64 = 3;
+
+/// `EINTR`: the call was interrupted by a signal before it did anything.
+///
+/// https://rux-lang.dev/docs/api/linux/eintr
+#Allow("naming.const")
+const EINTR: int64 = 4;
+
+/// `EIO`: a low-level input or output error.
+///
+/// https://rux-lang.dev/docs/api/linux/eio
+#Allow("naming.const")
+const EIO: int64 = 5;
+
+/// `ENXIO`: no such device or address.
+///
+/// https://rux-lang.dev/docs/api/linux/enxio
+#Allow("naming.const")
+const ENXIO: int64 = 6;
+
+/// `EBADF`: the file descriptor is not open, or is not open for what was asked.
+///
+/// https://rux-lang.dev/docs/api/linux/ebadf
+#Allow("naming.const")
+const EBADF: int64 = 9;
+
+/// `EAGAIN`: the operation would block, and the descriptor was set not to.
+///
+/// Spelled `EWOULDBLOCK` in some interfaces; on Linux the two are one value.
+///
+/// https://rux-lang.dev/docs/api/linux/eagain
+#Allow("naming.const")
+const EAGAIN: int64 = 11;
+
+/// `ENOMEM`: not enough memory to satisfy the request.
+///
+/// https://rux-lang.dev/docs/api/linux/enomem
+#Allow("naming.const")
+const ENOMEM: int64 = 12;
+
+/// `EACCES`: permission denied.
+///
+/// https://rux-lang.dev/docs/api/linux/eacces
+#Allow("naming.const")
+const EACCES: int64 = 13;
+
+/// `EFAULT`: an address the call was given is outside the caller's address space.
+///
+/// https://rux-lang.dev/docs/api/linux/efault
+#Allow("naming.const")
+const EFAULT: int64 = 14;
+
+/// `EBUSY`: the resource is in use.
+///
+/// https://rux-lang.dev/docs/api/linux/ebusy
+#Allow("naming.const")
+const EBUSY: int64 = 16;
+
+/// `EEXIST`: the file already exists.
+///
+/// https://rux-lang.dev/docs/api/linux/eexist
+#Allow("naming.const")
+const EEXIST: int64 = 17;
+
+/// `ENOTDIR`: a path component that had to be a directory is not one.
+///
+/// https://rux-lang.dev/docs/api/linux/enotdir
+#Allow("naming.const")
+const ENOTDIR: int64 = 20;
+
+/// `EISDIR`: the target is a directory and the operation is not one a directory accepts.
+///
+/// https://rux-lang.dev/docs/api/linux/eisdir
+#Allow("naming.const")
+const EISDIR: int64 = 21;
+
+/// `EINVAL`: an argument is not valid.
+///
+/// https://rux-lang.dev/docs/api/linux/einval
+#Allow("naming.const")
+const EINVAL: int64 = 22;
+
+/// `EMFILE`: this process has too many descriptors open.
+///
+/// https://rux-lang.dev/docs/api/linux/emfile
+#Allow("naming.const")
+const EMFILE: int64 = 24;
+
+/// `ENOSPC`: the device has no room left.
+///
+/// https://rux-lang.dev/docs/api/linux/enospc
+#Allow("naming.const")
+const ENOSPC: int64 = 28;
+
+/// `ESPIPE`: the descriptor is a pipe or socket and cannot be seeked.
+///
+/// https://rux-lang.dev/docs/api/linux/espipe
+#Allow("naming.const")
+const ESPIPE: int64 = 29;
+
+/// `EROFS`: the file system is mounted read-only.
+///
+/// https://rux-lang.dev/docs/api/linux/erofs
+#Allow("naming.const")
+const EROFS: int64 = 30;
+
+/// `EPIPE`: the reading end of the pipe is closed.
+///
+/// https://rux-lang.dev/docs/api/linux/epipe
+#Allow("naming.const")
+const EPIPE: int64 = 32;
+
+/// `ENAMETOOLONG`: the path or a component of it is too long.
+///
+/// https://rux-lang.dev/docs/api/linux/enametoolong
+#Allow("naming.const")
+const ENAMETOOLONG: int64 = 36;
+
+/// `ENOSYS`: the kernel does not implement this call.
+///
+/// What an architecture that lacks a call reports, which is how a caller falls back to another.
+///
+/// https://rux-lang.dev/docs/api/linux/enosys
+#Allow("naming.const")
+const ENOSYS: int64 = 38;
+
+/// `ELOOP`: too many symbolic links were followed resolving the path.
+///
+/// https://rux-lang.dev/docs/api/linux/eloop
+#Allow("naming.const")
+const ELOOP: int64 = 40;
+
+/// `EOVERFLOW`: a value is too large for the type the call reports it in.
+///
+/// https://rux-lang.dev/docs/api/linux/eoverflow
+#Allow("naming.const")
+const EOVERFLOW: int64 = 75;
+
+/// `ETIMEDOUT`: the operation timed out.
+///
+/// https://rux-lang.dev/docs/api/linux/etimedout
+#Allow("naming.const")
+const ETIMEDOUT: int64 = 110;
+
+/// The largest error number the kernel's reserved range holds.
+///
+/// A raw result below `-MaximumErrno` is a value, not an error.
+///
+/// https://rux-lang.dev/docs/api/linux/maximum-errno
+const MaximumErrno: int64 = 4095;
+
+/// Whether a raw system-call result is one of the kernel's reserved error values.
+///
+/// `result` is read by value. True for `-4095` through `-1`, and false for everything else, including every valid
+/// mapping address a memory call returns.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/linux/is-error
+func IsError(result: int64) -> bool {
+    return result < 0 && result >= -MaximumErrno;
+}
+
+/// The error number a raw system-call result carries, or zero when it carries none.
+///
+/// `result` is read by value; the number is returned by copy, positive, as a man page names it. A successful result
+/// gives zero, which is not an error number and never collides with one.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/linux/errno
+func Errno(result: int64) -> int64 {
+    return IsError(result) ? -result : 0;
+}

@@ -1,0 +1,34 @@
+// What a process can ask or say about itself.
+//
+// Nothing here creates a process. `fork` and `execve` need signal handling, descriptor inheritance and a wait
+// protocol to be usable rather than merely callable, and a raw binding to them would be an invitation to get all
+// three wrong; that belongs above this package.
+
+import Linux::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
+
+/// Ends the calling thread's process with `code`.
+///
+/// `code` is read by value; only its low eight bits reach a waiting parent, which is the kernel's rule rather than
+/// this binding's. Does not return.
+///
+/// Nothing is flushed, unwound, or destroyed on the way out: the kernel reclaims the address space and the
+/// descriptors, and anything the program was holding elsewhere is simply gone.
+///
+/// This ends the whole process rather than one thread, which is `exit_group` in kernel terms.
+///
+/// https://rux-lang.dev/docs/api/linux/exit
+func Exit(code: int32) {
+    Syscall1(SysExit, (code as int64) as uint64);
+}
+
+/// The calling process's own identifier.
+///
+/// Takes nothing and returns the identifier by copy. Cannot fail: every process has one, and the call has no way to
+/// be given a bad argument.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/linux/get-pid
+func GetPid() -> ProcessId {
+    return Syscall0(SysGetPid) as ProcessId;
+}
