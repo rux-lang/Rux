@@ -450,3 +450,49 @@ TEST_CASE("assembly diagnostics cover malformed instruction and operand forms on
         CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
     }
 }
+
+TEST_CASE("a when match arm loop always consumes something") {
+    // A statement written as a bare arm body parses no expression and so consumed nothing, and the arm loop ran
+    // forever building empty arms until the process ran out of memory. Each malformed arm is now reported once and
+    // the match ends.
+    const auto parsed = ParseSource(R"(
+        func Select() -> int32 {
+            when #target.os {
+                .Windows => return 1i32;
+                else => return 2i32;
+            }
+        }
+    )");
+
+    REQUIRE(parsed.HasErrors());
+    CAPTURE(DiagnosticMessages(parsed));
+    const std::string expected =
+        "a 'when' arm body that is a statement must be written as a block, as in '.Windows => { return 1; }'";
+    std::size_t reported = 0;
+    for (const auto &diagnostic : parsed.diagnostics) {
+        if (diagnostic.message == expected) {
+            ++reported;
+        }
+    }
+    // One per malformed arm: recovery takes the statement's terminator with it, so the next arm starts cleanly
+    // instead of the leftover ';' being read as another arm.
+    CHECK_EQ(reported, 2);
+    CHECK_EQ(parsed.diagnostics.size(), 2);
+}
+
+TEST_CASE("a when match arm accepts an expression body and a block body") {
+    const auto parsed = ParseSource(R"(
+        func Select() -> int32 {
+            var result = 0i32;
+            when #target.os {
+                .Windows => result = 1i32,
+                .Linux => { result = 2i32; }
+                else => result = 3i32
+            }
+            return result;
+        }
+    )");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    CHECK_FALSE(parsed.HasErrors());
+}
