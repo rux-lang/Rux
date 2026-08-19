@@ -1,0 +1,98 @@
+import Core::Assert;
+import Memory::{ AlignDown, AlignUp, AlignUpChecked, Alloc, Free, IsAligned, IsPointerAligned, LoadBigEndian,
+                 LoadLittleEndian, LoadUnaligned, ReverseBlock, Set, StoreBigEndian, StoreLittleEndian,
+                 StoreUnaligned, ZeroizeBlock };
+
+// The two things these get wrong quietly: rounding up past the end of the range, and reading a value at an address
+// the type is not aligned for. Both are checked here, the second by deliberately working one byte off alignment.
+
+func Main() -> int {
+    // Alignment questions, including the degenerate alignments that must not divide by zero.
+    Assert(IsAligned(0, 8), "zero is aligned to everything");
+    Assert(IsAligned(16, 8), "a multiple is aligned");
+    Assert(!IsAligned(17, 8), "and one past it is not");
+    Assert(!IsAligned(8, 0), "an alignment of zero is not something to be aligned to");
+    Assert(IsAligned(7, 1), "everything is aligned to one");
+
+    Assert(AlignUp(0, 8) == 0, "zero needs no rounding");
+    Assert(AlignUp(1, 8) == 8, "one rounds up to the alignment");
+    Assert(AlignUp(8, 8) == 8, "an aligned value is left alone, so rounding is idempotent");
+    Assert(AlignUp(9, 8) == 16, "and nine rounds to sixteen");
+    Assert(AlignUp(9, 1) == 9, "an alignment of one changes nothing");
+    Assert(AlignUp(9, 0) == 9, "and neither does an alignment of zero");
+
+    Assert(AlignDown(0, 8) == 0, "zero rounds down to itself");
+    Assert(AlignDown(15, 8) == 8, "fifteen rounds down to eight");
+    Assert(AlignDown(16, 8) == 16, "an aligned value is left alone");
+    Assert(AlignDown(7, 0) == 7, "an alignment of zero changes nothing");
+
+    // The case that matters for an allocation size: rounding up past the end of the range.
+    var rounded: uint = 0;
+    Assert(!AlignUpChecked(9, 8, @rounded), "an ordinary value rounds without overflowing");
+    Assert(rounded == 16, "and lands where AlignUp puts it");
+    Assert(!AlignUpChecked(16, 8, @rounded) && rounded == 16, "an aligned value reports nothing lost");
+    Assert(AlignUpChecked(uint::Max, 8, @rounded), "rounding the maximum up has no answer");
+    Assert(AlignUpChecked(uint::Max - 2, 8, @rounded), "and neither does anything within the padding of it");
+    Assert(!AlignUpChecked(uint::Max, 1, @rounded) && rounded == uint::Max,
+           "an alignment of one has nothing to round and so cannot overflow");
+    // AlignUp wraps where AlignUpChecked reports, which is why an allocation size must use the second.
+    Assert(AlignUp(uint::Max, 8) < 8, "the unchecked form wraps rather than reporting");
+
+    let block = Alloc(64) as *var byte;
+    Assert(block != null as *byte, "the block is allocated");
+    Assert(IsPointerAligned(block as *opaque, 8), "an allocation is aligned for a machine word");
+    Assert(IsPointerAligned(null, 4096), "null is a multiple of everything, which is not the same as usable");
+
+    // Unaligned access: the value is written and read back one byte off alignment, where an aligned load would be
+    // wrong on every machine that cares.
+    let odd = block + 1;
+    var written: uint32 = 0x01020304;
+    StoreUnaligned<uint32>(odd as *var opaque, @written);
+    var recovered: uint32 = 0;
+    LoadUnaligned<uint32>(odd as *opaque, @recovered);
+    Assert(recovered == 0x01020304u32, "a value survives a round trip at an unaligned address");
+    Assert(!IsPointerAligned(odd as *opaque, 4), "and the address really was unaligned");
+
+    // Byte order, written and read at that same unaligned address.
+    StoreLittleEndian<uint32>(odd as *var opaque, @written);
+    Assert(*odd == 0x04 as byte, "little-endian puts the least significant byte first");
+    Assert(*(odd + 3) == 0x01 as byte, "and the most significant last");
+    recovered = 0;
+    LoadLittleEndian<uint32>(odd as *opaque, @recovered);
+    Assert(recovered == 0x01020304u32, "which reads back as the value it started as");
+
+    StoreBigEndian<uint32>(odd as *var opaque, @written);
+    Assert(*odd == 0x01 as byte, "big-endian puts the most significant byte first");
+    Assert(*(odd + 3) == 0x04 as byte, "and the least significant last");
+    recovered = 0;
+    LoadBigEndian<uint32>(odd as *opaque, @recovered);
+    Assert(recovered == 0x01020304u32, "which also reads back as itself");
+
+    // Reading one order through the other gives the reversed value, which is what proves the two differ at all.
+    recovered = 0;
+    LoadLittleEndian<uint32>(odd as *opaque, @recovered);
+    Assert(recovered == 0x04030201u32, "a big-endian pattern read as little-endian is byte-reversed");
+
+    // Reversing a run of bytes in place.
+    var index: uint = 0;
+    while index < 8 {
+        *(block + index) = index as byte;
+        index++;
+    }
+    ReverseBlock(block as *var opaque, 8);
+    Assert(*block == 7 as byte && *(block + 7) == 0 as byte, "the ends are exchanged");
+    Assert(*(block + 3) == 4 as byte, "and so is the middle");
+    ReverseBlock(block as *var opaque, 1);
+    Assert(*block == 7 as byte, "reversing one byte changes nothing");
+    ReverseBlock(null, 0);
+
+    // Zeroization clears what it is given.
+    Set(block as *var opaque, 0xFF as byte, 64);
+    ZeroizeBlock(block as *var opaque, 16);
+    Assert(*block == 0 as byte && *(block + 15) == 0 as byte, "the range is cleared");
+    Assert(*(block + 16) == 0xFF as byte, "and nothing past it is touched");
+    ZeroizeBlock(null, 0);
+
+    Free(block as *var opaque);
+    return 0;
+}

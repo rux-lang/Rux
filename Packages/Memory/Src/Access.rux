@@ -1,0 +1,279 @@
+// Alignment, unaligned access, byte swapping, and clearing a secret so that it stays cleared.
+//
+// Three of these exist because a pointer is not always where a type wants it. A value read from a file, a packet or
+// a mapped structure sits wherever the format put it, and on some machines a load that crosses an alignment boundary
+// faults rather than being slow. The load and store helpers below go through bytes, so they are correct at any
+// address and cost the same everywhere.
+//
+// `ZeroizeBlock` exists because clearing a secret is a write nothing reads back, which is exactly the write a
+// compiler is entitled to delete. It is the one operation here that rests on a compiler guarantee rather than a
+// library one.
+
+import Core::{ TargetIsLittleEndian, Zeroize };
+import Memory::Copy;
+
+/// Whether `address` is a multiple of `alignment`.
+///
+/// `address` and `alignment` are read by value. An `alignment` of zero reports false rather than dividing by it, and
+/// an alignment that is not a power of two gives an answer that is arithmetically true but rarely meaningful, since
+/// hardware alignment is always a power of two.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/memory/is-aligned
+func IsAligned(address: uint, alignment: uint) -> bool {
+    if alignment == 0 {
+        return false;
+    }
+    return address % alignment == 0;
+}
+
+/// Whether `pointer` is aligned for `alignment`.
+///
+/// `pointer` is read by value and never dereferenced. A null pointer reports true for every alignment, since zero is
+/// a multiple of everything; a caller that means "usable" has to ask that separately.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/memory/is-pointer-aligned
+func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
+    return IsAligned(pointer as uint, alignment);
+}
+
+/// The next multiple of `alignment` at or above `value`.
+///
+/// `value` and `alignment` are read by value. An `alignment` of zero or one returns `value` unchanged, since every
+/// value is already a multiple of both.
+///
+/// Returns `value` itself when it is already aligned, so this is idempotent.
+///
+/// # Safety
+///
+/// A `value` within `alignment - 1` of the maximum has no next multiple, and this wraps to a small number rather
+/// than reporting it. A caller sizing an allocation must check for that before trusting the result; `AlignUpChecked`
+/// does the checking.
+///
+/// https://rux-lang.dev/docs/api/memory/align-up
+func AlignUp(value: uint, alignment: uint) -> uint {
+    if alignment <= 1 {
+        return value;
+    }
+    let remainder = value % alignment;
+    return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+/// The next multiple of `alignment` at or above `value`, reporting whether it was representable.
+///
+/// `value` and `alignment` are read by value; `result` receives the aligned value when this returns `false`, and is
+/// left unwritten when it returns `true`. `result` must not be null.
+///
+/// Returns `true` when rounding up would pass the maximum, which is the case an allocation size has to notice: a
+/// wrapped size is an allocation far smaller than the caller asked for.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/memory/align-up-checked
+func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
+    if alignment <= 1 {
+        *result = value;
+        return false;
+    }
+    let remainder = value % alignment;
+    if remainder == 0 {
+        *result = value;
+        return false;
+    }
+    let padding = alignment - remainder;
+    if value > uint::Max - padding {
+        return true;
+    }
+    *result = value + padding;
+    return false;
+}
+
+/// The previous multiple of `alignment` at or below `value`.
+///
+/// `value` and `alignment` are read by value. An `alignment` of zero or one returns `value` unchanged.
+///
+/// Cannot fail: rounding down never leaves the range.
+///
+/// https://rux-lang.dev/docs/api/memory/align-down
+func AlignDown(value: uint, alignment: uint) -> uint {
+    if alignment <= 1 {
+        return value;
+    }
+    return value - (value % alignment);
+}
+
+/// Reads a value of `T` from `source`, whatever `source` is aligned to.
+///
+/// `source` is borrowed and `sizeof(T)` bytes are read from it; `destination` receives the value. Both must be
+/// non-null.
+///
+/// The bytes are taken one at a time, so this is correct at any address on any machine -- including the ones where a
+/// misaligned load faults rather than merely costing more.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `source` must be readable for `sizeof(T)` bytes. The bytes are taken as they are, so a value that is not a valid
+/// `T` stays invalid; this reinterprets rather than validating.
+///
+/// https://rux-lang.dev/docs/api/memory/load-unaligned
+func LoadUnaligned<T>(source: *opaque, destination: *var T) {
+    Copy(destination as *var opaque, source, sizeof(T));
+}
+
+/// Writes a value of `T` to `destination`, whatever `destination` is aligned to.
+///
+/// `value` is borrowed and read; `destination` is borrowed and receives `sizeof(T)` bytes. Both must be non-null.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `sizeof(T)` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/store-unaligned
+func StoreUnaligned<T>(destination: *var opaque, value: *T) {
+    Copy(destination, value as *opaque, sizeof(T));
+}
+
+/// Reverses the order of `length` bytes at `buffer`, in place.
+///
+/// `buffer` is borrowed and rewritten. A `length` of zero or one changes nothing and accepts a null pointer at zero.
+///
+/// This is the byte-order conversion for a run of bytes rather than for one value; `Core::ReverseBytes` is the one
+/// that takes an integer.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be readable and writable for `length` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/reverse-block
+func ReverseBlock(buffer: *var opaque, length: uint) {
+    if length < 2 {
+        return;
+    }
+    let bytes = buffer as *var byte;
+    var front: uint = 0;
+    var back: uint = length - 1;
+    while front < back {
+        let held = *(bytes + front);
+        *(bytes + front) = *(bytes + back);
+        *(bytes + back) = held;
+        front++;
+        back--;
+    }
+}
+
+/// Reads a `T` from `source`, taking the bytes as little-endian.
+///
+/// `source` is borrowed and `sizeof(T)` bytes are read; `destination` receives the value in the target's own order.
+/// Both must be non-null. Needs no alignment.
+///
+/// This is the pair of calls a file or wire format actually needs: the bytes are wherever the format put them, and
+/// their order is the format's rather than the machine's.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `source` must be readable for `sizeof(T)` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/load-little-endian
+func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
+    LoadUnaligned<T>(source, destination);
+    if !TargetIsLittleEndian() {
+        ReverseBlock(destination as *var opaque, sizeof(T));
+    }
+}
+
+/// Reads a `T` from `source`, taking the bytes as big-endian.
+///
+/// `source` is borrowed and `sizeof(T)` bytes are read; `destination` receives the value in the target's own order.
+/// Both must be non-null. Needs no alignment. This is network byte order.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `source` must be readable for `sizeof(T)` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/load-big-endian
+func LoadBigEndian<T>(source: *opaque, destination: *var T) {
+    LoadUnaligned<T>(source, destination);
+    if TargetIsLittleEndian() {
+        ReverseBlock(destination as *var opaque, sizeof(T));
+    }
+}
+
+/// Writes a `T` to `destination` as little-endian bytes.
+///
+/// `value` is borrowed and read; `destination` receives `sizeof(T)` bytes. Both must be non-null. Needs no
+/// alignment.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `sizeof(T)` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/store-little-endian
+func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
+    StoreUnaligned<T>(destination, value);
+    if !TargetIsLittleEndian() {
+        ReverseBlock(destination, sizeof(T));
+    }
+}
+
+/// Writes a `T` to `destination` as big-endian bytes.
+///
+/// `value` is borrowed and read; `destination` receives `sizeof(T)` bytes. Both must be non-null. Needs no
+/// alignment.
+///
+/// Cannot fail. Runs in time proportional to `sizeof(T)` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `sizeof(T)` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/store-big-endian
+func StoreBigEndian<T>(destination: *var opaque, value: *T) {
+    StoreUnaligned<T>(destination, value);
+    if TargetIsLittleEndian() {
+        ReverseBlock(destination, sizeof(T));
+    }
+}
+
+/// Clears `length` bytes at `buffer`, and is not removed however unread those bytes are afterwards.
+///
+/// `buffer` is borrowed and written. A `length` of zero writes nothing and accepts a null pointer.
+///
+/// This is what `Zero` is not. Clearing a secret is a write nothing reads back, which dead-store elimination is
+/// entitled to delete, and ordinary source cannot say "and mean it" -- so this is a compiler guarantee rather than a
+/// library one.
+///
+/// The guarantee is `Core::Zeroize`'s; this adds the empty-case contract the rest of this module has and takes the
+/// `*var opaque` and `uint` every other block operation here takes.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes.
+///
+/// It clears the storage it is given and nothing else. A copy the caller made beforehand, a value the compiler
+/// spilled to the stack, or bytes a reallocation left behind are all still there -- so a secret has to be kept in
+/// one place from the start for this to be the whole of its erasure.
+///
+/// https://rux-lang.dev/docs/api/memory/zeroize-block
+func ZeroizeBlock(buffer: *var opaque, length: uint) {
+    if length == 0 {
+        return;
+    }
+    Zeroize(buffer as *var uint8, length as uint64);
+}
