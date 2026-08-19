@@ -1,0 +1,255 @@
+// Raw block operations: copying, moving, filling, comparing and searching a run of bytes.
+//
+// Nothing here knows what the bytes mean. A block is an address and a length, and every operation touches exactly
+// the length it is given and nothing beyond it.
+//
+// **Zero length is always legal, and null is legal with it.** A length of zero does nothing at all, and the pointers
+// are not examined, so `Copy(null, null, 0)` is defined and does nothing. That is deliberately not C's rule, where
+// passing null to `memcpy` is undefined even for a zero length -- a rule that turns an ordinary empty case into a
+// trap and forces every caller to guard. A non-zero length requires real, usable storage.
+//
+// Overlap is where `Copy` and `Move` part company. `Copy` may be read as copying byte zero first and byte `length -
+// 1` last, so a destination that overlaps the source ahead of it reads bytes the copy has already overwritten.
+// `Move` is defined for every overlap, at the cost of choosing a direction first.
+//
+// The comparisons treat a byte as unsigned, so ordering does not depend on whether the platform's plain `char` is
+// signed. None of them is constant-time: each stops at the first difference, so nothing here may compare a secret.
+
+import Core::{ Ordering, #target };
+
+when #target.os == .Windows {
+    import Windows::{ RtlCompareMemory, RtlCopyMemory, RtlFillMemory, RtlZeroMemory };
+}
+
+/// Copies `length` bytes from `source` to `destination`, which must not overlap.
+///
+/// `source` is borrowed and read; `destination` is borrowed and written. Nothing is returned and nothing takes
+/// ownership. A `length` of zero copies nothing and accepts null for either pointer.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `length` bytes and `source` readable for `length`, and the two ranges must not
+/// overlap. Use `Move` when they might: this one is free to copy in whichever order suits the machine.
+///
+/// https://rux-lang.dev/docs/api/memory/copy
+func Copy(destination: *var opaque, source: *opaque, length: uint) {
+    if length == 0 {
+        return;
+    }
+    when #target.os == .Windows {
+        RtlCopyMemory(destination, source, length);
+    } else {
+        let target = destination as *var byte;
+        let origin = source as *byte;
+        var offset: uint = 0;
+        while offset < length {
+            *(target + offset) = *(origin + offset);
+            offset++;
+        }
+    }
+}
+
+/// Copies `length` bytes from `source` to `destination`, correctly even when the two overlap.
+///
+/// `source` is borrowed and read; `destination` is borrowed and written. A `length` of zero moves nothing and
+/// accepts null for either pointer.
+///
+/// The result is what copying through a temporary would give: every source byte reaches its destination as it was
+/// before the move began. Sliding a run forward within one buffer therefore works, which is what an insertion into
+/// the middle of an array needs.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing -- the temporary is notional, and the
+/// direction of the copy is what actually makes it right.
+///
+/// # Safety
+///
+/// `destination` must be writable for `length` bytes and `source` readable for `length`. They may overlap in any
+/// way, including exactly.
+///
+/// https://rux-lang.dev/docs/api/memory/move
+func Move(destination: *var opaque, source: *opaque, length: uint) {
+    if length == 0 {
+        return;
+    }
+    let target = destination as *var byte;
+    let origin = source as *byte;
+    if target == origin as *var byte {
+        return;
+    }
+
+    // Copying forward is right when the destination is below the source, because every byte read has not yet been
+    // written. When the destination is above and the ranges overlap, the same order would overwrite bytes still to
+    // be read, so the copy runs from the far end back.
+    if (target as uint) < (origin as uint) {
+        var offset: uint = 0;
+        while offset < length {
+            *(target + offset) = *(origin + offset);
+            offset++;
+        }
+        return;
+    }
+    var remaining = length;
+    while remaining > 0 {
+        remaining--;
+        *(target + remaining) = *(origin + remaining);
+    }
+}
+
+/// Writes `value` to each of `length` bytes at `destination`.
+///
+/// `destination` is borrowed and written. A `length` of zero writes nothing and accepts a null pointer.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `length` bytes. This is not the call for clearing a secret: a write nothing
+/// reads back may be deleted, and `Core::Zeroize` is the one that may not be.
+///
+/// https://rux-lang.dev/docs/api/memory/set
+func Set(destination: *var opaque, value: byte, length: uint) {
+    if length == 0 {
+        return;
+    }
+    when #target.os == .Windows {
+        RtlFillMemory(destination, length, value as int32);
+    } else {
+        let bytes = destination as *var byte;
+        var offset: uint = 0;
+        while offset < length {
+            *(bytes + offset) = value;
+            offset++;
+        }
+    }
+}
+
+/// Writes zero to each of `length` bytes at `destination`.
+///
+/// `destination` is borrowed and written. A `length` of zero writes nothing and accepts a null pointer.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be writable for `length` bytes. For a secret, use `Core::Zeroize`, which the compiler may not
+/// delete however unread the bytes are afterwards.
+///
+/// https://rux-lang.dev/docs/api/memory/zero
+func Zero(destination: *var opaque, length: uint) {
+    if length == 0 {
+        return;
+    }
+    when #target.os == .Windows {
+        RtlZeroMemory(destination, length);
+    } else {
+        Set(destination, 0 as byte, length);
+    }
+}
+
+/// The offset at which two blocks first differ, or `length` when they do not.
+///
+/// Both pointers are borrowed and read. A `length` of zero reports zero and accepts null for either pointer, which
+/// is the same answer two equal empty blocks give.
+///
+/// The answer is a position rather than an ordering, so it says where the blocks diverge and not which one sorts
+/// first. `Compare` answers that.
+///
+/// Cannot fail. Runs in time proportional to the shared prefix and allocates nothing.
+///
+/// # Safety
+///
+/// Both pointers must be readable for `length` bytes. Not constant-time: it stops at the first difference, so it
+/// must not be used on a secret.
+///
+/// https://rux-lang.dev/docs/api/memory/mismatch-offset
+func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
+    if length == 0 {
+        return 0;
+    }
+    when #target.os == .Windows {
+        return RtlCompareMemory(left, right, length);
+    } else {
+        let first = left as *byte;
+        let second = right as *byte;
+        var offset: uint = 0;
+        while offset < length {
+            if *(first + offset) != *(second + offset) {
+                return offset;
+            }
+            offset++;
+        }
+        return length;
+    }
+}
+
+/// Orders two blocks lexicographically, byte by byte.
+///
+/// Both pointers are borrowed and read. Returns `Less` when `left` sorts first, `Greater` when `right` does, and
+/// `Equal` when the two ranges hold the same bytes. A `length` of zero reports `Equal` and accepts null for either
+/// pointer.
+///
+/// Bytes are compared as unsigned, so the answer does not depend on whether the platform's plain `char` is signed,
+/// and it matches the order the bytes would sort in as a string.
+///
+/// Cannot fail. Runs in time proportional to the shared prefix and allocates nothing.
+///
+/// # Safety
+///
+/// Both pointers must be readable for `length` bytes. Not constant-time: it stops at the first difference, so a
+/// secret compared this way leaks where it differs. `Rux/Crypto` is where a constant-time comparison belongs.
+///
+/// https://rux-lang.dev/docs/api/memory/compare
+func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
+    let offset = MismatchOffset(left, right, length);
+    if offset == length {
+        return Ordering::Equal;
+    }
+    let first = *((left as *byte) + offset);
+    let second = *((right as *byte) + offset);
+    return first < second ? Ordering::Less : Ordering::Greater;
+}
+
+/// Whether two blocks hold the same bytes.
+///
+/// Both pointers are borrowed and read. A `length` of zero reports true and accepts null for either pointer: two
+/// empty blocks are equal.
+///
+/// Cannot fail. Runs in time proportional to the shared prefix and allocates nothing.
+///
+/// # Safety
+///
+/// Both pointers must be readable for `length` bytes. Not constant-time.
+///
+/// https://rux-lang.dev/docs/api/memory/equal
+func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
+    return MismatchOffset(left, right, length) == length;
+}
+
+/// The offset of the first byte equal to `value`, or `length` when there is none.
+///
+/// `haystack` is borrowed and read. A `length` of zero reports zero and accepts a null pointer, which is also what a
+/// search that found nothing reports -- an empty block contains nothing to find either way.
+///
+/// Cannot fail. Runs in time proportional to the offset returned and allocates nothing.
+///
+/// # Safety
+///
+/// `haystack` must be readable for `length` bytes.
+///
+/// https://rux-lang.dev/docs/api/memory/find
+func Find(haystack: *opaque, length: uint, value: byte) -> uint {
+    if length == 0 {
+        return 0;
+    }
+    let bytes = haystack as *byte;
+    var offset: uint = 0;
+    while offset < length {
+        if *(bytes + offset) == value {
+            return offset;
+        }
+        offset++;
+    }
+    return length;
+}

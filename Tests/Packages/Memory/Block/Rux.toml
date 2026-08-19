@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "Compare"
+Name = "Block"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Memory: Compare"
+Description = "Package test for Memory: raw block operations"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

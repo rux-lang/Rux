@@ -1,4 +1,4 @@
-import Memory::Compare;
+import Memory::Equal;
 
 // Hash and equality functions for the key types a table is most often keyed
 // by, so HashMap and HashSet are usable without every caller first writing a
@@ -109,5 +109,5 @@ func EqualsSlice(a: Slice<char8>, b: Slice<char8>) -> bool {
         return true;
     }
 
-    return Compare(a.data, b.data, a.length) == a.length;
+    return Equal(a.data, b.data, a.length);
 }

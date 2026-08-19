@@ -12,15 +12,33 @@ rux add Rux/Memory
 
 ## What it provides
 
-| Function  | Purpose                                        |
-| --------- | ---------------------------------------------- |
-| `Alloc`   | Allocate an uninitialized block                |
-| `Realloc` | Resize a block, preserving its contents        |
-| `Free`    | Release a block                                |
-| `Copy`    | Copy bytes between non-overlapping blocks      |
-| `Set`     | Fill a block with a byte value                 |
-| `Zero`    | Fill a block with zero                         |
-| `Compare` | Order two blocks lexicographically by byte     |
+| Function         | Purpose                                                          |
+| ---------------- | ---------------------------------------------------------------- |
+| `Alloc`          | Allocate an uninitialized block                                  |
+| `Realloc`        | Resize a block, preserving its contents                          |
+| `Free`           | Release a block                                                  |
+| `Copy`           | Copy bytes between blocks that do not overlap                    |
+| `Move`           | Copy bytes between blocks that may overlap in any way            |
+| `Set`            | Fill a block with a byte value                                   |
+| `Zero`           | Fill a block with zero                                           |
+| `Compare`        | Order two blocks lexicographically, returning an `Ordering`      |
+| `Equal`          | Whether two blocks hold the same bytes                           |
+| `MismatchOffset` | Where two blocks first differ, or their length when they do not  |
+| `Find`           | Where a byte first occurs, or the length when it does not        |
+
+**Zero length is always legal, and null is legal with it.** `Copy(null, null, 0)` is defined and does nothing. That
+is deliberately not C's rule, where passing null to `memcpy` is undefined even for a zero length — a rule that turns
+an ordinary empty case into a trap and makes every caller guard.
+
+`Copy` may be read as copying byte zero first, so a destination overlapping the source ahead of it reads bytes the
+copy has already overwritten. `Move` is defined for every overlap and chooses its direction accordingly.
+
+None of the comparisons is constant-time: each stops at the first difference, so none may compare a secret.
+
+> **Changed in this release.** `Compare` now returns an `Ordering`, which is what this table always claimed it did;
+> the old first-difference offset is `MismatchOffset`, and `Equal` is what most callers of the old `Compare` wanted.
+> `Set` takes its arguments in `memset` order — destination, value, length — where it previously took the length
+> before the value, and its value is a `byte` rather than an `int32`, so a mistaken call fails to compile.
 
 ## Example
 
