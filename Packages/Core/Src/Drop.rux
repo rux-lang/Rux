@@ -1,0 +1,40 @@
+/// Ownership: the marker that makes a type responsible for something it must release.
+///
+/// A type implementing `Drop` becomes move-only, and so does any aggregate holding one, because a value with a
+/// destructor cannot be duplicated by copying its bytes. Passing, returning, initializing or assigning one consumes
+/// it, and reading it afterwards is rejected with a use-after-move diagnostic. That much is enforced today, and it is
+/// what makes `Drop` worth implementing now: it is how a type says that its value has one owner at a time.
+///
+/// Implement it with `extend MyType : Drop`, which is what marks the type droppable; declaring a method named `Drop`
+/// without the interface does not.
+///
+/// # Safety
+///
+/// **The compiler does not yet run `Drop`.** It decides where destruction belongs — ordinary scope exit, return,
+/// `break` and `continue`, the value an assignment overwrites, `?` propagation, and the parts already built when
+/// constructing an aggregate fails — and it records a plan for each of those points, but no call is emitted for them
+/// yet. A type that must release something has to release it explicitly until that lands. Do not write a `Drop` body
+/// that a program's correctness depends on having run.
+///
+/// When emission arrives, `Drop` will run once per value that was not moved away, before the type's fields and
+/// elements are released in reverse construction order. Panic and process termination will not unwind, so it will not
+/// run on those paths. A resource whose release can fail should therefore also offer an explicit `Close` that
+/// consumes the value and reports the error; `Drop` has no way to report one.
+///
+/// https://rux-lang.dev/docs/api/core/drop
+interface Drop {
+    /// Releases whatever this value owns.
+    ///
+    /// Borrows the value through a `*var` receiver rather than consuming it: the storage is still there and the
+    /// compiler reclaims it once this returns.
+    ///
+    /// Must not fail and must not panic, because there is no caller to report to and no way to stop the destruction
+    /// already under way.
+    ///
+    /// # Safety
+    ///
+    /// Not called yet. See the note on the interface.
+    ///
+    /// https://rux-lang.dev/docs/api/core/drop/drop
+    func Drop();
+}
