@@ -76,6 +76,49 @@ extend Cell<T> {
     }
 }
 
+// `Self` names whichever type implements the interface, which is the only way an
+// interface can say that an operand is the same type as its receiver: there are
+// no generic interfaces, so `Equatable<T>` cannot be written.
+interface Equatable {
+    func Equals(other: *Self) -> bool;
+}
+
+interface Ranked {
+    func Rank() -> int;
+    func Better(other: *Self) -> Self;
+}
+
+struct Card {
+    value: int;
+}
+
+extend Card : Equatable {
+    func Equals(self: *Card, other: *Card) -> bool {
+        return self.value == other.value;
+    }
+}
+
+extend Card : Ranked {
+    func Rank(self: *Card) -> int {
+        return self.value;
+    }
+
+    func Better(self: *Card, other: *Card) -> Card {
+        return self.value >= other.value ? *self : *other;
+    }
+}
+
+// The bound carries the operation, and `Self` in it resolves to the type argument.
+func Matches<T: Equatable>(left: *T, right: *T) -> bool {
+    return left.Equals(right);
+}
+
+// `Self` as a return type as well as a parameter, and a second bound alongside it.
+func Best<T: Ranked>(left: *T, right: *T) -> int {
+    let winner = left.Better(right);
+    return winner.Rank();
+}
+
 func Main() -> int {
     var square = Square { size: 5 };
     Assert(square.Measure() == 25, "Expected the nominal implementation to measure the square");
@@ -91,5 +134,16 @@ func Main() -> int {
     Assert(cell.Inside() == 25, "Expected a generic extend block to call the bound of the type it extends");
 
     Assert(Tagged<int>(1) == 11, "Expected an interface requiring nothing to accept any type argument");
+
+    // `Self` resolves to the type argument at each instantiation, so the operand
+    // and the result are that type rather than the interface.
+    let low = Card { value: 3 };
+    let alsoLow = Card { value: 3 };
+    let high = Card { value: 9 };
+    Assert(Matches<Card>(@low, @alsoLow), "Self-typed operand compares equal");
+    Assert(!Matches<Card>(@low, @high), "Self-typed operand compares unequal");
+    Assert(Best<Card>(@low, @high) == 9, "Self-typed result keeps the type argument");
+    Assert(Best<Card>(@high, @low) == 9, "Self-typed result is order independent");
+
     return 0;
 }

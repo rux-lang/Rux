@@ -1,0 +1,21 @@
+interface Equatable {
+    func Equals(other: *Self) -> bool;
+}
+
+struct Point {
+    x: int32;
+}
+
+extend Point : Equatable {
+    func Equals(self: *Point, other: *Point) -> bool {
+        return self.x == other.x;
+    }
+}
+
+func Main() {
+    // Through an interface value the implementing type is unknown, so a method
+    // naming 'Self' cannot be paired with an operand here.
+    let left: Equatable = Point { x: 1i32 };
+    let right: Equatable = Point { x: 2i32 };
+    let same = left.Equals(@right);
+}

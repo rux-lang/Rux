@@ -1496,18 +1496,27 @@ private:
         return nullptr;
     }
 
-    TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) override {
-        return method.returnType ? ResolveType(*method.returnType->get()) : TypeRef::MakeOpaque();
+    /// `Self` bound to the type the interface is being read for.
+    static std::unordered_map<std::string, TypeRef> SelfSubstitution(const TypeRef &selfType) {
+        return {{std::string(SemanticDetail::SelfTypeName), selfType}};
     }
 
-    std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method) override {
+    TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType) override {
+        if (!method.returnType) {
+            return TypeRef::MakeOpaque();
+        }
+        return ResolveTypeWithSubstitution(*method.returnType->get(), SelfSubstitution(selfType));
+    }
+
+    std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method, const TypeRef &selfType) override {
+        const auto substitution = SelfSubstitution(selfType);
         std::vector<TypeRef> params;
         for (const auto &param : method.params) {
             // The receiver arrives as the data half of the interface value, so it is not one of the written arguments.
             if (param.isVariadic || param.IsReceiver()) {
                 continue;
             }
-            params.push_back(ResolveType(*param.type));
+            params.push_back(ResolveTypeWithSubstitution(*param.type, substitution));
         }
         return params;
     }
@@ -2324,6 +2333,12 @@ private:
     }
 
     void CheckInterfaceDecl(const InterfaceDecl &d) {
+        // `Self` stands for whichever type implements this interface, which is not known here, so it is checked as a
+        // type parameter and bound to the implementing type wherever the interface is actually read.
+        const auto savedTypeParams = currentTypeParams;
+        currentTypeParams.emplace_back(SemanticDetail::SelfTypeName);
+        const auto restore = [&] { currentTypeParams = savedTypeParams; };
+
         std::unordered_set<std::string> seen;
         for (const auto &method : d.methods) {
             if (!seen.insert(method->name).second) {
@@ -2339,6 +2354,7 @@ private:
                 }
             }
         }
+        restore();
     }
 
     void CheckImplDecl(const ImplDecl &d) {

@@ -124,6 +124,38 @@ const EnumDecl *SemanticAnalyzerContext::EnumNamed(const std::string &name) cons
     return enumeration == enumDecls.end() ? nullptr : enumeration->second;
 }
 
+namespace {
+/// Whether `expression` names `Self` anywhere inside it, following pointers, arrays and type arguments.
+[[nodiscard]] bool MentionsSelf(const TypeExpr &expression) {
+    if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&expression)) {
+        if (named->name == SelfTypeName) {
+            return true;
+        }
+        return std::ranges::any_of(named->typeArgs,
+                                   [](const TypeExprPtr &argument) { return MentionsSelf(*argument); });
+    }
+    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&expression)) {
+        return MentionsSelf(*pointer->pointee);
+    }
+    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expression)) {
+        return MentionsSelf(*array->element);
+    }
+    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&expression)) {
+        return std::ranges::any_of(tuple->elements, [](const TypeExprPtr &element) { return MentionsSelf(*element); });
+    }
+    return false;
+}
+} // namespace
+
+bool SemanticAnalyzerContext::InterfaceMethodMentionsSelf(const FuncDecl &method) {
+    if (method.returnType && MentionsSelf(**method.returnType)) {
+        return true;
+    }
+    return std::ranges::any_of(method.params, [](const Param &parameter) {
+        return !parameter.isVariadic && parameter.type && MentionsSelf(*parameter.type);
+    });
+}
+
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
     const PrimitiveInfo *info = FindPrimitive(name);
     return info && !info->implemented;

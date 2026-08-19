@@ -12,6 +12,10 @@
 #include <unordered_set>
 
 namespace Rux::SemanticDetail {
+/// The name an interface uses for the type implementing it. There are no generic interfaces, so this is the only way
+/// an interface method can say that an operand or a result is the same type as its receiver.
+inline constexpr std::string_view SelfTypeName = "Self";
+
 /// Private state shared by semantic-analysis implementation files. Public callers interact only with SemanticAnalyzer
 /// and SemanticModel.
 class SemanticAnalyzerContext {
@@ -387,8 +391,18 @@ private:
                                                                        const FuncDecl &method) = 0;
     [[nodiscard]] virtual const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                                 const std::string &methodName) const = 0;
-    [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method) = 0;
-    [[nodiscard]] virtual std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method) = 0;
+
+    /// Whether any written type of `method` names `Self`, which is what makes it callable only where the implementing
+    /// type is known.
+    [[nodiscard]] static bool InterfaceMethodMentionsSelf(const FuncDecl &method);
+    /// An interface method's written types, with `Self` standing for `selfType`.
+    ///
+    /// An interface cannot name the type implementing it any other way -- there are no generic interfaces -- so a
+    /// binary operation like equality or comparison has no way to say that its other operand is the same type as its
+    /// receiver. `Self` is that name, and it is substituted here, where the receiver is known.
+    [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType) = 0;
+    [[nodiscard]] virtual std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method,
+                                                                                const TypeRef &selfType) = 0;
     [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &declaration,
                                                              const EnumDecl::Variant &variant,
                                                              const std::vector<TypeRef> &typeArguments) = 0;
