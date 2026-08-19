@@ -1,5 +1,18 @@
 import Core::{ #target, #Error };
+import C::c_long;
 
+// C's `<math.h>`: the elementary functions, in the `double` form C names plainly and the `float` form it suffixes.
+//
+// Complete for what the supported runtimes actually export, which is not the same as what the standard lists. Four
+// `float` variants are deliberately absent -- `fabsf`, `frexpf`, `ldexpf` and `hypotf` -- because the Universal CRT
+// does not export them: they are header inlines there over the `double` forms and over compiler intrinsics, so a
+// declaration of them would link on Unix and fail on Windows. `Rux/Math` computes at every width without asking a C
+// runtime, and is the portable answer.
+//
+// The `nexttoward` pair is absent for a different reason: its second argument is a `long double`, which is a
+// different type on every target -- 64 bits under the Universal CRT, an 80-bit x87 value on x86-64 Unix, and a
+// 128-bit quad on AArch64. No one declaration is right everywhere, so this package does not pretend otherwise.
+//
 // The C math library's shared object differs by platform.
 when #target.os {
     .FreeBSD => const MathLib = "libm.so.5";
@@ -381,6 +394,14 @@ extern {
 
     // Computes sine
     // https://en.cppreference.com/c/numeric/math/sin
+    // Multiplies a floating-point value by an integral power of two, with a long exponent
+    // https://en.cppreference.com/c/numeric/math/scalbn
+    func scalbln(arg: float64, exp: c_long) -> float64;
+
+    // Multiplies a floating-point value by an integral power of two, with a long exponent
+    // https://en.cppreference.com/c/numeric/math/scalbn
+    func scalblnf(arg: float32, exp: c_long) -> float32;
+
     func sinf(x: float32) -> float32;
 
     // Computes sine
@@ -435,3 +456,38 @@ extern {
     // https://en.cppreference.com/c/numeric/math/trunc
     func trunc(x: float64) -> float64;
 }
+
+// The constants below are annotated with their primitive types rather than `c_double` and `c_float`: a `const` cannot
+// name a type alias declared in another file of the package. The width is the same thing said twice.
+
+/// `HUGE_VAL`: what a `double` function returns when the true result is too large to express.
+///
+/// An infinity on every supported target, which is what the standard permits and what every one of them chooses.
+///
+/// https://rux-lang.dev/docs/api/c/huge-val
+#Allow("naming.const")
+const HUGE_VAL: float64 = float64::Infinity;
+
+/// `HUGE_VALF`: the `float` form of `HUGE_VAL`.
+///
+/// https://rux-lang.dev/docs/api/c/huge-valf
+#Allow("naming.const")
+const HUGE_VALF: float32 = float32::Infinity;
+
+/// `INFINITY`: a positive infinity, for building a value rather than for testing one.
+///
+/// Comparing against it is not how a caller asks whether a result overflowed; `Core::IsInfinite` answers that without
+/// naming a width.
+///
+/// https://rux-lang.dev/docs/api/c/infinity
+#Allow("naming.const")
+const INFINITY: float32 = float32::Infinity;
+
+/// `NAN`: a quiet not-a-number, for building a value rather than for testing one.
+///
+/// It equals nothing, itself included, so `value == NAN` is always false and is never the test a caller wants;
+/// `Core::IsNaN` is.
+///
+/// https://rux-lang.dev/docs/api/c/nan
+#Allow("naming.const")
+const NAN: float32 = float32::NaN;

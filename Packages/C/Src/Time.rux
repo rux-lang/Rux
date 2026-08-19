@@ -1,4 +1,5 @@
 import Core::{ #target, #Error };
+import C::{ c_int, c_long, c_ulong };
 
 // Arithmetic type capable of representing a calendar time
 // https://en.cppreference.com/c/chrono/time_t
@@ -6,9 +7,31 @@ import Core::{ #target, #Error };
 type time_t = int64;
 
 // Arithmetic type capable of representing processor time
+//
+// This is `long` on every supported target, and `long` is not one width: the Universal CRT makes it 32 bits while
+// every supported Unix makes it 64. Declaring it as a fixed 64-bit integer, as this did, reads four bytes of whatever
+// followed the result on Windows. Darwin spells the same type unsigned.
+//
+// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture gate is
+// what checks it.
+//
+// Spelled as the primitive rather than as `c_long`, because a type alias cannot name one declared in another file of
+// this package. The width is the same thing said twice.
 // https://en.cppreference.com/c/chrono/clock_t
-#Allow("naming.type")
-type clock_t = int64;
+when #target.os {
+    .Windows => {
+        #Allow("naming.type")
+        type clock_t = int32;
+    }
+    .macOS => {
+        #Allow("naming.type")
+        type clock_t = uint64;
+    }
+    else => {
+        #Allow("naming.type")
+        type clock_t = int64;
+    }
+}
 
 // Calendar time broken down into its components
 // https://en.cppreference.com/c/chrono/tm
@@ -46,11 +69,15 @@ when #target.os {
 }
 
 // Time in seconds and nanoseconds
+//
+// `tv_nsec` is a `long`, which is 32 bits on Windows and 64 on every supported Unix, and the padding beside it on
+// Windows is not the runtime's to write. Declared as a fixed 64-bit integer, as this was, a nanosecond count filled
+// in by the runtime read four bytes of stale padding as its upper half.
 // https://en.cppreference.com/c/chrono/timespec
 #Allow("naming.type")
 struct timespec {
-    tv_sec: time_t; // whole seconds
-    tv_nsec: int64; // nanoseconds [0, 999999999]
+    tv_sec: time_t;  // whole seconds
+    tv_nsec: c_long; // nanoseconds [0, 999999999]
 }
 
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
@@ -72,6 +99,9 @@ when #target.os {
 #Link(TimeLib)
 extern {
     // Converts a tm object to a textual representation
+    //
+    // Returns storage the runtime owns and the next call overwrites, shared by the whole program rather than per
+    // thread. Copy the result before making another call, and do not use it from two threads at once.
     // https://en.cppreference.com/c/chrono/asctime
     func asctime(time_ptr: *tm) -> *char8;
 
@@ -106,4 +136,75 @@ extern {
     // Returns the current calendar time since the epoch
     // https://en.cppreference.com/c/chrono/time
     func time(timer: *time_t) -> time_t;
+}
+
+// C11's `timespec_get`, which the Universal CRT does not export under that name: `timespec_get` is a header inline
+// there over `_timespec64_get`, so the symbol is declared under whichever name the target actually publishes and
+// `TimespecGet` picks between them.
+when #target.os {
+    .Windows => {
+        // The legacy runtime this module otherwise binds predates C11 and has no such entry point, so this one call
+        // is taken from the Universal CRT. It reads the system clock rather than any per-runtime state, so it is the
+        // one crossing that costs nothing.
+        const TimespecLib = "ucrtbase.dll";
+
+        #Link(TimespecLib)
+        extern {
+            // Fills a timespec with the current time on the given base
+            // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/timespec-get-timespec32-get
+            func _timespec64_get(ts: *var timespec, base: c_int) -> c_int;
+        }
+    }
+    else => {
+        #Link(TimeLib)
+        extern {
+            // Fills a timespec with the current time on the given base
+            // https://en.cppreference.com/c/chrono/timespec_get
+            func timespec_get(ts: *var timespec, base: c_int) -> c_int;
+        }
+    }
+}
+
+/// `TIME_UTC`: the time base naming seconds since the epoch, the only one C defines.
+///
+/// https://rux-lang.dev/docs/api/c/time-utc
+#Allow("naming.const")
+const TIME_UTC: int32 = 1;
+
+// `CLOCKS_PER_SEC` is what a `clock_t` difference has to be divided by to become seconds, and the platforms do not
+// agree: the Universal CRT counts milliseconds, while every supported Unix counts by the POSIX-mandated million.
+when #target.os {
+    .Windows => {
+        /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
+        ///
+        /// https://rux-lang.dev/docs/api/c/clocks-per-sec
+        #Allow("naming.const")
+        const CLOCKS_PER_SEC: int64 = 1000;
+    }
+    else => {
+        /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
+        ///
+        /// https://rux-lang.dev/docs/api/c/clocks-per-sec
+        #Allow("naming.const")
+        const CLOCKS_PER_SEC: int64 = 1000000;
+    }
+}
+
+/// Fills `ts` with the current time on the given base.
+///
+/// `ts` is borrowed and written; `base` is read by value and `TIME_UTC` is the only base C defines. Returns `base`
+/// on success and zero on failure, which is the one way this reports one.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// `ts` must be non-null.
+///
+/// https://rux-lang.dev/docs/api/c/timespec-get
+func TimespecGet(ts: *var timespec, base: c_int) -> c_int {
+    when #target.os {
+        .Windows => { return _timespec64_get(ts, base); }
+        else => { return timespec_get(ts, base); }
+    }
 }

@@ -1,0 +1,83 @@
+import Core::{ Assert, IsInfinite, IsNaN, #target };
+import C::{ CLOCKS_PER_SEC, HUGE_VAL, HUGE_VALF, INFINITY, NAN, TIME_UTC, TimespecGet, clock, clock_t, difftime,
+            gmtime, mktime, scalbln, scalblnf, time, time_t, timespec, tm };
+
+// The layouts are what a binding gets wrong silently. Each type is checked against the width its target's own header
+// gives it, and the two the runtime fills are checked by having the runtime fill them: a field declared wider than it
+// is reads whatever sits beside it, which is exactly what `timespec` did on Windows before `tv_nsec` became a `long`.
+
+func Main() -> int {
+    // The scalar time types, per target.
+    Assert(sizeof(time_t) == 8, "time_t is 64 bits on every supported target");
+    when #target.os {
+        .Windows => {
+            Assert(sizeof(clock_t) == 4, "clock_t is a 32-bit long under the Universal CRT");
+            Assert(CLOCKS_PER_SEC == 1000, "and counts milliseconds");
+        }
+        else => {
+            Assert(sizeof(clock_t) == 8, "clock_t is a 64-bit long on a supported Unix");
+            Assert(CLOCKS_PER_SEC == 1000000, "and counts by the POSIX million");
+        }
+    }
+
+    // timespec: a 64-bit second count and a long nanosecond count, which is not the same width everywhere.
+    when #target.dataModel {
+        .LLP64 => {
+            Assert(sizeof(timespec) == 16, "timespec is padded to sixteen bytes under LLP64");
+        }
+        else => {
+            Assert(sizeof(timespec) == 16, "timespec is two 64-bit fields under LP64");
+        }
+    }
+
+    // tm is nine ints everywhere the package supports, whatever else a platform appends.
+    Assert(sizeof(tm) >= 36, "tm holds at least its nine int fields");
+
+    // The runtime filling the structure is the check that matters: a nanosecond count read four bytes too wide comes
+    // back as stale padding in its upper half, which no size assertion would catch.
+    var stamp = timespec { tv_sec: -1, tv_nsec: -1 };
+    Assert(TimespecGet(@stamp, TIME_UTC) == TIME_UTC, "the current time is reported on the UTC base");
+    Assert(stamp.tv_sec > 1700000000, "the seconds are a plausible epoch value");
+    Assert(stamp.tv_nsec >= 0 && stamp.tv_nsec <= 999999999, "and the nanoseconds are within one second");
+
+    // The calendar structure the runtime fills, read back through the same declaration.
+    var now: time_t = 0;
+    now = time(@now);
+    Assert(now > 1700000000, "time reports a plausible epoch value");
+    let calendar = gmtime(@now);
+    Assert(calendar != null, "gmtime accepts it");
+    Assert(calendar.tm_year >= 125, "the year is at least 2025 counted from 1900");
+    Assert(calendar.tm_mon >= 0 && calendar.tm_mon <= 11, "the month is in range");
+    Assert(calendar.tm_mday >= 1 && calendar.tm_mday <= 31, "the day of the month is in range");
+    Assert(calendar.tm_hour >= 0 && calendar.tm_hour <= 23, "the hour is in range");
+    Assert(calendar.tm_min >= 0 && calendar.tm_min <= 59, "the minute is in range");
+    Assert(calendar.tm_sec >= 0 && calendar.tm_sec <= 60, "the second is in range, leap second included");
+    Assert(calendar.tm_wday >= 0 && calendar.tm_wday <= 6, "the day of the week is in range");
+    Assert(calendar.tm_yday >= 0 && calendar.tm_yday <= 365, "the day of the year is in range");
+
+    // Round-tripping through mktime proves the whole structure was read, not just its first field.
+    var copy = *calendar;
+    let restored = mktime(@copy);
+    Assert(restored != -1, "the calendar structure converts back to a time");
+    Assert(difftime(restored, restored) == 0.0, "difftime of a time with itself is zero");
+
+    // clock counts from somewhere and does not go backwards; the width is what the assertion above pinned.
+    let first = clock();
+    var spin = 0i64;
+    while spin < 2000000 {
+        spin = spin + 1;
+    }
+    let second = clock();
+    Assert(second >= first, "the processor clock does not run backwards");
+
+    // The math additions, and the two constants that are values rather than tests.
+    Assert(scalbln(1.0, 3) == 8.0, "scalbln scales by a power of two");
+    Assert(scalbln(1.5, -1) == 0.75, "including a negative exponent");
+    Assert(scalblnf(1.0f32, 3) == 8.0f32, "and the float form does the same");
+    Assert(IsInfinite<float64>(HUGE_VAL), "HUGE_VAL is an infinity");
+    Assert(IsInfinite<float32>(HUGE_VALF), "and so is its float form");
+    Assert(IsInfinite<float32>(INFINITY), "INFINITY is one too");
+    Assert(IsNaN<float32>(NAN), "NAN is not a number");
+    Assert(!(NAN == NAN), "which is why comparing against it is never the test a caller wants");
+    return 0;
+}
