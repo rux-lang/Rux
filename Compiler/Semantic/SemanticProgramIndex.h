@@ -88,6 +88,26 @@ public:
         return enums;
     }
 
+    /// The struct and enum type parameters declared in `sourceName`.
+    ///
+    /// `Structs()` and `Enums()` are keyed by bare name across every package, so the last declaration of a name wins
+    /// and a program that declares its own `Option` displaces the one in `Core`. An `extend` block has to resolve the
+    /// type it is written beside rather than whichever one was indexed last, so it asks here first.
+    ///
+    /// @return the declared parameters, or nullptr when `sourceName` declares no type of that name
+    [[nodiscard]] const std::vector<TypeParameter> *TypeParamsIn(const std::string &sourceName,
+                                                                 const std::string &name) const;
+
+    /// The enum `name` declared in `sourceName`, for the same reason `TypeParamsIn` exists.
+    ///
+    /// @return nullptr when `sourceName` declares no enum of that name
+    [[nodiscard]] const EnumDecl *EnumIn(const std::string &sourceName, const std::string &name) const;
+
+    /// The struct `name` declared in `sourceName`.
+    ///
+    /// @return nullptr when `sourceName` declares no struct of that name
+    [[nodiscard]] const StructDecl *StructIn(const std::string &sourceName, const std::string &name) const;
+
     [[nodiscard]] const auto &Unions() const {
         return unions;
     }
@@ -140,6 +160,9 @@ private:
     std::vector<std::unique_ptr<Scope>> scopes;
     std::unordered_map<std::string, const StructDecl *> structs;
     std::unordered_map<std::string, const EnumDecl *> enums;
+    /// Declarations by the source that made them, which is what tells two same-named types apart.
+    std::unordered_map<std::string, std::unordered_map<std::string, const StructDecl *>> structsBySource;
+    std::unordered_map<std::string, std::unordered_map<std::string, const EnumDecl *>> enumsBySource;
     std::unordered_map<std::string, const UnionDecl *> unions;
     std::unordered_map<std::string, const InterfaceDecl *> interfaces;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>> methods;

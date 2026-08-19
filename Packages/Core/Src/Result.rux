@@ -1,5 +1,118 @@
-// A value produced by an operation that can fail.
+/// A value produced by an operation that can fail, or the error that explains why it did not.
+///
+/// `Result<T, E>` is what an operation returns when a caller should be told why something did not work. An outcome
+/// where absence carries no reason worth reporting belongs in `Option<T>` instead.
+///
+/// Inspecting which case a result holds borrows it, so the result is still the caller's afterwards. Reaching either
+/// payload consumes the result, because handing out the value while the result still held it would give two owners to
+/// one value; for a move-only `T` or `E` that is the whole point, and for a `Copy` one it costs nothing.
+///
+/// A `Result<T, E>` is as wide as its tag plus the larger of `T` and `E`, and never allocates on its own.
+///
+/// https://rux-lang.dev/docs/api/core/result
 enum Result<T, E> {
     Success(T),
     Error(E)
+}
+
+extend Result<T, E> {
+    /// Reports whether this result carries a success value.
+    ///
+    /// Borrows the result through `self` and takes ownership of nothing, so the result and either payload are still
+    /// the caller's afterwards.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
+    ///
+    /// https://rux-lang.dev/docs/api/core/result/is-success
+    func IsSuccess(self: *Result<T, E>) -> bool {
+        return match *self {
+            .Success(_) => true,
+            .Error(_) => false
+        };
+    }
+
+    /// Reports whether this result carries an error.
+    ///
+    /// Borrows the result through `self` and takes ownership of nothing. The exact negation of `IsSuccess`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/result/is-error
+    func IsError(self: *Result<T, E>) -> bool {
+        return !self.IsSuccess();
+    }
+
+    /// The success value this result carries, or `fallback` when it carries an error.
+    ///
+    /// Consumes the result and both candidate values: `self` and `fallback` are taken by value, and exactly one of
+    /// them is returned. The other is dropped, along with the error when there was one, so the reason for the failure
+    /// is discarded here. A caller who needs the error should reach for `TryIntoError` before calling this.
+    ///
+    /// Cannot fail: an error is answered with `fallback` rather than reported. Runs in constant time and allocates
+    /// nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/result/value-or
+    func ValueOr(self: Result<T, E>, fallback: T) -> T {
+        return match self {
+            .Success(value) => value,
+            .Error(_) => fallback
+        };
+    }
+
+    /// Moves the success value into `value`, reporting whether there was one.
+    ///
+    /// Consumes the result whatever the outcome, so it is gone once this returns, and the error is dropped when that
+    /// is what the result held. Ownership of the success value passes to whatever `value` points at, and only when
+    /// this returns `true`.
+    ///
+    /// Returns `false` when the result held an error, and also when `value` is null. On either failure `value` is
+    /// left exactly as it was. A null output is refused rather than written through, so a caller that must tell an
+    /// error from an unusable destination should check `IsSuccess` first.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/result/try-into-value
+    func TryIntoValue(self: Result<T, E>, value: *var T) -> bool {
+        if value == null {
+            return false;
+        }
+
+        match self {
+            .Success(held) => {
+                *value = held;
+                return true;
+            },
+            .Error(_) => {
+                return false;
+            }
+        }
+    }
+
+    /// Moves the error into `error`, reporting whether there was one.
+    ///
+    /// Consumes the result whatever the outcome, so it is gone once this returns, and the success value is dropped
+    /// when that is what the result held. Ownership of the error passes to whatever `error` points at, and only when
+    /// this returns `true`.
+    ///
+    /// Returns `false` when the result succeeded, and also when `error` is null. On either failure `error` is left
+    /// exactly as it was.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/result/try-into-error
+    func TryIntoError(self: Result<T, E>, error: *var E) -> bool {
+        if error == null {
+            return false;
+        }
+
+        match self {
+            .Success(_) => {
+                return false;
+            },
+            .Error(held) => {
+                *error = held;
+                return true;
+            }
+        }
+    }
 }

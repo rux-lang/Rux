@@ -136,6 +136,7 @@ protected:
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
+    [[nodiscard]] TypeRef RestoreEnumLayoutMarkers(TypeRef type) const;
     [[nodiscard]] std::optional<std::string> CompilerParamRoot(const Expr &expression) const;
     [[nodiscard]] std::string LogicalCurrentFilePath() const;
 
@@ -188,6 +189,7 @@ private:
                                                      const std::vector<TypeRef> &typeArguments = {});
     [[nodiscard]] std::string BaseTypeName(const std::string &name) const;
     [[nodiscard]] std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const;
+    [[nodiscard]] const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const;
     [[nodiscard]] bool ReceiverIsByValue(const FuncDecl &method) const;
     [[nodiscard]] HirExprPtr LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver);
     [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method);

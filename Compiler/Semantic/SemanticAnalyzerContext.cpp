@@ -116,6 +116,14 @@ std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropG
     return std::move(dropGluePlans);
 }
 
+const EnumDecl *SemanticAnalyzerContext::EnumNamed(const std::string &name) const {
+    if (const EnumDecl *local = programIndex.EnumIn(currentFile, name)) {
+        return local;
+    }
+    const auto enumeration = enumDecls.find(name);
+    return enumeration == enumDecls.end() ? nullptr : enumeration->second;
+}
+
 bool SemanticAnalyzerContext::IsUnimplementedPrimitiveType(const std::string_view name) {
     const PrimitiveInfo *info = FindPrimitive(name);
     return info && !info->implemented;

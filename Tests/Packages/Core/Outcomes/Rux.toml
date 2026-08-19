@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Outcomes"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Core: Option, Result, Unit and Ordering"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Core"

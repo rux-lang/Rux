@@ -311,6 +311,15 @@ protected:
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 
+    /// The enum `name` names, as seen from the file being checked.
+    ///
+    /// The struct and enum indexes are keyed by bare name across every package, so the last declaration of a name
+    /// wins: a program declaring its own `Option` displaces `Core`'s, and `Core`'s own methods would then be checked
+    /// against the wrong shape. A declaration in the file doing the asking is the one that file means.
+    ///
+    /// @return nullptr when no enum of that name is in scope
+    [[nodiscard]] const EnumDecl *EnumNamed(const std::string &name) const;
+
     /// Report a suffixed integer literal whose magnitude the suffix's own type cannot hold.
     ///
     /// An unsuffixed literal is checked against whatever it is being assigned to; a suffixed one names its type

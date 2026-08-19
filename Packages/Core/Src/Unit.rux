@@ -1,0 +1,21 @@
+/// The single value an operation produces when it has nothing meaningful to return.
+///
+/// `Unit` occupies no fields, so it exists to fill a type position rather than to carry information: a
+/// `Result<Unit, E>` says an operation either succeeded or failed and nothing more. It is a `Copy` value with no
+/// ownership of its own, so passing one neither consumes nor invalidates anything.
+///
+/// https://rux-lang.dev/docs/api/core/unit
+struct Unit {}
+
+extend Unit {
+    /// Constructs the only `Unit` value there is.
+    ///
+    /// Takes nothing and returns the value by copy; there is only one, so every call produces the same thing.
+    ///
+    /// Cannot fail. Runs in constant time, allocates nothing, and reads no storage.
+    ///
+    /// https://rux-lang.dev/docs/api/core/unit/new
+    func New() -> Unit {
+        return Unit {};
+    }
+}

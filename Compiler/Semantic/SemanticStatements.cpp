@@ -623,8 +623,8 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             }
             else {
                 enumName = BaseTypeName(subjectType.name);
-                if (const auto enumIterator = enumDecls.find(enumName); enumIterator != enumDecls.end()) {
-                    enumDeclaration = enumIterator->second;
+                if (const EnumDecl *enumeration = EnumNamed(enumName)) {
+                    enumDeclaration = enumeration;
                 }
                 else {
                     EmitError(enumPattern->location, std::format("type '{}' is not an enum in shorthand pattern '.{}'",
@@ -638,8 +638,8 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             if (!currentScope->Lookup(enumName)) {
                 EmitError(enumPattern->location, std::format("unknown name '{}' in enum pattern", enumName));
             }
-            if (const auto enumIterator = enumDecls.find(enumName); enumIterator != enumDecls.end()) {
-                enumDeclaration = enumIterator->second;
+            if (const EnumDecl *enumeration = EnumNamed(enumName)) {
+                enumDeclaration = enumeration;
             }
         }
 
@@ -744,12 +744,12 @@ void SemanticAnalyzerContext::ValidateMatchPatterns(const std::vector<const Patt
         return;
     }
     const std::string enumName = BaseTypeName(subjectType.name);
-    const auto declaration = enumDecls.find(enumName);
-    if (declaration == enumDecls.end()) {
+    const EnumDecl *declaration = EnumNamed(enumName);
+    if (!declaration) {
         return;
     }
     std::vector<std::string> missing;
-    for (const auto &variant : declaration->second->variants) {
+    for (const auto &variant : declaration->variants) {
         if (!coveredVariants.contains(variant.name)) {
             missing.push_back(enumName + "::" + variant.name);
         }
@@ -794,8 +794,8 @@ bool SemanticAnalyzerContext::MatchPatternsAreExhaustive(const std::vector<const
     }
 
     const std::string enumName = BaseTypeName(subjectType.name);
-    const auto declaration = enumDecls.find(enumName);
-    if (declaration == enumDecls.end()) {
+    const EnumDecl *declaration = EnumNamed(enumName);
+    if (!declaration) {
         return false;
     }
     std::unordered_set<std::string> covered;
@@ -809,7 +809,7 @@ bool SemanticAnalyzerContext::MatchPatternsAreExhaustive(const std::vector<const
             }
         }
     }
-    return std::ranges::all_of(declaration->second->variants,
+    return std::ranges::all_of(declaration->variants,
                                [&](const auto &variant) { return covered.contains(variant.name); });
 }
 
@@ -923,11 +923,11 @@ bool SemanticAnalyzerContext::BlockDefinitelyReturns(const Block &block) const {
 
 const EnumDecl::Variant *SemanticAnalyzerContext::LookupEnumVariant(const std::string &enumName,
                                                                     const std::string &variantName) const {
-    const auto enumIterator = enumDecls.find(enumName);
-    if (enumIterator == enumDecls.end()) {
+    const EnumDecl *enumeration = EnumNamed(enumName);
+    if (!enumeration) {
         return nullptr;
     }
-    for (const auto &variant : enumIterator->second->variants) {
+    for (const auto &variant : enumeration->variants) {
         if (variant.name == variantName) {
             return &variant;
         }

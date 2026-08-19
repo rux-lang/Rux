@@ -220,10 +220,12 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
     else if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
         structs[structure->name] = structure;
+        structsBySource[sourceName][structure->name] = structure;
         defineSimple(Symbol::Kind::Type, structure->name, SemanticSymbol::Kind::Type, "struct");
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
         enums[enumeration->name] = enumeration;
+        enumsBySource[sourceName][enumeration->name] = enumeration;
         defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type, "enum");
     }
     else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
@@ -335,4 +337,36 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
 }
 
+namespace {
+/// Look `name` up in the per-source index `bySource`.
+template <typename Map>
+[[nodiscard]] auto DeclaredIn(const Map &bySource, const std::string &sourceName, const std::string &name) {
+    using Declaration = typename Map::mapped_type::mapped_type;
+    const auto source = bySource.find(sourceName);
+    if (source == bySource.end()) {
+        return Declaration{nullptr};
+    }
+    const auto declared = source->second.find(name);
+    return declared == source->second.end() ? Declaration{nullptr} : declared->second;
+}
+} // namespace
+
+const StructDecl *SemanticProgramIndex::StructIn(const std::string &sourceName, const std::string &name) const {
+    return DeclaredIn(structsBySource, sourceName, name);
+}
+
+const EnumDecl *SemanticProgramIndex::EnumIn(const std::string &sourceName, const std::string &name) const {
+    return DeclaredIn(enumsBySource, sourceName, name);
+}
+
+const std::vector<TypeParameter> *SemanticProgramIndex::TypeParamsIn(const std::string &sourceName,
+                                                                     const std::string &name) const {
+    if (const StructDecl *structure = StructIn(sourceName, name)) {
+        return &structure->typeParams;
+    }
+    if (const EnumDecl *enumeration = EnumIn(sourceName, name)) {
+        return &enumeration->typeParams;
+    }
+    return nullptr;
+}
 } // namespace Rux::SemanticDetail

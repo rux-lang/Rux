@@ -103,16 +103,16 @@ SemanticAnalyzerContext::LookupEnumVariantInitializer(const std::string &typeNam
 
     const std::string enumName = typeName.substr(0, separator);
     const std::string variantName = typeName.substr(separator + 2);
-    const auto enumeration = enumDecls.find(enumName);
-    if (enumeration == enumDecls.end()) {
+    const EnumDecl *enumeration = EnumNamed(enumName);
+    if (!enumeration) {
         return {nullptr, nullptr};
     }
-    for (const auto &variant : enumeration->second->variants) {
+    for (const auto &variant : enumeration->variants) {
         if (variant.name == variantName) {
-            return {enumeration->second, &variant};
+            return {enumeration, &variant};
         }
     }
-    return {enumeration->second, nullptr};
+    return {enumeration, nullptr};
 }
 
 std::unordered_map<std::string, TypeRef>
