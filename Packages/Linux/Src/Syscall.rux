@@ -15,6 +15,10 @@ import Core::{ #target, #Error };
 // architecture is guarded, because the call numbers and the entry points genuinely differ.
 
 // The call numbers, which differ by architecture: the two tables were assigned decades apart and agree on nothing.
+//
+// Only calls both architectures have are named. AArch64 came after the directory-relative interface and never got
+// `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe` -- it has the `*at` forms alone. Naming those here
+// keeps one wrapper right on both, and `AtFdCwd` is what makes an ordinary path work through them.
 when #target.arch {
     .X86_64 => {
         const SysRead: uint64 = 0;
@@ -27,6 +31,21 @@ when #target.arch {
         const SysGetPid: uint64 = 39;
         const SysExit: uint64 = 60;
         const SysClockGetTime: uint64 = 228;
+        const SysOpenAt: uint64 = 257;
+        const SysLseek: uint64 = 8;
+        const SysFsync: uint64 = 74;
+        const SysFtruncate: uint64 = 77;
+        const SysUnlinkAt: uint64 = 263;
+        const SysMkdirAt: uint64 = 258;
+        const SysRenameAt: uint64 = 264;
+        const SysFstat: uint64 = 5;
+        const SysDup3: uint64 = 292;
+        const SysPipe2: uint64 = 293;
+        const SysMprotect: uint64 = 10;
+        const SysMadvise: uint64 = 28;
+        const SysGetRandom: uint64 = 318;
+        const SysClockGetRes: uint64 = 229;
+        const SysClockNanosleep: uint64 = 230;
     },
     .AArch64 => {
         const SysRead: uint64 = 63;
@@ -39,6 +58,21 @@ when #target.arch {
         const SysGetPid: uint64 = 172;
         const SysExit: uint64 = 93;
         const SysClockGetTime: uint64 = 113;
+        const SysOpenAt: uint64 = 56;
+        const SysLseek: uint64 = 62;
+        const SysFsync: uint64 = 82;
+        const SysFtruncate: uint64 = 46;
+        const SysUnlinkAt: uint64 = 35;
+        const SysMkdirAt: uint64 = 34;
+        const SysRenameAt: uint64 = 38;
+        const SysFstat: uint64 = 80;
+        const SysDup3: uint64 = 24;
+        const SysPipe2: uint64 = 59;
+        const SysMprotect: uint64 = 226;
+        const SysMadvise: uint64 = 233;
+        const SysGetRandom: uint64 = 278;
+        const SysClockGetRes: uint64 = 114;
+        const SysClockNanosleep: uint64 = 115;
     },
     else => #Error("Unsupported Linux architecture")
 }

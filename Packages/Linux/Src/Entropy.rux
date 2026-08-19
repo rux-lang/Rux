@@ -1,0 +1,43 @@
+// Unpredictable bytes, from the kernel's own generator.
+//
+// This is the only source in this package worth using for a key, a token, or anything an adversary would like to
+// guess. It draws from the same pool `/dev/urandom` exposes, without needing a descriptor -- which matters, because
+// opening a file can fail in ways a security decision should not depend on.
+//
+// The call can return fewer bytes than asked for, and a caller who needs all of them has to loop. That is not an
+// error condition: a request larger than 256 bytes may be cut short by a signal.
+
+import Linux::{ SysGetRandom, Syscall3 };
+
+/// `GRND_NONBLOCK`: report `EAGAIN` rather than waiting for the pool to be seeded.
+///
+/// https://rux-lang.dev/docs/api/linux/random-non-blocking
+const RandomNonBlocking: uint32 = 1;
+
+/// `GRND_RANDOM`: draw from the blocking pool, which is almost never what a caller wants.
+///
+/// Kept for completeness. The default source is as unpredictable and does not stall.
+///
+/// https://rux-lang.dev/docs/api/linux/random-blocking-pool
+const RandomBlockingPool: uint32 = 2;
+
+/// Fills up to `length` bytes of `buffer` with unpredictable bytes.
+///
+/// `buffer` is borrowed and written; `length` and `flags` are read by value. Returns the number of bytes actually
+/// written, or a negative error number.
+///
+/// A short count is ordinary rather than a failure: a request over 256 bytes can be cut short by a signal, and a
+/// caller needing the whole buffer must call again for the rest. Without `RandomNonBlocking` the first call in the
+/// life of a system may wait for the pool to be seeded; after that it does not wait at all.
+///
+/// Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
+/// unwritten tail stays whatever it held -- which for a key is the worst possible outcome.
+///
+/// https://rux-lang.dev/docs/api/linux/get-random
+func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
+    return Syscall3(SysGetRandom, buffer as uint64, length as uint64, flags as uint64);
+}

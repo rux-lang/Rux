@@ -4,7 +4,10 @@
 // count or a small negative error number. A short count is not an error and not an end of file -- a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
-import Linux::{ FileDescriptor, SignExtendFd, SysClose, SysRead, SysWrite, Syscall1, Syscall3 };
+import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysClose, SysDup3, SysFstat,
+                SysFsync, SysFtruncate, SysLseek, SysMkdirAt, SysOpenAt, SysPipe2, SysRead,
+                SysRenameAt, SysUnlinkAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
+                Syscall5 };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///
@@ -66,4 +69,228 @@ func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 /// https://rux-lang.dev/docs/api/linux/close
 func Close(fd: FileDescriptor) -> int64 {
     return Syscall1(SysClose, SignExtendFd(fd));
+}
+
+/// `AT_FDCWD`: resolve a relative path against the current directory rather than a descriptor.
+///
+/// The value every `*at` call takes when the caller means an ordinary path. It is `-100` rather than `-1` so that a
+/// stray `-1` from a failed open cannot be mistaken for it.
+///
+/// https://rux-lang.dev/docs/api/linux/at-fd-cwd
+const AtFdCwd: int32 = -100;
+
+/// `O_RDONLY`: open for reading only.
+///
+/// https://rux-lang.dev/docs/api/linux/open-read-only
+const OpenReadOnly: int32 = 0;
+
+/// `O_WRONLY`: open for writing only.
+///
+/// https://rux-lang.dev/docs/api/linux/open-write-only
+const OpenWriteOnly: int32 = 1;
+
+/// `O_RDWR`: open for both reading and writing.
+///
+/// https://rux-lang.dev/docs/api/linux/open-read-write
+const OpenReadWrite: int32 = 2;
+
+/// `O_CREAT`: create the file when it does not exist, which is when the mode argument is read.
+///
+/// https://rux-lang.dev/docs/api/linux/open-create
+const OpenCreate: int32 = 64;
+
+/// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
+///
+/// The pair is what makes creating a file an atomic claim on the name.
+///
+/// https://rux-lang.dev/docs/api/linux/open-exclusive
+const OpenExclusive: int32 = 128;
+
+/// `O_TRUNC`: truncate the file to nothing when opening it for writing.
+///
+/// https://rux-lang.dev/docs/api/linux/open-truncate
+const OpenTruncate: int32 = 512;
+
+/// `O_APPEND`: every write goes to the end, atomically with respect to other appenders.
+///
+/// https://rux-lang.dev/docs/api/linux/open-append
+const OpenAppend: int32 = 1024;
+
+/// `O_NONBLOCK`: reads and writes report `EAGAIN` rather than waiting.
+///
+/// https://rux-lang.dev/docs/api/linux/open-non-blocking
+const OpenNonBlocking: int32 = 2048;
+
+/// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
+///
+/// Worth setting on nearly everything: without it a descriptor leaks into every child, which is both a resource and
+/// a confidentiality problem.
+///
+/// https://rux-lang.dev/docs/api/linux/open-close-on-exec
+const OpenCloseOnExec: int32 = 524288;
+
+/// `O_DIRECTORY`: fail unless the target is a directory.
+///
+/// https://rux-lang.dev/docs/api/linux/open-directory
+const OpenDirectory: int32 = 65536;
+
+/// `SEEK_SET`: measure the new offset from the start of the file.
+///
+/// https://rux-lang.dev/docs/api/linux/seek-set
+const SeekSet: int32 = 0;
+
+/// `SEEK_CUR`: measure the new offset from the current one.
+///
+/// https://rux-lang.dev/docs/api/linux/seek-current
+const SeekCurrent: int32 = 1;
+
+/// `SEEK_END`: measure the new offset from the end of the file.
+///
+/// https://rux-lang.dev/docs/api/linux/seek-end
+const SeekEnd: int32 = 2;
+
+/// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
+///
+/// `directoryFd` is a descriptor for the directory a relative path is resolved against, or `AtFdCwd` for the current
+/// one; an absolute path ignores it. `path` is borrowed and must be null-terminated. `flags` is one of the three
+/// access modes combined with whatever else applies. `mode` is the permission bits a newly created file gets, and is
+/// read only when `OpenCreate` is set.
+///
+/// This is the only open the package offers, because it is the only one AArch64 has.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated. The mode is masked by the process umask, which this cannot see.
+///
+/// https://rux-lang.dev/docs/api/linux/open-at
+func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
+    return Syscall4(SysOpenAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64,
+                    mode as uint64);
+}
+
+/// Moves the file offset of `fd` and returns where it ended up, or a negative error number.
+///
+/// `offset` is measured from whichever origin `whence` names. Returns the resulting absolute offset.
+///
+/// Seeking past the end is allowed and creates a hole when something is later written there. A pipe or socket has no
+/// offset to move and reports `ESPIPE`.
+///
+/// https://rux-lang.dev/docs/api/linux/lseek
+func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
+    return Syscall3(SysLseek, SignExtendFd(fd), offset as uint64, (whence as int64) as uint64);
+}
+
+/// Flushes everything written to `fd` through to the storage device.
+///
+/// Returns zero, or a negative error number. Returning only once the device has acknowledged the write is the whole
+/// point: without it, data a successful `Write` reported may still be lost to a power failure.
+///
+/// https://rux-lang.dev/docs/api/linux/fsync
+func Fsync(fd: FileDescriptor) -> int64 {
+    return Syscall1(SysFsync, SignExtendFd(fd));
+}
+
+/// Sets the length of the file behind `fd` to `length`.
+///
+/// Returns zero, or a negative error number. Growing a file this way creates a hole rather than allocating, so a
+/// later write into it can still fail with `ENOSPC`. Shrinking discards what was past the new end.
+///
+/// https://rux-lang.dev/docs/api/linux/ftruncate
+func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
+    return Syscall2(SysFtruncate, SignExtendFd(fd), length as uint64);
+}
+
+/// Removes the name `path` from its directory.
+///
+/// `flags` is zero to remove a file, or `RemoveDirectory` to remove an empty directory. Returns zero, or a negative
+/// error number.
+///
+/// Removing a name does not free the file: anything still holding it open keeps reading and writing it, and the
+/// storage goes only when the last descriptor closes.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated.
+///
+/// https://rux-lang.dev/docs/api/linux/unlink-at
+func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
+    return Syscall3(SysUnlinkAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64);
+}
+
+/// `AT_REMOVEDIR`: make `UnlinkAt` remove a directory rather than a file.
+///
+/// https://rux-lang.dev/docs/api/linux/remove-directory
+const RemoveDirectory: int32 = 512;
+
+/// Creates a directory named `path` with permission bits `mode`.
+///
+/// Returns zero, or a negative error number -- `EEXIST` when the name is taken, which is how this is used as a lock.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated. The mode is masked by the process umask.
+///
+/// https://rux-lang.dev/docs/api/linux/mkdir-at
+func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
+    return Syscall3(SysMkdirAt, SignExtendFd(directoryFd), path as uint64, mode as uint64);
+}
+
+/// Renames `oldPath` to `newPath`, each resolved against its own directory descriptor.
+///
+/// Returns zero, or a negative error number. Within one file system this replaces any existing `newPath` atomically,
+/// which is what makes it the way to publish a file that was written under a temporary name. Across file systems it
+/// reports `EXDEV` rather than copying.
+///
+/// # Safety
+///
+/// Both paths must be non-null and terminated.
+///
+/// https://rux-lang.dev/docs/api/linux/rename-at
+func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
+              newPath: *char8) -> int64 {
+    return Syscall4(SysRenameAt, SignExtendFd(oldDirectoryFd), oldPath as uint64, SignExtendFd(newDirectoryFd),
+                    newPath as uint64);
+}
+
+/// Fills `statBuffer` with what the kernel knows about the file behind `fd`.
+///
+/// `statBuffer` is borrowed and written with the kernel's `struct stat`, whose layout this package does not model:
+/// it differs by architecture, and reading it needs a declaration that says which. Returns zero, or a negative error
+/// number.
+///
+/// # Safety
+///
+/// `statBuffer` must be writable for the whole of the architecture's `struct stat`, which is 144 bytes on x86-64 and
+/// 128 on AArch64. Nothing here checks that.
+///
+/// https://rux-lang.dev/docs/api/linux/fstat
+func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
+    return Syscall2(SysFstat, SignExtendFd(fd), statBuffer as uint64);
+}
+
+/// Makes `newFd` a copy of `oldFd`, closing whatever `newFd` was.
+///
+/// `flags` may carry `OpenCloseOnExec`, which is the reason this exists rather than `dup2`: setting it afterwards
+/// leaves a window in which another thread can execute a new program and leak the descriptor. Returns `newFd`, or a
+/// negative error number.
+///
+/// Duplicating a descriptor onto itself reports `EINVAL` here, where `dup2` returned it unchanged.
+///
+/// https://rux-lang.dev/docs/api/linux/dup3
+func Dup3(oldFd: FileDescriptor, newFd: FileDescriptor, flags: int32) -> int64 {
+    return Syscall3(SysDup3, SignExtendFd(oldFd), SignExtendFd(newFd), (flags as int64) as uint64);
+}
+
+/// Creates a pipe and writes its two descriptors into `descriptors`.
+///
+/// `descriptors` is borrowed and receives the reading end at index zero and the writing end at index one. `flags`
+/// may carry `OpenCloseOnExec` and `OpenNonBlocking`. Returns zero, or a negative error number.
+///
+/// # Safety
+///
+/// `descriptors` must be writable for two `int32` values.
+///
+/// https://rux-lang.dev/docs/api/linux/pipe2
+func Pipe2(descriptors: *var int32, flags: int32) -> int64 {
+    return Syscall2(SysPipe2, descriptors as uint64, (flags as int64) as uint64);
 }
