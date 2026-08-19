@@ -1,0 +1,168 @@
+// Byte order: converting an integer between the target's own order and a named one, and moving it to and from bytes.
+//
+// Two spellings of the same idea are published because they read differently at a call site. `ToLittleEndian` and its
+// three companions convert a value that is already in a register, which is what a caller writing a header field into
+// a struct wants. `StoreLittleEndian` and `LoadLittleEndian` move a value through raw bytes, which is what a caller
+// reading a file or a wire format wants, and they never require the bytes to be aligned for the value's type.
+//
+// Every conversion asks `TargetIsLittleEndian` which order this machine has, rather than reading `#target.endian`.
+// The compile-time target is an intrinsic a package brings into scope by importing Core, which Core cannot do for
+// itself, so the order is established from the target's own storage instead -- exactly, and by the one construct that
+// answers the question without being told: writing a value and reading back the byte it starts with.
+
+/// Whether this target stores an integer's least significant byte first.
+///
+/// Takes nothing and returns the answer by copy. It is established by writing a value whose bytes differ and reading
+/// back the first one, so it is right on any target rather than on a list of known ones.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/target-is-little-endian
+func TargetIsLittleEndian() -> bool {
+    var probe = 1u16;
+    let raw = @probe as *byte;
+    return raw[0] == 1;
+}
+
+/// The value's bytes as a little-endian value would hold them.
+///
+/// `value` is read by value; the result is returned by copy. On a little-endian target this is the identity; on a
+/// big-endian one it is a byte reversal. The result is a bit pattern to be stored, not a number to compute with.
+///
+/// Cannot fail. Costs nothing on a little-endian target and one byte reversal on a big-endian one, so it runs in time
+/// linear in the type's width at worst and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/to-little-endian
+func ToLittleEndian<T>(value: T) -> T {
+    return TargetIsLittleEndian() ? value : ReverseBytes<T>(value);
+}
+
+/// The value a little-endian bit pattern stands for on this target.
+///
+/// `value` is read by value; the result is returned by copy. The exact inverse of `ToLittleEndian`, and the same
+/// operation -- a byte reversal is its own inverse.
+///
+/// Cannot fail. Costs exactly what `ToLittleEndian` costs and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/from-little-endian
+func FromLittleEndian<T>(value: T) -> T {
+    return ToLittleEndian<T>(value);
+}
+
+/// The value's bytes as a big-endian value would hold them.
+///
+/// `value` is read by value; the result is returned by copy. On a big-endian target this is the identity; on a
+/// little-endian one it is a byte reversal. This is network byte order.
+///
+/// Cannot fail. Costs nothing on a big-endian target and one byte reversal on a little-endian one, so it runs in time
+/// linear in the type's width at worst and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/to-big-endian
+func ToBigEndian<T>(value: T) -> T {
+    return TargetIsLittleEndian() ? ReverseBytes<T>(value) : value;
+}
+
+/// The value a big-endian bit pattern stands for on this target.
+///
+/// `value` is read by value; the result is returned by copy. The exact inverse of `ToBigEndian`, and the same
+/// operation.
+///
+/// Cannot fail. Costs exactly what `ToBigEndian` costs and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/core/from-big-endian
+func FromBigEndian<T>(value: T) -> T {
+    return ToBigEndian<T>(value);
+}
+
+/// Writes an integer to raw bytes, least significant byte first.
+///
+/// `value` is read by value. `destination` is borrowed for the call and receives exactly `sizeof(T)` bytes; it is
+/// never read. The bytes need no alignment, so a value may be written straight into the middle of a buffer.
+///
+/// Cannot fail: every value has a representation. Runs in time linear in the type's width and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
+///
+/// https://rux-lang.dev/docs/api/core/store-little-endian
+func StoreLittleEndian<T>(value: T, destination: *var byte) {
+    var ordered = ToLittleEndian<T>(value);
+    // Reading the ordered value back as bytes is what makes this work at any width without knowing the type: the
+    // reversal above has already put them in the order they are to be written.
+    let source = @ordered as *byte;
+    var index = 0u64;
+    while index < sizeof(T) {
+        destination[index] = source[index];
+        index = index + 1u64;
+    }
+}
+
+/// Writes an integer to raw bytes, most significant byte first.
+///
+/// `value` is read by value. `destination` is borrowed for the call and receives exactly `sizeof(T)` bytes; it is
+/// never read. This is the order a network protocol asks for.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// # Safety
+///
+/// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
+///
+/// https://rux-lang.dev/docs/api/core/store-big-endian
+func StoreBigEndian<T>(value: T, destination: *var byte) {
+    var ordered = ToBigEndian<T>(value);
+    let source = @ordered as *byte;
+    var index = 0u64;
+    while index < sizeof(T) {
+        destination[index] = source[index];
+        index = index + 1u64;
+    }
+}
+
+/// Reads an integer from raw bytes holding it least significant byte first.
+///
+/// `source` is borrowed for the call and `sizeof(T)` bytes are read from it. `destination` names the type being read
+/// and receives the value; whatever it held is overwritten. The bytes need no alignment.
+///
+/// Cannot fail: every byte sequence of the right length is a value. Runs in time linear in the type's width and
+/// allocates nothing.
+///
+/// # Safety
+///
+/// `source` must be non-null and readable for `sizeof(T)` bytes, and `destination` must be non-null. Neither is
+/// checked.
+///
+/// https://rux-lang.dev/docs/api/core/load-little-endian
+func LoadLittleEndian<T>(source: *byte, destination: *var T) {
+    let raw = destination as *var byte;
+    var index = 0u64;
+    while index < sizeof(T) {
+        raw[index] = source[index];
+        index = index + 1u64;
+    }
+    *destination = FromLittleEndian<T>(*destination);
+}
+
+/// Reads an integer from raw bytes holding it most significant byte first.
+///
+/// `source` is borrowed for the call and `sizeof(T)` bytes are read from it. `destination` names the type being read
+/// and receives the value; whatever it held is overwritten.
+///
+/// Cannot fail. Runs in time linear in the type's width and allocates nothing.
+///
+/// # Safety
+///
+/// `source` must be non-null and readable for `sizeof(T)` bytes, and `destination` must be non-null. Neither is
+/// checked.
+///
+/// https://rux-lang.dev/docs/api/core/load-big-endian
+func LoadBigEndian<T>(source: *byte, destination: *var T) {
+    let raw = destination as *var byte;
+    var index = 0u64;
+    while index < sizeof(T) {
+        raw[index] = source[index];
+        index = index + 1u64;
+    }
+    *destination = FromBigEndian<T>(*destination);
+}
