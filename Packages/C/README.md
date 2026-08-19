@@ -49,7 +49,9 @@ including the traps worth naming: `strncpy` does not terminate a source that fil
 the destination from its start on every call, and `strtok` keeps its position in storage shared by the whole
 program.
 
-Each module selects the right declarations for the target at compile time, so the same import works across the supported platforms.
+Each module selects the right declarations for the target at compile time, so the same import works across the supported platforms. `rux check --target <triple>` resolves every declaration here on all eight supported cells, and the `Layout` test checks the sizes and the runtime-filled structures on whichever one it runs.
+
+Two things are absent from `Math` on purpose. `fabsf`, `frexpf`, `ldexpf` and `hypotf` are header inlines in the Universal CRT rather than exported symbols, so declaring them would link on Unix and fail on Windows. The `nexttoward` pair takes a `long double`, which is a different type on every target — 64 bits under the Universal CRT, an 80-bit x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere. `Rux/Math` computes at every width without a C runtime and is the portable answer.
 
 The module names above describe where each declaration comes from; they are not part of an import path.
 
