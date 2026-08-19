@@ -299,26 +299,49 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
     if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
         const TypeRef operandType = CheckExpr(*cast->operand);
         TypeRef targetType = ResolveType(*cast->type);
-        const auto isCastValue = [&](const TypeRef &type) {
-            if (IsCastValue(type)) {
-                return true;
+        // An unsubstituted type parameter is not yet any particular type, so whether it can be cast is a question only
+        // an instantiation can answer. Defer it there, the same way a unary or binary operator on a `T` already is,
+        // rather than rejecting the generic body for a cast that every instantiation of it would accept.
+        if (operandType.kind == TypeRef::Kind::TypeParam || targetType.kind == TypeRef::Kind::TypeParam) {
+            if (currentFunctionDecl) {
+                deferredCastChecks[currentFunctionDecl].push_back({operandType, targetType, cast->location});
             }
-            const std::string typeName = NamedBaseTypeName(type);
-            return !typeName.empty() && enumDecls.contains(typeName);
-        };
-        const bool involvesFunc = operandType.kind == TypeRef::Kind::Func || targetType.kind == TypeRef::Kind::Func;
-        const bool castable = involvesFunc ? IsAddressValue(operandType) && IsAddressValue(targetType)
-                                           : isCastValue(operandType) && isCastValue(targetType);
-        if (!operandType.IsUnknown() && !targetType.IsUnknown() && !castable) {
-            EmitError(cast->location, std::format("cannot cast value of type '{}' to '{}'", operandType.ToString(),
-                                                  targetType.ToString()));
+            return targetType;
         }
-        else {
-            ValidateCastConstant(*cast, operandType, targetType);
+        CheckCast(operandType, targetType, cast->location);
+        if (!CastTypesAreCompatible(operandType, targetType)) {
+            return targetType;
         }
+        ValidateCastConstant(*cast, operandType, targetType);
         return targetType;
     }
     return std::nullopt;
+}
+
+/// Whether one type's values can be respelled as another's at all, which is the whole of what a cast requires: the
+/// value's own range is checked separately, and only for a constant.
+bool SemanticAnalyzerContext::CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const {
+    const auto isCastValue = [&](const TypeRef &type) {
+        if (IsCastValue(type)) {
+            return true;
+        }
+        const std::string typeName = NamedBaseTypeName(type);
+        return !typeName.empty() && enumDecls.contains(typeName);
+    };
+    if (operand.IsUnknown() || target.IsUnknown()) {
+        return true;
+    }
+    if (operand.kind == TypeRef::Kind::Func || target.kind == TypeRef::Kind::Func) {
+        return IsAddressValue(operand) && IsAddressValue(target);
+    }
+    return isCastValue(operand) && isCastValue(target);
+}
+
+void SemanticAnalyzerContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
+    if (!CastTypesAreCompatible(operand, target)) {
+        EmitError(location,
+                  std::format("cannot cast value of type '{}' to '{}'", operand.ToString(), target.ToString()));
+    }
 }
 
 void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
@@ -333,6 +356,12 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             static_cast<void>(CheckBinary(check.op, SubstituteTypeParams(check.left, substitutions),
                                           SubstituteTypeParams(check.right, substitutions), *check.leftExpression,
                                           *check.rightExpression, check.location));
+        }
+    }
+    if (const auto it = deferredCastChecks.find(&declaration); it != deferredCastChecks.end()) {
+        for (const DeferredCastCheck &check : it->second) {
+            CheckCast(SubstituteTypeParams(check.operand, substitutions),
+                      SubstituteTypeParams(check.target, substitutions), check.location);
         }
     }
 }

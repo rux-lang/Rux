@@ -170,6 +170,8 @@ protected:
                                                   const TypeRef &subjectType) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
+    void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
+    [[nodiscard]] bool CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const;
 
     /// A type `?` can propagate from, recognized by its variants rather than by a built-in identity: `Result` carries a
     /// payload and a failure, `Option` only a payload.
@@ -346,8 +348,15 @@ private:
         SourceLocation location;
     };
 
+    struct DeferredCastCheck {
+        TypeRef operand;
+        TypeRef target;
+        SourceLocation location;
+    };
+
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
 
     /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked
