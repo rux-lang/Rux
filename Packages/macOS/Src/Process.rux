@@ -1,0 +1,25 @@
+// What a process can ask or say about itself.
+
+import macOS::{ ProcessId, _exit, getpid };
+
+/// Ends the calling process with `code`.
+///
+/// Only the low eight bits reach a waiting parent. Does not return.
+///
+/// This is `_exit` rather than `exit`: nothing registered with `atexit` runs and no stream is flushed, which matches
+/// what the Linux and FreeBSD packages do and is what a raw binding should do. A program wanting the other behaviour
+/// should call C's `exit` through `Rux/C`.
+///
+/// https://rux-lang.dev/docs/api/macos/exit
+func Exit(code: int32) {
+    _exit(code);
+}
+
+/// The calling process's own identifier.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/macos/get-pid
+func GetPid() -> ProcessId {
+    return getpid();
+}

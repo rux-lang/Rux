@@ -1,0 +1,25 @@
+// Unpredictable bytes, from the system's own generator.
+//
+// Darwin's generator is always seeded, never blocks, and cannot fail, which is why the call it is reached through
+// returns nothing at all. There is no short count to loop over and no error to check -- the only such source among
+// the four supported systems.
+
+import macOS::arc4random_buf;
+
+/// Fills `length` bytes of `buffer` with unpredictable bytes.
+///
+/// `buffer` is borrowed and written; `length` is read by value. Returns nothing, because this cannot fail: the
+/// generator is seeded before any user code runs and never blocks.
+///
+/// Suitable for a key, a token, or anything an adversary would like to guess.
+///
+/// Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes.
+///
+/// https://rux-lang.dev/docs/api/macos/get-random
+func GetRandom(buffer: *var opaque, length: uint) {
+    arc4random_buf(buffer, length);
+}
