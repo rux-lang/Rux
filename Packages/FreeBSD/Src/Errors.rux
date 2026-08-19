@@ -1,0 +1,193 @@
+// How a FreeBSD system call reports failure, and the numbers it reports.
+//
+// FreeBSD does not report an error the way Linux does. The kernel sets the carry flag and leaves a *positive* errno
+// in the result register, so the raw instruction result cannot be tested for sign. The assembly wrappers in
+// `Syscall` normalize that to Linux's convention -- a small negative number -- so everything above them reads the
+// same on both systems, and `IsError` and `Errno` are then the same two functions.
+//
+// The names keep the system's own spelling, because `EINVAL` is what a man page names. The values below are
+// FreeBSD's, which agree with Linux for the first thirty-four and then diverge.
+
+/// `EPERM`: the operation is not permitted to this caller.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eperm
+#Allow("naming.const")
+const EPERM: int64 = 1;
+
+/// `ENOENT`: no such file or directory.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enoent
+#Allow("naming.const")
+const ENOENT: int64 = 2;
+
+/// `ESRCH`: no such process.
+///
+/// https://rux-lang.dev/docs/api/freebsd/esrch
+#Allow("naming.const")
+const ESRCH: int64 = 3;
+
+/// `EINTR`: the call was interrupted by a signal before it did anything.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eintr
+#Allow("naming.const")
+const EINTR: int64 = 4;
+
+/// `EIO`: a low-level input or output error.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eio
+#Allow("naming.const")
+const EIO: int64 = 5;
+
+/// `EBADF`: the file descriptor is not open, or is not open for what was asked.
+///
+/// https://rux-lang.dev/docs/api/freebsd/ebadf
+#Allow("naming.const")
+const EBADF: int64 = 9;
+
+/// `EAGAIN`: the operation would block, and the descriptor was set not to.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eagain
+#Allow("naming.const")
+const EAGAIN: int64 = 35;
+
+/// `ENOMEM`: not enough memory to satisfy the request.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enomem
+#Allow("naming.const")
+const ENOMEM: int64 = 12;
+
+/// `EACCES`: permission denied.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eacces
+#Allow("naming.const")
+const EACCES: int64 = 13;
+
+/// `EFAULT`: an address the call was given is outside the caller's address space.
+///
+/// https://rux-lang.dev/docs/api/freebsd/efault
+#Allow("naming.const")
+const EFAULT: int64 = 14;
+
+/// `EBUSY`: the resource is in use.
+///
+/// https://rux-lang.dev/docs/api/freebsd/ebusy
+#Allow("naming.const")
+const EBUSY: int64 = 16;
+
+/// `EEXIST`: the file already exists.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eexist
+#Allow("naming.const")
+const EEXIST: int64 = 17;
+
+/// `EXDEV`: the two paths are on different file systems.
+///
+/// https://rux-lang.dev/docs/api/freebsd/exdev
+#Allow("naming.const")
+const EXDEV: int64 = 18;
+
+/// `ENOTDIR`: a path component that had to be a directory is not one.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enotdir
+#Allow("naming.const")
+const ENOTDIR: int64 = 20;
+
+/// `EISDIR`: the target is a directory and the operation is not one a directory accepts.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eisdir
+#Allow("naming.const")
+const EISDIR: int64 = 21;
+
+/// `EINVAL`: an argument is not valid.
+///
+/// https://rux-lang.dev/docs/api/freebsd/einval
+#Allow("naming.const")
+const EINVAL: int64 = 22;
+
+/// `EMFILE`: this process has too many descriptors open.
+///
+/// https://rux-lang.dev/docs/api/freebsd/emfile
+#Allow("naming.const")
+const EMFILE: int64 = 24;
+
+/// `ENOSPC`: the device has no room left.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enospc
+#Allow("naming.const")
+const ENOSPC: int64 = 28;
+
+/// `ESPIPE`: the descriptor is a pipe or socket and cannot be seeked.
+///
+/// https://rux-lang.dev/docs/api/freebsd/espipe
+#Allow("naming.const")
+const ESPIPE: int64 = 29;
+
+/// `EROFS`: the file system is mounted read-only.
+///
+/// https://rux-lang.dev/docs/api/freebsd/erofs
+#Allow("naming.const")
+const EROFS: int64 = 30;
+
+/// `EPIPE`: the reading end of the pipe is closed.
+///
+/// https://rux-lang.dev/docs/api/freebsd/epipe
+#Allow("naming.const")
+const EPIPE: int64 = 32;
+
+/// `ENAMETOOLONG`: the path or a component of it is too long.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enametoolong
+#Allow("naming.const")
+const ENAMETOOLONG: int64 = 63;
+
+/// `ELOOP`: too many symbolic links were followed resolving the path.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eloop
+#Allow("naming.const")
+const ELOOP: int64 = 62;
+
+/// `ENOSYS`: the kernel does not implement this call.
+///
+/// https://rux-lang.dev/docs/api/freebsd/enosys
+#Allow("naming.const")
+const ENOSYS: int64 = 78;
+
+/// `EOVERFLOW`: a value is too large for the type the call reports it in.
+///
+/// https://rux-lang.dev/docs/api/freebsd/eoverflow
+#Allow("naming.const")
+const EOVERFLOW: int64 = 84;
+
+/// `ETIMEDOUT`: the operation timed out.
+///
+/// https://rux-lang.dev/docs/api/freebsd/etimedout
+#Allow("naming.const")
+const ETIMEDOUT: int64 = 60;
+
+/// The largest error number the normalized error range holds.
+///
+/// https://rux-lang.dev/docs/api/freebsd/maximum-errno
+const MaximumErrno: int64 = 4095;
+
+/// Whether a raw system-call result is one of the normalized error values.
+///
+/// `result` is read by value. True for `-4095` through `-1`, and false for everything else, including every valid
+/// mapping address a memory call returns.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/freebsd/is-error
+func IsError(result: int64) -> bool {
+    return result < 0 && result >= -MaximumErrno;
+}
+
+/// The error number a raw system-call result carries, or zero when it carries none.
+///
+/// `result` is read by value; the number is returned by copy, positive, as a man page names it.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/freebsd/errno
+func Errno(result: int64) -> int64 {
+    return IsError(result) ? -result : 0;
+}

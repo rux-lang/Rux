@@ -1,0 +1,37 @@
+// The kernel ABI's own types: what a FreeBSD system call takes and gives back.
+//
+// FreeBSD's 64-bit ABI fixes each width, so these are the same on both supported architectures and none of the
+// `long` questions that `Rux/C` has to answer arise here.
+
+/// A process identifier, as `getpid` and its relatives report one.
+///
+/// https://rux-lang.dev/docs/api/freebsd/process-id
+type ProcessId = int32;
+
+/// A file descriptor, as the kernel numbers one.
+///
+/// https://rux-lang.dev/docs/api/freebsd/file-descriptor
+type FileDescriptor = int32;
+
+/// A byte offset within a file, 64 bits on every supported target.
+///
+/// https://rux-lang.dev/docs/api/freebsd/file-offset
+type FileOffset = int64;
+
+/// A file's type and permission bits.
+///
+/// https://rux-lang.dev/docs/api/freebsd/file-mode
+type FileMode = uint16;
+
+/// A duration or an instant, as seconds and nanoseconds.
+///
+/// `nanoseconds` is in `[0, 999999999]` for a value the kernel produced; a value the caller builds must normalize it,
+/// since a call given more than a second's worth reports `EINVAL` rather than carrying.
+///
+/// https://rux-lang.dev/docs/api/freebsd/timespec
+struct Timespec {
+    /// Whole seconds.
+    seconds: int64;
+    /// Nanoseconds within the second, in `[0, 999999999]`.
+    nanoseconds: int64;
+}
