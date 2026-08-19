@@ -199,6 +199,34 @@ TEST_CASE("naming.type rejects unknown rules and non-type declarations") {
     CHECK(nonType.HasErrors());
 }
 
+TEST_CASE("naming.const allows a constant to keep the spelling its platform published") {
+    // A binding's constant is a C macro's own name -- SEEK_SET, O_RDONLY, FILE_ATTRIBUTE_NORMAL -- which no reader
+    // porting code would recognize renamed, and which the naming rules already carve out for raw declarations.
+    auto allowed = Rux::Linting::Lint(R"(
+        #Allow("naming.const")
+        const SEEK_SET: int32 = 0;
+
+        #Allow("naming.const")
+        const EXIT_FAILURE: int32 = 1;
+    )",
+                                      "foreign_constants.rux");
+    CHECK_FALSE(allowed.HasErrors());
+    CHECK(allowed.diagnostics.empty());
+
+    auto warned = Rux::Linting::Lint("const SEEK_SET: int32 = 0;", "plain_constant.rux");
+    REQUIRE(warned.diagnostics.size() == 1);
+    CHECK(warned.diagnostics[0].message == "constant name 'SEEK_SET' should be PascalCase");
+}
+
+TEST_CASE("naming.const rejects a declaration that is not a constant") {
+    auto nonConst = Rux::Linting::Lint(R"(
+        #Allow("naming.const")
+        type time_t = int64;
+    )",
+                                       "invalid_const_allow.rux");
+    CHECK(nonConst.HasErrors());
+}
+
 TEST_CASE("linter warns on bad local variable name") {
     auto result = Rux::Linting::Lint("func Test() { let BadVar = 10; }", "local_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
@@ -416,5 +444,5 @@ pub func Open() -> int32 { return 0i32; }
 
     REQUIRE(result.HasErrors());
     CHECK_EQ(result.diagnostics.front().message,
-             "unknown lint rule 'docs.mising'; valid rules are: naming.type, docs.missing, docs.api-url");
+             "unknown lint rule 'docs.mising'; valid rules are: naming.type, naming.const, docs.missing, docs.api-url");
 }
