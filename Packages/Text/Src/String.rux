@@ -1,4 +1,4 @@
-import Memory::{ Alloc, Compare, Copy, Free };
+import Memory::{ Alloc, Equal, Copy, Free };
 
 // A String owns the heap block behind `data` and never writes to it again:
 // every transform below returns a fresh String and leaves the receiver
@@ -96,7 +96,7 @@ extend String {
         }
         // Compare reports the offset of the first difference, so an equal
         // pair reports the full length.
-        return Compare(self.data, other.data, self.length) == self.length;
+        return Equal(self.data, other.data, self.length);
     }
 
     // Equality by contents. Routes to Equals.
@@ -147,7 +147,7 @@ extend String {
         if prefix.length == 0 {
             return true;
         }
-        return Compare(self.data, prefix.data, prefix.length) == prefix.length;
+        return Equal(self.data, prefix.data, prefix.length);
     }
 
     // Whether the String closes with the given bytes, on the same terms as
@@ -161,7 +161,7 @@ extend String {
         }
 
         let offset = self.length - suffix.length;
-        return Compare(self.data + offset, suffix.data, suffix.length) == suffix.length;
+        return Equal(self.data + offset, suffix.data, suffix.length);
     }
 
     // The offset of the first match, or -1 when there is none. The empty
@@ -178,7 +178,7 @@ extend String {
         let last = self.length - needle.length;
         var start: uint = 0;
         while start <= last {
-            if Compare(self.data + start, needle.data, needle.length) == needle.length {
+            if Equal(self.data + start, needle.data, needle.length) {
                 return start as int;
             }
             start++;

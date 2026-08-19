@@ -6,7 +6,7 @@ func Main() -> int {
     Assert(buffer != null, "Alloc(1024)");
 
     // Every byte of the block must be writable and read back what was written.
-    Set(buffer, 1024, 0xA5);
+    Set(buffer, 0xA5 as byte, 1024);
     let bytes = buffer as *uint8;
     Assert(*bytes == 0xA5, "Alloc(1024) first byte");
     Assert(*(bytes + 1023) == 0xA5, "Alloc(1024) last byte");

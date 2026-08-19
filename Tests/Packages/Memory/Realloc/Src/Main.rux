@@ -1,5 +1,5 @@
 import Core::Assert;
-import Memory::{ Alloc, Compare, Free, Realloc, Set };
+import Memory::{ Alloc, Equal, Free, Realloc, Set };
 
 func Main() -> int {
     // A null pointer makes Realloc behave like Alloc.
@@ -13,24 +13,24 @@ func Main() -> int {
     // Growing preserves every byte of the old block.
     var buffer = Alloc(8);
     Assert(buffer != null, "Alloc(8)");
-    Set(buffer, 8, 0xAB);
+    Set(buffer, 0xAB as byte, 8);
 
     buffer = Realloc(buffer, 64);
     Assert(buffer != null, "Realloc(ptr, 64)");
 
     var expected = Alloc(8);
-    Set(expected, 8, 0xAB);
-    Assert(Compare(buffer, expected, 8) == 8, "grown block keeps its bytes");
+    Set(expected, 0xAB as byte, 8);
+    Assert(Equal(buffer, expected, 8), "grown block keeps its bytes");
     Free(expected);
 
     // Shrinking preserves the surviving prefix.
-    Set(buffer, 64, 0xCD);
+    Set(buffer, 0xCD as byte, 64);
     buffer = Realloc(buffer, 16);
     Assert(buffer != null, "Realloc(ptr, 16)");
 
     var prefix = Alloc(16);
-    Set(prefix, 16, 0xCD);
-    Assert(Compare(buffer, prefix, 16) == 16, "shrunk block keeps its prefix");
+    Set(prefix, 0xCD as byte, 16);
+    Assert(Equal(buffer, prefix, 16), "shrunk block keeps its prefix");
     Free(prefix);
 
     Free(buffer);

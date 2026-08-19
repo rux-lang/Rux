@@ -1,0 +1,106 @@
+import Core::{ Assert, Ordering };
+import Memory::{ Alloc, Compare, Copy, Equal, Find, Free, MismatchOffset, Move, Set, Zero };
+
+// The three things a block operation gets wrong quietly: touching a byte past its length, taking the wrong direction
+// through an overlap, and treating an empty range as an error. Each is checked here rather than assumed.
+
+func Main() -> int {
+    let left = Alloc(32) as *var byte;
+    let right = Alloc(32) as *var byte;
+    Assert(left != null as *byte && right != null as *byte, "the two blocks are allocated");
+
+    // Set writes its whole length and nothing past it.
+    Set(left as *var opaque, 0xAA as byte, 32);
+    Set(right as *var opaque, 0xAA as byte, 32);
+    Assert(*left == 0xAA as byte && *(left + 31) == 0xAA as byte, "Set wrote the whole range");
+
+    Set(left as *var opaque, 0x11 as byte, 8);
+    Assert(*(left + 7) == 0x11 as byte, "Set wrote up to its length");
+    Assert(*(left + 8) == 0xAA as byte, "and stopped there");
+
+    // Zero is the same operation with a fixed value.
+    Zero(left as *var opaque, 8);
+    Assert(*left == 0 as byte && *(left + 7) == 0 as byte, "Zero cleared its range");
+    Assert(*(left + 8) == 0xAA as byte, "and stopped there");
+
+    // Equality and ordering over the same bytes.
+    Set(left as *var opaque, 0x5A as byte, 32);
+    Assert(Equal(left as *opaque, right as *opaque, 0), "an empty range is equal to anything");
+    Assert(!Equal(left as *opaque, right as *opaque, 32), "blocks that differ are not equal");
+    Set(right as *var opaque, 0x5A as byte, 32);
+    Assert(Equal(left as *opaque, right as *opaque, 32), "blocks holding the same bytes are equal");
+    Assert(Compare(left as *opaque, right as *opaque, 32) == Ordering::Equal, "and compare equal");
+
+    // Ordering is lexicographic and by unsigned byte, which is what makes 0x80 sort above 0x7F rather than below.
+    *(right + 5) = 0x00 as byte;
+    Assert(Compare(left as *opaque, right as *opaque, 32) == Ordering::Greater, "a larger byte sorts after");
+    Assert(Compare(right as *opaque, left as *opaque, 32) == Ordering::Less, "and the comparison is antisymmetric");
+    Assert(MismatchOffset(left as *opaque, right as *opaque, 32) == 5, "the difference is at index five");
+    Assert(Compare(left as *opaque, right as *opaque, 5) == Ordering::Equal, "a difference past the length is not seen");
+    Assert(MismatchOffset(left as *opaque, right as *opaque, 32) == 5, "and the offset is unchanged by that");
+
+    *(right + 5) = 0x5A as byte;
+    *left = 0x7F as byte;
+    *right = 0x80 as byte;
+    Assert(Compare(left as *opaque, right as *opaque, 32) == Ordering::Less,
+           "0x80 sorts above 0x7F, so bytes are compared unsigned");
+
+    // Searching within a length.
+    Set(left as *var opaque, 0x20 as byte, 32);
+    *(left + 10) = 0x7E as byte;
+    Assert(Find(left as *opaque, 32, 0x7E as byte) == 10, "Find reports where the byte is");
+    Assert(Find(left as *opaque, 10, 0x7E as byte) == 10, "and does not look past its length");
+    Assert(Find(left as *opaque, 32, 0x01 as byte) == 32, "a byte that is not there reports the length");
+
+    // Copy over a range that does not overlap.
+    Set(left as *var opaque, 0x11 as byte, 32);
+    Set(right as *var opaque, 0x22 as byte, 32);
+    Copy(right as *var opaque, left as *opaque, 16);
+    Assert(*(right + 15) == 0x11 as byte, "Copy wrote its whole length");
+    Assert(*(right + 16) == 0x22 as byte, "and nothing past it");
+
+    // Move slides a run forward within one buffer, which is the direction a forward copy would corrupt.
+    var index: uint = 0;
+    while index < 32 {
+        *(left + index) = index as byte;
+        index++;
+    }
+    Move((left + 4) as *var opaque, left as *opaque, 8);
+    index = 0;
+    while index < 8 {
+        Assert(*(left + 4 + index) == index as byte, "an overlapping forward move keeps every source byte");
+        index++;
+    }
+    Assert(*left == 0 as byte && *(left + 1) == 1 as byte, "and the bytes before the destination are untouched");
+
+    // And backward, where a naive reverse copy would be the one to corrupt.
+    index = 0;
+    while index < 32 {
+        *(left + index) = index as byte;
+        index++;
+    }
+    Move(left as *var opaque, (left + 4) as *opaque, 8);
+    index = 0;
+    while index < 8 {
+        Assert(*(left + index) == (index + 4) as byte, "an overlapping backward move keeps every source byte");
+        index++;
+    }
+
+    // Moving a range onto itself is defined and changes nothing.
+    Move(left as *var opaque, left as *opaque, 32);
+    Assert(*(left + 7) == 11 as byte, "moving a block onto itself leaves it alone");
+
+    // Zero length is legal everywhere, and null is legal with it. None of these may touch memory.
+    Copy(null, null, 0);
+    Move(null, null, 0);
+    Set(null, 0xFF as byte, 0);
+    Zero(null, 0);
+    Assert(Equal(null, null, 0), "two empty blocks are equal");
+    Assert(Compare(null, null, 0) == Ordering::Equal, "and compare equal");
+    Assert(MismatchOffset(null, null, 0) == 0, "an empty comparison reports offset zero");
+    Assert(Find(null, 0, 0 as byte) == 0, "an empty search reports zero");
+
+    Free(left as *var opaque);
+    Free(right as *var opaque);
+    return 0;
+}
