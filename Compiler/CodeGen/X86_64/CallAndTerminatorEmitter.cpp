@@ -137,7 +137,14 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
             const std::int32_t displacement = Disp(argument);
             if (index >= 4) {
                 const std::int32_t stackOffset = 32 + (index - 4) * 8;
-                if (IsFloat(type)) {
+                if (IsFloat(type) && (SizeOf(type) == 4 || SizeOf(type) == 8)) {
+                    // Moved as raw bits through rax rather than through xmm0, which by now holds the first argument.
+                    // The callee reads the slot at the float's own width either way, and rax is an argument register
+                    // under neither convention, so nothing already placed is disturbed.
+                    hooks.LoadA(argument, SizeOf(type) == 4 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64());
+                    encoder.MovRaxStoreRsp(stackOffset);
+                }
+                else if (IsFloat(type)) {
                     hooks.LoadA(argument, type);
                     SizeOf(type) == 4 ? encoder.MovssXmm0StoreRsp(stackOffset) : encoder.MovsdXmm0StoreRsp(stackOffset);
                 }
