@@ -1,0 +1,58 @@
+// Loading a shared object at run time, and finding a symbol inside it.
+//
+// The one part of the FreeBSD interface that is not a system call: resolution, relocation and reference counting all
+// belong to the run-time linker, whose entry points live in libc.
+
+/// The library the run-time linker's entry points live in.
+///
+/// https://rux-lang.dev/docs/api/freebsd/loader-lib
+const LoaderLib = "libc.so.7";
+
+/// `RTLD_LAZY`: resolve a function symbol the first time it is called rather than at load.
+///
+/// https://rux-lang.dev/docs/api/freebsd/rtld-lazy
+#Allow("naming.const")
+const RTLD_LAZY: int32 = 1;
+
+/// `RTLD_NOW`: resolve every symbol before `dlopen` returns.
+///
+/// https://rux-lang.dev/docs/api/freebsd/rtld-now
+#Allow("naming.const")
+const RTLD_NOW: int32 = 2;
+
+/// `RTLD_GLOBAL`: make this object's symbols available to objects loaded afterwards.
+///
+/// https://rux-lang.dev/docs/api/freebsd/rtld-global
+#Allow("naming.const")
+const RTLD_GLOBAL: int32 = 256;
+
+/// `RTLD_LOCAL`: keep this object's symbols to itself, which is the default.
+///
+/// https://rux-lang.dev/docs/api/freebsd/rtld-local
+#Allow("naming.const")
+const RTLD_LOCAL: int32 = 0;
+
+#Link(LoaderLib)
+extern {
+    // Loads a shared object and returns a handle to it, or null on failure
+    //
+    // A second call for an object already loaded returns the same handle and raises its reference count. Failure is
+    // reported through dlerror, not errno.
+    // https://man.freebsd.org/cgi/man.cgi?query=dlopen
+    func dlopen(filename: *char8, flags: int32) -> *var opaque;
+
+    // Finds a symbol in a loaded object and returns its address, or null
+    //
+    // A null return is ambiguous, since a symbol whose address is legitimately zero exists. Clear dlerror first, then
+    // call this, then read dlerror again to tell the two apart.
+    // https://man.freebsd.org/cgi/man.cgi?query=dlsym
+    func dlsym(handle: *var opaque, symbol: *char8) -> *var opaque;
+
+    // Drops one reference to a loaded object, unloading it when the last one goes
+    // https://man.freebsd.org/cgi/man.cgi?query=dlclose
+    func dlclose(handle: *var opaque) -> int32;
+
+    // Reports the most recent loader error and clears it, or returns null when there is none
+    // https://man.freebsd.org/cgi/man.cgi?query=dlerror
+    func dlerror() -> *char8;
+}

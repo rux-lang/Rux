@@ -1,0 +1,268 @@
+// Reading and writing through a file descriptor, and the three descriptors a process starts with.
+//
+// Each wrapper returns the normalized raw result: a byte count, or a small negative error number. A short count is
+// not an error and not an end of file -- only a zero-length read means the source has ended.
+//
+// The three descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a
+// type alias declared in another file of the package.
+
+import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysClose, SysDup2, SysFstat,
+                  SysFsync, SysFtruncate, SysLseek, SysMkdirAt, SysOpenAt, SysPipe2, SysRead,
+                  SysRenameAt, SysUnlinkAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4 };
+
+/// The descriptor a process reads its input from, unless something reassigned it.
+///
+/// https://rux-lang.dev/docs/api/freebsd/std-in
+const StdIn: int32 = 0;
+
+/// The descriptor a process writes its output to.
+///
+/// https://rux-lang.dev/docs/api/freebsd/std-out
+const StdOut: int32 = 1;
+
+/// The descriptor a process writes its diagnostics to.
+///
+/// https://rux-lang.dev/docs/api/freebsd/std-err
+const StdErr: int32 = 2;
+
+/// Reads up to `count` bytes from `fd` into `buffer`.
+///
+/// `buffer` is borrowed and written. Returns the number of bytes read, zero at end of file, or a negative error
+/// number. A short count is ordinary.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `count` bytes.
+///
+/// https://rux-lang.dev/docs/api/freebsd/read
+func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
+    return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
+}
+
+/// Writes up to `count` bytes from `buffer` to `fd`.
+///
+/// `buffer` is borrowed and read. Returns the number of bytes written, or a negative error number. A short count is
+/// ordinary and the rest has to be written by calling again.
+///
+/// # Safety
+///
+/// `buffer` must be readable for `count` bytes.
+///
+/// https://rux-lang.dev/docs/api/freebsd/write
+func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
+    return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
+}
+
+/// Closes `fd` and releases what the kernel held for it.
+///
+/// Returns zero, or a negative error number. A failure does not mean the descriptor is still open, so retrying a
+/// failed close can close one another thread has since opened under the same number.
+///
+/// https://rux-lang.dev/docs/api/freebsd/close
+func Close(fd: FileDescriptor) -> int64 {
+    return Syscall1(SysClose, SignExtendFd(fd));
+}
+
+/// `AT_FDCWD`: resolve a relative path against the current directory rather than a descriptor.
+///
+/// FreeBSD spells this `-100`, the same value Linux uses, which is one of the few places the two agree exactly.
+///
+/// https://rux-lang.dev/docs/api/freebsd/at-fd-cwd
+const AtFdCwd: int32 = -100;
+
+/// `O_RDONLY`: open for reading only.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-read-only
+const OpenReadOnly: int32 = 0x0000;
+
+/// `O_WRONLY`: open for writing only.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-write-only
+const OpenWriteOnly: int32 = 0x0001;
+
+/// `O_RDWR`: open for both reading and writing.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-read-write
+const OpenReadWrite: int32 = 0x0002;
+
+/// `O_CREAT`: create the file when it does not exist, which is when the mode argument is read.
+///
+/// FreeBSD's flag bits are the BSD ones and are not Linux's: `O_CREAT` is `0x0200` here and `0x40` there. A flag
+/// value must never be carried between the two packages.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-create
+const OpenCreate: int32 = 0x0200;
+
+/// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-exclusive
+const OpenExclusive: int32 = 0x0800;
+
+/// `O_TRUNC`: truncate the file to nothing when opening it for writing.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-truncate
+const OpenTruncate: int32 = 0x0400;
+
+/// `O_APPEND`: every write goes to the end.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-append
+const OpenAppend: int32 = 0x0008;
+
+/// `O_NONBLOCK`: reads and writes report `EAGAIN` rather than waiting.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-non-blocking
+const OpenNonBlocking: int32 = 0x0004;
+
+/// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-close-on-exec
+const OpenCloseOnExec: int32 = 0x00100000;
+
+/// `O_DIRECTORY`: fail unless the target is a directory.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-directory
+const OpenDirectory: int32 = 0x00020000;
+
+/// `SEEK_SET`: measure the new offset from the start of the file.
+///
+/// https://rux-lang.dev/docs/api/freebsd/seek-set
+const SeekSet: int32 = 0;
+
+/// `SEEK_CUR`: measure the new offset from the current one.
+///
+/// https://rux-lang.dev/docs/api/freebsd/seek-current
+const SeekCurrent: int32 = 1;
+
+/// `SEEK_END`: measure the new offset from the end of the file.
+///
+/// https://rux-lang.dev/docs/api/freebsd/seek-end
+const SeekEnd: int32 = 2;
+
+/// `AT_REMOVEDIR`: make `UnlinkAt` remove a directory rather than a file.
+///
+/// https://rux-lang.dev/docs/api/freebsd/remove-directory
+const RemoveDirectory: int32 = 0x0800;
+
+/// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
+///
+/// `directoryFd` is `AtFdCwd` for an ordinary path. `mode` is read only when `OpenCreate` is set.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated. The mode is masked by the process umask.
+///
+/// https://rux-lang.dev/docs/api/freebsd/open-at
+func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
+    return Syscall4(SysOpenAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64,
+                    mode as uint64);
+}
+
+/// Moves the file offset of `fd` and returns where it ended up, or a negative error number.
+///
+/// Seeking past the end creates a hole when something is later written there. A pipe reports `ESPIPE`.
+///
+/// https://rux-lang.dev/docs/api/freebsd/lseek
+func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
+    return Syscall3(SysLseek, SignExtendFd(fd), offset as uint64, (whence as int64) as uint64);
+}
+
+/// Flushes everything written to `fd` through to the storage device.
+///
+/// Returns zero, or a negative error number. Without it, data a successful `Write` reported may still be lost.
+///
+/// https://rux-lang.dev/docs/api/freebsd/fsync
+func Fsync(fd: FileDescriptor) -> int64 {
+    return Syscall1(SysFsync, SignExtendFd(fd));
+}
+
+/// Sets the length of the file behind `fd` to `length`.
+///
+/// Growing creates a hole rather than allocating, so a later write into it can still fail with `ENOSPC`.
+///
+/// https://rux-lang.dev/docs/api/freebsd/ftruncate
+func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
+    return Syscall2(SysFtruncate, SignExtendFd(fd), length as uint64);
+}
+
+/// Removes the name `path` from its directory.
+///
+/// `flags` is zero for a file or `RemoveDirectory` for an empty directory. Removing a name does not free the file:
+/// anything still holding it open keeps using it.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated.
+///
+/// https://rux-lang.dev/docs/api/freebsd/unlink-at
+func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
+    return Syscall3(SysUnlinkAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64);
+}
+
+/// Creates a directory named `path` with permission bits `mode`.
+///
+/// Reports `EEXIST` when the name is taken, which is how this is used as a lock.
+///
+/// # Safety
+///
+/// `path` must be non-null and terminated.
+///
+/// https://rux-lang.dev/docs/api/freebsd/mkdir-at
+func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
+    return Syscall3(SysMkdirAt, SignExtendFd(directoryFd), path as uint64, mode as uint64);
+}
+
+/// Renames `oldPath` to `newPath`, each resolved against its own directory descriptor.
+///
+/// Within one file system this replaces any existing `newPath` atomically. Across file systems it reports `EXDEV`
+/// rather than copying.
+///
+/// # Safety
+///
+/// Both paths must be non-null and terminated.
+///
+/// https://rux-lang.dev/docs/api/freebsd/rename-at
+func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
+              newPath: *char8) -> int64 {
+    return Syscall4(SysRenameAt, SignExtendFd(oldDirectoryFd), oldPath as uint64, SignExtendFd(newDirectoryFd),
+                    newPath as uint64);
+}
+
+/// Fills `statBuffer` with what the kernel knows about the file behind `fd`.
+///
+/// The kernel's `struct stat` is not modelled here: its layout is FreeBSD's own and differs from Linux's in both
+/// size and field order.
+///
+/// # Safety
+///
+/// `statBuffer` must be writable for the whole of FreeBSD's `struct stat`, which this does not check.
+///
+/// https://rux-lang.dev/docs/api/freebsd/fstat
+func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
+    return Syscall2(SysFstat, SignExtendFd(fd), statBuffer as uint64);
+}
+
+/// Makes `newFd` a copy of `oldFd`, closing whatever `newFd` was.
+///
+/// Returns `newFd`, or a negative error number. Duplicating a descriptor onto itself returns it unchanged.
+///
+/// FreeBSD has `dup2` on both architectures, so this is the plain form rather than Linux's `dup3`; setting
+/// close-on-exec is a separate `fcntl` this package does not wrap.
+///
+/// https://rux-lang.dev/docs/api/freebsd/dup2
+func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
+    return Syscall2(SysDup2, SignExtendFd(oldFd), SignExtendFd(newFd));
+}
+
+/// Creates a pipe and writes its two descriptors into `descriptors`.
+///
+/// The reading end lands at index zero and the writing end at index one. `flags` may carry `OpenCloseOnExec` and
+/// `OpenNonBlocking`.
+///
+/// # Safety
+///
+/// `descriptors` must be writable for two `int32` values.
+///
+/// https://rux-lang.dev/docs/api/freebsd/pipe2
+func Pipe2(descriptors: *var int32, flags: int32) -> int64 {
+    return Syscall2(SysPipe2, descriptors as uint64, (flags as int64) as uint64);
+}

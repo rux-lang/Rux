@@ -1,0 +1,154 @@
+// Mapping and unmapping address space, and moving the program break.
+//
+// Nothing here tracks what it hands out: an address from `Mmap` is valid until `Munmap` releases exactly the range
+// that was mapped.
+
+import FreeBSD::{ SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap, Syscall1,
+                  Syscall2, Syscall3, Syscall6 };
+
+/// `PROT_NONE`: the pages may not be touched at all.
+///
+/// https://rux-lang.dev/docs/api/freebsd/protection-none
+const ProtectionNone: int32 = 0x00;
+
+/// `PROT_READ`: the pages may be read.
+///
+/// https://rux-lang.dev/docs/api/freebsd/protection-read
+const ProtectionRead: int32 = 0x01;
+
+/// `PROT_WRITE`: the pages may be written.
+///
+/// https://rux-lang.dev/docs/api/freebsd/protection-write
+const ProtectionWrite: int32 = 0x02;
+
+/// `PROT_EXEC`: the pages may be executed.
+///
+/// https://rux-lang.dev/docs/api/freebsd/protection-execute
+const ProtectionExecute: int32 = 0x04;
+
+/// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
+///
+/// https://rux-lang.dev/docs/api/freebsd/map-shared
+const MapShared: int32 = 0x0001;
+
+/// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
+///
+/// https://rux-lang.dev/docs/api/freebsd/map-private
+const MapPrivate: int32 = 0x0002;
+
+/// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
+///
+/// https://rux-lang.dev/docs/api/freebsd/map-fixed
+const MapFixed: int32 = 0x0010;
+
+/// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
+///
+/// FreeBSD numbers this differently from Linux, which is one of the reasons the two packages are separate.
+///
+/// https://rux-lang.dev/docs/api/freebsd/map-anonymous
+const MapAnonymous: int32 = 0x1000;
+
+/// Creates a mapping and returns its address, or a negative error number.
+///
+/// `address` is a hint unless `MapFixed` is set. `fd` is the object to map, or `-1` with `MapAnonymous`. Testing the
+/// result needs `Errors::IsError` rather than a sign test, since a valid address may have its top bit set.
+///
+/// # Safety
+///
+/// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
+///
+/// https://rux-lang.dev/docs/api/freebsd/mmap
+func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+    return Syscall6(
+        SysMmap,
+        address as uint64,
+        length as uint64,
+        protection as uint64,
+        flags as uint64,
+        SignExtendFd(fd),
+        offset
+    );
+}
+
+/// Releases the mapping that begins at `address` and spans `length` bytes.
+///
+/// Returns zero, or a negative error number. Releasing a range that was never mapped succeeds and does nothing.
+///
+/// # Safety
+///
+/// Every pointer into the range becomes invalid.
+///
+/// https://rux-lang.dev/docs/api/freebsd/munmap
+func Munmap(address: *opaque, length: uint) -> int64 {
+    return Syscall2(SysMunmap, address as uint64, length as uint64);
+}
+
+/// Sets the program break and returns where it ended up.
+///
+/// Reports failure by not moving rather than by an error number. The break is a single process-wide value.
+///
+/// https://rux-lang.dev/docs/api/freebsd/brk
+func Brk(address: *opaque) -> int64 {
+    return Syscall1(SysBrk, address as uint64);
+}
+
+/// `MADV_NORMAL`: no advice; the default.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-normal
+const AdviseNormal: int32 = 0;
+
+/// `MADV_RANDOM`: the pages will be touched in no useful order.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-random
+const AdviseRandom: int32 = 1;
+
+/// `MADV_SEQUENTIAL`: the pages will be touched in order.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-sequential
+const AdviseSequential: int32 = 2;
+
+/// `MADV_WILLNEED`: the pages will be read soon.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-will-need
+const AdviseWillNeed: int32 = 3;
+
+/// `MADV_DONTNEED`: the pages are not needed soon.
+///
+/// FreeBSD's meaning is weaker than Linux's: it does not discard the pages, so an anonymous page does not read back
+/// as zero afterwards. `MADV_FREE` is the one that lets the kernel take the storage, and that difference is exactly
+/// why an advice value must not be carried between the two packages.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-dont-need
+const AdviseDontNeed: int32 = 4;
+
+/// `MADV_FREE`: the pages may be reclaimed, and read back as zero if they are.
+///
+/// https://rux-lang.dev/docs/api/freebsd/advise-free
+const AdviseFree: int32 = 5;
+
+/// Changes what may be done with the pages covering a range.
+///
+/// `address` must be page-aligned. Returns zero, or a negative error number. Removing a permission takes effect at
+/// once, so a thread touching the range concurrently faults.
+///
+/// # Safety
+///
+/// Nothing checks that the range was ever mapped, and a hardened system refuses writable executable memory.
+///
+/// https://rux-lang.dev/docs/api/freebsd/mprotect
+func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+    return Syscall3(SysMprotect, address as uint64, length as uint64, (protection as int64) as uint64);
+}
+
+/// Tells the kernel how the pages covering a range are about to be used.
+///
+/// Advice is advice: the kernel is free to ignore it. `AdviseFree` is the one that actually releases storage.
+///
+/// # Safety
+///
+/// `AdviseFree` loses whatever the range held.
+///
+/// https://rux-lang.dev/docs/api/freebsd/madvise
+func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+    return Syscall3(SysMadvise, address as uint64, length as uint64, (advice as int64) as uint64);
+}

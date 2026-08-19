@@ -10,10 +10,29 @@ rux add Rux/FreeBSD
 
 ## What it provides
 
-- **Syscall entry points** — `Syscall0` through `Syscall6`, written as inline assembly.
-- **Wrappers** — `Read`, `Write`, `Close`, `Exit`, `GetPid`, `Brk`, `Mmap`, `Munmap`, `Nanosleep`, and `ClockGetTime`.
-- **Constants** — the standard descriptors `StdIn`, `StdOut`, `StdErr`; the `mmap` protection and mapping flags; and the syscall numbers themselves (`SysRead`, `SysWrite`, `SysClose`, `SysExit`, `SysGetPid`, `SysBrk`).
-- **Types and helpers** — `Timespec`, plus `Errno`, `IsError`, and `SignExtendFd` for turning a raw return value into a result you can test.
+| Module    | Covers                                                                                  |
+| --------- | --------------------------------------------------------------------------------------- |
+| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `Timespec`      |
+| `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
+| `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
+| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `Dup2`, `Pipe2`, the open flags, and the three standard descriptors |
+| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags |
+| `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, and the clock identifiers              |
+| `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
+| `Process` | `Exit` and `GetPid`                                                                       |
+| `Dynamic` | `dlopen`, `dlsym`, `dlclose`, `dlerror`, and the `RTLD_*` flags                           |
+
+The module names describe where each declaration comes from; they are not part of an import path.
+
+FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw
+instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which
+is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same
+two functions.
+
+Nothing here is interchangeable with `Rux/Linux`, and the resemblance is the hazard. The clock identifiers differ —
+monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTNEED` does not discard where Linux's
+does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other
+compiles and means something else.
 
 ## Platform
 
