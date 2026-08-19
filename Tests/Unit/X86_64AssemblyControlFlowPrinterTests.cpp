@@ -166,3 +166,44 @@ TEST_CASE("x86-64 assembly control-flow printing comments invalid LIR explicitly
     CHECK(output.find("; unsupported LIR opcode ? (999)") != std::string::npos);
     CHECK(output.find("nop    ; missing terminator") != std::string::npos);
 }
+
+TEST_CASE("a Win64 float argument on the stack is placed without disturbing the register arguments") {
+    // The first four arguments live in xmm0-xmm3 by the time the fifth is placed, so the fifth cannot be routed
+    // through xmm0 on its way to the stack: doing that overwrote the first argument, and the callee saw one value
+    // twice. The bits travel through rax instead, which is an argument register under neither convention.
+    const TypeRef float32 = TypeRef::MakeFloat32();
+    LirFunc function;
+    function.name = "Place";
+    function.callConv = CallingConvention::Win64;
+    function.params = {{0, float32, "a"}, {1, float32, "b"}, {2, float32, "c"}, {3, float32, "d"}, {4, float32, "e"}};
+
+    LirInstr call = Instruction(LirOpcode::Call, 5, float32, {0, 1, 2, 3, 4});
+    call.strArg = "Callee";
+    call.callConv = CallingConvention::Win64;
+    LirBlock entry;
+    entry.label = "entry";
+    entry.instrs.push_back(std::move(call));
+    entry.term = Return(5, float32);
+    function.blocks = {std::move(entry)};
+
+    AssemblyModulePrinter modulePrinter(Target::OS::Windows);
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaceNames;
+    AssemblyControlFlowPrinter printer(modulePrinter, layouts, interfaceNames, Target::OS::Windows);
+    printer.EmitFunction(function);
+
+    const std::string output = modulePrinter.Finalize();
+    const std::size_t callSite = output.find("call    Callee");
+    REQUIRE(callSite != std::string::npos);
+    // Once the last register argument is in place, nothing before the call may touch a vector register: the four of
+    // them are the call's first four arguments and are already loaded.
+    const std::size_t lastRegisterArgument = output.rfind("movss   xmm3,", callSite);
+    REQUIRE(lastRegisterArgument != std::string::npos);
+    const std::string placement = output.substr(lastRegisterArgument, callSite - lastRegisterArgument);
+    CHECK_EQ(placement.find("xmm0"), std::string::npos);
+    CHECK_EQ(placement.find("xmm1"), std::string::npos);
+    CHECK_EQ(placement.find("xmm2"), std::string::npos);
+    // The fifth argument reaches its slot as raw bits instead.
+    CHECK(placement.find("mov     eax, dword") != std::string::npos);
+    CHECK(placement.find("mov     qword [rsp + 32], rax") != std::string::npos);
+}

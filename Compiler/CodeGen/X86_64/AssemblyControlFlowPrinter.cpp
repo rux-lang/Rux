@@ -293,7 +293,12 @@ private:
             const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
             const TypeRef type =
                 registerTypes.contains(arguments[index]) ? registerTypes.at(arguments[index]) : TypeRef::MakeInt64();
-            instructionPrinter.LoadA(arguments[index], type);
+            // A float reaches its slot as raw bits, for the same reason it does in the emitted object: loading it as a
+            // float would go through xmm0, which already holds the first argument.
+            const bool rawFloat = IsFloat(type) && (SizeOf(type) == 4 || SizeOf(type) == 8);
+            instructionPrinter.LoadA(arguments[index],
+                                     rawFloat ? (SizeOf(type) == 4 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64())
+                                              : type);
             const std::size_t offset = win64 ? 32 + index * 8 : index * 8;
             TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
         }
