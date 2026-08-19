@@ -34,6 +34,6 @@ func Main() -> int {
     Assert(utc.tm_min == 0, "gmtime(0) minute is zero");
     Assert(utc.tm_sec == 0, "gmtime(0) second is zero");
     Assert(utc.tm_wday == 4, "gmtime(0) is a Thursday");
-    free(slot as *opaque);
+    free(slot as *var opaque);
     return 0;
 }

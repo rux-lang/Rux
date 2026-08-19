@@ -35,8 +35,8 @@ func Main() -> int {
     Assert(puts("StdIo test output".data) >= 0, "puts succeeds");
     Assert(putchar('\n' as int32) == '\n' as int32, "putchar echoes the character");
 
-    free(a as *opaque);
-    free(b as *opaque);
-    free(buf as *opaque);
+    free(a as *var opaque);
+    free(b as *var opaque);
+    free(buf as *var opaque);
     return 0;
 }

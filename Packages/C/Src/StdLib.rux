@@ -1,4 +1,5 @@
 import Core::{ #target, #Error };
+import C::{ c_double, c_int, c_uint, size_t };
 
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
 // from `C::CRuntime`, which names the same library and is what a reader should trust. Every module of this package
@@ -20,15 +21,15 @@ extern {
 
     // Computes the absolute value of an integer value
     // https://en.cppreference.com/c/numeric/math/abs
-    func abs(n: int32) -> int32;
+    func abs(n: c_int) -> c_int;
 
     // Converts a byte string to a floating point value
     // https://en.cppreference.com/c/string/byte/atof
-    func atof(str: *char8) -> float64;
+    func atof(str: *char8) -> c_double;
 
     // Converts a byte string to an integer value
     // https://en.cppreference.com/c/string/byte/atoi
-    func atoi(str: *char8) -> int32;
+    func atoi(str: *char8) -> c_int;
 
     // Converts a byte string to a long integer value
     // https://en.cppreference.com/c/string/byte/atoi
@@ -40,15 +41,15 @@ extern {
 
     // Allocates memory for an array of num objects of size and zero-initializes it
     // https://en.cppreference.com/c/memory/calloc
-    func calloc(num: uint, size: uint) -> *opaque;
+    func calloc(num: size_t, size: size_t) -> *var opaque;
 
     // Causes normal program termination with cleanup
     // https://en.cppreference.com/c/program/exit
-    func exit(status: int32);
+    func exit(status: c_int);
 
     // Deallocates the memory previously allocated by malloc, calloc or realloc
     // https://en.cppreference.com/c/memory/free
-    func free(ptr: *opaque);
+    func free(ptr: *var opaque);
 
     // Returns the value of an environment variable
     // https://en.cppreference.com/c/program/getenv
@@ -64,21 +65,48 @@ extern {
 
     // Allocates size bytes of uninitialized memory
     // https://en.cppreference.com/c/memory/malloc
-    func malloc(size: uint) -> *opaque;
+    func malloc(size: size_t) -> *var opaque;
 
     // Returns a pseudo-random integer value between 0 and RAND_MAX
     // https://en.cppreference.com/c/numeric/random/rand
-    func rand() -> int32;
+    func rand() -> c_int;
 
     // Changes the size of the memory block pointed to by ptr to size bytes
     // https://en.cppreference.com/c/memory/realloc
-    func realloc(ptr: *opaque, size: uint) -> *opaque;
+    func realloc(ptr: *var opaque, size: size_t) -> *var opaque;
 
     // Seeds the pseudo-random number generator used by rand
     // https://en.cppreference.com/c/numeric/random/srand
-    func srand(seed: uint32);
+    func srand(seed: c_uint);
 
     // Calls the host environment's command processor
     // https://en.cppreference.com/c/program/system
-    func system(command: *char8) -> int32;
+    func system(command: *char8) -> c_int;
+}
+
+// C11's aligned allocation, which Windows does not have. The Universal CRT offers `_aligned_malloc` instead, whose
+// arguments are the other way round and whose result must be released with `_aligned_free` rather than `free`:
+// passing one to the other corrupts the heap. Declared under each platform's own name so a caller cannot mistake
+// which pairing it is using.
+when #target.os {
+    .Windows => {
+        #Link(StdLib)
+        extern {
+            // Allocates size bytes on the given alignment; release with _aligned_free, never free
+            // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-malloc
+            func _aligned_malloc(size: size_t, alignment: size_t) -> *var opaque;
+
+            // Releases a block obtained from _aligned_malloc
+            // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-free
+            func _aligned_free(ptr: *var opaque);
+        }
+    }
+    else => {
+        #Link(StdLib)
+        extern {
+            // Allocates size bytes on the given alignment; release with free
+            // https://en.cppreference.com/c/memory/aligned_alloc
+            func aligned_alloc(alignment: size_t, size: size_t) -> *var opaque;
+        }
+    }
 }

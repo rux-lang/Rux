@@ -1,0 +1,100 @@
+import Core::Assert;
+import C::{ free, malloc, memchr, memcmp, memcpy, memmove, memset, strcat, strchr, strcmp, strcpy, strcspn, strlen,
+            strncat, strncmp, strncpy, strpbrk, strrchr, strspn, strstr, strtok };
+
+// Each declaration is exercised through the runtime it binds, so a wrong argument order, a wrong width, or a symbol
+// that does not exist is caught here rather than at some caller's expense. The counted and the terminated families
+// are checked separately, because what they promise differs.
+
+func Main() -> int {
+    let block = malloc(64u64) as *var uint8;
+    Assert(block != null as *uint8, "the allocation succeeds");
+
+    // memset writes exactly the count it is given, and nothing past it.
+    let cleared = memset(block as *var opaque, 0, 64u64);
+    Assert(cleared == block as *var opaque, "memset returns its destination");
+    Assert(*block == 0 && *(block + 63) == 0, "memset wrote the whole range");
+    memset(block as *var opaque, 0x41, 8u64);
+    Assert(*block == 0x41 && *(block + 7) == 0x41, "memset wrote the range it was given");
+    Assert(*(block + 8) == 0, "and stopped there");
+
+    // memcpy moves a counted range; memcmp reads one back.
+    let source = malloc(16u64) as *var uint8;
+    Assert(source != null as *uint8, "the second allocation succeeds");
+    memset(source as *var opaque, 0x5A, 16u64);
+    memcpy(block as *var opaque, source as *opaque, 16u64);
+    Assert(memcmp(block as *opaque, source as *opaque, 16u64) == 0, "the copy compares equal to its source");
+    *(block + 3) = 0x00;
+    Assert(memcmp(block as *opaque, source as *opaque, 16u64) != 0, "a changed byte no longer compares equal");
+    Assert(memcmp(block as *opaque, source as *opaque, 3u64) == 0, "the bytes before it still do");
+
+    // memmove is the one allowed to overlap, and slides in either direction.
+    memset(block as *var opaque, 0, 64u64);
+    *block = 1;
+    *(block + 1) = 2;
+    *(block + 2) = 3;
+    memmove((block + 1) as *var opaque, block as *opaque, 3u64);
+    Assert(*(block + 1) == 1 && *(block + 2) == 2 && *(block + 3) == 3, "an overlapping forward move is exact");
+
+    // memchr finds a byte within the count and reports absence as null.
+    memset(block as *var opaque, 0x20, 32u64);
+    *(block + 10) = 0x7E;
+    let found = memchr(block as *opaque, 0x7E, 32u64) as *uint8;
+    Assert(found == (block + 10) as *uint8, "memchr finds the byte where it was written");
+    Assert(memchr(block as *opaque, 0x7E, 10u64) == null, "and does not look past the count it was given");
+
+    free(source as *var opaque);
+    free(block as *var opaque);
+
+    // The terminated family. A buffer big enough that none of these runs past it.
+    let text = malloc(64u64) as *var char8;
+    Assert(text != null as *char8, "the text allocation succeeds");
+
+    Assert(strcpy(text, "hello".data) == text, "strcpy returns its destination");
+    Assert(strlen(text) == 5u64, "strlen counts up to the terminator");
+    Assert(strcmp(text, "hello".data) == 0, "the copy compares equal");
+    Assert(strcmp(text, "hellp".data) < 0, "and orders before a later string");
+    Assert(strcmp("hellp".data, text) > 0, "the comparison is antisymmetric");
+    Assert(strncmp(text, "help".data, 3u64) == 0, "strncmp stops at the count");
+    Assert(strncmp(text, "help".data, 4u64) != 0, "and sees the difference past it");
+
+    Assert(strcat(text, " there".data) == text, "strcat returns its destination");
+    Assert(strlen(text) == 11u64, "the appended length is the sum");
+    Assert(strcmp(text, "hello there".data) == 0, "and the contents are both parts");
+    strncat(text, "!!!!!".data, 2u64);
+    Assert(strcmp(text, "hello there!!".data) == 0, "strncat takes only the count it was given");
+
+    // strncpy writes the whole count and does not terminate a source that fills it.
+    let padded = malloc(8u64) as *var char8;
+    memset(padded as *var opaque, 0x3F, 8u64);
+    strncpy(padded, "ab".data, 8u64);
+    Assert(*padded == 'a' && *(padded + 1) == 'b', "strncpy copies the source");
+    Assert(*(padded + 2) == '\0' && *(padded + 7) == '\0', "and zero-pads the rest of the count");
+    free(padded as *var opaque);
+
+    // Searching within a terminated string.
+    strcpy(text, "one,two,three".data);
+    // A byte is passed as the `c_int` the declaration takes: `,` is 44, `z` is 122.
+    Assert(strchr(text, 44i32) == text + 3, "strchr finds the first occurrence");
+    Assert(strrchr(text, 44i32) == text + 7, "strrchr finds the last");
+    Assert(strchr(text, 122i32) == null, "a byte that does not occur is absent");
+    Assert(strchr(text, 0i32) == text + 13, "the terminator itself is findable");
+    Assert(strstr(text, "two".data) == text + 4, "strstr finds a substring");
+    Assert(strstr(text, "four".data) == null, "and reports a missing one as absent");
+    Assert(strspn(text, "eno".data) == 3u64, "strspn measures the run drawn from the set");
+    Assert(strcspn(text, ",".data) == 3u64, "strcspn measures the run drawn from outside it");
+    Assert(strpbrk(text, ",-".data) == text + 3, "strpbrk finds the first byte from the set");
+
+    // strtok rewrites the string it walks, which is why it needs a writable copy.
+    strcpy(text, "a,b,c".data);
+    let first = strtok(text, ",".data);
+    Assert(first != null && strcmp(first, "a".data) == 0, "the first token");
+    let second = strtok(null, ",".data);
+    Assert(second != null && strcmp(second, "b".data) == 0, "the second continues the same scan");
+    let third = strtok(null, ",".data);
+    Assert(third != null && strcmp(third, "c".data) == 0, "the third");
+    Assert(strtok(null, ",".data) == null, "and the scan ends");
+
+    free(text as *var opaque);
+    return 0;
+}
