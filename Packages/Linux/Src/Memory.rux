@@ -4,7 +4,8 @@
 // is valid until `Munmap` releases exactly the range that was mapped, and this package has no way to notice a caller
 // releasing a range it never mapped.
 
-import Linux::{ SignExtendFd, SysBrk, SysMmap, SysMunmap, Syscall1, Syscall2, Syscall6 };
+import Linux::{ SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap, Syscall1,
+                Syscall2, Syscall3, Syscall6 };
 
 /// `PROT_NONE`: the pages may not be touched at all.
 ///
@@ -104,4 +105,60 @@ func Munmap(address: *opaque, length: uint) -> int64 {
 /// https://rux-lang.dev/docs/api/linux/brk
 func Brk(address: *opaque) -> int64 {
     return Syscall1(SysBrk, address as uint64);
+}
+
+/// `MADV_DONTNEED`: the pages are not needed, and the kernel may discard them.
+///
+/// An anonymous page discarded this way reads back as zero next time, which is how a range is released without
+/// giving up the address space.
+///
+/// https://rux-lang.dev/docs/api/linux/advise-dont-need
+const AdviseDontNeed: int32 = 4;
+
+/// `MADV_WILLNEED`: the pages will be read soon, so reading them ahead is worthwhile.
+///
+/// https://rux-lang.dev/docs/api/linux/advise-will-need
+const AdviseWillNeed: int32 = 3;
+
+/// `MADV_RANDOM`: the pages will be touched in no useful order, so reading ahead is not.
+///
+/// https://rux-lang.dev/docs/api/linux/advise-random
+const AdviseRandom: int32 = 1;
+
+/// `MADV_SEQUENTIAL`: the pages will be touched in order.
+///
+/// https://rux-lang.dev/docs/api/linux/advise-sequential
+const AdviseSequential: int32 = 2;
+
+/// Changes what may be done with the pages covering `address` through `address + length`.
+///
+/// `address` must be page-aligned; `length` is rounded up to whole pages. `protection` is the same set `Mmap` takes.
+/// Returns zero, or a negative error number.
+///
+/// Removing a permission takes effect at once, so a thread touching the range concurrently faults rather than
+/// finishing what it started.
+///
+/// # Safety
+///
+/// Nothing here checks that the range was ever mapped, and marking executable memory writable at the same time is
+/// what a hardened system refuses.
+///
+/// https://rux-lang.dev/docs/api/linux/mprotect
+func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+    return Syscall3(SysMprotect, address as uint64, length as uint64, (protection as int64) as uint64);
+}
+
+/// Tells the kernel how the pages covering a range are about to be used.
+///
+/// `address` must be page-aligned. Returns zero, or a negative error number. Advice is advice: the kernel is free to
+/// ignore all of it, with the exception of `AdviseDontNeed`, which actually discards.
+///
+/// # Safety
+///
+/// `AdviseDontNeed` loses whatever the range held. On anonymous memory that is a zeroing; on a private file mapping
+/// it discards the modifications rather than writing them back.
+///
+/// https://rux-lang.dev/docs/api/linux/madvise
+func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+    return Syscall3(SysMadvise, address as uint64, length as uint64, (advice as int64) as uint64);
 }

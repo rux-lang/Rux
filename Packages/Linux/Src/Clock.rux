@@ -4,7 +4,8 @@
 // and never jumps, while `ClockRealtime` tracks wall time and can move in either direction when something sets it.
 // A duration is measured with the first; a timestamp anyone else will see is taken from the second.
 
-import Linux::{ SysClockGetTime, SysNanosleep, Syscall2, Timespec };
+import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep, Syscall2,
+                Syscall4, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
 ///
@@ -49,4 +50,60 @@ func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// https://rux-lang.dev/docs/api/linux/nanosleep
 func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
+}
+
+/// `CLOCK_PROCESS_CPUTIME_ID`: processor time this process has used.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-process-cpu-time
+const ClockProcessCpuTime: int32 = 2;
+
+/// `CLOCK_THREAD_CPUTIME_ID`: processor time this thread has used.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-thread-cpu-time
+const ClockThreadCpuTime: int32 = 3;
+
+/// `CLOCK_MONOTONIC_RAW`: like `ClockMonotonic`, but not adjusted by time synchronization.
+///
+/// Ticks at the hardware's own rate rather than a corrected one, which makes it the wrong clock for measuring a
+/// duration anyone will compare against a wall clock, and the right one for measuring the hardware.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-monotonic-raw
+const ClockMonotonicRaw: int32 = 4;
+
+/// `TIMER_ABSTIME`: `ClockNanosleep` should treat its time as an absolute deadline.
+///
+/// https://rux-lang.dev/docs/api/linux/timer-absolute
+const TimerAbsolute: int32 = 1;
+
+/// Reads the resolution of `clockId` into `resolution`.
+///
+/// Returns zero, or a negative error number. The resolution is the granularity the clock advances by, which is not
+/// the cost of reading it and not a promise about accuracy.
+///
+/// # Safety
+///
+/// `resolution` must be non-null and writable.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-get-resolution
+func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
+    return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
+}
+
+/// Suspends the caller against a named clock, optionally until an absolute time.
+///
+/// `flags` is zero for a relative wait or `TimerAbsolute` for a deadline. `remaining` is written only for a relative
+/// wait that a signal cut short, and may be null. Returns zero, or a positive error number -- this one call reports
+/// its error positively rather than negatively, which is the kernel's inconsistency and not this binding's.
+///
+/// An absolute wait is what a loop should use: a relative wait restarted after a signal drifts, because the time
+/// spent handling the signal is not counted.
+///
+/// # Safety
+///
+/// `request` must be non-null.
+///
+/// https://rux-lang.dev/docs/api/linux/clock-nanosleep
+func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
+    return Syscall4(SysClockNanosleep, (clockId as int64) as uint64, (flags as int64) as uint64,
+                    request as uint64, remaining as uint64);
 }
