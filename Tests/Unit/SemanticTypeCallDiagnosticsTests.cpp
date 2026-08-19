@@ -273,3 +273,52 @@ TEST_CASE("array tuple slice and index diagnostics state the aggregate requireme
     CHECK_EQ(diagnostics[3].message, "tuple index 2 is out of range for a tuple with 2 elements");
     CHECK_EQ(diagnostics[4].message, "type 'int' cannot be indexed");
 }
+
+TEST_CASE("a cast naming a type parameter is checked at each instantiation") {
+    // Whether a `T` can be cast is not a question the generic body can answer, so it is deferred to the
+    // instantiations, exactly as an operator applied to a `T` already is. Every cast here is between types that do
+    // convert, so nothing is reported.
+    const auto diagnostics = AnalyzeSource(R"(
+        func LowByte<T>(value: T) -> byte {
+            let zero = value - value;
+            return (value & (zero + 255)) as byte;
+        }
+        func ZeroOf<T>(sample: T) -> T { return 0 as T; }
+        func Narrow<From, To>(value: From, result: *var To) { *result = value as To; }
+        func Main() {
+            var out = 0u8;
+            LowByte<uint32>(7u32);
+            ZeroOf<int128>(1i128);
+            Narrow<uint32, uint8>(300u32, @out);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("an instantiation that cannot perform its cast is reported against the cast") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Point { x: int32; }
+        func Narrow<From, To>(value: From, result: *var To) { *result = value as To; }
+        func Main() {
+            var out = Point { x: 0i32 };
+            Narrow<int32, Point>(5i32, @out);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'int32' to 'Point'");
+}
+
+TEST_CASE("a cast between two concrete types is still rejected where it is written") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Point { x: int32; }
+        func Main() {
+            let point = Point { x: 1i32 };
+            let value = point as int32;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'Point' to 'int32'");
+}
