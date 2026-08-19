@@ -280,6 +280,20 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
         }
     }
 
+    // An arithmetic or bitwise operator reads both operands at its own width, for the same reason a comparison does,
+    // so one that arrived narrower is read past the storage it occupies. Below 64 bits that went unnoticed, because
+    // the operand and the operation share a register either way; at 128 bits and above the operation reads limbs the
+    // operand never wrote, and an untyped `1` beside an `int128` took in whatever followed it. Widen each side to the
+    // operation's type, which is the implicit conversion the language already allows here.
+    //
+    // A shift is left alone: its right operand is a count rather than a second value of the left's type, and the back
+    // ends already read it at its own width.
+    const bool countsOperand = e.op == TK::LessLess || e.op == TK::GreaterGreater || e.op == TK::GreaterGreaterGreater;
+    if (!IsComparison(e.op) && !countsOperand && IsScalar(e.type) && !IsPointerArithmetic(e.type)) {
+        lhs = EmitCastIfNeeded(lhs, e.left->type, e.type);
+        rhs = EmitCastIfNeeded(rhs, e.right->type, e.type);
+    }
+
     // Pointer arithmetic offsets by whole elements, so the integer operand is scaled by the pointee size. IndexPtr
     // carries the element type and is scaled in the back end, which is the only place a struct pointee can be sized.
     if ((e.op == TK::Plus || e.op == TK::Minus) && IsPointerArithmetic(e.type)) {
@@ -320,7 +334,13 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
             val = EmitPointerOffset(current, index, e.type);
         }
         else {
-            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, val, e.type);
+            // The same widening the binary form does: `wide += 1` computes at the place's width, not the literal's.
+            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current,
+                             e.op == TokenKind::LessLessAssign || e.op == TokenKind::GreaterGreaterAssign ||
+                                     e.op == TokenKind::GreaterGreaterGreaterAssign
+                                 ? val
+                                 : EmitCastIfNeeded(val, e.value->type, e.type),
+                             e.type);
         }
     }
     else {
