@@ -1,6 +1,22 @@
 import Core::{ #target, #Error };
-import C::{ c_double, c_int, c_uint, size_t };
+import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint,
+            c_ulong, c_ulonglong, size_t };
 
+// C's `<stdlib.h>`: allocation, numeric conversion, sorting and searching, and process control.
+//
+// Curated rather than complete. What is left out is left out on purpose, and the two groups worth naming are:
+//
+//   - **Reach for the `strto*` family, not the `ato*` one.** `atoi` and its relatives cannot report failure: a string
+//     that is not a number and a string that says zero give the same answer, and a value too large is undefined
+//     rather than reported. `strtol` and its relatives report both, through an end pointer and through `errno`.
+//   - **`system` runs whatever the shell decides it means.** A command built from anything the program did not write
+//     itself is an injection, and what a "shell" is differs by platform. It is declared because a binding to C would
+//     be dishonest without it, not because it should be used.
+//
+// `rand` is a pseudo-random generator with no guarantees at all: not the sequence, not the period, not the quality.
+// It must never seed a key, a token, or anything an adversary would like to predict; `Rux/Random` names its
+// generators and `Rux/Entropy` reaches the operating system.
+//
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
 // from `C::CRuntime`, which names the same library and is what a reader should trust. Every module of this package
 // must name the same one: on Windows the Universal CRT and the legacy `msvcrt.dll` are separate runtimes with
@@ -24,18 +40,27 @@ extern {
     func abs(n: c_int) -> c_int;
 
     // Converts a byte string to a floating point value
+    //
+    // Cannot report failure: a string that is not a number gives zero, and a value out of range is undefined rather
+    // than reported. Use strtod, which reports both.
     // https://en.cppreference.com/c/string/byte/atof
     func atof(str: *char8) -> c_double;
 
     // Converts a byte string to an integer value
+    //
+    // Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
     // https://en.cppreference.com/c/string/byte/atoi
     func atoi(str: *char8) -> c_int;
 
     // Converts a byte string to a long integer value
+    //
+    // Cannot report failure. Use strtol.
     // https://en.cppreference.com/c/string/byte/atoi
     func atol(str: *char8) -> int64;
 
     // Converts a byte string to a long long integer value
+    //
+    // Cannot report failure. Use strtoll.
     // https://en.cppreference.com/c/string/byte/atoi
     func atoll(str: *char8) -> int64;
 
@@ -52,6 +77,9 @@ extern {
     func free(ptr: *var opaque);
 
     // Returns the value of an environment variable
+    //
+    // The result points at storage the runtime owns, which a later change to the environment may overwrite or free,
+    // and the call is not safe to make while another thread changes the environment.
     // https://en.cppreference.com/c/program/getenv
     func getenv(name: *char8) -> *char8;
 
@@ -68,6 +96,9 @@ extern {
     func malloc(size: size_t) -> *var opaque;
 
     // Returns a pseudo-random integer value between 0 and RAND_MAX
+    //
+    // Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
+    // would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
     // https://en.cppreference.com/c/numeric/random/rand
     func rand() -> c_int;
 
@@ -79,7 +110,47 @@ extern {
     // https://en.cppreference.com/c/numeric/random/srand
     func srand(seed: c_uint);
 
+    // Converts a byte string to a long integer, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtol
+    func strtol(str: *char8, endptr: *var *char8, base: c_int) -> c_long;
+
+    // Converts a byte string to an unsigned long integer, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtoul
+    func strtoul(str: *char8, endptr: *var *char8, base: c_int) -> c_ulong;
+
+    // Converts a byte string to a long long integer, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtol
+    func strtoll(str: *char8, endptr: *var *char8, base: c_int) -> c_longlong;
+
+    // Converts a byte string to an unsigned long long integer, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtoul
+    func strtoull(str: *char8, endptr: *var *char8, base: c_int) -> c_ulonglong;
+
+    // Converts a byte string to a double, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtof
+    func strtod(str: *char8, endptr: *var *char8) -> c_double;
+
+    // Converts a byte string to a float, reporting where it stopped
+    // https://en.cppreference.com/c/string/byte/strtof
+    func strtof(str: *char8, endptr: *var *char8) -> c_float;
+
+    // Sorts an array in place; the comparison must be a strict weak ordering and the sort is not stable
+    // https://en.cppreference.com/c/algorithm/qsort
+    func qsort(base: *var opaque, num: size_t, size: size_t, compare: func(*opaque, *opaque) -> c_int);
+
+    // Finds an element of a sorted array; the array must already be ordered by the same comparison
+    // https://en.cppreference.com/c/algorithm/bsearch
+    func bsearch(key: *opaque, base: *opaque, num: size_t, size: size_t,
+                 compare: func(*opaque, *opaque) -> c_int) -> *opaque;
+
+    // Terminates normally without running any handler registered with atexit and without flushing streams
+    // https://en.cppreference.com/c/program/_Exit
+    func _Exit(status: c_int);
+
     // Calls the host environment's command processor
+    //
+    // Runs whatever the platform's shell decides the string means, so a command built from anything the program did
+    // not write itself is an injection.
     // https://en.cppreference.com/c/program/system
     func system(command: *char8) -> c_int;
 }
@@ -108,5 +179,39 @@ when #target.os {
             // https://en.cppreference.com/c/memory/aligned_alloc
             func aligned_alloc(alignment: size_t, size: size_t) -> *var opaque;
         }
+    }
+}
+
+// The constants below are annotated `int32` rather than `c_int`, which is what they are: a `const` cannot name a type
+// alias declared in another file of the package, though a function signature in this very file can. `c_int` is
+// `int32` on every supported target, so nothing is lost but the spelling.
+/// `EXIT_SUCCESS`: the status a program returns to mean it did what it was asked.
+///
+/// https://rux-lang.dev/docs/api/c/exit-success
+#Allow("naming.const")
+const EXIT_SUCCESS: int32 = 0;
+
+/// `EXIT_FAILURE`: the status a program returns to mean it did not.
+///
+/// https://rux-lang.dev/docs/api/c/exit-failure
+#Allow("naming.const")
+const EXIT_FAILURE: int32 = 1;
+
+// `RAND_MAX` is where the platforms part company: the Universal CRT keeps the smallest value the standard permits,
+// while every supported Unix uses the whole positive range of an `int`.
+when #target.os {
+    .Windows => {
+        /// `RAND_MAX`: the largest value `rand` can return on this target.
+        ///
+        /// https://rux-lang.dev/docs/api/c/rand-max
+        #Allow("naming.const")
+        const RAND_MAX: int32 = 32767;
+    }
+    else => {
+        /// `RAND_MAX`: the largest value `rand` can return on this target.
+        ///
+        /// https://rux-lang.dev/docs/api/c/rand-max
+        #Allow("naming.const")
+        const RAND_MAX: int32 = 2147483647;
     }
 }

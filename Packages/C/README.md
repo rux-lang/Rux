@@ -33,6 +33,14 @@ position is a `*fpos_t`, both declared with no fields, so one handle cannot be p
 > family. The two keep separate state, so an `errno` set by a stream call is not the `errno` this package reads. Do
 > not read `errno` after a call made through `StdIo` or `Time` on Windows.
 
+Both `StdLib` and `StdIo` are curated rather than complete, and what is left out is left out on purpose.
+`gets` is not declared at all: it reads a line into a buffer whose size it is never told, and C11 removed it.
+The `ato*` conversions are declared but each one says to prefer the `strto*` family beside it, which can
+report both where it stopped and a value out of range. `sprintf` and the `scanf` family are marked as writing
+as much as the format says to; `tmpnam` as naming a file it does not create; `system` as running whatever the
+shell decides its argument means; `rand` as guaranteeing nothing about its sequence and never to be used for
+anything an adversary would like to predict.
+
 `String` holds two families that are not alike. The `mem*` calls take a length and touch exactly that many
 bytes; the `str*` calls take none and stop at the first zero byte, which means the caller has promised there
 is one. Where both forms exist the counted one is the one to reach for, and `Rux/Memory` and `Rux/Text` do

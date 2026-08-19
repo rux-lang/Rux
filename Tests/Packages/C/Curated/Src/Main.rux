@@ -1,0 +1,107 @@
+import Core::Assert;
+import C::{ BUFSIZ, EOF, EXIT_FAILURE, EXIT_SUCCESS, FILENAME_MAX, FOPEN_MAX, L_tmpnam, RAND_MAX, SEEK_CUR, SEEK_END,
+            SEEK_SET, TMP_MAX, _IOFBF, _IOLBF, _IONBF };
+import C::{ bsearch, free, malloc, qsort, rand, srand, strtod, strtof, strtol, strtoll, strtoul, strtoull };
+import C::{ fclose, fgetc, fopen, fseek, ftell, fwrite, memcmp, remove, strlen };
+
+// The conversion family is what this module exists to prefer over the `ato*` one, so each is checked for the two
+// things `atoi` cannot do: report where it stopped, and be asked for a base. The constants are checked against the
+// behaviour they describe wherever behaviour can show them, and pinned otherwise.
+
+func CompareInt32(left: *opaque, right: *opaque) -> int32 {
+    let first = *(left as *int32);
+    let second = *(right as *int32);
+    if first < second { return -1i32; }
+    if first > second { return 1i32; }
+    return 0i32;
+}
+
+func Main() -> int {
+    var end: *char8 = null;
+
+    // Each conversion reports where it stopped, which is the whole difference from atoi.
+    let text = "42abc";
+    Assert(strtol(text.data, @end, 10i32) == 42, "strtol converts the digits");
+    Assert(end == text.data + 2, "and reports where it stopped");
+    Assert(strtoul("42abc".data, @end, 10i32) == 42u64, "strtoul converts the digits");
+    Assert(strtoll("-9000000000".data, @end, 10i32) == -9000000000, "strtoll reaches past 32 bits");
+    Assert(strtoull("18446744073709551615".data, @end, 10i32) == 18446744073709551615u64,
+           "strtoull reaches the whole unsigned range");
+
+    // A base other than ten is what the third argument is for.
+    Assert(strtol("ff".data, @end, 16i32) == 255, "base sixteen");
+    Assert(strtol("777".data, @end, 8i32) == 511, "base eight");
+    Assert(strtol("1010".data, @end, 2i32) == 10, "base two");
+    Assert(strtol("0x1f".data, @end, 0i32) == 31, "base zero reads the prefix");
+
+    // A string that is not a number converts nothing and says so by not advancing.
+    let refused = "zzz";
+    Assert(strtol(refused.data, @end, 10i32) == 0, "a string that is not a number converts to zero");
+    Assert(end == refused.data, "and the end pointer never moved, which is how the caller can tell");
+
+    Assert(strtod("1.5rest".data, @end) == 1.5, "strtod converts a double");
+    Assert(end == "1.5rest".data + 3 || strlen(end) == 4u64, "and stops at the first byte it cannot use");
+    Assert(strtof("2.5".data, @end) == 2.5f32, "strtof converts a float");
+
+    // qsort orders an array by the comparison it is given, and bsearch finds within the result.
+    let values = malloc(20u64) as *var int32;
+    Assert(values != null as *int32, "the array allocation succeeds");
+    *values = 5i32;
+    *(values + 1) = 1i32;
+    *(values + 2) = 4i32;
+    *(values + 3) = 2i32;
+    *(values + 4) = 3i32;
+    qsort(values as *var opaque, 5u64, 4u64, CompareInt32);
+    Assert(*values == 1i32 && *(values + 4) == 5i32, "qsort ordered the whole array");
+    Assert(*(values + 1) == 2i32 && *(values + 2) == 3i32 && *(values + 3) == 4i32, "including the middle");
+
+    var needle = 4i32;
+    let hit = bsearch(@needle as *opaque, values as *opaque, 5u64, 4u64, CompareInt32);
+    Assert(hit == (values + 3) as *opaque, "bsearch finds the element by the same ordering");
+    var missing = 9i32;
+    Assert(bsearch(@missing as *opaque, values as *opaque, 5u64, 4u64, CompareInt32) == null,
+           "and reports one that is not there as absent");
+    free(values as *var opaque);
+
+    // rand stays inside the range its constant names, whichever platform's value that is.
+    srand(1u32);
+    var index = 0;
+    while index < 64 {
+        let sample = rand();
+        Assert(sample >= 0i32 && sample <= RAND_MAX, "every sample is within RAND_MAX");
+        index = index + 1;
+    }
+
+    // The exit statuses, which every platform agrees on.
+    Assert(EXIT_SUCCESS == 0i32, "success is zero");
+    Assert(EXIT_FAILURE != EXIT_SUCCESS, "and failure is not");
+
+    // EOF and the seek origins, checked against what they describe rather than pinned.
+    let path = "Temp/c-curated-test.tmp";
+    let sink = fopen(path.data, "wb".data);
+    Assert(sink != null, "the temporary file opens for writing");
+    Assert(fwrite("abcd".data as *opaque, 1u64, 4u64, sink) == 4u64, "four bytes are written");
+    Assert(fclose(sink) == 0i32, "and the stream closes");
+
+    let source = fopen(path.data, "rb".data);
+    Assert(source != null, "the temporary file reopens for reading");
+    Assert(fseek(source, 0, SEEK_END) == 0i32, "seeking to the end succeeds");
+    Assert(ftell(source) == 4, "SEEK_END measures from the end, so the position is the length");
+    Assert(fseek(source, 1, SEEK_SET) == 0i32, "seeking from the beginning succeeds");
+    Assert(ftell(source) == 1, "SEEK_SET measures from the beginning");
+    Assert(fseek(source, 1, SEEK_CUR) == 0i32, "seeking from the current position succeeds");
+    Assert(ftell(source) == 2, "SEEK_CUR measures from where the stream was");
+    Assert(fseek(source, 0, SEEK_END) == 0i32, "back to the end");
+    Assert(fgetc(source) == EOF, "reading past the end reports EOF");
+    Assert(fclose(source) == 0i32, "the reading stream closes");
+    Assert(remove(path.data) == 0i32, "and the file is removed");
+
+    // The buffering modes are three distinct values, whatever the platform numbered them.
+    Assert(_IOFBF != _IOLBF && _IOLBF != _IONBF && _IOFBF != _IONBF, "the buffering modes are distinct");
+
+    // The sizes are pinned rather than derived: nothing observable reports them.
+    Assert(BUFSIZ > 0i32 && FOPEN_MAX > 0i32 && FILENAME_MAX > 0i32, "the stream limits are positive");
+    Assert(L_tmpnam > 0i32 && TMP_MAX > 0i32, "the temporary-name limits are positive");
+    Assert(memcmp("x".data as *opaque, "x".data as *opaque, 1u64) == 0, "the string module is reachable from here");
+    return 0;
+}
