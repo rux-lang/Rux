@@ -88,22 +88,33 @@ std::string AstToHirContext::BaseTypeName(const std::string &name) const {
     return BaseTypeNameImpl(name);
 }
 
+/// The type parameters `name` declares, whether it is a struct or an enum. An `extend` block borrows them either
+/// way, and only structs were consulted here, so a generic enum's parameter was left undefined in its own methods.
+const std::vector<TypeParameter> *AstToHirContext::AggregateTypeParams(const std::string &name) const {
+    if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+        return &structure->second->typeParams;
+    }
+    if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+        return &enumeration->second->typeParams;
+    }
+    return nullptr;
+}
+
 std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) const {
     std::vector<std::string> params;
     const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
     if (!target) {
         return params;
     }
-    const auto structIt = structDecls.find(target->name);
-    if (structIt == structDecls.end()) {
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(target->name);
+    if (!typeParams) {
         return params;
     }
 
-    const auto &structParams = structIt->second->typeParams;
-    const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
+    const std::size_t count = std::min(typeParams->size(), target->typeArgs.size());
     for (std::size_t i = 0; i < count; ++i) {
         const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
-        if (arg && arg->typeArgs.empty() && arg->name == structParams[i].name) {
+        if (arg && arg->typeArgs.empty() && arg->name == (*typeParams)[i].name) {
             params.push_back(arg->name);
         }
     }
@@ -749,16 +760,15 @@ std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitution
         return {};
     }
 
-    const auto structIt = structDecls.find(BaseTypeName(receiver->name));
-    if (structIt == structDecls.end()) {
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName(receiver->name));
+    if (!typeParams) {
         return {};
     }
     const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
     std::unordered_map<std::string, TypeRef> substitutions;
-    const auto &params = structIt->second->typeParams;
-    const std::size_t count = std::min(params.size(), args.size());
+    const std::size_t count = std::min(typeParams->size(), args.size());
     for (std::size_t i = 0; i < count; ++i) {
-        substitutions.emplace(params[i].name, args[i]);
+        substitutions.emplace((*typeParams)[i].name, args[i]);
     }
     return substitutions;
 }
@@ -833,9 +843,8 @@ std::string AstToHirContext::ConcreteMethodCalleeName(const std::string &typeNam
     }
 
     std::string name = CalleeName(typeName, method.name, receiverType, method);
-    const auto structIt = structDecls.find(typeName);
-    if (structIt != structDecls.end()) {
-        for (const auto &param : structIt->second->typeParams) {
+    if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
+        for (const auto &param : *typeParams) {
             if (const auto it = substitutions.find(param.name); it != substitutions.end()) {
                 name += "_" + MangleTypeName(it->second);
             }

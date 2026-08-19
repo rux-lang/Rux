@@ -243,22 +243,40 @@ private:
         return pos == std::string::npos ? name : name.substr(0, pos);
     }
 
+    /// The type parameters `name` declares, as seen from the file being checked.
+    ///
+    /// The file comes first because the struct and enum indexes are keyed by bare name across every package: a
+    /// program declaring its own `Option` displaces `Core`'s, and `Core`'s own `extend Option<T>` would then read the
+    /// wrong arity and reject its own parameter. An `extend` block is written beside the type it extends, so the
+    /// declaration in the same file is the one it means.
+    const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const {
+        if (const std::vector<TypeParameter> *local = programIndex.TypeParamsIn(currentFile, name)) {
+            return local;
+        }
+        if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+            return &structure->second->typeParams;
+        }
+        if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+            return &enumeration->second->typeParams;
+        }
+        return nullptr;
+    }
+
     std::vector<std::string> ImplTypeParams(const ImplDecl &decl) const {
         std::vector<std::string> params;
         const auto *target = dynamic_cast<const NamedTypeExpr *>(decl.extendedType.get());
         if (!target) {
             return params;
         }
-        const auto structIt = structDecls.find(target->name);
-        if (structIt == structDecls.end()) {
+        const std::vector<TypeParameter> *typeParams = AggregateTypeParams(target->name);
+        if (!typeParams) {
             return params;
         }
 
-        const auto &structParams = structIt->second->typeParams;
-        const std::size_t count = std::min(structParams.size(), target->typeArgs.size());
+        const std::size_t count = std::min(typeParams->size(), target->typeArgs.size());
         for (std::size_t i = 0; i < count; ++i) {
             const auto *arg = dynamic_cast<const NamedTypeExpr *>(target->typeArgs[i].get());
-            if (arg && arg->typeArgs.empty() && arg->name == structParams[i].name) {
+            if (arg && arg->typeArgs.empty() && arg->name == (*typeParams)[i].name) {
                 params.push_back(arg->name);
             }
         }
@@ -1111,8 +1129,8 @@ private:
                 }
             }
 
-            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
-                const auto &decl = *enumIt->second;
+            if (const EnumDecl *enumeration = EnumNamed(t->name)) {
+                const auto &decl = *enumeration;
                 if (resolvedArgs.size() != decl.typeParams.size()) {
                     EmitGenericArityError(expr, std::format("enum type '{}'", t->name), decl.typeParams.size(),
                                           resolvedArgs.size());
@@ -1270,9 +1288,9 @@ private:
             }
             // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
             // return type resolved while a signature is built -- carries the layout marker one resolved directly has.
-            const auto enumIt = enumDecls.find(t->name);
-            return enumIt != enumDecls.end() ? EnumType(*enumIt->second, resolvedArgs)
-                                             : TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
+            const EnumDecl *enumeration = EnumNamed(t->name);
+            return enumeration ? EnumType(*enumeration, resolvedArgs)
+                               : TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
         }
         if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
             TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
@@ -1379,24 +1397,23 @@ private:
             return {};
         }
 
-        const auto structIt = structDecls.find(BaseTypeName(receiver->name));
-        if (structIt == structDecls.end()) {
+        const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeName(receiver->name));
+        if (!typeParams) {
             return {};
         }
         const std::vector<TypeRef> args = ParseTypeArgsFromTypeName(receiver->name);
         std::unordered_map<std::string, TypeRef> substitutions;
-        const auto &params = structIt->second->typeParams;
-        const std::size_t count = std::min(params.size(), args.size());
+        const std::size_t count = std::min(typeParams->size(), args.size());
         for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(params[i].name, args[i]);
+            substitutions.emplace((*typeParams)[i].name, args[i]);
         }
         return substitutions;
     }
 
     TypeRef InstantiateAssociatedReceiver(TypeRef receiverType, const std::vector<TypeExprPtr> &typeArgs) override {
         const std::string typeName = NamedBaseTypeName(receiverType);
-        const auto structIt = structDecls.find(typeName);
-        if (structIt == structDecls.end() || structIt->second->typeParams.empty() || typeArgs.empty()) {
+        const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName);
+        if (!typeParams || typeParams->empty() || typeArgs.empty()) {
             return receiverType;
         }
 
@@ -1837,14 +1854,16 @@ private:
             // base type says it. One carrying a payload is wider than its tag, and only the layout knows by how much;
             // recording the tag there instead sized the whole value as the tag, so a call took the tag alone and left
             // the payload behind.
-            if (EnumCarriesPayload(decl)) {
-                if (const auto layout = LayoutOfEnum(decl)) {
-                    type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
-                    // Record it under the name too: lowering builds this type a second time and reads the size back
-                    // from here, having no layout machinery of its own.
-                    typeLayouts.insert_or_assign(type.name, *layout);
-                    return type;
-                }
+            // Record the layout under the name whatever the enum's shape: lowering builds this type a second time
+            // and reads the size back from here, having no layout machinery of its own, and it needs the size of a
+            // plain discriminant enum just as much when substitution has dropped what `inner` said.
+            const auto layout = LayoutOfEnum(decl);
+            if (layout) {
+                typeLayouts.insert_or_assign(type.name, *layout);
+            }
+            if (EnumCarriesPayload(decl) && layout) {
+                type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+                return type;
             }
             type.inner.push_back(EnumBaseType(decl));
             return type;
@@ -2331,9 +2350,7 @@ private:
         const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
         // An extend block borrows the extended type's parameters, so it borrows their bounds too: a method body passing
         // `T` on to a constrained generic is checked against what the struct declared rather than left unconstrained.
-        const auto extended = structDecls.find(typeName);
-        const ScopedTypeParameterBounds boundScope(
-            *this, extended == structDecls.end() ? nullptr : &extended->second->typeParams);
+        const ScopedTypeParameterBounds boundScope(*this, AggregateTypeParams(typeName));
         const Symbol *extendedSymbol = currentScope->Lookup(typeName);
         if (d.extendedType) {
             ValidateArrayType(*d.extendedType);
@@ -2875,9 +2892,8 @@ private:
         if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
             return name;
         }
-        const auto structure = structDecls.find(typeName);
-        if (structure != structDecls.end()) {
-            for (const auto &parameter : structure->second->typeParams) {
+        if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
+            for (const auto &parameter : *typeParams) {
                 if (const auto substitution = substitutions.find(parameter.name); substitution != substitutions.end()) {
                     name += "_" + MangleTypeName(substitution->second);
                 }
@@ -2903,8 +2919,8 @@ private:
         if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
             return;
         }
-        if (const auto structure = structDecls.find(typeName); structure != structDecls.end()) {
-            binding.linkerSpecializationParameters = TypeParameterNames(structure->second->typeParams);
+        if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
+            binding.linkerSpecializationParameters = TypeParameterNames(*typeParams);
         }
     }
 

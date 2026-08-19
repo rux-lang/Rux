@@ -32,12 +32,12 @@ SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) {
         return std::nullopt;
     }
     const std::string baseName = BaseTypeName(type.name);
-    const auto declaration = enumDecls.find(baseName);
-    if (declaration == enumDecls.end()) {
+    const EnumDecl *declaration = EnumNamed(baseName);
+    if (!declaration) {
         return std::nullopt;
     }
 
-    const EnumDecl &enumeration = *declaration->second;
+    const EnumDecl &enumeration = *declaration;
     const bool isResult = FindVariant(enumeration, kResultSuccess) && FindVariant(enumeration, kResultError);
     const bool isOption = FindVariant(enumeration, kOptionSome) && FindVariant(enumeration, kOptionNone);
     if (!isResult && !isOption) {

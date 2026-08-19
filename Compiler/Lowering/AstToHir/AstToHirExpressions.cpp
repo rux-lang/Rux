@@ -66,6 +66,22 @@ TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeR
 
 } // namespace
 
+TypeRef AstToHirContext::RestoreEnumLayoutMarkers(TypeRef type) const {
+    for (TypeRef &inner : type.inner) {
+        inner = RestoreEnumLayoutMarkers(std::move(inner));
+    }
+    // Any enum, not only an instantiated one. Substitution drops what `inner` said, and `inner` is the only place a
+    // type says how large it is; an enum left without it is sized as a pointer, so a write through `*var E` in a
+    // generic body stored eight bytes into whatever room the real enum had.
+    if (type.kind != TypeRef::Kind::Named || !type.inner.empty() || !enumDecls.contains(BaseTypeName(type.name))) {
+        return type;
+    }
+    if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
+        type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
+    }
+    return type;
+}
+
 TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
     const TypeRef *type = model.TryGetType(expression);
     if (!type) {
@@ -84,7 +100,7 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
         assert(false && "accepted expression is missing a required semantic type fact");
         std::abort();
     }
-    TypeRef substituted = SubstituteType(*type, currentSubstitutions);
+    TypeRef substituted = RestoreEnumLayoutMarkers(SubstituteType(*type, currentSubstitutions));
     NoteStructInstantiation(substituted);
     return substituted;
 }

@@ -443,9 +443,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
         if (path->segments.size() == 2) {
             Symbol *first = currentScope->Lookup(path->segments[0]);
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
-                if (const auto enumIt = enumDecls.find(path->segments[0]); enumIt != enumDecls.end()) {
+                if (const EnumDecl *enumeration = EnumNamed(path->segments[0])) {
                     if (const EnumDecl::Variant *variant = LookupEnumVariant(path->segments[0], path->segments[1])) {
-                        const EnumDecl &decl = *enumIt->second;
+                        const EnumDecl &decl = *enumeration;
                         if (e->typeArgs.size() != decl.typeParams.size()) {
                             EmitError(e->location, std::format("enum variant '{}::{}' requires {}, but {} provided",
                                                                path->segments[0], path->segments[1],

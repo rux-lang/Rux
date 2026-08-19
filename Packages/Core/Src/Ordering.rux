@@ -1,0 +1,88 @@
+/// The answer a three-way comparison gives: which side is smaller, or that neither is.
+///
+/// The discriminants are `-1`, `0` and `1` stored in an `int8`, so an ordering costs one byte and its sign is the
+/// comparison's sign. A comparison that cannot decide has no representation here: every pair a comparison is asked
+/// about must land on exactly one of these three.
+///
+/// `Ordering` is a `Copy` value, so reading one never consumes it.
+///
+/// https://rux-lang.dev/docs/api/core/ordering
+enum Ordering: int8 {
+    Less = -1,
+    Equal = 0,
+    Greater = 1
+}
+
+extend Ordering {
+    /// Reports whether the left side of the comparison was the smaller one.
+    ///
+    /// Borrows the ordering through `self` and leaves it untouched.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/is-less
+    func IsLess(self: *Ordering) -> bool {
+        return *self == Ordering::Less;
+    }
+
+    /// Reports whether the two sides compared equal.
+    ///
+    /// Borrows the ordering through `self` and leaves it untouched.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/is-equal
+    func IsEqual(self: *Ordering) -> bool {
+        return *self == Ordering::Equal;
+    }
+
+    /// Reports whether the left side of the comparison was the larger one.
+    ///
+    /// Borrows the ordering through `self` and leaves it untouched.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/is-greater
+    func IsGreater(self: *Ordering) -> bool {
+        return *self == Ordering::Greater;
+    }
+
+    /// Reports whether the left side was smaller than or equal to the right.
+    ///
+    /// Borrows the ordering through `self` and leaves it untouched. This is the negation of `IsGreater`, spelled out
+    /// so a caller testing a bound does not have to negate one.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
+    func IsLessOrEqual(self: *Ordering) -> bool {
+        return *self != Ordering::Greater;
+    }
+
+    /// Reports whether the left side was larger than or equal to the right.
+    ///
+    /// Borrows the ordering through `self` and leaves it untouched. This is the negation of `IsLess`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
+    func IsGreaterOrEqual(self: *Ordering) -> bool {
+        return *self != Ordering::Less;
+    }
+
+    /// The ordering the same comparison would have given with its two sides swapped.
+    ///
+    /// Consumes the ordering by value and returns a new one; `Less` and `Greater` trade places while `Equal` is its
+    /// own reverse. A `Copy` value, so the caller's own ordering is unaffected.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/ordering/reverse
+    func Reverse(self: Ordering) -> Ordering {
+        return match self {
+            .Less => Ordering::Greater,
+            .Equal => Ordering::Equal,
+            .Greater => Ordering::Less
+        };
+    }
+}

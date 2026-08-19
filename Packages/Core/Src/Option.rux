@@ -1,0 +1,92 @@
+/// A value that may be absent.
+///
+/// `Option<T>` is what an operation returns when having nothing to give is an ordinary outcome rather than a failure:
+/// a lookup that found no entry, a sequence that has ended. A failure that the caller should be told the reason for
+/// belongs in `Result<T, E>` instead.
+///
+/// Inspecting which case an option holds borrows it, so an option is still the caller's afterwards. Reaching the
+/// value consumes the option, because handing out a `T` that the option also still held would give two owners to one
+/// value; for a move-only `T` that is the whole point, and for a `Copy` one it costs nothing.
+///
+/// An `Option<T>` is as wide as its tag plus `T`, and never allocates on its own.
+///
+/// https://rux-lang.dev/docs/api/core/option
+enum Option<T> {
+    Some(T),
+    None
+}
+
+extend Option<T> {
+    /// Reports whether this option carries a value.
+    ///
+    /// Borrows the option through `self` and takes ownership of nothing, so the option and any value inside it are
+    /// still the caller's afterwards.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
+    ///
+    /// https://rux-lang.dev/docs/api/core/option/is-some
+    func IsSome(self: *Option<T>) -> bool {
+        return match *self {
+            .Some(_) => true,
+            .None => false
+        };
+    }
+
+    /// Reports whether this option is empty.
+    ///
+    /// Borrows the option through `self` and takes ownership of nothing. The exact negation of `IsSome`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/option/is-none
+    func IsNone(self: *Option<T>) -> bool {
+        return !self.IsSome();
+    }
+
+    /// The value this option carries, or `fallback` when it carries none.
+    ///
+    /// Consumes the option and both candidate values: `self` and `fallback` are taken by value, and exactly one of
+    /// them is returned to the caller. The other is dropped, so `fallback` is destroyed unread when the option turned
+    /// out to hold a value. A caller who cannot afford to build a fallback that may go unused should test with
+    /// `IsSome` and use `TryIntoValue` instead.
+    ///
+    /// Cannot fail: absence is answered with `fallback` rather than reported. Runs in constant time and allocates
+    /// nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/option/value-or
+    func ValueOr(self: Option<T>, fallback: T) -> T {
+        return match self {
+            .Some(value) => value,
+            .None => fallback
+        };
+    }
+
+    /// Moves the value this option carries into `value`, reporting whether there was one.
+    ///
+    /// Consumes the option whatever the outcome, so it is gone once this returns. Ownership of the carried value
+    /// passes to whatever `value` points at, and only when this returns `true`.
+    ///
+    /// Returns `false` when the option was empty, and also when `value` is null. On either failure `value` is left
+    /// exactly as it was, so a caller may test the result before reading it. A null output is refused rather than
+    /// written through, which means an empty option and an unusable destination are reported the same way; a caller
+    /// that needs to tell them apart should check `IsSome` first.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/core/option/try-into-value
+    func TryIntoValue(self: Option<T>, value: *var T) -> bool {
+        if value == null {
+            return false;
+        }
+
+        match self {
+            .Some(held) => {
+                *value = held;
+                return true;
+            },
+            .None => {
+                return false;
+            }
+        }
+    }
+}

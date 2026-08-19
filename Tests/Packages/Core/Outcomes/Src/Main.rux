@@ -1,0 +1,90 @@
+import Core::{ Assert, Option, Ordering, Result, Unit };
+
+interface Drop {}
+
+struct Handle {
+    value: int32;
+}
+
+extend Handle : Drop {}
+
+enum Failure: int8 {
+    Missing,
+    Invalid
+}
+
+func Main() -> int {
+    let some = Option::Some<int32>(7i32);
+    Assert(some.IsSome() && !some.IsNone(), "Some tag inspection");
+    Assert(some.ValueOr(9i32) == 7i32, "Some consuming extraction");
+
+    let none = Option::None<int32>();
+    Assert(none.IsNone() && !none.IsSome(), "None tag inspection");
+    Assert(none.ValueOr(9i32) == 9i32, "None fallback extraction");
+
+    var extracted = 0i32;
+    Assert(Option::Some<int32>(11i32).TryIntoValue(@extracted), "Option output extraction");
+    Assert(extracted == 11i32, "Option output payload");
+    Assert(!Option::None<int32>().TryIntoValue(@extracted), "Option absent output");
+    Assert(extracted == 11i32, "Option failure leaves output unchanged");
+
+    let success = Result::Success<int32, Failure>(13i32);
+    Assert(success.IsSuccess() && !success.IsError(), "Success tag inspection");
+    Assert(success.ValueOr(17i32) == 13i32, "Success consuming extraction");
+
+    let failure = Result::Error<int32, Failure>(Failure::Invalid);
+    Assert(failure.IsError() && !failure.IsSuccess(), "Error tag inspection");
+    Assert(failure.ValueOr(17i32) == 17i32, "Error fallback extraction");
+
+    var error = Failure::Missing;
+    Assert(Result::Error<int32, Failure>(Failure::Invalid).TryIntoError(@error), "Result error extraction");
+    Assert(error == Failure::Invalid, "Result error payload");
+    Assert(!Result::Success<int32, Failure>(19i32).TryIntoError(@error), "Successful result has no error");
+    Assert(error == Failure::Invalid, "Result success leaves error output unchanged");
+
+    let held = Option::Some<Handle>(Handle { value: 23i32 });
+    Assert(held.IsSome(), "Borrowed inspection preserves move-only option");
+    let handle = held.ValueOr(Handle { value: 29i32 });
+    Assert(handle.value == 23i32, "Consuming extraction moves the payload");
+
+    let unitResult = Result::Success<Unit, Failure>(Unit::New());
+    Assert(unitResult.IsSuccess(), "Unit construction");
+
+    Assert(Ordering::Less.IsLess(), "Less classification");
+    Assert(Ordering::Equal.IsEqual(), "Equal classification");
+    Assert(Ordering::Greater.IsGreater(), "Greater classification");
+    Assert(Ordering::Less.Reverse() == Ordering::Greater, "Ordering reversal");
+    Assert(Ordering::Equal.Reverse() == Ordering::Equal, "Equal reversal");
+    Assert(Ordering::Greater.Reverse() == Ordering::Less, "Greater reversal");
+
+    // The two derived classifications, which spare a caller from negating one.
+    Assert(Ordering::Less.IsLessOrEqual(), "Less is less-or-equal");
+    Assert(Ordering::Equal.IsLessOrEqual(), "Equal is less-or-equal");
+    Assert(!Ordering::Greater.IsLessOrEqual(), "Greater is not less-or-equal");
+    Assert(Ordering::Greater.IsGreaterOrEqual(), "Greater is greater-or-equal");
+    Assert(Ordering::Equal.IsGreaterOrEqual(), "Equal is greater-or-equal");
+    Assert(!Ordering::Less.IsGreaterOrEqual(), "Less is not greater-or-equal");
+
+    // The discriminants are the comparison's sign, one byte wide.
+    Assert(Ordering::Less as int8 == -1i8, "Less is -1");
+    Assert(Ordering::Equal as int8 == 0i8, "Equal is 0");
+    Assert(Ordering::Greater as int8 == 1i8, "Greater is 1");
+
+    // A null destination is refused rather than written through, and the option
+    // is still consumed.
+    let nowhere: *var int32 = null;
+    Assert(!Option::Some<int32>(31i32).TryIntoValue(nowhere), "Option refuses a null destination");
+    Assert(!Result::Success<int32, Failure>(37i32).TryIntoValue(nowhere), "Result refuses a null destination");
+
+    // A fallback that goes unused is still consumed, and a move-only fallback is
+    // dropped rather than leaked.
+    let kept = Option::Some<Handle>(Handle { value: 41i32 }).ValueOr(Handle { value: 43i32 });
+    Assert(kept.value == 41i32, "An unused fallback is discarded");
+    let taken = Option::None<Handle>().ValueOr(Handle { value: 47i32 });
+    Assert(taken.value == 47i32, "An empty option yields the fallback");
+
+    // Unit fills a type position for an operation with nothing to report.
+    var unitOut = Unit::New();
+    Assert(Result::Success<Unit, Failure>(Unit::New()).TryIntoValue(@unitOut), "Unit extraction");
+    return 0;
+}
