@@ -1,6 +1,9 @@
 import Core::{ #target, #Error };
 
-// The C standard library's shared object differs by platform.
+// `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
+// from `C::CRuntime`, which names the same library and is what a reader should trust. Every module of this package
+// must name the same one: on Windows the Universal CRT and the legacy `msvcrt.dll` are separate runtimes with
+// separate state, and a stream opened by one is not a stream the other knows.
 when #target.os {
     .FreeBSD => const StdLib = "libc.so.7";
     .Linux => const StdLib = "libc.so.6";

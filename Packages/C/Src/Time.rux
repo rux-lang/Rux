@@ -53,7 +53,14 @@ struct timespec {
     tv_nsec: int64; // nanoseconds [0, 999999999]
 }
 
-// The C time functions live in the standard C library, which differs by platform.
+// `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
+// from `C::CRuntime`.
+//
+// On Windows this names the legacy `msvcrt.dll` rather than the Universal CRT the rest of the package binds against,
+// and that is a defect rather than a decision: the two are separate runtimes with separate state. Moving across needs
+// the `__stdio_common_*` entry points the Universal CRT exports in place of the formatted-output family, which is
+// what the stdio task will do. Until then, do not read `errno` after a call made through this module: the value
+// belongs to the other runtime. See the note on `C::Errno`.
 when #target.os {
     .FreeBSD => const TimeLib = "libc.so.7";
     .Linux => const TimeLib = "libc.so.6";
