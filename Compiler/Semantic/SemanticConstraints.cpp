@@ -37,29 +37,6 @@ SemanticAnalyzerContext::ResolveTypeParameterBounds(const TypeParameter &paramet
             continue;
         }
 
-        const Symbol *symbol = currentScope->Lookup(named->name);
-        if (!symbol) {
-            if (report) {
-                std::optional<std::string> help;
-                if (const Symbol *suggestion = currentScope->Suggest(named->name)) {
-                    help = std::format("did you mean '{}'?", suggestion->name);
-                }
-                EmitError(named->location, std::format("interface '{}' is not defined", named->name), {},
-                          std::move(help));
-            }
-            resolved.push_back({named->name, nullptr, named->location});
-            continue;
-        }
-        if (symbol->kind != Symbol::Kind::Interface) {
-            if (report) {
-                EmitError(named->location,
-                          std::format("name '{}' is a {}, not an interface, and cannot bound type parameter '{}'",
-                                      named->name, SymbolKindName(symbol->kind), parameter.name),
-                          {DeclarationNote(*symbol)});
-            }
-            resolved.push_back({named->name, nullptr, named->location});
-            continue;
-        }
         if (!seen.insert(named->name).second) {
             if (report) {
                 EmitError(named->location,
@@ -68,6 +45,35 @@ SemanticAnalyzerContext::ResolveTypeParameterBounds(const TypeParameter &paramet
             continue;
         }
 
+        // A bound belongs to the declaration that wrote it, not to whoever calls it. Resolving a use site against the
+        // caller's scope would demand that every caller import an interface it never names, and a caller that had not
+        // would resolve the bound to nothing at all -- silently, since a use site does not report -- leaving lowering
+        // with a conformance it was promised and cannot find. So a use site reads the program's interfaces directly,
+        // and only the declaration itself is held to what is in scope where it was written.
+        if (!report) {
+            const auto known = interfaceDecls.find(named->name);
+            resolved.push_back({named->name, known == interfaceDecls.end() ? nullptr : known->second, named->location});
+            continue;
+        }
+
+        const Symbol *symbol = currentScope->Lookup(named->name);
+        if (!symbol) {
+            std::optional<std::string> help;
+            if (const Symbol *suggestion = currentScope->Suggest(named->name)) {
+                help = std::format("did you mean '{}'?", suggestion->name);
+            }
+            EmitError(named->location, std::format("interface '{}' is not defined", named->name), {}, std::move(help));
+            resolved.push_back({named->name, nullptr, named->location});
+            continue;
+        }
+        if (symbol->kind != Symbol::Kind::Interface) {
+            EmitError(named->location,
+                      std::format("name '{}' is a {}, not an interface, and cannot bound type parameter '{}'",
+                                  named->name, SymbolKindName(symbol->kind), parameter.name),
+                      {DeclarationNote(*symbol)});
+            resolved.push_back({named->name, nullptr, named->location});
+            continue;
+        }
         const auto declaration = interfaceDecls.find(named->name);
         resolved.push_back(
             {named->name, declaration == interfaceDecls.end() ? nullptr : declaration->second, named->location});

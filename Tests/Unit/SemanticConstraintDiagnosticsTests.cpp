@@ -69,6 +69,47 @@ std::string ReturnedCalleeName(const HirFunc &function) {
     return callee->name;
 }
 
+/// The named function from whichever module holds it, for the cases whose package has more than one.
+const HirFunc &RequireFunctionAnywhere(const HirPackage &package, const std::string &name) {
+    for (const HirModule &module : package.modules) {
+        for (const HirFunc &function : module.funcs) {
+            if (function.name == name) {
+                return function;
+            }
+        }
+    }
+    FAIL("missing lowered function " << name);
+    throw std::runtime_error("missing lowered function");
+}
+
+/// Lower a module that calls into a dependency package, so a bound written in one package and instantiated from
+/// another is exercised the way a workspace build exercises it.
+HirPackage LowerAgainstDependency(const std::string &userSource, const std::string &dependencyName,
+                                  const std::string &dependencySource) {
+    Lexer dependencyLexer(dependencySource, dependencyName + ".rux");
+    auto dependencyTokens = dependencyLexer.Tokenize();
+    REQUIRE_FALSE(dependencyTokens.HasErrors());
+    Parser dependencyParser(std::move(dependencyTokens.tokens), dependencyName + ".rux");
+    ParseResult parsedDependency = dependencyParser.Parse();
+    REQUIRE_FALSE(parsedDependency.HasErrors());
+
+    DepPackage dependency;
+    dependency.name = dependencyName;
+    dependency.modules.push_back({dependencyName, &parsedDependency.module});
+
+    Lexer lexer(userSource, "app.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "app.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {std::move(dependency)}, "App", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    return AstToHirLowering(model).Generate();
+}
+
 /// One bound, a type that satisfies it nominally, a type that satisfies it by declaring the method, and a generic that
 /// calls the operation through its parameter.
 const std::string kMeasuredPrelude = R"(
@@ -480,4 +521,34 @@ TEST_CASE("a method of a generic extend block calls the bound of the type it ext
     )");
 
     CHECK_EQ(ReturnedCalleeName(RequireFunction(package, "Cell::Inside_Square")), "Square::Measure");
+}
+
+TEST_CASE("a bound is resolved where it was written, not where the generic is called") {
+    // The caller imports the generic and the type it instantiates it with, and never names the interface. A bound is
+    // the declaration's promise, so requiring the caller to import an interface it does not mention would be a demand
+    // no reader would predict -- and resolving the bound against the caller's scope instead left it resolving to
+    // nothing, which lowering then had no conformance to call.
+    const HirPackage package = LowerAgainstDependency(R"(
+import Shapes::{ Square, Total };
+
+func Main() -> int {
+    let square = Square { size: 5 };
+    return Total<Square>(square);
+}
+)",
+                                                      "Shapes", R"(
+pub interface Measured {
+    func Measure() -> int;
+}
+
+pub struct Square { size: int; }
+
+extend Square : Measured {
+    func Measure(self: *Square) -> int { return self.size * self.size; }
+}
+
+pub func Total<T: Measured>(value: T) -> int { return value.Measure(); }
+)");
+
+    CHECK_EQ(ReturnedCalleeName(RequireFunctionAnywhere(package, "Total_Square")), "Square::Measure");
 }
