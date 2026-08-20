@@ -12,13 +12,19 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         if (!s->pattern) {
             locals[s->name] = slot;
         }
+        // A declaration with no initializer owns nothing yet. Marking it live would have the scope destroy whatever
+        // its storage happened to hold, which for a droppable type means calling a destructor on garbage. It becomes
+        // live when something assigns to it, which is where the assignment's own cleanup marks it.
         if (s->init) {
             StoreExprIntoSlot(*s->init, slot, s->type);
+            // Marked live only once the initializer has been stored: an initializer that consumed another binding
+            // has to have cleared that one first, and one that left the function never reaches this at all.
+            if (!IsTerminated()) {
+                MarkBindingLive(s->bindingId, true);
+            }
         }
-        // Marked live only once the initializer has been stored: an initializer that consumed another binding has to
-        // have cleared that one first, and one that left the function never reaches this at all.
-        if (!IsTerminated()) {
-            MarkBindingLive(s->bindingId, true);
+        else {
+            MarkBindingLive(s->bindingId, false);
         }
         if (s->pattern) {
             BindLetPattern(*s->pattern, slot, s->type);

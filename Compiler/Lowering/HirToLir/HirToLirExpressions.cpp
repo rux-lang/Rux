@@ -119,6 +119,12 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         }
         LirReg base = e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
         LirReg ptr = EmitFieldPtr(base, e->field, e->type);
+        // An interface value is a 16-byte fat pointer that is handled by its address, the same way a local or an
+        // element of one is. Loading it would take eight of its sixteen bytes and pass that as the address, which is
+        // what made a call through an interface stored in a struct jump into the data pointer.
+        if (IsInterfaceType(e->type)) {
+            return ptr;
+        }
         return EmitLoad(ptr, e->type);
     }
     if (auto *e = dynamic_cast<const HirStructInitExpr *>(&expr)) {

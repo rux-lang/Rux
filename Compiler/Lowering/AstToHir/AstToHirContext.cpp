@@ -97,6 +97,10 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
             }
         }
     }
+    // A plan for a type that still names a type parameter describes nothing that can exist: there is no value of
+    // `Box<T>` until `T` is chosen, and every choice has a plan of its own. Instantiating one would lower the generic
+    // body with the parameter substituted for itself, which is how a `sizeof(T)` inside it ends up with no width.
+    std::erase_if(package.dropGlues, [this](const DropGluePlan &plan) { return !DropGlueTypeIsConcrete(plan.type); });
     for (DropGluePlan &plan : package.dropGlues) {
         ResolveDropGlueSteps(plan.steps);
     }
@@ -119,6 +123,39 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
         }
         ResolveDropGlueSteps(step.children);
     }
+}
+
+/// Whether a destruction plan's type names a real type rather than a shape still waiting for its arguments.
+///
+/// A type parameter is not concrete, and neither is an instantiation one of whose arguments is still the declaring
+/// type's own parameter -- `Box<T>` written inside `extend Box<T>` reaches here looking exactly like an instantiation.
+bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) const {
+    if (type.kind == TypeRef::Kind::TypeParam) {
+        return false;
+    }
+    for (const TypeRef &inner : type.inner) {
+        if (!DropGlueTypeIsConcrete(inner)) {
+            return false;
+        }
+    }
+    if (type.kind != TypeRef::Kind::Named) {
+        return true;
+    }
+    const std::vector<TypeParameter> *declared = AggregateTypeParams(BaseTypeName(type.name));
+    if (declared == nullptr || declared->empty()) {
+        return true;
+    }
+    for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+        if (!DropGlueTypeIsConcrete(argument)) {
+            return false;
+        }
+        for (const TypeParameter &parameter : *declared) {
+            if (argument.kind == TypeRef::Kind::Named && argument.name == parameter.name) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 std::string AstToHirContext::DropMethodSymbol(const TypeRef &type) {
