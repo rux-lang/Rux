@@ -1,0 +1,92 @@
+// Talking to an allocator in elements rather than bytes.
+//
+// Every container here holds a run of `T` and needs three things from an allocator: storage for a count of them,
+// storage of a different count with the old contents carried over, and the storage given back. Doing that by hand
+// means computing a layout at each site, and a layout computed wrongly is the defect that writes past the end of a
+// block the allocator thought was smaller. These helpers exist so it is computed once.
+//
+// The layout comes from `sizeof(T)` and `alignof(T)`, asked of the element type at each instantiation. That is what
+// makes these usable by a container that has never seen an element and has none to hand: nothing here needs a sample
+// value.
+//
+// A count of zero is not an error. It asks the allocator for a zero-sized block, which every allocator here answers
+// with a shared non-null aligned address, so an empty container is not a special shape and needs no null checks
+// downstream. That block must still be released, exactly like any other.
+//
+// Internal to this package: these are the plumbing every container shares, not something a caller reaches for.
+
+import Allocator::{ AllocError, Allocator, Layout };
+
+// The layout of `count` elements of `T`, or the arithmetic failure that says there is no such layout.
+func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
+    let elementSize = sizeof(T);
+    var bytes: uint = 0;
+    let sizing = ByteSize(count, elementSize, @bytes);
+    if sizing.IsError() {
+        return sizing;
+    }
+
+    let checked = Layout::New(bytes, alignof(T));
+    if checked.IsNone() {
+        // A layout the allocator's own rules reject: the rounded size passes the end of the address space. The
+        // element's alignment is whatever the compiler gave it, so it is a power of two by construction.
+        return CollectionError::CapacityOverflow;
+    }
+    *layout = checked.ValueOr(Layout { size: bytes, alignment: alignof(T) });
+    return CollectionError::None;
+}
+
+// Storage for `count` elements, uninitialized. Nothing is written to it: a container fills what it hands out.
+func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) -> CollectionError {
+    var layout = Layout { size: 0, alignment: 1 };
+    let sizing = ElementLayout<T>(count, @layout);
+    if sizing.IsError() {
+        return sizing;
+    }
+
+    var block: *var opaque = null;
+    let error = allocator.Allocate(layout, @block);
+    if error != AllocError::None {
+        return FromAllocError(error);
+    }
+    *result = block as *var T;
+    return CollectionError::None;
+}
+
+// Storage for `newCount` elements holding what the first `min(oldCount, newCount)` of the old block held. On failure
+// the old block is untouched and still the caller's, which is what lets a container report a failed growth and
+// carry on as it was.
+func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint,
+                        result: *var *var T) -> CollectionError {
+    var oldLayout = Layout { size: 0, alignment: 1 };
+    let oldSizing = ElementLayout<T>(oldCount, @oldLayout);
+    if oldSizing.IsError() {
+        return oldSizing;
+    }
+    var newLayout = Layout { size: 0, alignment: 1 };
+    let newSizing = ElementLayout<T>(newCount, @newLayout);
+    if newSizing.IsError() {
+        return newSizing;
+    }
+
+    var moved: *var opaque = null;
+    let error = allocator.Reallocate(block as *var opaque, oldLayout, newLayout, @moved);
+    if error != AllocError::None {
+        return FromAllocError(error);
+    }
+    *result = moved as *var T;
+    return CollectionError::None;
+}
+
+// Gives back storage this package took for `count` elements. The elements themselves are the container's business:
+// whatever they own must already have been dealt with, because this frees the block and nothing else.
+func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
+    var layout = Layout { size: 0, alignment: 1 };
+    let sizing = ElementLayout<T>(count, @layout);
+    if sizing.IsError() {
+        // The layout that allocated it computed cleanly, so this one does too; there is no honest way to release a
+        // block whose size cannot be named, and nothing to report it to.
+        return;
+    }
+    allocator.Deallocate(block as *var opaque, layout);
+}

@@ -49,9 +49,15 @@ enum CollectionError: uint8 {
     None = 0,
     OutOfMemory = 1,
     CapacityOverflow = 2,
-    IndexOutOfRange = 3
+    IndexOutOfRange = 3,
+    Unsupported = 4
 }
 ```
+
+The five are not interchangeable. `OutOfMemory` is the only one worth retrying — `IsTransient` says so — because the
+allocator having nothing to give is a state that changes. A capacity that cannot be represented will not start being
+representable, an index the collection does not have will not appear, and a layout the allocator refuses will be
+refused the same way next time. `FromAllocError` is what maps an allocator's own answer onto these.
 
 An operation that **cannot** allocate reports an ordinary miss with a `bool`, through the `Try*` prefix and an out-parameter. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation.
 
@@ -73,6 +79,23 @@ numbers.Free();
 **A failed operation changes nothing.** Capacity arithmetic is checked before anything is allocated, and a reallocated block lands in a local before it replaces the owned pointer — so a failure leaves the original allocation valid and owned, rather than leaking it and nulling the container.
 
 Every count is checked for overflow. `count * sizeof(T)` is the most dangerous expression a container writes: a product that wraps asks for a small block and then writes far past it.
+
+## Iterating
+
+`ValueIterator` yields elements by copy and `ReferenceIterator` yields a pointer to each, and both are driven by the
+compiler's `for` loop, which matches an iterator by shape rather than through an interface. Copy is what reading a
+sequence of numbers wants; a pointer is how an element that owns something is read without being moved, since copying
+one would give two owners to a value that promises one.
+
+Both borrow. Neither owns what it walks, and neither may outlive the container it came from or survive that container
+growing, rehashing or being freed.
+
+A `for` loop over an iterator *value* walks a copy of it, so the iterator the caller holds is left where it was. A
+loop is not a way to advance an iterator someone else is also reading.
+
+There is no iterator yielding a writable pointer yet, though the shape is obvious and the use is real: a generic
+iterator reporting `Option<*var T>` does not survive lowering today. Until it does, changing elements while walking
+means asking the container for a `MutableSlice<T>` and indexing it, which is what `Rux/Algorithms` does throughout.
 
 ## Hashing
 

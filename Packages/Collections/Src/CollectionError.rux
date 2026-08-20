@@ -1,17 +1,99 @@
 // Why a collection operation could not be completed.
 //
-// `None` is success, so an operation that can fail for more than one reason
-// reports a single value rather than a bool the caller has to disambiguate.
-// The return type is what separates the two kinds of failure in this package:
-// an operation returning a CollectionError needed memory or capacity
-// arithmetic, while an operation returning bool never allocates and has
-// exactly one way to fail. So an exhausted allocator can never be mistaken for
-// a missing key, and a rejected index can never be mistaken for either.
+// `None` is success, so an operation that can fail for more than one reason reports one value rather than a bool the
+// caller has to disambiguate. The return type is what separates the two kinds of failure in this package: an
+// operation returning a `CollectionError` needed memory or capacity arithmetic, while an operation returning `bool`
+// never allocates and has exactly one way to fail. So an exhausted allocator can never be mistaken for a missing
+// key, and a rejected index can never be mistaken for either.
 //
-// A returned error other than None always means the receiver is unchanged.
+// One rule holds everywhere: an error other than `None` means the receiver is unchanged. A container that could not
+// grow is the container it was, with the same elements at the same indices, and a caller may retry, give up, or
+// carry on using it. Nothing here leaves a collection half-modified.
+
+import Allocator::AllocError;
+
+/// Why a collection operation could not be completed.
+///
+/// `None` is success. Every other value means the operation did not happen and the collection is as it was.
+///
+/// https://rux-lang.dev/docs/api/collections/collection-error
 enum CollectionError: uint8 {
+    /// The operation completed.
     None = 0,
+    /// The allocator had no storage to give.
+    ///
+    /// Transient in principle: the same request may succeed later, and a caller with something to release may make
+    /// it so.
     OutOfMemory = 1,
+    /// The size the operation needed could not be represented.
+    ///
+    /// A count times an element size that does not fit in a `uint`, or a length plus a growth that wraps. Not a
+    /// shortage of memory but of arithmetic: no allocator could have served the request, because the number naming
+    /// it does not exist.
     CapacityOverflow = 2,
-    IndexOutOfRange = 3
+    /// The index was not one the collection has.
+    IndexOutOfRange = 3,
+    /// The allocator refused the layout itself rather than running short.
+    ///
+    /// An alignment stricter than the allocator serves, or a block it did not hand out. Retrying is pointless: the
+    /// same request will be refused the same way.
+    Unsupported = 4
+}
+
+extend CollectionError {
+    /// Whether this reports success.
+    ///
+    /// `self` is borrowed. True only for `None`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/collection-error/is-ok
+    func IsOk(self: *CollectionError) -> bool {
+        return *self == CollectionError::None;
+    }
+
+    /// Whether this reports a failure.
+    ///
+    /// `self` is borrowed. The negation of `IsOk`, written out because `if error.IsError()` reads better than the
+    /// comparison it stands for.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/collection-error/is-error
+    func IsError(self: *CollectionError) -> bool {
+        return *self != CollectionError::None;
+    }
+
+    /// Whether the same operation might succeed later.
+    ///
+    /// `self` is borrowed. True only for `OutOfMemory`, which says the allocator had nothing to give rather than
+    /// that the request was impossible. A capacity that cannot be represented will not start being representable,
+    /// an index the collection does not have will not appear, and a layout the allocator refuses will be refused
+    /// again.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/collection-error/is-transient
+    func IsTransient(self: *CollectionError) -> bool {
+        return *self == CollectionError::OutOfMemory;
+    }
+}
+
+/// The collection error that corresponds to an allocator's.
+///
+/// `error` is read by value. `None` stays `None`; `OutOfMemory` stays itself; and `Unsupported` and `InvalidBlock`
+/// both become `Unsupported`, because from a collection's side they are the same thing -- the allocator will not
+/// serve this, and asking again will not change that.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/collections/from-alloc-error
+func FromAllocError(error: AllocError) -> CollectionError {
+    if error == AllocError::None {
+        return CollectionError::None;
+    }
+    if error == AllocError::OutOfMemory {
+        return CollectionError::OutOfMemory;
+    }
+    return CollectionError::Unsupported;
 }
