@@ -1,0 +1,309 @@
+// A binary max-heap laid out in the sequence itself, with no node structure and no allocation.
+//
+// The heap property is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and
+// `2i+2`, which puts the largest element at the front and lets the largest be removed, or a new element added, in
+// time proportional to the logarithm of the length. That is what a priority queue is, and it is why these operations
+// are here rather than in a container -- any sequence a caller already has can be one.
+//
+// The arrangement is not an order. A heap is not sorted, and only its first element is where a sorted sequence would
+// put it. `SortHeap` turns one into the other, which is what heapsort is.
+//
+// Every operation here takes the whole heap as a view and works within it. Growing and shrinking are the caller's:
+// `PushHeap` is told about an element already appended, and `PopHeap` leaves the removed element at the end for the
+// caller to drop. That keeps this package out of the business of owning storage, which it is not in anywhere.
+//
+// Requires `<` on the element type, or a three-way comparison for the `By` forms. Nothing here allocates.
+
+import Core::{ MutableSlice, Ordering };
+
+/// Rearranges `items` into a max-heap.
+///
+/// `items` is borrowed mutably and rewritten. Fewer than two elements are already a heap. The arrangement is not an
+/// order: only the first element ends up where a sorted sequence would put it.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length -- linear, not `n log n`, because sifting from the bottom up
+/// does most of its work on the short subtrees near the leaves. Allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/make-heap
+func MakeHeap<T>(items: MutableSlice<T>) {
+    if items.length < 2 {
+        return;
+    }
+    var root = items.length / 2;
+    while root > 0 {
+        root = root - 1;
+        HeapSiftDown<T>(items.data, items.length, root);
+    }
+}
+
+/// Restores the heap property after an element has been appended to `items`.
+///
+/// `items` is borrowed mutably and rewritten; it must be the whole heap including the new last element, and
+/// everything before that element must already be a heap. An empty view does nothing.
+///
+/// The caller appends and this repairs, because appending is the storage owner's business.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/push-heap
+func PushHeap<T>(items: MutableSlice<T>) {
+    if items.length < 2 {
+        return;
+    }
+    HeapSiftUp<T>(items.data, items.length - 1);
+}
+
+/// Moves the largest element of `items` to its end and restores the heap property over the rest.
+///
+/// `items` is borrowed mutably and rewritten. Afterwards the largest element sits at the last position and the first
+/// `length - 1` positions are a heap again; the caller is what shortens the sequence, or leaves the element there.
+/// Fewer than two elements do nothing.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/pop-heap
+func PopHeap<T>(items: MutableSlice<T>) {
+    if items.length < 2 {
+        return;
+    }
+    let last = items.length - 1;
+    let largest = items.data[0];
+    items.data[0] = items.data[last];
+    items.data[last] = largest;
+    HeapSiftDown<T>(items.data, last, 0);
+}
+
+/// Turns the heap `items` into a sorted sequence, smallest first.
+///
+/// `items` is borrowed mutably and rewritten; it must already be a heap, which `MakeHeap` is what makes it. Repeated
+/// popping, which is exactly heapsort.
+///
+/// A sequence that is not a heap does not fail; it comes out rearranged and not sorted.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Makes O(n log n) comparisons and allocates nothing. Equal elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/sort-heap
+func SortHeap<T>(items: MutableSlice<T>) {
+    var remaining = items.length;
+    while remaining > 1 {
+        PopHeap<T>(MutableSlice<T> { data: items.data, length: remaining });
+        remaining = remaining - 1;
+    }
+}
+
+/// Whether `items` is arranged as a max-heap.
+///
+/// `items` is borrowed and read. An empty sequence and a single element are heaps, there being no pair to violate
+/// the property.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-heap
+func IsHeap<T>(items: Slice<T>) -> bool {
+    return IsHeapUntil<T>(items) == items.length;
+}
+
+/// How much of `items` from the front is arranged as a max-heap.
+///
+/// `items` is borrowed and read. Returns the length when the whole sequence is a heap, and otherwise the index of
+/// the first element larger than its parent.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the answer and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-heap-until
+func IsHeapUntil<T>(items: Slice<T>) -> uint {
+    var child: uint = 1;
+    while child < items.length {
+        if items.data[(child - 1) / 2] < items.data[child] {
+            return child;
+        }
+        child++;
+    }
+    return items.length;
+}
+
+// Moves the element at `position` up until its parent is at least as large. Used after an append.
+func HeapSiftUp<T>(data: *var T, position: uint) {
+    var index = position;
+    while index > 0 {
+        let parent = (index - 1) / 2;
+        if !(data[parent] < data[index]) {
+            return;
+        }
+        let held = data[parent];
+        data[parent] = data[index];
+        data[index] = held;
+        index = parent;
+    }
+}
+
+// Moves the element at `root` down until both its children are no larger, within the first `count` elements.
+func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
+    var index = root;
+    while true {
+        let left = index * 2 + 1;
+        if left >= count {
+            return;
+        }
+        var largest = left;
+        let right = left + 1;
+        if right < count && data[left] < data[right] {
+            largest = right;
+        }
+        if !(data[index] < data[largest]) {
+            return;
+        }
+        let held = data[index];
+        data[index] = data[largest];
+        data[largest] = held;
+        index = largest;
+    }
+}
+
+/// Rearranges `items` into a max-heap under `compare`.
+///
+/// `items` is borrowed mutably and rewritten; `compare` must be a strict weak ordering. Fewer than two elements are
+/// already a heap.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/make-heap-by
+func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+    if items.length < 2 {
+        return;
+    }
+    var root = items.length / 2;
+    while root > 0 {
+        root = root - 1;
+        HeapSiftDownBy<T>(items.data, items.length, root, compare);
+    }
+}
+
+/// Restores the heap property under `compare` after an element has been appended to `items`.
+///
+/// `items` is borrowed mutably and rewritten; everything before its last element must already be a heap.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/push-heap-by
+func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+    if items.length < 2 {
+        return;
+    }
+    HeapSiftUpBy<T>(items.data, items.length - 1, compare);
+}
+
+/// Moves the largest element of `items` under `compare` to its end and restores the heap over the rest.
+///
+/// `items` is borrowed mutably and rewritten. The caller is what shortens the sequence afterwards.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/pop-heap-by
+func PopHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+    if items.length < 2 {
+        return;
+    }
+    let last = items.length - 1;
+    let largest = items.data[0];
+    items.data[0] = items.data[last];
+    items.data[last] = largest;
+    HeapSiftDownBy<T>(items.data, last, 0, compare);
+}
+
+/// Turns the heap `items` into a sequence sorted by `compare`, smallest first.
+///
+/// `items` is borrowed mutably and rewritten and must already be a heap under the same comparison.
+///
+/// Cannot fail. Makes O(n log n) comparisons and allocates nothing beyond whatever `compare` does. Equivalent
+/// elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/sort-heap-by
+func SortHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+    var remaining = items.length;
+    while remaining > 1 {
+        PopHeapBy<T>(MutableSlice<T> { data: items.data, length: remaining }, compare);
+        remaining = remaining - 1;
+    }
+}
+
+/// Whether `items` is arranged as a max-heap under `compare`.
+///
+/// `items` is borrowed and read. An empty sequence and a single element are heaps.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-heap-by
+func IsHeapBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
+    return IsHeapUntilBy<T>(items, compare) == items.length;
+}
+
+/// How much of `items` from the front is arranged as a max-heap under `compare`.
+///
+/// `items` is borrowed and read. Returns the length when the whole sequence is a heap, and otherwise the index of
+/// the first element larger than its parent.
+///
+/// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-heap-until-by
+func IsHeapUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
+    var child: uint = 1;
+    while child < items.length {
+        if compare(items.data[(child - 1) / 2], items.data[child]).IsLess() {
+            return child;
+        }
+        child++;
+    }
+    return items.length;
+}
+
+// The two sifts again, with the comparison supplied.
+func HeapSiftUpBy<T>(data: *var T, position: uint, compare: func(T, T) -> Ordering) {
+    var index = position;
+    while index > 0 {
+        let parent = (index - 1) / 2;
+        if !compare(data[parent], data[index]).IsLess() {
+            return;
+        }
+        let held = data[parent];
+        data[parent] = data[index];
+        data[index] = held;
+        index = parent;
+    }
+}
+
+func HeapSiftDownBy<T>(data: *var T, count: uint, root: uint, compare: func(T, T) -> Ordering) {
+    var index = root;
+    while true {
+        let left = index * 2 + 1;
+        if left >= count {
+            return;
+        }
+        var largest = left;
+        let right = left + 1;
+        if right < count && compare(data[left], data[right]).IsLess() {
+            largest = right;
+        }
+        if !compare(data[index], data[largest]).IsLess() {
+            return;
+        }
+        let held = data[index];
+        data[index] = data[largest];
+        data[largest] = held;
+        index = largest;
+    }
+}

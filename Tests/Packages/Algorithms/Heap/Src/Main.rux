@@ -1,0 +1,196 @@
+import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex,
+                     PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
+import Core::{ Assert, MutableSlice, Ordering };
+
+// A heap is an arrangement rather than an order, so what is checked is the arrangement itself -- every element at
+// least as large as its children -- rather than any particular layout. That way the test does not depend on which of
+// several valid heaps an implementation happens to build.
+
+func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
+    return MutableSlice<int32> { data: data, length: length };
+}
+
+func ReadInts(data: *int32, length: uint) -> Slice<int32> {
+    return Slice<int32> { data: data, length: length };
+}
+
+func Descending(left: int32, right: int32) -> Ordering {
+    if right < left {
+        return Ordering::Less;
+    }
+    if left < right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+func AddInt32(total: int32, value: int32) -> int32 {
+    return total + value;
+}
+
+func SubtractInt32(total: int32, value: int32) -> int32 {
+    return total - value;
+}
+
+// Builds a decimal number out of the elements, which is the cheapest combine whose answer really depends on the
+// direction: subtracting a set from zero gives the same total either way round, so it proves nothing about order.
+func AppendDigit(total: int32, value: int32) -> int32 {
+    return total * 10 + value;
+}
+
+func Double(value: int32) -> int32 {
+    return value * 2;
+}
+
+func Main() -> int {
+    // Making a heap out of an arbitrary sequence.
+    var values: int32[9];
+    values[0] = 3;
+    values[1] = 1;
+    values[2] = 9;
+    values[3] = 4;
+    values[4] = 1;
+    values[5] = 5;
+    values[6] = 9;
+    values[7] = 2;
+    values[8] = 6;
+
+    Assert(!IsHeap<int32>(ReadInts(@values[0], 9)), "an arbitrary sequence is not a heap");
+    MakeHeap<int32>(Ints(@values[0], 9));
+    Assert(IsHeap<int32>(ReadInts(@values[0], 9)), "and making one makes it one");
+    Assert(values[0] == 9, "with the largest element at the front");
+    Assert(IsHeapUntil<int32>(ReadInts(@values[0], 9)) == 9, "the whole way through");
+
+    // A heap is not sorted, which is the distinction worth stating.
+    Assert(!IsSorted<int32>(ReadInts(@values[0], 9)), "a heap is an arrangement rather than an order");
+
+    // The degenerate lengths are heaps for want of a pair to violate the property.
+    Assert(IsHeap<int32>(ReadInts(null, 0)), "nothing is a heap");
+    Assert(IsHeap<int32>(ReadInts(@values[0], 1)), "and so is one element");
+    MakeHeap<int32>(Ints(null, 0));
+    MakeHeap<int32>(Ints(@values[0], 1));
+
+    // Pushing: the caller appends and PushHeap repairs.
+    var pushed: int32[8];
+    var count: uint = 0;
+    var source: int32[8];
+    source[0] = 5;
+    source[1] = 12;
+    source[2] = 3;
+    source[3] = 20;
+    source[4] = 1;
+    source[5] = 20;
+    source[6] = 7;
+    source[7] = 15;
+    var index: uint = 0;
+    while index < 8 {
+        pushed[count] = source[index];
+        count = count + 1;
+        PushHeap<int32>(Ints(@pushed[0], count));
+        Assert(IsHeap<int32>(ReadInts(@pushed[0], count)), "the heap property survives every push");
+        var largest: uint = 0;
+        Assert(MaxIndex<int32>(ReadInts(@pushed[0], count)).TryIntoValue(@largest),
+               "and a non-empty heap has a largest element");
+        Assert(largest == 0 || pushed[0] == pushed[largest], "which is at the front");
+        index++;
+    }
+
+    // Popping: the largest goes to the end and the rest stays a heap.
+    var remaining = count;
+    var lastSeen: int32 = 0;
+    var first = true;
+    while remaining > 1 {
+        PopHeap<int32>(Ints(@pushed[0], remaining));
+        let taken = pushed[remaining - 1];
+        if !first {
+            Assert(taken <= lastSeen, "each pop takes an element no larger than the one before");
+        }
+        lastSeen = taken;
+        first = false;
+        remaining = remaining - 1;
+        Assert(IsHeap<int32>(ReadInts(@pushed[0], remaining)), "and leaves a heap behind");
+    }
+
+    // Sorting a heap is repeated popping, which is heapsort.
+    var heaped: int32[9];
+    index = 0;
+    while index < 9 {
+        heaped[index] = ((index * 5) % 9) as int32;
+        index++;
+    }
+    MakeHeap<int32>(Ints(@heaped[0], 9));
+    SortHeap<int32>(Ints(@heaped[0], 9));
+    Assert(IsSorted<int32>(ReadInts(@heaped[0], 9)), "sorting a heap leaves a sorted sequence");
+    Assert(heaped[0] == 0 && heaped[8] == 8, "with every element still present");
+
+    // A comparator makes the smallest element the front, which is what a min-heap is.
+    var minHeap: int32[7];
+    index = 0;
+    while index < 7 {
+        minHeap[index] = (7 - index) as int32;
+        index++;
+    }
+    MakeHeapBy<int32>(Ints(@minHeap[0], 7), Descending);
+    Assert(IsHeapBy<int32>(ReadInts(@minHeap[0], 7), Descending), "a reversed comparison builds a heap of its own");
+    Assert(minHeap[0] == 1, "with the smallest element at the front");
+    minHeap[0] = minHeap[0];
+    SortHeapBy<int32>(Ints(@minHeap[0], 7), Descending);
+    Assert(minHeap[0] == 7 && minHeap[6] == 1, "and sorting it puts the largest first");
+
+    var growing: int32[4];
+    growing[0] = 9;
+    PushHeapBy<int32>(Ints(@growing[0], 1), Descending);
+    growing[1] = 4;
+    PushHeapBy<int32>(Ints(@growing[0], 2), Descending);
+    growing[2] = 6;
+    PushHeapBy<int32>(Ints(@growing[0], 3), Descending);
+    Assert(IsHeapBy<int32>(ReadInts(@growing[0], 3), Descending), "pushing under a comparator keeps its heap");
+    Assert(growing[0] == 4, "with its own smallest at the front");
+
+    return FoldChecks();
+}
+
+// The folds and the numeric accumulations, which are folds with the function already chosen.
+func FoldChecks() -> int {
+    var digits: int32[5];
+    digits[0] = 1;
+    digits[1] = 2;
+    digits[2] = 3;
+    digits[3] = 4;
+    digits[4] = 5;
+    let items = ReadInts(@digits[0], 5);
+    let empty = ReadInts(null, 0);
+
+    Assert(Fold<int32, int32>(items, 0, AddInt32) == 15, "a fold combines every element");
+    Assert(Fold<int32, int32>(items, 100, AddInt32) == 115, "starting from what it was given");
+    Assert(Fold<int32, int32>(empty, 7, AddInt32) == 7, "and an empty sequence gives that back unchanged");
+
+    // Direction is part of the contract, so it needs a combine whose answer depends on it.
+    Assert(Fold<int32, int32>(items, 0, AppendDigit) == 12345, "a fold runs left to right");
+    Assert(FoldRight<int32, int32>(items, 0, AppendDigit) == 54321, "and folding right runs the other way");
+    Assert(Fold<int32, int32>(items, 0, SubtractInt32) == -15, "a subtracting fold reaches every element");
+    Assert(Fold<int32, int32>(items, 20, SubtractInt32) == 5, "starting from what it was given");
+
+    // The numeric forms take their starting value rather than assuming one.
+    Assert(Sum<int32>(items, 0) == 15, "a sum adds every element");
+    Assert(Sum<int32>(items, 10) == 25, "on top of what it started with");
+    Assert(Sum<int32>(empty, 4) == 4, "and an empty sequence gives the start back");
+    Assert(Product<int32>(items, 1) == 120, "a product multiplies every element");
+    Assert(Product<int32>(empty, 6) == 6, "and an empty one gives the start back");
+    Assert(Product<int32>(items, 0) == 0, "a product started at zero stays zero, which is why one is the start to use");
+
+    // Transform maps one sequence onto another, and refuses a length it cannot fill.
+    var doubled: int32[5];
+    Assert(Transform<int32, int32>(Ints(@doubled[0], 5), items, Double), "a transform of matching lengths runs");
+    Assert(doubled[0] == 2 && doubled[4] == 10, "writing the transformed elements");
+    Assert(!Transform<int32, int32>(Ints(@doubled[0], 3), items, Double), "mismatched lengths are refused");
+    Assert(doubled[0] == 2 && doubled[4] == 10, "having written nothing");
+    Assert(Transform<int32, int32>(Ints(null, 0), empty, Double), "and transforming nothing succeeds");
+
+    // The same storage on both sides is allowed when the types match.
+    Assert(Transform<int32, int32>(Ints(@digits[0], 5), items, Double), "a transform in place runs");
+    Assert(digits[0] == 2 && digits[4] == 10, "and doubles what was there");
+    Assert(Sum<int32>(items, 0) == 30, "which the sum sees too, the view being the same storage");
+
+    return 0;
+}

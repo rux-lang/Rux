@@ -150,36 +150,36 @@ func Main() -> int {
     // Transform writes into a separate destination.
     var source: int32[4] = [1, 2, 3, 4];
     var doubled: int32[4] = [0, 0, 0, 0];
-    if !Transform<int32, int32>(@doubled[0], @source[0], 4, Double) { return 80; }
+    if !Transform<int32, int32>(Ints(@doubled[0], 4), ReadInts(@source[0], 4), Double) { return 80; }
     if doubled[0] != 2 || doubled[3] != 8 { return 81; }
     if source[0] != 1 || source[3] != 4 { return 82; }
 
     // Transforming in place is allowed when the types match.
-    if !Transform<int32, int32>(@source[0], @source[0], 4, Double) { return 83; }
+    if !Transform<int32, int32>(Ints(@source[0], 4), ReadInts(@source[0], 4), Double) { return 83; }
     if source[0] != 2 || source[3] != 8 { return 84; }
 
     // Zero elements always succeeds; a null with a real length does not.
-    if !Transform<int32, int32>(null, null, 0, Double) { return 85; }
-    if Transform<int32, int32>(null, @source[0], 4, Double) { return 86; }
-    if Transform<int32, int32>(@doubled[0], null, 4, Double) { return 87; }
+    if !Transform<int32, int32>(Ints(null, 0), ReadInts(null, 0), Double) { return 85; }
+    if Transform<int32, int32>(Ints(null, 2), ReadInts(@source[0], 4), Double) { return 86; }
+    if Transform<int32, int32>(Ints(@doubled[0], 4), ReadInts(null, 2), Double) { return 87; }
 
     // The element and result types may differ.
     var records: Record[3] = [Record { key: 5, origin: 0 },
                               Record { key: 6, origin: 1 },
                               Record { key: 7, origin: 2 }];
     var keys: int32[3] = [0, 0, 0];
-    if !Transform<Record, int32>(@keys[0], @records[0], 3, KeyOf) { return 88; }
+    if !Transform<Record, int32>(Ints(@keys[0], 3), ReadRecords(@records[0], 3), KeyOf) { return 88; }
     if keys[0] != 5 || keys[2] != 7 { return 89; }
 
     // Fold accumulates left to right, and an empty sequence yields the seed.
     var digits: int32[5] = [1, 2, 3, 4, 5];
-    if Fold<int32, int32>(@digits[0], 5, 0, AddInt32) != 15 { return 90; }
-    if Fold<int32, int32>(@digits[0], 5, 100, AddInt32) != 115 { return 91; }
-    if Fold<int32, int32>(@digits[0], 0, 7, AddInt32) != 7 { return 92; }
+    if Fold<int32, int32>(ReadInts(@digits[0], 5), 0, AddInt32) != 15 { return 90; }
+    if Fold<int32, int32>(ReadInts(@digits[0], 5), 100, AddInt32) != 115 { return 91; }
+    if Fold<int32, int32>(ReadInts(@digits[0], 0), 7, AddInt32) != 7 { return 92; }
 
     // The accumulator need not be the element type's own sum.
-    if Fold<int32, int32>(@digits[0], 5, 0, CountEven) != 2 { return 93; }
-    if Fold<Record, int32>(@records[0], 3, 0, AddKey) != 18 { return 94; }
+    if Fold<int32, int32>(ReadInts(@digits[0], 5), 0, CountEven) != 2 { return 93; }
+    if Fold<Record, int32>(ReadRecords(@records[0], 3), 0, AddKey) != 18 { return 94; }
 
     // Predicates over a struct element type.
     if PartitionPoint<Record>(ReadRecords(@records[0], 0), HasEvenKey) != 0 { return 101; }

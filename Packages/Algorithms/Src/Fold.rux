@@ -1,0 +1,124 @@
+// Reducing a sequence to one value, and mapping one sequence onto another.
+//
+// A fold is the general form: an accumulator, a starting value, and a function that folds each element into it. The
+// accumulator's type is independent of the element's, so the same operation both sums a sequence of numbers and
+// builds something else entirely out of one.
+//
+// The numeric forms are folds with the function already chosen. They take the starting value rather than assuming
+// one, because a generic `T` has no zero this package could name: nothing here requires a type to say what its
+// additive identity is, and inventing one would be wrong for every type that has no such thing. Passing `0` costs a
+// caller nothing and keeps the operation honest about what it does.
+//
+// Overflow is the element type's business. `Sum` adds with `+`, so a sum that does not fit behaves exactly as `+`
+// behaves on that type -- these do not check, and a caller who needs checking folds `AddChecked` instead. That is
+// the fold's whole reason for being general.
+//
+// Nothing here allocates.
+
+import Core::MutableSlice;
+
+/// Folds every element of `items` into an accumulator, left to right.
+///
+/// `items` is borrowed and read; `initial` is read by value and returned when the sequence is empty; `combine` is
+/// called once per element with the accumulator so far and the element. The accumulator's type is independent of the
+/// element's.
+///
+/// Left to right is part of the contract rather than an implementation detail: a `combine` that is not associative
+/// gives a different answer in the other direction, and callers depend on the order.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/fold
+func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+    var total = initial;
+    var index: uint = 0;
+    while index < items.length {
+        total = combine(total, items.data[index]);
+        index++;
+    }
+    return total;
+}
+
+/// Folds every element of `items` into an accumulator, right to left.
+///
+/// `items` is borrowed and read; `initial` is read by value and returned when the sequence is empty; `combine` is
+/// called once per element with the accumulator so far and the element, starting from the last.
+///
+/// The mirror of `Fold`, and a different answer for any `combine` that is not associative.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/fold-right
+func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+    var total = initial;
+    var remaining = items.length;
+    while remaining > 0 {
+        remaining = remaining - 1;
+        total = combine(total, items.data[remaining]);
+    }
+    return total;
+}
+
+/// The sum of `initial` and every element of `items`.
+///
+/// `items` is borrowed and read; `initial` is read by value and is what an empty sequence gives back. The starting
+/// value is asked for rather than assumed, because a generic element type has no zero this package could name.
+///
+/// Requires `+` on the element type. Overflow behaves exactly as `+` does on that type: this does not check, and a
+/// caller who needs checking folds a checked addition instead.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/sum
+func Sum<T>(items: Slice<T>, initial: T) -> T {
+    var total = initial;
+    var index: uint = 0;
+    while index < items.length {
+        total = total + items.data[index];
+        index++;
+    }
+    return total;
+}
+
+/// The product of `initial` and every element of `items`.
+///
+/// `items` is borrowed and read; `initial` is read by value and is what an empty sequence gives back -- which is why
+/// it must be one rather than zero for the answer to mean anything.
+///
+/// Requires `*` on the element type. Overflow behaves exactly as `*` does on that type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/product
+func Product<T>(items: Slice<T>, initial: T) -> T {
+    var total = initial;
+    var index: uint = 0;
+    while index < items.length {
+        total = total * items.data[index];
+        index++;
+    }
+    return total;
+}
+
+/// Writes `transform` of each element of `source` into `destination`.
+///
+/// `source` is borrowed and read; `destination` is borrowed mutably and written; `transform` is called once per
+/// element. The two sequences may have different element types, and may be the same storage when they do not.
+///
+/// Reports false, having written nothing, when the two lengths differ -- for the same reason `CopyTo` does: a
+/// partial result is worse than a refused one when the caller cannot tell how far it got.
+///
+/// Runs in time proportional to the length and allocates nothing beyond whatever `transform` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/transform
+func Transform<T, U>(destination: MutableSlice<U>, source: Slice<T>, transform: func(T) -> U) -> bool {
+    if destination.length != source.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < source.length {
+        destination.data[index] = transform(source.data[index]);
+        index++;
+    }
+    return true;
+}
