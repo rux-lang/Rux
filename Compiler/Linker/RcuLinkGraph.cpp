@@ -19,10 +19,12 @@ namespace {
 }
 
 [[nodiscard]] bool IsCrossObjectVisible(const RcuSymbol &symbol) {
-    // Private functions have final package-unique names and are referenced by
-    // extern-shaped symbol entries in other source-file objects. Generated
-    // local data and constant labels remain object-relative.
-    return symbol.visibility != RcuSymVis::Local || symbol.kind == RcuSymKind::Func;
+    // A private declaration still has a package-unique name and is referenced by extern-shaped symbol entries in the
+    // other source-file objects of its package -- that is how a call reaches a private function in a sibling file,
+    // and a declared constant is no different. What must stay object-relative is the labels the compiler invents for
+    // itself: literal pools, sign masks, the elements behind a slice. Those carry no declared type, because nothing
+    // declared them, which is exactly what tells the two apart.
+    return symbol.visibility != RcuSymVis::Local || symbol.kind == RcuSymKind::Func || !symbol.typeName.empty();
 }
 
 [[nodiscard]] RcuLinkDiagnostic Diagnostic(const RcuLinkDiagnosticKind kind, std::string symbol = {}) {

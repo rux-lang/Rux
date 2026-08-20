@@ -83,6 +83,31 @@ TEST_CASE("RCU link graph keeps local data object-relative and diagnoses only du
     CHECK(graph.FindDefinition("Weak") == (RcuSymbolLocation{0, 1}));
 }
 
+TEST_CASE("RCU link graph finds a private declaration in a sibling object but not a generated label") {
+    // A constant declared in one file of a package and read from another is private, yet the two files are separate
+    // objects, so the reference is extern-shaped and has to find the definition anyway. What must stay object-relative
+    // is the labels the compiler invents for itself, which carry no declared type because nothing declared them.
+    RcuFile reader;
+    reader.sections.push_back(Text({{0, 0, RcuRelType::Abs64, 0}, {8, 1, RcuRelType::Abs64, 0}}));
+    reader.symbols = {{"Table", "uint32[4]", 0, 16, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global},
+                      {"Table$elements", "", 0, 16, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global}};
+
+    RcuFile owner;
+    owner.sections.push_back(Text());
+    owner.symbols = {{"Table", "uint32[4]", 0, 16, RCU_TEXT_IDX, RcuSymKind::Const, RcuSymVis::Local},
+                     {"Table$elements", "", 0, 16, RCU_TEXT_IDX, RcuSymKind::Const, RcuSymVis::Local}};
+
+    const std::array objects = {reader, owner};
+    const RcuLinkGraph graph =
+        RcuLinkGraph::Build(objects, "GraphTest", ArtifactKind::SharedLibrary, Target::Arch::X86_64);
+
+    CHECK(graph.FindDefinition("Table") == (RcuSymbolLocation{1, 0}));
+    CHECK_FALSE(graph.FindDefinition("Table$elements").has_value());
+    REQUIRE(graph.References().size() == 2);
+    CHECK(graph.References()[0].resolution == RcuLinkResolution::CrossObjectDefinition);
+    CHECK(graph.References()[1].resolution != RcuLinkResolution::CrossObjectDefinition);
+}
+
 TEST_CASE("RCU link graph applies executable and library root policy deterministically") {
     RcuFile object;
     object.sections.push_back(Text());
