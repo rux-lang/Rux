@@ -1,0 +1,179 @@
+// The call a caller actually makes, and the seam that makes its failure paths testable.
+//
+// `FillFromSource` is the system, reached directly. This is the layer above it: it splits a request larger than any
+// single call into as many calls as it takes, it zeroizes the whole buffer when any part of the request fails, and
+// it reaches the system through an interface rather than by name.
+//
+// That last part is the point of the module. Entropy failures are the ones nobody tests: they need a kernel with no
+// generator, a process being signalled steadily, or a cryptographic provider that refuses -- none of which a test
+// can arrange. So the source is an `EntropySource`, `SystemEntropy` is the one that asks the operating system, and a
+// test supplies one that fails exactly when the test wants it to. The code that handles a failure is then the same
+// code in the test and in production, which is the only way to know it works.
+
+import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
+import Memory::ZeroizeBlock;
+
+/// Something that can fill a buffer with unpredictable bytes.
+///
+/// Implemented by `SystemEntropy` for the operating system's generator, and by a test for a source that fails on
+/// demand. An implementation either fills the whole buffer and reports `None`, or reports why it did not.
+///
+/// https://rux-lang.dev/docs/api/entropy/entropy-source
+interface EntropySource {
+    /// Fills `length` bytes of `buffer` with unpredictable bytes.
+    ///
+    /// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
+    /// An implementation may write part of the buffer before failing -- the caller is what guarantees nothing
+    /// partial survives.
+    ///
+    /// # Safety
+    ///
+    /// `buffer` must be writable for `length` bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/entropy/entropy-source/fill
+    func Fill(buffer: *var opaque, length: uint) -> EntropyError;
+}
+
+/// The operating system's generator, as an `EntropySource`.
+///
+/// Holds nothing: the system's generator needs no handle, no seed and no shutdown. It exists so that code taking a
+/// source can be handed the real one.
+///
+/// https://rux-lang.dev/docs/api/entropy/system-entropy
+struct SystemEntropy {
+}
+
+extend SystemEntropy {
+    /// The operating system's generator.
+    ///
+    /// Takes nothing and cannot fail. Costs nothing to make, so there is no reason to keep one around rather than
+    /// making one where it is needed.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/entropy/system-entropy/new
+    func New() -> SystemEntropy {
+        return SystemEntropy {};
+    }
+}
+
+extend SystemEntropy : EntropySource {
+    /// Fills `length` bytes of `buffer` from the operating system.
+    ///
+    /// Exactly `FillFromSource`, reached through the interface. Reports `None` only when every byte was written.
+    ///
+    /// Runs in time proportional to `length` and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// `buffer` must be writable for `length` bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/entropy/system-entropy/fill
+    func Fill(self: *var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
+        return FillFromSource(buffer, length);
+    }
+}
+
+/// Fills `length` bytes of `buffer` from `source`, in as many calls as it takes.
+///
+/// `source` is borrowed for the call; `buffer` is borrowed and written; `length` is read by value. Reports `None`
+/// only when every byte was written, and otherwise reports what the source reported.
+///
+/// A request larger than a single call accepts is split, so a caller need not know what that limit is. A failure
+/// part-way through a split request is a failure of the whole request: there is no state in which some of a buffer
+/// is unpredictable and the rest is not, because nothing downstream could act on the difference.
+///
+/// Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized, including the parts an
+/// earlier call filled successfully.
+///
+/// https://rux-lang.dev/docs/api/entropy/fill-from
+func FillFrom(source: EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
+    if length == 0 {
+        return EntropyError::None;
+    }
+    if buffer == null {
+        return EntropyError::Failed;
+    }
+
+    var filled: uint = 0;
+    while filled < length {
+        let remaining = length - filled;
+        let take = remaining > MaxEntropyRequest ? MaxEntropyRequest : remaining;
+        let target = ((buffer as uint) + filled) as *var opaque;
+        let error = source.Fill(target, take);
+        if error.IsError() {
+            ZeroizeBlock(buffer, length);
+            return error;
+        }
+        filled = filled + take;
+    }
+    return EntropyError::None;
+}
+
+/// Fills `length` bytes of `buffer` from `source`, trying again while the failure says trying again might work.
+///
+/// `source` is borrowed for the call; `buffer` is borrowed and written; `length` and `attempts` are read by value.
+/// `attempts` is how many extra tries to make, so zero is one attempt and behaves exactly like `FillFrom`.
+///
+/// Only a transient failure is retried -- `Interrupted`, which says a signal arrived rather than that anything is
+/// wrong. A system with no source and a provider that refused are both reported at once, because repeating them
+/// would only take longer to reach the same answer.
+///
+/// Runs in time proportional to `length` times the attempts made, and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes. Every failed attempt zeroizes the buffer, so a failure that
+/// exhausts the attempts leaves zeros.
+///
+/// https://rux-lang.dev/docs/api/entropy/fill-with-retries
+func FillWithRetries(source: EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
+    var error = FillFrom(source, buffer, length);
+    var remaining = attempts;
+    while error.IsTransient() && remaining > 0 {
+        remaining = remaining - 1;
+        error = FillFrom(source, buffer, length);
+    }
+    return error;
+}
+
+/// Fills `length` bytes of `buffer` from the operating system.
+///
+/// `buffer` is borrowed and written; `length` is read by value. This is the call to make when there is no reason to
+/// name a source: it is `FillFrom` over `SystemEntropy`, with the same contract.
+///
+/// Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
+///
+/// https://rux-lang.dev/docs/api/entropy/fill
+func Fill(buffer: *var opaque, length: uint) -> EntropyError {
+    var system = SystemEntropy::New();
+    let source: EntropySource = system;
+    return FillFrom(source, buffer, length);
+}
+
+/// An unpredictable 64-bit value, which is what a generator wants for a seed.
+///
+/// `error` is borrowed and written with why the value could not be obtained, or `None` when it could. Returns zero
+/// on failure -- a value a caller who ignores `error` will notice, rather than one that looks plausible.
+///
+/// Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/entropy/next-uint64
+func NextUint64(error: *var EntropyError) -> uint64 {
+    var value: uint64 = 0;
+    *error = Fill(@value as *var opaque, 8);
+    if error.IsError() {
+        // Not merely returning zero: the local is scrubbed, so a failed draw leaves nothing behind on the stack.
+        ZeroizeBlock(@value as *var opaque, 8);
+        return 0;
+    }
+    return value;
+}

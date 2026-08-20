@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Fill"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Entropy: the portable facade and its failure paths, through an injected source"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Entropy = { Path = "../../../../Packages/Entropy" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Entropy"
