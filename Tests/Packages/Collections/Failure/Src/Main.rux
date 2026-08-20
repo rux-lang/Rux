@@ -1,3 +1,4 @@
+import Allocator::{ Allocator, SystemAllocator };
 import Collections::CollectionError;
 import Collections::Deque;
 import Collections::HashMap;
@@ -35,9 +36,13 @@ func Main() -> int {
     // A count whose byte size cannot be addressed is rejected before anything is allocated. Array now takes an
     // allocator and is covered by its own test; what stays here is the Vector side.
 
-    var vector = Vector::New<int64>();
-    if !(Vector::WithCapacity<int64>(uint::Max, @vector) == CollectionError::CapacityOverflow) { return 22; }
-    if !vector.IsEmpty() || vector.Data() != null || vector.Capacity() != 0 { return 23; }
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    var overflowError = CollectionError::None;
+    var vector = Vector::WithCapacity<int64>(allocator, uint::Max, @overflowError);
+    if !(overflowError == CollectionError::CapacityOverflow) { return 22; }
+    if !vector.IsEmpty() || vector.AsSlice().data != null || vector.Capacity() != 0 { return 23; }
 
     var deque = Deque::New<int64>();
     if !(Deque::WithCapacity<int64>(uint::Max, @deque) == CollectionError::CapacityOverflow) { return 24; }
@@ -45,31 +50,31 @@ func Main() -> int {
 
     // A populated Vector survives a rejected reservation untouched: the same
     // block, the same length, the same capacity, the same elements.
-    var populated = Vector::New<int64>();
+    var populated = Vector::New<int64>(allocator);
     var element: int64 = 0;
     while element < 8i64 {
         if !(populated.Push(element) == CollectionError::None) { return 30; }
         element++;
     }
 
-    let block = populated.Data();
+    let block = populated.AsSlice().data;
     let length = populated.Length();
     let capacity = populated.Capacity();
 
     // The length plus the request wraps.
     if !(populated.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 31; }
-    if populated.Data() != block || populated.Length() != length { return 32; }
+    if populated.AsSlice().data != block || populated.Length() != length { return 32; }
     if populated.Capacity() != capacity { return 33; }
 
     // The sum fits but its byte size does not, which is the other way the same
     // request fails.
     if !(populated.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 34; }
-    if populated.Data() != block || populated.Length() != length { return 35; }
+    if populated.AsSlice().data != block || populated.Length() != length { return 35; }
     if populated.Capacity() != capacity { return 36; }
 
     element = 0;
     while element < 8i64 {
-        if populated.At(element as uint) != element { return 37; }
+        if populated.Get(element as uint).ValueOr(-1i64) != element { return 37; }
         element++;
     }
 
@@ -78,29 +83,19 @@ func Main() -> int {
     let borrowed = populated.AsSlice();
     let hostile = Slice<int64> { data: borrowed.data, length: uint::Max };
     if !(populated.PushSlice(hostile) == CollectionError::CapacityOverflow) { return 40; }
-    if populated.Data() != block || populated.Length() != length { return 41; }
+    if populated.AsSlice().data != block || populated.Length() != length { return 41; }
     if populated.Capacity() != capacity { return 42; }
 
-    // A rejected index is reported as itself, not as an exhausted allocator,
-    // and the container is left alone.
-    if !(populated.Insert(length + 1, 99i64) == CollectionError::IndexOutOfRange) { return 50; }
-    if populated.Length() != length || populated.Data() != block { return 51; }
-    if populated.At(0) != 0i64 { return 52; }
+    // A rejected index is reported as itself, not as an exhausted allocator, and the container is left alone.
+    if !(populated.Set(populated.Length(), 99i64) == CollectionError::IndexOutOfRange) { return 50; }
+    if populated.Length() != length || populated.AsSlice().data != block { return 51; }
+    if populated.Get(0).ValueOr(-1i64) != 0i64 { return 52; }
 
-    // Inserting at exactly the length is the append that is allowed, which is
-    // what makes the rejection above a boundary rather than a blanket refusal.
-    if !(populated.Insert(length, 99i64) == CollectionError::None) { return 53; }
-    if populated.Length() != length + 1 { return 54; }
+    // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
+    if populated.Get(populated.Length()).IsSome() { return 53; }
+    if populated.Reference(populated.Length()).IsSome() { return 54; }
 
-    // The non-allocating rejections stay booleans, so they cannot be confused
-    // with either error above.
-    if populated.RemoveAt(populated.Length()) { return 55; }
-    if populated.SwapRemoveAt(populated.Length()) { return 56; }
-    if populated.TrySet(populated.Length(), 0i64) { return 57; }
-    var read: int64 = -1i64;
-    if populated.TryGet(populated.Length(), @read) { return 58; }
-    if read != -1i64 { return 59; }
-    populated.Free();
+    // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
 
     // A Deque rejects the same requests and stays usable afterwards.
     var ring = Deque::New<int64>();
@@ -139,8 +134,6 @@ func Main() -> int {
 
     // Releasing twice is a no-op everywhere, because Free leaves the empty
     // value behind rather than a dangling pointer.
-    vector.Free();
-    vector.Free();
     deque.Free();
     deque.Free();
     return 0;

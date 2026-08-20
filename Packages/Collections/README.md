@@ -98,6 +98,19 @@ A container destroys an element it does not know is droppable by reading it into
 end. That is the only mechanism the language offers, it costs nothing for an element type that owns nothing, and it
 is what `Array::Drop` does.
 
+## A known defect: elements that own something
+
+Storing a `T` into a generic container's storage is not recognized by the compiler as consuming it. `Vector::Push`
+therefore keeps a copy and the value it was given is destroyed where it stood.
+
+For an element type that owns nothing — a number, a small struct of numbers — this is harmless and invisible. For one
+that owns memory it is a use-after-free: the vector holds a copy of something whose storage the parameter's
+destructor already released.
+
+Until it is fixed, a container of elements that own something cannot be built by `Push`. `Array` is unaffected in its
+own destruction — it destroys exactly the elements it holds, once each — but its constructors copy, so it cannot hold
+such elements either. The tests measure both halves rather than assuming them.
+
 ## Iterating
 
 `ValueIterator` yields elements by copy and `ReferenceIterator` yields a pointer to each, and both are driven by the

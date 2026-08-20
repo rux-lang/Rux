@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Package test for Collections: Failure"
 
 [Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
 Collections = { Path = "../../../../Packages/Collections" }
 
 [Build]
