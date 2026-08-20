@@ -136,10 +136,127 @@ func Main() -> int {
     }
     Assert(differed, "two different seeds lay the same elements out differently");
 
-    // Ownership: a duplicate is destroyed rather than stored, since the set keeps the one it already had.
+    // Iterating with a `for` loop reaches every element exactly once.
+    var error = CollectionError::None;
+    var loops = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    value = 0;
+    while value < 40 {
+        loops.Insert(value, @added);
+        value = value + 1;
+    }
+    var iterated: uint = 0;
+    var sum: int64 = 0;
+    for element in loops {
+        sum = sum + (element as int64);
+        iterated = iterated + 1;
+    }
+    Assert(iterated == 40, "a loop reaches every element");
+    Assert(sum == 780, "each exactly once, since the elements sum to what they should");
+
+    // Consuming iteration moves every element out and takes the storage with it.
+    var drained = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    value = 0;
+    while value < 10 {
+        drained.Insert(value, @added);
+        value = value + 1;
+    }
+    var moving = drained.IntoIterator();
+    var moved: uint = 0;
+    var draining = true;
+    while draining {
+        match moving.Next() {
+            .Some(element) => {
+                moved = moved + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+    Assert(moved == 10, "consuming iteration yields every element");
+
+    // Set algebra. Three sets whose overlaps are known, so every answer is one that can be written down.
+    var evens = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var odds = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var small = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    value = 0;
+    while value < 20 {
+        if value % 2 == 0 {
+            evens.Insert(value, @added);
+        }
+        else {
+            odds.Insert(value, @added);
+        }
+        if value < 6 {
+            small.Insert(value, @added);
+        }
+        value = value + 1;
+    }
+    Assert(evens.Length() == 10 && odds.Length() == 10 && small.Length() == 6, "the three sets are what they claim");
+
+    // Containment, including the two vacuous cases.
+    var empty = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    Assert(empty.IsSubsetOf(@evens), "the empty set is a subset of anything");
+    Assert(empty.IsSubsetOf(@empty), "including itself");
+    Assert(evens.IsSubsetOf(@evens), "and every set is a subset of itself");
+    Assert(!evens.IsSubsetOf(@small), "a larger set is not a subset of a smaller one");
+    Assert(!small.IsSubsetOf(@evens), "and a set with an element the other lacks is not one either");
+    Assert(evens.IsSupersetOf(@empty), "a superset is a subset read the other way");
+    Assert(evens.IsDisjointFrom(@odds), "evens and odds share nothing");
+    Assert(!evens.IsDisjointFrom(@small), "while evens and the small set share their even members");
+    Assert(empty.IsDisjointFrom(@evens), "the empty set is disjoint from everything");
+    Assert(evens.Equals(@evens), "a set equals itself");
+    Assert(!evens.Equals(@odds), "and not one with different elements");
+
+    // Union takes what the other has and keeps what it had.
+    var everything = evens.Clone(@error);
+    Assert(error == CollectionError::None, "cloning a set succeeds");
+    Assert(everything.Equals(@evens), "and the clone holds the same elements");
+    Assert(everything.UnionWith(@odds) == CollectionError::None, "a union succeeds");
+    Assert(everything.Length() == 20, "and holds both sides");
+    value = 0;
+    while value < 20 {
+        Assert(everything.Contains(value), "every element of either side is in the union");
+        value = value + 1;
+    }
+    Assert(everything.UnionWith(@evens) == CollectionError::None, "a union with a subset succeeds");
+    Assert(everything.Length() == 20, "and adds nothing");
+
+    // Intersection keeps only what both have, and cannot fail.
+    var shared = evens.Clone(@error);
+    shared.IntersectWith(@small);
+    Assert(shared.Length() == 3, "the intersection is the even numbers below six");
+    Assert(shared.Contains(0) && shared.Contains(2) && shared.Contains(4), "which are exactly those three");
+    Assert(!shared.Contains(6), "and nothing above them");
+    shared.IntersectWith(@odds);
+    Assert(shared.IsEmpty(), "intersecting with a disjoint set leaves nothing");
+
+    // Difference removes what the other has.
+    var without = evens.Clone(@error);
+    without.Subtract(@small);
+    Assert(without.Length() == 7, "the difference drops the even numbers below six");
+    Assert(!without.Contains(0) && !without.Contains(4), "which are gone");
+    Assert(without.Contains(6) && without.Contains(18), "while the rest remain");
+    without.Subtract(@odds);
+    Assert(without.Length() == 7, "and subtracting a disjoint set changes nothing");
+
+    // The symmetric difference keeps what exactly one side has.
+    var exclusive = small.Clone(@error);
+    Assert(exclusive.SymmetricDifferenceWith(@evens) == CollectionError::None, "a symmetric difference succeeds");
+    Assert(!exclusive.Contains(0) && !exclusive.Contains(2) && !exclusive.Contains(4), "shared elements leave");
+    Assert(exclusive.Contains(1) && exclusive.Contains(3) && exclusive.Contains(5), "the small set keeps its own");
+    Assert(exclusive.Contains(6) && exclusive.Contains(18), "and takes the ones only the other side had");
+    Assert(exclusive.Length() == 10, "which is three plus seven");
+
+    // A symmetric difference with itself leaves nothing, which is the identity worth checking.
+    var mirrored = evens.Clone(@error);
+    var alsoEvens = evens.Clone(@error);
+    Assert(mirrored.SymmetricDifferenceWith(@alsoEvens) == CollectionError::None, "a set against its own copy runs");
+    Assert(mirrored.IsEmpty(), "and leaves nothing at all");
+
+    // Ownership: elements are destroyed with the set, and a removed one is handed back.
     var destroyed: int32 = 0;
     var owning = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
-    var tracked = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
     var counted: int32 = 0;
     while counted < 20 {
         owning.Insert(counted, @added);
