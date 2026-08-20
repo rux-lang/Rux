@@ -154,7 +154,15 @@ void HirToLirContext::EmitDropGlueEnumVariant(const DropGlueStep &step, const Li
                 continue;
             }
             const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
-            const LirReg payload = EmitIndexPtr(base, byteOffset, TypeRef::MakeChar8());
+            const LirReg bytes = EmitIndexPtr(base, byteOffset, TypeRef::MakeChar8());
+            // Counted in bytes to reach the payload, then said to be a pointer to what is actually there. The byte
+            // pointer alone is enough to destroy a payload that is one droppable value, and wrong for a payload
+            // that is an aggregate: a step reaching a field of it asks the back end for that field's offset, the
+            // back end reads it from the type the register holds, and a pointer to bytes has no fields -- so every
+            // field was destroyed at the front of the payload. A payload whose droppable field happened to sit
+            // first was destroyed correctly, which is why this survived until an entry with a key before its value.
+            const LirReg payload = EmitCast(bytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                            TypeRef::MakePointer(step.payloadTypes[index]));
             EmitDropGlueSteps(child.children, payload);
         }
         offset += size;

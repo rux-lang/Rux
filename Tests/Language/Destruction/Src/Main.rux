@@ -44,6 +44,33 @@ func PutThroughGeneric<T>(slot: *var T, value: T) {
     *slot = value;
 }
 
+// A payload with something ahead of the part that has to be destroyed, so the destruction of an option's payload has
+// to find a field rather than assume the payload begins with it.
+struct Entry {
+    key: int32;
+    value: Tracked;
+}
+
+// Two fields to destroy at different depths, so an option carrying an aggregate is not only a one-field case.
+struct Nested {
+    tag: int32;
+    inner: Entry;
+    trailing: Tracked;
+}
+
+// A scope for an option holding an aggregate, so its destruction happens somewhere observable.
+func HoldEntry(counter: *var Counter) {
+    let held = Option::Some<Entry>(Entry { key: 7, value: MakeTracked(counter) });
+}
+
+func HoldNested(counter: *var Counter) {
+    let held = Option::Some<Nested>(Nested {
+        tag: 3,
+        inner: Entry { key: 7, value: MakeTracked(counter) },
+        trailing: MakeTracked(counter)
+    });
+}
+
 // Matching an option by value takes its payload out: the arm's binding owns it and destroys it when the arm ends.
 func MatchAndDiscard(held: Option<Tracked>) {
     match held {
@@ -205,6 +232,17 @@ func Main() -> int {
     var borrowed = Option::Some<Tracked>(MakeTracked(@counter));
     Assert(MatchThroughBorrow(@borrowed), "a borrowed option can be looked at");
     Assert(counter.count == 0, "and looking at one destroys nothing");
+
+    // An option whose payload is an aggregate destroys the aggregate's fields where they are. The payload address is
+    // reached by counting bytes, and a byte address has no fields to offset from, so every field was destroyed at
+    // the front of the payload -- correct only when the field that needed destroying happened to sit first.
+    counter.count = 0;
+    HoldEntry(@counter);
+    Assert(counter.count == 1, "a field behind another in an option's payload is destroyed once, where it is");
+
+    counter.count = 0;
+    HoldNested(@counter);
+    Assert(counter.count == 2, "and so is every field of a payload holding more than one");
 
     return 0;
 }
