@@ -1,8 +1,6 @@
 # Hash
 
-Hash functions and checksums.
-
-> **Not implemented yet.** The package is published so its name and identity are reserved and its place in the standard set is fixed. `Src/Md5.rux`, `Src/Sha256.rux`, and `Src/Sha512.rux` are placeholders that declare nothing, so importing from this package is an error rather than a silent no-op.
+Named non-cryptographic hashes and checksums.
 
 ## Installation
 
@@ -10,11 +8,38 @@ Hash functions and checksums.
 rux add Rux/Hash
 ```
 
-## Planned surface
+## What it provides
 
-MD5, SHA-256, and SHA-512, each as an incremental digest that can be fed in chunks as well as in one call.
+| Module   | Covers                                                                        |
+| -------- | ----------------------------------------------------------------------------- |
+| `Hasher` | the `Hasher` contract, and the writers every caller of one needs               |
+| `Fnv`    | FNV-1a over 32 and 64 bits, incremental and one-shot                          |
 
-These are checksum and integrity primitives. Password hashing and message authentication are deliberately out of scope for this package.
+## Design
+
+Every hash here is built the same way: make one, write bytes into it in order, and ask for the answer. That shape is
+what lets a value be hashed without first being turned into a contiguous buffer — a struct writes each of its fields
+in turn, and a collection each of its elements, with nothing copied anywhere.
+
+Take a hasher by generic bound rather than as an interface value. `func Digest<H: Hasher>(hasher: *var H)` takes the
+caller's own hasher by pointer and resolves at instantiation; an interface value would silently take a copy and leave
+the caller's hasher exactly where it started. The interface exists to be the bound.
+
+`WriteUint32` and `WriteUint64` use a fixed byte order rather than the machine's, so a value hashes the same on every
+target. That is what makes the hash of a struct mean the same thing everywhere, and it costs nothing on a
+little-endian machine.
+
+## What this is not
+
+None of these are cryptographic. They are fast, they are named, and they are documented — but an adversary who gets
+to choose the input can find collisions in any of them except `SipHash`, and even `SipHash` promises only that doing
+so is hard without the key. Anything that must resist an adversary belongs in `Rux/Crypto`, which is also where
+SHA-2, SHA-3, BLAKE3 and the explicitly named legacy MD5 and SHA-1 live.
+
+A hash from this package is stable: FNV-1a here will agree with any other correct implementation, which is what makes
+it worth naming an algorithm rather than promising only "some hash". `Core::Hashable` makes no such promise — its
+answers are not stable across runs, versions or targets, and nothing that outlives the process should be keyed on
+one.
 
 ## License
 

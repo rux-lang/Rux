@@ -1,0 +1,115 @@
+// What every hash in this package implements, and the pieces every caller of one needs.
+//
+// A hash here is built the same way regardless of algorithm: make one, write bytes into it in order, and ask for the
+// answer. That shape is what lets a value be hashed without first being turned into a contiguous buffer -- a struct
+// writes each of its fields in turn, and a collection writes each of its elements, with nothing copied anywhere.
+//
+// Take a hasher by generic bound rather than as an interface value: `func Digest<H: Hasher>(hasher: *var H)` takes
+// the caller's own hasher by pointer and resolves at instantiation, while an interface value would silently take a
+// copy and leave the caller's hasher exactly where it started. The interface exists to be the bound.
+//
+// None of these are cryptographic. They are fast, they are named, and they are documented -- but an adversary who
+// gets to choose the input can find collisions in any of them except `SipHash`, and even `SipHash` promises only
+// that it is hard without the key. Anything that must resist an adversary belongs in `Rux/Crypto`.
+
+/// A hash being computed, one write at a time.
+///
+/// Written as an interface so a generic can require it. Take an implementation by pointer under a bound rather than
+/// coercing one to an interface value, which copies it.
+///
+/// An implementation must give the same answer for the same sequence of bytes, whatever the writes were split into:
+/// writing eight bytes at once and writing them one at a time must agree. It must not read anything but the bytes it
+/// is given -- no address, no counter, no clock.
+///
+/// https://rux-lang.dev/docs/api/hash/hasher
+interface Hasher {
+    /// Adds `length` bytes at `bytes` to what is being hashed.
+    ///
+    /// `bytes` is borrowed and read; `length` is read by value. A zero length is legal and changes nothing, and is
+    /// the one case in which `bytes` may be null.
+    ///
+    /// Runs in time proportional to `length` and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// `bytes` must be readable for `length` bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/hasher/write
+    func Write(bytes: *byte, length: uint);
+
+    /// The hash of everything written so far.
+    ///
+    /// Returns the answer by value and leaves the hasher usable: asking twice gives the same answer, and writing
+    /// more afterwards continues from where the writes left off rather than starting over.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/hasher/finish
+    func Finish() -> uint64;
+}
+
+/// Writes `length` bytes and returns the hash, for a caller with nothing else to add.
+///
+/// `hasher` is borrowed mutably and left holding what it hashed; `bytes` is borrowed and read. The type argument
+/// must be written out -- `HashBytes<Fnv1a64>(@hasher, data, length)` -- because a generic argument is never
+/// inferred.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `bytes` must be readable for `length` bytes.
+///
+/// https://rux-lang.dev/docs/api/hash/hash-bytes
+func HashBytes<H: Hasher>(hasher: *var H, bytes: *byte, length: uint) -> uint64 {
+    hasher.Write(bytes, length);
+    return hasher.Finish();
+}
+
+/// Writes one byte into `hasher`.
+///
+/// `hasher` is borrowed mutably; `value` is read by value.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/hash/write-byte
+func WriteByte<H: Hasher>(hasher: *var H, value: byte) {
+    var storage = value;
+    hasher.Write(@storage as *byte, 1);
+}
+
+/// Writes a 32-bit value into `hasher`, least significant byte first.
+///
+/// `hasher` is borrowed mutably; `value` is read by value. The byte order is fixed rather than the machine's, so a
+/// value hashes the same on every target -- which is what makes a hash of a struct mean the same thing everywhere.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/hash/write-uint32
+func WriteUint32<H: Hasher>(hasher: *var H, value: uint32) {
+    var storage: byte[4];
+    var index: uint = 0;
+    while index < 4 {
+        storage[index] = ((value >> ((index * 8) as uint32)) & 0xFF) as byte;
+        index++;
+    }
+    hasher.Write(@storage[0] as *byte, 4);
+}
+
+/// Writes a 64-bit value into `hasher`, least significant byte first.
+///
+/// `hasher` is borrowed mutably; `value` is read by value. The byte order is fixed rather than the machine's, for
+/// the same reason as `WriteUint32`.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/hash/write-uint64
+func WriteUint64<H: Hasher>(hasher: *var H, value: uint64) {
+    var storage: byte[8];
+    var index: uint = 0;
+    while index < 8 {
+        storage[index] = ((value >> ((index * 8) as uint64)) & 0xFF) as byte;
+        index++;
+    }
+    hasher.Write(@storage[0] as *byte, 8);
+}

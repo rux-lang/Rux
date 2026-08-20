@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Fnv"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Hash: FNV-1a against the published vectors, incremental and one-shot"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Hash = { Path = "../../../../Packages/Hash" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Hash"
