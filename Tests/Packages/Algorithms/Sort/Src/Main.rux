@@ -33,6 +33,13 @@ extend Ranked {
 
 // `Copy` became `CopyTo` over slices, and `Reverse` takes a `MutableSlice`. These keep the calls below reading as
 // they did while the rest of the module is still pointer-and-length.
+
+// The sorts take a view since they moved to slices; a struct literal cannot appear inside an `if`
+// condition, so the views are built here.
+func Viewed<T>(data: *var T, length: uint) -> MutableSlice<T> {
+    return MutableSlice<T> { data: data, length: length };
+}
+
 func CopyInts(destination: *var int32, source: *int32, length: uint) -> bool {
     return CopyTo<int32>(MutableSlice<int32> { data: destination, length: length },
                          Slice<int32> { data: source, length: length });
@@ -126,7 +133,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     CopyInts(@actual[0], source, length);
     CopyInts(@expected[0], source, length);
 
-    Sort<int32>(@actual[0], length);
+    Sort<int32>(Viewed<int32>(@actual[0], length));
     ReferenceSort(@expected[0], length);
 
     if !Sorted<int32>(@actual[0], length) {
@@ -139,7 +146,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     // Descending order must be the exact reverse of ascending order.
     var descending: int32[320];
     CopyInts(@descending[0], source, length);
-    SortDescending<int32>(@descending[0], length);
+    SortDescending<int32>(Viewed<int32>(@descending[0], length));
     ReverseInts(@descending[0], length);
     if !SameInts(@descending[0], @expected[0], length) {
         return 3;
@@ -223,12 +230,12 @@ func Main() -> int {
 
     // Signed and unsigned limits sort as ordinary values.
     var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
-    Sort<int32>(@signed[0], 5);
+    Sort<int32>(Viewed<int32>(@signed[0], 5));
     if signed[0] != -2147483648i32 || signed[4] != 2147483647i32 { return 220; }
     if !Sorted<int32>(@signed[0], 5) { return 221; }
 
     var unsigned: uint32[5] = [7u32, 0u32, 4294967295u32, 1u32, 4294967294u32];
-    Sort<uint32>(@unsigned[0], 5);
+    Sort<uint32>(Viewed<uint32>(@unsigned[0], 5));
     if unsigned[0] != 0u32 || unsigned[4] != 4294967295u32 { return 222; }
     if !Sorted<uint32>(@unsigned[0], 5) { return 223; }
 
@@ -241,7 +248,7 @@ func Main() -> int {
                              Ranked { key: 2, origin: 3 },
                              Ranked { key: 1, origin: 4 },
                              Ranked { key: 3, origin: 5 }];
-    Sort<Ranked>(@ranked[0], 6);
+    Sort<Ranked>(Viewed<Ranked>(@ranked[0], 6));
     if !Sorted<Ranked>(@ranked[0], 6) { return 230; }
     if ranked[0].key != 1 || ranked[1].key != 1 { return 231; }
     if ranked[2].key != 2 { return 232; }
@@ -263,15 +270,15 @@ func Main() -> int {
     }
 
     // Descending over the same records puts the largest key first.
-    SortDescending<Ranked>(@ranked[0], 6);
+    SortDescending<Ranked>(Viewed<Ranked>(@ranked[0], 6));
     if ranked[0].key != 3 || ranked[5].key != 1 { return 236; }
 
     // Sorting a range of fewer than two elements touches nothing.
     var untouched: int32[2] = [9, 8];
-    Sort<int32>(@untouched[0], 0);
-    Sort<int32>(@untouched[0], 1);
+    Sort<int32>(Viewed<int32>(@untouched[0], 0));
+    Sort<int32>(Viewed<int32>(@untouched[0], 1));
     if untouched[0] != 9 || untouched[1] != 8 { return 240; }
-    SortDescending<int32>(@untouched[0], 1);
+    SortDescending<int32>(Viewed<int32>(@untouched[0], 1));
     if untouched[0] != 9 || untouched[1] != 8 { return 241; }
 
     return 0;

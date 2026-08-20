@@ -18,9 +18,9 @@ rux add Rux/Algorithms
 | `MinMax` | `Slice<T>`        | — or `<`        | Sequence extremes and clamping                           |
 | `Search` | `Slice<T>`        | `<`             | Sortedness checks, bounds and binary search              |
 | `Modify` | `MutableSlice<T>` | — or `==`       | Reordering, bulk movement, removal and partitioning      |
-| `Sort`   | pointer + length  | `<`             | Introsort, ascending and descending                      |
+| `Sort`   | `MutableSlice<T>` | `<`             | Introsort, selection, and partial sorting                |
 
-Everything but `Sort` takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
+Everything takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
 
 Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
 
@@ -72,16 +72,20 @@ duplicate; for anything else it is a value with no owner.
 scratch storage, and means the order within each group is not the order it started in. A caller that needs the
 original order needs a stable partition, which needs somewhere to put things.
 
-## The pointer-and-length shape
+## What sorting promises
 
-`Sort` still takes a pointer and a length rather than a view:
+`Sort` is an introsort: quicksort with a three-way partition, falling back to heapsort once the recursion budget is
+spent and to insertion sort on small partitions. Each part covers the others' weakness, and the combination has a
+genuine O(n log n) worst case that no one of the three has alone.
 
-```rux
-func Reverse<T>(data: *var T, length: uint)
-```
+Precisely: comparisons are O(n log n) for **every** input, with nothing probabilistic about it — the depth budget is
+`2 * floor(log2 n)`, and a range still unsorted when it runs out goes to heapsort, which never degrades. Auxiliary
+storage is O(1). Stack depth is O(log n) frames, about sixty-four for any addressable length, because the recursive
+call always takes the smaller side of a partition while the loop handles the larger.
 
-That shape accepts every container without coupling this package to any of them, which is why it was chosen; a
-`Slice<T>` does the same and says more, which is why the converted modules take one.
+Sorting is **not stable**: equal elements may come out in a different order than they went in. It is deterministic —
+no randomized pivots, so the same input always gives the same output and the same number of comparisons — but a
+caller who needs equal elements to keep their order needs a stable sort, which needs somewhere to put things.
 
 Type arguments are always explicit — Rux does not infer them for free functions.
 
