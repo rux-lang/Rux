@@ -17,7 +17,7 @@
 // instead.
 
 import Allocator::Allocator;
-import Core::{ Drop, Option };
+import Core::{ Iterator, Option };
 
 /// A hash table from keys to values.
 ///
@@ -266,5 +266,248 @@ extend HashMap<K, V> {
         }
         *cursor = index;
         return false;
+    }
+}
+
+/// One entry of a map, as a value a caller can hold.
+///
+/// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
+/// says which is which and `entry.0` does not.
+///
+/// https://rux-lang.dev/docs/api/collections/key-value
+struct KeyValue<K, V> {
+    /// The key the entry was stored under.
+    key: K;
+    /// The value stored under it.
+    value: V;
+}
+
+extend HashMap<K, V> {
+    /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
+    ///
+    /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
+    /// otherwise -- the map keeps what it already had. `existing` receives a pointer to the stored value either way,
+    /// and `inserted` receives whether the map grew; both may be null.
+    ///
+    /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
+    /// put one there gets one operation instead of a lookup followed by an insertion, and does not have to name the
+    /// key twice.
+    ///
+    /// A failure leaves the map exactly as it was.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map/get-or-insert
+    func GetOrInsert(self: *var HashMap<K, V>, key: K, value: V, existing: *var *var V,
+                     inserted: *var bool) -> CollectionError {
+        var slot: uint = 0;
+        if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
+            if existing != null {
+                *existing = @self.table.values[slot];
+            }
+            if inserted != null {
+                *inserted = false;
+            }
+            return CollectionError::None;
+        }
+
+        let room = self.table.EnsureRoom(self.hash);
+        if room.IsError() {
+            return room;
+        }
+        var placed: uint = 0;
+        if !self.table.Place(key, value, self.hash).TryIntoValue(@placed) {
+            return CollectionError::Unsupported;
+        }
+        if existing != null {
+            *existing = @self.table.values[placed];
+        }
+        if inserted != null {
+            *inserted = true;
+        }
+        return CollectionError::None;
+    }
+
+    /// Stores `value` under `key` and hands back the value that was there.
+    ///
+    /// `self` is borrowed mutably; both are moved in. The old value is moved out rather than destroyed, which is the
+    /// difference between this and `Insert`: one hands the previous value back and the other throws it away.
+    /// Reports `None` when there was no entry, having inserted this one.
+    ///
+    /// `error` receives why the insertion could not happen, and is `None` otherwise. A failure leaves the map
+    /// exactly as it was and reports `None`, which is why the error is worth reading rather than inferring from the
+    /// absence.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map/replace
+    func Replace(self: *var HashMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
+        var slot: uint = 0;
+        if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
+            let previous = self.table.values[slot];
+            self.table.values[slot] = value;
+            *error = CollectionError::None;
+            return Option::Some<V>(previous);
+        }
+
+        let room = self.table.EnsureRoom(self.hash);
+        if room.IsError() {
+            *error = room;
+            return Option::None<V>();
+        }
+        if self.table.Place(key, value, self.hash).IsNone() {
+            *error = CollectionError::Unsupported;
+            return Option::None<V>();
+        }
+        *error = CollectionError::None;
+        return Option::None<V>();
+    }
+
+    /// Takes the entry for `key` out and hands back both halves of it.
+    ///
+    /// `self` is borrowed mutably. Both the stored key and the value are moved out, so a key that owns something
+    /// leaves intact too -- which `Remove` does not offer, since it destroys the key. Reports `None` when there is
+    /// no such entry.
+    ///
+    /// The stored key is handed back rather than the one that was looked up: the two compare equal, but a key type
+    /// carrying anything the equality ignores makes them different values, and the map's is the one that was kept.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map/remove-entry
+    func RemoveEntry(self: *var HashMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
+        var slot: uint = 0;
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
+            return Option::None<KeyValue<K, V>>();
+        }
+        let takenKey = self.table.keys[slot];
+        let takenValue = self.table.values[slot];
+        self.table.Vacate(slot);
+        return Option::Some<KeyValue<K, V>>(KeyValue<K, V> { key: takenKey, value: takenValue });
+    }
+}
+
+/// An iterator over the entries of a map, by copy.
+///
+/// Borrows the map, so the map must outlive it and must not be inserted into or removed from while it is alive:
+/// either moves entries between slots, and this walks slots.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-map-iterator
+struct HashMapIterator<K, V> {
+    /// The map being walked. Borrowed, never owned.
+    map: *HashMap<K, V>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashMapIterator<K, V> {
+    /// The next entry, or `None` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
+    /// walked with `TryNextEntry` and a pointer instead.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map-iterator/next
+    func Next(self: *var HashMapIterator<K, V>) -> Option<KeyValue<K, V>> {
+        var index = self.cursor;
+        while index < self.map.table.Capacity() {
+            if self.map.table.IsOccupied(index) {
+                self.cursor = index + 1;
+                return Option::Some<KeyValue<K, V>>(
+                    KeyValue<K, V> { key: self.map.table.keys[index], value: self.map.table.values[index] });
+            }
+            index++;
+        }
+        self.cursor = index;
+        return Option::None<KeyValue<K, V>>();
+    }
+}
+
+extend HashMapIterator<K, V> : Iterator {}
+
+/// An iterator that takes a map apart, yielding each entry by value.
+///
+/// Move-only: it owns the storage the map owned. Whatever is left when its life ends is destroyed with it, which is
+/// what makes stopping part-way safe.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-map-into-iterator
+struct HashMapIntoIterator<K, V> {
+    /// The table taken from the map.
+    table: Table<K, V>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashMapIntoIterator<K, V> {
+    /// The next entry, moved out, or `None` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The slot is emptied as the entry leaves, so what remains for the
+    /// destructor is exactly what nobody took.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map-into-iterator/next
+    func Next(self: *var HashMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
+        var index = self.cursor;
+        while index < self.table.Capacity() {
+            if self.table.IsOccupied(index) {
+                let takenKey = self.table.keys[index];
+                let takenValue = self.table.values[index];
+                self.table.states[index] = SlotEmpty;
+                self.table.length = self.table.length - 1;
+                self.cursor = index + 1;
+                return Option::Some<KeyValue<K, V>>(KeyValue<K, V> { key: takenKey, value: takenValue });
+            }
+            index++;
+        }
+        self.cursor = index;
+        return Option::None<KeyValue<K, V>>();
+    }
+}
+
+extend HashMapIntoIterator<K, V> : Iterator {}
+
+extend HashMap<K, V> {
+    /// An iterator over the entries, by copy.
+    ///
+    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
+    /// table's, which is the seed's and not the insertion's.
+    ///
+    /// # Safety
+    ///
+    /// Nothing may be inserted or removed while the iterator is alive.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map/iterate
+    func Iterate(self: *HashMap<K, V>) -> HashMapIterator<K, V> {
+        return HashMapIterator<K, V> { map: self, cursor: 0 };
+    }
+
+    /// Takes the map apart into an iterator over its entries.
+    ///
+    /// Consumes the map: it is moved into the iterator, and the storage goes with it, so nothing is copied and
+    /// nothing is reallocated. Each entry comes out by value, which is how one whose key or value owns something
+    /// leaves.
+    ///
+    /// Whatever is not taken is destroyed when the iterator's life ends.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-map/into-iterator
+    func IntoIterator(self: HashMap<K, V>) -> HashMapIntoIterator<K, V> {
+        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
+        // function ends, and a map left holding the runs would have its destructor release the very storage the
+        // iterator was handed.
+        var map = self;
+        let taken = HashMapIntoIterator<K, V> {
+            table: Table<K, V> {
+                keys: map.table.keys,
+                values: map.table.values,
+                states: map.table.states,
+                length: map.table.length,
+                capacity: map.table.capacity,
+                seed: map.table.seed,
+                allocator: map.table.allocator
+            },
+            cursor: 0
+        };
+        map.table.keys = null;
+        map.table.values = null;
+        map.table.states = null;
+        map.table.length = 0;
+        map.table.capacity = 0;
+        return taken;
     }
 }
