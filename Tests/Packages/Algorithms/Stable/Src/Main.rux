@@ -1,0 +1,147 @@
+import Algorithms::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
+import Core::{ Assert, MutableSlice, Ordering };
+
+// Stability is the whole reason this exists, and it is invisible unless equal elements carry something the ordering
+// ignores. So every element here has an origin the comparison never reads, and the checks are that equal elements
+// come out in ascending origin order -- which is exactly what a stable sort promises and an unstable one does not.
+
+// Ordered by key alone. Origin is what makes the stability observable.
+struct Ranked {
+    key: int32;
+    origin: int32;
+}
+
+extend Ranked {
+    func <(self: *Ranked, other: Ranked) -> bool {
+        return self.key < other.key;
+    }
+}
+
+func ByKey(left: Ranked, right: Ranked) -> Ordering {
+    if left.key < right.key {
+        return Ordering::Less;
+    }
+    if right.key < left.key {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+func Ranks(data: *var Ranked, length: uint) -> MutableSlice<Ranked> {
+    return MutableSlice<Ranked> { data: data, length: length };
+}
+
+func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
+    return MutableSlice<int32> { data: data, length: length };
+}
+
+// Every equal run must be in ascending origin order, which is the order they were built in.
+func StableWithin(data: *Ranked, length: uint) -> bool {
+    var index: uint = 1;
+    while index < length {
+        if data[index].key == data[index - 1].key {
+            if data[index].origin < data[index - 1].origin {
+                return false;
+            }
+        }
+        index++;
+    }
+    return true;
+}
+
+func Main() -> int {
+    // A deliberately awkward input: many equal keys, arriving in an order that no correct stable sort may keep.
+    var records: Ranked[64];
+    var index: uint = 0;
+    while index < 64 {
+        // Keys cycle through eight values, so every key appears eight times, and the origins run 0 to 63 in order.
+        records[index] = Ranked { key: (63 - index) as int32 % 8, origin: index as int32 };
+        index++;
+    }
+
+    var scratch: Ranked[64];
+    Assert(RequiredScratch(64) == 64, "the scratch a stable sort wants is as long as the sequence");
+    Assert(StableSort<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 64)), "a stable sort with room succeeds");
+    Assert(IsSorted<Ranked>(Slice<Ranked> { data: @records[0], length: 64 }), "and leaves the sequence sorted");
+    Assert(StableWithin(@records[0] as *Ranked, 64), "with every equal run in the order it arrived");
+
+    // Every key really is present eight times, so the run check above had something to check.
+    var counts: int32[8];
+    index = 0;
+    while index < 8 {
+        counts[index] = 0;
+        index++;
+    }
+    index = 0;
+    while index < 64 {
+        counts[records[index].key as uint] = counts[records[index].key as uint] + 1;
+        index++;
+    }
+    index = 0;
+    while index < 8 {
+        Assert(counts[index] == 8, "every key survives the sort exactly as often as it went in");
+        index++;
+    }
+
+    // Sorting an already sorted sequence changes nothing, which a stable sort must promise and an unstable one need
+    // not.
+    Assert(StableSort<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 64)), "sorting again succeeds");
+    Assert(StableWithin(@records[0] as *Ranked, 64), "and leaves every equal run exactly where it was");
+
+    // Too little scratch is refused, and nothing is touched.
+    var small: Ranked[8];
+    index = 0;
+    while index < 8 {
+        small[index] = Ranked { key: (8 - index) as int32, origin: index as int32 };
+        index++;
+    }
+    var tooSmall: Ranked[4];
+    Assert(!StableSort<Ranked>(Ranks(@small[0], 8), Ranks(@tooSmall[0], 4)), "scratch shorter than the sequence is refused");
+    Assert(small[0].key == 8, "leaving the sequence untouched");
+    Assert(small[7].key == 1, "from end to end");
+
+    // The lengths that need no scratch at all succeed with none.
+    var empty: Ranked[1];
+    Assert(StableSort<Ranked>(Ranks(null, 0), Ranks(null, 0)), "an empty sequence sorts with no scratch");
+    Assert(StableSort<Ranked>(Ranks(@empty[0], 1), Ranks(null, 0)), "and so does a single element");
+
+    // A comparator sorts a sequence stably by an order the type does not have.
+    index = 0;
+    while index < 64 {
+        records[index] = Ranked { key: (index * 7) as int32 % 5, origin: index as int32 };
+        index++;
+    }
+    Assert(StableSortBy<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 64), ByKey),
+           "a stable sort under a comparator succeeds");
+    Assert(IsSortedBy<Ranked>(Slice<Ranked> { data: @records[0], length: 64 }, ByKey), "and leaves it sorted");
+    Assert(StableWithin(@records[0] as *Ranked, 64), "with every equivalent run in the order it arrived");
+    Assert(!StableSortBy<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 63), ByKey),
+           "and one element short of enough scratch is still refused");
+
+    // Lengths either side of the insertion-sort run length, where the merge passes begin.
+    var lengths: uint[6];
+    lengths[0] = 2;
+    lengths[1] = 15;
+    lengths[2] = 16;
+    lengths[3] = 17;
+    lengths[4] = 32;
+    lengths[5] = 33;
+    var which: uint = 0;
+    while which < 6 {
+        let length = lengths[which];
+        var values: int32[33];
+        var mirror: int32[33];
+        index = 0;
+        while index < length {
+            values[index] = (length - index) as int32;
+            index++;
+        }
+        Assert(StableSort<int32>(Ints(@values[0], length), Ints(@mirror[0], length)),
+               "a reversed sequence of any length sorts");
+        Assert(IsSorted<int32>(Slice<int32> { data: @values[0], length: length }), "and comes out in order");
+        Assert(values[0] == 1, "smallest first");
+        which++;
+    }
+
+    return 0;
+}
