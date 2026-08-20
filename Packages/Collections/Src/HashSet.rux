@@ -9,7 +9,7 @@
 // A set owns its elements, so it implements `Drop` and is move-only.
 
 import Allocator::Allocator;
-import Core::{ Option, Unit };
+import Core::{ Iterator, Option, Unit };
 
 /// A hash table of distinct values.
 ///
@@ -175,5 +175,377 @@ extend HashSet<T> {
         }
         *cursor = index;
         return false;
+    }
+}
+
+/// An iterator over the elements of a set, by copy.
+///
+/// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-set-iterator
+struct HashSetIterator<T> {
+    /// The set being walked. Borrowed, never owned.
+    set: *HashSet<T>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashSetIterator<T> {
+    /// The next element, or `None` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
+    /// with `TryNext` instead.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set-iterator/next
+    func Next(self: *var HashSetIterator<T>) -> Option<T> {
+        var index = self.cursor;
+        while index < self.set.table.Capacity() {
+            if self.set.table.IsOccupied(index) {
+                self.cursor = index + 1;
+                return Option::Some<T>(self.set.table.keys[index]);
+            }
+            index++;
+        }
+        self.cursor = index;
+        return Option::None<T>();
+    }
+}
+
+extend HashSetIterator<T> : Iterator {}
+
+/// An iterator that takes a set apart, yielding each element by value.
+///
+/// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
+struct HashSetIntoIterator<T> {
+    /// The table taken from the set.
+    table: Table<T, Unit>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashSetIntoIterator<T> {
+    /// The next element, moved out, or `None` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The slot is emptied as the element leaves, so what remains for the
+    /// destructor is exactly what nobody took.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set-into-iterator/next
+    func Next(self: *var HashSetIntoIterator<T>) -> Option<T> {
+        var index = self.cursor;
+        while index < self.table.Capacity() {
+            if self.table.IsOccupied(index) {
+                let taken = self.table.keys[index];
+                self.table.states[index] = SlotEmpty;
+                self.table.length = self.table.length - 1;
+                self.cursor = index + 1;
+                return Option::Some<T>(taken);
+            }
+            index++;
+        }
+        self.cursor = index;
+        return Option::None<T>();
+    }
+}
+
+extend HashSetIntoIterator<T> : Iterator {}
+
+extend HashSet<T> {
+    /// An iterator over the elements, by copy.
+    ///
+    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
+    /// table's, which is the seed's.
+    ///
+    /// # Safety
+    ///
+    /// Nothing may be inserted or removed while the iterator is alive.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/iterate
+    func Iterate(self: *HashSet<T>) -> HashSetIterator<T> {
+        return HashSetIterator<T> { set: self, cursor: 0 };
+    }
+
+    /// Takes the set apart into an iterator over its elements.
+    ///
+    /// Consumes the set: it is moved into the iterator, and the storage goes with it. Whatever is not taken is
+    /// destroyed when the iterator's life ends.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/into-iterator
+    func IntoIterator(self: HashSet<T>) -> HashSetIntoIterator<T> {
+        var set = self;
+        let taken = HashSetIntoIterator<T> {
+            table: Table<T, Unit> {
+                keys: set.table.keys,
+                values: set.table.values,
+                states: set.table.states,
+                length: set.table.length,
+                capacity: set.table.capacity,
+                seed: set.table.seed,
+                allocator: set.table.allocator
+            },
+            cursor: 0
+        };
+        set.table.keys = null;
+        set.table.values = null;
+        set.table.states = null;
+        set.table.length = 0;
+        set.table.capacity = 0;
+        return taken;
+    }
+}
+
+extend HashSet<T> {
+    /// Whether every element of this set is also in `other`.
+    ///
+    /// Both are borrowed. A set is a subset of itself, and the empty set is a subset of everything -- there is no
+    /// element of it to be missing.
+    ///
+    /// `other` is asked about each of this set's elements, so it decides identity: two sets with different hashes
+    /// for the same values would disagree, which is a caller error rather than something checkable here.
+    ///
+    /// Allocates nothing. Runs in time proportional to this set's size.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/is-subset-of
+    func IsSubsetOf(self: *HashSet<T>, other: *HashSet<T>) -> bool {
+        if self.Length() > other.Length() {
+            return false;
+        }
+        var walker = self.Iterate();
+        var walking = true;
+        while walking {
+            match walker.Next() {
+                .Some(value) => {
+                    if !other.Contains(value) {
+                        return false;
+                    }
+                },
+                .None => {
+                    walking = false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// Whether every element of `other` is also in this set.
+    ///
+    /// Both are borrowed. The mirror of `IsSubsetOf`, which is what it calls.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/is-superset-of
+    func IsSupersetOf(self: *HashSet<T>, other: *HashSet<T>) -> bool {
+        return other.IsSubsetOf(self);
+    }
+
+    /// Whether the two sets have no element in common.
+    ///
+    /// Both are borrowed. Two empty sets are disjoint, and so is any set with an empty one.
+    ///
+    /// Walks the smaller of the two, since an element of either that is in both would be found from whichever side
+    /// it is looked for.
+    ///
+    /// Allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/is-disjoint-from
+    func IsDisjointFrom(self: *HashSet<T>, other: *HashSet<T>) -> bool {
+        if self.Length() > other.Length() {
+            return other.IsDisjointFrom(self);
+        }
+        if self.Length() == 0 {
+            return true;
+        }
+        var walker = self.Iterate();
+        var walking = true;
+        while walking {
+            match walker.Next() {
+                .Some(value) => {
+                    if other.Contains(value) {
+                        return false;
+                    }
+                },
+                .None => {
+                    walking = false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// Whether the two sets hold exactly the same elements.
+    ///
+    /// Both are borrowed. Equal sizes and one containment, which together are containment both ways.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/equals
+    func Equals(self: *HashSet<T>, other: *HashSet<T>) -> bool {
+        return self.Length() == other.Length() && self.IsSubsetOf(other);
+    }
+}
+
+extend HashSet<T> {
+    /// Adds every element of `other` that this set does not already have.
+    ///
+    /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements are copied out of `other`, which is
+    /// what makes this usable only where copying an element means what it says.
+    ///
+    /// Room for the worst case is taken first, so this either adds every element or none: a failure part-way would
+    /// leave a set that is neither what it was nor the union, and there is nothing useful a caller could do with
+    /// that. Reserving more than it needs is the price, and it is given back by `ShrinkToFit`.
+    ///
+    /// Runs in time proportional to `other`.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/union-with
+    func UnionWith(self: *var HashSet<T>, other: *HashSet<T>) -> CollectionError {
+        if other.Length() == 0 {
+            return CollectionError::None;
+        }
+        let room = self.Reserve(other.Length());
+        if room.IsError() {
+            return room;
+        }
+
+        var walker = other.Iterate();
+        var walking = true;
+        var added = false;
+        while walking {
+            match walker.Next() {
+                .Some(value) => {
+                    let error = self.Insert(value, @added);
+                    if error.IsError() {
+                        return error;
+                    }
+                },
+                .None => {
+                    walking = false;
+                }
+            }
+        }
+        return CollectionError::None;
+    }
+
+    /// Removes every element this set has that `other` does not.
+    ///
+    /// `self` is borrowed mutably; `other` is borrowed and left alone. Whatever leaves is destroyed, since nobody
+    /// asked for it back.
+    ///
+    /// Allocates nothing, so it cannot fail: a set only ever gets smaller here.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/intersect-with
+    func IntersectWith(self: *var HashSet<T>, other: *HashSet<T>) {
+        if self.Length() == 0 {
+            return;
+        }
+        // Backwards over the slots, because removing shifts the entries after a slot back into it -- so a forward
+        // walk would step over whatever moved into the slot it just left.
+        var index = self.table.Capacity();
+        while index > 0 {
+            index = index - 1;
+            if self.table.IsOccupied(index) {
+                if !other.Contains(self.table.keys[index]) {
+                    let taken = self.table.keys[index];
+                    self.table.Vacate(index);
+                }
+            }
+        }
+    }
+
+    /// Removes every element this set has that `other` also has.
+    ///
+    /// `self` is borrowed mutably; `other` is borrowed and left alone. Whatever leaves is destroyed.
+    ///
+    /// Allocates nothing, so it cannot fail.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/subtract
+    func Subtract(self: *var HashSet<T>, other: *HashSet<T>) {
+        if self.Length() == 0 || other.Length() == 0 {
+            return;
+        }
+        var index = self.table.Capacity();
+        while index > 0 {
+            index = index - 1;
+            if self.table.IsOccupied(index) {
+                if other.Contains(self.table.keys[index]) {
+                    let taken = self.table.keys[index];
+                    self.table.Vacate(index);
+                }
+            }
+        }
+    }
+
+    /// Keeps the elements that are in exactly one of the two sets.
+    ///
+    /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements shared by both leave and are
+    /// destroyed; elements only `other` has are copied in.
+    ///
+    /// Room for the worst case is taken first, for the same reason `UnionWith` takes it: a failure part-way would
+    /// leave a set that is neither operand nor the answer.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/symmetric-difference-with
+    func SymmetricDifferenceWith(self: *var HashSet<T>, other: *HashSet<T>) -> CollectionError {
+        if other.Length() == 0 {
+            return CollectionError::None;
+        }
+        let room = self.Reserve(other.Length());
+        if room.IsError() {
+            return room;
+        }
+
+        var walker = other.Iterate();
+        var walking = true;
+        var added = false;
+        while walking {
+            match walker.Next() {
+                .Some(value) => {
+                    var slot: uint = 0;
+                    if self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
+                        let taken = self.table.keys[slot];
+                        self.table.Vacate(slot);
+                    }
+                    else {
+                        let error = self.Insert(value, @added);
+                        if error.IsError() {
+                            return error;
+                        }
+                    }
+                },
+                .None => {
+                    walking = false;
+                }
+            }
+        }
+        return CollectionError::None;
+    }
+
+    /// An independent set holding a copy of every element of this one.
+    ///
+    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy has its
+    /// own storage from the same allocator and the same seed, so the two lay their elements out alike.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/clone
+    func Clone(self: *HashSet<T>, error: *var CollectionError) -> HashSet<T> {
+        var copy = HashSet::WithSeed<T>(self.table.allocator, self.table.seed, self.hash, self.equals);
+        let room = copy.Reserve(self.Length());
+        if room.IsError() {
+            *error = room;
+            return copy;
+        }
+        var walker = self.Iterate();
+        var walking = true;
+        var added = false;
+        while walking {
+            match walker.Next() {
+                .Some(value) => {
+                    let failure = copy.Insert(value, @added);
+                    if failure.IsError() {
+                        *error = failure;
+                        return copy;
+                    }
+                },
+                .None => {
+                    walking = false;
+                }
+            }
+        }
+        *error = CollectionError::None;
+        return copy;
     }
 }

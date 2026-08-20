@@ -181,6 +181,20 @@ an interface value would be stored and dispatched through on every lookup. `Hash
 usual key types. A caller keying on its own type writes them, and the one rule is that keys comparing equal must hash
 the same.
 
+## Set algebra
+
+The predicates — `IsSubsetOf`, `IsSupersetOf`, `IsDisjointFrom`, `Equals` — allocate nothing and cannot fail. So do
+`IntersectWith` and `Subtract`, which only ever make a set smaller.
+
+`UnionWith` and `SymmetricDifferenceWith` can grow, so they report a `CollectionError`. Both take room for the worst
+case first, which makes them all-or-nothing: a failure part-way would leave a set that is neither what it was nor the
+answer, and there is nothing useful a caller could do with that. Reserving more than needed is the price, and
+`ShrinkToFit` gives it back.
+
+`IntersectWith` and `Subtract` walk the slots **backwards**, because removing shifts the following entries back into
+the gap — a forward walk would step over whatever moved into the slot it just left. That is the one place the absence
+of tombstones costs something, and it costs a loop direction.
+
 ## Complexity
 
 | Operation                                                  | Time                            |
