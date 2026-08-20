@@ -17,6 +17,7 @@ rux add Rux/Allocator
 | `Contract` | the `Allocator` interface every allocator here implements                  |
 | `System`   | `SystemAllocator`, which asks the operating system for pages               |
 | `Box`      | `Box<T>`, one heap value with exactly one owner                             |
+| `Arena`    | `Arena`, which advances a pointer and reclaims everything at once           |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
@@ -44,6 +45,20 @@ through an out-parameter, which every other fallible call here does — ownershi
 difference. The compiler tracks a binding's initialization, and a write through a pointer is invisible to
 that tracking, so a box delivered that way would be owned by a binding the compiler believes owns
 nothing. The error travels by pointer instead.
+
+An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever
+a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice
+the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while
+keeping the largest block, so a second round of the same work asks the system for nothing.
+
+Pass an arena to something expecting an `Allocator` through `Arena::Handle`. Coercing a move-only value to an
+interface *moves* it, and an arena moved into an interface value can no longer be reset or released by its owner —
+so the handle is a `Copy` borrow that implements the interface while the arena stays where it is. It must not outlive
+its arena, and nothing checks that.
+
+An arena accepts a release rather than refusing one, so it can stand in for any allocator in generic code that
+releases what it takes. Ordinary releases do nothing; the most recent allocation is rewound, which is what lets a
+growing collection in an arena avoid wasting every earlier size it passed through.
 
 `SystemAllocator` is page-granular, so a small allocation costs a whole page. It is the backing store for an arena or
 a pool rather than the allocator a program uses for many small values directly.

@@ -1,0 +1,113 @@
+import Allocator::{ AllocError, Allocator, Arena, ArenaHandle, IsEmptyBlock, Layout, SystemAllocator };
+import Core::Assert;
+import Memory::IsPointerAligned;
+
+// An arena hands out storage by advancing a pointer, so what is checked is that the pointer advances by what was
+// asked for, that a request too large for the current block gets a new one, that a reset makes the space available
+// again without going back to the system, and that the blocks are all given back at the end.
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let backing: Allocator = system;
+
+    // A small block, so exhausting it takes a handful of requests rather than hundreds.
+    var arena = Arena::New(backing, 256);
+    Assert(arena.BlockCount() == 0, "an unused arena holds no blocks");
+    Assert(arena.BytesUsed() == 0, "and has handed out nothing");
+
+    var handle = arena.Handle();
+    let allocator: Allocator = handle;
+
+    // A zero-sized layout costs the arena nothing.
+    let zero = Layout::New(0, 8).ValueOr(Layout { size: 0, alignment: 1 });
+    var empty: *var opaque = null;
+    Assert(allocator.Allocate(zero, @empty) == AllocError::None, "a zero-sized allocation succeeds");
+    Assert(IsEmptyBlock(empty), "and gives the shared empty block");
+    Assert(arena.BlockCount() == 0, "without taking a block");
+
+    // The first real request takes the first block.
+    let small = Layout::New(32, 8).ValueOr(zero);
+    var first: *var opaque = null;
+    Assert(allocator.Allocate(small, @first) == AllocError::None, "the first allocation succeeds");
+    Assert(first != null, "and reports an address");
+    Assert(arena.BlockCount() == 1, "which took one block");
+    Assert(arena.BytesUsed() == 32, "and consumed exactly what was asked for");
+
+    // The next request comes out of the same block, at the next aligned address.
+    var second: *var opaque = null;
+    Assert(allocator.Allocate(small, @second) == AllocError::None, "the second allocation succeeds");
+    Assert(arena.BlockCount() == 1, "out of the same block");
+    Assert(arena.BytesUsed() == 64, "advancing the pointer again");
+    Assert((second as uint) == (first as uint) + 32, "and landing immediately after the first");
+
+    // Alignment is honoured, with the padding counted as used.
+    let aligned = Layout::New(8, 16).ValueOr(zero);
+    var third: *var opaque = null;
+    Assert(allocator.Allocate(aligned, @third) == AllocError::None, "an aligned allocation succeeds");
+    Assert(IsPointerAligned(third as *opaque, 16), "and satisfies its alignment");
+
+    // Writing through every address must not disturb the others.
+    let firstBytes = first as *var uint64;
+    let secondBytes = second as *var uint64;
+    *firstBytes = 0x1111111111111111u64;
+    *secondBytes = 0x2222222222222222u64;
+    Assert(*firstBytes == 0x1111111111111111u64, "the first allocation keeps its bytes");
+    Assert(*secondBytes == 0x2222222222222222u64, "and so does the second");
+
+    // Exhausting the block takes another, larger one.
+    let blocksBefore = arena.BlockCount();
+    var filler: *var opaque = null;
+    var taken: uint = 0;
+    while arena.BlockCount() == blocksBefore {
+        Assert(allocator.Allocate(small, @filler) == AllocError::None, "filling the block succeeds");
+        taken = taken + 1;
+        Assert(taken < 64, "and the block is exhausted in a bounded number of requests");
+    }
+    Assert(arena.BlockCount() == blocksBefore + 1, "which takes exactly one more block");
+
+    // A request larger than a whole block gets a block of its own rather than failing.
+    let huge = Layout::New(8192, 8).ValueOr(zero);
+    var large: *var opaque = null;
+    let blocksBeforeHuge = arena.BlockCount();
+    Assert(allocator.Allocate(huge, @large) == AllocError::None, "an oversized allocation succeeds");
+    Assert(arena.BlockCount() > blocksBeforeHuge, "by taking a block for itself");
+    let largeBytes = large as *var byte;
+    *largeBytes = 0x7F as byte;
+    *(largeBytes + 8191) = 0x7E as byte;
+    Assert(*largeBytes == 0x7F as byte && *(largeBytes + 8191) == 0x7E as byte, "and the whole of it is usable");
+
+    // Releasing the most recent allocation rewinds it; releasing anything else is accepted and does nothing.
+    var recent: *var opaque = null;
+    Assert(allocator.Allocate(small, @recent) == AllocError::None, "an allocation to release");
+    let usedWithRecent = arena.BytesUsed();
+    Assert(allocator.Deallocate(recent, small) == AllocError::None, "releasing the most recent succeeds");
+    Assert(arena.BytesUsed() == usedWithRecent - 32, "and rewinds the pointer");
+    Assert(allocator.Deallocate(first, small) == AllocError::None, "releasing an older one is accepted");
+
+    // Growing the most recent allocation extends it in place rather than copying.
+    var growing: *var opaque = null;
+    Assert(allocator.Allocate(small, @growing) == AllocError::None, "an allocation to grow");
+    let larger = Layout::New(64, 8).ValueOr(zero);
+    var grown: *var opaque = null;
+    Assert(allocator.Reallocate(growing, small, larger, @grown) == AllocError::None, "growing succeeds");
+    Assert(grown == growing, "and the most recent allocation grows where it stands");
+
+    // Reset rewinds everything and keeps one block, so the next round asks the system for nothing.
+    arena.Reset();
+    Assert(arena.BlockCount() == 1, "a reset keeps one block");
+    Assert(arena.BytesUsed() == 0, "and rewinds it completely");
+
+    var afterReset: *var opaque = null;
+    Assert(allocator.Allocate(small, @afterReset) == AllocError::None, "allocating after a reset succeeds");
+    Assert(arena.BlockCount() == 1, "without taking another block");
+
+    // A second reset on an arena that has only its kept block is idempotent.
+    arena.Reset();
+    arena.Reset();
+    Assert(arena.BlockCount() == 1 && arena.BytesUsed() == 0, "resetting twice changes nothing further");
+
+    // An arena that is never used costs nothing and still destroys cleanly.
+    var unused = Arena::New(backing, 0);
+    Assert(unused.BlockCount() == 0, "an unused arena takes no block");
+    return 0;
+}
