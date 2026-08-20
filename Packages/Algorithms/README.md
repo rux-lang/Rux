@@ -20,6 +20,8 @@ rux add Rux/Algorithms
 | `Modify` | `MutableSlice<T>` | — or `==`       | Reordering, bulk movement, removal and partitioning      |
 | `Sort`   | `MutableSlice<T>` | `<`             | Introsort, selection, and partial sorting                |
 | `Stable` | `MutableSlice<T>` | `<`             | Merge sort, with scratch the caller supplies             |
+| `Heap`   | `MutableSlice<T>` | `<`             | Max-heap arrangement, push, pop and heapsort             |
+| `Fold`   | `Slice<T>`        | — or `+`/`*`    | Folds in both directions, sum, product and transform     |
 
 Everything takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
 
@@ -72,6 +74,29 @@ duplicate; for anything else it is a value with no owner.
 `Partition` is unstable: it exchanges elements from both ends inward, which is what keeps it to one pass and no
 scratch storage, and means the order within each group is not the order it started in. A caller that needs the
 original order needs a stable partition, which needs somewhere to put things.
+
+## Heaps
+
+A heap is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and `2i+2`, which
+puts the largest at the front and makes both removing it and adding another logarithmic. That is what a priority
+queue is, and it is why these are here rather than in a container — any sequence a caller already has can be one.
+
+The arrangement is not an order. A heap is not sorted, and only its first element is where a sorted sequence would
+put it; `SortHeap` turns one into the other, which is heapsort.
+
+Growing and shrinking stay the caller's: `PushHeap` is told about an element already appended, and `PopHeap` leaves
+the removed element at the end for the caller to drop. This package does not own storage anywhere.
+
+## Folds
+
+A fold is the general form — an accumulator, a starting value, and a function — and the accumulator's type is
+independent of the element's, so the same operation both sums a sequence and builds something else entirely out of
+one. Direction is part of the contract: `Fold` runs left to right and `FoldRight` right to left, which are different
+answers for any combine that is not associative.
+
+`Sum` and `Product` are folds with the function already chosen. They take the starting value rather than assuming
+one, because a generic `T` has no zero this package could name. Overflow is the element type's business: they use
+`+` and `*` and behave exactly as those do, and a caller who needs checking folds a checked addition instead.
 
 ## Stability, and what it costs
 
