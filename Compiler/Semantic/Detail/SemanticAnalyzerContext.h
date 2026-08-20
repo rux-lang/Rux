@@ -354,9 +354,19 @@ private:
         SourceLocation location;
     };
 
+    /// A value whose type mentions a type parameter, so whether handing it over consumes it is not yet knowable.
+    /// Answered once per instantiation, when the parameter stands for something with a mobility.
+    struct DeferredConsumption {
+        const Expr *expression;
+        ValueConsumptionKind kind;
+        TypeRef type;
+        SourceLocation location;
+    };
+
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
 
     /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked

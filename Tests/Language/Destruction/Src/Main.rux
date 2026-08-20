@@ -25,6 +25,25 @@ struct Pair {
     second: Tracked;
 }
 
+// A generic holder, so the question "does handing a value over consume it" is asked where the answer depends on what
+// the type parameter stands for. The body is checked once with `T` standing for nothing in particular; whether the
+// store below moves or copies can only be settled at each instantiation.
+struct Holder<T> {
+    slot: *var T;
+    filled: bool;
+}
+
+extend Holder<T> {
+    func Put(self: *var Holder<T>, value: T) {
+        *self.slot = value;
+        self.filled = true;
+    }
+}
+
+func PutThroughGeneric<T>(slot: *var T, value: T) {
+    *slot = value;
+}
+
 func MakeTracked(counter: *var Counter) -> Tracked {
     return Tracked { counter: counter };
 }
@@ -121,6 +140,22 @@ func Main() -> int {
     counter.count = 0;
     OptionPayload(@counter, false);
     Assert(counter.count == 0, "an empty option has nothing to destroy");
+
+    // Handing a value to a generic moves it in rather than copying it, so the caller's value is not destroyed behind
+    // the callee's back. Whether that store consumes depends on what the parameter stands for, which is known only
+    // at the instantiation -- and a container that kept a copy while the source was destroyed would be holding
+    // something whose storage had already gone.
+    counter.count = 0;
+    var room = Tracked { counter: @counter };
+    PutThroughGeneric<Tracked>(@room, MakeTracked(@counter));
+    Assert(counter.count == 0, "a generic function's stored parameter is moved rather than copied and destroyed");
+
+    counter.count = 0;
+    var second = Tracked { counter: @counter };
+    var holder = Holder<Tracked> { slot: @second, filled: false };
+    holder.Put(MakeTracked(@counter));
+    Assert(counter.count == 0, "and so is a generic type's method parameter");
+    Assert(holder.filled, "which the method still recorded having stored");
 
     return 0;
 }

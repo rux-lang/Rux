@@ -369,6 +369,25 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
                       SubstituteTypeParams(check.target, substitutions), check.location);
         }
     }
+    if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {
+        for (const DeferredConsumption &deferred : it->second) {
+            // What the parameter stands for decides. A copyable argument consumes nothing and needs no fact
+            // recorded; a move-only one hands its value over, and the fact is what tells lowering not to destroy the
+            // source afterwards.
+            const TypeRef resolved = SubstituteTypeParams(deferred.type, substitutions);
+            if (!ClassifyTypeProperties(resolved).IsMoveOnly()) {
+                continue;
+            }
+            // Recorded without asking whether the source was a legal place to move from. That question is answered
+            // for a concrete type where the move is written, and answering it here would reject what a container
+            // exists to do: take a value out of storage it owns. Nothing in the language distinguishes an owned
+            // pointer from a borrowed one, so a container moving out of its own block and a caller moving out of a
+            // borrowed slice look alike. Diagnosing the second without forbidding the first needs a way to say which
+            // is which; until there is one, this records what to consume and leaves the legality alone.
+            valueConsumptions.insert_or_assign(deferred.expression,
+                                               ValueConsumption{deferred.kind, resolved, deferred.location});
+        }
+    }
 }
 
 TypeRef SemanticAnalyzerContext::CheckUnary(const TokenKind op, const TypeRef &operand, const SourceLocation location) {

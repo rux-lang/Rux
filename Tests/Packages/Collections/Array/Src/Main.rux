@@ -97,26 +97,28 @@ func Main() -> int {
 
     // Destruction: every element of an array is destroyed exactly once when the array's life ends.
     //
-    // The count is one more than the length, and the extra one is not a leak or a double destruction: `Filled`
-    // copies the value it was given into every position and then that value, being a parameter, is destroyed where
-    // it stood. So a length of five destroys six -- the five in the array, once each, and the one they were copied
-    // from. What matters is that the difference stays exactly one however long the array is, which is what says the
-    // elements themselves are destroyed once apiece.
+    // `Filled` copies its value into every position, and the value it was given is moved into the last of them
+    // rather than copied and destroyed, so the count is the length exactly. An element type that owns something
+    // could not be filled this way at all -- the copies would each claim what one of them owns -- which is why the
+    // element here owns nothing but a pointer to the counter.
     var destroyed: int32 = 0;
     Assert(FillAndDrop(allocator, @destroyed, 5) == CollectionError::None, "an array of tracked elements is made");
-    Assert(destroyed == 6, "and destroying it destroys five elements and the value they were copied from");
+    Assert(destroyed == 5, "and destroying it destroys every element exactly once");
 
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 1) == CollectionError::None, "a single-element array is made");
-    Assert(destroyed == 2, "and destroys its one element and the source");
+    Assert(destroyed == 1, "and destroys its one element once");
 
+    // One, for a length of zero: the value was handed over and never stored anywhere, so `Filled` destroys it
+    // rather than leaving it to nobody. A length of one destroys one, and so does a length of none -- the same
+    // element, reached two different ways.
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 0) == CollectionError::None, "an empty array of them is made");
-    Assert(destroyed == 1, "and destroys only the source, having stored nothing");
+    Assert(destroyed == 1, "and destroys the value it was given but never stored");
 
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 32) == CollectionError::None, "a longer array is made");
-    Assert(destroyed == 33, "and the difference is still exactly one, whatever the length");
+    Assert(destroyed == 32, "with the count still exactly the length");
 
     return 0;
 }

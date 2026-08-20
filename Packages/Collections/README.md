@@ -98,18 +98,18 @@ A container destroys an element it does not know is droppable by reading it into
 end. That is the only mechanism the language offers, it costs nothing for an element type that owns nothing, and it
 is what `Array::Drop` does.
 
-## A known defect: elements that own something
+## Elements that own something
 
-Storing a `T` into a generic container's storage is not recognized by the compiler as consuming it. `Vector::Push`
-therefore keeps a copy and the value it was given is destroyed where it stood.
+`Vector::Push` moves its argument in rather than copying it, so a vector is how a sequence of owning elements is
+built: each is moved in exactly once, and destroyed exactly once, when the vector is. `TryPop` moves one back out,
+which is how an element leaves without being destroyed.
 
-For an element type that owns nothing — a number, a small struct of numbers — this is harmless and invisible. For one
-that owns memory it is a use-after-free: the vector holds a copy of something whose storage the parameter's
-destructor already released.
+`Array`'s constructors copy, so an array of owning elements has to be built through a vector first.
 
-Until it is fixed, a container of elements that own something cannot be built by `Push`. `Array` is unaffected in its
-own destruction — it destroys exactly the elements it holds, once each — but its constructors copy, so it cannot hold
-such elements either. The tests measure both halves rather than assuming them.
+Whether handing a value to a generic container consumes it depends on what its element type turns out to be, which
+the container's own body cannot know — the answer is settled at each instantiation. The tests count destructions
+rather than assuming them: pushing seven elements destroys none, destroying the vector destroys exactly those seven,
+and truncating destroys exactly the ones it drops.
 
 ## Iterating
 

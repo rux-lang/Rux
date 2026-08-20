@@ -3389,13 +3389,18 @@ private:
 
     void QueueGenericInstantiation(const FuncDecl &decl,
                                    const std::unordered_map<std::string, TypeRef> &substitutions) override {
-        if (decl.typeParams.empty() || substitutions.size() != decl.typeParams.size()) {
+        if (substitutions.empty()) {
+            return;
+        }
+        // A generic function carries its own parameters; a method of a generic type carries none of its own and is
+        // instantiated by what the receiver's type arguments say. Both are instantiations with a body to re-check,
+        // so the concreteness test reads the substitution map rather than the declaration.
+        if (!decl.typeParams.empty() && substitutions.size() != decl.typeParams.size()) {
             return;
         }
 
-        const bool isConcrete = std::ranges::all_of(decl.typeParams, [&](const TypeParameter &param) {
-            const auto it = substitutions.find(param.name);
-            return it != substitutions.end() && !it->second.IsUnknown() && !ContainsTypeParam(it->second);
+        const bool isConcrete = std::ranges::all_of(substitutions, [](const auto &substitution) {
+            return !substitution.second.IsUnknown() && !ContainsTypeParam(substitution.second);
         });
         if (!isConcrete) {
             if (currentFunctionDecl) {
@@ -3411,12 +3416,20 @@ private:
         while (processed < pendingGenericInstantiations.size()) {
             PendingGenericInstantiation instantiation = std::move(pendingGenericInstantiations[processed++]);
 
+            // Keyed by what the parameters stand for, taken from the substitution map in a fixed order so a method
+            // of a generic type -- which has no parameters of its own to walk -- is deduplicated too.
+            std::vector<std::string> names;
+            names.reserve(instantiation.substitutions.size());
+            for (const auto &[name, type] : instantiation.substitutions) {
+                names.push_back(name);
+            }
+            std::ranges::sort(names);
             std::string key;
-            for (const TypeParameter &param : instantiation.decl->typeParams) {
+            for (const std::string &name : names) {
                 if (!key.empty()) {
                     key += ";";
                 }
-                key += instantiation.substitutions.at(param.name).ToString();
+                key += name + "=" + instantiation.substitutions.at(name).ToString();
             }
             if (!validatedGenericInstantiations[instantiation.decl].insert(std::move(key)).second) {
                 continue;
