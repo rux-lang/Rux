@@ -1,0 +1,131 @@
+// One value, on the heap, with exactly one owner.
+//
+// A `Box<T>` is the smallest thing that owns an allocation: it holds a value of `T` and the allocator that gave it
+// the storage, and it releases both when it goes. It implements `Drop`, so it is move-only -- handing one to a
+// function or another binding transfers ownership, and reading the original afterwards is rejected while compiling.
+//
+// The allocator is held as an interface value rather than a type parameter, so `Box<T>` has one parameter rather
+// than two and a container of boxes does not have to name which allocator each came from. The cost is one indirect
+// call per allocation and release, which against the cost of allocating is not a cost at all.
+//
+// Construction takes the value by value, which means it is consumed. If the allocation fails the value is destroyed
+// rather than leaked, and nothing half-built exists -- there is no state in which a `Box` holds an allocation it
+// cannot release.
+//
+// A box is *returned* rather than written through an out-parameter, which every other fallible call in these
+// packages does. Ownership is what forces it: the compiler tracks a binding's initialization, and a write through a
+// pointer is invisible to that tracking, so a box delivered that way would be owned by a binding the compiler
+// believes owns nothing. Returning it makes the transfer visible, and the failure is reported through an
+// out-parameter instead -- an error being the thing that is cheap to hand back the other way.
+
+import Allocator::{ AllocError, Allocator, LayoutOf };
+import Core::Drop;
+
+/// One heap-allocated value of `T`, owned by exactly one holder.
+///
+/// Move-only, because it implements `Drop`. Passing one by value transfers it; the source is then moved-out and
+/// reading it is rejected while compiling rather than at run time.
+///
+/// The storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or
+/// overwriting assignment the value's life ends at.
+///
+/// https://rux-lang.dev/docs/api/allocator/box
+struct Box<T> {
+    /// The allocation, or null for a box whose value has been taken out.
+    pointer: *var T;
+    /// The allocator the storage came from, which is the one it must go back to.
+    allocator: Allocator;
+}
+
+extend Box<T> {
+    /// Puts `value` on the heap and hands back the box that owns it.
+    ///
+    /// `allocator` is borrowed for the call and kept in the box. `value` is consumed: on success the box owns it,
+    /// and on failure it is destroyed rather than leaked. `error` receives the reason and must not be null; it is
+    /// set to `None` on success.
+    ///
+    /// A failed call returns an empty box, which owns nothing and releases nothing when it goes -- so a caller that
+    /// ignores the error leaks nothing, it merely has a box with no value in it.
+    ///
+    /// Runs in whatever time the allocator takes, and allocates exactly one block.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/box/create
+    func Create(allocator: Allocator, value: T, error: *var AllocError) -> Box<T> {
+        let layout = LayoutOf<T>(value);
+        var block: *var opaque = null;
+        *error = allocator.Allocate(layout, @block);
+        if *error != AllocError::None {
+            return Box<T> { pointer: null, allocator: allocator };
+        }
+        let typed = block as *var T;
+        *typed = value;
+        return Box<T> { pointer: typed, allocator: allocator };
+    }
+
+    /// The value this box holds.
+    ///
+    /// `self` is borrowed and stays the caller's; the pointer borrows the box's storage and is valid only while the
+    /// box is. Returns null for a box whose value has been taken out.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/box/get
+    func Get(self: *Box<T>) -> *var T {
+        return self.pointer;
+    }
+
+    /// Whether this box still holds a value.
+    ///
+    /// `self` is borrowed. False only for a box whose value `TryTake` has moved out, which is a box that owns
+    /// nothing and releases nothing.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/box/is-empty
+    func IsEmpty(self: *Box<T>) -> bool {
+        return self.pointer == null;
+    }
+
+    /// Moves the value out of the box, leaving the box empty, and releases the storage.
+    ///
+    /// `self` is borrowed mutably and is left empty. `destination` receives the value and must not be null; it is
+    /// left unwritten when this reports `false`, which happens only for a box that is already empty.
+    ///
+    /// The storage goes back to the allocator here rather than at the box's destruction, so a caller taking the
+    /// value out does not have to keep the box alive afterwards.
+    ///
+    /// Runs in whatever time the allocator takes.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/box/try-take
+    func TryTake(self: *var Box<T>, destination: *var T) -> bool {
+        if self.pointer == null || destination == null {
+            return false;
+        }
+        let held = self.pointer;
+        *destination = *held;
+        let layout = LayoutOf<T>(*destination);
+        self.allocator.Deallocate(held as *var opaque, layout);
+        self.pointer = null;
+        return true;
+    }
+}
+
+extend Box<T> : Drop {
+    /// Releases the storage, if the box still holds any.
+    ///
+    /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
+    /// away is not destroyed where it used to live, so the storage is released exactly once.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/box/drop
+    func Drop(self: *var Box<T>) {
+        if self.pointer != null {
+            let layout = LayoutOf<T>(*self.pointer);
+            self.allocator.Deallocate(self.pointer as *var opaque, layout);
+            self.pointer = null;
+        }
+    }
+}

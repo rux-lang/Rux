@@ -1,0 +1,54 @@
+import Allocator::{ AllocError, Allocator, Box, SystemAllocator };
+import Core::Assert;
+
+// A Box owns an allocation, so what is checked is that the allocation is released exactly once: not twice when the
+// box is moved, and not at all when its value was taken out first. A double release would be caught by the system
+// allocator's header check, and a leak by the loop below, which would exhaust the address space long before it
+// finished -- the system allocator being page-granular.
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = AllocError::None;
+
+    // An ordinary box holds its value and hands back a pointer into its own storage.
+    var boxed = Box::Create<int64>(allocator, 42, @error);
+    Assert(error == AllocError::None, "the box is created");
+    Assert(!boxed.IsEmpty(), "and holds a value");
+    Assert(*boxed.Get() == 42, "which is the one it was given");
+    *boxed.Get() = 43;
+    Assert(*boxed.Get() == 43, "and the value is writable through the box");
+
+    // Taking the value out empties the box and releases the storage there and then.
+    var taken: int64 = 0;
+    Assert(boxed.TryTake(@taken), "the value is taken out");
+    Assert(taken == 43, "and is what the box held");
+    Assert(boxed.IsEmpty(), "which leaves the box empty");
+    Assert(boxed.Get() == null as *var int64, "with nothing to point at");
+    Assert(!boxed.TryTake(@taken), "and taking again reports that there is nothing");
+
+    // A box of a value wider than a machine word, to exercise a layout that is not the default.
+    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210u64, @error);
+    Assert(error == AllocError::None, "a wide box is created");
+    Assert(*wide.Get() == 0xFEDCBA9876543210u64, "and keeps every bit of its value");
+
+    // Many boxes in sequence, each released as its scope ends. A leak here would exhaust the address space long
+    // before the loop finished, since the system allocator is page-granular.
+    var index: int32 = 0;
+    while index < 512 {
+        var scoped = Box::Create<int64>(allocator, index as int64, @error);
+        Assert(error == AllocError::None, "a scoped box is created");
+        Assert(*scoped.Get() == index as int64, "and holds what it was given");
+        index = index + 1;
+    }
+
+    // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
+    var source = Box::Create<int64>(allocator, 7, @error);
+    Assert(error == AllocError::None, "a box to move");
+    var destination = source;
+    Assert(*destination.Get() == 7, "the destination holds the value");
+
+    var emptied: int64 = 0;
+    Assert(destination.TryTake(@emptied) && emptied == 7, "and it is still takeable from there");
+    return 0;
+}
