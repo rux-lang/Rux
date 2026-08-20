@@ -6,8 +6,9 @@ Build-*/
 build/
 Out/
 out/
-Temp/
-temp/
+**/Temp/*
+**/temp/*
+!Temp/.gitkeep
 cmake-build-*/
 
 # CMake
