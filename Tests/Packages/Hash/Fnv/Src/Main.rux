@@ -1,0 +1,121 @@
+import Core::Assert;
+import Hash::{ Fnv1a32, Fnv1a32Of, Fnv1a64, Fnv1a64Of, FnvOffsetBasis32, FnvOffsetBasis64, HashBytes, WriteByte,
+               WriteUint32, WriteUint64 };
+
+// FNV-1a is a published algorithm, so the test is the published answers: a hash that agrees with the specification is
+// correct, and one that merely looks random is not. What the vectors cannot check is the contract around them -- that
+// splitting the writes changes nothing, that finishing twice gives the same answer, and that a reset really starts
+// over -- so those are checked separately.
+
+func Hash32(text: Slice<char8>) -> uint32 {
+    return Fnv1a32Of(text.data as *byte, text.length);
+}
+
+func Hash64(text: Slice<char8>) -> uint64 {
+    return Fnv1a64Of(text.data as *byte, text.length);
+}
+
+func Main() -> int {
+    // The empty input hashes to the offset basis. That is what the specification says rather than an accident of the
+    // construction: a hasher that started at zero would agree with nobody.
+    Assert(Fnv1a32Of(null, 0) == FnvOffsetBasis32, "the empty input gives the 32-bit offset basis");
+    Assert(Fnv1a64Of(null, 0) == FnvOffsetBasis64, "and the 64-bit offset basis");
+
+    // The published vectors.
+    Assert(Hash32("a") == 0xE40C292C, "FNV-1a 32 of 'a'");
+    Assert(Hash64("a") == 0xAF63DC4C8601EC8C, "FNV-1a 64 of 'a'");
+    Assert(Hash32("b") == 0xE70C2DE5, "FNV-1a 32 of 'b'");
+    Assert(Hash64("b") == 0xAF63DF4C8601F1A5, "FNV-1a 64 of 'b'");
+    Assert(Hash32("ab") == 0x4D2505CA, "FNV-1a 32 of 'ab'");
+    Assert(Hash64("ab") == 0x089C4407B545986A, "FNV-1a 64 of 'ab'");
+    Assert(Hash32("abc") == 0x1A47E90B, "FNV-1a 32 of 'abc'");
+    Assert(Hash64("abc") == 0xE71FA2190541574B, "FNV-1a 64 of 'abc'");
+    Assert(Hash32("foobar") == 0xBF9CF968, "FNV-1a 32 of 'foobar'");
+    Assert(Hash64("foobar") == 0x85944171F73967E8, "FNV-1a 64 of 'foobar'");
+    Assert(Hash32("hello world") == 0xD58B3FA7, "FNV-1a 32 of 'hello world'");
+    Assert(Hash64("hello world") == 0x779A65E7023CD2E7, "FNV-1a 64 of 'hello world'");
+
+    let foobar: Slice<char8> = "foobar";
+    let bytes = foobar.data as *byte;
+
+    // Splitting the writes must not change the answer. There is no block to align to, so this is a property of the
+    // algorithm rather than of any buffering, and it is what lets a struct hash its fields one at a time.
+    var split = Fnv1a64::New();
+    split.Write(bytes, 3);
+    split.Write(bytes + 3, 3);
+    Assert(split.Finish() == 0x85944171F73967E8, "writing in two halves agrees with writing at once");
+
+    var byByte = Fnv1a64::New();
+    var index: uint = 0;
+    while index < 6 {
+        byByte.Write(bytes + index, 1);
+        index++;
+    }
+    Assert(byByte.Finish() == 0x85944171F73967E8, "and so does writing one byte at a time");
+
+    // A zero-length write changes nothing, wherever it lands.
+    var padded = Fnv1a64::New();
+    padded.Write(null, 0);
+    padded.Write(bytes, 6);
+    padded.Write(null, 0);
+    Assert(padded.Finish() == 0x85944171F73967E8, "a zero-length write changes nothing");
+
+    // Finishing does not consume: the answer is the same twice, and writing more continues rather than restarts.
+    var kept = Fnv1a64::New();
+    kept.Write(bytes, 3);
+    let once = kept.Finish();
+    Assert(kept.Finish() == once, "finishing twice gives the same answer");
+    kept.Write(bytes + 3, 3);
+    Assert(kept.Finish() == 0x85944171F73967E8, "and writing afterwards continues from there");
+
+    // A reset really starts over.
+    kept.Reset();
+    Assert(kept.Finish() == FnvOffsetBasis64, "a reset returns to the offset basis");
+    kept.Write(bytes, 6);
+    Assert(kept.Finish() == 0x85944171F73967E8, "and hashing after a reset agrees with a fresh hasher");
+
+    var kept32 = Fnv1a32::New();
+    kept32.Write(bytes, 6);
+    Assert(kept32.Value() == 0xBF9CF968, "the 32-bit hasher reports its own width");
+    Assert(kept32.Finish() == 0xBF9CF968u64, "and widens it without changing it");
+    kept32.Reset();
+    Assert(kept32.Value() == FnvOffsetBasis32, "and resets to the 32-bit offset basis");
+
+    // The generic helper takes the caller's own hasher by pointer, so what it hashed is still in there afterwards.
+    // An interface value would have taken a copy and left this hasher empty.
+    var helped = Fnv1a64::New();
+    Assert(HashBytes<Fnv1a64>(@helped, bytes, 6) == 0x85944171F73967E8, "the generic helper hashes what it is given");
+    Assert(helped.Finish() == 0x85944171F73967E8, "leaving the caller's hasher holding it");
+
+    // The fixed-width writers use a fixed byte order, so a value hashes the same on every target. What is checked is
+    // that they agree with writing those bytes out by hand.
+    var buffer: byte[8];
+    var written = Fnv1a64::New();
+    WriteUint32<Fnv1a64>(@written, 0x04030201);
+    buffer[0] = 0x01;
+    buffer[1] = 0x02;
+    buffer[2] = 0x03;
+    buffer[3] = 0x04;
+    Assert(written.Finish() == Fnv1a64Of(@buffer[0] as *byte, 4),
+           "a 32-bit write is its four bytes, least significant first");
+
+    var written64 = Fnv1a64::New();
+    WriteUint64<Fnv1a64>(@written64, 0x0807060504030201);
+    index = 0;
+    while index < 8 {
+        buffer[index] = (index + 1) as byte;
+        index++;
+    }
+    Assert(written64.Finish() == Fnv1a64Of(@buffer[0] as *byte, 8), "and a 64-bit write is its eight");
+
+    var writtenByte = Fnv1a64::New();
+    WriteByte<Fnv1a64>(@writtenByte, 0x61);
+    Assert(writtenByte.Finish() == Hash64("a"), "and a single byte is that byte");
+
+    // Different inputs give different hashes. Not a proof of anything, but a hash that collided on these would be
+    // broken in a way the vectors above would not catch.
+    Assert(Hash64("acb") != Hash64("abc"), "order matters");
+    Assert(Hash64("abcd") != Hash64("abc"), "and so does length");
+
+    return 0;
+}
