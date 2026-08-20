@@ -1,13 +1,20 @@
 import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
 import Algorithms::{ IsSortedBy, IsSortedUntilBy, LowerBoundBy, UpperBoundBy, TryBinarySearchBy, EqualRangeBy };
-import Algorithms::{ TryMinIndexBy, TryMaxIndexBy, TryMinMaxIndexBy, ClampBy };
-import Algorithms::{ Equal, Copy, Reverse };
+import Algorithms::{ SequenceEqual, Copy, Reverse };
 
 // Declares no operators at all. Every ordering below has to come from the
 // comparator, which is the point: a comparator is enough on its own.
 struct Task {
     priority: int32;
     id: int32;
+}
+
+
+// The extremes under a comparator moved to the MinMax test when they moved to slices and `Ordering`; what stays here
+// is the ordering-driven searching and sorting. `Equal` became `SequenceEqual` over slices in the same move.
+func SameInts(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
+                                Slice<int32> { data: right, length: length });
 }
 
 func LessInt32(a: int32, b: int32) -> bool {
@@ -69,7 +76,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     if !IsSortedBy<int32>(@actual[0], length, LessInt32) {
         return 1;
     }
-    if !Equal<int32>(@actual[0], length, @expected[0], length) {
+    if !SameInts(@actual[0], @expected[0], length) {
         return 2;
     }
 
@@ -78,7 +85,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     Copy<int32>(@descending[0], source, length);
     SortBy<int32>(@descending[0], length, GreaterInt32);
     Reverse<int32>(@descending[0], length);
-    if !Equal<int32>(@descending[0], length, @expected[0], length) {
+    if !SameInts(@descending[0], @expected[0], length) {
         return 3;
     }
     return 0;
@@ -182,37 +189,6 @@ func Main() -> int {
     if !TryBinarySearchBy<Task>(@byPriority[0], five, probe, ByPriority, @index) { return 92; }
     if index != 1 { return 93; }
 
-    // Extremes under a comparator, still reporting the first of equals.
-    var extremes: int32[6] = [3, 1, 9, 1, 9, 4];
-    if !TryMinMaxIndexBy<int32>(@extremes[0], 6, LessInt32, @index, @other) { return 100; }
-    if index != 1 || other != 2 { return 101; }
-    if !TryMinIndexBy<int32>(@extremes[0], 6, LessInt32, @index) { return 102; }
-    if index != 1 { return 103; }
-    if !TryMaxIndexBy<int32>(@extremes[0], 6, LessInt32, @index) { return 104; }
-    if index != 2 { return 105; }
-
-    // A reversed comparator swaps which end is which.
-    if !TryMinMaxIndexBy<int32>(@extremes[0], 6, GreaterInt32, @index, @other) { return 106; }
-    if index != 2 || other != 1 { return 107; }
-
-    // Empty and null cases behave as they do without a comparator.
-    if TryMinIndexBy<int32>(@extremes[0], 0, LessInt32, @index) { return 108; }
-    if TryMinIndexBy<int32>(@extremes[0], 6, LessInt32, null) { return 109; }
-    if TryMinMaxIndexBy<int32>(@extremes[0], 6, LessInt32, null, @other) { return 110; }
-
-    // Extremes over a type with no operators.
-    if !TryMinIndexBy<Task>(@byPriority[0], five, ByPriority, @index) { return 111; }
-    if index != 0 { return 112; }
-
-    // Clamp under a comparator.
-    if ClampBy<int32>(5, 1, 10, LessInt32) != 5 { return 120; }
-    if ClampBy<int32>(0, 1, 10, LessInt32) != 1 { return 121; }
-    if ClampBy<int32>(99, 1, 10, LessInt32) != 10 { return 122; }
-    let low = Task { priority: 2, id: 0 };
-    let high = Task { priority: 8, id: 0 };
-    let inside = Task { priority: 5, id: 77 };
-    if ClampBy<Task>(inside, low, high, ByPriority).id != 77 { return 123; }
-
     // Selection under a comparator, checked against a fully sorted copy.
     var selection: int32[40];
     i = 0;
@@ -244,7 +220,7 @@ func Main() -> int {
     Copy<int32>(@partial[0], @selection[0], 40);
     if !PartialSortBy<int32>(@partial[0], 40, 8, LessInt32) { return 140; }
     if !IsSortedBy<int32>(@partial[0], 8, LessInt32) { return 141; }
-    if !Equal<int32>(@partial[0], 8, @sorted[0], 8) { return 142; }
+    if !SameInts(@partial[0], @sorted[0], 8) { return 142; }
     if PartialSortBy<int32>(@partial[0], 40, 41, LessInt32) { return 143; }
     if !PartialSortBy<int32>(@partial[0], 40, 0, LessInt32) { return 144; }
 

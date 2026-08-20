@@ -33,7 +33,8 @@ func CheckBounds(data: *int32, length: uint, value: int32, wantLower: uint, want
     if bounds.start > bounds.end {
         return code + 3;
     }
-    if bounds.end - bounds.start != Count<int32>(data, length, value) {
+    let items = Slice<int32> { data: data, length: length };
+    if bounds.end - bounds.start != Count<int32>(items, value) {
         return code + 4;
     }
 

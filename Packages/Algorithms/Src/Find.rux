@@ -1,211 +1,286 @@
-// Linear queries over an unordered sequence.
+// Linear queries over a sequence that is in no particular order.
 //
-// The value-based queries require `==` on T and nothing else, so a type that
-// defines equality but no ordering can use them. The predicate-based ones
-// require nothing at all: the caller's function supplies the test, so they
-// work on any element type. The ordered searches live in Search and require
-// `<` instead.
+// Everything here reads a `Slice<T>` and returns an answer about it. A search that found something answers with the
+// index it found, wrapped in an `Option`, because "not found" is an ordinary outcome and a sentinel index is a bug
+// waiting for the one sequence long enough to reach it. An empty slice is not a special case anywhere: it contains
+// nothing, satisfies every universal claim, and matches no search.
 //
-// A predicate is an ordinary function value. Rux has no closures, so it
-// carries no captured state; anything it needs beyond the element has to be
-// reachable from the function itself.
+// The value-based queries need `==` on the element type and nothing more, so a type with equality but no ordering
+// can use them. The predicate-based ones need nothing at all -- the caller's function supplies the test -- and the
+// ordered searches live in `Search`, which needs `<`.
 //
-// Reading past the end is the caller's responsibility, as it is for Slice,
-// Array and List. A length of zero never touches the data pointer, so a null
-// pointer with a zero length is accepted everywhere.
+// A predicate is an ordinary function value. Rux has no closures, so it carries no captured state: anything it needs
+// beyond the element has to be reachable from the function itself.
+//
+// Nothing here allocates, and nothing here writes. Every one of these is a single pass unless it says otherwise.
 
-// Reports whether any element equals value. An empty sequence contains
-// nothing.
-func Contains<T>(data: *T, length: uint, value: T) -> bool {
-    var i: uint = 0;
-    while i < length {
-        if data[i] == value {
-            return true;
-        }
-        i++;
-    }
-    return false;
+import Core::{ Option, Ordering };
+
+/// Whether any element of `items` equals `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. An empty slice contains nothing, so this is false.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/contains
+func Contains<T>(items: Slice<T>, value: T) -> bool {
+    return IndexOf<T>(items, value).IsSome();
 }
 
-// The number of elements equal to value.
-func Count<T>(data: *T, length: uint, value: T) -> uint {
+/// How many elements of `items` equal `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. An empty slice gives zero.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/count
+func Count<T>(items: Slice<T>, value: T) -> uint {
     var found: uint = 0;
-    var i: uint = 0;
-    while i < length {
-        if data[i] == value {
-            found++;
+    var index: uint = 0;
+    while index < items.length {
+        if items.data[index] == value {
+            found = found + 1;
         }
-        i++;
+        index++;
     }
     return found;
 }
 
-// Writes the index of the first element equal to value and returns true. When
-// there is no match the index is left alone, so a caller may seed it with a
-// fallback. A null index reports failure rather than searching.
-func TryFind<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
-    if index == null {
-        return false;
-    }
-
-    var i: uint = 0;
-    while i < length {
-        if data[i] == value {
-            *index = i;
-            return true;
+/// The index of the first element of `items` equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element matches, including for an
+/// empty slice.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/index-of
+func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+    var index: uint = 0;
+    while index < items.length {
+        if items.data[index] == value {
+            return Option::Some<uint>(index);
         }
-        i++;
+        index++;
     }
-    return false;
+    return Option::None<uint>();
 }
 
-// TryFind from the other end: the index of the last equal element.
-func TryFindLast<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
-    if index == null {
-        return false;
-    }
-
-    // Counting down from length rather than up from length - 1, which would
-    // wrap when the sequence is empty.
-    var i = length;
-    while i > 0 {
-        i--;
-        if data[i] == value {
-            *index = i;
-            return true;
+/// The index of the last element of `items` equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element matches.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first match from the end, and allocates
+/// nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/last-index-of
+func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+    var remaining = items.length;
+    while remaining > 0 {
+        remaining = remaining - 1;
+        if items.data[remaining] == value {
+            return Option::Some<uint>(remaining);
         }
     }
-    return false;
+    return Option::None<uint>();
 }
 
-// Reports whether two sequences have the same length and equal elements. Two
-// empty sequences are equal.
-func Equal<T>(a: *T, aLength: uint, b: *T, bLength: uint) -> bool {
-    if aLength != bLength {
-        return false;
-    }
-
-    var i: uint = 0;
-    while i < aLength {
-        // Negating `==` rather than writing `!=`: only the operator a type
-        // actually defines is dispatched, and `!=` falls back to comparing the
-        // raw bytes, which disagrees with any `==` that ignores a field or
-        // whose type carries padding. See BACKLOG.md.
-        if !(a[i] == b[i]) {
-            return false;
+/// The index of the first element of `items` that `predicate` accepts.
+///
+/// `items` is borrowed and read; `predicate` is called once per element until it accepts one. Reports `None` when
+/// it accepts none.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/index-where
+func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+    var index: uint = 0;
+    while index < items.length {
+        if predicate(items.data[index]) {
+            return Option::Some<uint>(index);
         }
-        i++;
+        index++;
     }
-    return true;
+    return Option::None<uint>();
 }
 
-// TryFind against a caller's test rather than a value: writes the index of the
-// first element the predicate accepts and returns true. As in TryFind, a miss
-// leaves the index alone and a null index reports failure.
-func TryFindIf<T>(data: *T, length: uint, predicate: func(T) -> bool, index: *var uint) -> bool {
-    if index == null {
-        return false;
-    }
-
-    var i: uint = 0;
-    while i < length {
-        if predicate(data[i]) {
-            *index = i;
-            return true;
-        }
-        i++;
-    }
-    return false;
-}
-
-// TryFindIf from the other end: the index of the last accepted element.
-func TryFindLastIf<T>(data: *T, length: uint, predicate: func(T) -> bool, index: *var uint) -> bool {
-    if index == null {
-        return false;
-    }
-
-    var i = length;
-    while i > 0 {
-        i--;
-        if predicate(data[i]) {
-            *index = i;
-            return true;
+/// The index of the last element of `items` that `predicate` accepts.
+///
+/// `items` is borrowed and read; `predicate` is called once per element from the end until it accepts one. Reports
+/// `None` when it accepts none.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/last-index-where
+func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+    var remaining = items.length;
+    while remaining > 0 {
+        remaining = remaining - 1;
+        if predicate(items.data[remaining]) {
+            return Option::Some<uint>(remaining);
         }
     }
-    return false;
+    return Option::None<uint>();
 }
 
-// The number of elements the predicate accepts.
-func CountIf<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
+/// How many elements of `items` the predicate accepts.
+///
+/// `items` is borrowed and read; `predicate` is called once per element. An empty slice gives zero.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/count-where
+func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
-    var i: uint = 0;
-    while i < length {
-        if predicate(data[i]) {
-            found++;
+    var index: uint = 0;
+    while index < items.length {
+        if predicate(items.data[index]) {
+            found = found + 1;
         }
-        i++;
+        index++;
     }
     return found;
 }
 
-// Whether every element is accepted. An empty sequence is accepted: there is
-// no element to refuse, which is the reading that keeps All and Any exact
-// opposites under negation.
-func All<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
-    var i: uint = 0;
-    while i < length {
-        if !predicate(data[i]) {
+/// Whether `predicate` accepts every element of `items`.
+///
+/// `items` is borrowed and read. An empty slice satisfies this, as it satisfies every universal claim: there is no
+/// element that fails.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first rejection, and allocates nothing
+/// beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/all-of
+func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+    var index: uint = 0;
+    while index < items.length {
+        if !predicate(items.data[index]) {
             return false;
         }
-        i++;
+        index++;
     }
     return true;
 }
 
-// Whether any element is accepted. An empty sequence accepts nothing.
-func Any<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
-    var i: uint = 0;
-    while i < length {
-        if predicate(data[i]) {
-            return true;
+/// Whether `predicate` accepts at least one element of `items`.
+///
+/// `items` is borrowed and read. An empty slice does not satisfy this: there is no element that passes.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
+/// beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/any-of
+func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+    return IndexWhere<T>(items, predicate).IsSome();
+}
+
+/// Whether `predicate` accepts no element of `items`.
+///
+/// `items` is borrowed and read. An empty slice satisfies this, for the same reason it satisfies `AllOf`.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
+/// beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/none-of
+func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+    return !AnyOf<T>(items, predicate);
+}
+
+/// The index of the first position where `left` and `right` differ.
+///
+/// Both are borrowed and read. Reports `None` when neither runs out before a difference is found and the two are
+/// equal for their whole common length -- so two slices of different lengths that agree on the shorter one report
+/// the shorter length, and two identical slices report `None`.
+///
+/// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/mismatch
+func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
+    let shorter = left.length < right.length ? left.length : right.length;
+    var index: uint = 0;
+    while index < shorter {
+        if !(left.data[index] == right.data[index]) {
+            return Option::Some<uint>(index);
         }
-        i++;
+        index++;
     }
-    return false;
+    if left.length != right.length {
+        return Option::Some<uint>(shorter);
+    }
+    return Option::None<uint>();
 }
 
-// Whether no element is accepted, the exact negation of Any.
-func None<T>(data: *T, length: uint, predicate: func(T) -> bool) -> bool {
-    return !Any<T>(data, length, predicate);
-}
-
-// Writes the first index at which two sequences differ and returns true. A
-// sequence that is a proper prefix of the other differs at the shorter length,
-// so this returns false exactly when Equal returns true. A null index reports
-// failure.
-func TryMismatch<T>(a: *T, aLength: uint, b: *T, bLength: uint, index: *var uint) -> bool {
-    if index == null {
+/// Whether `left` and `right` hold the same elements in the same order.
+///
+/// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
+/// pointers hold.
+///
+/// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/sequence-equal
+func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
+    if left.length != right.length {
         return false;
     }
+    return Mismatch<T>(left, right).IsNone();
+}
 
-    var common = aLength;
-    if bLength < common {
-        common = bLength;
-    }
-
-    var i: uint = 0;
-    while i < common {
-        // `!(a == b)` rather than `a != b`; see Equal above.
-        if !(a[i] == b[i]) {
-            *index = i;
-            return true;
+/// How `left` orders against `right`, element by element.
+///
+/// Both are borrowed and read. The comparison is lexicographic, which is the order a dictionary uses: the first
+/// position where the two differ decides, and if neither differs before one runs out, the shorter is the smaller.
+/// Two equal-length slices that never differ are `Equal`.
+///
+/// Requires `<` and `==` on the element type. Use `CompareBy` where the element has no ordering of its own or the
+/// wanted order is not its own.
+///
+/// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/compare
+func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
+    let shorter = left.length < right.length ? left.length : right.length;
+    var index: uint = 0;
+    while index < shorter {
+        if left.data[index] < right.data[index] {
+            return Ordering::Less;
         }
-        i++;
+        if right.data[index] < left.data[index] {
+            return Ordering::Greater;
+        }
+        index++;
     }
+    if left.length < right.length {
+        return Ordering::Less;
+    }
+    if right.length < left.length {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
 
-    if aLength != bLength {
-        *index = common;
-        return true;
+/// How `left` orders against `right`, with `compare` deciding each pair.
+///
+/// Both slices are borrowed and read; `compare` is called at most once per position of the shorter one. Lexicographic
+/// exactly as `Compare` is, and the way to order a sequence whose elements have no `<` of their own -- or to order it
+/// by something other than their own.
+///
+/// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/compare-by
+func CompareBy<T>(left: Slice<T>, right: Slice<T>, compare: func(T, T) -> Ordering) -> Ordering {
+    let shorter = left.length < right.length ? left.length : right.length;
+    var index: uint = 0;
+    while index < shorter {
+        let order = compare(left.data[index], right.data[index]);
+        if !order.IsEqual() {
+            return order;
+        }
+        index++;
     }
-    return false;
+    if left.length < right.length {
+        return Ordering::Less;
+    }
+    if right.length < left.length {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
 }

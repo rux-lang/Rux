@@ -1,4 +1,4 @@
-import Algorithms::{ Sort, SortDescending, IsSorted, Equal, Copy, Reverse };
+import Algorithms::{ Sort, SortDescending, IsSorted, SequenceEqual, Copy, Reverse };
 // InsertionSortRange and HeapSortRange are internal helpers rather than public
 // API. They are exercised directly because the heapsort fallback is otherwise
 // unreachable from a test: it needs a recursion budget that only adversarial
@@ -23,6 +23,14 @@ extend Ranked {
 // Deliberately naive and structurally unlike introsort: no partitioning, no
 // recursion, no fallbacks. Cross-checking against a second implementation is
 // what makes the comparison below meaningful.
+
+// `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices; this keeps the checks
+// below reading the way they did.
+func SameInts(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
+                                Slice<int32> { data: right, length: length });
+}
+
 func ReferenceSort(data: *var int32, length: uint) {
     var i: uint = 0;
     while i < length {
@@ -104,7 +112,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     if !IsSorted<int32>(@actual[0], length) {
         return 1;
     }
-    if !Equal<int32>(@actual[0], length, @expected[0], length) {
+    if !SameInts(@actual[0], @expected[0], length) {
         return 2;
     }
 
@@ -113,7 +121,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     Copy<int32>(@descending[0], source, length);
     SortDescending<int32>(@descending[0], length);
     Reverse<int32>(@descending[0], length);
-    if !Equal<int32>(@descending[0], length, @expected[0], length) {
+    if !SameInts(@descending[0], @expected[0], length) {
         return 3;
     }
     return 0;
@@ -184,7 +192,7 @@ func Main() -> int {
     HeapSortRange<int32>(@heaped[0], 1, 9);
     if heaped[0] != 100 || heaped[9] != 200 { return 212; }
     if !IsSorted<int32>(@heaped[1], 8) { return 213; }
-    if !Equal<int32>(@heaped[1], 8, @guarded[1], 8) { return 214; }
+    if !SameInts(@heaped[1], @guarded[1], 8) { return 214; }
 
     // Both fallbacks accept empty and single-element ranges.
     InsertionSortRange<int32>(@heaped[0], 3, 3);

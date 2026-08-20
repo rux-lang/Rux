@@ -12,27 +12,47 @@ rux add Rux/Algorithms
 
 ## Status
 
-| Module   | Requires on `T` | Provides                                                 |
-| -------- | --------------- | -------------------------------------------------------- |
-| `Modify` | — or `==`       | Reordering, bulk movement, partitioning, transform, fold |
-| `Find`   | — or `==`       | Linear queries, by value or by predicate                 |
-| `Search` | `<`             | Sortedness checks and binary search                      |
-| `Sort`   | `<`             | Introsort, ascending and descending                      |
-| `MinMax` | `<`             | Sequence extremes and clamping                           |
+| Module   | Takes             | Requires on `T` | Provides                                                 |
+| -------- | ----------------- | --------------- | -------------------------------------------------------- |
+| `Find`   | `Slice<T>`        | — or `==`       | Linear queries, sequence comparison, by value or predicate |
+| `MinMax` | `Slice<T>`        | — or `<`        | Sequence extremes and clamping                           |
+| `Modify` | pointer + length  | — or `==`       | Reordering, bulk movement, partitioning, transform, fold |
+| `Search` | pointer + length  | `<`             | Sortedness checks and binary search                      |
+| `Sort`   | pointer + length  | `<`             | Introsort, ascending and descending                      |
+
+`Find` and `MinMax` take a `Slice<T>`; the rest still take a pointer and a length and are being converted module by
+module.
 
 Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
 
 A **predicate-taking** function asks nothing of `T` at all — the caller's function supplies the test — so those work on any element type whatsoever.
 
+## What a search answers with
+
+A search that found something answers with the index it found, wrapped in an `Option`:
+
+```rux
+func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint>
+```
+
+Not found is an ordinary outcome, not a failure, and a sentinel index is a bug waiting for the one sequence long
+enough to reach it. An empty slice is not a special case anywhere: it contains nothing, matches no search, satisfies
+every universal claim and no existential one.
+
+A comparison answers with an `Ordering` rather than a `bool`, and takes one where it needs the caller to decide.
+`Compare` is lexicographic — the first differing element decides, and the shorter of two otherwise-equal sequences is
+the smaller — and `CompareBy` is the same for a type with no ordering of its own.
+
 ## The pointer-and-length shape
 
-Every entry point takes a pointer and a length rather than a view struct:
+The modules still to be converted take a pointer and a length rather than a view struct:
 
 ```rux
 func Reverse<T>(data: *var T, length: uint)
 ```
 
-This is not a stylistic choice. Inside a generic function the compiler resolves an element to its type parameter only when it is reached through a pointer parameter, so `data[i]` works where `values.data[i]` does not once a bare `T` value is also in play. The shape also accepts every container without coupling this package to any of them.
+That shape accepts every container without coupling this package to any of them, which is why it was chosen; a
+`Slice<T>` does the same and says more, which is why the converted modules take one.
 
 Type arguments are always explicit — Rux does not infer them for free functions.
 

@@ -1,175 +1,246 @@
-// Sequence extremes and clamping.
+// The smallest and largest elements of a sequence, and clamping a value into a range.
 //
-// Everything here requires `<` on T and nothing else, and follows the same
-// strict-weak-ordering contract as Search.
+// Every search here answers with an index rather than a value, because the index is the more useful answer and the
+// value is one dereference away. An empty slice has no smallest element, so the answer is `None` rather than a
+// sentinel index or a default-constructed value that was never in the sequence.
 //
-// The extremes are reported as indices rather than values, so the caller keeps
-// the identity of the element it found: with a type ordered by one field, two
-// equivalent elements are not interchangeable. Both searches report the first
-// extreme, so one rule covers them and TryMinMaxIndex agrees exactly with
-// calling the two separately.
+// Ties go to the first: `MinIndex` reports the earliest of several equal smallest elements, and `MaxIndex` the
+// earliest of several equal largest ones. That is a promise rather than an accident, and it is what makes a sort
+// built on these predictable.
 //
-// Scalar two-argument minimum and maximum are deliberately absent. Rux/Math
-// already owns Min and Max for floating-point values, and a same-named generic
-// here would make a bare Min(1.0, 2.0) ambiguous against a candidate that
-// requires explicit type arguments.
+// The plain forms need `<` on the element type. The `By` forms take a three-way comparison instead, which is what to
+// use when the element has no ordering of its own, or when the wanted order is not its own.
 
-// Writes the index of the first smallest element and returns true. An empty
-// sequence or a null index reports failure and leaves the index alone.
-func TryMinIndex<T>(data: *T, length: uint, index: *var uint) -> bool {
-    if index == null || length == 0 {
-        return false;
+import Core::{ Option, Ordering };
+
+/// The index of the smallest element of `items`.
+///
+/// `items` is borrowed and read. Reports `None` for an empty slice, and the earliest index when several elements
+/// tie.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length, comparing each element once, and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/min-index
+func MinIndex<T>(items: Slice<T>) -> Option<uint> {
+    if items.length == 0 {
+        return Option::None<uint>();
     }
-
     var best: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        // Strictly less, so a later equivalent element never displaces the
-        // first one.
-        if data[i] < data[best] {
-            best = i;
+    var index: uint = 1;
+    while index < items.length {
+        if items.data[index] < items.data[best] {
+            best = index;
         }
-        i++;
+        index++;
     }
-    *index = best;
-    return true;
+    return Option::Some<uint>(best);
 }
 
-// Writes the index of the first largest element and returns true.
-func TryMaxIndex<T>(data: *T, length: uint, index: *var uint) -> bool {
-    if index == null || length == 0 {
-        return false;
+/// The index of the largest element of `items`.
+///
+/// `items` is borrowed and read. Reports `None` for an empty slice, and the earliest index when several elements
+/// tie.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/max-index
+func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
+    if items.length == 0 {
+        return Option::None<uint>();
     }
-
     var best: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        if data[best] < data[i] {
-            best = i;
+    var index: uint = 1;
+    while index < items.length {
+        if items.data[best] < items.data[index] {
+            best = index;
         }
-        i++;
+        index++;
     }
-    *index = best;
-    return true;
+    return Option::Some<uint>(best);
 }
 
-// Writes both extremes in one pass. Fails, writing neither, when the sequence
-// is empty or either pointer is null.
-//
-// This costs two comparisons per element rather than the three-per-pair a
-// tournament would use. The tournament saves a quarter of the comparisons but
-// reports an arbitrary member of a run of equivalent elements, which would put
-// it at odds with TryMinIndex and TryMaxIndex called separately. Agreement is
-// worth more here than the constant factor.
-func TryMinMaxIndex<T>(data: *T, length: uint, minIndex: *var uint, maxIndex: *var uint) -> bool {
-    if minIndex == null || maxIndex == null || length == 0 {
-        return false;
+/// The index of the smallest element of `items`, with `compare` deciding.
+///
+/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `None` for an empty
+/// slice, and the earliest index when several elements tie.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/min-index-by
+func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
+    if items.length == 0 {
+        return Option::None<uint>();
     }
-
-    var smallest: uint = 0;
-    var largest: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        if data[i] < data[smallest] {
-            smallest = i;
-        }
-        if data[largest] < data[i] {
-            largest = i;
-        }
-        i++;
-    }
-
-    *minIndex = smallest;
-    *maxIndex = largest;
-    return true;
-}
-
-// Each search above also takes an explicit ordering, for a sequence ordered by
-// something other than its element type's own `<`. The comparator answers the
-// same question `<` does, and reporting the first extreme is unchanged, so
-// these agree with the operator forms whenever the comparator agrees with `<`.
-func TryMinIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, index: *var uint) -> bool {
-    if index == null || length == 0 {
-        return false;
-    }
-
     var best: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        if less(data[i], data[best]) {
-            best = i;
+    var index: uint = 1;
+    while index < items.length {
+        if compare(items.data[index], items.data[best]).IsLess() {
+            best = index;
         }
-        i++;
+        index++;
     }
-    *index = best;
-    return true;
+    return Option::Some<uint>(best);
 }
 
-func TryMaxIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, index: *var uint) -> bool {
-    if index == null || length == 0 {
-        return false;
+/// The index of the largest element of `items`, with `compare` deciding.
+///
+/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `None` for an empty
+/// slice, and the earliest index when several elements tie.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/max-index-by
+func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
+    if items.length == 0 {
+        return Option::None<uint>();
     }
-
     var best: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        if less(data[best], data[i]) {
-            best = i;
+    var index: uint = 1;
+    while index < items.length {
+        if compare(items.data[best], items.data[index]).IsLess() {
+            best = index;
         }
-        i++;
+        index++;
     }
-    *index = best;
-    return true;
+    return Option::Some<uint>(best);
 }
 
-func TryMinMaxIndexBy<T>(data: *T, length: uint, less: func(T, T) -> bool, minIndex: *var uint,
-                       maxIndex: *var uint) -> bool {
-    if minIndex == null || maxIndex == null || length == 0 {
+/// The indices of the smallest and largest elements of `items`, in one pass.
+///
+/// `items` is borrowed and read; `smallest` and `largest` are written only when this reports true. Reports false for
+/// an empty slice and writes neither. Ties go to the earliest index on both ends, exactly as the single-ended
+/// searches promise.
+///
+/// Two separate passes would compare each element twice; this compares them in pairs and so makes about three
+/// comparisons for every two elements.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/min-max-index
+func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) -> bool {
+    if items.length == 0 {
         return false;
     }
-
-    var smallest: uint = 0;
-    var largest: uint = 0;
-    var i: uint = 1;
-    while i < length {
-        if less(data[i], data[smallest]) {
-            smallest = i;
+    var low: uint = 0;
+    var high: uint = 0;
+    var index: uint = 1;
+    while index < items.length {
+        if items.data[index] < items.data[low] {
+            low = index;
         }
-        if less(data[largest], data[i]) {
-            largest = i;
+        if items.data[high] < items.data[index] {
+            high = index;
         }
-        i++;
+        index++;
     }
-
-    *minIndex = smallest;
-    *maxIndex = largest;
+    *smallest = low;
+    *largest = high;
     return true;
 }
 
-func ClampBy<T>(value: T, low: T, high: T, less: func(T, T) -> bool) -> T {
-    if less(value, low) {
+/// The indices of the smallest and largest elements of `items`, in one pass, with `compare` deciding.
+///
+/// `items` is borrowed and read; `smallest` and `largest` are written only when this reports true. Reports false for
+/// an empty slice and writes neither. Ties go to the earliest index on both ends.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/min-max-index-by
+func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest: *var uint,
+                      largest: *var uint) -> bool {
+    if items.length == 0 {
+        return false;
+    }
+    var low: uint = 0;
+    var high: uint = 0;
+    var index: uint = 1;
+    while index < items.length {
+        if compare(items.data[index], items.data[low]).IsLess() {
+            low = index;
+        }
+        if compare(items.data[high], items.data[index]).IsLess() {
+            high = index;
+        }
+        index++;
+    }
+    *smallest = low;
+    *largest = high;
+    return true;
+}
+
+/// The smaller of two values, or `left` when neither is smaller.
+///
+/// Both are read by value and one is returned by copy. Requires `<` on the type.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/min
+func Min<T>(left: T, right: T) -> T {
+    if right < left {
+        return right;
+    }
+    return left;
+}
+
+/// The larger of two values, or `left` when neither is larger.
+///
+/// Both are read by value and one is returned by copy. Requires `<` on the type.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/max
+func Max<T>(left: T, right: T) -> T {
+    if left < right {
+        return right;
+    }
+    return left;
+}
+
+/// `value` brought into the range `low` to `high`, inclusive at both ends.
+///
+/// All three are read by value and one is returned by copy. A `low` above `high` is an empty range with no answer
+/// that could be right, so `low` is returned -- the caller passed a range it cannot have meant.
+///
+/// Requires `<` on the type.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/clamp
+func Clamp<T>(value: T, low: T, high: T) -> T {
+    if high < low {
         return low;
     }
-    if less(high, value) {
+    if value < low {
+        return low;
+    }
+    if high < value {
         return high;
     }
     return value;
 }
 
-// Restricts value to the range low..=high. The caller is responsible for
-// passing a range that is the right way round; a reversed one yields high,
-// which is not checked.
-//
-// The upper test is written `high < value` rather than the more natural
-// `value > high`. They should be identical -- `>` is derived from a `<`
-// overload -- but the derived form is currently miscompiled here for a
-// multi-field struct, returning high for a value that is inside the range.
-// See BACKLOG.md; restore the natural spelling once that is fixed.
-func Clamp<T>(value: T, low: T, high: T) -> T {
-    if value < low {
+/// `value` brought into the range `low` to `high`, with `compare` deciding.
+///
+/// All three values are read by value and one is returned by copy; `compare` is called at most three times. A `low`
+/// above `high` returns `low`, exactly as `Clamp` does.
+///
+/// Cannot fail. Runs in constant time and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/clamp-by
+func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
+    if compare(high, low).IsLess() {
         return low;
     }
-    if high < value {
+    if compare(value, low).IsLess() {
+        return low;
+    }
+    if compare(high, value).IsLess() {
         return high;
     }
     return value;

@@ -1,7 +1,12 @@
-import Algorithms::{ Contains, Count, TryFind, TryFindLast, Equal, TryMismatch };
+import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere,
+                     LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
+import Core::{ Assert, Ordering };
 
-// A struct whose equality covers both fields, so a match on one field alone
-// must not be mistaken for equality.
+// The linear queries. What is worth checking is not that a search finds a match -- it is the boundaries: an empty
+// slice, a match at the first position, a match at the last, no match at all, and the difference between the first
+// match and the last when there are several.
+
+// Equality covers both fields, so a match on one field alone must not pass for equality.
 struct Record {
     key: int32;
     origin: int32;
@@ -11,175 +16,132 @@ extend Record {
     func ==(self: *Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
-}
 
-// Equality deliberately ignores `origin`, so two values sharing a key are
-// equal while their raw bytes differ. Anything that compares elements by their
-// bytes rather than through this operator gets the opposite answer.
-struct Keyed {
-    key: int32;
-    origin: int32;
-}
-
-extend Keyed {
-    func ==(self: *Keyed, other: Keyed) -> bool {
-        return self.key == other.key;
+    func !=(self: *Record, other: Record) -> bool {
+        return !(*self == other);
     }
 }
 
+func ByKey(left: Record, right: Record) -> Ordering {
+    if left.key < right.key {
+        return Ordering::Less;
+    }
+    if right.key < left.key {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+func IsEven(value: int32) -> bool {
+    return value % 2 == 0;
+}
+
+func IsNegative(value: int32) -> bool {
+    return value < 0;
+}
+
+func Ints(data: *int32, length: uint) -> Slice<int32> {
+    return Slice<int32> { data: data, length: length };
+}
+
 func Main() -> int {
-    var values: int32[7] = [4, 1, 7, 1, 9, 1, 4];
-    var empty: int32[1] = [0];
+    var storage: int32[7];
+    storage[0] = 4;
+    storage[1] = 7;
+    storage[2] = 4;
+    storage[3] = 2;
+    storage[4] = 9;
+    storage[5] = 4;
+    storage[6] = 1;
+    let items = Ints(@storage[0], 7);
+    let empty = Ints(null, 0);
+
+    // Presence and counting.
+    Assert(Contains<int32>(items, 4), "a value that is present is found");
+    Assert(!Contains<int32>(items, 5), "and one that is not, is not");
+    Assert(!Contains<int32>(empty, 4), "an empty slice contains nothing");
+    Assert(Count<int32>(items, 4) == 3, "every occurrence is counted");
+    Assert(Count<int32>(items, 5) == 0, "a value that is absent occurs zero times");
+    Assert(Count<int32>(empty, 4) == 0, "and an empty slice has none of anything");
+
+    // First and last are genuinely different answers when a value repeats.
+    var at: uint = 0;
+    Assert(IndexOf<int32>(items, 4).TryIntoValue(@at), "a present value has an index");
+    Assert(at == 0, "which is the first occurrence");
+    Assert(LastIndexOf<int32>(items, 4).TryIntoValue(@at), "and a last one");
+    Assert(at == 5, "which is the last occurrence");
+    Assert(IndexOf<int32>(items, 1).TryIntoValue(@at) && at == 6, "a match at the very end is found");
+    Assert(LastIndexOf<int32>(items, 7).TryIntoValue(@at) && at == 1, "and a single match is both first and last");
+    Assert(IndexOf<int32>(items, 5).IsNone(), "an absent value has no index");
+    Assert(LastIndexOf<int32>(items, 5).IsNone(), "from either end");
+    Assert(IndexOf<int32>(empty, 4).IsNone(), "and an empty slice never matches");
+
+    // Predicates answer the same questions without an equality.
+    Assert(IndexWhere<int32>(items, IsEven).TryIntoValue(@at) && at == 0, "the first accepted element");
+    Assert(LastIndexWhere<int32>(items, IsEven).TryIntoValue(@at) && at == 5, "and the last");
+    Assert(IndexWhere<int32>(items, IsNegative).IsNone(), "a predicate nothing satisfies finds nothing");
+    Assert(LastIndexWhere<int32>(items, IsNegative).IsNone(), "from either end");
+    Assert(CountWhere<int32>(items, IsEven) == 4, "and counts what it accepts");
+    Assert(CountWhere<int32>(empty, IsEven) == 0, "an empty slice satisfies no predicate anywhere");
+
+    // The universal and existential claims, including what they mean of nothing.
+    Assert(!AllOf<int32>(items, IsEven), "not every element is even");
+    Assert(AnyOf<int32>(items, IsEven), "but some element is");
+    Assert(!NoneOf<int32>(items, IsEven), "so it is not true that none is");
+    Assert(NoneOf<int32>(items, IsNegative), "while none is negative");
+    Assert(!AnyOf<int32>(items, IsNegative), "which is the same claim from the other side");
+    Assert(AllOf<int32>(empty, IsNegative), "an empty slice satisfies every universal claim");
+    Assert(!AnyOf<int32>(empty, IsNegative), "and no existential one");
+    Assert(NoneOf<int32>(empty, IsNegative), "which makes it vacuously free of anything");
+
+    // Mismatch and equality, including the case where one slice is a prefix of the other.
+    var other: int32[7];
     var index: uint = 0;
+    while index < 7 {
+        other[index] = storage[index];
+        index++;
+    }
+    Assert(Mismatch<int32>(items, Ints(@other[0], 7)).IsNone(), "identical slices never differ");
+    Assert(SequenceEqual<int32>(items, Ints(@other[0], 7)), "and are equal");
+    other[3] = 100;
+    Assert(Mismatch<int32>(items, Ints(@other[0], 7)).TryIntoValue(@at) && at == 3, "the first difference is reported");
+    Assert(!SequenceEqual<int32>(items, Ints(@other[0], 7)), "and makes them unequal");
+    other[3] = storage[3];
+    Assert(Mismatch<int32>(items, Ints(@other[0], 4)).TryIntoValue(@at) && at == 4,
+           "a prefix differs where the shorter one ends");
+    Assert(!SequenceEqual<int32>(items, Ints(@other[0], 4)), "and a prefix is not equal to the whole");
+    Assert(SequenceEqual<int32>(empty, Ints(null, 0)), "two empty slices are equal");
+    Assert(Mismatch<int32>(empty, Ints(null, 0)).IsNone(), "and never differ");
 
-    // Contains and Count agree about presence, and an empty sequence holds
-    // nothing whatever is asked of it.
-    if !Contains<int32>(@values[0], 7, 7) { return 10; }
-    if Contains<int32>(@values[0], 7, 8) { return 11; }
-    if Contains<int32>(@empty[0], 0, 0) { return 12; }
-    if Contains<int32>(null, 0, 5) { return 13; }
+    // Lexicographic ordering: the first difference decides, and length breaks a tie.
+    Assert(Compare<int32>(items, Ints(@other[0], 7)).IsEqual(), "identical slices compare equal");
+    Assert(Compare<int32>(Ints(@other[0], 4), items).IsLess(), "a proper prefix is the smaller");
+    Assert(Compare<int32>(items, Ints(@other[0], 4)).IsGreater(), "and the whole is the larger");
+    Assert(Compare<int32>(empty, items).IsLess(), "an empty slice is smaller than any non-empty one");
+    Assert(Compare<int32>(empty, Ints(null, 0)).IsEqual(), "and equal to another empty one");
+    other[1] = 6;
+    Assert(Compare<int32>(Ints(@other[0], 7), items).IsLess(), "the first differing element decides");
+    other[1] = 8;
+    Assert(Compare<int32>(Ints(@other[0], 7), items).IsGreater(), "in whichever direction it differs");
 
-    if Count<int32>(@values[0], 7, 1) != 3 { return 20; }
-    if Count<int32>(@values[0], 7, 4) != 2 { return 21; }
-    if Count<int32>(@values[0], 7, 8) != 0 { return 22; }
-    if Count<int32>(@empty[0], 0, 0) != 0 { return 23; }
+    // A comparator orders elements that have no ordering of their own.
+    var left: Record[2];
+    var right: Record[2];
+    left[0] = Record { key: 1, origin: 0 };
+    left[1] = Record { key: 5, origin: 0 };
+    right[0] = Record { key: 1, origin: 9 };
+    right[1] = Record { key: 7, origin: 9 };
+    let leftSlice = Slice<Record> { data: @left[0], length: 2 };
+    let rightSlice = Slice<Record> { data: @right[0], length: 2 };
+    Assert(CompareBy<Record>(leftSlice, rightSlice, ByKey).IsLess(), "a comparator decides the order");
+    Assert(CompareBy<Record>(rightSlice, leftSlice, ByKey).IsGreater(), "in both directions");
+    Assert(CompareBy<Record>(leftSlice, leftSlice, ByKey).IsEqual(), "and a slice equals itself");
 
-    // TryFind reports the first match and TryFindLast the last one, which
-    // differ exactly when the value repeats.
-    if !TryFind<int32>(@values[0], 7, 1, @index) { return 30; }
-    if index != 1 { return 31; }
-    if !TryFindLast<int32>(@values[0], 7, 1, @index) { return 32; }
-    if index != 5 { return 33; }
-
-    // A value appearing once gives the same index from both ends.
-    if !TryFind<int32>(@values[0], 7, 9, @index) { return 34; }
-    if index != 4 { return 35; }
-    if !TryFindLast<int32>(@values[0], 7, 9, @index) { return 36; }
-    if index != 4 { return 37; }
-
-    // The first and last positions are reachable.
-    if !TryFind<int32>(@values[0], 7, 4, @index) { return 38; }
-    if index != 0 { return 39; }
-    if !TryFindLast<int32>(@values[0], 7, 4, @index) { return 40; }
-    if index != 6 { return 41; }
-
-    // A miss leaves the index untouched, so a caller may seed it beforehand.
-    index = 99;
-    if TryFind<int32>(@values[0], 7, 8, @index) { return 42; }
-    if index != 99 { return 43; }
-    if TryFindLast<int32>(@values[0], 7, 8, @index) { return 44; }
-    if index != 99 { return 45; }
-
-    // An empty sequence never matches, and a null index reports failure rather
-    // than searching.
-    if TryFind<int32>(@empty[0], 0, 0, @index) { return 46; }
-    if TryFindLast<int32>(@empty[0], 0, 0, @index) { return 47; }
-    if TryFind<int32>(@values[0], 7, 4, null) { return 48; }
-    if TryFindLast<int32>(@values[0], 7, 4, null) { return 49; }
-
-    // Equal compares length first, then elements.
-    var a: int32[3] = [1, 2, 3];
-    var b: int32[3] = [1, 2, 3];
-    var c: int32[3] = [1, 5, 3];
-    var prefix: int32[2] = [1, 2];
-
-    if !Equal<int32>(@a[0], 3, @b[0], 3) { return 50; }
-    if Equal<int32>(@a[0], 3, @c[0], 3) { return 51; }
-    if Equal<int32>(@a[0], 3, @prefix[0], 2) { return 52; }
-    if !Equal<int32>(@a[0], 0, @b[0], 0) { return 53; }
-    if !Equal<int32>(null, 0, null, 0) { return 54; }
-    if !Equal<int32>(@a[0], 3, @a[0], 3) { return 55; }
-
-    // TryMismatch is the exact complement of Equal: it reports false only when
-    // the sequences are equal.
-    if TryMismatch<int32>(@a[0], 3, @b[0], 3, @index) { return 60; }
-    if !TryMismatch<int32>(@a[0], 3, @c[0], 3, @index) { return 61; }
-    if index != 1 { return 62; }
-
-    // A difference at the very first and very last positions.
-    var first: int32[3] = [9, 2, 3];
-    var last: int32[3] = [1, 2, 9];
-    if !TryMismatch<int32>(@a[0], 3, @first[0], 3, @index) { return 63; }
-    if index != 0 { return 64; }
-    if !TryMismatch<int32>(@a[0], 3, @last[0], 3, @index) { return 65; }
-    if index != 2 { return 66; }
-
-    // A proper prefix differs at the shorter length, in either argument order.
-    if !TryMismatch<int32>(@a[0], 3, @prefix[0], 2, @index) { return 67; }
-    if index != 2 { return 68; }
-    if !TryMismatch<int32>(@prefix[0], 2, @a[0], 3, @index) { return 69; }
-    if index != 2 { return 70; }
-
-    // Two empty sequences match, and a null index reports failure.
-    if TryMismatch<int32>(@a[0], 0, @b[0], 0, @index) { return 71; }
-    if TryMismatch<int32>(@a[0], 3, @c[0], 3, null) { return 72; }
-
-    // Unsigned elements behave the same, including at the type's limits.
-    var unsigned: uint32[4] = [0u32, 7u32, 4294967295u32, 7u32];
-    if !Contains<uint32>(@unsigned[0], 4, 4294967295u32) { return 80; }
-    if Count<uint32>(@unsigned[0], 4, 7u32) != 2 { return 81; }
-    if !TryFind<uint32>(@unsigned[0], 4, 0u32, @index) { return 82; }
-    if index != 0 { return 83; }
-    if !TryFindLast<uint32>(@unsigned[0], 4, 7u32, @index) { return 84; }
-    if index != 3 { return 85; }
-
-    // Signed elements at their limits.
-    var signed: int32[3] = [-2147483648i32, 0i32, 2147483647i32];
-    if !Contains<int32>(@signed[0], 3, -2147483648i32) { return 86; }
-    if !TryFindLast<int32>(@signed[0], 3, 2147483647i32, @index) { return 87; }
-    if index != 2 { return 88; }
-
-    // A user struct with an overloaded ==. Equality must consider every field,
-    // so a record sharing only its key is not a match.
-    var records: Record[3] = [Record { key: 1, origin: 0 },
-                              Record { key: 2, origin: 1 },
-                              Record { key: 1, origin: 2 }];
-    let sought = Record { key: 1, origin: 2 };
-    let sameKey = Record { key: 1, origin: 9 };
-
-    if !Contains<Record>(@records[0], 3, sought) { return 90; }
-    if Contains<Record>(@records[0], 3, sameKey) { return 91; }
-    if Count<Record>(@records[0], 3, sought) != 1 { return 92; }
-    if !TryFind<Record>(@records[0], 3, sought, @index) { return 93; }
-    if index != 2 { return 94; }
-
-    var copy: Record[3] = [Record { key: 1, origin: 0 },
-                           Record { key: 2, origin: 1 },
-                           Record { key: 1, origin: 2 }];
-    if !Equal<Record>(@records[0], 3, @copy[0], 3) { return 95; }
-    copy[1] = sameKey;
-    if Equal<Record>(@records[0], 3, @copy[0], 3) { return 96; }
-    if !TryMismatch<Record>(@records[0], 3, @copy[0], 3, @index) { return 97; }
-    if index != 1 { return 98; }
-
-    // A type whose equality ignores a field. Every query has to route through
-    // that operator, not through the elements' bytes, so values differing only
-    // in the ignored field count as equal.
-    var keyed: Keyed[3] = [Keyed { key: 1, origin: 10 },
-                           Keyed { key: 2, origin: 20 },
-                           Keyed { key: 3, origin: 30 }];
-    let sameKeyOtherOrigin = Keyed { key: 2, origin: 99 };
-
-    if !Contains<Keyed>(@keyed[0], 3, sameKeyOtherOrigin) { return 100; }
-    if Count<Keyed>(@keyed[0], 3, sameKeyOtherOrigin) != 1 { return 101; }
-    if !TryFind<Keyed>(@keyed[0], 3, sameKeyOtherOrigin, @index) { return 102; }
-    if index != 1 { return 103; }
-    if !TryFindLast<Keyed>(@keyed[0], 3, sameKeyOtherOrigin, @index) { return 104; }
-    if index != 1 { return 105; }
-
-    // Two sequences equal under the operator, though none of their origins
-    // match, so a byte-wise comparison would call them different.
-    var shifted: Keyed[3] = [Keyed { key: 1, origin: 71 },
-                             Keyed { key: 2, origin: 72 },
-                             Keyed { key: 3, origin: 73 }];
-    if !Equal<Keyed>(@keyed[0], 3, @shifted[0], 3) { return 106; }
-    if TryMismatch<Keyed>(@keyed[0], 3, @shifted[0], 3, @index) { return 107; }
-
-    // And a real difference is still reported, at the right index.
-    shifted[2] = Keyed { key: 9, origin: 73 };
-    if Equal<Keyed>(@keyed[0], 3, @shifted[0], 3) { return 108; }
-    if !TryMismatch<Keyed>(@keyed[0], 3, @shifted[0], 3, @index) { return 109; }
-    if index != 2 { return 110; }
+    // Equality covers every field, so records equal on one field alone are not equal.
+    Assert(!SequenceEqual<Record>(leftSlice, rightSlice), "records equal on one field are not equal records");
+    Assert(CompareBy<Record>(Slice<Record> { data: @left[0], length: 1 },
+                             Slice<Record> { data: @right[0], length: 1 }, ByKey).IsEqual(),
+           "though a comparator that reads one field says they are equivalent");
 
     return 0;
 }

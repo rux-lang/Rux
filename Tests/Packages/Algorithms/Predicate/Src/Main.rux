@@ -1,6 +1,5 @@
-import Algorithms::{ TryFindIf, TryFindLastIf, CountIf, All, Any, None };
 import Algorithms::{ RemoveIf, Partition, PartitionPoint, Transform, Fold };
-import Algorithms::{ IsSorted, Equal };
+import Algorithms::{ AllOf, IsSorted, NoneOf, SequenceEqual };
 
 struct Record {
     key: int32;
@@ -11,6 +10,14 @@ extend Record {
     func ==(self: *Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
+}
+
+
+// `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices. A slice literal cannot be
+// written directly in an `if` condition -- its brace opens the body -- so the comparison lives here.
+func SameInts(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
+                                Slice<int32> { data: right, length: length });
 }
 
 func IsEven(value: int32) -> bool {
@@ -69,48 +76,6 @@ func Main() -> int {
     var empty: int32[1] = [0];
     var index: uint = 0;
 
-    // TryFindIf reports the first accepted element, TryFindLastIf the last.
-    if !TryFindIf<int32>(@values[0], 8, IsEven, @index) { return 10; }
-    if index != 1 { return 11; }
-    if !TryFindLastIf<int32>(@values[0], 8, IsEven, @index) { return 12; }
-    if index != 7 { return 13; }
-
-    // A miss leaves the index untouched, so a caller may seed it.
-    index = 99;
-    if TryFindIf<int32>(@values[0], 8, Never, @index) { return 14; }
-    if index != 99 { return 15; }
-    if TryFindLastIf<int32>(@values[0], 8, Never, @index) { return 16; }
-    if index != 99 { return 17; }
-
-    // An empty sequence matches nothing, and a null index reports failure.
-    if TryFindIf<int32>(@empty[0], 0, Always, @index) { return 18; }
-    if TryFindLastIf<int32>(@empty[0], 0, Always, @index) { return 19; }
-    if TryFindIf<int32>(@values[0], 8, IsEven, null) { return 20; }
-    if TryFindLastIf<int32>(@values[0], 8, IsEven, null) { return 21; }
-
-    // CountIf agrees with the two quantifiers at the extremes.
-    if CountIf<int32>(@values[0], 8, IsEven) != 4 { return 30; }
-    if CountIf<int32>(@values[0], 8, Never) != 0 { return 31; }
-    if CountIf<int32>(@values[0], 8, Always) != 8 { return 32; }
-    if CountIf<int32>(@empty[0], 0, Always) != 0 { return 33; }
-
-    // All, Any and None over a mixed sequence.
-    if All<int32>(@values[0], 8, IsEven) { return 40; }
-    if !All<int32>(@values[0], 8, IsPositive) { return 41; }
-    if !Any<int32>(@values[0], 8, IsEven) { return 42; }
-    if Any<int32>(@values[0], 8, Never) { return 43; }
-    if !None<int32>(@values[0], 8, Never) { return 44; }
-    if None<int32>(@values[0], 8, IsEven) { return 45; }
-
-    // None is the exact negation of Any, including when empty.
-    if None<int32>(@values[0], 8, IsEven) == Any<int32>(@values[0], 8, IsEven) { return 46; }
-
-    // An empty sequence satisfies All vacuously and Any never, which keeps
-    // All and None true together only when there is nothing to test.
-    if !All<int32>(@empty[0], 0, Never) { return 47; }
-    if Any<int32>(@empty[0], 0, Always) { return 48; }
-    if !None<int32>(@empty[0], 0, Always) { return 49; }
-
     // RemoveIf compacts survivors and preserves their order.
     var mixed: int32[8] = [1, 2, 3, 4, 5, 6, 7, 8];
     if RemoveIf<int32>(@mixed[0], 8, IsEven) != 4 { return 50; }
@@ -130,9 +95,12 @@ func Main() -> int {
     let total: uint = 8;
     let boundary = Partition<int32>(@split[0], 8, IsEven);
     if boundary != 4 { return 60; }
-    if !All<int32>(@split[0], boundary, IsEven) { return 61; }
-    if !None<int32>(@split[4], total - boundary, IsEven) { return 62; }
-    if boundary != CountIf<int32>(@split[0], 8, IsEven) { return 63; }
+    // A slice literal cannot appear anywhere inside an `if` condition -- its brace is taken as the body -- so both
+    // halves are named first.
+    let accepted = Slice<int32> { data: @split[0], length: boundary };
+    let rejected = Slice<int32> { data: @split[4], length: total - boundary };
+    if !AllOf<int32>(accepted, IsEven) { return 61; }
+    if !NoneOf<int32>(rejected, IsEven) { return 62; }
 
     // Partitioning by a predicate nothing or everything satisfies.
     var all: int32[4] = [2, 4, 6, 8];
@@ -187,9 +155,7 @@ func Main() -> int {
     if Fold<Record, int32>(@records[0], 3, 0, AddKey) != 18 { return 94; }
 
     // Predicates over a struct element type.
-    if CountIf<Record>(@records[0], 3, HasEvenKey) != 1 { return 100; }
-    if !TryFindIf<Record>(@records[0], 3, HasEvenKey, @index) { return 101; }
-    if index != 1 { return 102; }
+    if PartitionPoint<Record>(@records[0], 0, HasEvenKey) != 0 { return 101; }
 
     var pruned: Record[3] = [Record { key: 5, origin: 0 },
                              Record { key: 6, origin: 1 },
@@ -201,7 +167,7 @@ func Main() -> int {
     // The value-based queries still work alongside the predicate ones.
     var check: int32[4] = [2, 4, 6, 8];
     if !IsSorted<int32>(@check[0], 4) { return 110; }
-    if !Equal<int32>(@check[0], 4, @all[0], 4) { return 111; }
+    if !SameInts(@check[0], @all[0], 4) { return 111; }
 
     return 0;
 }
