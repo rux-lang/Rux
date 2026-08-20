@@ -1,0 +1,98 @@
+import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray,
+                    NaturalAlignment, SystemAllocator };
+import Core::Assert;
+import Memory::{ IsPointerAligned, Set };
+
+// What an allocator gets wrong quietly: handing back an address that does not satisfy the alignment, accepting a
+// release that does not match its allocation, and losing the original block when a reallocation fails. Each is
+// checked rather than assumed.
+
+func Main() -> int {
+    // A layout that exists is valid, so the refusals happen at construction.
+    Assert(Layout::New(64, 0).IsNone(), "an alignment of zero is not a layout");
+    Assert(Layout::New(64, 3).IsNone(), "and neither is one that is not a power of two");
+    Assert(Layout::New(64, 8).IsSome(), "an ordinary pair is a layout");
+    Assert(Layout::New(0, 8).IsSome(), "and so is a zero size");
+    Assert(Layout::New(uint::Max, 8).IsNone(), "a size whose rounding overflows is refused");
+    Assert(Layout::New(uint::Max, 1).IsSome(), "where an alignment of one has nothing to round");
+
+    var layout = Layout::New(64, 16).ValueOr(Layout { size: 0, alignment: 1 });
+    Assert(layout.size == 64 && layout.alignment == 16, "the layout holds what it was built with");
+    Assert(layout.PaddedSize() == 64, "an aligned size needs no padding");
+    let odd = Layout::New(60, 16).ValueOr(Layout { size: 0, alignment: 1 });
+    Assert(odd.PaddedSize() == 64, "and an unaligned one rounds up to its own alignment");
+    Assert(layout.IsSatisfiedBy(32), "an aligned address satisfies the layout");
+    Assert(!layout.IsSatisfiedBy(33), "and an unaligned one does not");
+    Assert(layout == Layout::New(64, 16).ValueOr(odd), "two layouts asking the same thing are equal");
+    Assert(layout != odd, "and two asking different things are not");
+
+    // An array layout has to check the multiplication, which is where a huge count turns into a small allocation.
+    Assert(LayoutOfArray<uint64>(0, 8).IsSome(), "an ordinary array layout");
+    Assert(LayoutOfArray<uint64>(0, uint::Max).IsNone(), "a count that cannot fit is refused");
+    let single = LayoutOf<uint64>(0);
+    Assert(single.size == 8 && single.alignment == 8, "a value's layout is its own size and alignment");
+    Assert(NaturalAlignment(0) == 1 && NaturalAlignment(1) == 1, "a byte wants no alignment");
+    Assert(NaturalAlignment(4) == 4 && NaturalAlignment(8) == 8, "a word wants its own width");
+
+    // The error questions.
+    Assert(AllocError::None.IsOk() && !AllocError::None.IsError(), "None is the success case");
+    Assert(AllocError::OutOfMemory.IsError(), "and exhaustion is not");
+    Assert(AllocError::OutOfMemory.IsTransient(), "exhaustion might pass");
+    Assert(!AllocError::Unsupported.IsTransient(), "but an unsupported request will not");
+    Assert(!AllocError::InvalidBlock.IsTransient(), "and neither will a mistaken one");
+
+    var allocator = SystemAllocator::New();
+
+    // A zero-sized layout gives the shared empty block rather than null, so no caller has to branch.
+    var empty: *var opaque = null;
+    let zero = Layout::New(0, 16).ValueOr(layout);
+    Assert(allocator.Allocate(zero, @empty) == AllocError::None, "a zero-sized allocation succeeds");
+    Assert(empty != null && IsEmptyBlock(empty), "and reports the shared empty block");
+    Assert(empty == EmptyBlockAddress(), "which is the same address every time");
+    Assert(allocator.Deallocate(empty, zero) == AllocError::None, "releasing it succeeds");
+
+    // An ordinary allocation is aligned to what was asked for, and the whole size is usable.
+    var block: *var opaque = null;
+    Assert(allocator.Allocate(layout, @block) == AllocError::None, "the allocation succeeds");
+    Assert(block != null, "and reports an address");
+    Assert(IsPointerAligned(block as *opaque, 16), "which satisfies the layout's alignment");
+    Set(block, 0xC3 as byte, 64);
+    let bytes = block as *var byte;
+    Assert(*bytes == 0xC3 as byte && *(bytes + 63) == 0xC3 as byte, "the whole size is writable");
+
+    // A stricter alignment than a page still works, because the allocator pads for it.
+    var aligned: *var opaque = null;
+    let strict = Layout::New(32, 4096).ValueOr(layout);
+    Assert(allocator.Allocate(strict, @aligned) == AllocError::None, "a page-aligned allocation succeeds");
+    Assert(IsPointerAligned(aligned as *opaque, 4096), "and really is page-aligned");
+    Assert(allocator.Deallocate(aligned, strict) == AllocError::None, "and releases");
+
+    // A release that does not match its allocation is reported rather than corrupting anything.
+    Assert(allocator.Deallocate(block, odd) == AllocError::InvalidBlock, "a mismatched layout is refused");
+    Assert(allocator.Deallocate(null, layout) == AllocError::InvalidBlock, "and so is a null block");
+    var stackValue: uint64 = 0;
+    Assert(allocator.Deallocate(@stackValue as *var opaque, layout) == AllocError::InvalidBlock,
+           "and a pointer this allocator never gave out");
+
+    // Reallocation keeps what fits and reports the address to use.
+    var grown: *var opaque = null;
+    let larger = Layout::New(256, 16).ValueOr(layout);
+    Assert(allocator.Reallocate(block, layout, larger, @grown) == AllocError::None, "growing succeeds");
+    Assert(grown != null, "and reports where the block now is");
+    let grownBytes = grown as *var byte;
+    Assert(*grownBytes == 0xC3 as byte && *(grownBytes + 63) == 0xC3 as byte, "the old contents survived");
+
+    var shrunk: *var opaque = null;
+    let smaller = Layout::New(16, 16).ValueOr(layout);
+    Assert(allocator.Reallocate(grown, larger, smaller, @shrunk) == AllocError::None, "shrinking succeeds");
+    Assert(*(shrunk as *var byte) == 0xC3 as byte, "and keeps what still fits");
+
+    // The two layouts must share an alignment; anything else is refused rather than silently moved.
+    var moved: *var opaque = null;
+    let realigned = Layout::New(16, 32).ValueOr(layout);
+    Assert(allocator.Reallocate(shrunk, smaller, realigned, @moved) == AllocError::Unsupported,
+           "changing the alignment is refused");
+    Assert(allocator.Deallocate(shrunk, smaller) == AllocError::None,
+           "and the original block is untouched, so it still releases");
+    return 0;
+}

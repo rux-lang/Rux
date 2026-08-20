@@ -1,0 +1,109 @@
+// What every allocator in this package promises, written as a bound a generic can require.
+//
+// The contract is deliberately small: take a layout and give back storage, take it back, and grow or shrink a block
+// in place where that is possible. Everything else -- pooling, arenas, tracking -- is an implementation of these
+// three, not an addition to them.
+//
+// Four promises hold for every implementation, and a caller may rely on them without knowing which allocator it has:
+//
+//   - **The address satisfies the layout.** A block handed back is aligned to what was asked for, always.
+//   - **The contents are undefined.** Nothing here zeroes. A caller wanting zeroed storage clears it, or asks the
+//     page layer, which does zero because the operating system does.
+//   - **A release must match its allocation.** The same pointer, and a layout equal to the one it was given with.
+//     An allocator may check that or may not; passing a different layout is undefined either way, because the
+//     allocator needs the size to know what it is taking back.
+//   - **A failure leaves everything alone.** A failed allocation gives no storage and takes none; a failed
+//     reallocation leaves the original block exactly as it was, valid and still the caller's to release.
+//
+// A zero-sized layout is legal. Every allocator here answers it with a non-null, correctly aligned address that
+// nothing may be read from or written to, and which must still be released. That is cheaper than a null case every
+// caller has to branch on, and it keeps a zero-length collection from being a special shape.
+
+import Allocator::{ AllocError, Layout };
+
+/// The operations every allocator provides.
+///
+/// Written as an interface so a generic can require it -- `func Build<A: Allocator>(allocator: *var A)` resolves the
+/// calls at each instantiation with nothing dispatched at run time.
+///
+/// https://rux-lang.dev/docs/api/allocator/allocator
+interface Allocator {
+    /// Takes storage matching `layout` and reports where it landed.
+    ///
+    /// `result` receives the address when this reports `None`, and is left unwritten otherwise. The address
+    /// satisfies the layout's alignment. The contents are undefined.
+    ///
+    /// A zero-sized layout gives a non-null aligned address that nothing may be read from or written to.
+    ///
+    /// # Safety
+    ///
+    /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/allocator/allocate
+    func Allocate(layout: Layout, result: *var *var opaque) -> AllocError;
+
+    /// Gives back storage that this allocator handed out.
+    ///
+    /// `block` must be an address this allocator returned, and `layout` must equal the layout it was given with.
+    /// Reports `InvalidBlock` where the allocator can tell, and is undefined where it cannot.
+    ///
+    /// # Safety
+    ///
+    /// Every pointer into the block becomes invalid, and the storage may be handed to the next allocation at once.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/allocator/deallocate
+    func Deallocate(block: *var opaque, layout: Layout) -> AllocError;
+
+    /// Changes the size of a block, preserving as much of its contents as both layouts hold.
+    ///
+    /// `block` and `oldLayout` describe the existing allocation; `newLayout` is what is wanted. `result` receives
+    /// the address when this reports `None` -- which may or may not be the address it was given, so the caller must
+    /// use what comes back.
+    ///
+    /// On success the first `min(old, new)` bytes are preserved and the original block is gone. On failure the
+    /// original block is untouched and still the caller's.
+    ///
+    /// The two layouts must have the same alignment. An allocator reports `Unsupported` rather than silently moving
+    /// a block to a different alignment.
+    ///
+    /// # Safety
+    ///
+    /// The old pointer is invalid once this succeeds, whether or not the address changed.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/allocator/reallocate
+    func Reallocate(block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError;
+}
+
+/// The address a zero-sized allocation reports.
+///
+/// Not null, so a caller need not branch, and aligned to anything, so it satisfies every layout. Nothing may be read
+/// from or written to it: it is an address that exists rather than storage that does.
+///
+/// Every allocator in this package returns exactly this for a zero-sized layout, which makes a zero-sized block
+/// recognizable and its release free.
+///
+/// https://rux-lang.dev/docs/api/allocator/empty-block
+const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
+
+/// The address a zero-sized allocation reports, as a pointer.
+///
+/// Takes nothing and returns the same value every time.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/allocator/empty-block-address
+func EmptyBlockAddress() -> *var opaque {
+    return EmptyBlock as *var opaque;
+}
+
+/// Whether `block` is the address a zero-sized allocation reports.
+///
+/// `block` is read by value and never dereferenced.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/allocator/is-empty-block
+func IsEmptyBlock(block: *var opaque) -> bool {
+    return (block as uint) == EmptyBlock;
+}
