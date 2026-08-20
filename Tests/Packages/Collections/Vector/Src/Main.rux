@@ -52,6 +52,57 @@ func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
     Assert(vector.IsEmpty(), "popping everything empties the vector");
 }
 
+// Drains a vector of tracked elements completely, letting each yielded element die here. Returns how many came out.
+func DrainFully(allocator: Allocator, counter: *var int32, count: uint) -> uint {
+    var vector = Vector::New<Tracked>(allocator);
+    var index: uint = 0;
+    while index < count {
+        vector.Push(Tracked { counter: counter, value: index as int32 });
+        index++;
+    }
+    var taken = vector.IntoIterator();
+    var yielded: uint = 0;
+    // A fresh binding each round, so each element is owned by exactly one of them and destroyed when that round
+    // ends. Reusing one binding would overwrite the previous element instead, and assignment destroys nothing.
+    // Matched rather than unwrapped through `TryIntoValue`: matching an option by value consumes it, so the arm's
+    // binding is the payload's only owner and destroys it once when the arm ends.
+    var draining = true;
+    while draining {
+        match taken.Next() {
+            .Some(element) => {
+                yielded = yielded + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+    return yielded;
+}
+
+// Stops part-way, so the iterator has to destroy what nobody took.
+func DrainPartly(allocator: Allocator, counter: *var int32, count: uint, stopAfter: uint) {
+    var vector = Vector::New<Tracked>(allocator);
+    var index: uint = 0;
+    while index < count {
+        vector.Push(Tracked { counter: counter, value: index as int32 });
+        index++;
+    }
+    var taken = vector.IntoIterator();
+    var yielded: uint = 0;
+    var draining = true;
+    while draining && yielded < stopAfter {
+        match taken.Next() {
+            .Some(element) => {
+                yielded = yielded + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+}
+
 func Main() -> int {
     var system = SystemAllocator::New();
     let allocator: Allocator = system;
@@ -184,6 +235,111 @@ func Main() -> int {
     Assert(destroyed == 4, "truncating destroys exactly the four elements it drops");
     tracked.Clear();
     Assert(destroyed == 6, "and clearing destroys the two that were left");
+
+    // Insertion moves elements along and keeps order.
+    var ordered = Vector::New<int32>(allocator);
+    index = 0;
+    while index < 4 {
+        ordered.Push((index * 10) as int32);
+        index++;
+    }
+    Assert(ordered.Insert(0, 99) == CollectionError::None, "inserting at the front succeeds");
+    Assert(ordered.Get(0).ValueOr(-1) == 99, "putting the value there");
+    Assert(ordered.Get(1).ValueOr(-1) == 0, "and moving what was there along");
+    Assert(ordered.Length() == 5, "with one more element than before");
+    Assert(ordered.Insert(5, 55) == CollectionError::None, "inserting at exactly the length appends");
+    Assert(ordered.Get(5).ValueOr(-1) == 55, "putting it at the end");
+    Assert(ordered.Insert(7, 1) == CollectionError::IndexOutOfRange, "and inserting past the length is refused");
+    Assert(ordered.Length() == 6, "changing nothing");
+    Assert(ordered.Insert(3, 77) == CollectionError::None, "inserting in the middle succeeds");
+    Assert(ordered.Get(3).ValueOr(-1) == 77, "putting the value there");
+    Assert(ordered.Get(4).ValueOr(-1) == 20, "and moving the rest along");
+
+    // Removal keeps order and hands the element back.
+    var removed: int32 = 0;
+    Assert(ordered.Length() == 7, "three insertions on four elements leave seven");
+    Assert(ordered.RemoveAt(3).TryIntoValue(@removed) && removed == 77, "removal hands back what it took");
+    Assert(ordered.Get(3).ValueOr(-1) == 20, "closing the gap behind it");
+    Assert(ordered.Length() == 6, "with one fewer element");
+    Assert(ordered.RemoveAt(6).IsNone(), "removing past the end reports nothing");
+    Assert(ordered.Length() == 6, "and changes nothing");
+
+    // Swap-removal is constant time and does not keep order.
+    let wasLast = ordered.Get(ordered.Length() - 1).ValueOr(-1);
+    Assert(ordered.SwapRemoveAt(0).TryIntoValue(@removed) && removed == 99, "swap-removal hands back what it took");
+    Assert(ordered.Get(0).ValueOr(-1) == wasLast, "and moves the last element into the gap");
+    Assert(ordered.SwapRemoveAt(ordered.Length()).IsNone(), "swap-removing past the end reports nothing");
+
+    // The ends, and what an empty vector has instead of them.
+    var edge: *int32 = null;
+    Assert(ordered.First().TryIntoValue(@edge), "a non-empty vector has a first element");
+    Assert(ordered.Last().TryIntoValue(@edge), "and a last one");
+    var nothing = Vector::New<int32>(allocator);
+    Assert(nothing.First().IsNone(), "an empty vector has no first element");
+    Assert(nothing.Last().IsNone(), "and no last one");
+
+    // Slicing is clamped rather than refused, so a caller need not check twice.
+    var span = Vector::New<int32>(allocator);
+    index = 0;
+    while index < 6 {
+        span.Push(index as int32);
+        index++;
+    }
+    Assert(span.Slice(2, 3).length == 3, "a slice inside the vector is its own length");
+    Assert(span.Slice(2, 3).data[0] == 2, "starting where it was asked to");
+    Assert(span.Slice(4, 10).length == 2, "a slice running past the end is clamped");
+    Assert(span.Slice(6, 1).length == 0, "a slice starting at the end is empty");
+    Assert(span.Slice(0, 0).length == 0, "and so is one of no elements");
+    Assert(span.MutableSliceOf(1, 2).length == 2, "a writable slice is clamped the same way");
+
+    // Consuming iteration moves every element out and takes the storage with it.
+    var drained = Vector::New<int32>(allocator);
+    index = 0;
+    while index < 5 {
+        drained.Push((index + 1) as int32);
+        index++;
+    }
+    var sum: int32 = 0;
+    var taken = drained.IntoIterator();
+    var element: int32 = 0;
+    while taken.Next().TryIntoValue(@element) {
+        sum = sum + element;
+    }
+    Assert(sum == 15, "consuming iteration yields every element");
+    Assert(taken.Next().IsNone(), "and stops once they are gone");
+
+    // Every element leaves the vector exactly once, and the iterator destroys exactly what nobody took.
+    //
+    // What an arm's binding does with the element it took is not the iterator's business, and is currently nothing:
+    // a payload bound by a match arm is not destroyed when the arm ends, so draining fully and dropping each element
+    // on the floor destroys none of them. That is a leak in the language rather than in this container, and it is
+    // recorded in BACKLOG.md; what is asserted here is the half this container owns.
+    destroyed = 0;
+    Assert(DrainFully(allocator, @destroyed, 6) == 6, "consuming iteration yields every element of a tracked vector");
+    Assert(destroyed == 0, "and the iterator destroys none of what it handed over");
+
+    destroyed = 0;
+    DrainPartly(allocator, @destroyed, 6, 2);
+    Assert(destroyed == 4, "stopping part-way destroys exactly the four nobody took");
+
+    // Handing the storage to an array copies nothing.
+    var moving = Vector::New<int32>(allocator);
+    moving.Push(3);
+    moving.Push(4);
+    var transferError = CollectionError::None;
+    var fixed = moving.IntoArray(@transferError);
+    Assert(transferError == CollectionError::None, "handing the storage to an array succeeds");
+    Assert(fixed.Length() == 2, "with every element");
+    Assert(fixed.Get(0).ValueOr(-1) == 3 && fixed.Get(1).ValueOr(-1) == 4, "in order");
+    // The block itself is handed over rather than the elements copied, though the trim that precedes the handover
+    // may move it: an array's length is its capacity, and a vector's spare has to go before it can be one.
+    Assert(fixed.AsSlice().data != null, "over storage the array now owns");
+
+    var copying = Vector::New<int32>(allocator);
+    copying.Push(8);
+    var duplicated = copying.ToArray(@transferError);
+    Assert(transferError == CollectionError::None, "copying into an array succeeds");
+    Assert(duplicated.AsSlice().data != copying.AsSlice().data, "over storage of its own");
 
     return 0;
 }
