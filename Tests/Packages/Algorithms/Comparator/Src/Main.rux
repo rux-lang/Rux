@@ -1,5 +1,6 @@
 import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
-import Algorithms::{ IsSortedBy, IsSortedUntilBy, LowerBoundBy, UpperBoundBy, TryBinarySearchBy, EqualRangeBy };
+import Algorithms::{ IsSorted, IsSortedBy };
+import Core::Ordering;
 import Algorithms::{ SequenceEqual, Copy, Reverse };
 
 // Declares no operators at all. Every ordering below has to come from the
@@ -12,6 +13,37 @@ struct Task {
 
 // The extremes under a comparator moved to the MinMax test when they moved to slices and `Ordering`; what stays here
 // is the ordering-driven searching and sorting. `Equal` became `SequenceEqual` over slices in the same move.
+
+// `IsSorted` and `IsSortedBy` take a slice since the ordered searches moved to slices, and `IsSortedBy` takes a
+// three-way comparison. Sorting still takes a less-than, so both spellings of the same order live here.
+func Sorted<T>(data: *T, length: uint) -> bool {
+    return IsSorted<T>(Slice<T> { data: data, length: length });
+}
+
+func SortedTasks(data: *Task, length: uint, compare: func(Task, Task) -> Ordering) -> bool {
+    return IsSortedBy<Task>(Slice<Task> { data: data, length: length }, compare);
+}
+
+func ByPriorityOrder(left: Task, right: Task) -> Ordering {
+    if left.priority < right.priority {
+        return Ordering::Less;
+    }
+    if right.priority < left.priority {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+func ByIdOrder(left: Task, right: Task) -> Ordering {
+    if left.id < right.id {
+        return Ordering::Less;
+    }
+    if right.id < left.id {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
 func SameInts(left: *int32, right: *int32, length: uint) -> bool {
     return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
                                 Slice<int32> { data: right, length: length });
@@ -73,7 +105,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     SortBy<int32>(@actual[0], length, LessInt32);
     ReferenceSort(@expected[0], length, LessInt32);
 
-    if !IsSortedBy<int32>(@actual[0], length, LessInt32) {
+    if !Sorted<int32>(@actual[0], length) {
         return 1;
     }
     if !SameInts(@actual[0], @expected[0], length) {
@@ -141,53 +173,18 @@ func Main() -> int {
                           Task { priority: 1, id: 20 }];
 
     SortBy<Task>(@tasks[0], five, ByPriority);
-    if !IsSortedBy<Task>(@tasks[0], five, ByPriority) { return 60; }
+    if !SortedTasks(@tasks[0], five, ByPriorityOrder) { return 60; }
     if tasks[0].priority != 1 || tasks[4].priority != 3 { return 61; }
 
     SortBy<Task>(@tasks[0], five, ById);
-    if !IsSortedBy<Task>(@tasks[0], five, ById) { return 62; }
+    if !SortedTasks(@tasks[0], five, ByIdOrder) { return 62; }
     if tasks[0].id != 10 || tasks[4].id != 50 { return 63; }
     // Ordering by id leaves priorities unsorted, so the two orders are really
     // different rather than coincidentally equal.
-    if IsSortedBy<Task>(@tasks[0], five, ByPriority) { return 64; }
+    if SortedTasks(@tasks[0], five, ByPriorityOrder) { return 64; }
 
     SortDescendingBy<Task>(@tasks[0], five, ById);
     if tasks[0].id != 50 || tasks[4].id != 10 { return 65; }
-
-    // IsSortedUntil reports the first break under the comparator.
-    var broken: int32[4] = [1, 2, 0, 3];
-    if IsSortedUntilBy<int32>(@broken[0], 4, LessInt32) != 2 { return 70; }
-    if IsSortedUntilBy<int32>(@broken[0], 0, LessInt32) != 0 { return 71; }
-    if IsSortedUntilBy<int32>(@broken[0], 1, LessInt32) != 1 { return 72; }
-
-    // The bounded searches, against a sequence sorted by the comparator.
-    var values: int32[6] = [10, 20, 20, 20, 40, 50];
-    if LowerBoundBy<int32>(@values[0], six, 20, LessInt32) != 1 { return 80; }
-    if UpperBoundBy<int32>(@values[0], six, 20, LessInt32) != 4 { return 81; }
-    if LowerBoundBy<int32>(@values[0], six, 5, LessInt32) != 0 { return 82; }
-    if UpperBoundBy<int32>(@values[0], six, 60, LessInt32) != 6 { return 83; }
-
-    let span = EqualRangeBy<int32>(@values[0], six, 20, LessInt32);
-    if span.start != 1 || span.end != 4 { return 84; }
-    let absent = EqualRangeBy<int32>(@values[0], six, 30, LessInt32);
-    if absent.start != 4 || absent.end != 4 { return 85; }
-
-    if !TryBinarySearchBy<int32>(@values[0], six, 20, LessInt32, @index) { return 86; }
-    if index != 1 { return 87; }
-    if TryBinarySearchBy<int32>(@values[0], six, 30, LessInt32, @index) { return 88; }
-    if TryBinarySearchBy<int32>(@values[0], six, 20, LessInt32, null) { return 89; }
-
-    // Searching a Task sequence ordered by the same comparator that sorted it.
-    var byPriority: Task[5] = [Task { priority: 1, id: 1 },
-                               Task { priority: 2, id: 2 },
-                               Task { priority: 2, id: 3 },
-                               Task { priority: 4, id: 4 },
-                               Task { priority: 5, id: 5 }];
-    let probe = Task { priority: 2, id: 99 };
-    if LowerBoundBy<Task>(@byPriority[0], five, probe, ByPriority) != 1 { return 90; }
-    if UpperBoundBy<Task>(@byPriority[0], five, probe, ByPriority) != 3 { return 91; }
-    if !TryBinarySearchBy<Task>(@byPriority[0], five, probe, ByPriority, @index) { return 92; }
-    if index != 1 { return 93; }
 
     // Selection under a comparator, checked against a fully sorted copy.
     var selection: int32[40];
@@ -219,7 +216,7 @@ func Main() -> int {
     var partial: int32[40];
     Copy<int32>(@partial[0], @selection[0], 40);
     if !PartialSortBy<int32>(@partial[0], 40, 8, LessInt32) { return 140; }
-    if !IsSortedBy<int32>(@partial[0], 8, LessInt32) { return 141; }
+    if !Sorted<int32>(@partial[0], 8) { return 141; }
     if !SameInts(@partial[0], @sorted[0], 8) { return 142; }
     if PartialSortBy<int32>(@partial[0], 40, 41, LessInt32) { return 143; }
     if !PartialSortBy<int32>(@partial[0], 40, 0, LessInt32) { return 144; }

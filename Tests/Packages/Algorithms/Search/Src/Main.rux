@@ -1,8 +1,16 @@
-import Algorithms::{ IsSorted, IsSortedUntil, LowerBound, UpperBound, TryBinarySearch, EqualRange, Count };
+import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil,
+                     IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
+import Core::{ Assert, Ordering };
 
-// Ordered by key alone, so several distinct records compare equivalent and the
-// bounds have a run to delimit. Deliberately defines `<` and not `==`, which
-// is what the Search module is documented to require.
+// The ordered searches. A binary search is easy to write in a way that works on the cases anyone thinks to try and
+// fails on the ones nobody does, so what is checked here is the boundaries: a value before everything, after
+// everything, absent between two present ones, present once, present many times, and every one of those against an
+// empty slice and a one-element slice.
+//
+// The bounds are checked against a linear count of the equal elements, so the two answers have to agree rather than
+// merely look plausible.
+
+// Ordered by key alone, so equivalent-but-distinct elements exist and which one a search finds is observable.
 struct Ranked {
     key: int32;
     origin: int32;
@@ -14,190 +22,170 @@ extend Ranked {
     }
 }
 
-// Checks every bound invariant at one probe value at once: the expected
-// endpoints, that EqualRange agrees with the two bounds, that the width of the
-// range equals the number of matching elements, and that TryBinarySearch
-// succeeds exactly when the range is non-empty and then reports its start.
-func CheckBounds(data: *int32, length: uint, value: int32, wantLower: uint, wantUpper: uint, code: int) -> int {
-    if LowerBound<int32>(data, length, value) != wantLower {
-        return code;
+func ByKey(left: Ranked, right: Ranked) -> Ordering {
+    if left.key < right.key {
+        return Ordering::Less;
     }
-    if UpperBound<int32>(data, length, value) != wantUpper {
-        return code + 1;
+    if right.key < left.key {
+        return Ordering::Greater;
     }
+    return Ordering::Equal;
+}
 
-    let bounds = EqualRange<int32>(data, length, value);
-    if bounds.start != wantLower || bounds.end != wantUpper {
-        return code + 2;
+func LessInt32(left: int32, right: int32) -> Ordering {
+    if left < right {
+        return Ordering::Less;
     }
-    if bounds.start > bounds.end {
-        return code + 3;
+    if right < left {
+        return Ordering::Greater;
     }
-    let items = Slice<int32> { data: data, length: length };
-    if bounds.end - bounds.start != Count<int32>(items, value) {
-        return code + 4;
-    }
+    return Ordering::Equal;
+}
 
-    var index: uint = 12345;
-    let found = TryBinarySearch<int32>(data, length, value, @index);
-    if found != (wantLower != wantUpper) {
-        return code + 5;
-    }
-    if found {
-        if index != wantLower {
-            return code + 6;
+func Ints(data: *int32, length: uint) -> Slice<int32> {
+    return Slice<int32> { data: data, length: length };
+}
+
+// A linear count, so the bounds have something independent to agree with.
+func CountEqual(items: Slice<int32>, value: int32) -> uint {
+    var found: uint = 0;
+    var index: uint = 0;
+    while index < items.length {
+        if items.data[index] == value {
+            found = found + 1;
         }
+        index++;
+    }
+    return found;
+}
+
+// Every claim the bounds make about one value, checked together and against the linear count.
+func CheckBounds(items: Slice<int32>, value: int32, wantLower: uint, wantUpper: uint) {
+    Assert(LowerBound<int32>(items, value) == wantLower, "the lower bound is where the value starts");
+    Assert(UpperBound<int32>(items, value) == wantUpper, "the upper bound is where it ends");
+    let span = EqualRange<int32>(items, value);
+    Assert(span.start == wantLower && span.end == wantUpper, "the equal range is both bounds at once");
+    Assert(span.end - span.start == CountEqual(items, value), "and spans exactly the equal elements");
+    Assert(LowerBoundBy<int32>(items, value, LessInt32) == wantLower, "a comparator agrees on the lower bound");
+    Assert(UpperBoundBy<int32>(items, value, LessInt32) == wantUpper, "and on the upper");
+    let byRange = EqualRangeBy<int32>(items, value, LessInt32);
+    Assert(byRange.start == wantLower && byRange.end == wantUpper, "and on the range between them");
+
+    var at: uint = 0;
+    if wantLower == wantUpper {
+        Assert(BinarySearch<int32>(items, value).IsNone(), "an empty range means the value is absent");
+        Assert(BinarySearchBy<int32>(items, value, LessInt32).IsNone(), "under a comparator too");
     }
     else {
-        if index != 12345 {
-            return code + 7;
-        }
+        Assert(BinarySearch<int32>(items, value).TryIntoValue(@at), "a non-empty range means the value is present");
+        Assert(at == wantLower, "and the first of the equal elements is the one reported");
+        Assert(BinarySearchBy<int32>(items, value, LessInt32).TryIntoValue(@at) && at == wantLower,
+               "which a comparator agrees with");
     }
-    return 0;
 }
 
 func Main() -> int {
-    var code = 0;
+    // Sortedness, including the two lengths that are sorted for want of a pair to be out of order.
+    var run: int32[5];
+    run[0] = 1;
+    run[1] = 3;
+    run[2] = 3;
+    run[3] = 7;
+    run[4] = 9;
+    Assert(IsSorted<int32>(Ints(@run[0], 5)), "a sorted slice is sorted");
+    Assert(IsSorted<int32>(Ints(@run[0], 1)), "and so is one element");
+    Assert(IsSorted<int32>(Ints(null, 0)), "and so is nothing at all");
+    Assert(IsSortedUntil<int32>(Ints(@run[0], 5)) == 5, "a sorted slice runs to its end");
+    Assert(IsSortedUntil<int32>(Ints(null, 0)) == 0, "an empty one gets nowhere");
+    Assert(IsSortedUntil<int32>(Ints(@run[0], 1)) == 1, "and one element runs to its end");
+
+    var broken: int32[4];
+    broken[0] = 1;
+    broken[1] = 2;
+    broken[2] = 0;
+    broken[3] = 3;
+    Assert(!IsSorted<int32>(Ints(@broken[0], 4)), "a slice with a break is not sorted");
+    Assert(IsSortedUntil<int32>(Ints(@broken[0], 4)) == 2, "and the break is where it stops");
+    Assert(IsSortedBy<int32>(Ints(@run[0], 5), LessInt32), "a comparator agrees about a sorted slice");
+    Assert(!IsSortedBy<int32>(Ints(@broken[0], 4), LessInt32), "and about a broken one");
+    Assert(IsSortedUntilBy<int32>(Ints(@broken[0], 4), LessInt32) == 2, "and about where it breaks");
+
+    // The bounds, over a slice with a value present three times and gaps either side of it.
+    var values: int32[6];
+    values[0] = 10;
+    values[1] = 20;
+    values[2] = 20;
+    values[3] = 20;
+    values[4] = 40;
+    values[5] = 50;
+    let items = Ints(@values[0], 6);
+    Assert(IsSorted<int32>(items), "the searched slice really is sorted");
+
+    CheckBounds(items, 5, 0, 0);
+    CheckBounds(items, 10, 0, 1);
+    CheckBounds(items, 15, 1, 1);
+    CheckBounds(items, 20, 1, 4);
+    CheckBounds(items, 30, 4, 4);
+    CheckBounds(items, 40, 4, 5);
+    CheckBounds(items, 50, 5, 6);
+    CheckBounds(items, 60, 6, 6);
+
+    // The degenerate slices answer for every value rather than refusing.
+    let empty = Ints(null, 0);
+    CheckBounds(empty, 20, 0, 0);
+    var one: int32[1];
+    one[0] = 7;
+    let single = Ints(@one[0], 1);
+    CheckBounds(single, 3, 0, 0);
+    CheckBounds(single, 7, 0, 1);
+    CheckBounds(single, 9, 1, 1);
+
+    // A comparator searches a type with no ordering the search could have used, and finds the first of the equals.
+    var ranked: Ranked[5];
+    ranked[0] = Ranked { key: 1, origin: 100 };
+    ranked[1] = Ranked { key: 2, origin: 101 };
+    ranked[2] = Ranked { key: 2, origin: 102 };
+    ranked[3] = Ranked { key: 4, origin: 103 };
+    ranked[4] = Ranked { key: 5, origin: 104 };
+    let records = Slice<Ranked> { data: @ranked[0], length: 5 };
+    let probe = Ranked { key: 2, origin: 999 };
+
+    Assert(IsSortedBy<Ranked>(records, ByKey), "the record slice is sorted by the comparator");
+    Assert(LowerBoundBy<Ranked>(records, probe, ByKey) == 1, "the lower bound of an equivalent key");
+    Assert(UpperBoundBy<Ranked>(records, probe, ByKey) == 3, "and its upper bound");
+    var at: uint = 0;
+    Assert(BinarySearchBy<Ranked>(records, probe, ByKey).TryIntoValue(@at), "an equivalent key is found");
+    Assert(at == 1, "as the first of the equals");
+    Assert(ranked[at].origin == 101, "which is the element the sequence puts first, not whichever was landed on");
+
+    let missing = Ranked { key: 3, origin: 0 };
+    Assert(BinarySearchBy<Ranked>(records, missing, ByKey).IsNone(), "a key nothing matches is not found");
+    let gap = EqualRangeBy<Ranked>(records, missing, ByKey);
+    Assert(gap.start == 3 && gap.end == 3, "and its range is empty where it would be inserted");
+
+    // Equality here is the ordering's rather than the type's: these records differ in a field it never reads.
+    Assert(BinarySearch<Ranked>(records, probe).TryIntoValue(@at) && at == 1,
+           "the type's own ordering finds it in the same place");
+
+    // A large sorted slice, so the search really divides rather than scanning.
+    var many: int32[64];
     var index: uint = 0;
-
-    // IsSorted accepts the empty and single-element cases, and equal adjacent
-    // elements are non-decreasing rather than a break.
-    var one: int32[1] = [5];
-    var equal: int32[3] = [7, 7, 7];
-    var rising: int32[4] = [1, 2, 3, 4];
-    var falling: int32[4] = [4, 3, 2, 1];
-
-    if !IsSorted<int32>(@one[0], 0) { return 10; }
-    if !IsSorted<int32>(@one[0], 1) { return 11; }
-    if !IsSorted<int32>(@equal[0], 3) { return 12; }
-    if !IsSorted<int32>(@rising[0], 4) { return 13; }
-    if IsSorted<int32>(@falling[0], 4) { return 14; }
-
-    // IsSortedUntil returns length when sorted, so the empty and
-    // single-element cases report 0 and 1 rather than a sentinel.
-    if IsSortedUntil<int32>(@one[0], 0) != 0 { return 20; }
-    if IsSortedUntil<int32>(@one[0], 1) != 1 { return 21; }
-    if IsSortedUntil<int32>(@equal[0], 3) != 3 { return 22; }
-    if IsSortedUntil<int32>(@rising[0], 4) != 4 { return 23; }
-
-    // The break index is exact wherever it falls.
-    var breakFirst: int32[4] = [9, 1, 2, 3];
-    var breakMiddle: int32[4] = [1, 2, 0, 3];
-    var breakLast: int32[4] = [1, 2, 3, 0];
-    if IsSortedUntil<int32>(@breakFirst[0], 4) != 1 { return 24; }
-    if IsSortedUntil<int32>(@breakMiddle[0], 4) != 2 { return 25; }
-    if IsSortedUntil<int32>(@breakLast[0], 4) != 3 { return 26; }
-
-    // Bounds on an empty sequence collapse to 0, and nothing is found.
-    code = CheckBounds(null, 0, 5, 0, 0, 30);
-    if code != 0 { return code; }
-
-    // A single element: below it, on it, above it.
-    code = CheckBounds(@one[0], 1, 4, 0, 0, 40);
-    if code != 0 { return code; }
-    code = CheckBounds(@one[0], 1, 5, 0, 1, 50);
-    if code != 0 { return code; }
-    code = CheckBounds(@one[0], 1, 6, 1, 1, 60);
-    if code != 0 { return code; }
-
-    // An all-equal sequence: the matching range spans the whole thing.
-    code = CheckBounds(@equal[0], 3, 7, 0, 3, 70);
-    if code != 0 { return code; }
-    code = CheckBounds(@equal[0], 3, 6, 0, 0, 80);
-    if code != 0 { return code; }
-    code = CheckBounds(@equal[0], 3, 8, 3, 3, 90);
-    if code != 0 { return code; }
-
-    // A sorted sequence with a run of duplicates, probed at every insertion
-    // position: before the first element, on each distinct value, in each gap,
-    // and past the last element.
-    var values: int32[6] = [10, 20, 20, 20, 40, 50];
-    code = CheckBounds(@values[0], 6, 5, 0, 0, 100);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 10, 0, 1, 110);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 15, 1, 1, 120);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 20, 1, 4, 130);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 30, 4, 4, 140);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 40, 4, 5, 150);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 45, 5, 5, 160);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 50, 5, 6, 170);
-    if code != 0 { return code; }
-    code = CheckBounds(@values[0], 6, 60, 6, 6, 180);
-    if code != 0 { return code; }
-
-    // A null index reports failure instead of searching.
-    if TryBinarySearch<int32>(@values[0], 6, 20, null) { return 190; }
-
-    // A long sequence exercises the halving loop and the overflow-safe
-    // midpoint, and every element must be found at its own index.
-    var many: int32[1000];
-    var i: uint = 0;
-    while i < 1000 {
-        many[i] = (i as int32) * 2;
-        i++;
+    while index < 64 {
+        many[index] = (index * 2) as int32;
+        index++;
     }
-    if !IsSorted<int32>(@many[0], 1000) { return 200; }
-    if IsSortedUntil<int32>(@many[0], 1000) != 1000 { return 201; }
-
-    i = 0;
-    while i < 1000 {
-        if !TryBinarySearch<int32>(@many[0], 1000, (i as int32) * 2, @index) { return 202; }
-        if index != i { return 203; }
-        // The odd values in between are absent, and their bounds meet at the
-        // position where they would be inserted.
-        if TryBinarySearch<int32>(@many[0], 1000, (i as int32) * 2 + 1, @index) { return 204; }
-        if LowerBound<int32>(@many[0], 1000, (i as int32) * 2 + 1) != i + 1 { return 205; }
-        i++;
+    let wide = Ints(@many[0], 64);
+    Assert(IsSorted<int32>(wide), "the large slice is sorted");
+    index = 0;
+    while index < 64 {
+        let present = (index * 2) as int32;
+        var found: uint = 0;
+        Assert(BinarySearch<int32>(wide, present).TryIntoValue(@found), "every present value is found");
+        Assert(found == index, "at its own index");
+        Assert(BinarySearch<int32>(wide, present + 1).IsNone(), "and every absent one is not");
+        Assert(LowerBound<int32>(wide, present + 1) == index + 1, "with the gap's bound just past it");
+        index++;
     }
-
-    // Unsigned elements, including the type's limits.
-    var unsigned: uint32[4] = [0u32, 1u32, 4294967294u32, 4294967295u32];
-    if !IsSorted<uint32>(@unsigned[0], 4) { return 210; }
-    if LowerBound<uint32>(@unsigned[0], 4, 0u32) != 0 { return 211; }
-    if UpperBound<uint32>(@unsigned[0], 4, 4294967295u32) != 4 { return 212; }
-    if !TryBinarySearch<uint32>(@unsigned[0], 4, 4294967294u32, @index) { return 213; }
-    if index != 2 { return 214; }
-
-    // Signed elements at their limits.
-    var signed: int32[3] = [-2147483648i32, 0i32, 2147483647i32];
-    if !IsSorted<int32>(@signed[0], 3) { return 220; }
-    if LowerBound<int32>(@signed[0], 3, -2147483648i32) != 0 { return 221; }
-    if UpperBound<int32>(@signed[0], 3, 2147483647i32) != 3 { return 222; }
-
-    // A user struct ordered by key alone. Equivalent-but-distinct records form
-    // a run, and the bounds must delimit the whole run while the search
-    // reports its first index.
-    var ranked: Ranked[5] = [Ranked { key: 1, origin: 0 },
-                             Ranked { key: 3, origin: 1 },
-                             Ranked { key: 3, origin: 2 },
-                             Ranked { key: 3, origin: 3 },
-                             Ranked { key: 8, origin: 4 }];
-    let three = Ranked { key: 3, origin: 99 };
-    let five = Ranked { key: 5, origin: 99 };
-
-    if !IsSorted<Ranked>(@ranked[0], 5) { return 230; }
-    if LowerBound<Ranked>(@ranked[0], 5, three) != 1 { return 231; }
-    if UpperBound<Ranked>(@ranked[0], 5, three) != 4 { return 232; }
-
-    let span = EqualRange<Ranked>(@ranked[0], 5, three);
-    if span.start != 1 || span.end != 4 { return 233; }
-
-    // The record found is the first of the run, identified by its origin even
-    // though the probe's origin differs.
-    if !TryBinarySearch<Ranked>(@ranked[0], 5, three, @index) { return 234; }
-    if index != 1 { return 235; }
-    if ranked[index].origin != 1 { return 236; }
-
-    // A key falling between two runs is absent, and its bounds meet.
-    if TryBinarySearch<Ranked>(@ranked[0], 5, five, @index) { return 237; }
-    let gap = EqualRange<Ranked>(@ranked[0], 5, five);
-    if gap.start != 4 || gap.end != 4 { return 238; }
 
     return 0;
 }

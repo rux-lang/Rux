@@ -16,12 +16,12 @@ rux add Rux/Algorithms
 | -------- | ----------------- | --------------- | -------------------------------------------------------- |
 | `Find`   | `Slice<T>`        | — or `==`       | Linear queries, sequence comparison, by value or predicate |
 | `MinMax` | `Slice<T>`        | — or `<`        | Sequence extremes and clamping                           |
+| `Search` | `Slice<T>`        | `<`             | Sortedness checks, bounds and binary search              |
 | `Modify` | pointer + length  | — or `==`       | Reordering, bulk movement, partitioning, transform, fold |
-| `Search` | pointer + length  | `<`             | Sortedness checks and binary search                      |
 | `Sort`   | pointer + length  | `<`             | Introsort, ascending and descending                      |
 
-`Find` and `MinMax` take a `Slice<T>`; the rest still take a pointer and a length and are being converted module by
-module.
+`Find`, `MinMax` and `Search` take a `Slice<T>`; the rest still take a pointer and a length and are being converted
+module by module.
 
 Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
 
@@ -42,6 +42,22 @@ every universal claim and no existential one.
 A comparison answers with an `Ordering` rather than a `bool`, and takes one where it needs the caller to decide.
 `Compare` is lexicographic — the first differing element decides, and the shorter of two otherwise-equal sequences is
 the smaller — and `CompareBy` is the same for a type with no ordering of its own.
+
+## What the ordered searches assume
+
+Every search in `Search` assumes the slice is already sorted by the same order the search uses. That is the caller's
+promise, and nothing checks it on the way in — checking would cost the linear scan a binary search exists to avoid.
+A search over an unsorted slice does not fail; it answers, and the answer is meaningless. `IsSorted` is there for a
+caller who wants to check once, where checking is worth it.
+
+A bound is a position rather than an element. `LowerBound` is the first position the value could be inserted at
+without breaking the order and `UpperBound` is the last, so between them lie exactly the equal elements — which is
+what `EqualRange` returns in one pass. All three answer for a value that is not there at all: the range is empty, and
+its start is where the value would go.
+
+Equality in these searches is the ordering's, not the type's. Two elements neither of which is less than the other
+are equal here, whatever `==` would say. When several compare equal, `BinarySearch` reports the first, so the answer
+depends on the sequence rather than on how the search happened to divide it.
 
 ## The pointer-and-length shape
 

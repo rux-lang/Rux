@@ -17,6 +17,13 @@ extend Ranked {
 
 // `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices; this keeps the checks
 // below reading the way they did.
+
+// `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
+// they did.
+func Sorted<T>(data: *T, length: uint) -> bool {
+    return IsSorted<T>(Slice<T> { data: data, length: length });
+}
+
 func SameInts(left: *int32, right: *int32, length: uint) -> bool {
     return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
                                 Slice<int32> { data: right, length: length });
@@ -105,7 +112,7 @@ func CheckPartial(source: *int32, length: uint, count: uint) -> int {
     if !PartialSort<int32>(@actual[0], length, count) {
         return 1;
     }
-    if !IsSorted<int32>(@actual[0], count) {
+    if !Sorted<int32>(@actual[0], count) {
         return 2;
     }
     if !SameInts(@actual[0], @expected[0], count) {
@@ -271,7 +278,7 @@ func Main() -> int {
                               Ranked { key: 7, origin: 5 },
                               Ranked { key: 3, origin: 6 }];
     if !PartialSort<Ranked>(@partial[0], 7, 4) { return 170; }
-    if !IsSorted<Ranked>(@partial[0], 4) { return 171; }
+    if !Sorted<Ranked>(@partial[0], 4) { return 171; }
     if partial[0].key != 1 || partial[1].key != 1 { return 172; }
     if partial[2].key != 3 || partial[3].key != 3 { return 173; }
 
