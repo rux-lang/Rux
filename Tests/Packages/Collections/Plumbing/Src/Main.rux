@@ -1,0 +1,148 @@
+import Allocator::{ AllocError, Allocator, IsEmptyBlock, SystemAllocator };
+import Collections::{ AllocateBlock, CollectionError, FromAllocError, ReallocateBlock, ReferenceIterator,
+                      ReleaseBlock, ValueIterator };
+import Core::Assert;
+
+// The plumbing every container shares: what an error means, what the allocator helpers do with a count of elements,
+// and what the three iterators yield. None of it is interesting on its own, which is exactly why it is worth testing
+// once here rather than discovering it through whichever container gets it wrong.
+
+// Size sixteen, alignment eight: the two answers differ, which is what a layout computed from the wrong one would
+// get away with on a type where they agree.
+struct Element {
+    wide: int64;
+    narrow: int8;
+}
+
+func Main() -> int {
+    // The error's own questions.
+    Assert(CollectionError::None.IsOk(), "None is the only value that reports success");
+    Assert(!CollectionError::None.IsError(), "and the only one that is not an error");
+    Assert(CollectionError::OutOfMemory.IsError(), "running out of memory is an error");
+    Assert(CollectionError::CapacityOverflow.IsError(), "and so is arithmetic that does not fit");
+    Assert(CollectionError::IndexOutOfRange.IsError(), "and an index the collection does not have");
+    Assert(CollectionError::OutOfMemory.IsTransient(), "an allocator that ran short may not have next time");
+    Assert(!CollectionError::CapacityOverflow.IsTransient(), "but a size that cannot be named will not start being");
+    Assert(!CollectionError::IndexOutOfRange.IsTransient(), "and an absent index will not appear");
+    Assert(!CollectionError::Unsupported.IsTransient(), "and a refused layout will be refused again");
+    Assert(!CollectionError::None.IsTransient(), "success is not a thing to retry");
+
+    // The mapping from the allocator's answers to this package's.
+    Assert(FromAllocError(AllocError::None) == CollectionError::None, "success maps to success");
+    Assert(FromAllocError(AllocError::OutOfMemory) == CollectionError::OutOfMemory, "a shortage maps to a shortage");
+    Assert(FromAllocError(AllocError::Unsupported) == CollectionError::Unsupported, "a refusal maps to a refusal");
+    Assert(FromAllocError(AllocError::InvalidBlock) == CollectionError::Unsupported,
+           "and so does a block the allocator did not hand out, which is the same thing from here");
+
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // Storage for a count of elements, sized from the element type rather than from anything the caller says.
+    var block: *var Element = null;
+    Assert(AllocateBlock<Element>(allocator, 8, @block) == CollectionError::None, "storage for eight elements");
+    Assert(block != null, "which reports an address");
+    Assert((block as uint) % 8 == 0, "aligned to what the element needs");
+
+    // Writing every element must not disturb its neighbours, which is what proves the block is really that long.
+    var index: uint = 0;
+    while index < 8 {
+        block[index] = Element { wide: (index * 1000) as int64, narrow: index as int8 };
+        index++;
+    }
+    index = 0;
+    while index < 8 {
+        Assert(block[index].wide == (index * 1000) as int64, "every element keeps what was written to it");
+        Assert(block[index].narrow == index as int8, "in both of its fields");
+        index++;
+    }
+
+    // Growing carries the old contents across.
+    var grown: *var Element = null;
+    Assert(ReallocateBlock<Element>(allocator, block, 8, 32, @grown) == CollectionError::None, "growing the block");
+    Assert(grown != null, "reports an address");
+    index = 0;
+    while index < 8 {
+        Assert(grown[index].wide == (index * 1000) as int64, "and carries every old element across");
+        index++;
+    }
+    ReleaseBlock<Element>(allocator, grown, 32);
+
+    // A zero count is a request like any other: it succeeds, gives the shared empty block, and is released the same
+    // way. That is what keeps an empty container from being a special shape.
+    var empty: *var Element = null;
+    Assert(AllocateBlock<Element>(allocator, 0, @empty) == CollectionError::None, "storage for no elements succeeds");
+    Assert(IsEmptyBlock(empty as *var opaque), "giving the shared empty block");
+    ReleaseBlock<Element>(allocator, empty, 0);
+
+    // A count whose byte size cannot be named is arithmetic that failed, not an allocator that ran short. The
+    // distinction matters: one is worth retrying and the other never will be.
+    var impossible: *var Element = null;
+    let refused = AllocateBlock<Element>(allocator, uint::Max, @impossible);
+    Assert(refused == CollectionError::CapacityOverflow, "a count that cannot be sized is refused as arithmetic");
+    Assert(!refused.IsTransient(), "and says so by not being worth retrying");
+
+    // The iterators, over a run the test owns.
+    var values: int32[5];
+    index = 0;
+    while index < 5 {
+        values[index] = (index * 10) as int32;
+        index++;
+    }
+    let items = Slice<int32> { data: @values[0], length: 5 };
+
+    var byValue = ValueIterator::New<int32>(items);
+    var seen: uint = 0;
+    var total: int32 = 0;
+    for value in byValue {
+        total = total + value;
+        seen = seen + 1;
+    }
+    Assert(seen == 5, "the value iterator yields every element");
+    Assert(total == 100, "and yields the elements themselves");
+
+    // An iterator driven to its end keeps reporting nothing.
+    var drained = ValueIterator::New<int32>(items);
+    var drawn: int32 = 0;
+    seen = 0;
+    while drained.Next().TryIntoValue(@drawn) {
+        seen = seen + 1;
+    }
+    Assert(seen == 5, "driving an iterator by hand yields every element");
+    Assert(drained.Next().IsNone(), "and an exhausted iterator stays exhausted");
+
+    // A `for` loop over an iterator walks a copy of it, so the iterator the caller holds is where it was. Worth
+    // knowing rather than discovering: a loop is not a way to advance an iterator someone else is also reading.
+    var untouched = ValueIterator::New<int32>(items);
+    for value in untouched {
+        seen = seen + 1;
+    }
+    Assert(untouched.Next().IsSome(), "a loop over an iterator leaves the caller's own where it was");
+
+    // Nothing to walk yields nothing, rather than one of something.
+    var nothing = ValueIterator::New<int32>(Slice<int32> { data: null, length: 0 });
+    Assert(nothing.Next().IsNone(), "an empty run yields nothing at once");
+
+    // The reference iterator borrows each element where it sits.
+    var byReference = ReferenceIterator::New<int32>(items);
+    seen = 0;
+    var readBack: int32 = 0;
+    for element in byReference {
+        readBack = readBack + *element;
+        seen = seen + 1;
+    }
+    Assert(seen == 5, "the reference iterator yields every element");
+    Assert(readBack == 100, "and each pointer reads the element it borrowed");
+
+    // Both iterators walk the same run and agree about what is in it, which is the one thing they must.
+    var counted = ValueIterator::New<int32>(items);
+    var borrowed = ReferenceIterator::New<int32>(items);
+    var value: int32 = 0;
+    var element: *int32 = null;
+    while counted.Next().TryIntoValue(@value) {
+        Assert(borrowed.Next().TryIntoValue(@element), "the two iterators end together");
+        Assert(*element == value, "and agree element for element");
+    }
+    Assert(borrowed.Next().IsNone(), "and neither has anything left");
+
+    return 0;
+}

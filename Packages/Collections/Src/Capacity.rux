@@ -1,14 +1,16 @@
-// Overflow-checked sizing arithmetic, shared by every container in this
-// package so the checks exist once rather than once per type.
+// Overflow-checked sizing arithmetic, shared by every container in this package so the checks exist once rather than
+// once per type.
 //
-// Rux has no checked-arithmetic intrinsics and integer overflow wraps
-// silently, so `count * sizeof(T)` is the single most dangerous expression a
-// container writes: a product that wraps asks the allocator for a small block
-// and then writes far past it. Every allocation in this package sizes itself
-// through ByteSize rather than multiplying inline.
+// Integer overflow wraps silently, so `count * sizeof(T)` is the single most dangerous expression a container
+// writes: a product that wraps asks the allocator for a small block and then writes far past it. Every allocation in
+// this package sizes itself through `ByteSize` rather than multiplying inline.
 //
-// These report through CollectionError like the public operations that call
-// them, and none of them writes its out-parameter unless it returns None.
+// The checks are written out rather than reached for from `Core`, because each of these does something beyond the
+// arithmetic -- choosing a growth, falling back when a doubling does not fit -- and a checked multiply is one line
+// of that. What matters is that the dangerous product is never evaluated: `ByteSize` divides instead.
+//
+// These report through `CollectionError` like the public operations that call them, and none of them writes its
+// out-parameter unless it returns `None`.
 //
 // Internal helpers; not part of the package API.
 
