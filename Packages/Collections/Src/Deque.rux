@@ -1,146 +1,167 @@
-import Algorithms::Rotate;
-import Core::MutableSlice;
-import Memory::{ Alloc, Copy, Free };
+// A double-ended queue over a circular buffer.
+//
+// Elements go on and come off at either end in constant time, which is what a vector cannot offer at the front:
+// shifting every element along costs a linear pass per removal. This is the queue -- `PushBack` and `PopFront` are
+// first in, first out -- as `Vector` is the stack.
+//
+// The capacity is always a power of two, or zero. That is what lets the ring wrap with a mask rather than a
+// division: logical element `i` lives at physical `(head + i) & (capacity - 1)`. Because the elements can straddle
+// the end of the block, a deque cannot always hand out one contiguous view; `AsSlices` gives the two runs without
+// moving anything, and `MakeContiguous` rotates them back together where one view is what a caller needs.
+//
+// A deque owns its storage and its elements, so it implements `Drop` and is move-only, and the allocator is injected
+// at construction and kept. Destruction destroys every element it holds and then releases the block.
+//
+// Every operation that can fail leaves the deque exactly as it was. Growth allocates a fresh block, relocates the
+// elements into it, and only then releases the old one, so a refused allocation costs nothing at all -- not even the
+// wrapped layout the elements were in.
 
-// Four slots is where growth starts, and it is a power of two like every
-// capacity after it.
+import Algorithms::Rotate;
+import Allocator::Allocator;
+import Core::{ Drop, MutableSlice, Option };
+import Memory::Copy;
+
+/// The capacity a deque takes when it first has to allocate.
+///
+/// Four slots, and a power of two like every capacity after it.
+///
+/// https://rux-lang.dev/docs/api/collections/minimum-deque-capacity
 const MinimumDequeCapacity: uint = 4;
 
-// A double-ended queue over a circular buffer. Elements are added and removed
-// at either end in constant time, which is what Vector cannot offer at the
-// front: shifting every element down costs a linear pass per removal.
-//
-// This is the queue. PushBack and TryPopFront are first-in-first-out; Vector's
-// Push and TryPop are the stack.
-//
-// The capacity is always a power of two, or zero. That is what lets the ring
-// wrap with a mask rather than a division: logical element `i` lives at
-// physical `(head + i) & (capacity - 1)`. Because the elements can straddle
-// the end of the block, a Deque cannot always hand out one contiguous slice —
-// AsSlices gives the two runs without touching anything, and MakeContiguous
-// rotates them back together when a single view is what a caller needs.
-//
-// Ownership is manual, because Rux has no destructors and no move semantics.
-// Assignment copies the Deque value and therefore shares its allocation, so
-// Clone when both copies must be freed, and Free exactly once for every
-// allocation. Clone copies element bytes verbatim: an element that owns a
-// resource ends up referenced by both copies.
-//
-// Every fallible operation reports a CollectionError and leaves the receiver
-// unchanged unless it returns None. Any growth moves the allocation and
-// invalidates every pointer and view, and so does MakeContiguous, which moves
-// elements without reallocating.
+/// A double-ended queue over a circular buffer.
+///
+/// Move-only: it owns its elements and its storage, so it implements `Drop`.
+///
+/// https://rux-lang.dev/docs/api/collections/deque
 struct Deque<T> {
+    /// The ring. Null for a deque that has not allocated yet.
     data: *var T;
+    /// Where the first element sits physically. Always below the capacity, and zero when there is no capacity.
     head: uint;
+    /// How many elements the deque holds.
     length: uint;
+    /// How many the ring could hold. A power of two, or zero.
     capacity: uint;
+    /// Where the storage came from, and where it goes back to.
+    allocator: Allocator;
 }
 
 extend Deque<T> {
-    // The empty Deque. Owns nothing until the first element is added.
-    func New() -> Deque<T> {
-        return Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
+    /// An empty deque that has not allocated anything.
+    ///
+    /// `allocator` is borrowed for the call and kept. Costs nothing: a deque that is never pushed to never allocates.
+    ///
+    /// Cannot fail. Runs in constant time.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/new
+    func New(allocator: Allocator) -> Deque<T> {
+        return Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: allocator };
     }
 
-    // An empty Deque with room for at least `capacity` elements, rounded up to
-    // a power of two. A zero capacity allocates nothing.
-    func WithCapacity(capacity: uint, result: *var Deque<T>) -> CollectionError {
+    /// An empty deque with room for `capacity` elements already taken.
+    ///
+    /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The
+    /// capacity actually taken is rounded up to a power of two, since that is what the ring's masking needs.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/with-capacity
+    func WithCapacity(allocator: Allocator, capacity: uint, error: *var CollectionError) -> Deque<T> {
+        var deque = Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: allocator };
         if capacity == 0 {
-            *result = Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
-            return CollectionError::None;
+            *error = CollectionError::None;
+            return deque;
         }
-
-        var rounded: uint = 0;
-        let planned = PowerOfTwoCapacity(capacity, MinimumDequeCapacity, sizeof(T), @rounded);
-        if !(planned == CollectionError::None) {
-            return planned;
-        }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(rounded, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        *result = Deque<T> { data: ptr, head: 0, length: 0, capacity: rounded };
-        return CollectionError::None;
+        *error = deque.Grow(capacity);
+        return deque;
     }
 
-    // Copies a slice into an independently owned Deque, front element first.
-    func FromSlice(items: Slice<T>, result: *var Deque<T>) -> CollectionError {
+    /// A deque holding a copy of every element of `items`, front to back.
+    ///
+    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read; `error` is written with why the
+    /// deque could not be made. Copies its elements, so a move-only element type is built with `PushBack` instead.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/from-slice
+    func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Deque<T> {
+        var deque = Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: allocator };
         if items.length == 0 {
-            *result = Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
-            return CollectionError::None;
+            *error = CollectionError::None;
+            return deque;
         }
 
-        var fresh = Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
-        let reserved = Deque::WithCapacity<T>(items.length, @fresh);
-        if !(reserved == CollectionError::None) {
-            return reserved;
+        let room = deque.Grow(items.length);
+        if room.IsError() {
+            *error = room;
+            return deque;
         }
-
-        // The block is fresh and sized for the whole slice, so this cannot
-        // wrap and needs no second run.
-        Copy(fresh.data, items.data, items.length * sizeof(T));
-        fresh.length = items.length;
-        *result = fresh;
-        return CollectionError::None;
+        var index: uint = 0;
+        while index < items.length {
+            deque.data[index] = items.data[index];
+            index++;
+        }
+        deque.length = items.length;
+        *error = CollectionError::None;
+        return deque;
     }
 
-    // An independent copy holding the same elements in the same order, with
-    // the front element back at physical index zero.
-    func Clone(self: *Deque<T>, result: *var Deque<T>) -> CollectionError {
+    /// An independent deque holding a copy of every element of this one, in order.
+    ///
+    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy starts
+    /// contiguous whatever this one's elements were doing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/clone
+    func Clone(self: *Deque<T>, error: *var CollectionError) -> Deque<T> {
+        var copy = Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: self.allocator };
         if self.length == 0 {
-            *result = Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
-            return CollectionError::None;
+            *error = CollectionError::None;
+            return copy;
         }
-
-        var fresh = Deque<T> { data: null, head: 0, length: 0, capacity: 0 };
-        let reserved = Deque::WithCapacity<T>(self.length, @fresh);
-        if !(reserved == CollectionError::None) {
-            return reserved;
+        let room = copy.Grow(self.length);
+        if room.IsError() {
+            *error = room;
+            return copy;
         }
-
-        self.CopyInto(fresh.data);
-        fresh.length = self.length;
-        *result = fresh;
-        return CollectionError::None;
+        self.CopyInto(copy.data);
+        copy.length = self.length;
+        *error = CollectionError::None;
+        return copy;
     }
+}
 
-    // Releases the allocation and leaves the empty Deque behind, so calling
-    // Free again is a no-op.
-    func Free(self: *var Deque<T>) {
-        Free(self.data);
-        self.data = null;
-        self.head = 0;
-        self.length = 0;
-        self.capacity = 0;
-    }
-
+extend Deque<T> {
+    /// How many elements the deque holds.
+    ///
+    /// `self` is borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/length
     func Length(self: *Deque<T>) -> uint {
         return self.length;
     }
 
-    // The number of elements the ring holds before it has to grow. Always a
-    // power of two, or zero.
+    /// How many elements the ring could hold without growing.
+    ///
+    /// `self` is borrowed. A power of two, or zero.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/capacity
     func Capacity(self: *Deque<T>) -> uint {
         return self.capacity;
     }
 
+    /// Whether the deque holds no elements.
+    ///
+    /// `self` is borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/is-empty
     func IsEmpty(self: *Deque<T>) -> bool {
         return self.length == 0;
     }
 
-    // Writes the elements into `block` in logical order, starting at its index
-    // zero, so the copy is contiguous however the source is arranged.
-    //
-    // Internal helper; not part of the package API.
+    // The physical slot logical element `index` occupies. The mask is why the capacity is a power of two.
+    func SlotOf(self: *Deque<T>, index: uint) -> uint {
+        return (self.head + index) & (self.capacity - 1);
+    }
+
+    // Relocates every element into `block`, front first, unwrapping the ring in the process. A relocation rather
+    // than a copy: the bytes move and the originals are not destroyed, because there is exactly one of each
+    // afterwards.
     func CopyInto(self: *Deque<T>, block: *var T) {
         if self.length == 0 {
             return;
@@ -151,20 +172,17 @@ extend Deque<T> {
             front = self.length;
         }
 
-        // Both products are bounded by `capacity * sizeof(T)`, which every
-        // caller has already had checked before allocating, so neither
-        // multiply here can wrap.
-        Copy(block, @self.data[self.head], front * sizeof(T));
+        // Both products are bounded by `capacity * sizeof(T)`, which was checked before the block was allocated, so
+        // neither multiply here can wrap.
+        Copy(block as *var opaque, @self.data[self.head] as *opaque, front * sizeof(T));
         if front < self.length {
-            Copy(@block[front], self.data, (self.length - front) * sizeof(T));
+            Copy(@block[front] as *var opaque, self.data as *opaque, (self.length - front) * sizeof(T));
         }
     }
 
-    // Grows the ring to hold at least `required` elements, leaving a Deque
-    // that is already large enough alone.
+    // Grows the ring to hold at least `required` elements, leaving one that is already large enough alone.
     //
-    // Internal helper; not part of the package API. Reserve is the public way
-    // to ask for room.
+    // Internal: `Reserve` is the public way to ask for room, because it counts from the current length.
     func Grow(self: *var Deque<T>, required: uint) -> CollectionError {
         if required <= self.capacity {
             return CollectionError::None;
@@ -172,228 +190,303 @@ extend Deque<T> {
 
         var capacity: uint = 0;
         let planned = PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T), @capacity);
-        if !(planned == CollectionError::None) {
+        if planned.IsError() {
             return planned;
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(capacity, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        // A fresh block rather than a reallocation: the elements may wrap, and
-        // unwrapping them in place would need a rotation the new block gets
-        // for free. Nothing is released until the copy has succeeded, so a
-        // failed allocation leaves the Deque exactly as it was.
-        let block = Alloc(bytes) as *var T;
-        if block == null {
-            return CollectionError::OutOfMemory;
+        // A fresh block rather than a reallocation: the elements may wrap, and unwrapping them in place would need a
+        // rotation the new block gets for free. Nothing is released until the relocation has happened, so a refused
+        // allocation leaves the deque exactly as it was.
+        var block: *var T = null;
+        let taken = AllocateBlock<T>(self.allocator, capacity, @block);
+        if taken.IsError() {
+            return taken;
         }
 
         self.CopyInto(block);
-        Free(self.data);
+        if self.data != null {
+            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+        }
         self.data = block;
         self.head = 0;
         self.capacity = capacity;
         return CollectionError::None;
     }
 
-    // Makes room for `additional` more elements on top of those already
-    // present, without changing Length.
+    /// Makes room for `additional` more elements on top of those already present.
+    ///
+    /// `self` is borrowed mutably; the length does not change. A failure leaves the deque exactly as it was.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/reserve
     func Reserve(self: *var Deque<T>, additional: uint) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
-        if !(total == CollectionError::None) {
+        if total.IsError() {
             return total;
         }
-
         return self.Grow(required);
     }
 
-    // Releases capacity down to the smallest power of two that still holds the
-    // elements. An empty Deque becomes allocation-free. A failure leaves the
-    // Deque usable at its current capacity.
+    /// Releases the capacity the length does not need.
+    ///
+    /// `self` is borrowed mutably. The capacity stays a power of two, so this gives back what rounding leaves spare
+    /// rather than everything above the length. An empty deque gives up its storage entirely.
+    ///
+    /// A failure leaves the deque usable at its current capacity: failing to hand memory back is never a reason to
+    /// stop working.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/shrink-to-fit
     func ShrinkToFit(self: *var Deque<T>) -> CollectionError {
         if self.length == 0 {
-            self.Free();
+            if self.data != null {
+                ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+                self.data = null;
+                self.capacity = 0;
+                self.head = 0;
+            }
             return CollectionError::None;
         }
 
         var capacity: uint = 0;
         let planned = PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T), @capacity);
-        if !(planned == CollectionError::None) {
+        if planned.IsError() {
             return planned;
         }
         if capacity == self.capacity {
             return CollectionError::None;
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(capacity, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let block = Alloc(bytes) as *var T;
-        if block == null {
-            return CollectionError::OutOfMemory;
+        var block: *var T = null;
+        let taken = AllocateBlock<T>(self.allocator, capacity, @block);
+        if taken.IsError() {
+            return taken;
         }
 
         self.CopyInto(block);
-        Free(self.data);
+        ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         self.data = block;
         self.head = 0;
         self.capacity = capacity;
         return CollectionError::None;
     }
 
-    // Drops every element while keeping the allocation, and returns the front
-    // to physical index zero so the next run of additions does not wrap.
+    /// Destroys every element, keeping the storage.
+    ///
+    /// `self` is borrowed mutably. The front returns to physical zero, so the next run of additions does not wrap.
+    ///
+    /// Runs in time proportional to the length.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/clear
     func Clear(self: *var Deque<T>) {
+        var index: uint = 0;
+        while index < self.length {
+            // Moving each element into a local destroys it when the local's life ends, which is the only way a
+            // container has to destroy an element it does not know is droppable.
+            let taken = self.data[self.SlotOf(index)];
+            index++;
+        }
         self.head = 0;
         self.length = 0;
     }
+}
 
-    // Adds an element at the front, growing the ring when it is full.
+extend Deque<T> : Drop {
+    /// Destroys every element and releases the storage.
+    ///
+    /// Runs when the deque's life ends. The elements go first and the block second, since an element destroyed after
+    /// its storage was released would be read from freed memory.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/drop
+    func Drop(self: *var Deque<T>) {
+        self.Clear();
+        if self.data != null {
+            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+            self.data = null;
+            self.capacity = 0;
+        }
+    }
+}
+
+extend Deque<T> {
+    /// Adds an element at the front, growing the ring when it is full.
+    ///
+    /// `self` is borrowed mutably; `value` is moved in. A failure leaves the deque exactly as it was and the value
+    /// with the caller.
+    ///
+    /// Amortized constant time.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/push-front
     func PushFront(self: *var Deque<T>, value: T) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
-        if !(total == CollectionError::None) {
+        if total.IsError() {
             return total;
         }
-
-        let grown = self.Grow(required);
-        if !(grown == CollectionError::None) {
-            return grown;
+        let room = self.Grow(required);
+        if room.IsError() {
+            return room;
         }
 
-        // Stepping back from slot zero wraps to the last slot. Adding the
-        // capacity before masking keeps the arithmetic unsigned.
-        let slot = (self.head + self.capacity - 1) & (self.capacity - 1);
-        self.data[slot] = value;
-        self.head = slot;
-        self.length++;
+        // One step back around the ring, which for a head of zero is the last slot.
+        self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
+        self.data[self.head] = value;
+        self.length = self.length + 1;
         return CollectionError::None;
     }
 
-    // Adds an element at the back, growing the ring when it is full.
+    /// Adds an element at the back, growing the ring when it is full.
+    ///
+    /// `self` is borrowed mutably; `value` is moved in. A failure leaves the deque exactly as it was.
+    ///
+    /// Amortized constant time.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/push-back
     func PushBack(self: *var Deque<T>, value: T) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
-        if !(total == CollectionError::None) {
+        if total.IsError() {
             return total;
         }
-
-        let grown = self.Grow(required);
-        if !(grown == CollectionError::None) {
-            return grown;
+        let room = self.Grow(required);
+        if room.IsError() {
+            return room;
         }
 
-        let slot = (self.head + self.length) & (self.capacity - 1);
-        self.data[slot] = value;
-        self.length++;
+        self.data[self.SlotOf(self.length)] = value;
+        self.length = self.length + 1;
         return CollectionError::None;
     }
 
-    // Removes the front element and hands it back, reporting whether there was
-    // one. A null `value` discards it rather than refusing to pop.
-    func TryPopFront(self: *var Deque<T>, value: *var T) -> bool {
+    /// Takes the front element out.
+    ///
+    /// `self` is borrowed mutably. The element is moved out and handed to the caller rather than destroyed, so one
+    /// that owns something leaves intact. Reports `None` for an empty deque.
+    ///
+    /// The storage is kept, so a deque emptied this way costs nothing to refill.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/pop-front
+    func PopFront(self: *var Deque<T>) -> Option<T> {
         if self.length == 0 {
-            return false;
+            return Option::None<T>();
         }
-
-        if value != null {
-            *value = self.data[self.head];
-        }
-
+        let taken = self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
-        self.length--;
-        return true;
+        self.length = self.length - 1;
+        return Option::Some<T>(taken);
     }
 
-    // Removes the back element and hands it back.
-    func TryPopBack(self: *var Deque<T>, value: *var T) -> bool {
+    /// Takes the back element out.
+    ///
+    /// `self` is borrowed mutably. The element is moved out and handed to the caller. Reports `None` for an empty
+    /// deque.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/pop-back
+    func PopBack(self: *var Deque<T>) -> Option<T> {
         if self.length == 0 {
-            return false;
+            return Option::None<T>();
         }
+        self.length = self.length - 1;
+        return Option::Some<T>(self.data[self.SlotOf(self.length)]);
+    }
 
-        self.length--;
-        if value != null {
-            *value = self.data[(self.head + self.length) & (self.capacity - 1)];
+    /// A pointer to the front element, or `None` for an empty deque.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/front
+    func Front(self: *Deque<T>) -> Option<*T> {
+        return self.Reference(0);
+    }
+
+    /// A pointer to the back element, or `None` for an empty deque.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/back
+    func Back(self: *Deque<T>) -> Option<*T> {
+        if self.length == 0 {
+            return Option::None<*T>();
         }
-        return true;
+        return self.Reference(self.length - 1);
     }
 
-    // Reads the front element without removing it.
-    func TryFront(self: *Deque<T>, value: *var T) -> bool {
-        if value == null || self.length == 0 {
-            return false;
-        }
-
-        *value = self.data[self.head];
-        return true;
-    }
-
-    // Reads the back element without removing it.
-    func TryBack(self: *Deque<T>, value: *var T) -> bool {
-        if value == null || self.length == 0 {
-            return false;
-        }
-
-        *value = self.data[(self.head + self.length - 1) & (self.capacity - 1)];
-        return true;
-    }
-
-    // The element `index` places behind the front. Unchecked, like pointer and
-    // slice indexing: an index at or past Length is undefined behavior, not a
-    // reported error. TryGet is the checked form. The ring mapping is internal,
-    // so index zero is always the front however the storage is arranged.
-    func At(self: *Deque<T>, index: uint) -> T {
-        return self.data[(self.head + index) & (self.capacity - 1)];
-    }
-
-    // Reads the element `index` places behind the front, reporting whether the
-    // index was in range. A rejected index leaves `value` untouched.
-    func TryGet(self: *Deque<T>, index: uint, value: *var T) -> bool {
-        if value == null || index >= self.length {
-            return false;
-        }
-
-        *value = self.data[(self.head + index) & (self.capacity - 1)];
-        return true;
-    }
-
-    // Replaces the element `index` places behind the front. Unchecked, as in At.
-    func Set(self: *var Deque<T>, index: uint, value: T) {
-        self.data[(self.head + index) & (self.capacity - 1)] = value;
-    }
-
-    // Replaces the element `index` places behind the front, reporting whether
-    // it was in range. A rejected index writes nothing.
-    func TrySet(self: *var Deque<T>, index: uint, value: T) -> bool {
+    /// The element at `index`, counting from the front, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the element is returned by copy. The index is logical: element zero is the front wherever
+    /// it happens to sit physically.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/get
+    func Get(self: *Deque<T>, index: uint) -> Option<T> {
         if index >= self.length {
-            return false;
+            return Option::None<T>();
         }
-
-        self.data[(self.head + index) & (self.capacity - 1)] = value;
-        return true;
+        return Option::Some<T>(self.data[self.SlotOf(index)]);
     }
 
-    // Whether the elements occupy one unbroken run, which is when a single
-    // slice can cover them. An empty Deque is trivially contiguous.
+    /// A pointer to the element at `index`, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/reference
+    func Reference(self: *Deque<T>, index: uint) -> Option<*T> {
+        if index >= self.length {
+            return Option::None<*T>();
+        }
+        return Option::Some<*T>(@self.data[self.SlotOf(index)]);
+    }
+
+    /// Replaces the element at `index` with `value`.
+    ///
+    /// `self` is borrowed mutably. Reports `IndexOutOfRange` and changes nothing when there is no such index.
+    ///
+    /// # Safety
+    ///
+    /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/set
+    func Set(self: *var Deque<T>, index: uint, value: T) -> CollectionError {
+        if index >= self.length {
+            return CollectionError::IndexOutOfRange;
+        }
+        self.data[self.SlotOf(index)] = value;
+        return CollectionError::None;
+    }
+}
+
+extend Deque<T> {
+    /// Whether the elements occupy one unbroken run.
+    ///
+    /// `self` is borrowed. True for an empty deque and for one whose elements have not wrapped past the end of the
+    /// ring. This is what says whether `AsSlice` will move anything.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/is-contiguous
     func IsContiguous(self: *Deque<T>) -> bool {
         if self.capacity == 0 {
             return true;
         }
-
         return self.head + self.length <= self.capacity;
     }
 
-    // The elements as at most two contiguous runs, front run first, without
-    // moving or copying anything. The second run is empty whenever the storage
-    // is already contiguous, so concatenating the two always yields the
-    // elements in logical order. Either out-parameter may be null.
+    /// The elements as at most two runs, front run first, without moving anything.
+    ///
+    /// `self` is borrowed; `front` and `back` receive the two runs and either may be null. The second run is empty
+    /// whenever the storage is already contiguous, so joining the two always gives the elements in order.
+    ///
+    /// This is the view that costs nothing. `AsSlice` gives one run instead, and pays a rotation for it.
+    ///
+    /// # Safety
+    ///
+    /// Both views are valid until the deque grows, shrinks, or is made contiguous.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/as-slices
     func AsSlices(self: *Deque<T>, front: *var Slice<T>, back: *var Slice<T>) {
         if self.length == 0 {
             if front != null {
@@ -416,41 +509,81 @@ extend Deque<T> {
         if back != null {
             if frontLength < self.length {
                 *back = Slice<T> { data: self.data, length: self.length - frontLength };
-            } else {
+            }
+            else {
                 *back = Slice<T> { data: null, length: 0 };
             }
         }
     }
 
-    // Moves the elements so they occupy one unbroken run starting at physical
-    // index zero, allocating nothing. Every pointer and view into the Deque is
-    // invalidated, and so is any index a caller had recorded physically.
+    /// Moves the elements so they occupy one unbroken run starting at physical zero.
+    ///
+    /// `self` is borrowed mutably. Allocates nothing: rotating the whole ring left by the head brings the front
+    /// element to zero and preserves cyclic order for every slot at once, so no element has to be tracked
+    /// individually.
+    ///
+    /// # Safety
+    ///
+    /// Every pointer and view into the deque is invalidated, and so is any physical index a caller recorded.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/make-contiguous
     func MakeContiguous(self: *var Deque<T>) {
         if self.capacity == 0 || self.head == 0 {
             return;
         }
-
-        // Rotating the whole ring left by `head` brings the front element to
-        // index zero and preserves cyclic order for every slot at once, so no
-        // element has to be tracked individually and nothing is allocated.
-        // Rux/Algorithms owns rotation; duplicating it here would be a second
-        // copy of an algorithm that already exists.
         Rotate<T>(MutableSlice<T> { data: self.data, length: self.capacity }, self.head);
         self.head = 0;
     }
 
-    // Borrows every element read-only as one slice, rotating the storage
-    // together first. Takes a writable receiver for that reason, unlike
-    // Vector's AsSlice: producing a single view can move the elements.
+    /// Every element as one borrowed read-only view, moving them together first.
+    ///
+    /// `self` is borrowed mutably -- unlike a vector's, producing a single view can move the elements, which is why
+    /// this asks for a writable receiver rather than a read-only one.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the deque grows, shrinks, or is made contiguous again.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/as-slice
     func AsSlice(self: *var Deque<T>) -> Slice<T> {
         self.MakeContiguous();
         return Slice<T> { data: self.data, length: self.length };
     }
 
-    // Borrows every element writably as one slice, rotating the storage
-    // together first.
+    /// Every element as one borrowed writable view, moving them together first.
+    ///
+    /// `self` is borrowed mutably.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the deque grows, shrinks, or is made contiguous again.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/as-mutable-slice
     func AsMutableSlice(self: *var Deque<T>) -> MutableSlice<T> {
         self.MakeContiguous();
         return MutableSlice<T> { data: self.data, length: self.length };
+    }
+
+    /// An iterator over the elements, front to back, by copy.
+    ///
+    /// `self` is borrowed mutably and must outlive the iterator, and the elements are moved together first so one
+    /// run can be walked. This is the method a `for` loop finds.
+    ///
+    /// # Safety
+    ///
+    /// The deque must not grow or shrink while the iterator is alive.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/iterate
+    func Iterate(self: *var Deque<T>) -> ValueIterator<T> {
+        return ValueIterator::New<T>(self.AsSlice());
+    }
+
+    /// An iterator over pointers to the elements, front to back.
+    ///
+    /// `self` is borrowed mutably and must outlive the iterator, and the elements are moved together first.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/deque/references
+    func References(self: *var Deque<T>) -> ReferenceIterator<T> {
+        return ReferenceIterator::New<T>(self.AsSlice());
     }
 }

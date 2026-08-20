@@ -14,7 +14,7 @@ rux add Rux/Collections
 | ----------------- | --------------------------------------------- | ------------- |
 | `Array<T>`        | Fixed-length owned heap storage, allocator-injected |         |
 | `Vector<T>`       | Growable contiguous sequence                  | the stack     |
-| `Deque<T>`        | Double-ended queue over a circular buffer     | the queue     |
+| `Deque<T>`        | Double-ended queue over a circular buffer, allocator-injected | the queue |
 | `HashMap<K, V>`   | Open-addressed associative table              |               |
 | `HashSet<T>`      | Open-addressed set of distinct values         |               |
 

@@ -44,8 +44,9 @@ func Main() -> int {
     if !(overflowError == CollectionError::CapacityOverflow) { return 22; }
     if !vector.IsEmpty() || vector.AsSlice().data != null || vector.Capacity() != 0 { return 23; }
 
-    var deque = Deque::New<int64>();
-    if !(Deque::WithCapacity<int64>(uint::Max, @deque) == CollectionError::CapacityOverflow) { return 24; }
+    var dequeError = CollectionError::None;
+    var deque = Deque::WithCapacity<int64>(allocator, uint::Max, @dequeError);
+    if !(dequeError == CollectionError::CapacityOverflow) { return 24; }
     if !deque.IsEmpty() || deque.Capacity() != 0 { return 25; }
 
     // A populated Vector survives a rejected reservation untouched: the same
@@ -98,16 +99,16 @@ func Main() -> int {
     // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
 
     // A Deque rejects the same requests and stays usable afterwards.
-    var ring = Deque::New<int64>();
+    var ring = Deque::New<int64>(allocator);
     if !(ring.PushBack(1i64) == CollectionError::None) { return 60; }
     let ringCapacity = ring.Capacity();
     if !(ring.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 61; }
-    if ring.Length() != 1 || ring.Capacity() != ringCapacity || ring.At(0) != 1i64 { return 62; }
+    if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 62; }
+    if ring.Get(0).ValueOr(-1i64) != 1i64 { return 67; }
     if !(ring.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 63; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
     if !(ring.PushFront(0i64) == CollectionError::None) { return 65; }
-    if ring.At(0) != 0i64 || ring.At(1) != 1i64 { return 66; }
-    ring.Free();
+    if ring.Get(0).ValueOr(-1i64) != 0i64 || ring.Get(1).ValueOr(-1i64) != 1i64 { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
@@ -134,7 +135,5 @@ func Main() -> int {
 
     // Releasing twice is a no-op everywhere, because Free leaves the empty
     // value behind rather than a dangling pointer.
-    deque.Free();
-    deque.Free();
     return 0;
 }
