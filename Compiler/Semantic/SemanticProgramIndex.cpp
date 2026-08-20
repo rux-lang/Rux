@@ -205,7 +205,13 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         functionScopes[function] = &scope;
         functionSources[function] = sourceName;
         functions[function->name].push_back(function);
-        functionModulePaths[function] = modulePath;
+        // The package is part of where a function lives, not only the `module` blocks around it. Two packages both
+        // declaring `Compare` are two functions in two places, and recording only the module path -- empty for a
+        // file with no `module` block, which is most of them -- said they were one, so nothing distinguished their
+        // symbols and one of them was linked for both. Nothing changes for a name only one package declares: this
+        // is read to decide whether two owners exist at all, and a name with one owner is never qualified.
+        functionModulePaths[function] =
+            packageName && !packageName->empty() ? JoinModulePath(*packageName, modulePath) : modulePath;
         Symbol symbol;
         symbol.kind = Symbol::Kind::Func;
         symbol.name = function->name;
