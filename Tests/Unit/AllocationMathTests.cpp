@@ -88,6 +88,32 @@ TEST_CASE("both layout queries fold to unsigned constants") {
     CHECK_EQ(folded(2), "4");
 }
 
+TEST_CASE("a layout query on a type parameter answers the question it was asked") {
+    // Where the type is concrete the answer is folded during analysis; where it is a type parameter it is answered
+    // at each instantiation instead, and that path was returning the size for both queries. Header is sixteen bytes
+    // aligned to eight, which is what separates the two answers.
+    const HirPackage package = LowerSource(R"(
+        struct Header { tag: uint32; payload: uint64; }
+        func SizeOf<T>() -> uint64 { return sizeof(T); }
+        func AlignOf<T>() -> uint64 { return alignof(T); }
+        func Query() -> uint64 { return SizeOf<Header>() + AlignOf<Header>(); }
+    )");
+
+    const auto returned = [&](const std::string &name) {
+        const HirFunc &function = RequireFunction(package, name);
+        REQUIRE(function.body.has_value());
+        REQUIRE_EQ(function.body->stmts.size(), 1);
+        const auto *statement = dynamic_cast<const HirReturnStmt *>(function.body->stmts.front().get());
+        REQUIRE(statement != nullptr);
+        REQUIRE(statement->value.has_value());
+        const auto *literal = dynamic_cast<const HirLiteralExpr *>(statement->value->get());
+        REQUIRE(literal != nullptr);
+        return literal->value;
+    };
+    CHECK_EQ(returned("SizeOf_Header"), "16");
+    CHECK_EQ(returned("AlignOf_Header"), "8");
+}
+
 TEST_CASE("a layout query over a type with no layout is reported once") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Node { next: Node; value: int32; }

@@ -20,6 +20,16 @@ func ByteCount(count: uint64, elementSize: uint64, bytes: *var uint64) -> bool {
     return CheckedMul(count, elementSize, bytes);
 }
 
+// Both queries asked of a type parameter, which is where a generic container asks them: the type is not known where
+// the question is written, so it is answered at each instantiation instead.
+func SizeOfElement<T>() -> uint64 {
+    return sizeof(T);
+}
+
+func AlignOfElement<T>() -> uint64 {
+    return alignof(T);
+}
+
 func Main() -> int {
     Assert(sizeof(uint8) == 1u64, "Expected sizeof(uint8) to be 1");
     Assert(sizeof(uint32) == 4u64, "Expected sizeof(uint32) to be 4");
@@ -31,6 +41,16 @@ func Main() -> int {
     Assert(alignof(Header) == 8u64, "Expected the struct alignment to be its widest field's");
     Assert(alignof(Packed) == 1u64, "Expected a byte-aligned struct");
     Assert(alignof(Header[4]) == 8u64, "Expected an array to keep its element alignment");
+
+    // The same answers through a type parameter. A struct whose size and alignment differ is what separates the two
+    // questions: Header is sixteen bytes aligned to eight, so an implementation answering either with the other is
+    // visible here and nowhere else.
+    Assert(SizeOfElement<uint32>() == 4u64, "Expected sizeof through a type parameter");
+    Assert(AlignOfElement<uint32>() == 4u64, "Expected alignof through a type parameter");
+    Assert(SizeOfElement<Header>() == 16u64, "Expected the struct size through a type parameter");
+    Assert(AlignOfElement<Header>() == 8u64, "Expected the struct alignment through a type parameter");
+    Assert(SizeOfElement<Packed>() == 2u64, "Expected the unpadded size through a type parameter");
+    Assert(AlignOfElement<Packed>() == 1u64, "Expected the unpadded alignment through a type parameter");
 
     var sum = 0u64;
     Assert(!CheckedAdd(2u64, 3u64, @sum), "Expected 2 + 3 not to overflow");
