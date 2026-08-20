@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "AlgorithmsStable"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Algorithms: stable sorting and the scratch it asks for"
+
+[Dependencies]
+Algorithms = { Path = "../../../../Packages/Algorithms" }
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Algorithms"

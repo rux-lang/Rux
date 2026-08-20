@@ -19,6 +19,7 @@ rux add Rux/Algorithms
 | `Search` | `Slice<T>`        | `<`             | Sortedness checks, bounds and binary search              |
 | `Modify` | `MutableSlice<T>` | — or `==`       | Reordering, bulk movement, removal and partitioning      |
 | `Sort`   | `MutableSlice<T>` | `<`             | Introsort, selection, and partial sorting                |
+| `Stable` | `MutableSlice<T>` | `<`             | Merge sort, with scratch the caller supplies             |
 
 Everything takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
 
@@ -71,6 +72,21 @@ duplicate; for anything else it is a value with no owner.
 `Partition` is unstable: it exchanges elements from both ends inward, which is what keeps it to one pass and no
 scratch storage, and means the order within each group is not the order it started in. A caller that needs the
 original order needs a stable partition, which needs somewhere to put things.
+
+## Stability, and what it costs
+
+`Sort` is faster and needs no storage at all, and for most sequences the difference between equal elements is not
+observable. It becomes observable the moment a second key is involved: sort a table by one column, then by another,
+and only a stable sort leaves the first ordering intact within each group of the second.
+
+`StableSort` is a bottom-up merge sort, so it needs somewhere to merge into. It asks the caller for scratch as long
+as the sequence — `RequiredScratch` says how much — and reports false, changing nothing, when given less. Asking
+rather than allocating is deliberate: this package allocates nothing anywhere, which is what lets it be used where
+allocation is not available, and a caller who already has a buffer should not have a second one taken behind their
+back.
+
+Its comparisons and moves are O(n log n) for every input. There is no bad case, unlike a quicksort; what it costs
+over `Sort` is the storage and about a constant factor.
 
 ## What sorting promises
 

@@ -86,18 +86,22 @@ func SortDescending<T>(items: MutableSlice<T>) {
     Reverse<T>(items);
 }
 
-// Places the element that would sit at n in a fully sorted sequence, and
-// partitions around it: everything before n is at most that element and
-// everything after is at least it. Neither side is ordered further.
-//
-// Returns false, changing nothing, when n is not an index into the sequence.
-// This is the operation to reach for when only one order statistic is wanted
-// -- a median, a percentile -- because it is linear on average where a full
-// sort is not.
-//
-// Quickselect over the same partition Sort uses, but iterative: only one side
-// of each partition can contain n, so there is nothing to recurse into and the
-// stack stays flat. The same recursion budget bounds the worst case.
+/// Puts the element that belongs at `n` in a fully sorted `items` at `n`, and partitions around it.
+///
+/// `items` is borrowed mutably and rewritten; `n` is read by value. Afterwards everything before `n` is at most the
+/// element at `n` and everything after is at least it. Neither side is ordered any further, which is the whole
+/// point: this is what to reach for when only one order statistic is wanted -- a median, a percentile -- because it
+/// is linear on average where a full sort is not.
+///
+/// Reports false, changing nothing, when `n` is not an index into `items`. That is the only way this fails.
+///
+/// Quickselect over the same partition `Sort` uses, but iterative: only one side of a partition can contain `n`, so
+/// there is nothing to recurse into and the stack stays flat. The same depth budget bounds the worst case at
+/// O(n log n), against O(n) on average.
+///
+/// Requires `<` on the element type. Equal elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/nth-element
 func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
     let data = items.data;
     let length = items.length;
@@ -146,13 +150,21 @@ func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
     return true;
 }
 
-// Orders the count smallest elements into the front of the sequence, leaving
-// the remainder unspecified. Returns false, changing nothing, when count
-// exceeds the length.
-//
-// Cheaper than a full sort when count is small: it keeps a max-heap of the
-// best count elements seen so far, so the cost is O(n log count) rather than
-// O(n log n), and it allocates nothing.
+/// Puts the `count` smallest elements of `items` in order at its front.
+///
+/// `items` is borrowed mutably and rewritten; `count` is read by value. The first `count` positions hold the
+/// smallest elements in non-decreasing order, and the rest hold everything else in no particular order.
+///
+/// Reports false, changing nothing, when `count` is larger than the length. A `count` of zero succeeds and does
+/// nothing.
+///
+/// A max-heap over the first `count` elements, which each later element is compared against and displaces only if it
+/// is smaller: O(n log count) comparisons, against the O(n log n) a full sort would cost. That is worth having when
+/// `count` is much smaller than the length and not otherwise.
+///
+/// Requires `<` on the element type. Equal elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/partial-sort
 func PartialSort<T>(items: MutableSlice<T>, count: uint) -> bool {
     let data = items.data;
     let length = items.length;
@@ -442,6 +454,16 @@ func SortDescendingBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering
     Reverse<T>(items);
 }
 
+/// Puts the element that belongs at `n` under `compare` at `n`, and partitions around it.
+///
+/// `items` is borrowed mutably and rewritten; `n` is read by value; `compare` must be a strict weak ordering.
+/// Exactly `NthElement`, with the order supplied rather than taken from the element type.
+///
+/// Reports false, changing nothing, when `n` is not an index into `items`.
+///
+/// O(n) comparisons on average and O(n log n) at worst. Equivalent elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/nth-element-by
 func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
@@ -486,6 +508,16 @@ func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ord
     return true;
 }
 
+/// Puts the `count` smallest elements of `items` under `compare` in order at its front.
+///
+/// `items` is borrowed mutably and rewritten; `count` is read by value; `compare` must be a strict weak ordering.
+/// Exactly `PartialSort`, with the order supplied rather than taken from the element type.
+///
+/// Reports false, changing nothing, when `count` is larger than the length.
+///
+/// O(n log count) comparisons. Equivalent elements may be reordered.
+///
+/// https://rux-lang.dev/docs/api/algorithms/partial-sort-by
 func PartialSortBy<T>(items: MutableSlice<T>, count: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
