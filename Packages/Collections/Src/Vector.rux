@@ -22,7 +22,7 @@
 // vector is exactly as it was.
 
 import Allocator::Allocator;
-import Core::{ Drop, MutableSlice, Option };
+import Core::{ Drop, Iterator, MutableSlice, Option };
 
 /// The capacity a vector takes when it first has to allocate.
 ///
@@ -437,5 +437,281 @@ extend Vector<T> {
     /// https://rux-lang.dev/docs/api/collections/vector/references
     func References(self: *Vector<T>) -> ReferenceIterator<T> {
         return ReferenceIterator::New<T>(self.AsSlice());
+    }
+}
+
+extend Vector<T> {
+    /// Inserts `value` at `index`, moving everything from there on one place along.
+    ///
+    /// `self` is borrowed mutably; `value` is moved in. An `index` equal to the length appends, which is what makes
+    /// the rejection above it a boundary rather than a blanket refusal; anything past that reports
+    /// `IndexOutOfRange` and changes nothing.
+    ///
+    /// Runs in time proportional to how many elements follow the insertion point.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/insert
+    func Insert(self: *var Vector<T>, index: uint, value: T) -> CollectionError {
+        if index > self.length {
+            return CollectionError::IndexOutOfRange;
+        }
+        if index == self.length {
+            return self.Push(value);
+        }
+
+        let room = self.Reserve(1);
+        if room.IsError() {
+            return room;
+        }
+        // Backwards, so each element is read before the one that overwrites it.
+        var position = self.length;
+        while position > index {
+            self.data[position] = self.data[position - 1];
+            position = position - 1;
+        }
+        self.data[index] = value;
+        self.length = self.length + 1;
+        return CollectionError::None;
+    }
+
+    /// Takes the element at `index` out, moving everything after it one place back.
+    ///
+    /// `self` is borrowed mutably. The element is moved out and handed to the caller rather than destroyed, so an
+    /// element that owns something leaves intact. Reports `None` and changes nothing when there is no such index.
+    ///
+    /// Order is preserved, which is what separates this from `SwapRemoveAt`. Runs in time proportional to how many
+    /// elements follow the one removed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/remove-at
+    func RemoveAt(self: *var Vector<T>, index: uint) -> Option<T> {
+        if index >= self.length {
+            return Option::None<T>();
+        }
+        let removed = self.data[index];
+        var position = index;
+        while position + 1 < self.length {
+            self.data[position] = self.data[position + 1];
+            position = position + 1;
+        }
+        self.length = self.length - 1;
+        return Option::Some<T>(removed);
+    }
+
+    /// Takes the element at `index` out and moves the last one into its place.
+    ///
+    /// `self` is borrowed mutably. The element is moved out and handed to the caller. Reports `None` and changes
+    /// nothing when there is no such index.
+    ///
+    /// Order is *not* preserved -- whatever was last now sits where the removed element was -- and that is the whole
+    /// point: this is constant time where `RemoveAt` is linear, and for a sequence nobody is reading in order the
+    /// difference is free.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/swap-remove-at
+    func SwapRemoveAt(self: *var Vector<T>, index: uint) -> Option<T> {
+        if index >= self.length {
+            return Option::None<T>();
+        }
+        let removed = self.data[index];
+        let last = self.length - 1;
+        if index != last {
+            self.data[index] = self.data[last];
+        }
+        self.length = last;
+        return Option::Some<T>(removed);
+    }
+
+    /// A pointer to the first element, or `None` for an empty vector.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/first
+    func First(self: *Vector<T>) -> Option<*T> {
+        return self.Reference(0);
+    }
+
+    /// A pointer to the last element, or `None` for an empty vector.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/last
+    func Last(self: *Vector<T>) -> Option<*T> {
+        if self.length == 0 {
+            return Option::None<*T>();
+        }
+        return self.Reference(self.length - 1);
+    }
+
+    /// A borrowed read-only view of `count` elements starting at `start`.
+    ///
+    /// `self` is borrowed. A `start` at or past the length gives an empty view, and a `count` running past the end is
+    /// clamped, so the result never covers storage the vector does not hold.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the vector grows, shrinks, or is destroyed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/slice
+    func Slice(self: *Vector<T>, start: uint, count: uint) -> Slice<T> {
+        if start >= self.length || count == 0 {
+            return Slice<T> { data: null, length: 0 };
+        }
+        var taken = count;
+        let available = self.length - start;
+        if taken > available {
+            taken = available;
+        }
+        return Slice<T> { data: @self.data[start], length: taken };
+    }
+
+    /// A borrowed writable view of `count` elements starting at `start`.
+    ///
+    /// `self` is borrowed mutably. Clamped exactly as `Slice` is.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the vector grows, shrinks, or is destroyed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/mutable-slice
+    func MutableSliceOf(self: *var Vector<T>, start: uint, count: uint) -> MutableSlice<T> {
+        if start >= self.length || count == 0 {
+            return MutableSlice<T> { data: null, length: 0 };
+        }
+        var taken = count;
+        let available = self.length - start;
+        if taken > available {
+            taken = available;
+        }
+        return MutableSlice<T> { data: @self.data[start], length: taken };
+    }
+}
+
+/// An iterator that takes a vector apart, yielding each element by value.
+///
+/// Move-only: it owns the storage the vector owned, so it implements `Drop`. This is how a vector of elements that
+/// own something is emptied into somewhere else -- each element is moved out rather than copied, and whatever is
+/// left when the iterator's life ends is destroyed with it.
+///
+/// https://rux-lang.dev/docs/api/collections/vector-into-iterator
+struct VectorIntoIterator<T> {
+    /// The storage taken from the vector.
+    data: *var T;
+    /// How many elements it holds.
+    length: uint;
+    /// How many the storage could hold, kept so the block is released with the layout it was taken under.
+    capacity: uint;
+    /// How many have been yielded.
+    position: uint;
+    /// Where the storage goes back to.
+    allocator: Allocator;
+}
+
+extend VectorIntoIterator<T> {
+    /// The next element, moved out, or `None` once every element has been yielded.
+    ///
+    /// `self` is borrowed mutably and advanced. The element is moved rather than copied, so it is the caller's to
+    /// keep or destroy; an exhausted iterator keeps reporting `None`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector-into-iterator/next
+    func Next(self: *var VectorIntoIterator<T>) -> Option<T> {
+        if self.position >= self.length {
+            return Option::None<T>();
+        }
+        let taken = self.data[self.position];
+        self.position = self.position + 1;
+        return Option::Some<T>(taken);
+    }
+}
+
+extend VectorIntoIterator<T> : Iterator {}
+
+extend VectorIntoIterator<T> : Drop {
+    /// Destroys whatever was not yielded and releases the storage.
+    ///
+    /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
+    /// here, which is what makes stopping part-way through safe.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector-into-iterator/drop
+    func Drop(self: *var VectorIntoIterator<T>) {
+        var index = self.position;
+        while index < self.length {
+            let taken = self.data[index];
+            index++;
+        }
+        if self.data != null {
+            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+            self.data = null;
+        }
+        self.length = 0;
+        self.position = 0;
+    }
+}
+
+extend Vector<T> {
+    /// Takes the vector apart into an iterator over its elements.
+    ///
+    /// Consumes the vector: it is moved into the iterator, and the storage goes with it, so nothing is copied and
+    /// nothing is reallocated. Each element comes out by value, which is how one that owns something leaves.
+    ///
+    /// Whatever is not taken is destroyed when the iterator's life ends.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/into-iterator
+    func IntoIterator(self: Vector<T>) -> VectorIntoIterator<T> {
+        // Into a local first, and emptied before it goes out of scope. The receiver is a live binding until the
+        // function ends, so a vector left holding the pointer would have its destructor release the very storage the
+        // iterator was just handed.
+        var vector = self;
+        let taken = VectorIntoIterator<T> {
+            data: vector.data,
+            length: vector.length,
+            capacity: vector.capacity,
+            position: 0,
+            allocator: vector.allocator
+        };
+        vector.data = null;
+        vector.length = 0;
+        vector.capacity = 0;
+        return taken;
+    }
+
+    /// Copies the elements into a fixed-length array.
+    ///
+    /// `self` is borrowed and keeps its own storage, so both are released independently; `error` is written with why
+    /// the array could not be made. Copies its elements, so this is for element types where copying means what it
+    /// says -- `IntoArray` is what moves them.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/to-array
+    func ToArray(self: *Vector<T>, error: *var CollectionError) -> Array<T> {
+        return Array::FromSlice<T>(self.allocator, self.AsSlice(), error);
+    }
+
+    /// Hands the storage itself to a fixed-length array, copying nothing.
+    ///
+    /// Consumes the vector; `error` is written with why the transfer could not happen. The spare capacity is trimmed
+    /// first, and the trim has to succeed: an array releases its block with the layout of its length, so a block
+    /// still carrying spare capacity would be given back under a layout it was not taken with.
+    ///
+    /// A failed trim is a failed transfer, and the vector is gone either way -- it was consumed by the call -- so
+    /// its elements are destroyed and an empty array comes back. That costs the elements, which is why it is
+    /// reported rather than silent; a shrink refused by an allocator is close to impossible, since it asks for less
+    /// than it already holds.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/into-array
+    func IntoArray(self: Vector<T>, error: *var CollectionError) -> Array<T> {
+        var vector = self;
+        let trimmed = vector.ShrinkToFit();
+        if trimmed.IsError() {
+            *error = trimmed;
+            return Array<T> { data: null, length: 0, allocator: vector.allocator };
+        }
+
+        let taken = Array<T> { data: vector.data, length: vector.length, allocator: vector.allocator };
+        vector.data = null;
+        vector.length = 0;
+        vector.capacity = 0;
+        *error = CollectionError::None;
+        return taken;
     }
 }
