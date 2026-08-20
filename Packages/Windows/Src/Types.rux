@@ -105,3 +105,33 @@ struct Win32FindDataA {
     fileName: char8[260];
     alternateFileName: char8[14];
 }
+
+/// What `GetSystemInfo` reports about the machine.
+///
+/// The two granularities are not the same and the difference matters: `pageSize` is what protection is applied at,
+/// while `allocationGranularity` is what a reservation's base address is rounded to, and on every Windows release it
+/// is 64 KiB rather than a page. A reservation therefore wastes address space that a page-granular system would not.
+///
+/// https://rux-lang.dev/docs/api/windows/system-info
+struct SystemInfo {
+    /// The processor architecture, or a union member on the oldest releases; not read by this package.
+    processorArchitecture: uint32;
+    /// The size of a page, which is what memory protection is applied at.
+    pageSize: uint32;
+    /// The lowest address an application may have.
+    minimumApplicationAddress: *var opaque;
+    /// The highest address an application may have.
+    maximumApplicationAddress: *var opaque;
+    /// A mask of the processors this process may run on.
+    activeProcessorMask: uint64;
+    /// How many logical processors the machine has.
+    numberOfProcessors: uint32;
+    /// The processor type, obsolete and not read by this package.
+    processorType: uint32;
+    /// The granularity a reservation's base address is rounded to, which is not the page size.
+    allocationGranularity: uint32;
+    /// The processor revision level.
+    processorLevel: uint16;
+    /// The processor revision.
+    processorRevision: uint16;
+}

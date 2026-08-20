@@ -1,0 +1,63 @@
+import Core::Assert;
+import Memory::{ PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead, PageRelease,
+                 PageSize, PageWrite, Set };
+
+// The page layer is where four systems that agree on nothing are made to look the same, so what is checked here is
+// the shape of the agreement: that a length is rounded up rather than refused, that an empty request is reported
+// rather than quietly accepted, and that a protection actually applies.
+
+func Main() -> int {
+    let size = PageSize();
+    Assert(size >= 4096, "a page is at least four kilobytes on every supported system");
+    Assert((size & (size - 1)) == 0, "and its size is a power of two");
+
+    Assert(PageAlign(0) == 0, "nothing rounds to nothing");
+    Assert(PageAlign(1) == size, "one byte takes a whole page");
+    Assert(PageAlign(size) == size, "a whole page is already aligned");
+    Assert(PageAlign(size + 1) == size * 2, "and one byte past it takes two");
+
+    // An empty request is an arithmetic error at the caller, so it is reported rather than accepted.
+    var address: *var opaque = null;
+    Assert(PageAllocate(0, PageRead | PageWrite, @address) == PageError::InvalidLength,
+           "a zero-length allocation is refused");
+    Assert(address == null, "and the result is left unwritten");
+
+    // An ordinary allocation, with a length that is not a whole number of pages.
+    Assert(PageAllocate(size + 1, PageRead | PageWrite, @address) == PageError::None, "the allocation succeeds");
+    Assert(address != null, "and reports where it landed");
+
+    // The whole rounded length is usable, not just the length asked for.
+    let bytes = address as *var byte;
+    Set(address, 0xC3 as byte, size * 2);
+    Assert(*bytes == 0xC3 as byte, "the first byte is writable");
+    Assert(*(bytes + size * 2 - 1) == 0xC3 as byte, "and so is the last of the rounded length");
+
+    // Pages come zeroed, which the next allocation is what shows.
+    var second: *var opaque = null;
+    Assert(PageAllocate(size, PageRead | PageWrite, @second) == PageError::None, "a second allocation succeeds");
+    let secondBytes = second as *var byte;
+    Assert(*secondBytes == 0 as byte && *(secondBytes + size - 1) == 0 as byte, "fresh pages are zero-filled");
+
+    // Protection changes are accepted for a range that exists.
+    Assert(PageProtect(second, size, PageRead) == PageError::None, "narrowing to read-only succeeds");
+    Assert(*secondBytes == 0 as byte, "and the pages are still readable");
+    Assert(PageProtect(second, size, PageRead | PageWrite) == PageError::None, "and widening again succeeds");
+    *secondBytes = 0x5A as byte;
+    Assert(*secondBytes == 0x5A as byte, "which makes them writable once more");
+
+    // The degenerate arguments are reported rather than passed through.
+    Assert(PageProtect(null, size, PageRead) == PageError::InvalidAddress, "a null address is refused");
+    Assert(PageProtect(second, 0, PageRead) == PageError::InvalidLength, "a zero length is refused");
+    Assert(PageRelease(null, size) == PageError::InvalidAddress, "and so is releasing null");
+    Assert(PageRelease(second, 0) == PageError::InvalidLength, "or releasing nothing");
+
+    // A protection of none is legal: it takes the space and refuses every access to it, which is a guard page.
+    var guarded: *var opaque = null;
+    Assert(PageAllocate(size, PageNone, @guarded) == PageError::None, "an inaccessible allocation succeeds");
+    Assert(guarded != null, "and still reports an address");
+    Assert(PageRelease(guarded, size) == PageError::None, "which releases like any other");
+
+    Assert(PageRelease(second, size) == PageError::None, "the second allocation is released");
+    Assert(PageRelease(address, size + 1) == PageError::None, "and so is the first, by the length it asked for");
+    return 0;
+}
