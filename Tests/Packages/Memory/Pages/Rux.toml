@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Pages"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Memory: page allocation, release and protection"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Memory = { Path = "../../../../Packages/Memory" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Memory"

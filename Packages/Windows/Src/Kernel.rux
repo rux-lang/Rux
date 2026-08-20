@@ -114,6 +114,12 @@ extern {
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesizeex
     func GetFileSizeEx(file: *opaque, size: *int64) -> bool32;
 
+    // Reads what the system reports about the machine, including its page size
+    //
+    // Cannot fail and reports nothing: the structure is always filled.
+    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsysteminfo
+    func GetSystemInfo(info: *var SystemInfo);
+
     // Retrieves the calling thread's last-error code value
     // https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
     func GetLastError() -> uint32;

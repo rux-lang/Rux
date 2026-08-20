@@ -1,0 +1,106 @@
+// The error codes `GetLastError` reports, and what reports them.
+//
+// Win32 has three unrelated ways of saying something failed, and reading one as another is a common mistake. A call
+// returning a `Bool` or a handle reports through `GetLastError`, whose codes are these. A call in the cryptographic
+// or native interface reports an `NtStatus` instead, which shares no numbering with these at all. And a C runtime
+// call sets `errno`, which is a third scheme again.
+//
+// `GetLastError` is per thread and is **not** cleared by a call that succeeds, so a code read at any moment other
+// than immediately after a failure is left over from something earlier.
+//
+// Only the codes a caller is likely to branch on are named. There are thousands, and a program that needs one this
+// module does not have should compare the number rather than wait for it to appear here.
+
+/// `ERROR_SUCCESS`: the operation succeeded, which is the value `GetLastError` reports when nothing has failed.
+///
+/// https://rux-lang.dev/docs/api/windows/error-success
+#Allow("naming.const")
+const ERROR_SUCCESS: uint32 = 0;
+
+/// `ERROR_FILE_NOT_FOUND`: the named file does not exist.
+///
+/// https://rux-lang.dev/docs/api/windows/error-file-not-found
+#Allow("naming.const")
+const ERROR_FILE_NOT_FOUND: uint32 = 2;
+
+/// `ERROR_PATH_NOT_FOUND`: a directory along the path does not exist.
+///
+/// https://rux-lang.dev/docs/api/windows/error-path-not-found
+#Allow("naming.const")
+const ERROR_PATH_NOT_FOUND: uint32 = 3;
+
+/// `ERROR_ACCESS_DENIED`: the caller does not have the rights the operation needs.
+///
+/// Also what a sharing violation looks like when the file is already open without the matching share mode.
+///
+/// https://rux-lang.dev/docs/api/windows/error-access-denied
+#Allow("naming.const")
+const ERROR_ACCESS_DENIED: uint32 = 5;
+
+/// `ERROR_INVALID_HANDLE`: the handle is not one this operation can use.
+///
+/// https://rux-lang.dev/docs/api/windows/error-invalid-handle
+#Allow("naming.const")
+const ERROR_INVALID_HANDLE: uint32 = 6;
+
+/// `ERROR_NOT_ENOUGH_MEMORY`: not enough storage to complete the operation.
+///
+/// Distinct from `ERROR_OUTOFMEMORY`, and which of the two a call reports is the call's own business, so a caller
+/// checking for exhaustion has to accept either.
+///
+/// https://rux-lang.dev/docs/api/windows/error-not-enough-memory
+#Allow("naming.const")
+const ERROR_NOT_ENOUGH_MEMORY: uint32 = 8;
+
+/// `ERROR_OUTOFMEMORY`: not enough storage to complete the operation.
+///
+/// https://rux-lang.dev/docs/api/windows/error-out-of-memory
+#Allow("naming.const")
+const ERROR_OUTOFMEMORY: uint32 = 14;
+
+/// `ERROR_NOT_SUPPORTED`: the operation is not supported on this object or this system.
+///
+/// https://rux-lang.dev/docs/api/windows/error-not-supported
+#Allow("naming.const")
+const ERROR_NOT_SUPPORTED: uint32 = 50;
+
+/// `ERROR_FILE_EXISTS`: the file already exists, and the call was told not to replace it.
+///
+/// https://rux-lang.dev/docs/api/windows/error-file-exists
+#Allow("naming.const")
+const ERROR_FILE_EXISTS: uint32 = 80;
+
+/// `ERROR_INVALID_PARAMETER`: an argument is not valid.
+///
+/// https://rux-lang.dev/docs/api/windows/error-invalid-parameter
+#Allow("naming.const")
+const ERROR_INVALID_PARAMETER: uint32 = 87;
+
+/// `ERROR_DISK_FULL`: the volume has no room left.
+///
+/// https://rux-lang.dev/docs/api/windows/error-disk-full
+#Allow("naming.const")
+const ERROR_DISK_FULL: uint32 = 112;
+
+/// `ERROR_ALREADY_EXISTS`: the object already exists.
+///
+/// Reported by `CreateDirectoryW` where `ERROR_FILE_EXISTS` is reported by the file calls, which is why a caller
+/// asking "was it already there" has to accept both.
+///
+/// https://rux-lang.dev/docs/api/windows/error-already-exists
+#Allow("naming.const")
+const ERROR_ALREADY_EXISTS: uint32 = 183;
+
+/// `ERROR_INVALID_ADDRESS`: the address is not one the operation can use.
+///
+/// https://rux-lang.dev/docs/api/windows/error-invalid-address
+#Allow("naming.const")
+const ERROR_INVALID_ADDRESS: uint32 = 487;
+
+/// `ERROR_COMMITMENT_LIMIT`: the system's commit limit is reached, so nothing more can be backed.
+///
+/// What a large commit fails with when the page file cannot grow, as distinct from running out of address space.
+///
+/// https://rux-lang.dev/docs/api/windows/error-commitment-limit
+#Allow("naming.const")
+const ERROR_COMMITMENT_LIMIT: uint32 = 1455;

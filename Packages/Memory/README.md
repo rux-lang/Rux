@@ -26,12 +26,29 @@ rux add Rux/Memory
 | `MismatchOffset` | Where two blocks first differ, or their length when they do not  |
 | `Find`           | Where a byte first occurs, or the length when it does not        |
 
+| `PageSize` / `PageAlign` | The system page size, and rounding a length to it                        |
+| `PageAllocate` / `PageRelease` / `PageProtect` | Address space at the granularity the system hands it out in |
+
 **Zero length is always legal, and null is legal with it.** `Copy(null, null, 0)` is defined and does nothing. That
 is deliberately not C's rule, where passing null to `memcpy` is undefined even for a zero length — a rule that turns
 an ordinary empty case into a trap and makes every caller guard.
 
 `Copy` may be read as copying byte zero first, so a destination overlapping the source ahead of it reads bytes the
 copy has already overwritten. `Move` is defined for every overlap and chooses its direction accordingly.
+
+The page layer is what sits under an allocator, not an allocator itself. Nothing there tracks what it gave out or
+remembers a length; a caller releases exactly what it took. Failure is a `PageError` rather than an errno, a
+`GetLastError` code or a sentinel address — one set of reasons across four systems that report three different ways.
+
+Windows differs in kind: it separates reserving address space from committing storage to it, and `PageAllocate`
+always does both, which is what every other system does and what an allocator expects. A caller wanting a large
+reservation cheaply has to reach for `Rux/Windows` directly.
+
+`PageSize` asks the system where the system will answer — `GetSystemInfo` on Windows, `getpagesize` on Darwin, which
+is not 4 KiB on Apple Silicon. Linux and FreeBSD keep the answer in the auxiliary vector rather than behind a system
+call and this package calls no libc there, so those report the standard 4 KiB and a kernel configured for larger
+pages is under-reported. That cannot make an allocation wrong, since every call rounds the length up in the system
+rather than here; it can only make a caller ask for more than it needed.
 
 None of the comparisons is constant-time: each stops at the first difference, so none may compare a secret.
 

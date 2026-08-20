@@ -1,0 +1,330 @@
+// Address space at the granularity the operating system hands it out in: whole pages, with a protection.
+//
+// This is the layer under an allocator rather than an allocator itself. Nothing here tracks what it gave out, keeps
+// a free list, or remembers a length -- a caller releases exactly what it took, and passing a different length is
+// its own mistake to make.
+//
+// The four systems disagree about almost everything here, so the surface is one this package defines rather than any
+// one platform's. Protection is a flag set, failure is a `PageError` rather than an errno or a `GetLastError` code,
+// and a length is rounded up to whole pages by the system whether or not the caller does it first.
+//
+// Windows is the one that differs in kind. It separates reserving address space from committing storage to it, and
+// these calls always do both -- which is the behaviour every other system has and the one an allocator expects. A
+// caller wanting a large reservation cheaply has to reach for `Rux/Windows` directly.
+
+import Core::{ #target, #Error };
+import Memory::AlignUp;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
+        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
+    },
+    .Linux => import Linux::{
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
+        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
+    },
+    .macOS => import macOS::{
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
+        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM, getpagesize
+    },
+    .Windows => import Windows::{
+        GetLastError, GetSystemInfo, SystemInfo, VirtualAlloc, VirtualFree, VirtualProtect,
+        ERROR_ACCESS_DENIED, ERROR_COMMITMENT_LIMIT, ERROR_INVALID_ADDRESS, ERROR_INVALID_PARAMETER,
+        ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_EXECUTE,
+        PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE
+    },
+    else => #Error("Unsupported operating system")
+}
+
+/// What may be done with a page, as a set of flags to combine with `|`.
+///
+/// A protection of `PageNone` reserves the address space and refuses every access to it, which is how a guard page
+/// is made. Combining write and execute is refused outright by some systems and by policy on others, so a caller
+/// that needs both should write through one protection and execute through another.
+///
+/// https://rux-lang.dev/docs/api/memory/page-none
+const PageNone: uint32 = 0;
+
+/// The page may be read.
+///
+/// https://rux-lang.dev/docs/api/memory/page-read
+const PageRead: uint32 = 1;
+
+/// The page may be written.
+///
+/// Implies readability on every supported system: none of them can make a page write-only, whatever their flags
+/// suggest.
+///
+/// https://rux-lang.dev/docs/api/memory/page-write
+const PageWrite: uint32 = 2;
+
+/// The page may be executed.
+///
+/// https://rux-lang.dev/docs/api/memory/page-execute
+const PageExecute: uint32 = 4;
+
+/// Why a page operation did not do what was asked.
+///
+/// One set of reasons across four systems that report failure three different ways: an errno, a `GetLastError` code,
+/// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
+/// nothing went wrong -- only that this module could not name it.
+///
+/// https://rux-lang.dev/docs/api/memory/page-error
+enum PageError: uint8 {
+    /// Nothing went wrong. This is what a successful call reports, so it is not an error case.
+    None = 0,
+    /// The length was zero, or too large for the address space to hold.
+    InvalidLength = 1,
+    /// The address was not page-aligned, or names nothing this process may operate on.
+    InvalidAddress = 2,
+    /// The system has no storage to back the request.
+    OutOfMemory = 3,
+    /// The system refused the protection asked for, which is usually write and execute together.
+    PermissionDenied = 4,
+    /// The combination is not supported on this system.
+    Unsupported = 5,
+    /// The system reported a failure this module has no name for.
+    Failed = 6
+}
+
+/// The size of a page on this system.
+///
+/// Takes nothing and returns the size by copy. Always a power of two.
+///
+/// It is asked of the system where the system will answer -- through `GetSystemInfo` on Windows and `getpagesize` on
+/// Darwin, which is not 4 KiB on Apple Silicon. Linux and FreeBSD keep the answer in the auxiliary vector rather
+/// than behind a system call, and this package calls no libc on those systems, so there the standard 4 KiB is
+/// reported. A kernel configured for larger pages will therefore be under-reported.
+///
+/// That under-reporting cannot make an allocation wrong: every call here rounds a length up to whole pages in the
+/// system rather than in this module. It can only make a caller reserve more calls than it needed.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/memory/page-size
+func PageSize() -> uint {
+    when #target.os {
+        .Windows => {
+            var info: SystemInfo;
+            GetSystemInfo(@info);
+            return info.pageSize as uint;
+        }
+        .macOS => {
+            return getpagesize() as uint;
+        }
+        else => {
+            return 4096;
+        }
+    }
+}
+
+/// Takes `length` bytes of address space with the given protection, and reports where it landed.
+///
+/// `length` is rounded up to whole pages by the system. `protection` is a combination of the `Page*` flags, and
+/// `PageNone` is legal -- it takes the space and refuses every access to it. `result` receives the base address when
+/// this reports `None`, and is left unwritten otherwise; it must not be null.
+///
+/// The pages are zero-filled on every supported system. Nothing else about their contents is promised.
+///
+/// A `length` of zero is refused with `InvalidLength` rather than succeeding with nothing, because a zero-length
+/// mapping is a caller's arithmetic error far more often than an intention.
+///
+/// Runs in constant time as far as this module is concerned; the system may take longer. Allocates nothing beyond
+/// what it is asked for.
+///
+/// # Safety
+///
+/// The pages are the caller's until `PageRelease` takes exactly this length back. Releasing a different length, or
+/// an address this did not return, is undefined on Windows and silently partial elsewhere.
+///
+/// https://rux-lang.dev/docs/api/memory/page-allocate
+func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
+    if length == 0 {
+        return PageError::InvalidLength;
+    }
+    when #target.os {
+        .Windows => {
+            let mapped = VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection));
+            if mapped == null {
+                return WindowsError(GetLastError());
+            }
+            *result = mapped;
+            return PageError::None;
+        }
+        else => {
+            let mapped = Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0);
+            if IsError(mapped) {
+                return UnixError(Errno(mapped));
+            }
+            *result = mapped as *var opaque;
+            return PageError::None;
+        }
+    }
+}
+
+/// Gives back `length` bytes of address space at `address`.
+///
+/// `address` must be a base address `PageAllocate` returned, and `length` the length it was given. Returns `None`
+/// when the system accepted the release.
+///
+/// A `length` of zero is refused with `InvalidLength`, and a null `address` with `InvalidAddress`, rather than either
+/// being quietly ignored: both are arithmetic errors at the caller far more often than intentions.
+///
+/// # Safety
+///
+/// Every pointer into the range becomes invalid, and the address space may be handed to the next allocation at once.
+/// Windows requires the exact base address and ignores the length entirely; the other systems accept a sub-range and
+/// release only that, so a wrong length there silently releases the wrong amount.
+///
+/// https://rux-lang.dev/docs/api/memory/page-release
+func PageRelease(address: *var opaque, length: uint) -> PageError {
+    if address == null {
+        return PageError::InvalidAddress;
+    }
+    if length == 0 {
+        return PageError::InvalidLength;
+    }
+    when #target.os {
+        .Windows => {
+            // MEM_RELEASE takes the whole reservation and requires a size of zero; the length is checked above only
+            // so that a caller's arithmetic error is reported on every system rather than on some of them.
+            if VirtualFree(address, 0, MEM_RELEASE) == 0 {
+                return WindowsError(GetLastError());
+            }
+            return PageError::None;
+        }
+        else => {
+            if Munmap(address as *opaque, length) != 0 {
+                return PageError::Failed;
+            }
+            return PageError::None;
+        }
+    }
+}
+
+/// Changes what may be done with `length` bytes at `address`.
+///
+/// `address` must be page-aligned and `length` is rounded up to whole pages. Returns `None` when the system accepted
+/// the change.
+///
+/// The change takes effect at once, so a thread touching the range concurrently faults rather than finishing what it
+/// started.
+///
+/// # Safety
+///
+/// Nothing here checks that the range was ever allocated. Asking for write and execute together is refused on Apple
+/// Silicon without an entitlement and by policy on hardened systems elsewhere, which arrives as `PermissionDenied`.
+///
+/// https://rux-lang.dev/docs/api/memory/page-protect
+func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
+    if address == null {
+        return PageError::InvalidAddress;
+    }
+    if length == 0 {
+        return PageError::InvalidLength;
+    }
+    when #target.os {
+        .Windows => {
+            var previous: uint32 = 0;
+            if VirtualProtect(address, length, WindowsProtection(protection), @previous) == 0 {
+                return WindowsError(GetLastError());
+            }
+            return PageError::None;
+        }
+        else => {
+            if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 {
+                return PageError::Failed;
+            }
+            return PageError::None;
+        }
+    }
+}
+
+/// Rounds `length` up to a whole number of pages.
+///
+/// `length` is read by value. Returns the rounded length, or `length` itself when rounding would pass the end of the
+/// range -- which a caller sizing an allocation should notice, since the system will refuse such a length anyway.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/memory/page-align
+func PageAlign(length: uint) -> uint {
+    let size = PageSize();
+    let rounded = AlignUp(length, size);
+    return rounded < length ? length : rounded;
+}
+
+when #target.os {
+    .Windows => {
+        // Win32 names one protection per combination rather than a flag set, so the caller's flags are matched to
+        // the nearest name. Write implies read on this system, and there is no execute-and-write-only.
+        func WindowsProtection(protection: uint32) -> uint32 {
+            let execute = (protection & PageExecute) != 0;
+            let write = (protection & PageWrite) != 0;
+            let read = (protection & PageRead) != 0;
+            if execute && write {
+                return PAGE_EXECUTE_READWRITE;
+            }
+            if execute && read {
+                return PAGE_EXECUTE_READ;
+            }
+            if execute {
+                return PAGE_EXECUTE;
+            }
+            if write {
+                return PAGE_READWRITE;
+            }
+            if read {
+                return PAGE_READONLY;
+            }
+            return PAGE_NOACCESS;
+        }
+
+        func WindowsError(code: uint32) -> PageError {
+            if code == ERROR_NOT_ENOUGH_MEMORY || code == ERROR_OUTOFMEMORY || code == ERROR_COMMITMENT_LIMIT {
+                return PageError::OutOfMemory;
+            }
+            if code == ERROR_ACCESS_DENIED {
+                return PageError::PermissionDenied;
+            }
+            if code == ERROR_INVALID_ADDRESS {
+                return PageError::InvalidAddress;
+            }
+            if code == ERROR_INVALID_PARAMETER {
+                return PageError::InvalidLength;
+            }
+            return PageError::Failed;
+        }
+    }
+    else => {
+        // The Unix flag sets are the same shape as this module's, so the mapping is a translation rather than a
+        // choice. The numbering differs between the three systems, which is why it is done per target.
+        func UnixProtection(protection: uint32) -> int32 {
+            var result: int32 = ProtectionNone;
+            if (protection & PageRead) != 0 {
+                result = result | ProtectionRead;
+            }
+            if (protection & PageWrite) != 0 {
+                result = result | ProtectionWrite;
+            }
+            if (protection & PageExecute) != 0 {
+                result = result | ProtectionExecute;
+            }
+            return result;
+        }
+
+        func UnixError(number: int64) -> PageError {
+            if number == ENOMEM {
+                return PageError::OutOfMemory;
+            }
+            if number == EACCES || number == EPERM {
+                return PageError::PermissionDenied;
+            }
+            if number == EINVAL {
+                return PageError::InvalidLength;
+            }
+            return PageError::Failed;
+        }
+    }
+}
