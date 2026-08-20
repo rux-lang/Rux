@@ -3339,14 +3339,55 @@ private:
         }
     }
 
-    static bool ContainsTypeParam(const TypeRef &type) {
+    /// Whether `type` still stands for something a type parameter in scope decides.
+    ///
+    /// An instantiation spells its arguments inside its own name -- `Node<T>` is one `Named` whose name says `T`,
+    /// with nothing structural to walk. Asking only about structure called that concrete, so a call passing it as a
+    /// type argument was queued as an instantiation of a type that does not exist yet, and never re-queued once the
+    /// enclosing generic said what `T` was. The name is where the parameter is, so the name is what this reads.
+    bool MentionsTypeParameter(const TypeRef &type) const {
         if (type.kind == TypeRef::Kind::TypeParam) {
             return true;
         }
-        return std::ranges::any_of(type.inner, [](const TypeRef &inner) { return ContainsTypeParam(inner); });
+        if (type.kind == TypeRef::Kind::Named) {
+            if (std::ranges::contains(currentTypeParams, BaseTypeName(type.name))) {
+                return true;
+            }
+            for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+                if (MentionsTypeParameter(argument)) {
+                    return true;
+                }
+            }
+        }
+        return std::ranges::any_of(type.inner, [this](const TypeRef &inner) { return MentionsTypeParameter(inner); });
     }
 
-    static TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
+    TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) const {
+        // An argument spelled inside an instantiation's name is substituted by rebuilding the name around what the
+        // arguments became. Walking only `inner` left `Node<T>` exactly as it was, so the instantiation that arrived
+        // asked for a layout of a type still mentioning a parameter, and got none.
+        if (type.kind == TypeRef::Kind::Named && type.name.find('<') != std::string::npos) {
+            std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+            bool changed = false;
+            for (TypeRef &argument : arguments) {
+                TypeRef substituted = SubstituteTypeParams(argument, substitutions);
+                changed = changed || substituted.ToString() != argument.ToString();
+                argument = std::move(substituted);
+            }
+            if (changed) {
+                TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
+                rebuilt.isMut = type.isMut;
+                return rebuilt;
+            }
+            return type;
+        }
+        if (type.kind == TypeRef::Kind::Named) {
+            if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
+                TypeRef substituted = it->second;
+                substituted.isMut = type.isMut;
+                return substituted;
+            }
+        }
         if (type.kind == TypeRef::Kind::TypeParam) {
             if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
                 TypeRef substituted = it->second;
@@ -3399,8 +3440,8 @@ private:
             return;
         }
 
-        const bool isConcrete = std::ranges::all_of(substitutions, [](const auto &substitution) {
-            return !substitution.second.IsUnknown() && !ContainsTypeParam(substitution.second);
+        const bool isConcrete = std::ranges::all_of(substitutions, [this](const auto &substitution) {
+            return !substitution.second.IsUnknown() && !MentionsTypeParameter(substitution.second);
         });
         if (!isConcrete) {
             if (currentFunctionDecl) {
@@ -3471,6 +3512,14 @@ private:
                 currentFile = it->second;
             }
             currentFunctionDecl = nullptr;
+
+            // A type argument that is itself an instantiation -- `AllocateBlock<Node<int32>>` -- is named for the
+            // first time right here. Nothing in the source spells it, so nothing computed its layout, and the
+            // `sizeof` this instantiation folds would have had nothing to read. Laying it out now is what puts it
+            // in the model that lowering asks.
+            for (const auto &substitution : instantiation.substitutions) {
+                LayoutOfTypeRef(substitution.second);
+            }
 
             ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
             if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
