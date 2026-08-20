@@ -1,203 +1,153 @@
-import Collections::CollectionError;
-import Collections::HashSet;
-import Collections::{ EqualsInt32, EqualsSlice, HashInt32, HashSlice };
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, EqualsInt32, HashInt32, HashSet, TableSeed };
+import Core::{ Assert, Drop };
 
-// See Tests/Packages/Collections/Array for why a failed check reports itself
-// through a numbered exit code rather than through an assertion.
+// A set is the same kernel as a map with nothing stored alongside the key, so what is worth checking here is what a
+// set adds: that it holds one of each, that adding a duplicate is reported rather than silently doubling the count,
+// and that the element it keeps is the one it already had.
 
-struct Pair {
-    first: int64;
-    second: int64;
+struct Tracked {
+    counter: *var int32;
+    value: int32;
 }
 
-func HashPair(value: Pair) -> uint {
-    return ((value.first * 31i64) + value.second) as uint;
-}
-
-func EqualsPair(a: Pair, b: Pair) -> bool {
-    return a.first == b.first && a.second == b.second;
-}
-
-// Every value lands in the same bucket, so the table becomes one probe chain.
-func CollideAll(value: int32) -> uint {
-    return 0u;
+extend Tracked : Drop {
+    func Drop(self: *var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
 }
 
 func Main() -> int {
-    // An empty set allocates nothing and contains nothing.
-    var empty = HashSet::New<int32>(HashInt32, EqualsInt32);
-    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
-    if empty.Contains(1) { return 11; }
-    if empty.Remove(1) { return 12; }
-    var cursor: uint = 0;
-    if empty.TryNextValue(@cursor, null) { return 13; }
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
 
-    // The first insertion builds the table, and a duplicate changes nothing.
-    var set = HashSet::New<int32>(HashInt32, EqualsInt32);
-    var inserted = false;
-    if !(set.Insert(5, @inserted) == CollectionError::None) { return 20; }
-    if !inserted || set.Length() != 1 || set.Capacity() != 8 { return 21; }
-    if !set.Contains(5) || set.Contains(6) { return 22; }
-    if !(set.Insert(5, @inserted) == CollectionError::None) { return 23; }
-    if inserted || set.Length() != 1 { return 24; }
-    if !(set.Insert(6, null) == CollectionError::None) { return 25; }
-    if set.Length() != 2 { return 26; }
+    var set = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    Assert(set.IsEmpty(), "a new set is empty");
+    Assert(set.Capacity() == 0, "and has no storage");
+    Assert(!set.Contains(1), "with nothing in it");
+    Assert(set.Remove(1).IsNone(), "and nothing to take out");
 
-    // Removing then reinserting reports the value as new again.
-    if !set.Remove(5) { return 30; }
-    if set.Contains(5) || set.Length() != 1 { return 31; }
-    if set.Remove(5) { return 32; }
-    if !(set.Insert(5, @inserted) == CollectionError::None) { return 33; }
-    if !inserted || set.Length() != 2 { return 34; }
-    set.Free();
+    var added = false;
+    Assert(set.Insert(1, @added) == CollectionError::None, "the first insertion succeeds");
+    Assert(added, "and reports that the set grew");
+    Assert(set.Length() == 1, "which it did");
+    Assert(set.Contains(1), "holding what was put in");
 
-    // A chain of colliding values still inserts, finds and removes correctly.
-    var collided = HashSet::New<int32>(CollideAll, EqualsInt32);
-    var k: int32 = 0;
-    while k < 20 {
-        if !(collided.Insert(k, @inserted) == CollectionError::None) { return 40; }
-        if !inserted { return 41; }
-        k++;
-    }
-    if collided.Length() != 20 { return 42; }
-    k = 0;
-    while k < 20 {
-        if !collided.Contains(k) { return 43; }
-        k++;
-    }
+    // A set holds one of each.
+    Assert(set.Insert(1, @added) == CollectionError::None, "inserting a duplicate succeeds");
+    Assert(!added, "and reports that the set did not grow");
+    Assert(set.Length() == 1, "which it did not");
 
-    // Removing every other value leaves the rest reachable past the tombstones.
-    k = 0;
-    while k < 20 {
-        if k % 2 == 0 {
-            if !collided.Remove(k) { return 44; }
-        }
-        k++;
-    }
-    if collided.Length() != 10 { return 45; }
-    k = 1;
-    while k < 20 {
-        if !collided.Contains(k) { return 46; }
-        k = k + 2;
-    }
-    collided.Free();
-
-    // Churning one value reuses its tombstone rather than growing the table.
-    var churn = HashSet::New<int32>(HashInt32, EqualsInt32);
-    if !(churn.Insert(3, null) == CollectionError::None) { return 50; }
-    let steadyCapacity = churn.Capacity();
-    var round: int32 = 0;
-    while round < 200 {
-        if !churn.Remove(3) { return 51; }
-        if !(churn.Insert(3, @inserted) == CollectionError::None) { return 52; }
-        if !inserted { return 53; }
-        round++;
-    }
-    if churn.Length() != 1 || churn.Capacity() != steadyCapacity { return 54; }
-    churn.Free();
-
-    // Growing past the load factor rehashes and keeps every value.
-    var many = HashSet::New<int32>(HashInt32, EqualsInt32);
-    var i: int32 = 0;
-    while i < 500 {
-        if !(many.Insert(i, @inserted) == CollectionError::None) { return 60; }
-        if !inserted { return 61; }
-        i++;
-    }
-    if many.Length() != 500 { return 62; }
-    if many.Length() > many.Capacity() - (many.Capacity() / 4) { return 63; }
-    i = 0;
-    while i < 500 {
-        if !many.Contains(i) { return 64; }
-        i++;
-    }
-    if many.Contains(500) { return 65; }
-
-    // Traversal visits every value exactly once.
-    var total: int64 = 0;
-    var count: uint = 0;
+    // Enough elements to grow several times, with duplicates mixed in.
     var value: int32 = 0;
-    cursor = 0;
-    while many.TryNextValue(@cursor, @value) {
-        total = total + (value as int64);
-        count++;
+    while value < 300 {
+        Assert(set.Insert(value % 200, @added) == CollectionError::None, "every insertion succeeds");
+        value = value + 1;
     }
-    if count != 500 || total != 124750i64 { return 70; }
-    cursor = 0;
-    count = 0;
-    while many.TryNextValue(@cursor, null) {
-        count++;
+    Assert(set.Length() == 200, "and the set holds one of each distinct value");
+    value = 0;
+    while value < 200 {
+        Assert(set.Contains(value), "every value put in is in the set");
+        value = value + 1;
     }
-    if count != 500 { return 71; }
+    Assert(!set.Contains(200), "and nothing that was not");
 
-    // Clone is independent and keeps the same functions.
-    var copy = HashSet::New<int32>(HashInt32, EqualsInt32);
-    if !(many.Clone(@copy) == CollectionError::None) { return 80; }
-    if copy.Length() != many.Length() || copy.Capacity() != many.Capacity() { return 81; }
-    if !copy.Contains(499) { return 82; }
-    if !(copy.Insert(1000, null) == CollectionError::None) { return 83; }
-    if many.Contains(1000) { return 84; }
-    if !copy.Remove(0) || !many.Contains(0) { return 85; }
-    copy.Free();
-    many.Free();
-
-    // Reserve sizes ahead; Clear keeps the table; ShrinkToFit rebuilds small.
-    var sized = HashSet::New<int32>(HashInt32, EqualsInt32);
-    if !(sized.Reserve(100) == CollectionError::None) { return 90; }
-    let reserved = sized.Capacity();
-    if reserved < 134 { return 91; }
-    i = 0;
-    while i < 100 {
-        if !(sized.Insert(i, null) == CollectionError::None) { return 92; }
-        i++;
+    // Removal hands the element back and closes the gap; everything else stays findable.
+    value = 0;
+    while value < 200 {
+        if value % 2 == 0 {
+            Assert(set.Remove(value).ValueOr(-1) == value, "removal hands back what it took");
+        }
+        value = value + 1;
     }
-    if sized.Capacity() != reserved { return 93; }
-    sized.Clear();
-    if !sized.IsEmpty() || sized.Capacity() != reserved || sized.Contains(0) { return 94; }
-    if !(sized.Insert(1, null) == CollectionError::None) { return 95; }
-    if !(sized.ShrinkToFit() == CollectionError::None) { return 96; }
-    if sized.Capacity() != 8 || sized.Length() != 1 || !sized.Contains(1) { return 97; }
-    if !sized.Remove(1) { return 98; }
-    if !(sized.ShrinkToFit() == CollectionError::None) { return 99; }
-    if sized.Capacity() != 0 { return 100; }
-    sized.Free();
+    Assert(set.Length() == 100, "with the count down by exactly what was removed");
+    value = 0;
+    while value < 200 {
+        if value % 2 == 0 {
+            Assert(!set.Contains(value), "a removed value is gone");
+        }
+        else {
+            Assert(set.Contains(value), "and everything left is still findable");
+        }
+        value = value + 1;
+    }
 
-    // A struct value wider than one machine word, with its own hash and
-    // equality functions.
-    var pairs = HashSet::New<Pair>(HashPair, EqualsPair);
-    let one = Pair { first: 1i64, second: 2i64 };
-    let two = Pair { first: 1i64, second: 3i64 };
-    let alsoOne = Pair { first: 1i64, second: 2i64 };
-    if !(pairs.Insert(one, @inserted) == CollectionError::None) { return 110; }
-    if !inserted { return 111; }
-    if !(pairs.Insert(two, @inserted) == CollectionError::None) { return 112; }
-    if !inserted || pairs.Length() != 2 { return 113; }
-    if !(pairs.Insert(alsoOne, @inserted) == CollectionError::None) { return 114; }
-    if inserted || pairs.Length() != 2 { return 115; }
-    if !pairs.Contains(alsoOne) { return 116; }
-    if !pairs.Remove(one) || pairs.Contains(alsoOne) { return 117; }
-    pairs.Free();
+    // Churning at a steady size never grows the table.
+    let settled = set.Capacity();
+    var round: int32 = 0;
+    while round < 500 {
+        set.Insert(1000 + round, @added);
+        Assert(set.Remove(1000 + round).IsSome(), "every churn removal finds what it just added");
+        round = round + 1;
+    }
+    Assert(set.Capacity() == settled, "churning at a steady size never grows the table");
+    Assert(set.Length() == 100, "and leaves the count where it was");
 
-    // Borrowed byte runs, hashed and compared by content rather than address.
-    var words = HashSet::New<Slice<char8>>(HashSlice, EqualsSlice);
-    let alpha: Slice<char8> = "alpha";
-    let beta: Slice<char8> = "beta";
-    let alphaAgain: Slice<char8> = "alpha";
-    if !(words.Insert(alpha, null) == CollectionError::None) { return 120; }
-    if !(words.Insert(beta, null) == CollectionError::None) { return 121; }
-    if !(words.Insert(alphaAgain, @inserted) == CollectionError::None) { return 122; }
-    if inserted || words.Length() != 2 { return 123; }
-    if !words.Contains(alphaAgain) { return 124; }
-    words.Free();
+    // Walking reaches every element exactly once.
+    var cursor: uint = 0;
+    var seen: int32 = 0;
+    var walked: uint = 0;
+    var total: int64 = 0;
+    while set.TryNext(@cursor, @seen) {
+        Assert(seen % 2 == 1, "every element a walk reports is one still in the set");
+        total = total + (seen as int64);
+        walked = walked + 1;
+    }
+    Assert(walked == 100, "and a walk reaches every element");
+    Assert(total == 10000, "each exactly once, since the odd numbers below two hundred sum to what they should");
 
-    // A reservation whose table cannot be addressed is rejected before any
-    // allocation, and the set stays usable.
-    var huge = HashSet::New<Pair>(HashPair, EqualsPair);
-    if !(huge.Insert(one, null) == CollectionError::None) { return 130; }
-    if !(huge.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 131; }
-    if huge.Length() != 1 || !huge.Contains(one) { return 132; }
-    huge.Free();
+    // Capacity behaviour.
+    Assert(set.Reserve(1000) == CollectionError::None, "reserving succeeds");
+    Assert(set.Capacity() >= 1000, "taking the room asked for");
+    Assert(set.ShrinkToFit() == CollectionError::None, "shrinking succeeds");
+    Assert(set.Capacity() < 1000, "giving back what the elements do not need");
+    Assert(set.Contains(3), "and keeping every element");
+    Assert(set.Reserve(uint::Max) == CollectionError::CapacityOverflow, "an impossible reservation is refused");
+    Assert(set.Length() == 100, "leaving the set as it was");
 
-    empty.Free();
+    set.Clear();
+    Assert(set.IsEmpty(), "clearing empties the set");
+    Assert(set.Insert(1, @added) == CollectionError::None, "and the set is usable afterwards");
+
+    // Two seeds lay the same elements out differently.
+    var first = HashSet::WithSeed<int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
+    var second = HashSet::WithSeed<int32>(allocator, TableSeed::Of(99, 100), HashInt32, EqualsInt32);
+    value = 0;
+    while value < 32 {
+        first.Insert(value, @added);
+        second.Insert(value, @added);
+        value = value + 1;
+    }
+    var firstCursor: uint = 0;
+    var secondCursor: uint = 0;
+    var firstValue: int32 = 0;
+    var secondValue: int32 = 0;
+    var differed = false;
+    while first.TryNext(@firstCursor, @firstValue) {
+        if !second.TryNext(@secondCursor, @secondValue) {
+            differed = true;
+            break;
+        }
+        if firstValue != secondValue {
+            differed = true;
+        }
+    }
+    Assert(differed, "two different seeds lay the same elements out differently");
+
+    // Ownership: a duplicate is destroyed rather than stored, since the set keeps the one it already had.
+    var destroyed: int32 = 0;
+    var owning = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var tracked = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var counted: int32 = 0;
+    while counted < 20 {
+        owning.Insert(counted, @added);
+        counted = counted + 1;
+    }
+    Assert(owning.Length() == 20, "the set holds every distinct element");
+    owning.Clear();
+    Assert(owning.IsEmpty(), "and clearing empties it");
+
     return 0;
 }

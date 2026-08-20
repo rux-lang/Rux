@@ -1,0 +1,139 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed };
+import Core::Assert;
+
+// The kernel both tables are built on, exercised where it is hardest: a table run right up against its load factor,
+// and one churned in an order nothing about the hash makes convenient.
+//
+// Backward-shift deletion is the part that is easy to get subtly wrong. A shift that stops too early strands entries
+// past the gap, and one that goes too far moves an entry back past its own home -- and neither shows on a table that
+// is nearly empty or removed from in insertion order. So the removals here run in a stride that walks the table
+// unevenly, and every surviving key is looked up again after each pass.
+
+// A deliberately poor hash: every key collides into one of four homes, so almost every insertion displaces something
+// and probe distances grow long. This is the input Robin Hood exists for.
+func CrowdedHash(value: int32, low: uint64, high: uint64) -> uint64 {
+    return ((value % 4) as uint64) ^ (low & 0);
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // Filled right up to the load factor, then read back. A table that grows exactly when it should still has every
+    // key findable at the fullest moment.
+    var map = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
+    var key: int32 = 0;
+    while key < 96 {
+        Assert(map.Insert(key, key * 7) == CollectionError::None, "every insertion up to the load factor succeeds");
+        key = key + 1;
+    }
+    Assert(map.Length() == 96, "the table holds every key");
+    Assert(map.Capacity() >= 128, "over a table the load factor grew for it");
+    key = 0;
+    while key < 96 {
+        Assert(map.Get(key).ValueOr(-1) == key * 7, "and every key is findable at the fullest moment");
+        key = key + 1;
+    }
+
+    // Removed in a stride that is coprime with the capacity, so the removals walk the table unevenly rather than
+    // sweeping it. After each removal every key that should still be there is looked up again.
+    var removed: uint = 0;
+    var stride: int32 = 37;
+    var at: int32 = 0;
+    var pass: uint = 0;
+    while pass < 96 {
+        at = (at + stride) % 96;
+        if map.ContainsKey(at) {
+            Assert(map.Remove(at).ValueOr(-1) == at * 7, "removal hands back the value it held");
+            removed = removed + 1;
+            Assert(!map.ContainsKey(at), "and the key is gone");
+        }
+        pass = pass + 1;
+    }
+    Assert(removed > 0, "the stride removed something");
+    Assert(map.Length() == 96 - removed, "and the count is down by exactly that");
+
+    // Everything not removed is still findable, which is what the backward shift has to guarantee.
+    key = 0;
+    var survivors: uint = 0;
+    while key < 96 {
+        if map.ContainsKey(key) {
+            Assert(map.Get(key).ValueOr(-1) == key * 7, "every surviving key still reads back its value");
+            survivors = survivors + 1;
+        }
+        key = key + 1;
+    }
+    Assert(survivors == map.Length(), "and the survivors are exactly what the table says it holds");
+
+    // A hash that crowds every key into four homes. Probe distances grow long, which is where Robin Hood earns its
+    // keep and where a stop-early lookup would start missing keys that are present.
+    var crowded = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(3, 4), CrowdedHash, EqualsInt32);
+    key = 0;
+    while key < 60 {
+        Assert(crowded.Insert(key, key + 1000) == CollectionError::None, "every crowded insertion succeeds");
+        key = key + 1;
+    }
+    Assert(crowded.Length() == 60, "the crowded table holds every key");
+    key = 0;
+    while key < 60 {
+        Assert(crowded.Get(key).ValueOr(-1) == key + 1000, "and finds every one of them");
+        key = key + 1;
+    }
+    Assert(!crowded.ContainsKey(60), "while a key that was never inserted is still absent");
+    Assert(!crowded.ContainsKey(-5), "however badly the keys collide");
+
+    // Removing from a crowded table shifts long runs back, which is the case a shift that stops early gets wrong.
+    key = 0;
+    while key < 60 {
+        if key % 4 == 1 {
+            Assert(crowded.Remove(key).IsSome(), "every crowded removal finds its key");
+        }
+        key = key + 1;
+    }
+    key = 0;
+    while key < 60 {
+        if key % 4 == 1 {
+            Assert(!crowded.ContainsKey(key), "a removed key is gone from a crowded table");
+        }
+        else {
+            Assert(crowded.Get(key).ValueOr(-1) == key + 1000, "and every other key survived the shifting");
+        }
+        key = key + 1;
+    }
+
+    // The set shares the kernel, so the same crowding must behave the same way.
+    var set = HashSet::WithSeed<int32>(allocator, TableSeed::Of(3, 4), CrowdedHash, EqualsInt32);
+    var added = false;
+    key = 0;
+    while key < 60 {
+        Assert(set.Insert(key, @added) == CollectionError::None, "every crowded set insertion succeeds");
+        Assert(added, "and each one adds a distinct element");
+        key = key + 1;
+    }
+    Assert(set.Length() == 60, "the crowded set holds every element");
+    key = 0;
+    while key < 60 {
+        Assert(set.Contains(key), "and finds every one of them");
+        key = key + 1;
+    }
+    key = 0;
+    while key < 60 {
+        if key % 3 == 0 {
+            Assert(set.Remove(key).IsSome(), "every crowded set removal finds its element");
+        }
+        key = key + 1;
+    }
+    key = 0;
+    while key < 60 {
+        if key % 3 == 0 {
+            Assert(!set.Contains(key), "a removed element is gone");
+        }
+        else {
+            Assert(set.Contains(key), "and every other element survived the shifting");
+        }
+        key = key + 1;
+    }
+
+    return 0;
+}

@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "CollectionsHashSet"
+Name = "CollectionsKernel"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Collections: HashSet"
+Description = "Package test for Collections: the Robin Hood table kernel itself"
 
 [Dependencies]
 Allocator = { Path = "../../../../Packages/Allocator" }

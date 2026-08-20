@@ -111,29 +111,23 @@ func Main() -> int {
     if ring.Get(0).ValueOr(-1i64) != 0i64 || ring.Get(1).ValueOr(-1i64) != 1i64 { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
-    var map = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    if !(map.Insert(1, 10, null, null) == CollectionError::None) { return 70; }
-    if !(map.Insert(2, 20, null, null) == CollectionError::None) { return 71; }
+    var map = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    if !(map.Insert(1, 10) == CollectionError::None) { return 70; }
+    if !(map.Insert(2, 20) == CollectionError::None) { return 71; }
     let mapCapacity = map.Capacity();
     if !(map.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 72; }
     if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
-    var got: int32 = 0;
-    if !map.TryGet(1, @got) || got != 10 { return 74; }
-    if !map.TryGet(2, @got) || got != 20 { return 75; }
-    if !(map.Insert(3, 30, null, null) == CollectionError::None) { return 76; }
-    if map.Length() != 3 { return 77; }
-    map.Free();
+    if map.Get(1).ValueOr(-1) != 10 { return 74; }
 
-    var set = HashSet::New<int32>(HashInt32, EqualsInt32);
-    if !(set.Insert(1, null) == CollectionError::None) { return 80; }
+    // A set rejects it the same way.
+    var set = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var added = false;
+    if !(set.Insert(1, @added) == CollectionError::None) { return 80; }
     let setCapacity = set.Capacity();
     if !(set.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 81; }
-    if set.Length() != 1 || set.Capacity() != setCapacity || !set.Contains(1) { return 82; }
-    if !(set.Insert(2, null) == CollectionError::None) { return 83; }
-    if set.Length() != 2 { return 84; }
-    set.Free();
+    if set.Length() != 1 || set.Capacity() != setCapacity { return 82; }
+    if !set.Contains(1) { return 83; }
 
-    // Releasing twice is a no-op everywhere, because Free leaves the empty
-    // value behind rather than a dangling pointer.
+    // Every container releases what it owns when its life ends; nothing here has a Free to call twice.
     return 0;
 }

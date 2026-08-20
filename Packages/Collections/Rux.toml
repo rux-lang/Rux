@@ -20,4 +20,6 @@ ReadmeFile = "README.md"
 Algorithms = { Namespace = "Rux", Version = "0.1.0" }
 Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
+Entropy = { Namespace = "Rux", Version = "0.1.0" }
+Hash = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
