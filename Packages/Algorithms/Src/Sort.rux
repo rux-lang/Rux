@@ -30,6 +30,8 @@ const InsertionSortThreshold: uint = 16;
 
 // Sorts into non-decreasing order. A sequence of fewer than two elements is
 // already sorted, so the data pointer is never read in that case.
+import Core::MutableSlice;
+
 func Sort<T>(data: *var T, length: uint) {
     if length < 2 {
         return;
@@ -56,7 +58,7 @@ func Sort<T>(data: *var T, length: uint) {
 // unstable in either direction, so reversing is free of ordering consequences.
 func SortDescending<T>(data: *var T, length: uint) {
     Sort<T>(data, length);
-    Reverse<T>(data, length);
+    Reverse<T>(MutableSlice<T> { data: data, length: length });
 }
 
 // Places the element that would sit at n in a fully sorted sequence, and
@@ -390,7 +392,7 @@ func SortBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
 // as the operator form does.
 func SortDescendingBy<T>(data: *var T, length: uint, less: func(T, T) -> bool) {
     SortBy<T>(data, length, less);
-    Reverse<T>(data, length);
+    Reverse<T>(MutableSlice<T> { data: data, length: length });
 }
 
 func NthElementBy<T>(data: *var T, length: uint, n: uint, less: func(T, T) -> bool) -> bool {

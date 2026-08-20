@@ -9,6 +9,7 @@ Description = "Package test for Algorithms: Predicate"
 
 [Dependencies]
 Algorithms = { Path = "../../../../Packages/Algorithms" }
+Core = { Path = "../../../../Packages/Core" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/Algorithms"

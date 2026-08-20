@@ -1,7 +1,8 @@
 import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
 import Algorithms::{ IsSorted, IsSortedBy };
 import Core::Ordering;
-import Algorithms::{ SequenceEqual, Copy, Reverse };
+import Algorithms::{ CopyTo, Reverse, SequenceEqual };
+import Core::MutableSlice;
 
 // Declares no operators at all. Every ordering below has to come from the
 // comparator, which is the point: a comparator is enough on its own.
@@ -16,6 +17,18 @@ struct Task {
 
 // `IsSorted` and `IsSortedBy` take a slice since the ordered searches moved to slices, and `IsSortedBy` takes a
 // three-way comparison. Sorting still takes a less-than, so both spellings of the same order live here.
+
+// `Copy` became `CopyTo` over slices, and `Reverse` takes a `MutableSlice`. These keep the calls below reading as
+// they did while the rest of the module is still pointer-and-length.
+func CopyInts(destination: *var int32, source: *int32, length: uint) -> bool {
+    return CopyTo<int32>(MutableSlice<int32> { data: destination, length: length },
+                         Slice<int32> { data: source, length: length });
+}
+
+func ReverseInts(data: *var int32, length: uint) {
+    Reverse<int32>(MutableSlice<int32> { data: data, length: length });
+}
+
 func Sorted<T>(data: *T, length: uint) -> bool {
     return IsSorted<T>(Slice<T> { data: data, length: length });
 }
@@ -99,8 +112,8 @@ func CheckSort(source: *int32, length: uint) -> int {
     var actual: int32[260];
     var expected: int32[260];
 
-    Copy<int32>(@actual[0], source, length);
-    Copy<int32>(@expected[0], source, length);
+    CopyInts(@actual[0], source, length);
+    CopyInts(@expected[0], source, length);
 
     SortBy<int32>(@actual[0], length, LessInt32);
     ReferenceSort(@expected[0], length, LessInt32);
@@ -114,9 +127,9 @@ func CheckSort(source: *int32, length: uint) -> int {
 
     // The reversed comparator gives exactly the reverse ordering.
     var descending: int32[260];
-    Copy<int32>(@descending[0], source, length);
+    CopyInts(@descending[0], source, length);
     SortBy<int32>(@descending[0], length, GreaterInt32);
-    Reverse<int32>(@descending[0], length);
+    ReverseInts(@descending[0], length);
     if !SameInts(@descending[0], @expected[0], length) {
         return 3;
     }
@@ -154,7 +167,7 @@ func Main() -> int {
         i++;
     }
     if CheckSort(@ordered[0], 32) != 0 { return 50; }
-    Reverse<int32>(@ordered[0], 32);
+    ReverseInts(@ordered[0], 32);
     if CheckSort(@ordered[0], 32) != 0 { return 51; }
     i = 0;
     while i < 32 {
@@ -194,11 +207,11 @@ func Main() -> int {
         i++;
     }
     var sorted: int32[40];
-    Copy<int32>(@sorted[0], @selection[0], 40);
+    CopyInts(@sorted[0], @selection[0], 40);
     ReferenceSort(@sorted[0], 40, LessInt32);
 
     var nth: int32[40];
-    Copy<int32>(@nth[0], @selection[0], 40);
+    CopyInts(@nth[0], @selection[0], 40);
     if !NthElementBy<int32>(@nth[0], 40, 17, LessInt32) { return 130; }
     if nth[17] != sorted[17] { return 131; }
     i = 0;
@@ -214,7 +227,7 @@ func Main() -> int {
     if NthElementBy<int32>(@nth[0], 40, 40, LessInt32) { return 134; }
 
     var partial: int32[40];
-    Copy<int32>(@partial[0], @selection[0], 40);
+    CopyInts(@partial[0], @selection[0], 40);
     if !PartialSortBy<int32>(@partial[0], 40, 8, LessInt32) { return 140; }
     if !Sorted<int32>(@partial[0], 8) { return 141; }
     if !SameInts(@partial[0], @sorted[0], 8) { return 142; }
