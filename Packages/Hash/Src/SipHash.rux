@@ -1,0 +1,329 @@
+// SipHash-2-4, the hash that keeps a table fast when someone is trying to make it slow.
+//
+// Every other hash in this package has a fixed, public structure, so anyone can compute inputs that collide. Feed a
+// few thousand of those to a hash table and every one lands in the same bucket: lookups that should be constant
+// become linear, and a service that was doing fine falls over on traffic that looks perfectly ordinary. That attack
+// is what SipHash exists to stop.
+//
+// It stops it by being keyed. Without the key, finding two inputs that collide is as hard as breaking the function,
+// and the key is a secret the program picks at startup -- from `Rux/Entropy` -- and never publishes. An attacker who
+// cannot guess it cannot aim. The keying is real cryptographic keying rather than a seed mixed in for luck, which is
+// the difference between this and `XxHash64`.
+//
+// The price is speed: two rounds per eight bytes of input and four more at the end, against xxHash64's one round per
+// eight bytes across four independent lanes. For a hash table's short keys the difference is small and worth paying.
+// For hashing a large file it is not, and `XxHash64` is the better answer there.
+//
+// This is not a general-purpose message authentication code either, despite the resemblance. Sixty-four bits is
+// enough to make collisions unfindable at hash-table scale and not enough to authenticate a message; `Rux/Crypto`
+// has HMAC for that.
+//
+// https://www.aumasson.jp/siphash/siphash.pdf
+
+import Core::RotateLeft;
+import Hash::Hasher;
+
+/// The first initialization constant, mixed with the low half of the key.
+///
+/// The four are the ASCII of "somepseudorandomlygeneratedbytes", split into eight-byte pieces -- an arbitrary
+/// starting point chosen to be visibly arbitrary.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-init0
+const SipInit0: uint64 = 0x736F6D6570736575;
+
+/// The second initialization constant, mixed with the high half of the key.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-init1
+const SipInit1: uint64 = 0x646F72616E646F6D;
+
+/// The third initialization constant, mixed with the low half of the key.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-init2
+const SipInit2: uint64 = 0x6C7967656E657261;
+
+/// The fourth initialization constant, mixed with the high half of the key.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-init3
+const SipInit3: uint64 = 0x7465646279746573;
+
+/// How many rounds each eight-byte word of input is mixed with: the 2 of SipHash-2-4.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-compression-rounds
+const SipCompressionRounds: uint = 2;
+
+/// How many rounds finish the hash after the last word: the 4 of SipHash-2-4.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-finalization-rounds
+const SipFinalizationRounds: uint = 4;
+
+/// The four words SipHash mixes, and the round that mixes them.
+///
+/// Copy. Exposed because the round is the whole of the algorithm and worth being able to read, not because a caller
+/// has any reason to drive one directly.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-state
+struct SipState {
+    first: uint64;
+    second: uint64;
+    third: uint64;
+    fourth: uint64;
+}
+
+extend SipState {
+    /// The state a key starts from.
+    ///
+    /// `low` and `high` are the two halves of the 128-bit key, read by value.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-state/from-key
+    func FromKey(low: uint64, high: uint64) -> SipState {
+        return SipState {
+            first: low ^ SipInit0,
+            second: high ^ SipInit1,
+            third: low ^ SipInit2,
+            fourth: high ^ SipInit3
+        };
+    }
+
+    /// Runs `count` SipHash rounds over the state.
+    ///
+    /// `self` is borrowed mutably; `count` is read by value. Each round is four add-rotate-exclusive-or steps
+    /// arranged so that every word depends on every other after two of them.
+    ///
+    /// Cannot fail. Runs in time proportional to `count` and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-state/round
+    func Round(self: *var SipState, count: uint) {
+        var remaining = count;
+        while remaining > 0 {
+            self.first = self.first + self.second;
+            self.second = RotateLeft<uint64>(self.second, 13);
+            self.second = self.second ^ self.first;
+            self.first = RotateLeft<uint64>(self.first, 32);
+
+            self.third = self.third + self.fourth;
+            self.fourth = RotateLeft<uint64>(self.fourth, 16);
+            self.fourth = self.fourth ^ self.third;
+
+            self.first = self.first + self.fourth;
+            self.fourth = RotateLeft<uint64>(self.fourth, 21);
+            self.fourth = self.fourth ^ self.first;
+
+            self.third = self.third + self.second;
+            self.second = RotateLeft<uint64>(self.second, 17);
+            self.second = self.second ^ self.third;
+            self.third = RotateLeft<uint64>(self.third, 32);
+
+            remaining = remaining - 1;
+        }
+    }
+
+    // One eight-byte word of input, mixed in and compressed.
+    func Absorb(self: *var SipState, word: uint64) {
+        self.fourth = self.fourth ^ word;
+        self.Round(SipCompressionRounds);
+        self.first = self.first ^ word;
+    }
+}
+
+/// SipHash-2-4 over a stream of bytes, keyed with 128 bits.
+///
+/// Copy. Holds up to seven bytes of pending input alongside its state.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-hash24
+struct SipHash24 {
+    /// The low half of the key, kept so `Reset` can start over from it.
+    keyLow: uint64;
+    /// The high half of the key.
+    keyHigh: uint64;
+    /// The four words being mixed.
+    state: SipState;
+    /// How many bytes have been written in total; its low byte is mixed into the final word.
+    total: uint64;
+    /// Input that has arrived but does not yet fill an eight-byte word.
+    pending: byte[8];
+    /// How much of `pending` is in use, always under eight.
+    buffered: uint;
+}
+
+extend SipHash24 {
+    /// A hasher keyed with `low` and `high`, with nothing written into it yet.
+    ///
+    /// Both halves are read by value. The key must be unpredictable to whoever supplies the input -- draw it from
+    /// `Rux/Entropy` at startup and keep it. A fixed key compiled into a program is a published key, and a published
+    /// key is no key at all.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-hash24/with-key
+    func WithKey(low: uint64, high: uint64) -> SipHash24 {
+        return SipHash24 {
+            keyLow: low,
+            keyHigh: high,
+            state: SipState::FromKey(low, high),
+            total: 0,
+            pending: [0, 0, 0, 0, 0, 0, 0, 0],
+            buffered: 0
+        };
+    }
+
+    /// A hasher keyed with the sixteen bytes at `key`, least significant byte of each half first.
+    ///
+    /// `key` is borrowed and read. This is the byte order the specification and every published test vector use, so
+    /// it is what to reach for when checking against one; `WithKey` is what to reach for when the key came from
+    /// `Rux/Entropy` as two words.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// `key` must be readable for sixteen bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-hash24/with-key-bytes
+    func WithKeyBytes(key: *byte) -> SipHash24 {
+        var low: uint64 = 0;
+        var high: uint64 = 0;
+        var index: uint = 0;
+        while index < 8 {
+            low = low | ((*(key + index) as uint64) << ((index * 8) as uint64));
+            high = high | ((*(key + 8 + index) as uint64) << ((index * 8) as uint64));
+            index++;
+        }
+        return SipHash24::WithKey(low, high);
+    }
+
+    /// Puts the hasher back to where it started, keeping its key.
+    ///
+    /// `self` is borrowed mutably. Everything written so far is forgotten; the key is not.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-hash24/reset
+    func Reset(self: *var SipHash24) {
+        self.state = SipState::FromKey(self.keyLow, self.keyHigh);
+        self.total = 0;
+        self.buffered = 0;
+    }
+}
+
+extend SipHash24 : Hasher {
+    /// Adds `length` bytes at `bytes` to the hash.
+    ///
+    /// `bytes` is borrowed and read; `length` is read by value. A zero length changes nothing and is the one case in
+    /// which `bytes` may be null. Input that does not fill an eight-byte word is held until the rest arrives, so any
+    /// division of the same byte stream into writes gives the same answer.
+    ///
+    /// Runs in time proportional to `length` and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// `bytes` must be readable for `length` bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-hash24/write
+    func Write(self: *var SipHash24, bytes: *byte, length: uint) {
+        if length == 0 {
+            return;
+        }
+        self.total = self.total + (length as uint64);
+
+        var offset: uint = 0;
+        if self.buffered > 0 {
+            let wanted = 8 - self.buffered;
+            if length < wanted {
+                var index: uint = 0;
+                while index < length {
+                    self.pending[self.buffered + index] = *(bytes + index);
+                    index++;
+                }
+                self.buffered = self.buffered + length;
+                return;
+            }
+            var index: uint = 0;
+            while index < wanted {
+                self.pending[self.buffered + index] = *(bytes + index);
+                index++;
+            }
+            self.state.Absorb(SipWord(@self.pending[0] as *byte));
+            self.buffered = 0;
+            offset = wanted;
+        }
+
+        while length - offset >= 8 {
+            self.state.Absorb(SipWord(bytes + offset));
+            offset = offset + 8;
+        }
+
+        var index: uint = 0;
+        while offset + index < length {
+            self.pending[index] = *(bytes + offset + index);
+            index++;
+        }
+        self.buffered = index;
+    }
+
+    /// The hash of everything written so far.
+    ///
+    /// `self` is borrowed. Nothing is consumed: the finishing rounds run on a copy of the state, so asking twice
+    /// gives the same answer and writing more continues from where the writes left off.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/hash/sip-hash24/finish
+    func Finish(self: *var SipHash24) -> uint64 {
+        // The last word is the trailing bytes with the length's low byte on top, which is what keeps two inputs that
+        // differ only in trailing zeroes from hashing alike.
+        var last: uint64 = (self.total & 0xFF) << 56;
+        var index: uint = 0;
+        while index < self.buffered {
+            last = last | ((self.pending[index] as uint64) << ((index * 8) as uint64));
+            index++;
+        }
+
+        var state = self.state;
+        state.Absorb(last);
+        state.third = state.third ^ 0xFF;
+        state.Round(SipFinalizationRounds);
+        return state.first ^ state.second ^ state.third ^ state.fourth;
+    }
+}
+
+/// The eight bytes at `bytes` as a 64-bit word, least significant byte first.
+///
+/// `bytes` is borrowed and read. Assembled a byte at a time, so the answer is the same at any address on any
+/// machine: SipHash is defined on a little-endian byte stream rather than on the machine's own order.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// `bytes` must be readable for eight bytes.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-word
+func SipWord(bytes: *byte) -> uint64 {
+    var value: uint64 = 0;
+    var index: uint = 0;
+    while index < 8 {
+        value = value | ((*(bytes + index) as uint64) << ((index * 8) as uint64));
+        index++;
+    }
+    return value;
+}
+
+/// The SipHash-2-4 of `length` bytes at `bytes`, keyed with `low` and `high`.
+///
+/// `bytes` is borrowed and read; the rest are read by value. A zero length gives the hash of the empty input under
+/// that key, and is the one case in which `bytes` may be null.
+///
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `bytes` must be readable for `length` bytes.
+///
+/// https://rux-lang.dev/docs/api/hash/sip-hash24-of
+func SipHash24Of(bytes: *byte, length: uint, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    hasher.Write(bytes, length);
+    return hasher.Finish();
+}

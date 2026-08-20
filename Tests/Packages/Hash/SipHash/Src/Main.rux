@@ -1,0 +1,114 @@
+import Core::Assert;
+import Hash::{ HashBytes, SipHash24, SipHash24Of };
+
+// The SipHash paper publishes the hash of every input from zero to sixty-three bytes under one fixed key, where byte
+// i of the input is i. Several of those are checked here, including the lengths either side of a word boundary,
+// since that is where an implementation that mishandles the tail goes wrong. The key is the paper's, which is the
+// only reason a key is a literal anywhere in this package.
+
+func Main() -> int {
+    // The paper's key: bytes 0 through 15, in order.
+    var key: byte[16];
+    var index: uint = 0;
+    while index < 16 {
+        key[index] = index as byte;
+        index++;
+    }
+
+    // The paper's inputs: byte i is i, for every length.
+    var input: byte[64];
+    index = 0;
+    while index < 64 {
+        input[index] = index as byte;
+        index++;
+    }
+
+    let keyBytes = @key[0] as *byte;
+    let bytes = @input[0] as *byte;
+
+    // A hasher keyed from the paper's bytes, and the same key as two words, must agree.
+    var fromBytes = SipHash24::WithKeyBytes(keyBytes);
+    Assert(fromBytes.Finish() == 0x726FDB47DD0E0E31, "the empty input under the paper's key");
+    Assert(SipHash24Of(null, 0, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x726FDB47DD0E0E31,
+           "and the same key given as two words");
+
+    // Vectors from the paper, chosen around the eight-byte word boundary where a tail goes wrong.
+    Assert(SipHash24Of(bytes, 1, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x74F839C593DC67FD, "one byte");
+    Assert(SipHash24Of(bytes, 2, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x0D6C8009D9A94F5A, "two bytes");
+    Assert(SipHash24Of(bytes, 7, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0xAB0200F58B01D137, "seven bytes");
+    Assert(SipHash24Of(bytes, 8, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x93F5F5799A932462, "eight bytes");
+    Assert(SipHash24Of(bytes, 9, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x9E0082DF0BA9E4B0, "nine bytes");
+    Assert(SipHash24Of(bytes, 15, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0xA129CA6149BE45E5, "fifteen bytes");
+    Assert(SipHash24Of(bytes, 16, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x3F2ACC7F57C29BDB, "sixteen bytes");
+    Assert(SipHash24Of(bytes, 32, 0x0706050403020100, 0x0F0E0D0C0B0A0908) == 0x7127512F72F27CCE, "thirty-two bytes");
+
+    // The key is what makes this worth using: change it and every answer changes.
+    Assert(SipHash24Of(bytes, 16, 1, 0) != SipHash24Of(bytes, 16, 0, 0), "a different key gives a different hash");
+    Assert(SipHash24Of(bytes, 16, 0, 1) != SipHash24Of(bytes, 16, 0, 0), "in either half of it");
+    Assert(SipHash24Of(null, 0, 0, 0) != SipHash24Of(null, 0, 1, 1), "even for the empty input");
+
+    // Every split into two writes must agree with one write, across a length that spans several words.
+    let expected = SipHash24Of(bytes, 40, 0x0706050403020100, 0x0F0E0D0C0B0A0908);
+    var cut: uint = 0;
+    while cut <= 40 {
+        var streamed = SipHash24::WithKeyBytes(keyBytes);
+        streamed.Write(bytes, cut);
+        streamed.Write(bytes + cut, 40 - cut);
+        Assert(streamed.Finish() == expected, "splitting the writes anywhere gives the same answer");
+        cut++;
+    }
+
+    // One byte at a time is the extreme case of the same property.
+    var byByte = SipHash24::WithKeyBytes(keyBytes);
+    index = 0;
+    while index < 40 {
+        byByte.Write(bytes + index, 1);
+        index++;
+    }
+    Assert(byByte.Finish() == expected, "and so does writing one byte at a time");
+
+    // A zero-length write changes nothing, wherever it lands.
+    var padded = SipHash24::WithKeyBytes(keyBytes);
+    padded.Write(null, 0);
+    padded.Write(bytes, 7);
+    padded.Write(null, 0);
+    padded.Write(bytes + 7, 33);
+    padded.Write(null, 0);
+    Assert(padded.Finish() == expected, "a zero-length write changes nothing");
+
+    // Finishing does not consume, and writing afterwards continues rather than restarting.
+    var kept = SipHash24::WithKeyBytes(keyBytes);
+    kept.Write(bytes, 9);
+    let partial = kept.Finish();
+    Assert(kept.Finish() == partial, "finishing twice gives the same answer");
+    Assert(partial == 0x9E0082DF0BA9E4B0, "and agrees with the published nine-byte vector");
+    kept.Write(bytes + 9, 31);
+    Assert(kept.Finish() == expected, "and writing afterwards continues from there");
+
+    // A reset starts over and keeps the key.
+    kept.Reset();
+    Assert(kept.Finish() == 0x726FDB47DD0E0E31, "a reset returns to the empty input under the same key");
+    kept.Write(bytes, 40);
+    Assert(kept.Finish() == expected, "and hashing again agrees with the first time");
+
+    // The length is mixed into the final word, so a message padded with zeroes is not the message. An
+    // implementation that assembled the tail and forgot the length would give these three the same answer.
+    var zeroes: byte[8];
+    index = 0;
+    while index < 8 {
+        zeroes[index] = 0;
+        index++;
+    }
+    let zeroBytes = @zeroes[0] as *byte;
+    let oneZero = SipHash24Of(zeroBytes, 1, 0, 0);
+    let twoZeroes = SipHash24Of(zeroBytes, 2, 0, 0);
+    Assert(oneZero != twoZeroes, "one zero byte and two are different messages");
+    Assert(twoZeroes != SipHash24Of(zeroBytes, 3, 0, 0), "and so are two and three");
+    Assert(oneZero != SipHash24Of(null, 0, 0, 0), "and so are one and none");
+
+    // Usable through the bound, which is what puts it in a hash table.
+    var bounded = SipHash24::WithKeyBytes(keyBytes);
+    Assert(HashBytes<SipHash24>(@bounded, bytes, 40) == expected, "SipHash is usable through the hashing bound");
+
+    return 0;
+}
