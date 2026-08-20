@@ -446,26 +446,6 @@ extend Vector<T> {
         return MutableSlice<T> { data: self.data, length: self.length };
     }
 
-    // Copies the initialized elements into a fixed-length Array. The Vector
-    // keeps its own allocation, so both have to be freed.
-    func ToArray(self: *Vector<T>, result: *var Array<T>) -> CollectionError {
-        return Array::FromSlice<T>(self.AsSlice(), result);
-    }
-
-    // Hands the allocation itself to a fixed-length Array, which costs no
-    // copy, and leaves the Vector empty and owning nothing.
-    //
-    // The trim is attempted but not required: Memory::Free works from the
-    // block itself rather than from a length, so an Array over an untrimmed
-    // block is still released correctly. A failed trim therefore keeps the
-    // spare capacity instead of failing the transfer.
-    func IntoArray(self: *var Vector<T>) -> Array<T> {
-        self.ShrinkToFit();
-
-        let result = Array<T> { data: self.data, length: self.length };
-        self.data = null;
-        self.length = 0;
-        self.capacity = 0;
-        return result;
-    }
+    // ToArray and IntoArray are gone until this type takes an allocator of its own. An Array now carries the
+    // allocator its storage came from, and a Vector that still calls Memory::Alloc directly has none to give it.
 }

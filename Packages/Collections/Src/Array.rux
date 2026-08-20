@@ -1,185 +1,251 @@
-import Core::MutableSlice;
-import Memory::{ Alloc, Copy, Free };
+// A run of elements whose length is fixed when it is made and whose storage is on the heap.
+//
+// `Array<T>` is what to reach for when the length is decided at run time and never changes afterwards. It is not
+// `T[N]`, whose length is part of its type and whose storage is wherever the value containing it lives; it is not
+// `Slice<T>`, which borrows storage someone else owns; and it is not `Vector<T>`, which can grow. Owning storage of
+// a length chosen at run time is the one thing none of the others does.
+//
+// An array owns its storage and its elements, so it implements `Drop` and is move-only. Handing one to a function
+// transfers it, and the function's copy is what gets destroyed; reading the source afterwards is rejected while
+// compiling rather than discovered later. Destruction destroys every element and then releases the block, in that
+// order, so an array of things that own something does not leak what they own.
+//
+// The allocator is injected at construction and kept. An array made from one allocator is released to the same one,
+// which is what lets an arena's arrays disappear with the arena and a pool's come back to the pool.
+//
+// Every constructor copies its elements into the storage. A move-only element type cannot be copied, so an array of
+// those has to be built another way -- `Vector<T>` and its `Push` is the shape that works, since each element is
+// moved in exactly once.
 
-// A fixed-length collection owning one contiguous heap allocation. The length
-// is decided at construction and never changes; reach for Vector when elements
-// must be appended or removed.
-//
-// Rux names a run of elements four ways, and this is the one that owns heap
-// storage whose length is a run-time value:
-//
-//   T[N]             a built-in array, length fixed at compile time
-//   Slice<T>         a borrowed read-only view, owning nothing
-//   MutableSlice<T>  a borrowed writable view, owning nothing
-//   Array<T>         this: owned heap storage, run-time length
-//
-// Ownership is manual, because Rux has no destructors and no move semantics.
-// Assignment copies the Array value and therefore shares its allocation, so
-// Clone when both copies must be freed, and Free exactly once for every
-// allocation. Clone copies element bytes verbatim: an element that owns a
-// resource ends up referenced by both copies, and releasing it stays the
-// element owner's job.
-//
-// Every fallible operation reports a CollectionError and leaves the receiver
-// unchanged unless it returns None. A constructor's `result` out-parameter is
-// written only on None, and must not be null.
+import Allocator::Allocator;
+import Core::{ Drop, MutableSlice, Option };
+
+/// A fixed-length run of elements on storage this array owns.
+///
+/// Move-only: it owns its elements and its storage, so it implements `Drop`.
+///
+/// https://rux-lang.dev/docs/api/collections/array
 struct Array<T> {
+    /// The storage. Null only for an array that owns nothing.
     data: *var T;
+    /// How many elements it holds. Fixed for the array's whole life.
     length: uint;
+    /// Where the storage came from, and where it goes back to.
+    allocator: Allocator;
 }
 
 extend Array<T> {
-    // The empty Array. Owns nothing, allocates nothing, and is safe to Free.
-    func New() -> Array<T> {
-        return Array<T> { data: null, length: 0 };
+    /// An array of `length` elements, every one a copy of `value`.
+    ///
+    /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position;
+    /// `error` is written with why the array could not be made, or `None` when it could. A length of zero gives an
+    /// empty array that owns a zero-sized block and is released like any other.
+    ///
+    /// The array is returned rather than written through an out-parameter, because the compiler tracks a binding's
+    /// initialization and cannot see a write through a pointer as one -- an array delivered that way would be owned
+    /// by a binding believed to own nothing. The error is what travels by pointer instead.
+    ///
+    /// On failure the returned array is empty and owns nothing, so destroying it is harmless.
+    ///
+    /// Runs in time proportional to `length`.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/filled
+    func Filled(allocator: Allocator, length: uint, value: T, error: *var CollectionError) -> Array<T> {
+        var data: *var T = null;
+        let failure = AllocateBlock<T>(allocator, length, @data);
+        if failure.IsError() {
+            *error = failure;
+            return Array<T> { data: null, length: 0, allocator: allocator };
+        }
+
+        var index: uint = 0;
+        while index < length {
+            data[index] = value;
+            index++;
+        }
+        *error = CollectionError::None;
+        return Array<T> { data: data, length: length, allocator: allocator };
     }
 
-    // An Array of `length` elements whose contents are whatever the allocator
-    // returned. Every element must be written before it is read. A zero length
-    // yields the empty Array without allocating.
-    func NewUninitialized(length: uint, result: *var Array<T>) -> CollectionError {
-        if length == 0 {
-            *result = Array<T> { data: null, length: 0 };
-            return CollectionError::None;
+    /// An array holding a copy of every element of `items`, in order.
+    ///
+    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read; `error` is written with why the
+    /// array could not be made. An empty slice gives an empty array.
+    ///
+    /// On failure the returned array is empty and owns nothing.
+    ///
+    /// Runs in time proportional to the slice's length.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/from-slice
+    func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Array<T> {
+        var data: *var T = null;
+        let failure = AllocateBlock<T>(allocator, items.length, @data);
+        if failure.IsError() {
+            *error = failure;
+            return Array<T> { data: null, length: 0, allocator: allocator };
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
+        var index: uint = 0;
+        while index < items.length {
+            data[index] = items.data[index];
+            index++;
         }
+        *error = CollectionError::None;
+        return Array<T> { data: data, length: items.length, allocator: allocator };
+    }
+}
 
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        *result = Array<T> { data: ptr, length: length };
-        return CollectionError::None;
+extend Array<T> {
+    /// An independent array holding a copy of every element of this one.
+    ///
+    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy has its
+    /// own storage from the same allocator, so both are released independently.
+    ///
+    /// Copying elements is what this does, so an element that owns something ends up owned twice -- which is why
+    /// this is only usable where copying an element means what it says.
+    ///
+    /// Runs in time proportional to the length.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/clone
+    func Clone(self: *Array<T>, error: *var CollectionError) -> Array<T> {
+        return Array::FromSlice<T>(self.allocator, self.AsSlice(), error);
     }
 
-    // Copies a slice into an independently owned Array, leaving the source
-    // untouched.
-    func FromSlice(items: Slice<T>, result: *var Array<T>) -> CollectionError {
-        if items.length == 0 {
-            *result = Array<T> { data: null, length: 0 };
-            return CollectionError::None;
-        }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(items.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        Copy(ptr, items.data, bytes);
-        *result = Array<T> { data: ptr, length: items.length };
-        return CollectionError::None;
-    }
-
-    // An independent copy of this Array's storage. Element values are copied
-    // byte for byte, so allocations owned by individual elements are shared
-    // with the original rather than duplicated.
-    func Clone(self: *Array<T>, result: *var Array<T>) -> CollectionError {
-        if self.length == 0 {
-            *result = Array<T> { data: null, length: 0 };
-            return CollectionError::None;
-        }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(self.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        Copy(ptr, self.data, bytes);
-        *result = Array<T> { data: ptr, length: self.length };
-        return CollectionError::None;
-    }
-
-    // Releases the allocation and leaves the empty Array behind, so calling
-    // Free again is a no-op. Every pointer and view into this Array is
-    // invalidated.
-    func Free(self: *var Array<T>) {
-        Free(self.data);
-        self.data = null;
-        self.length = 0;
-    }
-
-    // The owned allocation, read-only. Valid until Free.
-    func Data(self: *Array<T>) -> *T {
-        return self.data;
-    }
-
-    // The owned allocation, writable. Valid until Free.
-    func MutableData(self: *var Array<T>) -> *var T {
-        return self.data;
-    }
-
-    // The fixed number of elements. Never changes for the life of the Array.
+    /// How many elements the array holds.
+    ///
+    /// `self` is borrowed. Fixed for the array's whole life.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/length
     func Length(self: *Array<T>) -> uint {
         return self.length;
     }
 
+    /// Whether the array holds no elements.
+    ///
+    /// `self` is borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/is-empty
     func IsEmpty(self: *Array<T>) -> bool {
         return self.length == 0;
     }
 
-    // The element at `index`. Unchecked, like pointer and slice indexing:
-    // an index at or past Length is undefined behavior, not a reported error.
-    // TryGet is the checked form.
-    func At(self: *Array<T>, index: uint) -> T {
-        return self.data[index];
-    }
-
-    // Reads the element at `index`, reporting whether the index was in range.
-    // On a rejected index `value` is left untouched, so a caller may seed it
-    // with a fallback. A null `value` reports failure rather than reading.
-    func TryGet(self: *Array<T>, index: uint, value: *var T) -> bool {
-        if value == null || index >= self.length {
-            return false;
-        }
-
-        *value = self.data[index];
-        return true;
-    }
-
-    // Replaces the element at `index`. Unchecked, as in At.
-    func Set(self: *var Array<T>, index: uint, value: T) {
-        self.data[index] = value;
-    }
-
-    // Replaces the element at `index`, reporting whether the index was in
-    // range. A rejected index writes nothing.
-    func TrySet(self: *var Array<T>, index: uint, value: T) -> bool {
+    /// The element at `index`, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the element is returned by copy. Bounds-checked, which is what separates this from
+    /// indexing the slice directly.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/get
+    func Get(self: *Array<T>, index: uint) -> Option<T> {
         if index >= self.length {
-            return false;
+            return Option::None<T>();
         }
-
-        self.data[index] = value;
-        return true;
+        return Option::Some<T>(self.data[index]);
     }
 
-    // Borrows every element read-only, without copying. The view must not
-    // outlive this Array's allocation; nothing enforces that.
+    /// A pointer to the element at `index`, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits. This is how an element that owns something
+    /// is read without being copied.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is valid until the array is destroyed or moved.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/reference
+    func Reference(self: *Array<T>, index: uint) -> Option<*T> {
+        if index >= self.length {
+            return Option::None<*T>();
+        }
+        return Option::Some<*T>(@self.data[index]);
+    }
+
+    /// Replaces the element at `index` with `value`.
+    ///
+    /// `self` is borrowed mutably; `value` is read by value. Reports `IndexOutOfRange` and changes nothing when
+    /// there is no such index.
+    ///
+    /// # Safety
+    ///
+    /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/set
+    func Set(self: *var Array<T>, index: uint, value: T) -> CollectionError {
+        if index >= self.length {
+            return CollectionError::IndexOutOfRange;
+        }
+        self.data[index] = value;
+        return CollectionError::None;
+    }
+
+    /// The whole array as a borrowed read-only view.
+    ///
+    /// `self` is borrowed. The view is what every `Rux/Algorithms` query takes.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the array is destroyed or moved.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/as-slice
     func AsSlice(self: *Array<T>) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
     }
 
-    // Borrows every element writably, without copying. Takes a writable
-    // receiver because it hands out the ability to write. Like AsSlice, the
-    // view must not outlive the allocation, and Free invalidates it.
+    /// The whole array as a borrowed writable view.
+    ///
+    /// `self` is borrowed mutably. The view is what every `Rux/Algorithms` mutation takes, so sorting an array is
+    /// `Sort<T>(array.AsMutableSlice())`.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the array is destroyed or moved.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/as-mutable-slice
     func AsMutableSlice(self: *var Array<T>) -> MutableSlice<T> {
         return MutableSlice<T> { data: self.data, length: self.length };
+    }
+
+    /// An iterator over the elements, by copy.
+    ///
+    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/iterate
+    func Iterate(self: *Array<T>) -> ValueIterator<T> {
+        return ValueIterator::New<T>(self.AsSlice());
+    }
+
+    /// An iterator over pointers to the elements.
+    ///
+    /// `self` is borrowed and must outlive the iterator. This is how elements that own something are walked.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/references
+    func References(self: *Array<T>) -> ReferenceIterator<T> {
+        return ReferenceIterator::New<T>(self.AsSlice());
+    }
+}
+
+extend Array<T> : Drop {
+    /// Destroys every element and releases the storage.
+    ///
+    /// Runs when the array's life ends. Elements go first and the block second, which is the only order that works:
+    /// an element destroyed after its storage was released would be read from freed memory.
+    ///
+    /// An array that was moved away is not destroyed where it used to live, so this happens exactly once.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/array/drop
+    func Drop(self: *var Array<T>) {
+        if self.data == null {
+            return;
+        }
+        var index: uint = 0;
+        while index < self.length {
+            // Reading the element into a local moves it there, and the local's life ends on the next line -- which
+            // is what destroys an element whose type owns something, and copies nothing at all for one that does
+            // not. There is no other way for a container to destroy an element it does not know is droppable.
+            let taken = self.data[index];
+            index++;
+        }
+        ReleaseBlock<T>(self.allocator, self.data, self.length);
+        self.data = null;
+        self.length = 0;
     }
 }
