@@ -1333,7 +1333,7 @@ private:
             interfaceNames.insert(name);
         }
         for (const auto &s : structDecls) {
-            layouts[s.name] = ComputeStructLayout(s, layouts);
+            layouts[s.name] = ComputeStructLayout(s, layouts, interfaceNames);
         }
 
         PredeclareFunctions();

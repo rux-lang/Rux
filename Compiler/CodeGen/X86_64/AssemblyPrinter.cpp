@@ -22,7 +22,7 @@ namespace {
             interfaceNames.insert(name);
         }
         for (const auto &structure : module.structs) {
-            layouts[structure.name] = Layout::ComputeStructLayout(structure, layouts);
+            layouts[structure.name] = Layout::ComputeStructLayout(structure, layouts, interfaceNames);
         }
     }
 

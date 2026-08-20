@@ -271,6 +271,7 @@ private:
                                                        const FuncDecl &method);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
+    [[nodiscard]] bool DropGlueTypeIsConcrete(const TypeRef &type) const;
     void ResolveDropGlueSteps(std::vector<DropGlueStep> &steps);
     [[nodiscard]] std::string DropMethodSymbol(const TypeRef &type);
 

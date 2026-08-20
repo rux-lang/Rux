@@ -62,7 +62,13 @@ struct StructLayout {
 using LayoutMap = std::unordered_map<std::string, StructLayout>;
 
 /// Compute the layout of `s`, resolving named field types through `known`.
-[[nodiscard]] StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known);
+/// The layout of one struct declaration, given the layouts already known and the interfaces in scope.
+///
+/// The interface names are needed because an interface-typed field is a 16-byte fat pointer under a name the
+/// declaration gives no size for. Sized as an ordinary named type it would occupy eight bytes, and the vtable
+/// word would land on whatever follows it.
+[[nodiscard]] StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
+                                               const std::unordered_set<std::string> &interfaceNames);
 
 /// Size of a LIR type as the running program lays it out, which is what a stack slot and a copy are measured in. SizeOf
 /// alone cannot answer for a named type: an interface value is a fat pointer whether or not the module declaring it is

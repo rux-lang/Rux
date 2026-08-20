@@ -148,7 +148,8 @@ std::string BaseTypeName(const std::string &name) {
     return pos == std::string::npos ? name : name.substr(0, pos);
 }
 
-StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known) {
+StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
+                                 const std::unordered_set<std::string> &interfaceNames) {
     StructLayout result;
     int offset = 0;
     int maxAlign = 1;
@@ -163,7 +164,13 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known)
             if (it == known.end()) {
                 it = known.find(baseName);
             }
-            if (it != known.end()) {
+            if (interfaceNames.contains(baseName)) {
+                // An interface value is a data pointer and a vtable pointer, under a name that is a declaration
+                // rather than a type with a size of its own.
+                sz = 16;
+                al = 8;
+            }
+            else if (it != known.end()) {
                 sz = it->second.totalSize;
                 al = it->second.alignment;
             }
