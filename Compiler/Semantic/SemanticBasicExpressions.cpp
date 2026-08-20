@@ -19,7 +19,12 @@ bool ContainsTypeParam(const TypeRef &type) {
 TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (type.kind == TypeRef::Kind::TypeParam) {
         if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
-            return it->second;
+            TypeRef substituted = it->second;
+            // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to carry
+            // that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only pointer the
+            // moment a type argument arrived -- silently, because the two render identically.
+            substituted.isMut = type.isMut;
+            return substituted;
         }
         return type;
     }
