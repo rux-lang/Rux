@@ -1,4 +1,4 @@
-import Algorithms::{ NthElement, PartialSort, IsSorted, Equal, Copy };
+import Algorithms::{ NthElement, PartialSort, IsSorted, SequenceEqual, Copy };
 
 struct Ranked {
     key: int32;
@@ -14,6 +14,14 @@ extend Ranked {
 // Independent of everything under test: no partitioning, no heap. The expected
 // results below are derived from this rather than from Sort, so a shared bug
 // in the partition helpers cannot hide itself.
+
+// `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices; this keeps the checks
+// below reading the way they did.
+func SameInts(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
+                                Slice<int32> { data: right, length: length });
+}
+
 func ReferenceSort(data: *var int32, length: uint) {
     var i: uint = 0;
     while i < length {
@@ -78,7 +86,7 @@ func CheckNth(source: *int32, length: uint, n: uint) -> int {
 
     Copy<int32>(@check[0], @actual[0], length);
     ReferenceSort(@check[0], length);
-    if !Equal<int32>(@check[0], length, @expected[0], length) {
+    if !SameInts(@check[0], @expected[0], length) {
         return 5;
     }
     return 0;
@@ -100,13 +108,13 @@ func CheckPartial(source: *int32, length: uint, count: uint) -> int {
     if !IsSorted<int32>(@actual[0], count) {
         return 2;
     }
-    if !Equal<int32>(@actual[0], count, @expected[0], count) {
+    if !SameInts(@actual[0], @expected[0], count) {
         return 3;
     }
 
     Copy<int32>(@check[0], @actual[0], length);
     ReferenceSort(@check[0], length);
-    if !Equal<int32>(@check[0], length, @expected[0], length) {
+    if !SameInts(@check[0], @expected[0], length) {
         return 4;
     }
     return 0;
