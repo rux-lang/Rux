@@ -16,6 +16,7 @@ rux add Rux/Hash
 | `Fnv`    | FNV-1a over 32 and 64 bits, incremental and one-shot                          |
 | `Crc`    | CRC-32 and CRC-32C, their tables and their polynomials                         |
 | `XxHash` | xxHash64, seeded, streaming and one-shot                                       |
+| `SipHash`| keyed SipHash-2-4, for tables whose keys someone else chooses                  |
 
 ## Design
 
@@ -59,6 +60,22 @@ This implementation is the table rather than the instruction — correct everywh
 A CRC detects accident, never intent. Given any message and any target value, producing a message with that CRC is
 arithmetic a beginner can do. They implement `Hasher` because feeding them bytes has the same shape, not because they
 substitute for one.
+
+## Keying
+
+Every other hash here has a fixed, public structure, so anyone can compute inputs that collide. Feed a few thousand
+of those to a hash table and every one lands in the same bucket: lookups that should be constant become linear, and a
+service doing fine falls over on traffic that looks perfectly ordinary. `SipHash24` is what stops that.
+
+It stops it by being keyed. Without the key, finding two colliding inputs is as hard as breaking the function, and
+the key is a secret the program draws from `Rux/Entropy` at startup and never publishes. A key compiled into a
+program is a published key, and a published key is no key at all.
+
+The price is speed — two rounds per eight bytes and four more at the end, against xxHash64's one round across four
+independent lanes. For a table's short keys that is small and worth paying. For hashing a large file it is not.
+
+Sixty-four bits is enough to make collisions unfindable at hash-table scale and not enough to authenticate a message.
+`Rux/Crypto` has HMAC for that.
 
 ## What this is not
 
