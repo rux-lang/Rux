@@ -1,371 +1,179 @@
-import Memory::{ Alloc, Copy, Free, Zero };
+// A set of distinct values, in no particular order, with constant expected time for everything.
+//
+// The same `Table` kernel as `HashMap`, with nothing stored alongside each key. A set is a map whose values carry no
+// information, and saying so in the type rather than duplicating the probing is what keeps the two in step: a fix to
+// the displacement or the deletion is a fix to both.
+//
+// The hash and equality are supplied for the same reason they are there, and the seed is drawn the same way.
+//
+// A set owns its elements, so it implements `Drop` and is move-only.
 
-// A set of distinct values over an open-addressed table, sharing HashMap's
-// probing through the Probe module so the probe sequence, tombstone handling
-// and wraparound exist in one place rather than two.
-//
-// It keeps its own keys and states rather than wrapping a HashMap: Rux has no
-// unit type, so a map-based set would allocate and carry a full values array
-// it would never read. Sharing happens at the algorithm, not at the storage.
-//
-// Everything HashMap documents about hashing applies here — the two functions
-// are ordinary values held for the life of the table, they must agree with
-// each other, and without closures neither can be seeded per instance.
-//
-// Invariants:
-//   capacity is zero, or a power of two of at least MinimumTableCapacity
-//   capacity == 0 exactly when both storage pointers are null
-//   length + tombstones <= capacity, and at least a quarter of the slots are
-//     neither occupied nor tombstoned
-//   keys[i] is initialized exactly when states[i] is occupied
-//   every live value is reachable from its hash slot without crossing an empty
-//     slot
-//
-// Ownership is manual. Assignment copies the HashSet value and therefore
-// shares its allocations, so Clone when both copies must be freed, and Free
-// exactly once. Values are copied byte for byte and never destroyed.
+import Allocator::Allocator;
+import Core::{ Option, Unit };
+
+/// A hash table of distinct values.
+///
+/// Move-only: it owns its elements and its storage.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-set
 struct HashSet<T> {
-    keys: *var T;
-    states: *var uint8;
-    capacity: uint;
-    length: uint;
-    tombstones: uint;
-    hash: func(T) -> uint;
+    /// The slots and the elements. The value side carries nothing, which is what makes this a set.
+    table: Table<T, Unit>;
+    /// What an element's hash is, given the table's seed.
+    hash: func(T, uint64, uint64) -> uint64;
+    /// Whether two elements are the same element.
     equals: func(T, T) -> bool;
 }
 
 extend HashSet<T> {
-    // An empty set that allocates nothing until the first insertion.
-    func New(hash: func(T) -> uint, equals: func(T, T) -> bool) -> HashSet<T> {
-        return HashSet<T> {
-            keys: null, states: null,
-            capacity: 0, length: 0, tombstones: 0,
-            hash: hash, equals: equals
-        };
+    /// An empty set that has not allocated anything, with a seed drawn from the operating system.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/new
+    func New(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
+             equals: func(T, T) -> bool) -> HashSet<T> {
+        return HashSet::WithSeed<T>(allocator, TableSeed::Random(), hash, equals);
     }
 
-    // An empty set sized so `capacity` insertions do not rehash.
-    func WithCapacity(capacity: uint, hash: func(T) -> uint, equals: func(T, T) -> bool,
-                      result: *var HashSet<T>) -> CollectionError {
-        var fresh = HashSet<T> {
-            keys: null, states: null,
-            capacity: 0, length: 0, tombstones: 0,
-            hash: hash, equals: equals
-        };
-
-        if capacity == 0 {
-            *result = fresh;
-            return CollectionError::None;
-        }
-
-        var slots: uint = 0;
-        let planned = TableCapacity(capacity, @slots);
-        if !(planned == CollectionError::None) {
-            return planned;
-        }
-
-        let built = fresh.Rehash(slots);
-        if !(built == CollectionError::None) {
-            return built;
-        }
-
-        *result = fresh;
-        return CollectionError::None;
+    /// An empty set that has not allocated anything, hashing with `seed`.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/with-seed
+    func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
+                  equals: func(T, T) -> bool) -> HashSet<T> {
+        return HashSet<T> { table: Table::New<T, Unit>(allocator, seed), hash: hash, equals: equals };
     }
 
-    // Rebuilds the table at `capacity` slots, reinserting every live value and
-    // clearing the tombstones. Nothing is released until the new table is
-    // built, so a failed allocation leaves the set untouched.
-    //
-    // Internal helper; not part of the package API.
-    func Rehash(self: *var HashSet<T>, capacity: uint) -> CollectionError {
-        var keyBytes: uint = 0;
-        let keySizing = ByteSize(capacity, sizeof(T), @keyBytes);
-        if !(keySizing == CollectionError::None) {
-            return keySizing;
-        }
-
-        let keys = Alloc(keyBytes) as *var T;
-        if keys == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        // One byte per slot, so this size needs no multiply to check.
-        let states = Alloc(capacity) as *var uint8;
-        if states == null {
-            Free(keys);
-            return CollectionError::OutOfMemory;
-        }
-
-        Zero(states, capacity);
-
-        // The new table holds no tombstones, so every probe ends at an empty
-        // slot and needs no equality test.
-        let mask = capacity - 1;
-        var moved: uint = 0;
-        var slot: uint = 0;
-        while slot < self.capacity {
-            if self.states[slot] == SlotOccupied {
-                let value = self.keys[slot];
-                var index = self.hash(value) & mask;
-                while states[index] == SlotOccupied {
-                    index = (index + 1) & mask;
-                }
-
-                keys[index] = value;
-                states[index] = SlotOccupied;
-                moved++;
-            }
-            slot++;
-        }
-
-        Free(self.states);
-        Free(self.keys);
-
-        self.keys = keys;
-        self.states = states;
-        self.capacity = capacity;
-        self.length = moved;
-        self.tombstones = 0;
-        return CollectionError::None;
+    /// An empty set with room for `capacity` elements already taken.
+    ///
+    /// `error` is written with why the room could not be taken.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/with-capacity
+    func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
+                      equals: func(T, T) -> bool, error: *var CollectionError) -> HashSet<T> {
+        var set = HashSet::New<T>(allocator, hash, equals);
+        *error = set.Reserve(capacity);
+        return set;
     }
 
-    // Makes sure one more value can occupy a fresh slot without pushing the
-    // table past its load factor.
-    //
-    // Internal helper; not part of the package API.
-    func EnsureRoom(self: *var HashSet<T>) -> CollectionError {
-        if self.capacity == 0 {
-            return self.Rehash(MinimumTableCapacity);
-        }
-
-        let used = self.length + self.tombstones + 1;
-        if used <= self.capacity - (self.capacity / 4) {
-            return CollectionError::None;
-        }
-
-        var capacity: uint = 0;
-        let planned = TableCapacity(self.length + 1, @capacity);
-        if !(planned == CollectionError::None) {
-            return planned;
-        }
-
-        return self.Rehash(capacity);
-    }
-
-    // Sizes the table so `additional` more insertions do not rehash.
-    func Reserve(self: *var HashSet<T>, additional: uint) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, additional, @required);
-        if !(total == CollectionError::None) {
-            return total;
-        }
-
-        var capacity: uint = 0;
-        let planned = TableCapacity(required, @capacity);
-        if !(planned == CollectionError::None) {
-            return planned;
-        }
-
-        if self.capacity >= capacity && self.tombstones == 0 {
-            return CollectionError::None;
-        }
-
-        return self.Rehash(capacity);
-    }
-
-    // Rebuilds at the smallest capacity the live values need. An emptied set
-    // becomes allocation-free.
-    func ShrinkToFit(self: *var HashSet<T>) -> CollectionError {
-        if self.length == 0 {
-            self.Free();
-            return CollectionError::None;
-        }
-
-        var capacity: uint = 0;
-        let planned = TableCapacity(self.length, @capacity);
-        if !(planned == CollectionError::None) {
-            return planned;
-        }
-
-        if capacity == self.capacity && self.tombstones == 0 {
-            return CollectionError::None;
-        }
-
-        return self.Rehash(capacity);
-    }
-
-    // An independent set holding the same values and the same functions. The
-    // slot layout is copied verbatim rather than rebuilt, since the same
-    // hasher would place every value in the same slot.
-    func Clone(self: *HashSet<T>, result: *var HashSet<T>) -> CollectionError {
-        var fresh = HashSet<T> {
-            keys: null, states: null,
-            capacity: 0, length: 0, tombstones: 0,
-            hash: self.hash, equals: self.equals
-        };
-
-        if self.capacity == 0 {
-            *result = fresh;
-            return CollectionError::None;
-        }
-
-        // A size the original already had checked, so this cannot overflow.
-        let keyBytes = self.capacity * sizeof(T);
-
-        let keys = Alloc(keyBytes) as *var T;
-        if keys == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        let states = Alloc(self.capacity) as *var uint8;
-        if states == null {
-            Free(keys);
-            return CollectionError::OutOfMemory;
-        }
-
-        // Unoccupied slots carry whatever the allocator left behind, and
-        // copying that is harmless: the state byte is what says a slot holds
-        // anything.
-        Copy(keys, self.keys, keyBytes);
-        Copy(states, self.states, self.capacity);
-
-        fresh.keys = keys;
-        fresh.states = states;
-        fresh.capacity = self.capacity;
-        fresh.length = self.length;
-        fresh.tombstones = self.tombstones;
-        *result = fresh;
-        return CollectionError::None;
-    }
-
-    // Releases the table and leaves an empty set that still remembers its
-    // functions, so it stays usable and Free is a no-op the second time.
-    func Free(self: *var HashSet<T>) {
-        Free(self.states);
-        Free(self.keys);
-        self.keys = null;
-        self.states = null;
-        self.capacity = 0;
-        self.length = 0;
-        self.tombstones = 0;
-    }
-
-    // The number of distinct values held.
+    /// How many elements the set holds.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/length
     func Length(self: *HashSet<T>) -> uint {
-        return self.length;
+        return self.table.Length();
     }
 
-    // The number of slots. Always a power of two, or zero.
+    /// How many slots the table has.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/capacity
     func Capacity(self: *HashSet<T>) -> uint {
-        return self.capacity;
+        return self.table.Capacity();
     }
 
+    /// Whether the set holds no elements.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/is-empty
     func IsEmpty(self: *HashSet<T>) -> bool {
-        return self.length == 0;
+        return self.table.IsEmpty();
     }
 
-    // Drops every value while keeping the table, clearing the tombstones with
-    // them.
-    func Clear(self: *var HashSet<T>) {
-        if self.capacity > 0 {
-            Zero(self.states, self.capacity);
-        }
-        self.length = 0;
-        self.tombstones = 0;
-    }
-
+    /// Whether `value` is in the set.
+    ///
+    /// `self` is borrowed; `value` is read by value.
+    ///
+    /// Runs in constant expected time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/contains
     func Contains(self: *HashSet<T>, value: T) -> bool {
-        if self.length == 0 {
-            return false;
-        }
-
-        var found = false;
-        FindSlot<T>(self.keys, self.states, self.capacity, value, self.hash, self.equals, @found);
-        return found;
+        return self.table.Find(value, self.hash, self.equals).IsSome();
     }
 
-    // Adds `value`, reporting through `inserted` whether it was new. A value
-    // already present leaves the set unchanged and reports false; `inserted`
-    // may be null. A failure to grow leaves the set exactly as it was.
-    func Insert(self: *var HashSet<T>, value: T, inserted: *var bool) -> CollectionError {
-        if self.capacity > 0 {
-            var present = false;
-            FindSlot<T>(self.keys, self.states, self.capacity, value, self.hash, self.equals, @present);
-            if present {
-                if inserted != null {
-                    *inserted = false;
-                }
-                return CollectionError::None;
+    /// Adds `value` to the set, reporting whether it was not already there.
+    ///
+    /// `self` is borrowed mutably; `value` is moved in when it is added and destroyed when it was already present --
+    /// a set holds one of each, and the one it already had is the one it keeps. `added` receives whether the set
+    /// grew, and may be null.
+    ///
+    /// A failure leaves the set exactly as it was.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/insert
+    func Insert(self: *var HashSet<T>, value: T, added: *var bool) -> CollectionError {
+        if self.table.Find(value, self.hash, self.equals).IsSome() {
+            if added != null {
+                *added = false;
             }
+            return CollectionError::None;
         }
 
-        let room = self.EnsureRoom();
-        if !(room == CollectionError::None) {
+        let room = self.table.EnsureRoom(self.hash);
+        if room.IsError() {
             return room;
         }
-
-        // A second probe, because EnsureRoom may have rebuilt the table and
-        // moved every slot.
-        var present = false;
-        let slot = FindSlot<T>(self.keys, self.states, self.capacity, value,
-                               self.hash, self.equals, @present);
-        if self.states[slot] == SlotTombstone {
-            self.tombstones--;
+        // Named first: a struct literal cannot appear inside an `if` condition, since its brace opens the body.
+        let nothing = Unit {};
+        if self.table.Place(value, nothing, self.hash).IsNone() {
+            return CollectionError::Unsupported;
         }
-
-        self.keys[slot] = value;
-        self.states[slot] = SlotOccupied;
-        self.length++;
-        if inserted != null {
-            *inserted = true;
+        if added != null {
+            *added = true;
         }
         return CollectionError::None;
     }
 
-    // Removes `value`, reporting whether it was there. The slot becomes a
-    // tombstone so the values probed past it stay reachable; the next rehash
-    // reclaims it.
-    func Remove(self: *var HashSet<T>, value: T) -> bool {
-        if self.length == 0 {
-            return false;
+    /// Takes `value` out of the set and hands it back.
+    ///
+    /// `self` is borrowed mutably. The element is moved out rather than destroyed, so one that owns something leaves
+    /// intact. Reports `None` when the set did not have it.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/remove
+    func Remove(self: *var HashSet<T>, value: T) -> Option<T> {
+        var slot: uint = 0;
+        if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
+            return Option::None<T>();
         }
-
-        var found = false;
-        let slot = FindSlot<T>(self.keys, self.states, self.capacity, value,
-                               self.hash, self.equals, @found);
-        if !found {
-            return false;
-        }
-
-        self.states[slot] = SlotTombstone;
-        self.length--;
-        self.tombstones++;
-        return true;
+        let taken = self.table.keys[slot];
+        self.table.Vacate(slot);
+        return Option::Some<T>(taken);
     }
 
-    // Walks the live values. Seed `cursor` with zero and call until it returns
-    // false. A cursor rather than a callback because Rux has no closures, and
-    // anything that changes the set invalidates one in flight.
-    func TryNextValue(self: *HashSet<T>, cursor: *var uint, value: *var T) -> bool {
-        if cursor == null {
-            return false;
-        }
+    /// Makes room for `additional` more elements on top of those already present.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/reserve
+    func Reserve(self: *var HashSet<T>, additional: uint) -> CollectionError {
+        return self.table.Reserve(additional, self.hash);
+    }
 
-        var slot = *cursor;
-        while slot < self.capacity {
-            if self.states[slot] == SlotOccupied {
+    /// Releases the capacity the element count does not need.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/shrink-to-fit
+    func ShrinkToFit(self: *var HashSet<T>) -> CollectionError {
+        return self.table.ShrinkToFit(self.hash);
+    }
+
+    /// Destroys every element, keeping the storage.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/clear
+    func Clear(self: *var HashSet<T>) {
+        self.table.Clear();
+    }
+
+    /// Walks to the next occupied slot at or after `cursor`, reporting the element it holds.
+    ///
+    /// `self` is borrowed; `cursor` is read and advanced past whatever is reported. The order is the table's, which
+    /// is the seed's and not the insertion's, and nothing may be inserted or removed while a walk is in progress.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/hash-set/try-next
+    func TryNext(self: *HashSet<T>, cursor: *var uint, value: *var T) -> bool {
+        var index = *cursor;
+        while index < self.table.Capacity() {
+            if self.table.IsOccupied(index) {
                 if value != null {
-                    *value = self.keys[slot];
+                    *value = self.table.keys[index];
                 }
-
-                *cursor = slot + 1;
+                *cursor = index + 1;
                 return true;
             }
-            slot++;
+            index++;
         }
-
-        *cursor = slot;
+        *cursor = index;
         return false;
     }
 }

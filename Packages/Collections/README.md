@@ -130,34 +130,37 @@ means asking the container for a `MutableSlice<T>` and indexing it, which is wha
 
 ## Hashing
 
-`HashMap` and `HashSet` take a hash function and an equality function and hold them for the life of the table:
+`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing
+nothing alongside its keys. A fix to the probing or the deletion is a fix to both.
 
-```rux
-import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap };
+Every entry records how far it sits from the slot its hash names. An insertion that meets an entry closer to home
+than itself takes the slot and carries that entry onward, so the distances along a chain never decrease and the worst
+one stays near the average. That also makes a miss cheap: a search reaching a slot whose occupant is closer to home
+than the search has travelled can stop, because the key would have taken that slot on the way past.
 
-var ages = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-if !(ages.Insert(7, 42, null, null) == CollectionError::None) {
-    return;
-}
-ages.Free();
-```
+Removal shifts the following entries back one slot each, stopping at an empty slot or one already at home. That
+leaves the table exactly as if the removed entry had never been inserted — **there are no tombstones**, so a table
+that is churned rather than grown does not slowly fill with them and rehash for no reason. The tests churn five
+hundred insert-remove pairs at a steady size and assert the capacity never moves.
 
-Rux has no trait system, so there is nothing to derive them from; ready-made pairs for the common key types live in the `Hashing` module — `HashInt32`, `HashInt64`, `HashUint`, `HashSlice` and friends, each with a matching `Equals*`. Anything else needs a pair of plain top-level functions. **The two must agree**: values the equality function accepts must hash the same, or the table will lose entries it still holds.
+### The hash is seeded, and the seed is a secret
 
-Rux has no closures either, with two consequences. A hasher carries no state, so it cannot be seeded per table and nothing here resists an adversary who picks colliding keys — these are table hashers, not the digests in [`Rux/Hash`](../Hash). And traversal is a cursor rather than a callback, since a visitor could capture nothing:
+Without one, an adversary who chooses keys can compute a few thousand that collide and turn every lookup into a
+linear scan — a denial of service against anything keyed on input it did not write. The seed comes from
+`Rux/Entropy`, and the ready-made hashers use `SipHash`, which is what makes guessing the seed the only way in.
 
-```rux
-var cursor: uint = 0;
-var key: int32 = 0;
-var value: int32 = 0;
-while ages.TryNextEntry(@cursor, @key, @value) {
-    // `key` or `value` may be null to decline either half.
-}
-```
+`TableSeed::Random` draws one; each draw is a system call, so a program making many tables should draw once and pass
+it to `WithSeed`. `TableSeed::Of` takes the words directly, for a test that needs the same table twice.
 
-The tables are open-addressed with linear probing over a power-of-two capacity, three-quarters maximum load, and tombstones on removal. Occupancy lives in a byte per slot rather than in the key, so no key value is reserved and any `K` is storable. One rehash rule covers both growth and tombstone reclamation, because the new capacity comes from the live entry count: a table that is mostly tombstones rebuilds at the same size instead of doubling.
+A table's iteration order is its seed's, so it differs between two tables in one program and between two runs of it.
+Nothing may rely on that order.
 
-Union, intersection and difference are not offered yet. They belong here rather than in `Rux/Algorithms`, which allocates nothing and requires nothing of its element type.
+### Supplying the pair
+
+The hash and equality are supplied as functions rather than taken from the key type, because Rux has no closures and
+an interface value would be stored and dispatched through on every lookup. `Hashing` has ready-made pairs for the
+usual key types. A caller keying on its own type writes them, and the one rule is that keys comparing equal must hash
+the same.
 
 ## Complexity
 

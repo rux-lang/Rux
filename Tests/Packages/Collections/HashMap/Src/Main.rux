@@ -1,237 +1,228 @@
-import Collections::CollectionError;
-import Collections::HashMap;
-import Collections::{ EqualsInt32, EqualsInt64, HashInt32, HashInt64 };
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, TableSeed };
+import Core::{ Assert, Drop };
 
-// See Tests/Packages/Collections/Array for why a failed check reports itself
-// through a numbered exit code rather than through an assertion.
+// A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
+// is the state after churn: every key that should be there is, every key that should not is not, and the table has
+// not quietly grown while entries were being added and taken away in equal measure.
 
-struct Point {
-    x: int64;
-    y: int64;
+struct Tracked {
+    counter: *var int32;
+    value: int32;
 }
 
-// Every key lands in the same bucket, so the whole table becomes one probe
-// chain. Insertion, lookup, removal and tombstone reuse all have to survive it.
-func CollideAll(key: int32) -> uint {
-    return 0u;
+extend Tracked : Drop {
+    func Drop(self: *var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
 }
 
-// Keys that differ only above the low bit hash together but are not equal, so
-// equality has to be what separates them rather than the hash.
-func HashLowBit(key: int32) -> uint {
-    return (key % 2) as uint;
+// A scope for a map of tracked values, so its destruction happens somewhere observable.
+func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterFilling: *var int32) {
+    var map = HashMap::New<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var key: int32 = 0;
+    while key < count {
+        map.Insert(key, Tracked { counter: counter, value: key });
+        key = key + 1;
+    }
+    Assert(map.Length() == count as uint, "the map holds what was put into it");
+    *afterFilling = *counter;
 }
 
 func Main() -> int {
-    // An empty map allocates nothing and finds nothing.
-    var empty = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    var got: int32 = -1;
-    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
-    if empty.ContainsKey(1) { return 11; }
-    if empty.TryGet(1, @got) { return 12; }
-    if empty.TryRemove(1, @got) { return 13; }
-    var cursor: uint = 0;
-    if empty.TryNextEntry(@cursor, null, null) { return 14; }
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
 
-    // The first insertion builds the table.
-    var map = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    var inserted = false;
-    if !(map.Insert(1, 100, null, @inserted) == CollectionError::None) { return 20; }
-    if !inserted || map.Length() != 1 || map.Capacity() != 8 { return 21; }
-    if !map.ContainsKey(1) || !map.TryGet(1, @got) || got != 100 { return 22; }
-    if map.ContainsKey(2) || map.TryGet(2, @got) { return 23; }
-    if got != 100 { return 24; }
+    // A new map allocates nothing.
+    var map = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    Assert(map.IsEmpty(), "a new map is empty");
+    Assert(map.Capacity() == 0, "and has no storage");
+    Assert(!map.ContainsKey(1), "with nothing in it");
+    Assert(map.Get(1).IsNone(), "and nothing to read");
+    Assert(map.Remove(1).IsNone(), "and nothing to take out");
 
-    // Reinserting an existing key replaces the value, reports that nothing was
-    // added, and hands back what was displaced.
-    var previous: int32 = -1;
-    if !(map.Insert(1, 101, @previous, @inserted) == CollectionError::None) { return 30; }
-    if inserted || previous != 100 || map.Length() != 1 { return 31; }
-    if !map.TryGet(1, @got) || got != 101 { return 32; }
+    // Insert and read back.
+    Assert(map.Insert(1, 10) == CollectionError::None, "the first insertion succeeds");
+    Assert(map.Length() == 1, "and the map holds it");
+    Assert(map.ContainsKey(1), "under the key it was given");
+    Assert(map.Get(1).ValueOr(-1) == 10, "with the value it was given");
+    Assert(!map.ContainsKey(2), "and nothing under a key that was never inserted");
 
-    // Both out-parameters are optional.
-    if !(map.Insert(1, 102, null, null) == CollectionError::None) { return 33; }
-    if !map.TryGet(1, @got) || got != 102 || map.Length() != 1 { return 34; }
+    // Inserting an existing key replaces the value and does not grow the map.
+    Assert(map.Insert(1, 20) == CollectionError::None, "reinserting a key succeeds");
+    Assert(map.Length() == 1, "without adding an entry");
+    Assert(map.Get(1).ValueOr(-1) == 20, "and replaces the value");
 
-    // A pointer to the value updates it in place.
-    var slot: *var int32 = null;
-    if !map.TryGetPointer(1, @slot) || slot == null { return 35; }
-    *slot = 103;
-    if !map.TryGet(1, @got) || got != 103 { return 36; }
-    if map.TryGetPointer(9, @slot) { return 37; }
-
-    // Every key colliding into one bucket still round-trips.
-    var collided = HashMap::New<int32, int32>(CollideAll, EqualsInt32);
-    var k: int32 = 0;
-    while k < 20 {
-        if !(collided.Insert(k, k * 10, null, @inserted) == CollectionError::None) { return 40; }
-        if !inserted { return 41; }
-        k++;
-    }
-    if collided.Length() != 20 { return 42; }
-    k = 0;
-    while k < 20 {
-        if !collided.TryGet(k, @got) || got != k * 10 { return 43; }
-        k++;
-    }
-    if collided.ContainsKey(20) { return 44; }
-
-    // Removing from the middle of one long chain leaves the rest reachable:
-    // a probe has to run past a tombstone rather than stop at it.
-    k = 0;
-    while k < 20 {
-        if k % 2 == 0 {
-            if !collided.TryRemove(k, @got) || got != k * 10 { return 45; }
-        }
-        k++;
-    }
-    if collided.Length() != 10 { return 46; }
-    k = 1;
-    while k < 20 {
-        if !collided.TryGet(k, @got) || got != k * 10 { return 47; }
-        k = k + 2;
-    }
-    if collided.TryRemove(0, @got) { return 48; }
-    collided.Free();
-
-    // A hash that maps distinct keys together relies on equality to separate
-    // them, and must not merge them.
-    var shared = HashMap::New<int32, int32>(HashLowBit, EqualsInt32);
-    if !(shared.Insert(2, 20, null, null) == CollectionError::None) { return 50; }
-    if !(shared.Insert(4, 40, null, null) == CollectionError::None) { return 51; }
-    if !(shared.Insert(3, 30, null, null) == CollectionError::None) { return 52; }
-    if shared.Length() != 3 { return 53; }
-    if !shared.TryGet(2, @got) || got != 20 { return 54; }
-    if !shared.TryGet(4, @got) || got != 40 { return 55; }
-    if !shared.TryGet(3, @got) || got != 30 { return 56; }
-    shared.Free();
-
-    // Removing and reinserting the same key reuses the tombstone rather than
-    // consuming a fresh slot, so the capacity does not creep upward.
-    var churn = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    if !(churn.Insert(7, 1, null, null) == CollectionError::None) { return 60; }
-    let steadyCapacity = churn.Capacity();
-    var round: int32 = 0;
-    while round < 200 {
-        if !churn.TryRemove(7, null) { return 61; }
-        if !(churn.Insert(7, round, null, @inserted) == CollectionError::None) { return 62; }
-        if !inserted { return 63; }
-        round++;
-    }
-    if churn.Length() != 1 { return 64; }
-    if churn.Capacity() != steadyCapacity { return 65; }
-    if !churn.TryGet(7, @got) || got != 199 { return 66; }
-    churn.Free();
-
-    // Growing past the load factor rehashes and keeps every entry.
-    var many = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    var i: int32 = 0;
-    while i < 500 {
-        if !(many.Insert(i, i * 3, null, @inserted) == CollectionError::None) { return 70; }
-        if !inserted { return 71; }
-        i++;
-    }
-    if many.Length() != 500 { return 72; }
-    if many.Capacity() < 668 { return 73; }
-    i = 0;
-    while i < 500 {
-        if !many.TryGet(i, @got) || got != i * 3 { return 74; }
-        i++;
-    }
-
-    // The table keeps at least a quarter of its slots free.
-    if many.Length() > many.Capacity() - (many.Capacity() / 4) { return 75; }
-
-    // Traversal visits every live entry exactly once, in whatever order the
-    // table holds them.
-    var visited: int64 = 0;
-    var count: uint = 0;
+    // Enough entries to grow the table several times.
     var key: int32 = 0;
-    var value: int32 = 0;
-    cursor = 0;
-    while many.TryNextEntry(@cursor, @key, @value) {
-        if value != key * 3 { return 80; }
-        visited = visited + (key as int64);
-        count++;
+    while key < 200 {
+        Assert(map.Insert(key, key * 3) == CollectionError::None, "every insertion succeeds");
+        key = key + 1;
     }
-    if count != 500 { return 81; }
-    if visited != 124750i64 { return 82; }
-
-    // Either half of an entry can be declined.
-    cursor = 0;
-    count = 0;
-    while many.TryNextEntry(@cursor, @key, null) {
-        count++;
+    Assert(map.Length() == 200, "the map holds every distinct key");
+    key = 0;
+    while key < 200 {
+        Assert(map.Get(key).ValueOr(-1) == key * 3, "and every key reads back what it was given");
+        key = key + 1;
     }
-    if count != 500 { return 83; }
-    cursor = 0;
-    count = 0;
-    while many.TryNextEntry(@cursor, null, @value) {
-        count++;
+    Assert(!map.ContainsKey(200), "with nothing under a key that was never inserted");
+    Assert(!map.ContainsKey(-1), "at either end of the range");
+
+    // Removal hands the value back and closes the gap. Every other key must still be findable afterwards, which is
+    // what backward-shift deletion is for and what a missing tombstone would break.
+    key = 0;
+    while key < 200 {
+        if key % 3 == 0 {
+            Assert(map.Remove(key).ValueOr(-1) == key * 3, "removal hands back the value it held");
+        }
+        key = key + 1;
     }
-    if count != 500 { return 84; }
-
-    // Clone is independent, and keeps the same functions.
-    var copy = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    if !(many.Clone(@copy) == CollectionError::None) { return 90; }
-    if copy.Length() != many.Length() || copy.Capacity() != many.Capacity() { return 91; }
-    if !copy.TryGet(499, @got) || got != 1497 { return 92; }
-    if !(copy.Insert(1000, 5, null, null) == CollectionError::None) { return 93; }
-    if many.ContainsKey(1000) { return 94; }
-    if !copy.TryRemove(0, null) { return 95; }
-    if !many.ContainsKey(0) { return 96; }
-    copy.Free();
-    many.Free();
-
-    // Reserve sizes ahead so a run of insertions does not rehash.
-    var sized = HashMap::New<int32, int32>(HashInt32, EqualsInt32);
-    if !(sized.Reserve(100) == CollectionError::None) { return 100; }
-    let reserved = sized.Capacity();
-    if reserved < 134 { return 101; }
-    i = 0;
-    while i < 100 {
-        if !(sized.Insert(i, i, null, null) == CollectionError::None) { return 102; }
-        i++;
+    key = 0;
+    while key < 200 {
+        if key % 3 == 0 {
+            Assert(!map.ContainsKey(key), "a removed key is gone");
+            Assert(map.Get(key).IsNone(), "and reads back nothing");
+        }
+        else {
+            Assert(map.Get(key).ValueOr(-1) == key * 3, "and every key left is still findable");
+        }
+        key = key + 1;
     }
-    if sized.Capacity() != reserved { return 103; }
+    Assert(map.Length() == 133, "with the count down by exactly what was removed");
 
-    // Clear keeps the table and drops the tombstones with the entries.
-    sized.Clear();
-    if !sized.IsEmpty() || sized.Capacity() != reserved { return 104; }
-    if sized.ContainsKey(0) { return 105; }
-    if !(sized.Insert(1, 1, null, @inserted) == CollectionError::None) { return 106; }
-    if !inserted || sized.Capacity() != reserved { return 107; }
+    // Churning at a steady size must not grow the table: there are no tombstones to accumulate.
+    let settled = map.Capacity();
+    var round: int32 = 0;
+    while round < 500 {
+        Assert(map.Insert(1000 + round, round) == CollectionError::None, "every churn insertion succeeds");
+        Assert(map.Remove(1000 + round).ValueOr(-1) == round, "and every churn removal hands its value back");
+        round = round + 1;
+    }
+    Assert(map.Capacity() == settled, "churning at a steady size never grows the table");
+    Assert(map.Length() == 133, "and leaves the count where it was");
 
-    // Shrinking rebuilds at the smallest capacity the entries need, and an
-    // emptied map releases its table entirely.
-    if !(sized.ShrinkToFit() == CollectionError::None) { return 108; }
-    if sized.Capacity() != 8 || sized.Length() != 1 { return 109; }
-    if !sized.TryGet(1, @got) || got != 1 { return 110; }
-    if !sized.TryRemove(1, null) { return 111; }
-    if !(sized.ShrinkToFit() == CollectionError::None) { return 112; }
-    if sized.Capacity() != 0 || !sized.IsEmpty() { return 113; }
-    sized.Free();
+    // Reinserting removed keys finds room without growing, because the gaps really closed.
+    key = 0;
+    while key < 200 {
+        if key % 3 == 0 {
+            Assert(map.Insert(key, key * 3) == CollectionError::None, "reinserting a removed key succeeds");
+        }
+        key = key + 1;
+    }
+    Assert(map.Length() == 200, "and the map holds all of them again");
+    key = 0;
+    while key < 200 {
+        Assert(map.Get(key).ValueOr(-1) == key * 3, "with every key readable");
+        key = key + 1;
+    }
 
-    // Keys and values wider than one machine word.
-    var points = HashMap::New<int64, Point>(HashInt64, EqualsInt64);
-    let origin = Point { x: 1i64, y: 2i64 };
-    let far = Point { x: 30i64, y: 40i64 };
-    var readPoint = Point { x: 0i64, y: 0i64 };
-    if !(points.Insert(1i64, origin, null, null) == CollectionError::None) { return 120; }
-    if !(points.Insert(2i64, far, null, null) == CollectionError::None) { return 121; }
-    if !points.TryGet(2i64, @readPoint) || readPoint.x != 30i64 || readPoint.y != 40i64 { return 122; }
-    if !points.TryRemove(1i64, @readPoint) || readPoint.y != 2i64 { return 123; }
-    if points.Length() != 1 { return 124; }
-    points.Free();
+    // Walking the slots reaches every entry exactly once.
+    var cursor: uint = 0;
+    var seenKey: int32 = 0;
+    var seenValue: int32 = 0;
+    var walked: uint = 0;
+    var total: int64 = 0;
+    while map.TryNextEntry(@cursor, @seenKey, @seenValue) {
+        Assert(seenValue == seenKey * 3, "every entry a walk reports is one that was put in");
+        total = total + (seenKey as int64);
+        walked = walked + 1;
+    }
+    Assert(walked == 200, "and a walk reaches every entry");
+    Assert(total == 19900, "each of them exactly once, since the keys sum to what they should");
 
-    // A reservation whose table cannot be addressed is rejected before any
-    // allocation, and the map stays usable.
-    var huge = HashMap::New<int64, Point>(HashInt64, EqualsInt64);
-    if !(huge.Insert(5i64, origin, null, null) == CollectionError::None) { return 130; }
-    if !(huge.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 131; }
-    if huge.Length() != 1 || !huge.ContainsKey(5i64) { return 132; }
-    huge.Free();
+    // A pointer to a value reads it where it sits, and the mutable form changes it in place.
+    var reading: *int32 = null;
+    Assert(map.Reference(7).TryIntoValue(@reading), "a present key has a value to point at");
+    Assert(*reading == 21, "which reads what was stored");
+    var writing: *var int32 = null;
+    Assert(map.TryReferenceMutable(7, @writing), "and one that can be written through");
+    *writing = 99;
+    Assert(map.Get(7).ValueOr(-1) == 99, "which changes the stored value");
+    Assert(!map.TryReferenceMutable(1000, @writing), "an absent key has nothing to point at");
 
-    empty.Free();
+    // Capacity behaviour.
+    Assert(map.Reserve(1000) == CollectionError::None, "reserving succeeds");
+    Assert(map.Capacity() >= 1000, "taking the room asked for");
+    Assert(map.Length() == 200, "without changing the count");
+    Assert(map.ShrinkToFit() == CollectionError::None, "shrinking succeeds");
+    Assert(map.Capacity() < 1000, "giving back what the entries do not need");
+    Assert(map.Get(11).ValueOr(-1) == 33, "and keeping every entry");
+    Assert(map.Reserve(uint::Max) == CollectionError::CapacityOverflow, "an impossible reservation is refused");
+    Assert(map.Length() == 200, "leaving the map as it was");
+
+    map.Clear();
+    Assert(map.IsEmpty(), "clearing empties the map");
+    Assert(!map.ContainsKey(11), "with nothing left in it");
+    Assert(map.Insert(1, 1) == CollectionError::None, "and the map is usable afterwards");
+
+    // Two maps with different seeds hash the same keys differently, which is the whole point of seeding. What is
+    // observable is the walk order, since that is the slot order and the slot order is the hash's.
+    var first = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
+    var second = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(99, 100), HashInt32, EqualsInt32);
+    key = 0;
+    while key < 32 {
+        first.Insert(key, key);
+        second.Insert(key, key);
+        key = key + 1;
+    }
+    Assert(first.Length() == second.Length(), "two maps given the same keys hold the same number");
+
+    var firstCursor: uint = 0;
+    var secondCursor: uint = 0;
+    var firstKey: int32 = 0;
+    var secondKey: int32 = 0;
+    var differed = false;
+    while first.TryNextEntry(@firstCursor, @firstKey, null) {
+        if !second.TryNextEntry(@secondCursor, @secondKey, null) {
+            differed = true;
+            break;
+        }
+        if firstKey != secondKey {
+            differed = true;
+        }
+    }
+    Assert(differed, "but two different seeds lay the same keys out differently");
+
+    // A third map with the first one's seed lays them out identically, which says the difference was the seed and
+    // not chance.
+    var same = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
+    key = 0;
+    while key < 32 {
+        same.Insert(key, key);
+        key = key + 1;
+    }
+    firstCursor = 0;
+    var sameCursor: uint = 0;
+    var matched = true;
+    while first.TryNextEntry(@firstCursor, @firstKey, null) {
+        var sameKey: int32 = 0;
+        if !same.TryNextEntry(@sameCursor, @sameKey, null) {
+            matched = false;
+            break;
+        }
+        if firstKey != sameKey {
+            matched = false;
+        }
+    }
+    Assert(matched, "and the same seed lays them out the same way");
+
+    // Ownership: values are destroyed with the map, and a removed one is handed over rather than destroyed.
+    var destroyed: int32 = 0;
+    var afterFilling: int32 = 0;
+    FillAndDrop(allocator, @destroyed, 40, @afterFilling);
+    Assert(afterFilling == 0, "filling a map destroys nothing");
+    Assert(destroyed == 40, "and destroying it destroys every value exactly once");
+
+    destroyed = 0;
+    var owning = HashMap::New<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    owning.Insert(1, Tracked { counter: @destroyed, value: 1 });
+    Assert(destroyed == 0, "inserting destroys nothing");
+    owning.Insert(1, Tracked { counter: @destroyed, value: 2 });
+    Assert(destroyed == 1, "but replacing a value destroys the one it replaced");
+    owning.Clear();
+    Assert(destroyed == 2, "and clearing destroys what is left");
+
     return 0;
 }

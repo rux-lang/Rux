@@ -1,113 +1,150 @@
-import Memory::Equal;
-
-// Hash and equality functions for the key types a table is most often keyed
-// by, so HashMap and HashSet are usable without every caller first writing a
-// hash function by hand.
+// Ready-made hash and equality callbacks for the key types a table is usually keyed on.
 //
-// These are table hashers, not digests. Rux/Hash is the package for MD5 and
-// the SHA family; nothing here is suitable for integrity or authentication,
-// and none of it is resistant to an adversary choosing colliding keys. Rux has
-// no closures, so a table cannot carry a per-instance seed that would help
-// with that.
+// A table takes its hash as a function rather than through an interface, because Rux has no closures and an
+// interface value would have to be stored and dispatched through per lookup. The signature carries the table's seed
+// alongside the key, which is what makes the hashing randomized: two tables in one program hash the same key
+// differently, and neither is predictable to anyone who has not seen the seed.
 //
-// Each one is a plain function rather than a generic, because a generic
-// function cannot be used as a value in Rux: `HashValue<int32>` is not
-// something that can be passed as a `func(int32) -> uint`.
+// Every hash here is `SipHash`, which is the one in `Rux/Hash` designed for exactly this. An adversary who chooses
+// keys can find collisions in any of the others by hand, and a table full of colliding keys is a table whose every
+// lookup is a linear scan -- a denial of service against anything keyed on input it did not write. `SipHash` makes
+// finding those collisions as hard as guessing the seed.
 //
-// Writing your own is the same shape. A hasher must return the same value for
-// keys the matching equality function accepts, or a table will lose entries it
-// still holds.
+// A caller keying on a type not listed here writes the pair itself: a hash that reads the whole key and mixes the
+// seed in, and an equality that agrees with it. The one rule is the usual one -- two keys that compare equal must
+// hash the same.
 
-// FNV-1a offset basis and prime, for a 64-bit hash.
-const FnvOffsetBasis: uint = 14695981039346656037u;
-const FnvPrime: uint = 1099511628211u;
+import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
 
-// FNV-1a over a run of bytes. The multiply is meant to wrap: that is where the
-// mixing comes from, and it is the one place in this package where an
-// unchecked overflow is deliberate rather than a defect.
-func HashBytes(data: *uint8, length: uint) -> uint {
-    var hash = FnvOffsetBasis;
-    var i: uint = 0;
-    while i < length {
-        hash = hash ^ (data[i] as uint);
-        hash = hash * FnvPrime;
-        i++;
-    }
-
-    return hash;
+/// The seeded hash of a `uint`.
+///
+/// `value`, `low` and `high` are read by value. The seed is the table's, and two tables with different seeds hash
+/// the same value differently.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-uint
+func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, value as uint64);
+    return hasher.Finish();
 }
 
-// FNV-1a over the bytes a slice borrows.
-func HashSlice(bytes: Slice<char8>) -> uint {
-    return HashBytes(bytes.data as *uint8, bytes.length);
+/// The seeded hash of a `uint64`.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-uint64
+func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, value);
+    return hasher.Finish();
 }
 
-// The splitmix64 finalizer. An integer key is often small, consecutive, or
-// aligned, and a table masks off the low bits to choose a bucket, so the raw
-// value would pile every such key into a handful of slots. This spreads the
-// high bits down into them.
-func HashUint64(value: uint64) -> uint {
-    var x = value;
-    x = (x ^ (x >> 30)) * 13787848793156543929u64;
-    x = (x ^ (x >> 27)) * 10723151780598845931u64;
-    x = x ^ (x >> 31);
-    return x as uint;
+/// The seeded hash of a `uint32`.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-uint32
+func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, value as uint64);
+    return hasher.Finish();
 }
 
-func HashUint(value: uint) -> uint {
-    return HashUint64(value as uint64);
+/// The seeded hash of an `int64`.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-int64
+func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, value as uint64);
+    return hasher.Finish();
 }
 
-func HashUint32(value: uint32) -> uint {
-    return HashUint64(value as uint64);
+/// The seeded hash of an `int32`.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-int32
+func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, (value as int64) as uint64);
+    return hasher.Finish();
 }
 
-func HashInt64(value: int64) -> uint {
-    return HashUint64(value as uint64);
+/// The seeded hash of a `char8`.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-char8
+func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
+    var hasher = SipHash24::WithKey(low, high);
+    WriteUint64<SipHash24>(@hasher, (value as uint8) as uint64);
+    return hasher.Finish();
 }
 
-func HashInt32(value: int32) -> uint {
-    return HashUint64((value as int64) as uint64);
+/// The seeded hash of a run of characters, which is what a string key comes to.
+///
+/// `text` is borrowed and read. Two slices holding the same characters hash the same however they were built, which
+/// is what makes a text key usable at all.
+///
+/// Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/collections/hash-slice
+func HashSlice(text: Slice<char8>, low: uint64, high: uint64) -> uint64 {
+    return SipHash24Of(text.data as *byte, text.length, low, high);
 }
 
-func HashChar8(value: char8) -> uint {
-    return HashUint64((value as uint) as uint64);
+/// Whether two `uint` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-uint
+func EqualsUint(left: uint, right: uint) -> bool {
+    return left == right;
 }
 
-func EqualsUint(a: uint, b: uint) -> bool {
-    return a == b;
+/// Whether two `uint64` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-uint64
+func EqualsUint64(left: uint64, right: uint64) -> bool {
+    return left == right;
 }
 
-func EqualsUint64(a: uint64, b: uint64) -> bool {
-    return a == b;
+/// Whether two `uint32` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-uint32
+func EqualsUint32(left: uint32, right: uint32) -> bool {
+    return left == right;
 }
 
-func EqualsUint32(a: uint32, b: uint32) -> bool {
-    return a == b;
+/// Whether two `int64` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-int64
+func EqualsInt64(left: int64, right: int64) -> bool {
+    return left == right;
 }
 
-func EqualsInt64(a: int64, b: int64) -> bool {
-    return a == b;
+/// Whether two `int32` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-int32
+func EqualsInt32(left: int32, right: int32) -> bool {
+    return left == right;
 }
 
-func EqualsInt32(a: int32, b: int32) -> bool {
-    return a == b;
+/// Whether two `char8` keys are the same.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-char8
+func EqualsChar8(left: char8, right: char8) -> bool {
+    return left == right;
 }
 
-func EqualsChar8(a: char8, b: char8) -> bool {
-    return a == b;
-}
-
-// Two borrowed runs of bytes are equal when they are the same length and
-// nothing differs. Memory::Compare reports the offset of the first difference,
-// or the length when there is none, so the length is the match.
-func EqualsSlice(a: Slice<char8>, b: Slice<char8>) -> bool {
-    if a.length != b.length {
+/// Whether two runs of characters hold the same characters.
+///
+/// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
+/// pointers hold.
+///
+/// https://rux-lang.dev/docs/api/collections/equals-slice
+func EqualsSlice(left: Slice<char8>, right: Slice<char8>) -> bool {
+    if left.length != right.length {
         return false;
     }
-    if a.length == 0 {
-        return true;
+    var index: uint = 0;
+    while index < left.length {
+        if left.data[index] != right.data[index] {
+            return false;
+        }
+        index++;
     }
-
-    return Equal(a.data, b.data, a.length);
+    return true;
 }
