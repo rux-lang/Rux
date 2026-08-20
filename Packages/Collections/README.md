@@ -12,7 +12,7 @@ rux add Rux/Collections
 
 | Type              | Role                                          | Also known as |
 | ----------------- | --------------------------------------------- | ------------- |
-| `Array<T>`        | Fixed-length owned heap storage               |               |
+| `Array<T>`        | Fixed-length owned heap storage, allocator-injected |         |
 | `Vector<T>`       | Growable contiguous sequence                  | the stack     |
 | `Deque<T>`        | Double-ended queue over a circular buffer     | the queue     |
 | `HashMap<K, V>`   | Open-addressed associative table              |               |
@@ -79,6 +79,24 @@ numbers.Free();
 **A failed operation changes nothing.** Capacity arithmetic is checked before anything is allocated, and a reallocated block lands in a local before it replaces the owned pointer — so a failure leaves the original allocation valid and owned, rather than leaking it and nulling the container.
 
 Every count is checked for overflow. `count * sizeof(T)` is the most dangerous expression a container writes: a product that wraps asks for a small block and then writes far past it.
+
+## Ownership
+
+`Array<T>` owns its storage and its elements, so it implements `Drop` and is move-only. Handing one to a function
+transfers it, and reading the source afterwards is rejected while compiling rather than discovered later. Destruction
+destroys every element and then releases the block — in that order, because an element destroyed after its storage
+was released would be read from freed memory.
+
+The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one
+built from a pool comes back to the pool.
+
+Every constructor *copies* its elements into the storage, which means an array of a move-only element type cannot be
+built this way: copying such an element would give two owners to a value that promises one. `Vector<T>` and its
+`Push` is the shape that works, since each element is moved in exactly once.
+
+A container destroys an element it does not know is droppable by reading it into a local and letting the local's life
+end. That is the only mechanism the language offers, it costs nothing for an element type that owns nothing, and it
+is what `Array::Drop` does.
 
 ## Iterating
 

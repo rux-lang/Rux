@@ -1,4 +1,3 @@
-import Collections::Array;
 import Collections::CollectionError;
 import Collections::Vector;
 
@@ -124,12 +123,7 @@ func Main() -> int {
     if values.At(0) != 60 { return 92; }
     copy.Free();
 
-    var fixed = Array::New<int32>();
-    if !(values.ToArray(@fixed) == CollectionError::None) { return 93; }
-    if fixed.Data() == values.Data() || fixed.Length() != values.Length() { return 94; }
-    fixed.Set(0, 88);
-    if values.At(0) != 60 { return 95; }
-    fixed.Free();
+    // ToArray is gone until Vector takes an allocator of its own; Array now carries the one its storage came from.
 
     // Clear keeps the allocation for reuse; Truncate drops only the tail.
     let retained = values.Data();
@@ -166,11 +160,7 @@ func Main() -> int {
     if !(Vector::WithCapacity<int32>(8, @moved) == CollectionError::None) { return 120; }
     if !(moved.Push(6) == CollectionError::None) { return 121; }
     if !(moved.Push(7) == CollectionError::None) { return 122; }
-    var array = moved.IntoArray();
-    if moved.Data() != null || moved.Length() != 0 || moved.Capacity() != 0 { return 123; }
-    if array.Length() != 2 || array.At(0) != 6 || array.At(1) != 7 { return 124; }
-    if array.Data() == null { return 125; }
-    array.Free();
+    // IntoArray is gone for the same reason; what the transfer left the Vector as is checked by Free below.
     moved.Free();
 
     // Growth and indexing honor an element wider than one machine word.

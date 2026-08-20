@@ -1,4 +1,3 @@
-import Collections::Array;
 import Collections::CollectionError;
 import Collections::Deque;
 import Collections::HashMap;
@@ -33,11 +32,8 @@ func Main() -> int {
     if CollectionError::CapacityOverflow == CollectionError::IndexOutOfRange { return 15; }
     if !(CollectionError::None == CollectionError::None) { return 16; }
 
-    // A count whose byte size cannot be addressed is rejected by every
-    // constructor, before anything is allocated.
-    var array = Array::New<int64>();
-    if !(Array::NewUninitialized<int64>(uint::Max, @array) == CollectionError::CapacityOverflow) { return 20; }
-    if !array.IsEmpty() || array.Data() != null { return 21; }
+    // A count whose byte size cannot be addressed is rejected before anything is allocated. Array now takes an
+    // allocator and is covered by its own test; what stays here is the Vector side.
 
     var vector = Vector::New<int64>();
     if !(Vector::WithCapacity<int64>(uint::Max, @vector) == CollectionError::CapacityOverflow) { return 22; }
@@ -143,8 +139,6 @@ func Main() -> int {
 
     // Releasing twice is a no-op everywhere, because Free leaves the empty
     // value behind rather than a dangling pointer.
-    array.Free();
-    array.Free();
     vector.Free();
     vector.Free();
     deque.Free();
