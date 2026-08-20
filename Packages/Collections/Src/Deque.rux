@@ -435,7 +435,7 @@ extend Deque<T> {
         // element has to be tracked individually and nothing is allocated.
         // Rux/Algorithms owns rotation; duplicating it here would be a second
         // copy of an algorithm that already exists.
-        Rotate<T>(self.data, self.capacity, self.head);
+        Rotate<T>(MutableSlice<T> { data: self.data, length: self.capacity }, self.head);
         self.head = 0;
     }
 

@@ -1,4 +1,5 @@
-import Algorithms::{ NthElement, PartialSort, IsSorted, SequenceEqual, Copy };
+import Algorithms::{ CopyTo, IsSorted, NthElement, PartialSort, SequenceEqual };
+import Core::MutableSlice;
 
 struct Ranked {
     key: int32;
@@ -20,6 +21,14 @@ extend Ranked {
 
 // `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
 // they did.
+
+// `Copy` became `CopyTo` over slices, and `Reverse` takes a `MutableSlice`. These keep the calls below reading as
+// they did while the rest of the module is still pointer-and-length.
+func CopyInts(destination: *var int32, source: *int32, length: uint) -> bool {
+    return CopyTo<int32>(MutableSlice<int32> { data: destination, length: length },
+                         Slice<int32> { data: source, length: length });
+}
+
 func Sorted<T>(data: *T, length: uint) -> bool {
     return IsSorted<T>(Slice<T> { data: data, length: length });
 }
@@ -64,8 +73,8 @@ func CheckNth(source: *int32, length: uint, n: uint) -> int {
     var expected: int32[260];
     var check: int32[260];
 
-    Copy<int32>(@actual[0], source, length);
-    Copy<int32>(@expected[0], source, length);
+    CopyInts(@actual[0], source, length);
+    CopyInts(@expected[0], source, length);
     ReferenceSort(@expected[0], length);
 
     if !NthElement<int32>(@actual[0], length, n) {
@@ -91,7 +100,7 @@ func CheckNth(source: *int32, length: uint, n: uint) -> int {
         i++;
     }
 
-    Copy<int32>(@check[0], @actual[0], length);
+    CopyInts(@check[0], @actual[0], length);
     ReferenceSort(@check[0], length);
     if !SameInts(@check[0], @expected[0], length) {
         return 5;
@@ -105,8 +114,8 @@ func CheckPartial(source: *int32, length: uint, count: uint) -> int {
     var expected: int32[260];
     var check: int32[260];
 
-    Copy<int32>(@actual[0], source, length);
-    Copy<int32>(@expected[0], source, length);
+    CopyInts(@actual[0], source, length);
+    CopyInts(@expected[0], source, length);
     ReferenceSort(@expected[0], length);
 
     if !PartialSort<int32>(@actual[0], length, count) {
@@ -119,7 +128,7 @@ func CheckPartial(source: *int32, length: uint, count: uint) -> int {
         return 3;
     }
 
-    Copy<int32>(@check[0], @actual[0], length);
+    CopyInts(@check[0], @actual[0], length);
     ReferenceSort(@check[0], length);
     if !SameInts(@check[0], @expected[0], length) {
         return 4;

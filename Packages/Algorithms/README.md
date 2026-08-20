@@ -17,11 +17,10 @@ rux add Rux/Algorithms
 | `Find`   | `Slice<T>`        | — or `==`       | Linear queries, sequence comparison, by value or predicate |
 | `MinMax` | `Slice<T>`        | — or `<`        | Sequence extremes and clamping                           |
 | `Search` | `Slice<T>`        | `<`             | Sortedness checks, bounds and binary search              |
-| `Modify` | pointer + length  | — or `==`       | Reordering, bulk movement, partitioning, transform, fold |
+| `Modify` | `MutableSlice<T>` | — or `==`       | Reordering, bulk movement, removal and partitioning      |
 | `Sort`   | pointer + length  | `<`             | Introsort, ascending and descending                      |
 
-`Find`, `MinMax` and `Search` take a `Slice<T>`; the rest still take a pointer and a length and are being converted
-module by module.
+Everything but `Sort` takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
 
 Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
 
@@ -59,9 +58,23 @@ Equality in these searches is the ordering's, not the type's. Two elements neith
 are equal here, whatever `==` would say. When several compare equal, `BinarySearch` reports the first, so the answer
 depends on the sequence rather than on how the search happened to divide it.
 
+## Nothing here resizes anything
+
+None of these own the storage they work on, so a removal cannot shorten it. `Unique`, `RemoveValue` and
+`RemoveWhere` compact the survivors toward the front and report how many are left; the caller, who does own the
+storage, is what truncates it.
+
+What lies past that count is unspecified. It is neither cleared nor preserved — the elements there were moved from,
+and reading them back gives whatever the compaction happened to leave. For a `Copy` element that is a stale
+duplicate; for anything else it is a value with no owner.
+
+`Partition` is unstable: it exchanges elements from both ends inward, which is what keeps it to one pass and no
+scratch storage, and means the order within each group is not the order it started in. A caller that needs the
+original order needs a stable partition, which needs somewhere to put things.
+
 ## The pointer-and-length shape
 
-The modules still to be converted take a pointer and a length rather than a view struct:
+`Sort` still takes a pointer and a length rather than a view:
 
 ```rux
 func Reverse<T>(data: *var T, length: uint)

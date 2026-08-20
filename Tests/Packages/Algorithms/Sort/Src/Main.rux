@@ -1,4 +1,5 @@
-import Algorithms::{ Sort, SortDescending, IsSorted, SequenceEqual, Copy, Reverse };
+import Algorithms::{ CopyTo, IsSorted, Reverse, SequenceEqual, Sort, SortDescending };
+import Core::MutableSlice;
 // InsertionSortRange and HeapSortRange are internal helpers rather than public
 // API. They are exercised directly because the heapsort fallback is otherwise
 // unreachable from a test: it needs a recursion budget that only adversarial
@@ -29,6 +30,18 @@ extend Ranked {
 
 // `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
 // they did.
+
+// `Copy` became `CopyTo` over slices, and `Reverse` takes a `MutableSlice`. These keep the calls below reading as
+// they did while the rest of the module is still pointer-and-length.
+func CopyInts(destination: *var int32, source: *int32, length: uint) -> bool {
+    return CopyTo<int32>(MutableSlice<int32> { data: destination, length: length },
+                         Slice<int32> { data: source, length: length });
+}
+
+func ReverseInts(data: *var int32, length: uint) {
+    Reverse<int32>(MutableSlice<int32> { data: data, length: length });
+}
+
 func Sorted<T>(data: *T, length: uint) -> bool {
     return IsSorted<T>(Slice<T> { data: data, length: length });
 }
@@ -110,8 +123,8 @@ func CheckSort(source: *int32, length: uint) -> int {
     var actual: int32[320];
     var expected: int32[320];
 
-    Copy<int32>(@actual[0], source, length);
-    Copy<int32>(@expected[0], source, length);
+    CopyInts(@actual[0], source, length);
+    CopyInts(@expected[0], source, length);
 
     Sort<int32>(@actual[0], length);
     ReferenceSort(@expected[0], length);
@@ -125,9 +138,9 @@ func CheckSort(source: *int32, length: uint) -> int {
 
     // Descending order must be the exact reverse of ascending order.
     var descending: int32[320];
-    Copy<int32>(@descending[0], source, length);
+    CopyInts(@descending[0], source, length);
     SortDescending<int32>(@descending[0], length);
-    Reverse<int32>(@descending[0], length);
+    ReverseInts(@descending[0], length);
     if !SameInts(@descending[0], @expected[0], length) {
         return 3;
     }

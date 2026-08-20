@@ -1,200 +1,270 @@
-// In-place rearrangement and bulk element movement.
+// Rearranging a sequence in place, and moving elements between sequences.
 //
-// Every entry point takes a pointer and a length rather than a view struct.
-// That shape is deliberate: inside a generic function the compiler only
-// resolves an element to its type parameter when it is reached through a
-// pointer parameter, so `data[i]` works where `view.data[i]` does not once a
-// bare `T` value is also involved. Callers holding a Core MutableSlice or a
-// Collections container pass its `data` and `length` fields directly.
+// Everything that writes takes a `MutableSlice<T>`; everything that only reads takes a `Slice<T>`. Nothing here
+// resizes anything, because none of these own the storage they work on. The removals compact survivors toward the
+// front and report how many are left, and it is the caller -- who does own the storage -- that shortens it.
 //
-// Indexing is unchecked throughout, matching Slice, Array and List: a length
-// larger than the storage is undefined behavior, not a reported error.
+// What is left past the reported length after a removal is unspecified. It is neither cleared nor preserved: the
+// elements there were moved from, and reading them back is reading whatever the compaction happened to leave. For a
+// `Copy` element that is a stale duplicate; for anything else it is a value with no owner.
+//
+// A rotation and a reversal need no scratch storage at all, which is why they are here rather than in an allocating
+// layer: a rotation is three reversals, and that is the whole of it.
 
-// Exchanges the values behind two pointers. A null pointer on either side is
-// a no-op, so callers may pass an optional endpoint without guarding it.
-func Swap<T>(first: *var T, second: *var T) {
-    if first == null || second == null {
-        return;
-    }
+import Core::MutableSlice;
 
-    let temp = *first;
-    *first = *second;
-    *second = temp;
+/// Exchanges the values at two locations.
+///
+/// Both are borrowed mutably and both are written. Passing the same location twice is legal and leaves it alone.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// Both pointers must be non-null and writable.
+///
+/// https://rux-lang.dev/docs/api/algorithms/swap
+func Swap<T>(left: *var T, right: *var T) {
+    let held = *left;
+    *left = *right;
+    *right = held;
 }
 
-// Reverses the order of length elements. A length below two is a no-op.
-func Reverse<T>(data: *var T, length: uint) {
-    if length < 2 {
+/// Reverses the order of `items` in place.
+///
+/// `items` is borrowed mutably and rewritten. An empty slice and a single element are already reversed, so neither
+/// is a special case.
+///
+/// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/reverse
+func Reverse<T>(items: MutableSlice<T>) {
+    if items.length < 2 {
         return;
     }
-
     var low: uint = 0;
-    var high = length - 1;
+    var high = items.length - 1;
     while low < high {
-        let temp = data[low];
-        data[low] = data[high];
-        data[high] = temp;
-        low++;
-        high--;
+        Swap<T>(@items.data[low], @items.data[high]);
+        low = low + 1;
+        high = high - 1;
     }
 }
 
-// Rotates left so the element at middle becomes the first one, and returns
-// false without touching anything when middle is past the end. A middle of 0
-// or of length is an accepted no-op.
-//
-// Three reversals rather than the juggling algorithm: it needs no greatest
-// common divisor and no nested loop, at the cost of 3n/2 swaps instead of n/2.
-func Rotate<T>(data: *var T, length: uint, middle: uint) -> bool {
-    if middle > length {
+/// Rotates `items` left so that the element at `middle` becomes the first.
+///
+/// `items` is borrowed mutably and rewritten. A `middle` of zero or of the whole length leaves the order alone;
+/// anything past the length is refused, since there is no such element to bring to the front.
+///
+/// Done as three reversals -- the front, the back, then the whole -- which needs no scratch storage and touches
+/// every element at most twice.
+///
+/// Reports false only for a `middle` past the length.
+///
+/// Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/rotate
+func Rotate<T>(items: MutableSlice<T>, middle: uint) -> bool {
+    if middle > items.length {
         return false;
     }
-    if middle == 0 || middle == length {
+    if middle == 0 || middle == items.length {
         return true;
     }
-
-    // `@data[middle]` rather than `data + middle`: pointer arithmetic does not
-    // scale by the pointee size for struct element types, while indexing does.
-    // See BACKLOG.md.
-    Reverse<T>(data, middle);
-    Reverse<T>(@data[middle], length - middle);
-    Reverse<T>(data, length);
+    Reverse<T>(MutableSlice<T> { data: items.data, length: middle });
+    Reverse<T>(MutableSlice<T> { data: @items.data[middle], length: items.length - middle });
+    Reverse<T>(items);
     return true;
 }
 
-// Assigns value to every element. A length of zero is a no-op, so a null data
-// pointer is only read when there is something to write.
-func Fill<T>(data: *var T, length: uint, value: T) {
-    var i: uint = 0;
-    while i < length {
-        data[i] = value;
-        i++;
+/// Writes `value` into every position of `items`.
+///
+/// `items` is borrowed mutably and rewritten; `value` is read by value and copied into each position. An empty slice
+/// writes nothing.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/fill
+func Fill<T>(items: MutableSlice<T>, value: T) {
+    var index: uint = 0;
+    while index < items.length {
+        items.data[index] = value;
+        index++;
     }
 }
 
-// Copies length elements front to back and reports whether it ran. Copying
-// zero elements always succeeds; a null pointer with a non-zero length fails.
-//
-// Front-to-back order makes this the correct choice for overlapping ranges
-// when destination is at or below source. Use CopyBackward for the other
-// direction; neither detects overlap on the caller's behalf.
-func Copy<T>(destination: *var T, source: *T, length: uint) -> bool {
-    if length == 0 {
-        return true;
-    }
-    if destination == null || source == null {
+/// Copies `source` into `destination`, front to back.
+///
+/// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
+/// differ, having written nothing: a partial copy is worse than a refused one, since the caller cannot tell how far
+/// it got.
+///
+/// The two must not overlap, unless `destination` begins at or before `source`. Use `MoveTo` where they might.
+///
+/// Runs in time proportional to the length and allocates nothing.
+///
+/// # Safety
+///
+/// Overlapping the wrong way silently copies elements that were already overwritten.
+///
+/// https://rux-lang.dev/docs/api/algorithms/copy-to
+func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
+    if destination.length != source.length {
         return false;
     }
-
-    var i: uint = 0;
-    while i < length {
-        destination[i] = source[i];
-        i++;
-    }
-    return true;
-}
-
-// Copies length elements back to front, which is the correct direction for
-// overlapping ranges when destination is at or above source. The resulting
-// contents are identical to Copy for non-overlapping ranges.
-func CopyBackward<T>(destination: *var T, source: *T, length: uint) -> bool {
-    if length == 0 {
-        return true;
-    }
-    if destination == null || source == null {
-        return false;
-    }
-
-    var i = length;
-    while i > 0 {
-        i--;
-        destination[i] = source[i];
+    var index: uint = 0;
+    while index < source.length {
+        destination.data[index] = source.data[index];
+        index++;
     }
     return true;
 }
 
-// Collapses each run of adjacent equal elements to its first element and
-// returns the new length. Elements from the returned length onward are left
-// in an unspecified state rather than cleared, and the storage is not resized.
-//
-// Only adjacent duplicates are removed, so sorting first turns this into
-// whole-sequence deduplication. Requires `==` on T.
-func Unique<T>(data: *var T, length: uint) -> uint {
-    if length < 2 {
-        return length;
+/// Copies `source` into `destination`, correctly however the two overlap.
+///
+/// `destination` is borrowed mutably and written; `source` is borrowed and read. Reports false when the two lengths
+/// differ, having written nothing.
+///
+/// Copies back to front when `destination` starts after `source`, and front to back otherwise, which is what makes
+/// shifting a run of elements along its own storage safe in either direction.
+///
+/// Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/move-to
+func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
+    if destination.length != source.length {
+        return false;
     }
+    if (destination.data as uint) <= (source.data as uint) {
+        return CopyTo<T>(destination, source);
+    }
+    var remaining = source.length;
+    while remaining > 0 {
+        remaining = remaining - 1;
+        destination.data[remaining] = source.data[remaining];
+    }
+    return true;
+}
 
+/// Collapses each run of adjacent equal elements in `items` to one, and reports how many are left.
+///
+/// `items` is borrowed mutably and rewritten. Only *adjacent* duplicates go: on a sorted slice that removes every
+/// duplicate, and on an unsorted one it removes only the runs, which is the useful behaviour rather than a
+/// compromise -- it makes this the second half of sort-then-unique without paying for a second sort.
+///
+/// Relative order among the survivors is preserved, nothing is resized, and what lies past the reported length is
+/// unspecified.
+///
+/// Requires `==` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/unique
+func Unique<T>(items: MutableSlice<T>) -> uint {
+    if items.length < 2 {
+        return items.length;
+    }
     var kept: uint = 1;
-    var i: uint = 1;
-    while i < length {
-        // Negating `==` rather than writing `!=`: only the operator a type
-        // actually defines is dispatched, and `!=` falls back to comparing the
-        // raw bytes, which disagrees with any `==` that ignores a field or
-        // whose type carries padding. See BACKLOG.md.
-        if !(data[i] == data[kept - 1]) {
-            data[kept] = data[i];
-            kept++;
+    var index: uint = 1;
+    while index < items.length {
+        if !(items.data[index] == items.data[kept - 1]) {
+            items.data[kept] = items.data[index];
+            kept = kept + 1;
         }
-        i++;
+        index++;
     }
     return kept;
 }
 
-// RemoveValue against a caller's test rather than a value: removes every
-// element the predicate accepts, compacting the survivors toward the front,
-// and returns the new length. Relative order is preserved and the tail is left
-// unspecified, exactly as in RemoveValue. Requires nothing of T.
-func RemoveIf<T>(data: *var T, length: uint, predicate: func(T) -> bool) -> uint {
+/// Removes every element of `items` equal to `value`, and reports how many are left.
+///
+/// `items` is borrowed mutably and rewritten; `value` is read by value. Survivors are compacted toward the front in
+/// their original order, nothing is resized, and what lies past the reported length is unspecified.
+///
+/// Requires `==` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/remove-value
+func RemoveValue<T>(items: MutableSlice<T>, value: T) -> uint {
     var kept: uint = 0;
-    var i: uint = 0;
-    while i < length {
-        if !predicate(data[i]) {
-            if kept != i {
-                data[kept] = data[i];
-            }
-            kept++;
+    var index: uint = 0;
+    while index < items.length {
+        if !(items.data[index] == value) {
+            items.data[kept] = items.data[index];
+            kept = kept + 1;
         }
-        i++;
+        index++;
     }
     return kept;
 }
 
-// Reorders so every element the predicate accepts precedes every element it
-// rejects, and returns the boundary between them — which is also the number of
-// accepted elements.
-//
-// The order within each group is **not** preserved: this swaps ends inward, so
-// it costs one pass and no memory. A stable partition would need either an
-// auxiliary buffer or a rotation per element, and is deliberately not offered.
-func Partition<T>(data: *var T, length: uint, predicate: func(T) -> bool) -> uint {
-    var boundary: uint = 0;
-    var i: uint = 0;
-    while i < length {
-        if predicate(data[i]) {
-            if boundary != i {
-                let temp = data[boundary];
-                data[boundary] = data[i];
-                data[i] = temp;
-            }
-            boundary++;
+/// Removes every element of `items` that `predicate` accepts, and reports how many are left.
+///
+/// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Survivors are compacted toward
+/// the front in their original order, nothing is resized, and what lies past the reported length is unspecified.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/remove-where
+func RemoveWhere<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
+    var kept: uint = 0;
+    var index: uint = 0;
+    while index < items.length {
+        if !predicate(items.data[index]) {
+            items.data[kept] = items.data[index];
+            kept = kept + 1;
         }
-        i++;
+        index++;
     }
-    return boundary;
+    return kept;
 }
 
-// The boundary of an already-partitioned sequence: the first index the
-// predicate rejects, or length when it accepts everything. O(log n), so it
-// requires the sequence to be partitioned — every accepted element before
-// every rejected one — which is exactly what Partition leaves behind. An
-// unpartitioned sequence yields an unspecified index but never an access
-// outside it.
-func PartitionPoint<T>(data: *T, length: uint, predicate: func(T) -> bool) -> uint {
+/// Moves every element `predicate` accepts to the front of `items`, and reports how many there were.
+///
+/// `items` is borrowed mutably and rewritten; `predicate` is called once per element. Everything before the reported
+/// index satisfies the predicate and everything from it on does not.
+///
+/// Order within each group is *not* preserved: this exchanges elements from both ends inward, which is what keeps it
+/// to one pass and no scratch storage. A caller that needs the original order within each group needs a stable
+/// partition, which needs somewhere to put things.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/partition
+func Partition<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
-    var high = length;
+    var high = items.length;
+    while low < high {
+        if predicate(items.data[low]) {
+            low = low + 1;
+        }
+        else {
+            high = high - 1;
+            Swap<T>(@items.data[low], @items.data[high]);
+        }
+    }
+    return low;
+}
+
+/// Where the accepted elements of an already-partitioned `items` end.
+///
+/// `items` is borrowed and read; `predicate` is called about as many times as the logarithm of the length. Requires
+/// that every element the predicate accepts comes before every element it rejects -- which is what `Partition`
+/// leaves behind, and what a sorted slice is with respect to any threshold predicate.
+///
+/// A slice that is not partitioned this way does not fail; it answers, and the answer is meaningless.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `predicate` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/partition-point
+func PartitionPoint<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
+    var low: uint = 0;
+    var high = items.length;
     while low < high {
         let middle = low + (high - low) / 2;
-        if predicate(data[middle]) {
+        if predicate(items.data[middle]) {
             low = middle + 1;
         }
         else {
@@ -203,6 +273,8 @@ func PartitionPoint<T>(data: *T, length: uint, predicate: func(T) -> bool) -> ui
     }
     return low;
 }
+
+// Transform and Fold still take a pointer and a length; they move with the folds.
 
 // Writes transform(source[i]) into destination[i] for each of length elements,
 // and reports whether it ran. The two sequences may have different element
@@ -236,24 +308,4 @@ func Fold<T, A>(data: *T, length: uint, initial: A, combine: func(A, T) -> A) ->
         i++;
     }
     return total;
-}
-
-// Removes every element equal to value by compacting the survivors toward the
-// front, and returns the new length. Relative order is preserved. As in
-// Unique, the tail is left unspecified and the storage is not resized.
-// Requires `==` on T.
-func RemoveValue<T>(data: *var T, length: uint, value: T) -> uint {
-    var kept: uint = 0;
-    var i: uint = 0;
-    while i < length {
-        // `!(a == b)` rather than `a != b`; see Unique above.
-        if !(data[i] == value) {
-            if kept != i {
-                data[kept] = data[i];
-            }
-            kept++;
-        }
-        i++;
-    }
-    return kept;
 }

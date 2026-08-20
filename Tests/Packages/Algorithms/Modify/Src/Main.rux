@@ -1,162 +1,224 @@
-import Algorithms::{ Swap, Reverse, Rotate, Fill, Copy, CopyBackward, Unique, RemoveValue };
-import Core::MutableSlice;
+import Algorithms::{ CopyTo, Fill, MoveTo, Partition, PartitionPoint, RemoveValue, RemoveWhere, Reverse, Rotate,
+                     SequenceEqual, Swap, Unique };
+import Core::{ Assert, MutableSlice };
 
-// A key carrying its original position, so a reordering can be checked for
-// having moved elements rather than overwritten them.
-struct Record {
-    key: int32;
-    origin: int32;
+// Rearranging in place. Two things run through all of it: nothing resizes anything, and a removal reports how many
+// elements are left rather than shortening the storage it does not own. What lies past that count is unspecified, so
+// nothing here asserts anything about it -- which is itself the point worth making.
+
+func View(data: *var int32, length: uint) -> MutableSlice<int32> {
+    return MutableSlice<int32> { data: data, length: length };
 }
 
-extend Record {
-    func ==(self: *Record, other: Record) -> bool {
-        return self.key == other.key && self.origin == other.origin;
-    }
+func Read(data: *int32, length: uint) -> Slice<int32> {
+    return Slice<int32> { data: data, length: length };
+}
+
+func Same(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(Read(left, length), Read(right, length));
+}
+
+func IsEven(value: int32) -> bool {
+    return value % 2 == 0;
+}
+
+func Always(value: int32) -> bool {
+    return true;
+}
+
+func IsBelowThirty(value: int32) -> bool {
+    return value < 30;
+}
+
+func Never(value: int32) -> bool {
+    return false;
 }
 
 func Main() -> int {
-    // Swap exchanges two values, and tolerates a null on either side so an
-    // optional endpoint needs no guard at the call site.
-    var left = 1;
-    var right = 2;
-    Swap<int>(@left, @right);
-    if left != 2 || right != 1 { return 10; }
-    Swap<int>(@left, null);
-    Swap<int>(null, @right);
-    if left != 2 || right != 1 { return 11; }
-    Swap<int>(@left, @left);
-    if left != 2 { return 12; }
+    // Swap exchanges two locations, and a location with itself is left alone.
+    var pair: int32[2];
+    pair[0] = 1;
+    pair[1] = 2;
+    Swap<int32>(@pair[0], @pair[1]);
+    Assert(pair[0] == 2 && pair[1] == 1, "swapping exchanges both values");
+    Swap<int32>(@pair[0], @pair[0]);
+    Assert(pair[0] == 2, "and swapping a location with itself leaves it alone");
 
-    // Reverse is a no-op below two elements and is its own inverse.
-    var single: int32[1] = [7];
-    Reverse<int32>(@single[0], 1);
-    if single[0] != 7 { return 20; }
-    Reverse<int32>(@single[0], 0);
-    if single[0] != 7 { return 21; }
+    // Reverse, including the two lengths that are already reversed.
+    var five: int32[5];
+    var index: uint = 0;
+    while index < 5 {
+        five[index] = (index + 1) as int32;
+        index++;
+    }
+    Reverse<int32>(View(@five[0], 5));
+    Assert(five[0] == 5 && five[4] == 1, "an odd length reverses end for end");
+    Assert(five[2] == 3, "leaving the middle where it was");
+    Reverse<int32>(View(@five[0], 5));
+    Assert(five[0] == 1 && five[4] == 5, "and reversing twice restores the original");
 
-    var even: int32[4] = [1, 2, 3, 4];
-    Reverse<int32>(@even[0], 4);
-    if even[0] != 4 || even[1] != 3 || even[2] != 2 || even[3] != 1 { return 22; }
-    Reverse<int32>(@even[0], 4);
-    if even[0] != 1 || even[3] != 4 { return 23; }
+    var four: int32[4];
+    index = 0;
+    while index < 4 {
+        four[index] = (index + 1) as int32;
+        index++;
+    }
+    Reverse<int32>(View(@four[0], 4));
+    Assert(four[0] == 4 && four[1] == 3 && four[2] == 2 && four[3] == 1, "an even length reverses with no middle");
+    Reverse<int32>(View(@four[0], 0));
+    Reverse<int32>(View(@four[0], 1));
+    Assert(four[0] == 4, "reversing nothing, or one element, changes nothing");
 
-    var odd: int32[5] = [1, 2, 3, 4, 5];
-    Reverse<int32>(@odd[0], 5);
-    if odd[0] != 5 || odd[2] != 3 || odd[4] != 1 { return 24; }
+    // Rotate brings the element at the given index to the front.
+    var six: int32[6];
+    index = 0;
+    while index < 6 {
+        six[index] = (index + 1) as int32;
+        index++;
+    }
+    Assert(Rotate<int32>(View(@six[0], 6), 2), "rotating within the length succeeds");
+    Assert(six[0] == 3 && six[1] == 4 && six[2] == 5, "the element at the middle comes to the front");
+    Assert(six[3] == 6 && six[4] == 1 && six[5] == 2, "and the front follows the back");
+    Assert(Rotate<int32>(View(@six[0], 6), 4), "rotating back by the complement succeeds");
+    Assert(six[0] == 1 && six[5] == 6, "and restores the original order");
+    Assert(Rotate<int32>(View(@six[0], 6), 0), "rotating by zero is allowed");
+    Assert(six[0] == 1, "and changes nothing");
+    Assert(Rotate<int32>(View(@six[0], 6), 6), "rotating by the whole length is allowed");
+    Assert(six[0] == 1, "and also changes nothing");
+    Assert(!Rotate<int32>(View(@six[0], 6), 7), "and rotating past the length is refused");
+    Assert(six[0] == 1 && six[5] == 6, "leaving the sequence untouched");
 
-    // Rotate accepts every position through length, rejects anything past it,
-    // and treats both endpoints as no-ops.
-    var turn: int32[5] = [1, 2, 3, 4, 5];
-    if !Rotate<int32>(@turn[0], 5, 2) { return 30; }
-    if turn[0] != 3 || turn[1] != 4 || turn[2] != 5 || turn[3] != 1 || turn[4] != 2 { return 31; }
-    // Rotating back by the complement restores the original order.
-    if !Rotate<int32>(@turn[0], 5, 3) { return 32; }
-    if turn[0] != 1 || turn[4] != 5 { return 33; }
-    if !Rotate<int32>(@turn[0], 5, 0) { return 34; }
-    if turn[0] != 1 { return 35; }
-    if !Rotate<int32>(@turn[0], 5, 5) { return 36; }
-    if turn[0] != 1 { return 37; }
-    if Rotate<int32>(@turn[0], 5, 6) { return 38; }
-    if turn[0] != 1 || turn[4] != 5 { return 39; }
+    // Fill writes every position, and an empty view writes none.
+    var filled: int32[4];
+    Fill<int32>(View(@filled[0], 4), 9);
+    Assert(filled[0] == 9 && filled[3] == 9, "fill writes every position");
+    Fill<int32>(View(@filled[0], 2), 1);
+    Assert(filled[0] == 1 && filled[1] == 1, "a partial view writes only its own");
+    Assert(filled[2] == 9 && filled[3] == 9, "and leaves the rest alone");
+    Fill<int32>(View(null, 0), 7);
 
-    // Fill writes every element, and a zero length writes none.
-    var canvas: int32[4] = [1, 2, 3, 4];
-    Fill<int32>(@canvas[0], 3, 9);
-    if canvas[0] != 9 || canvas[2] != 9 || canvas[3] != 4 { return 40; }
-    Fill<int32>(@canvas[0], 0, 5);
-    if canvas[0] != 9 { return 41; }
+    // Copy between separate storage, and the refusal that writes nothing.
+    var source: int32[4];
+    index = 0;
+    while index < 4 {
+        source[index] = (index + 10) as int32;
+        index++;
+    }
+    var target: int32[4];
+    Fill<int32>(View(@target[0], 4), 0);
+    Assert(CopyTo<int32>(View(@target[0], 4), Read(@source[0], 4)), "a copy of matching lengths succeeds");
+    Assert(Same(@target[0], @source[0], 4), "and reproduces the source");
+    Assert(!CopyTo<int32>(View(@target[0], 3), Read(@source[0], 4)), "mismatched lengths are refused");
+    Assert(Same(@target[0], @source[0], 4), "having written nothing");
+    Assert(CopyTo<int32>(View(null, 0), Read(null, 0)), "copying nothing succeeds");
 
-    // Copy moves elements forward and reports whether it ran; copying nothing
-    // always succeeds, while a null with a real length fails.
-    var source: int32[4] = [1, 2, 3, 4];
-    var target: int32[4] = [0, 0, 0, 0];
-    if !Copy<int32>(@target[0], @source[0], 4) { return 50; }
-    if target[0] != 1 || target[3] != 4 { return 51; }
-    if !Copy<int32>(@target[0], @source[0], 0) { return 52; }
-    if Copy<int32>(null, @source[0], 1) { return 53; }
-    if Copy<int32>(@target[0], null, 1) { return 54; }
+    // Move handles overlap in both directions, which is what shifting a run along its own storage needs.
+    var shifted: int32[6];
+    index = 0;
+    while index < 6 {
+        shifted[index] = (index + 1) as int32;
+        index++;
+    }
+    Assert(MoveTo<int32>(View(@shifted[2], 4), Read(@shifted[0], 4)), "shifting a run forward succeeds");
+    Assert(shifted[2] == 1 && shifted[3] == 2 && shifted[4] == 3 && shifted[5] == 4, "and carries every element");
+    Assert(shifted[0] == 1 && shifted[1] == 2, "leaving the source region as the overlap left it");
 
-    // CopyBackward produces the same result for disjoint ranges.
-    var mirror: int32[4] = [0, 0, 0, 0];
-    if !CopyBackward<int32>(@mirror[0], @source[0], 4) { return 55; }
-    if mirror[0] != 1 || mirror[3] != 4 { return 56; }
+    index = 0;
+    while index < 6 {
+        shifted[index] = (index + 1) as int32;
+        index++;
+    }
+    Assert(MoveTo<int32>(View(@shifted[0], 4), Read(@shifted[2], 4)), "shifting a run backward succeeds");
+    Assert(shifted[0] == 3 && shifted[1] == 4 && shifted[2] == 5 && shifted[3] == 6, "and carries every element");
+    Assert(!MoveTo<int32>(View(@shifted[0], 3), Read(@shifted[2], 4)), "mismatched lengths are refused");
 
-    // Overlapping ranges: Copy is correct when the destination is at or below
-    // the source, which shifts the tail left.
-    var shift: int32[5] = [1, 2, 3, 4, 5];
-    if !Copy<int32>(@shift[0], @shift[1], 4) { return 57; }
-    if shift[0] != 2 || shift[1] != 3 || shift[2] != 4 || shift[3] != 5 { return 58; }
+    // Unique collapses adjacent runs only, which is what makes it the second half of sort-then-unique.
+    var runs: int32[8];
+    runs[0] = 1;
+    runs[1] = 1;
+    runs[2] = 2;
+    runs[3] = 2;
+    runs[4] = 2;
+    runs[5] = 3;
+    runs[6] = 1;
+    runs[7] = 1;
+    let kept = Unique<int32>(View(@runs[0], 8));
+    Assert(kept == 4, "each run collapses to one");
+    Assert(runs[0] == 1 && runs[1] == 2 && runs[2] == 3 && runs[3] == 1,
+           "and a value that returns after a gap is kept, because only adjacent duplicates go");
 
-    // CopyBackward is correct in the other direction, shifting the head right.
-    var slide: int32[5] = [1, 2, 3, 4, 5];
-    if !CopyBackward<int32>(@slide[1], @slide[0], 4) { return 59; }
-    if slide[0] != 1 || slide[1] != 1 || slide[2] != 2 || slide[4] != 4 { return 60; }
+    var distinct: int32[3];
+    distinct[0] = 5;
+    distinct[1] = 6;
+    distinct[2] = 7;
+    Assert(Unique<int32>(View(@distinct[0], 3)) == 3, "a slice with no duplicates keeps everything");
+    Assert(Unique<int32>(View(@distinct[0], 1)) == 1, "one element has nothing adjacent to it");
+    Assert(Unique<int32>(View(null, 0)) == 0, "and nothing collapses to nothing");
 
-    // Unique collapses adjacent runs only, and reports the surviving length.
-    var runs: int32[8] = [1, 1, 2, 2, 2, 3, 1, 1];
-    if Unique<int32>(@runs[0], 8) != 4 { return 70; }
-    if runs[0] != 1 || runs[1] != 2 || runs[2] != 3 || runs[3] != 1 { return 71; }
+    // Removal compacts survivors and keeps their order.
+    var mixed: int32[8];
+    index = 0;
+    while index < 8 {
+        mixed[index] = (index + 1) as int32;
+        index++;
+    }
+    Assert(RemoveWhere<int32>(View(@mixed[0], 8), IsEven) == 4, "removing the accepted leaves the rest");
+    Assert(mixed[0] == 1 && mixed[1] == 3 && mixed[2] == 5 && mixed[3] == 7, "in their original order");
 
-    var allEqual: int32[4] = [5, 5, 5, 5];
-    if Unique<int32>(@allEqual[0], 4) != 1 { return 72; }
-    if allEqual[0] != 5 { return 73; }
+    index = 0;
+    while index < 8 {
+        mixed[index] = (index + 1) as int32;
+        index++;
+    }
+    Assert(RemoveWhere<int32>(View(@mixed[0], 8), Never) == 8, "a predicate that accepts nothing removes nothing");
+    Assert(RemoveWhere<int32>(View(@mixed[0], 8), Always) == 0, "and one that accepts everything removes everything");
 
-    var distinct: int32[3] = [1, 2, 3];
-    if Unique<int32>(@distinct[0], 3) != 3 { return 74; }
-    if distinct[2] != 3 { return 75; }
+    var repeated: int32[6];
+    repeated[0] = 4;
+    repeated[1] = 1;
+    repeated[2] = 4;
+    repeated[3] = 2;
+    repeated[4] = 4;
+    repeated[5] = 3;
+    Assert(RemoveValue<int32>(View(@repeated[0], 6), 4) == 3, "removing a value removes every occurrence");
+    Assert(repeated[0] == 1 && repeated[1] == 2 && repeated[2] == 3, "keeping the survivors in order");
+    Assert(RemoveValue<int32>(View(@repeated[0], 3), 9) == 3, "removing an absent value removes nothing");
+    Assert(RemoveValue<int32>(View(null, 0), 4) == 0, "and removing from nothing leaves nothing");
 
-    var tiny: int32[1] = [4];
-    if Unique<int32>(@tiny[0], 0) != 0 { return 76; }
-    if Unique<int32>(@tiny[0], 1) != 1 { return 77; }
+    // Partition moves the accepted to the front, and PartitionPoint finds where they end.
+    var split: int32[8];
+    index = 0;
+    while index < 8 {
+        split[index] = (index + 1) as int32;
+        index++;
+    }
+    let boundary = Partition<int32>(View(@split[0], 8), IsEven);
+    Assert(boundary == 4, "the accepted elements are counted");
+    index = 0;
+    while index < boundary {
+        Assert(IsEven(split[index]), "everything before the boundary is accepted");
+        index++;
+    }
+    while index < 8 {
+        Assert(!IsEven(split[index]), "and everything from it on is not");
+        index++;
+    }
+    Assert(PartitionPoint<int32>(Read(@split[0], 8), IsEven) == boundary,
+           "and the partition point agrees with where partitioning left the boundary");
 
-    // RemoveValue compacts survivors toward the front, preserving their order.
-    var mixed: int32[6] = [1, 9, 2, 9, 3, 9];
-    if RemoveValue<int32>(@mixed[0], 6, 9) != 3 { return 80; }
-    if mixed[0] != 1 || mixed[1] != 2 || mixed[2] != 3 { return 81; }
+    Assert(Partition<int32>(View(@split[0], 8), Always) == 8, "a predicate accepting everything partitions at the end");
+    Assert(Partition<int32>(View(@split[0], 8), Never) == 0, "and one accepting nothing at the front");
+    Assert(Partition<int32>(View(null, 0), IsEven) == 0, "an empty slice partitions at zero");
+    Assert(PartitionPoint<int32>(Read(null, 0), IsEven) == 0, "and its partition point is there too");
 
-    var none: int32[3] = [1, 2, 3];
-    if RemoveValue<int32>(@none[0], 3, 4) != 3 { return 82; }
-    if none[0] != 1 || none[2] != 3 { return 83; }
-
-    var every: int32[3] = [7, 7, 7];
-    if RemoveValue<int32>(@every[0], 3, 7) != 0 { return 84; }
-    if RemoveValue<int32>(@every[0], 0, 7) != 0 { return 85; }
-
-    // The same operations over a multi-word struct, which is where pointer
-    // offsetting has to scale by the element size.
-    var records: Record[4] = [Record { key: 1, origin: 0 },
-                              Record { key: 2, origin: 1 },
-                              Record { key: 3, origin: 2 },
-                              Record { key: 4, origin: 3 }];
-    Reverse<Record>(@records[0], 4);
-    if records[0].key != 4 || records[0].origin != 3 { return 90; }
-    if records[3].key != 1 || records[3].origin != 0 { return 91; }
-
-    if !Rotate<Record>(@records[0], 4, 1) { return 92; }
-    if records[0].key != 3 || records[3].key != 4 { return 93; }
-
-    let filler = Record { key: 0, origin: 9 };
-    Fill<Record>(@records[0], 2, filler);
-    if records[0].key != 0 || records[0].origin != 9 { return 94; }
-    if records[1].origin != 9 || records[2].key != 1 { return 95; }
-
-    var duplicates: Record[4] = [Record { key: 1, origin: 0 },
-                                 Record { key: 1, origin: 0 },
-                                 Record { key: 2, origin: 1 },
-                                 Record { key: 2, origin: 1 }];
-    if Unique<Record>(@duplicates[0], 4) != 2 { return 96; }
-    if duplicates[0].key != 1 || duplicates[1].key != 2 { return 97; }
-
-    // A Core view hands its storage to the algorithms through data and length.
-    var owned: int32[4] = [4, 3, 2, 1];
-    let view = MutableSlice::From<int32>(@owned[0], 4);
-    Reverse<int32>(view.data, view.length);
-    if view.At(0) != 1 || view.At(3) != 4 { return 100; }
-
-    // A sub-view rearranges only the elements it covers.
-    let middle = view.Sub(1, 2);
-    Reverse<int32>(middle.data, middle.length);
-    if owned[0] != 1 || owned[1] != 3 || owned[2] != 2 || owned[3] != 4 { return 101; }
+    // A sorted slice is partitioned with respect to any threshold, which is the other thing PartitionPoint is for.
+    var sorted: int32[6];
+    index = 0;
+    while index < 6 {
+        sorted[index] = (index * 10) as int32;
+        index++;
+    }
+    Assert(PartitionPoint<int32>(Read(@sorted[0], 6), IsBelowThirty) == 3, "a threshold splits a sorted slice");
 
     return 0;
 }
