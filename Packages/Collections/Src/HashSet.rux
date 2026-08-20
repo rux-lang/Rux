@@ -434,15 +434,23 @@ extend HashSet<T> {
         if self.Length() == 0 {
             return;
         }
-        // Backwards over the slots, because removing shifts the entries after a slot back into it -- so a forward
-        // walk would step over whatever moved into the slot it just left.
-        var index = self.table.Capacity();
-        while index > 0 {
-            index = index - 1;
-            if self.table.IsOccupied(index) {
-                if !other.Contains(self.table.keys[index]) {
+        // Removing shifts the entries that follow a slot back into it, and a chain that runs past the end of the
+        // table shifts them past the end too -- so no single sweep in either direction can be sure it looked at
+        // everything, and which entries move depends on where the seed happened to put them. Staying on a slot that
+        // was just emptied covers what shifted into it, and a whole sweep that removes nothing is the proof that
+        // there is nothing left to remove.
+        var sweeping = true;
+        while sweeping {
+            sweeping = false;
+            var index: uint = 0;
+            while index < self.table.Capacity() {
+                if self.table.IsOccupied(index) && !other.Contains(self.table.keys[index]) {
                     let taken = self.table.keys[index];
                     self.table.Vacate(index);
+                    sweeping = true;
+                }
+                else {
+                    index = index + 1;
                 }
             }
         }
@@ -459,13 +467,19 @@ extend HashSet<T> {
         if self.Length() == 0 || other.Length() == 0 {
             return;
         }
-        var index = self.table.Capacity();
-        while index > 0 {
-            index = index - 1;
-            if self.table.IsOccupied(index) {
-                if other.Contains(self.table.keys[index]) {
+        // Swept the way `IntersectWith` is, and for the same reason.
+        var sweeping = true;
+        while sweeping {
+            sweeping = false;
+            var index: uint = 0;
+            while index < self.table.Capacity() {
+                if self.table.IsOccupied(index) && other.Contains(self.table.keys[index]) {
                     let taken = self.table.keys[index];
                     self.table.Vacate(index);
+                    sweeping = true;
+                }
+                else {
+                    index = index + 1;
                 }
             }
         }

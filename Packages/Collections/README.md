@@ -191,9 +191,11 @@ case first, which makes them all-or-nothing: a failure part-way would leave a se
 answer, and there is nothing useful a caller could do with that. Reserving more than needed is the price, and
 `ShrinkToFit` gives it back.
 
-`IntersectWith` and `Subtract` walk the slots **backwards**, because removing shifts the following entries back into
-the gap — a forward walk would step over whatever moved into the slot it just left. That is the one place the absence
-of tombstones costs something, and it costs a loop direction.
+`IntersectWith` and `Subtract` sweep the slots until a whole sweep removes nothing. Removing shifts the entries that
+follow a slot back into it, and a chain running past the end of the table shifts them past the end too, so no single
+sweep in either direction can be sure it looked at everything — and which entries move at all depends on where the
+table's random seed happened to put them, which is what makes getting this wrong show up in one run out of several
+rather than every time. That is the one place the absence of tombstones costs something.
 
 ## Complexity
 
