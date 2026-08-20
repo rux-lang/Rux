@@ -1,0 +1,82 @@
+import Core::Assert;
+
+// Passing an instantiation as a type argument, from inside the generic whose parameter it is built from.
+//
+// `Node<T>` is one named type whose arguments live in its name; there is nothing structural to walk to find the `T`.
+// The check for whether a type argument was still waiting on a parameter looked only at structure, so it called
+// `Node<T>` concrete and queued `Width<Node<T>>` as an instantiation of a type that does not exist. It was never
+// re-queued once the enclosing generic said what `T` was, so `sizeof(T)` inside it had no layout to fold against and
+// the compiler stopped where nothing was left to ask.
+//
+// This is what every container that allocates its own nodes does -- a tree asks its allocator for a `TreeNode<K, V>`
+// from inside `Tree<K, V>` -- so it is reached by allocating anything with a shape of its own.
+
+struct Node<T> {
+    value: T;
+    tag: int32;
+}
+
+struct Wide {
+    a: int64;
+    b: int64;
+}
+
+func Width<T>() -> uint {
+    return sizeof(T);
+}
+
+func Align<T>() -> uint {
+    return alignof(T);
+}
+
+func Count<T>(many: uint) -> uint {
+    return sizeof(T) * many;
+}
+
+struct Holder<T> {
+    seed: T;
+}
+
+extend Holder<T> {
+    // The type argument is built here, out of the parameter this method is instantiated with.
+    func Size(self: *Holder<T>) -> uint {
+        return Width<Node<T>>();
+    }
+
+    func Alignment(self: *Holder<T>) -> uint {
+        return Align<Node<T>>();
+    }
+
+    // Two levels of nesting, so the rebuilt name has to be walked into rather than matched.
+    func NestedSize(self: *Holder<T>) -> uint {
+        return Width<Node<Node<T>>>();
+    }
+
+    // The same generic reached with an argument that is not built from the parameter at all, so the substitution
+    // cannot simply replace everything it finds.
+    func FixedSize(self: *Holder<T>) -> uint {
+        return Width<Node<int32>>();
+    }
+
+    func Bytes(self: *Holder<T>, many: uint) -> uint {
+        return Count<Node<T>>(many);
+    }
+}
+
+func Main() -> int {
+    var narrow = Holder<int32> { seed: 1 };
+    Assert(narrow.Size() == 8u, "an instantiation built from the parameter is sized at each instantiation");
+    Assert(narrow.Alignment() == 4u, "and aligned there too");
+    Assert(narrow.NestedSize() == 12u, "nesting one inside another substitutes at every level");
+    Assert(narrow.FixedSize() == 8u, "an argument that never mentioned the parameter is unchanged");
+    Assert(narrow.Bytes(4) == 32u, "and the folded size is the one the arithmetic uses");
+
+    // A second instantiation of the same generic, at a type whose layout differs, so one answer cannot be standing
+    // in for both.
+    var wide = Holder<Wide> { seed: Wide { a: 1i64, b: 2i64 } };
+    Assert(wide.Size() == 24u, "a second instantiation is sized from its own argument");
+    Assert(wide.Alignment() == 8u, "with its own alignment");
+    Assert(wide.FixedSize() == 8u, "while the argument that mentions no parameter stays what it was");
+
+    return 0;
+}

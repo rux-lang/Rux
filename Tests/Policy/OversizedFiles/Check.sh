@@ -39,8 +39,8 @@ review_exception() {
         reviewed_reason='cohesive x86-64 function instruction selection sharing frame offsets, aggregate copies, and emitter hooks'
         ;;
     Compiler/Semantic/SemanticAnalyzer.cpp)
-        reviewed_limit=3600
-        reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, and shared-context policy'
+        reviewed_limit=3700
+        reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, generic instantiation, and shared-context policy'
         ;;
     Tests/Unit/AArch64EncoderVectors.inc)
         reviewed_limit=1700

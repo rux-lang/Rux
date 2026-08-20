@@ -49,3 +49,36 @@ TEST_CASE("a field reached through a pointer to a generic instantiation substitu
 
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("an instantiation passed as a type argument waits for the parameter it was built from") {
+    // `Node<T>` keeps its argument in its name, with nothing structural to walk. Reading only structure called it
+    // concrete, so the call was queued as an instantiation of a type that does not exist yet and never re-queued
+    // once the enclosing generic said what `T` was.
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Node<T> {
+            value: T;
+            tag: int32;
+        }
+
+        func Width<T>() -> uint {
+            return sizeof(T);
+        }
+
+        struct Holder<T> {
+            seed: T;
+        }
+
+        extend Holder<T> {
+            func Size(self: *Holder<T>) -> uint {
+                return Width<Node<T>>();
+            }
+        }
+
+        func Main() -> int {
+            var holder = Holder<int32> { seed: 1 };
+            return holder.Size() == 8u ? 0 : 1;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
