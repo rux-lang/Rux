@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Crc"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Hash: CRC-32 and CRC-32C against the standard vectors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Hash = { Path = "../../../../Packages/Hash" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Hash"

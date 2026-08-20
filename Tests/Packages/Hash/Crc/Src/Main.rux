@@ -1,0 +1,131 @@
+import Core::Assert;
+import Hash::{ Crc32, Crc32Of, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial, Crc32cTable, Crc32Initial,
+               Crc32Polynomial, HashBytes };
+
+// Both CRCs are specified, so the test is the standard answers -- above all the check value every CRC catalogue
+// lists, which is the checksum of the nine characters "123456789". A CRC that agrees on that and on the empty
+// message has its polynomial, its reflection, its initial value and its final complement all right at once, since
+// getting any one of them wrong changes it.
+
+func Crc(text: Slice<char8>) -> uint32 {
+    return Crc32Of(text.data as *byte, text.length);
+}
+
+func Crcc(text: Slice<char8>) -> uint32 {
+    return Crc32cOf(text.data as *byte, text.length);
+}
+
+// The table is division by the generator, precomputed. Recomputing an entry the slow way is what proves the table
+// belongs to the polynomial it claims, rather than being a block of plausible constants.
+func DivideByte(value: uint, polynomial: uint32) -> uint32 {
+    var register = value as uint32;
+    var step: uint = 0;
+    while step < 8 {
+        if (register & 1) != 0 {
+            register = (register >> 1) ^ polynomial;
+        }
+        else {
+            register = register >> 1;
+        }
+        step++;
+    }
+    return register;
+}
+
+func Main() -> int {
+    // The check value from the CRC catalogue, which is the whole point of publishing one.
+    Assert(Crc("123456789") == 0xCBF43926, "CRC-32 of the catalogue check message");
+    Assert(Crcc("123456789") == 0xE3069283, "CRC-32C of the catalogue check message");
+
+    // The empty message is zero, which is what the initial ones and the final complement conspire to produce.
+    Assert(Crc32Of(null, 0) == 0, "the empty message has a CRC-32 of zero");
+    Assert(Crc32cOf(null, 0) == 0, "and a CRC-32C of zero");
+
+    // More published answers, so a coincidence on one message cannot pass.
+    Assert(Crc("a") == 0xE8B7BE43, "CRC-32 of 'a'");
+    Assert(Crcc("a") == 0xC1D04330, "CRC-32C of 'a'");
+    Assert(Crc("abc") == 0x352441C2, "CRC-32 of 'abc'");
+    Assert(Crcc("abc") == 0x364B3FB7, "CRC-32C of 'abc'");
+    Assert(Crc("The quick brown fox jumps over the lazy dog") == 0x414FA339, "CRC-32 of the pangram");
+    Assert(Crcc("The quick brown fox jumps over the lazy dog") == 0x22620404, "CRC-32C of the pangram");
+
+    // The two are different functions. They share everything but the generator, so a table swapped by accident would
+    // still produce plausible-looking answers -- and identical ones here.
+    Assert(Crc("123456789") != Crcc("123456789"), "the two polynomials give different answers");
+
+    // Every table entry is its index divided by the generator. This is the table's own definition, checked rather
+    // than trusted, and it is what ties each block of constants to the polynomial named beside it.
+    var index: uint = 0;
+    while index < 256 {
+        Assert(Crc32Table[index] == DivideByte(index, Crc32Polynomial),
+               "every CRC-32 table entry is its index divided by the IEEE polynomial");
+        Assert(Crc32cTable[index] == DivideByte(index, Crc32cPolynomial),
+               "and every CRC-32C entry by the Castagnoli one");
+        index++;
+    }
+
+    // A message split across writes is the same message.
+    let message: Slice<char8> = "123456789";
+    let bytes = message.data as *byte;
+    var split = Crc32::New();
+    split.Write(bytes, 4);
+    split.Write(bytes + 4, 5);
+    Assert(split.Value() == 0xCBF43926, "writing in two parts agrees with writing at once");
+
+    var byByte = Crc32c::New();
+    index = 0;
+    while index < 9 {
+        byByte.Write(bytes + index, 1);
+        index++;
+    }
+    Assert(byByte.Value() == 0xE3069283, "and so does writing one byte at a time");
+
+    // A zero-length write changes nothing, wherever it lands.
+    var padded = Crc32::New();
+    padded.Write(null, 0);
+    padded.Write(bytes, 9);
+    padded.Write(null, 0);
+    Assert(padded.Value() == 0xCBF43926, "a zero-length write changes nothing");
+
+    // Reading the value does not consume it, and writing afterwards continues rather than restarting.
+    var kept = Crc32::New();
+    kept.Write(bytes, 4);
+    let partial = kept.Value();
+    Assert(kept.Value() == partial, "reading the value twice gives the same answer");
+    kept.Write(bytes + 4, 5);
+    Assert(kept.Value() == 0xCBF43926, "and writing afterwards continues from there");
+    Assert(kept.Finish() == 0xCBF43926u64, "the widened form is the same value");
+
+    // A reset really starts over.
+    kept.Reset();
+    Assert(kept.Value() == 0, "a reset returns to the empty message");
+    kept.Write(bytes, 9);
+    Assert(kept.Value() == 0xCBF43926, "and checksumming after a reset agrees with a fresh one");
+
+    // Both types are usable through the bound, which is what puts them in generic code.
+    var bounded = Crc32c::New();
+    Assert(HashBytes<Crc32c>(@bounded, bytes, 9) == 0xE3069283u64, "a CRC is usable through the hashing bound");
+
+    // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken
+    // table would most plausibly still fail.
+    Assert(Crc("123456789") != Crc("123456788"), "a changed byte changes CRC-32");
+    Assert(Crcc("123456789") != Crcc("123456788"), "and CRC-32C");
+    Assert(Crc("12345678") != Crc("123456789"), "and so does a changed length");
+
+    // Leading and trailing zero bytes change the answer, which is exactly what the initial ones and the final
+    // complement are there to guarantee. A register starting at zero would give the same answer for both of these.
+    var lead = Crc32::New();
+    var zero: byte[1];
+    zero[0] = 0;
+    lead.Write(@zero[0] as *byte, 1);
+    lead.Write(bytes, 9);
+    Assert(lead.Value() != 0xCBF43926, "a leading zero byte is not invisible");
+
+    var trail = Crc32::New();
+    trail.Write(bytes, 9);
+    trail.Write(@zero[0] as *byte, 1);
+    Assert(trail.Value() != 0xCBF43926, "and neither is a trailing one");
+    Assert(Crc32Initial == 0xFFFFFFFF, "which is what the all-ones register buys");
+
+    return 0;
+}
