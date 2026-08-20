@@ -124,6 +124,13 @@ protected:
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
     [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
+
+    /// Whether a binding a pattern makes owns what it binds, and so is destroyed when its scope ends.
+    ///
+    /// A `let` always owns: the initializer was handed over. A match arm owns only when the subject was handed over
+    /// too -- matching a borrowed subject copies the payload out of something that still owns it, and destroying
+    /// both copies is exactly the double destruction this exists to avoid.
+    bool patternBindingsOwnPayload = true;
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);

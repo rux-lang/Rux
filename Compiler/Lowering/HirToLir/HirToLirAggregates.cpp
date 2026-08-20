@@ -77,6 +77,9 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
     const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(s.subject->type)
                                 ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
                                 : LowerExpr(*s.subject);
+    // Reading an aggregate subject straight out of its slot skips the one place consumption is normally recorded, so
+    // a subject handed over to the arms would still be destroyed as well. Clearing it here covers both paths.
+    ClearConsumedBinding(*s.subject);
     const std::uint32_t mergeBlock = NewBlock("match.merge");
     if (s.arms.empty()) {
         if (!IsTerminated()) {
@@ -120,6 +123,7 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
         locals[p->name] = bindSlot;
         LirReg val = EmitLoad(subjectPtr, bindType);
         EmitStore(val, bindSlot, bindType);
+        MarkBindingLive(p->bindingId, true);
         return;
     }
 
@@ -148,6 +152,9 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         LirReg bindSlot = EmitAlloca(p->type);
         locals[p->name] = bindSlot;
         EmitStore(subjectVal, bindSlot, p->type);
+        // Live once it holds something. A binding that does not own what it took carries no identifier at all, so
+        // this is a no-op for it and no cleanup was recorded for it either.
+        MarkBindingLive(p->bindingId, true);
         return EmitConst("1", TypeRef::MakeBool());
     }
     if (auto *p = dynamic_cast<const HirRangePattern *>(&pat)) {
@@ -232,6 +239,7 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
                     payload = EmitBinary(LirOpcode::Shr, subjectVal, shift, TypeRef::MakeInt64());
                 }
                 EmitStore(payload, bindSlot, bindType);
+                MarkBindingLive(bp->bindingId, true);
             }
         }
         if (p->hasPayload) {
@@ -459,6 +467,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
     const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(e.subject->type)
                                 ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
                                 : LowerExpr(*e.subject);
+    ClearConsumedBinding(*e.subject);
     const std::uint32_t mergeBlock = NewBlock("match.expr.store.merge");
     if (e.arms.empty()) {
         if (!IsTerminated()) {

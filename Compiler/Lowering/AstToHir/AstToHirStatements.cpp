@@ -168,11 +168,18 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         auto lowered = std::make_unique<HirMatchStmt>();
         lowered->location = statement->location;
         lowered->subject = LowerExpr(*statement->subject);
+        // An arm's bindings own what they took only if the subject was handed over. Matching a subject that is
+        // borrowed copies the payload out of something that still owns it, and destroying both is the double
+        // destruction this is here to avoid.
+        const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : statement->arms) {
             HirMatchArm loweredArm;
             loweredArm.location = arm.location;
             PushScope();
+            const bool savedOwnership = patternBindingsOwnPayload;
+            patternBindingsOwnPayload = armsOwnPayload;
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
+            patternBindingsOwnPayload = savedOwnership;
             loweredArm.body = LowerExpr(*arm.body);
             loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
@@ -254,7 +261,9 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         symbol.name = identifier->name;
         symbol.type = type;
         symbol.isMut = isMutable;
-        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        if (patternBindingsOwnPayload) {
+            symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        }
         lowered->bindingId = symbol.bindingId;
         Define(std::move(symbol));
         return lowered;
@@ -301,7 +310,9 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         symbol.kind = HirSymbol::Kind::Var;
         symbol.name = identifier->name;
         symbol.type = subjectType;
-        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        if (patternBindingsOwnPayload) {
+            symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
+        }
         lowered->bindingId = symbol.bindingId;
         Define(std::move(symbol));
         return lowered;

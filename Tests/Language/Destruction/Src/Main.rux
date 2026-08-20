@@ -44,6 +44,38 @@ func PutThroughGeneric<T>(slot: *var T, value: T) {
     *slot = value;
 }
 
+// Matching an option by value takes its payload out: the arm's binding owns it and destroys it when the arm ends.
+func MatchAndDiscard(held: Option<Tracked>) {
+    match held {
+        .Some(value) => {
+        },
+        .None => {
+        }
+    }
+}
+
+// Matching without binding anything takes nothing, so the option keeps its payload and destroys it itself.
+func MatchWithoutBinding(held: Option<Tracked>) {
+    match held {
+        .Some(_) => {
+        },
+        .None => {
+        }
+    }
+}
+
+// Matching through a borrow takes nothing either: the option belongs to somebody else and still owns its payload.
+func MatchThroughBorrow(held: *Option<Tracked>) -> bool {
+    match *held {
+        .Some(value) => {
+            return true;
+        },
+        .None => {
+            return false;
+        }
+    }
+}
+
 func MakeTracked(counter: *var Counter) -> Tracked {
     return Tracked { counter: counter };
 }
@@ -156,6 +188,23 @@ func Main() -> int {
     holder.Put(MakeTracked(@counter));
     Assert(counter.count == 0, "and so is a generic type's method parameter");
     Assert(holder.filled, "which the method still recorded having stored");
+
+    // A match that binds part of its subject takes that part: the arm owns it and destroys it once. The subject is
+    // not destroyed as well, which would be twice, and the payload is not left to nobody, which would be never.
+    counter.count = 0;
+    MatchAndDiscard(Option::Some<Tracked>(MakeTracked(@counter)));
+    Assert(counter.count == 1, "a payload bound by an arm is destroyed once, when the arm ends");
+
+    // A match that binds nothing takes nothing, so the option keeps its payload and destroys it itself.
+    counter.count = 0;
+    MatchWithoutBinding(Option::Some<Tracked>(MakeTracked(@counter)));
+    Assert(counter.count == 1, "and an option nothing was taken from destroys its own payload");
+
+    // A match through a borrow takes nothing either. The option is somebody else's and still owns what it holds.
+    counter.count = 0;
+    var borrowed = Option::Some<Tracked>(MakeTracked(@counter));
+    Assert(MatchThroughBorrow(@borrowed), "a borrowed option can be looked at");
+    Assert(counter.count == 0, "and looking at one destroys nothing");
 
     return 0;
 }

@@ -762,11 +762,16 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         lowered->location = match->location;
         lowered->type = ResolvedExpressionType(*match);
         lowered->subject = LowerExpr(*match->subject);
+        // As in the statement form: an arm's bindings own what they took only if the subject was handed over.
+        const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : match->arms) {
             HirMatchArm loweredArm;
             loweredArm.location = arm.location;
             PushScope();
+            const bool savedOwnership = patternBindingsOwnPayload;
+            patternBindingsOwnPayload = armsOwnPayload;
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
+            patternBindingsOwnPayload = savedOwnership;
             loweredArm.body = LowerExpr(*arm.body);
             loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
