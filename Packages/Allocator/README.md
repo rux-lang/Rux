@@ -16,6 +16,7 @@ rux add Rux/Allocator
 | `Error`    | `AllocError`, and the questions worth asking of one                        |
 | `Contract` | the `Allocator` interface every allocator here implements                  |
 | `System`   | `SystemAllocator`, which asks the operating system for pages               |
+| `Box`      | `Box<T>`, one heap value with exactly one owner                             |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
@@ -36,6 +37,13 @@ Four promises hold for every allocator here:
 A zero-sized layout is legal and gives a non-null aligned address that nothing may be read from or written to, and
 which must still be released. That is cheaper than a null case every caller has to branch on, and it keeps an empty
 collection from being a special shape.
+
+`Box<T>` implements `Drop`, so it is move-only: handing one to a function or another binding transfers it,
+and reading the source afterwards is rejected while compiling. It is *returned* rather than written
+through an out-parameter, which every other fallible call here does — ownership is what forces the
+difference. The compiler tracks a binding's initialization, and a write through a pointer is invisible to
+that tracking, so a box delivered that way would be owned by a binding the compiler believes owns
+nothing. The error travels by pointer instead.
 
 `SystemAllocator` is page-granular, so a small allocation costs a whole page. It is the backing store for an arena or
 a pool rather than the allocator a program uses for many small values directly.
