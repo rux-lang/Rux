@@ -26,6 +26,13 @@ extend Ranked {
 
 // `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices; this keeps the checks
 // below reading the way they did.
+
+// `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
+// they did.
+func Sorted<T>(data: *T, length: uint) -> bool {
+    return IsSorted<T>(Slice<T> { data: data, length: length });
+}
+
 func SameInts(left: *int32, right: *int32, length: uint) -> bool {
     return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
                                 Slice<int32> { data: right, length: length });
@@ -109,7 +116,7 @@ func CheckSort(source: *int32, length: uint) -> int {
     Sort<int32>(@actual[0], length);
     ReferenceSort(@expected[0], length);
 
-    if !IsSorted<int32>(@actual[0], length) {
+    if !Sorted<int32>(@actual[0], length) {
         return 1;
     }
     if !SameInts(@actual[0], @expected[0], length) {
@@ -186,12 +193,12 @@ func Main() -> int {
     var guarded: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
     InsertionSortRange<int32>(@guarded[0], 1, 9);
     if guarded[0] != 100 || guarded[9] != 200 { return 210; }
-    if !IsSorted<int32>(@guarded[1], 8) { return 211; }
+    if !Sorted<int32>(@guarded[1], 8) { return 211; }
 
     var heaped: int32[10] = [100, 5, 4, 3, 2, 1, 0, 6, 7, 200];
     HeapSortRange<int32>(@heaped[0], 1, 9);
     if heaped[0] != 100 || heaped[9] != 200 { return 212; }
-    if !IsSorted<int32>(@heaped[1], 8) { return 213; }
+    if !Sorted<int32>(@heaped[1], 8) { return 213; }
     if !SameInts(@heaped[1], @guarded[1], 8) { return 214; }
 
     // Both fallbacks accept empty and single-element ranges.
@@ -199,18 +206,18 @@ func Main() -> int {
     InsertionSortRange<int32>(@heaped[0], 3, 4);
     HeapSortRange<int32>(@heaped[0], 3, 3);
     HeapSortRange<int32>(@heaped[0], 3, 4);
-    if !IsSorted<int32>(@heaped[1], 8) { return 215; }
+    if !Sorted<int32>(@heaped[1], 8) { return 215; }
 
     // Signed and unsigned limits sort as ordinary values.
     var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
     Sort<int32>(@signed[0], 5);
     if signed[0] != -2147483648i32 || signed[4] != 2147483647i32 { return 220; }
-    if !IsSorted<int32>(@signed[0], 5) { return 221; }
+    if !Sorted<int32>(@signed[0], 5) { return 221; }
 
     var unsigned: uint32[5] = [7u32, 0u32, 4294967295u32, 1u32, 4294967294u32];
     Sort<uint32>(@unsigned[0], 5);
     if unsigned[0] != 0u32 || unsigned[4] != 4294967295u32 { return 222; }
-    if !IsSorted<uint32>(@unsigned[0], 5) { return 223; }
+    if !Sorted<uint32>(@unsigned[0], 5) { return 223; }
 
     // A user struct ordered by key alone. Sorting is unstable, so the test
     // asserts the keys are ordered and every original record survives exactly
@@ -222,7 +229,7 @@ func Main() -> int {
                              Ranked { key: 1, origin: 4 },
                              Ranked { key: 3, origin: 5 }];
     Sort<Ranked>(@ranked[0], 6);
-    if !IsSorted<Ranked>(@ranked[0], 6) { return 230; }
+    if !Sorted<Ranked>(@ranked[0], 6) { return 230; }
     if ranked[0].key != 1 || ranked[1].key != 1 { return 231; }
     if ranked[2].key != 2 { return 232; }
     if ranked[5].key != 3 { return 233; }

@@ -15,6 +15,13 @@ extend Record {
 
 // `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices. A slice literal cannot be
 // written directly in an `if` condition -- its brace opens the body -- so the comparison lives here.
+
+// `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
+// they did.
+func Sorted<T>(data: *T, length: uint) -> bool {
+    return IsSorted<T>(Slice<T> { data: data, length: length });
+}
+
 func SameInts(left: *int32, right: *int32, length: uint) -> bool {
     return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
                                 Slice<int32> { data: right, length: length });
@@ -166,7 +173,7 @@ func Main() -> int {
 
     // The value-based queries still work alongside the predicate ones.
     var check: int32[4] = [2, 4, 6, 8];
-    if !IsSorted<int32>(@check[0], 4) { return 110; }
+    if !Sorted<int32>(@check[0], 4) { return 110; }
     if !SameInts(@check[0], @all[0], 4) { return 111; }
 
     return 0;

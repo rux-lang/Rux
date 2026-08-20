@@ -1,155 +1,80 @@
-import Core::Range;
-
-// Ordered queries over a sorted sequence.
+// Searching a sequence that is already in order, and asking whether it is.
 //
-// Everything here requires `<` on T and nothing else. Equivalence is derived
-// as `!(a < b) && !(b < a)` rather than from `==`, so a type that orders but
-// does not define equality still works, and a type defining both is never
-// asked to keep them consistent by this module alone.
+// Everything here assumes the slice is sorted by the same order the search uses. That is the caller's promise, and
+// nothing checks it on the way in: checking would cost the linear scan the binary search exists to avoid. A search
+// over an unsorted slice does not fail -- it answers, and the answer is meaningless. `IsSorted` is there for a
+// caller who wants to check, once, where checking is worth it.
 //
-// `<` must be a strict weak ordering: irreflexive, asymmetric, transitive,
-// with transitive incomparability. The bounded searches additionally require
-// the sequence to be sorted by that same `<`; IsSorted checks exactly that
-// precondition. A sequence that is not sorted yields an unspecified index, but
-// never an access outside the sequence.
-
-// Reports whether the sequence is in non-decreasing order. A sequence of fewer
-// than two elements is sorted.
-func IsSorted<T>(data: *T, length: uint) -> bool {
-    var i: uint = 1;
-    while i < length {
-        if data[i] < data[i - 1] {
-            return false;
-        }
-        i++;
-    }
-    return true;
-}
-
-// The index of the first element that breaks the ordering, or length when the
-// whole sequence is sorted. The result is a position in 0..=length rather than
-// a sentinel, so it needs no not-found encoding, and it is length for the empty
-// and single-element cases.
-func IsSortedUntil<T>(data: *T, length: uint) -> uint {
-    var i: uint = 1;
-    while i < length {
-        if data[i] < data[i - 1] {
-            return i;
-        }
-        i++;
-    }
-    return length;
-}
-
-// The first index at which value could be inserted without breaking the order:
-// the first index whose element is not less than value, or length when every
-// element precedes it. This is a total function, so every result in 0..=length
-// is meaningful and none of them mean "absent".
-func LowerBound<T>(data: *T, length: uint, value: T) -> uint {
-    var low: uint = 0;
-    var high = length;
-    while low < high {
-        // low + (high - low) / 2 rather than (low + high) / 2, which would
-        // overflow for large indices.
-        let middle = low + (high - low) / 2;
-        if data[middle] < value {
-            low = middle + 1;
-        }
-        else {
-            high = middle;
-        }
-    }
-    return low;
-}
-
-// The last index at which value could be inserted without breaking the order:
-// the first index whose element is greater than value, or length when none is.
-func UpperBound<T>(data: *T, length: uint, value: T) -> uint {
-    var low: uint = 0;
-    var high = length;
-    while low < high {
-        let middle = low + (high - low) / 2;
-        if value < data[middle] {
-            high = middle;
-        }
-        else {
-            low = middle + 1;
-        }
-    }
-    return low;
-}
-
-// Writes the index of an element equivalent to value and returns true. The
-// index is always the lowest such index, so repeated calls agree and a run of
-// equivalent elements has a stable entry point. When there is no match the
-// index is left alone; a null index reports failure.
-func TryBinarySearch<T>(data: *T, length: uint, value: T, index: *var uint) -> bool {
-    if index == null {
-        return false;
-    }
-
-    let position = LowerBound<T>(data, length, value);
-    if position >= length {
-        return false;
-    }
-
-    // LowerBound already established !(data[position] < value); the element is
-    // equivalent when it is not greater either. Checked separately from the
-    // bound above so the index is never used before it is known to be in range.
-    if value < data[position] {
-        return false;
-    }
-
-    *index = position;
-    return true;
-}
-
-// The half-open range of elements equivalent to value. An empty range means no
-// element matched, and its endpoints are then the single position where value
-// would be inserted, so the absent case still carries useful information.
-func EqualRange<T>(data: *T, length: uint, value: T) -> Range<uint> {
-    let start = LowerBound<T>(data, length, value);
-    let end = UpperBound<T>(data, length, value);
-    return Range<uint> { start: start, end: end };
-}
-
-// Each search above also takes an explicit ordering, for a sequence ordered by
-// something other than its element type's own `<`. The comparator answers
-// "does a come strictly before b", the same question `<` answers, and must be
-// the strict weak ordering the sequence is actually sorted by. Equivalence is
-// still derived from it alone, so a comparator is enough on its own: the
-// element type need not define any operator.
+// A bound is a position rather than an element: `LowerBound` is the first position where the value could be inserted
+// without breaking the order, and `UpperBound` is the last. Between them lie exactly the elements equal to it, which
+// is what `EqualRange` returns in one pass. All three answer for a value that is not present at all -- the answer is
+// an empty range at the position it would go.
 //
-// A comparator is a plain function value and carries no captured state, since
-// Rux has no closures.
-func IsSortedBy<T>(data: *T, length: uint, less: func(T, T) -> bool) -> bool {
-    var i: uint = 1;
-    while i < length {
-        if less(data[i], data[i - 1]) {
-            return false;
-        }
-        i++;
-    }
-    return true;
+// The plain forms need `<` on the element type. The `By` forms take a three-way comparison, which is what to use for
+// a type with no ordering of its own or an order that is not its own. Every `By` form must be given the same order
+// the slice was sorted by; a different one gives a meaningless answer just as an unsorted slice does.
+//
+// Nothing here allocates or writes.
+
+import Core::{ Option, Ordering, Range };
+
+/// Whether `items` is in non-decreasing order.
+///
+/// `items` is borrowed and read. An empty slice and a single element are sorted, there being no pair to be out of
+/// order. Equal neighbours are in order: this asks for non-decreasing, not strictly increasing.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the length, stopping at the first pair out of order, and allocates
+/// nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-sorted
+func IsSorted<T>(items: Slice<T>) -> bool {
+    return IsSortedUntil<T>(items) == items.length;
 }
 
-func IsSortedUntilBy<T>(data: *T, length: uint, less: func(T, T) -> bool) -> uint {
-    var i: uint = 1;
-    while i < length {
-        if less(data[i], data[i - 1]) {
-            return i;
-        }
-        i++;
+/// How far `items` is in non-decreasing order.
+///
+/// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, which is the
+/// whole length when the slice is sorted, and the index of the first element smaller than the one before it
+/// otherwise. An empty slice gives zero and a single element gives one.
+///
+/// Requires `<` on the element type.
+///
+/// Cannot fail. Runs in time proportional to the answer and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-sorted-until
+func IsSortedUntil<T>(items: Slice<T>) -> uint {
+    if items.length == 0 {
+        return 0;
     }
-    return length;
+    var index: uint = 1;
+    while index < items.length {
+        if items.data[index] < items.data[index - 1] {
+            return index;
+        }
+        index++;
+    }
+    return items.length;
 }
 
-func LowerBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> uint {
+/// The first position where `value` could be inserted without breaking the order.
+///
+/// `items` is borrowed and read; `value` is read by value. This is the index of the first element not less than
+/// `value` -- the first equal one when there are equals, and where it would go when there are none. A value larger
+/// than everything gives the length.
+///
+/// Requires `<` on the element type, and requires `items` to be sorted by that order.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/lower-bound
+func LowerBound<T>(items: Slice<T>, value: T) -> uint {
     var low: uint = 0;
-    var high = length;
+    var high = items.length;
     while low < high {
         let middle = low + (high - low) / 2;
-        if less(data[middle], value) {
+        if items.data[middle] < value {
             low = middle + 1;
         }
         else {
@@ -159,12 +84,22 @@ func LowerBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool)
     return low;
 }
 
-func UpperBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> uint {
+/// The last position where `value` could be inserted without breaking the order.
+///
+/// `items` is borrowed and read; `value` is read by value. This is the index of the first element greater than
+/// `value` -- one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
+///
+/// Requires `<` on the element type, and requires `items` to be sorted by that order.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/upper-bound
+func UpperBound<T>(items: Slice<T>, value: T) -> uint {
     var low: uint = 0;
-    var high = length;
+    var high = items.length;
     while low < high {
         let middle = low + (high - low) / 2;
-        if less(value, data[middle]) {
+        if value < items.data[middle] {
             high = middle;
         }
         else {
@@ -174,27 +109,151 @@ func UpperBoundBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool)
     return low;
 }
 
-// The comparator goes with the other inputs; the out-parameter stays last, as
-// it does everywhere else in the package.
-func TryBinarySearchBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool, index: *var uint) -> bool {
-    if index == null {
-        return false;
+/// The index of an element of `items` equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element is equal. When several
+/// are, the one reported is the first of them, which makes the answer depend on the sequence rather than on how the
+/// search happened to divide it.
+///
+/// Requires `<` on the element type, and requires `items` to be sorted by that order. Equality is decided by the
+/// ordering rather than by `==`: two elements neither of which is less than the other are equal here, whatever `==`
+/// would say about them.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/binary-search
+func BinarySearch<T>(items: Slice<T>, value: T) -> Option<uint> {
+    let at = LowerBound<T>(items, value);
+    if at < items.length && !(value < items.data[at]) {
+        return Option::Some<uint>(at);
     }
-
-    let position = LowerBoundBy<T>(data, length, value, less);
-    if position >= length {
-        return false;
-    }
-    if less(value, data[position]) {
-        return false;
-    }
-
-    *index = position;
-    return true;
+    return Option::None<uint>();
 }
 
-func EqualRangeBy<T>(data: *T, length: uint, value: T, less: func(T, T) -> bool) -> Range<uint> {
-    let start = LowerBoundBy<T>(data, length, value, less);
-    let end = UpperBoundBy<T>(data, length, value, less);
-    return Range<uint> { start: start, end: end };
+/// The range of positions in `items` holding elements equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. The range runs from `LowerBound` to `UpperBound`, so it
+/// is empty when no element is equal -- and its `start` is then where the value would be inserted, which is the
+/// answer a caller inserting into a sorted sequence wants.
+///
+/// Requires `<` on the element type, and requires `items` to be sorted by that order.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/algorithms/equal-range
+func EqualRange<T>(items: Slice<T>, value: T) -> Range<uint> {
+    return Range<uint> { start: LowerBound<T>(items, value), end: UpperBound<T>(items, value) };
+}
+
+/// Whether `items` is in non-decreasing order under `compare`.
+///
+/// `items` is borrowed and read; `compare` is called once per neighbouring pair until one is out of order. An empty
+/// slice and a single element are sorted, and equal neighbours are in order.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-sorted-by
+func IsSortedBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
+    return IsSortedUntilBy<T>(items, compare) == items.length;
+}
+
+/// How far `items` is in non-decreasing order under `compare`.
+///
+/// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, exactly as
+/// `IsSortedUntil` does for the element type's own order.
+///
+/// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
+func IsSortedUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
+    if items.length == 0 {
+        return 0;
+    }
+    var index: uint = 1;
+    while index < items.length {
+        if compare(items.data[index], items.data[index - 1]).IsLess() {
+            return index;
+        }
+        index++;
+    }
+    return items.length;
+}
+
+/// The first position where `value` could be inserted into `items` under `compare` without breaking the order.
+///
+/// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/lower-bound-by
+func LowerBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> uint {
+    var low: uint = 0;
+    var high = items.length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if compare(items.data[middle], value).IsLess() {
+            low = middle + 1;
+        }
+        else {
+            high = middle;
+        }
+    }
+    return low;
+}
+
+/// The last position where `value` could be inserted into `items` under `compare` without breaking the order.
+///
+/// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/upper-bound-by
+func UpperBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> uint {
+    var low: uint = 0;
+    var high = items.length;
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if compare(value, items.data[middle]).IsLess() {
+            high = middle;
+        }
+        else {
+            low = middle + 1;
+        }
+    }
+    return low;
+}
+
+/// The index of an element of `items` that `compare` calls equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element is equal, and the first of
+/// them when several are. `compare` must be the order `items` was sorted by.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/binary-search-by
+func BinarySearchBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
+    let at = LowerBoundBy<T>(items, value, compare);
+    if at < items.length && !compare(value, items.data[at]).IsLess() {
+        return Option::Some<uint>(at);
+    }
+    return Option::None<uint>();
+}
+
+/// The range of positions in `items` holding elements `compare` calls equal to `value`.
+///
+/// `items` is borrowed and read; `value` is read by value. Empty when no element is equal, with its `start` at the
+/// position the value would be inserted. `compare` must be the order `items` was sorted by.
+///
+/// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
+/// `compare` does.
+///
+/// https://rux-lang.dev/docs/api/algorithms/equal-range-by
+func EqualRangeBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> Range<uint> {
+    return Range<uint> {
+        start: LowerBoundBy<T>(items, value, compare),
+        end: UpperBoundBy<T>(items, value, compare)
+    };
 }
