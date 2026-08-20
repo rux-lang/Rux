@@ -230,6 +230,63 @@ TEST_CASE("a generic body's stores are consumed once an instantiation says what 
     CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
 }
 
+TEST_CASE("a match that binds part of its subject consumes the subject") {
+    // Taking a payload out of an option and destroying the option as well would destroy the payload twice, which is
+    // what every unwrap in the standard packages did. Only a subject that is a value in its own right is consumed:
+    // one read through a borrow has nothing taken from it, and a pattern that binds nothing takes nothing.
+    Lexer lexer(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+        enum Held { Full(Handle), Empty }
+
+        func Discard(held: Held) {
+            match held {
+                .Full(handle) => {},
+                .Empty => {}
+            }
+        }
+
+        func LookOnly(held: Held) {
+            match held {
+                .Full(_) => {},
+                .Empty => {}
+            }
+        }
+
+        func Borrowed(held: *Held) {
+            match *held {
+                .Full(handle) => {},
+                .Empty => {}
+            }
+        }
+    )",
+                "match_consumption.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "match_consumption.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto subjectOf = [&](const std::size_t item) -> const Expr & {
+        const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[item].get());
+        REQUIRE(function != nullptr);
+        const auto *statement = dynamic_cast<const MatchStmt *>(function->body->stmts[0].get());
+        REQUIRE(statement != nullptr);
+        return *statement->subject;
+    };
+
+    const ValueConsumption *taken = model.TryGetConsumption(subjectOf(4));
+    REQUIRE(taken != nullptr);
+    CHECK_EQ(taken->kind, ValueConsumptionKind::Receiver);
+    CHECK(model.TryGetConsumption(subjectOf(5)) == nullptr);
+    CHECK(model.TryGetConsumption(subjectOf(6)) == nullptr);
+}
+
 TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         interface Drop {}

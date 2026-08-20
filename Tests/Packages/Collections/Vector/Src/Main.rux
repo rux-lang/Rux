@@ -308,19 +308,15 @@ func Main() -> int {
     Assert(sum == 15, "consuming iteration yields every element");
     Assert(taken.Next().IsNone(), "and stops once they are gone");
 
-    // Every element leaves the vector exactly once, and the iterator destroys exactly what nobody took.
-    //
-    // What an arm's binding does with the element it took is not the iterator's business, and is currently nothing:
-    // a payload bound by a match arm is not destroyed when the arm ends, so draining fully and dropping each element
-    // on the floor destroys none of them. That is a leak in the language rather than in this container, and it is
-    // recorded in BACKLOG.md; what is asserted here is the half this container owns.
+    // Every element leaves the vector exactly once, and is destroyed exactly once: by the arm that took it, or by
+    // the iterator if nobody did.
     destroyed = 0;
     Assert(DrainFully(allocator, @destroyed, 6) == 6, "consuming iteration yields every element of a tracked vector");
-    Assert(destroyed == 0, "and the iterator destroys none of what it handed over");
+    Assert(destroyed == 6, "each destroyed once, by the arm that took it");
 
     destroyed = 0;
     DrainPartly(allocator, @destroyed, 6, 2);
-    Assert(destroyed == 4, "stopping part-way destroys exactly the four nobody took");
+    Assert(destroyed == 6, "and stopping part-way destroys the two taken and the four left, once each");
 
     // Handing the storage to an array copies nothing.
     var moving = Vector::New<int32>(allocator);
