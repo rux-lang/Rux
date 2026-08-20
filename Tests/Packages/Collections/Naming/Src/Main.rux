@@ -1,0 +1,62 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, EqualsInt32, HashSet, TableSeed };
+import Core::Assert;
+
+// A program declaring a name its dependency also declares.
+//
+// `Collections` exports `HashInt32`, and this program declares one of its own without importing that one. A call
+// resolves to the nearer declaration, which is this file's, and always did. Handing the same name over as a value
+// did not: the reference carried the name as written, the back end looked for a function emitted under exactly that
+// name, found none once two packages made it ambiguous, and read a function pointer out of a global that does not
+// exist. Calling through it faulted.
+//
+// The hash here is deliberately nothing like the real one, so which of the two ran is visible in the answer rather
+// than only in whether it crashed.
+
+func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
+    return (value as uint64) * 2u64;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    Assert(HashInt32(21, 0, 0) == 42u64, "a call resolves to this program's own declaration");
+
+    // The same name handed over as a value, which is where it used to go wrong. The set is built on it, so every
+    // insertion and every lookup runs through whichever function the reference resolved to.
+    var set = HashSet::WithSeed<int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
+    var value: int32 = 0;
+    while value < 40 {
+        var added = false;
+        Assert(set.Insert(value, @added) == CollectionError::None, "there is room for every value");
+        Assert(added, "and every one of them is new");
+        value = value + 1;
+    }
+    Assert(set.Length() == 40, "the set holds every value");
+
+    value = 0;
+    while value < 40 {
+        Assert(set.Contains(value), "every value is found again");
+        value = value + 1;
+    }
+    Assert(!set.Contains(40), "and one that was never added is not");
+
+    // Removal probes the same chains the deliberately poor hash crowded, so a reference resolved to the other
+    // function would not merely give different answers but wrong ones.
+    value = 0;
+    while value < 40 {
+        if value % 3 == 0 {
+            Assert(set.Remove(value).IsSome(), "a value in the set is removed");
+        }
+        value = value + 1;
+    }
+    Assert(set.Length() == 26, "the set is as much shorter as was taken out of it");
+    value = 0;
+    while value < 40 {
+        Assert(set.Contains(value) == (value % 3 != 0), "and exactly what was left is still there");
+        value = value + 1;
+    }
+
+    return 0;
+}

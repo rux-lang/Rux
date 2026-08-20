@@ -110,6 +110,42 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
     return substituted;
 }
 
+/// The name to lower an identifier under, which for one naming a function is that function's linker name.
+///
+/// A call says which function it means through its binding, but an identifier used as a value carried only what was
+/// written -- and what was written is the name before anything disambiguates it. The back end looks the name up
+/// among the functions it emitted, found nothing when two packages made the name ambiguous, and fell through to
+/// loading a global that does not exist: a function pointer built out of whatever the address held, which faults
+/// when it is called. A name that resolves to anything else, a local above all, is left exactly as written.
+const std::string &AstToHirContext::FunctionReferenceName(const IdentExpr &identifier) {
+    const HirSymbol *symbol = currentScope->Lookup(identifier.name);
+    if (!symbol || symbol->kind != HirSymbol::Kind::Func || symbol->funcOverloads.empty()) {
+        return identifier.name;
+    }
+    const TypeRef referenceType = ResolvedExpressionType(identifier);
+    const FuncDecl *chosen = nullptr;
+    for (const FuncDecl *candidate : symbol->funcOverloads) {
+        if (!candidate->typeParams.empty()) {
+            continue;
+        }
+        // Overloads share a name and differ by signature, so the type the reference resolved to is what picks one.
+        if (symbol->funcOverloads.size() > 1 &&
+            !(MakeFuncType(candidate->params, candidate->returnType, {}) == referenceType)) {
+            continue;
+        }
+        // The last match rather than the first, because declarations arrive dependencies first and the package
+        // being built last -- so the nearest declaration of a name is the one at the end. Two packages declaring
+        // the same signature is the case this decides, and it decides it the way a call already does: the package
+        // that wrote the reference means its own.
+        chosen = candidate;
+    }
+    if (!chosen) {
+        return identifier.name;
+    }
+    const ResolvedSymbolIdentity *identity = model.TryGetSymbolIdentity(*chosen);
+    return identity && !identity->linkerName.empty() ? identity->linkerName : identifier.name;
+}
+
 HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();
@@ -125,7 +161,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         }
         auto lowered = std::make_unique<HirVarExpr>();
         lowered->location = identifier->location;
-        lowered->name = identifier->name;
+        lowered->name = FunctionReferenceName(*identifier);
         lowered->type = ResolvedExpressionType(*identifier);
         return lowered;
     }

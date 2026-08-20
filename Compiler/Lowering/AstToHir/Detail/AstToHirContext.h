@@ -207,6 +207,7 @@ private:
                                          const TypeRef &receiverType, const FuncDecl &declaration);
     [[nodiscard]] bool MethodIsFromConcreteImpl(const FuncDecl &method) const;
     [[nodiscard]] const std::string &FunctionCalleeName(const FuncDecl &decl) const;
+    [[nodiscard]] const std::string &FunctionReferenceName(const IdentExpr &identifier);
     [[nodiscard]] HirFunc LowerFunc(const FuncDecl &decl, bool isMethod = false,
                                     const std::unordered_map<std::string, TypeRef> &substitutions = {},
                                     const std::string &overrideName = "");

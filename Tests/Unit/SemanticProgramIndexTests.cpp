@@ -54,7 +54,9 @@ TEST_CASE("semantic program index isolates packages and records declaration owne
     const SemanticDetail::Symbol *read = packageScopes.at("Api")->LookupLocal("Read");
     REQUIRE(read != nullptr);
     REQUIRE_EQ(read->funcOverloads.size(), 2);
-    CHECK(index.FunctionModulePaths().at(read->funcOverloads[0]) == "Api");
+    // Where a function lives is its package as well as the `module` blocks around it, so that two packages
+    // declaring one name are two owners rather than one.
+    CHECK(index.FunctionModulePaths().at(read->funcOverloads[0]) == "acme-core::Api");
     CHECK(index.FunctionSources().at(read->funcOverloads[0]) == "first.rux");
     CHECK(index.FunctionSources().at(read->funcOverloads[1]) == "second.rux");
     CHECK(packageScopes.at("Api")->LookupLocal("Entry") != nullptr);

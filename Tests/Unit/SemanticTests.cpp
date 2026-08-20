@@ -802,10 +802,10 @@ TEST_CASE("semantic model records final linker symbol identities") {
         REQUIRE(identity != nullptr);
         return identity->linkerName;
     };
-    CHECK_EQ(symbolName(*alpha->items[0]), "Alpha::Hidden");
+    CHECK_EQ(symbolName(*alpha->items[0]), "symbols::Alpha::Hidden");
     CHECK_EQ(symbolName(*alpha->items[1]), "Pick__int32");
     CHECK_EQ(symbolName(*alpha->items[2]), "Pick__bool8");
-    CHECK_EQ(symbolName(*beta->items[0]), "Beta::Hidden");
+    CHECK_EQ(symbolName(*beta->items[0]), "symbols::Beta::Hidden");
     CHECK_EQ(symbolName(*numberImpl->methods[0]), "Number::Convert__int32");
     CHECK_EQ(symbolName(*numberImpl->methods[1]), "Number::Convert__bool8");
     CHECK_EQ(symbolName(*fileImpl->methods[0]), "File::Read");
@@ -839,10 +839,10 @@ TEST_CASE("semantic model records final linker symbol identities") {
         return std::ranges::any_of(package.modules[0].funcs,
                                    [&](const HirFunc &function) { return function.name == name; });
     };
-    CHECK(hasFunction("Alpha::Hidden"));
+    CHECK(hasFunction("symbols::Alpha::Hidden"));
     CHECK(hasFunction("Pick__int32"));
     CHECK(hasFunction("Pick__bool8"));
-    CHECK(hasFunction("Beta::Hidden"));
+    CHECK(hasFunction("symbols::Beta::Hidden"));
     CHECK(hasFunction("Box::Get_int64"));
 
     const auto loweredMain =
