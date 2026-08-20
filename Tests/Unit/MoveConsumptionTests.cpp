@@ -185,6 +185,51 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
     CHECK_EQ(*loweredSecond->init->consumption, ValueConsumptionKind::Initialization);
 }
 
+TEST_CASE("a generic body's stores are consumed once an instantiation says what the parameter is") {
+    // Whether storing a `T` hands ownership over depends on what `T` stands for, which the body cannot know. The
+    // question is recorded where it is asked and answered at each instantiation; before it was, a generic container
+    // kept a copy of what it was given and the caller's value was destroyed where it stood.
+    Lexer lexer(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func Store<T>(slot: *var T, value: T) {
+            *slot = value;
+        }
+
+        func Main() {
+            var room = Handle { value: 0 };
+            Store<Handle>(@room, Handle { value: 1 });
+            var counted: int32 = 0;
+            Store<int32>(@counted, 2i32);
+        }
+    )",
+                "generic_consumption.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "generic_consumption.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *store = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
+    REQUIRE(store != nullptr);
+    const auto *statement = dynamic_cast<const ExprStmt *>(store->body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+
+    // One instantiation is move-only and one is not, so the fact exists and names the type that needed it.
+    const ValueConsumption *fact = model.TryGetConsumption(*assignment->value);
+    REQUIRE(fact != nullptr);
+    CHECK_EQ(fact->kind, ValueConsumptionKind::Assignment);
+    CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
+}
+
 TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         interface Drop {}

@@ -332,6 +332,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 EmitError(e->location, method->errorMessage);
             }
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+            // A method of a generic type is an instantiation like any other: its body was checked with the type's
+            // parameters standing for nothing in particular, and the questions that could not be answered then --
+            // above all whether handing a `T` over consumes it -- are answered here, where the receiver says what
+            // the parameters stand for.
+            QueueGenericInstantiation(*method, MethodTypeSubstitutions(receiverType));
 
             if (argTypes.size() != paramTypes.size()) {
                 callAccepted = false;
@@ -530,6 +535,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                 if (const FuncDecl *method = LookupMethod(receiverType, methodName, argTypes)) {
                     std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+                    // An associated function on a generic type is instantiated by the type arguments written at the
+                    // call, exactly as a method is by its receiver's.
+                    QueueGenericInstantiation(*method, MethodTypeSubstitutions(receiverType));
                     bool callAccepted = argTypes.size() == paramTypes.size();
                     if (argTypes.size() != paramTypes.size()) {
                         emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),

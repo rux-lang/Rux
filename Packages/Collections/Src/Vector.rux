@@ -14,15 +14,12 @@
 // constant each rather than a reallocation every time. Capacity is never reduced except by `ShrinkToFit`, so a
 // vector that has been large stays cheap to refill.
 //
+// `Push` moves its argument in rather than copying it, so a vector is how a sequence of elements that own something
+// is built: each is moved in exactly once and destroyed exactly once, when the vector is.
+//
 // Two failure shapes, as everywhere in this package: an operation that may allocate reports a `CollectionError`, and
 // one that cannot allocate reports an ordinary miss with a `bool` and an out-parameter. A reported failure means the
 // vector is exactly as it was.
-
-// **A known defect, until the compiler is fixed.** Storing a `T` into a generic container's storage is not
-// recognized as consuming it, so `Push` keeps a copy and the value it was given is destroyed where it stood. For an
-// element type that owns nothing that is harmless and invisible. For one that owns memory it is a use-after-free:
-// the vector holds a copy of something whose storage the parameter's destructor already released. Until this is
-// fixed, a vector of elements that own something is not safe to build with `Push`. See BACKLOG.md.
 
 import Allocator::Allocator;
 import Core::{ Drop, MutableSlice, Option };

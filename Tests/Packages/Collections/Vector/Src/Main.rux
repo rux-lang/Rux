@@ -149,19 +149,14 @@ func Main() -> int {
     }
     Assert(total == 18, "iterating covers every element and no spare capacity");
 
-    // Destruction: the vector destroys exactly the elements it holds, once each, when its life ends.
-    //
-    // `Push` also destroys the value it was given, which it should not: storing a `T` into a generic container's
-    // storage is not recognized as consuming it, so the container keeps a copy and the parameter is destroyed where
-    // it stood. For an element that owns nothing that is harmless, and for one that owns memory it is a
-    // use-after-free. What is asserted here is the half that is correct -- the vector's own destruction -- and the
-    // half that is not is measured rather than blessed. See BACKLOG.md.
+    // Destruction: the vector destroys exactly the elements it holds, once each, when its life ends -- and pushing
+    // destroys nothing at all, because handing a value to `Push` moves it in rather than copying it.
     var destroyed: int32 = 0;
     var afterPushing: int32 = 0;
     Assert(PushAndDrop(allocator, @destroyed, 7, @afterPushing) == CollectionError::None,
            "a vector of tracked elements is filled");
-    Assert(destroyed - afterPushing == 7, "destroying the vector destroys exactly the seven elements it held");
-    Assert(afterPushing == 7, "and pushing destroyed seven it should not have, which is the defect above");
+    Assert(afterPushing == 0, "pushing seven elements destroys none of them");
+    Assert(destroyed == 7, "and destroying the vector destroys exactly those seven, once each");
 
     destroyed = 0;
     afterPushing = 0;
@@ -171,10 +166,10 @@ func Main() -> int {
     // Popping moves elements out, so the vector destroys none of them and whoever took them does.
     destroyed = 0;
     PushThenPop(allocator, @destroyed, 5);
-    // Six, not five: the five the pushes destroyed, plus the one `taken` still held when the function ended.
-    // Overwriting `taken` on each round destroys nothing -- assignment replaces a binding's value without
-    // destroying what was there -- so only the last element popped is ever destroyed that way.
-    Assert(destroyed == 6, "popping moves elements out rather than destroying them");
+    // One, not five: popping moves each element out, and overwriting `taken` on each round destroys nothing --
+    // assignment replaces a binding's value without destroying what was there -- so the only destruction is the last
+    // element, still held by `taken` when the function ended.
+    Assert(destroyed == 1, "popping moves elements out rather than destroying them");
 
     // Truncating destroys exactly the elements it drops.
     destroyed = 0;
@@ -184,12 +179,11 @@ func Main() -> int {
         tracked.Push(Tracked { counter: @destroyed, value: 0 });
         index++;
     }
-    let pushed = destroyed;
+    Assert(destroyed == 0, "pushing destroys nothing");
     tracked.Truncate(2);
-    Assert(destroyed - pushed == 4, "truncating destroys exactly the four elements it drops");
-    let truncated = destroyed;
+    Assert(destroyed == 4, "truncating destroys exactly the four elements it drops");
     tracked.Clear();
-    Assert(destroyed - truncated == 2, "and clearing destroys the two that were left");
+    Assert(destroyed == 6, "and clearing destroys the two that were left");
 
     return 0;
 }
