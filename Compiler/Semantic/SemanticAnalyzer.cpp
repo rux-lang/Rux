@@ -307,7 +307,20 @@ private:
         }
 
         if (str[0] == '*') {
-            return TypeRef::MakePointer(ParseTypeRefFromString(str.substr(1)));
+            // `*var T` renders the writability of its pointee as a `var` in front of the pointee's own spelling, so
+            // reading a type back from its name has to take it off again and put it where it belongs. Left in place it
+            // parses as part of the pointee's name, which produces a read-only pointer to a type nobody declared -- and
+            // one that renders identically to the type it should have been.
+            std::string pointee = str.substr(1);
+            trim(pointee);
+            const bool writable = pointee.starts_with("var ");
+            if (writable) {
+                pointee = pointee.substr(4);
+                trim(pointee);
+            }
+            TypeRef inner = ParseTypeRefFromString(std::move(pointee));
+            inner.isMut = writable;
+            return TypeRef::MakePointer(std::move(inner));
         }
 
         if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
@@ -3336,7 +3349,12 @@ private:
     static TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
         if (type.kind == TypeRef::Kind::TypeParam) {
             if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
-                return it->second;
+                TypeRef substituted = it->second;
+                // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to
+                // carry that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only
+                // pointer the moment a type argument arrived -- silently, because the two render identically.
+                substituted.isMut = type.isMut;
+                return substituted;
             }
             return type;
         }

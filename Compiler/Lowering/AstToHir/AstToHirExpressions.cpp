@@ -52,7 +52,12 @@ std::string SubstituteTypeName(std::string name, const std::unordered_map<std::s
 TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
         if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
-            return substitution->second;
+            TypeRef substituted = substitution->second;
+            // `*var T` marks the pointee writable on the `T` slot, so the substitution carries that mark onto
+            // whatever `T` turns out to be -- here as much as in analysis, or the two sides name the same
+            // instantiation differently and the layout registered under one name is looked up under the other.
+            substituted.isMut = type.isMut;
+            return substituted;
         }
         if (type.kind == TypeRef::Kind::Named) {
             type.name = SubstituteTypeName(std::move(type.name), substitutions);
