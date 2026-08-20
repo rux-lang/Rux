@@ -173,8 +173,69 @@ TypeRef SemanticAnalyzerContext::CheckTernaryExpression(const TernaryExpr &expre
     return thenType.IsUnknown() ? elseType : thenType;
 }
 
+namespace {
+/// Whether a pattern binds anything a value can be taken out into.
+///
+/// A wildcard or a literal reads the subject and keeps nothing; an enum pattern with a named position, a struct
+/// pattern or a tuple pattern takes a piece of the subject and gives it a name. That is the difference between
+/// looking at a value and taking it apart.
+bool PatternBindsValue(const Pattern &pattern) {
+    if (dynamic_cast<const IdentPattern *>(&pattern)) {
+        return true;
+    }
+    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
+        return std::ranges::any_of(enumeration->args,
+                                   [](const PatternPtr &argument) { return PatternBindsValue(*argument); }) ||
+               std::ranges::any_of(enumeration->namedArgs, [](const EnumPattern::NamedArg &named) {
+                   return PatternBindsValue(*named.pattern);
+               });
+    }
+    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        return std::ranges::any_of(structure->fields,
+                                   [](const StructPattern::Field &field) { return PatternBindsValue(*field.pattern); });
+    }
+    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        return std::ranges::any_of(tuple->elements,
+                                   [](const PatternPtr &element) { return PatternBindsValue(*element); });
+    }
+    if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
+        return guarded->inner && PatternBindsValue(*guarded->inner);
+    }
+    return false;
+}
+} // namespace
+
+/// A match that binds part of its subject takes that part out of it, so the subject must not also be destroyed
+/// holding what an arm now owns.
+///
+/// A subject read through a borrow is a different thing -- nothing is taken from it, and an `IsSome` looking at an
+/// option it does not own must stay legal -- so only a subject that is a value in its own right is consumed. Called
+/// before the arms are walked rather than after: each arm starts from the flow saved at the match and their exits
+/// are merged over it, so a move recorded afterwards would be merged away.
+template <typename Arm>
+void SemanticAnalyzerContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType,
+                                                  const std::vector<Arm> &arms, const SourceLocation location) {
+    if (!std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); })) {
+        return;
+    }
+    if (AnalyzeMovePlace(subject).IsBorrowedStorage()) {
+        return;
+    }
+    ConsumeValue(subject, subjectType, ValueConsumptionKind::Receiver, location);
+}
+
+template void SemanticAnalyzerContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &, const TypeRef &,
+                                                                           const std::vector<MatchExpr::Arm> &,
+                                                                           SourceLocation);
+template void SemanticAnalyzerContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
+                                                                           const std::vector<MatchStmt::Arm> &,
+                                                                           SourceLocation);
+
 TypeRef SemanticAnalyzerContext::CheckMatchExpression(const MatchExpr &expression) {
     const TypeRef subjectType = CheckExpr(*expression.subject);
+
+    ConsumeMatchSubject(*expression.subject, subjectType, expression.arms, expression.location);
+
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
     std::vector<const Pattern *> patterns;

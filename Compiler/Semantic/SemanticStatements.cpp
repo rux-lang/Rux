@@ -391,6 +391,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
         const TypeRef subjectType = CheckExpr(*matchStatement->subject);
+        ConsumeMatchSubject(*matchStatement->subject, subjectType, matchStatement->arms, matchStatement->location);
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;
