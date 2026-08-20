@@ -1,0 +1,293 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, Tree, TreeNode };
+import Core::{ Assert, Drop, Option, Ordering };
+
+// The red-black kernel, checked against its own rules rather than against its outputs.
+//
+// A balanced tree that is merely wrong about a colour still answers every lookup correctly, and goes on doing so
+// until an insertion sequence finds the shape that degenerates. So this test does not just ask what the tree holds:
+// after every insertion and every removal it walks the whole thing and checks the four rules directly -- the root is
+// black, no red node has a red child, every path to a missing child crosses the same number of black nodes, and
+// every parent link points back at the node that points down.
+//
+// The orders matter as much as the counts. Ascending and descending insertion are the two that turn an uncoloured
+// binary search tree into a linked list, and a stride coprime with the count churns the tree in an order nothing
+// about the algorithm makes convenient.
+
+func CompareInt32(left: int32, right: int32) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+// The number of black nodes on every path below `node`, or -1 when the paths disagree or a red node has a red child.
+// Counting and checking together is what makes a single walk enough.
+func BlackHeight(node: *var TreeNode<int32, int32>) -> int {
+    if node == null {
+        return 1;
+    }
+    if node.red {
+        if node.left != null && node.left.red {
+            return -1;
+        }
+        if node.right != null && node.right.red {
+            return -1;
+        }
+    }
+    let below = BlackHeight(node.left);
+    let above = BlackHeight(node.right);
+    if below < 0 || above < 0 || below != above {
+        return -1;
+    }
+    if node.red {
+        return below;
+    }
+    return below + 1;
+}
+
+// Whether every child points back at its parent, and every key sits on the correct side of it. A tree can satisfy
+// every colour rule and still have lost a link, which shows up as a lookup that walks off the tree it is in.
+func LinksSound(node: *var TreeNode<int32, int32>, parent: *var TreeNode<int32, int32>) -> bool {
+    if node == null {
+        return true;
+    }
+    if node.parent != parent {
+        return false;
+    }
+    if node.left != null && node.left.key >= node.key {
+        return false;
+    }
+    if node.right != null && node.right.key <= node.key {
+        return false;
+    }
+    return LinksSound(node.left, node) && LinksSound(node.right, node);
+}
+
+func Sound(tree: *var Tree<int32, int32>) -> bool {
+    if tree.root == null {
+        return tree.length == 0;
+    }
+    if tree.root.red || tree.root.parent != null {
+        return false;
+    }
+    return BlackHeight(tree.root) > 0 && LinksSound(tree.root, null);
+}
+
+// Walks by successor from the smallest, checking that the keys come out strictly increasing, and reports how many
+// there were. An ordered walk that skips or repeats an entry is the failure the colour rules cannot catch.
+func WalkedInOrder(tree: *var Tree<int32, int32>) -> uint {
+    var counted: uint = 0;
+    var walk = Tree::Minimum<int32, int32>(tree.root);
+    var previous: int32 = 0;
+    while walk != null {
+        if counted > 0 && walk.key <= previous {
+            return 0;
+        }
+        previous = walk.key;
+        counted = counted + 1;
+        walk = Tree::Successor<int32, int32>(walk);
+    }
+    return counted;
+}
+
+// The longest path from the root down. A tree that has lost its balancing still answers every lookup, so this is
+// what separates a red-black tree from the linked list an uncoloured one becomes under ascending insertion.
+func Depth(node: *var TreeNode<int32, int32>) -> uint {
+    if node == null {
+        return 0;
+    }
+    let below = Depth(node.left);
+    let above = Depth(node.right);
+    if below > above {
+        return below + 1;
+    }
+    return above + 1;
+}
+
+// Fills a tree with `count` keys taken in a stride, checking the rules after every one, and reports the depth it
+// ended at. A stride coprime with the count reaches every key while arriving in an order the algorithm has no reason
+// to find convenient.
+func Fill(tree: *var Tree<int32, int32>, count: int32, stride: int32) -> uint {
+    var replaced = Option::None<int32>();
+    var step: int32 = 0;
+    while step < count {
+        let key = (step * stride) % count;
+        Assert(tree.Attach(key, key * 3, CompareInt32, @replaced) == CollectionError::None,
+               "there is room for every key");
+        Assert(replaced.IsNone(), "and none of them was already there");
+        Assert(Sound(tree), "the rules hold after every insertion");
+        step = step + 1;
+    }
+    return Depth(tree.root);
+}
+
+// Takes every key back out in a stride of its own, checking the rules after each and that what remains is still
+// findable and still in order. Removal is where a red-black tree is hardest to get right, and where a mistake hides
+// longest: an unbalanced tree keeps answering correctly.
+func Drain(tree: *var Tree<int32, int32>, count: int32, stride: int32) {
+    var removed: int32 = 0;
+    var step: int32 = 0;
+    while step < count {
+        let key = (step * stride) % count;
+        let node = tree.Find(key, CompareInt32);
+        Assert(node != null, "a key that was put in is found again");
+        let entry = tree.Detach(node);
+        Assert(entry.key == key && entry.value == key * 3, "and comes back out with what it went in with");
+        removed = removed + 1;
+        Assert(tree.Length() == (count - removed) as uint, "the tree is one shorter");
+        Assert(Sound(tree), "the rules hold after every removal");
+        Assert(tree.Find(key, CompareInt32) == null, "and the key is gone");
+        Assert(WalkedInOrder(tree) == tree.Length(), "what is left is still in order");
+        step = step + 1;
+    }
+    Assert(tree.IsEmpty(), "and the tree ends empty");
+    Assert(tree.root == null, "with nothing left hanging from the root");
+}
+
+struct Tracked {
+    counter: *var int32;
+    value: int32;
+}
+
+extend Tracked : Drop {
+    func Drop(self: *var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+// A scope for a tree of tracked values, so its destruction happens somewhere observable. `afterAttaching` reports
+// what the counter read once everything was in, which is what separates the insertions from the destruction.
+func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterAttaching: *var int32) {
+    var tree = Tree::New<int32, Tracked>(allocator);
+    var replaced = Option::None<Tracked>();
+    var key: int32 = 0;
+    while key < count {
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32, @replaced);
+        key = key + 1;
+    }
+    Assert(tree.Length() == count as uint, "the tree holds what was put into it");
+    *afterAttaching = *counter;
+}
+
+// The value a replaced key displaces has to come back rather than be destroyed in place, and the one that comes back
+// has to be destroyed exactly once when the caller is done with it.
+func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
+    var tree = Tree::New<int32, Tracked>(allocator);
+    var first = Option::None<Tracked>();
+    tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32, @first);
+    Assert(first.IsNone(), "nothing was displaced by a fresh key");
+
+    var second = Option::None<Tracked>();
+    tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32, @second);
+    Assert(second.IsSome(), "an equal key hands the old value back");
+    Assert(tree.Length() == 1, "and does not make the tree longer");
+    *afterReplacing = *counter;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // Ascending insertion, which is what turns an uncoloured binary search tree into a linked list of 64 nodes. A
+    // depth of at most twelve is the bound the colouring promises for this many entries, and the whole reason for
+    // paying for the rotations.
+    var ascending = Tree::New<int32, int32>(allocator);
+    let ascendingDepth = Fill(@ascending, 64, 1);
+    Assert(ascending.Length() == 64, "the tree holds every key");
+    Assert(WalkedInOrder(@ascending) == 64, "and walks them in order");
+    Assert(ascendingDepth <= 12, "sorted input does not make a list of it");
+
+    // Descending insertion, the other degenerate order, taken through the mirrored half of the fix-up.
+    var descending = Tree::New<int32, int32>(allocator);
+    var replaced = Option::None<int32>();
+    var key: int32 = 63;
+    while key >= 0 {
+        Assert(descending.Attach(key, key * 3, CompareInt32, @replaced) == CollectionError::None,
+               "there is room for every key");
+        Assert(Sound(@descending), "the rules hold after every descending insertion");
+        key = key - 1;
+    }
+    Assert(WalkedInOrder(@descending) == 64, "reversed input comes back out in order");
+    Assert(Depth(descending.root) <= 12, "and does not make a list of it either");
+
+    // The backward walk is not the forward one read in reverse: it climbs a different set of links, and a
+    // predecessor that stops early is invisible to every forward test.
+    var back = Tree::Maximum<int32, int32>(descending.root);
+    var seen: uint = 0;
+    var previous: int32 = 64;
+    while back != null {
+        Assert(back.key < previous, "the backward walk strictly decreases");
+        previous = back.key;
+        seen = seen + 1;
+        back = Tree::Predecessor<int32, int32>(back);
+    }
+    Assert(seen == 64, "and reaches every entry");
+    Assert(Tree::Minimum<int32, int32>(descending.root).key == 0, "the smallest key is the smallest");
+    Assert(Tree::Maximum<int32, int32>(descending.root).key == 63, "and the largest is the largest");
+    Assert(Tree::Predecessor<int32, int32>(Tree::Minimum<int32, int32>(descending.root)) == null,
+           "nothing comes before the first");
+    Assert(Tree::Successor<int32, int32>(Tree::Maximum<int32, int32>(descending.root)) == null,
+           "and nothing after the last");
+
+    // A key already present is replaced rather than added, and hands back what it displaced.
+    var displaced = Option::None<int32>();
+    Assert(ascending.Attach(19, 1900, CompareInt32, @displaced) == CollectionError::None, "an equal key is accepted");
+    Assert(displaced.ValueOr(-1) == 57, "and gives back the value it displaced");
+    Assert(ascending.Length() == 64, "without making the tree longer");
+    Assert(ascending.Find(19, CompareInt32).value == 1900, "the new value is what is there now");
+    Assert(ascending.Find(64, CompareInt32) == null, "a key that was never put in is not found");
+    Assert(ascending.Find(-1, CompareInt32) == null, "on either side of the range");
+
+    // A node keeps its address while the tree is rearranged around it, which is what the separate allocations buy
+    // and what a hash table cannot offer at all.
+    let pinned = ascending.Find(33, CompareInt32);
+    Assert(pinned != null, "the pinned key is there to begin with");
+    var gone: int32 = 0;
+    while gone < 20 {
+        let node = ascending.Find(gone, CompareInt32);
+        Assert(node != null, "each key removed around it was there");
+        let entry = ascending.Detach(node);
+        Assert(entry.key == gone, "and came back out");
+        Assert(Sound(@ascending), "the rules hold through the rearranging");
+        gone = gone + 1;
+    }
+    Assert(pinned.key == 33, "the pinned node still holds its key");
+    Assert(ascending.Find(33, CompareInt32) == pinned, "at the address it had before any of that");
+
+    // Cleared and used again. A tree has no capacity to keep back, so an emptied one is exactly a fresh one.
+    ascending.Clear();
+    Assert(ascending.IsEmpty() && ascending.root == null, "clearing empties it");
+    let refilled = Fill(@ascending, 16, 1);
+    Assert(ascending.Length() == 16 && refilled <= 8, "and it is usable again afterwards");
+
+    // Built and taken apart in orders nothing about the algorithm makes convenient: both strides are coprime with
+    // the count, so each reaches every key while arriving nowhere near sorted.
+    var churned = Tree::New<int32, int32>(allocator);
+    Assert(Fill(@churned, 64, 37) <= 12, "a shuffled build stays balanced too");
+    Assert(WalkedInOrder(@churned) == 64, "and comes out in order");
+    Drain(@churned, 64, 23);
+    Assert(WalkedInOrder(@churned) == 0, "an emptied tree walks nothing");
+
+    // Every value destroyed exactly once, however it left the tree. Attaching destroys nothing, the tree's own
+    // destructor takes everything still in it, and a replaced value is destroyed by whoever received it back rather
+    // than quietly where it lay.
+    var destroyed: int32 = 0;
+    var afterAttaching: int32 = 0;
+    AttachAndDrop(allocator, @destroyed, 40, @afterAttaching);
+    Assert(afterAttaching == 0, "putting values into a tree destroys none of them");
+    Assert(destroyed == 40, "and the tree destroys each exactly once when it dies");
+
+    destroyed = 0;
+    var afterReplacing: int32 = 0;
+    ReplaceAndDrop(allocator, @destroyed, @afterReplacing);
+    Assert(afterReplacing == 0, "a replaced value is handed back rather than destroyed in place");
+    Assert(destroyed == 2, "and both it and the one that took its place are destroyed exactly once");
+
+    return 0;
+}
