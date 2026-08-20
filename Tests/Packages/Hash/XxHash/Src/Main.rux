@@ -1,0 +1,113 @@
+import Core::Assert;
+import Hash::{ HashBytes, XxBlockSize, XxHash64, XxHash64Of, XxHash64SeededOf };
+
+// xxHash64 is specified and has published vectors, so those come first. What the vectors cannot reach is the
+// streaming: the answer must not depend on how the byte stream was divided into writes, and the code that holds a
+// partial block is where that would break. So the long input below is written back in every possible pair of
+// pieces, and each one has to agree with hashing it at once.
+
+func Hash(text: Slice<char8>) -> uint64 {
+    return XxHash64Of(text.data as *byte, text.length);
+}
+
+func Seeded(text: Slice<char8>, seed: uint64) -> uint64 {
+    return XxHash64SeededOf(text.data as *byte, text.length, seed);
+}
+
+func Main() -> int {
+    // The published vectors, seeded with zero.
+    Assert(XxHash64Of(null, 0) == 0xEF46DB3751D8E999, "xxHash64 of the empty input");
+    Assert(Hash("a") == 0xD24EC4F1A98C6E5B, "xxHash64 of 'a'");
+    Assert(Hash("abc") == 0x44BC2CF5AD770999, "xxHash64 of 'abc'");
+    Assert(Hash("123456789") == 0x8CB841DB40E6AE83, "xxHash64 of the nine digits");
+
+    // Long enough to run the block path, which the short inputs above never touch.
+    Assert(Hash("The quick brown fox jumps over the lazy dog") == 0x0B242D361FDA71BC, "xxHash64 of the pangram");
+    Assert(Hash("0123456789abcdefghijklmnopqrstuvwxyz") == 0x69196C1B3AF0BFF9, "xxHash64 of thirty-six bytes");
+
+    // A seed changes the answer, including for the empty input, where nothing but the seed is mixed in at all.
+    Assert(Seeded("", 1) == 0xD5AFBA1336A3BE4B, "a seeded empty input");
+    Assert(Seeded("abc", 1) == 0xBEA9CA8199328908, "and a seeded short one");
+    Assert(Seeded("abc", 1) != Hash("abc"), "a seed really changes the answer");
+
+    let pangram: Slice<char8> = "The quick brown fox jumps over the lazy dog";
+    let bytes = pangram.data as *byte;
+    let length = pangram.length;
+    let expected = 0x0B242D361FDA71BCu64;
+
+    // Every possible split into two writes must agree with one write. This is what the pending block exists for, and
+    // the boundaries either side of thirty-two bytes are where an off-by-one would live.
+    var cut: uint = 0;
+    while cut <= length {
+        var streamed = XxHash64::New();
+        streamed.Write(bytes, cut);
+        streamed.Write(bytes + cut, length - cut);
+        Assert(streamed.Finish() == expected, "splitting the writes anywhere gives the same answer");
+        cut++;
+    }
+
+    // One byte at a time is the extreme case of the same property.
+    var byByte = XxHash64::New();
+    var index: uint = 0;
+    while index < length {
+        byByte.Write(bytes + index, 1);
+        index++;
+    }
+    Assert(byByte.Finish() == expected, "and so does writing one byte at a time");
+
+    // A zero-length write changes nothing, wherever it lands.
+    var padded = XxHash64::New();
+    padded.Write(null, 0);
+    padded.Write(bytes, 16);
+    padded.Write(null, 0);
+    padded.Write(bytes + 16, length - 16);
+    padded.Write(null, 0);
+    Assert(padded.Finish() == expected, "a zero-length write changes nothing");
+
+    // Exactly one block, and one byte either side of it, since that is where the short and long paths part.
+    let full: Slice<char8> = "0123456789abcdefghijklmnopqrstuv";
+    Assert(full.length == XxBlockSize, "the block-sized input really is one block");
+    let block = full.data as *byte;
+    Assert(XxHash64Of(block, XxBlockSize) == Hash("0123456789abcdefghijklmnopqrstuv"), "one whole block hashes");
+    Assert(XxHash64Of(block, XxBlockSize - 1) != XxHash64Of(block, XxBlockSize), "one byte short is a different hash");
+    Assert(XxHash64Of(block, 1) != XxHash64Of(block, 2), "and so is one byte against two");
+
+    var blockStream = XxHash64::New();
+    blockStream.Write(block, XxBlockSize);
+    Assert(blockStream.Finish() == XxHash64Of(block, XxBlockSize), "a block written whole agrees with one shot");
+
+    var blockSplit = XxHash64::New();
+    blockSplit.Write(block, XxBlockSize - 1);
+    blockSplit.Write(block + XxBlockSize - 1, 1);
+    Assert(blockSplit.Finish() == XxHash64Of(block, XxBlockSize), "and a block completed by its last byte agrees too");
+
+    // Finishing does not consume, and writing afterwards continues rather than restarting.
+    var kept = XxHash64::New();
+    kept.Write(bytes, 20);
+    let partial = kept.Finish();
+    Assert(kept.Finish() == partial, "finishing twice gives the same answer");
+    Assert(partial == XxHash64Of(bytes, 20), "and agrees with hashing that much at once");
+    kept.Write(bytes + 20, length - 20);
+    Assert(kept.Finish() == expected, "and writing afterwards continues from there");
+
+    // A reset starts over and keeps the seed.
+    var seeded = XxHash64::WithSeed(1);
+    seeded.Write(bytes, length);
+    let seededResult = seeded.Finish();
+    Assert(seededResult != expected, "a seeded stream differs from an unseeded one");
+    seeded.Reset();
+    Assert(seeded.Finish() == Seeded("", 1), "a reset returns to the empty input for that seed");
+    seeded.Write(bytes, length);
+    Assert(seeded.Finish() == seededResult, "and hashing again agrees with the first time");
+
+    // Usable through the bound, which is what puts it in generic code.
+    var bounded = XxHash64::New();
+    Assert(HashBytes<XxHash64>(@bounded, bytes, length) == expected, "xxHash64 is usable through the hashing bound");
+
+    // Different inputs give different hashes, including ones that differ only in order or in length.
+    Assert(Hash("abcd") != Hash("abdc"), "order matters");
+    Assert(Hash("abc") != Hash("abcd"), "and so does length");
+    Assert(Hash("The quick brown fox jumps over the lazy dof") != expected, "and one changed byte changes everything");
+
+    return 0;
+}
