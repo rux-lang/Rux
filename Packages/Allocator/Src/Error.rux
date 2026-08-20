@@ -1,0 +1,56 @@
+// Why an allocation did not happen.
+//
+// An allocator that fails has to say so in a way the caller can act on, and "null" is not that: it cannot tell a
+// request that was too large from one the system refused from one the allocator was never able to serve. These are
+// the four answers, and every allocator in this package gives one of them.
+//
+// `None` is the success case. It is in the same enum rather than in a separate result type because an allocation
+// reports through an out-parameter and a status, which keeps the whole surface free of generic machinery and lets a
+// caller write `if error != AllocError::None` without unwrapping anything.
+
+/// Why an allocation, reallocation or release did not do what was asked.
+///
+/// https://rux-lang.dev/docs/api/allocator/alloc-error
+enum AllocError: uint8 {
+    /// Nothing went wrong. A successful call reports this, so it is not an error case.
+    None = 0,
+    /// The layout cannot be served by this allocator at all: an alignment stricter than it can give, or a size it
+    /// could never hold. A different allocator might succeed; retrying with this one will not.
+    Unsupported = 1,
+    /// The allocator has no storage left. A smaller request might succeed, and so might this one later.
+    OutOfMemory = 2,
+    /// The arguments do not describe an allocation this allocator handed out -- a pointer it did not give, or a
+    /// layout that does not match the one it was given with. This is a caller's mistake rather than a shortage.
+    InvalidBlock = 3
+}
+
+extend AllocError {
+    /// Whether this is the success case.
+    ///
+    /// `self` is borrowed. Reads better at a call site than comparing against `None`, and says which way the test
+    /// runs without the reader having to remember that zero means success here.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
+    func IsOk(self: *AllocError) -> bool {
+        return *self == AllocError::None;
+    }
+
+    /// Whether this is any of the failure cases.
+    ///
+    /// `self` is borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
+    func IsError(self: *AllocError) -> bool {
+        return *self != AllocError::None;
+    }
+
+    /// Whether a later attempt could plausibly succeed.
+    ///
+    /// `self` is borrowed. True only for `OutOfMemory`, which is a shortage rather than a mistake: `Unsupported` and
+    /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-transient
+    func IsTransient(self: *AllocError) -> bool {
+        return *self == AllocError::OutOfMemory;
+    }
+}

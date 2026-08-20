@@ -1,0 +1,21 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Allocator"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Allocation contracts and the allocators that meet them"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Allocator", "Memory", "Arena", "Box", "Rux"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/allocator"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Memory = { Namespace = "Rux", Version = "0.1.0" }

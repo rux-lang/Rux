@@ -5,6 +5,7 @@ MinRux = "0.4.0"
 [Workspace]
 Packages = [
     "Packages/Algorithms",
+    "Packages/Allocator",
     "Packages/C",
     "Packages/Collections",
     "Packages/Core",

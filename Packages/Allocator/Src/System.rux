@@ -1,0 +1,213 @@
+// The allocator that asks the operating system, and is the one everything else falls back to.
+//
+// It is built on `Rux/Memory`'s page layer rather than on a C heap, which is what lets it honour an alignment
+// stricter than a machine word: pages come aligned to a page, and a header placed before the returned address
+// records what has to be given back.
+//
+// The header is why a release needs its layout. The block handed to the caller is not the block taken from the
+// system -- there is a header before it and padding before that -- and the header holds the length to release. Both
+// the layout and the header are checked against each other, so a mismatched release is reported rather than
+// corrupting the next allocation.
+//
+// This is a page-granular allocator, so a small allocation costs a whole page. That is the right shape for the
+// backing store of an arena or a pool, and the wrong one for a program allocating many small values directly --
+// which is what the arena and pool allocators in this package exist for.
+
+import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout };
+import Core::Assert;
+import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageError, PageRead, PageRelease, PageWrite };
+
+/// What a system allocation records about itself, immediately before the address the caller sees.
+///
+/// Never constructed by a caller. The magic is checked on release, which is what turns a mismatched or foreign
+/// pointer into a reported `InvalidBlock` rather than a corrupted heap.
+///
+/// https://rux-lang.dev/docs/api/allocator/system-block-header
+struct SystemBlockHeader {
+    /// A fixed pattern, checked on release.
+    magic: uint64;
+    /// The address the page layer gave, which is what has to be released.
+    base: uint;
+    /// The length the page layer was given, which is what it has to be released with.
+    length: uint;
+    /// The size the caller asked for, checked against the layout on release.
+    size: uint;
+}
+
+/// The pattern a valid system block header carries.
+///
+/// Chosen to be unlikely in ordinary data, so a pointer that was never one of these is very unlikely to look like
+/// one. This is a check against a mistake, not against an adversary.
+///
+/// https://rux-lang.dev/docs/api/allocator/system-block-magic
+const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
+
+/// An allocator that asks the operating system for pages.
+///
+/// Carries no state: every instance behaves identically, and one may be created wherever it is needed rather than
+/// passed around. It is `Copy` for that reason.
+///
+/// Page-granular, so a small allocation costs a whole page. Use it as the backing store for an arena or a pool
+/// rather than for many small values directly.
+///
+/// https://rux-lang.dev/docs/api/allocator/system-allocator
+struct SystemAllocator {
+    /// Present so the type is not empty; carries nothing and is never read.
+    reserved: uint8;
+}
+
+extend SystemAllocator {
+    /// An allocator that asks the operating system.
+    ///
+    /// Takes nothing and returns the allocator by copy. Cannot fail and allocates nothing: the storage comes when a
+    /// layout is asked for, not now.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/system-allocator/new
+    func New() -> SystemAllocator {
+        return SystemAllocator { reserved: 0 };
+    }
+}
+
+extend SystemAllocator : Allocator {
+    /// Takes storage matching `layout` from the operating system.
+    ///
+    /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
+    /// takes nothing from the system.
+    ///
+    /// Reports `Unsupported` for an alignment larger than the total the request would occupy, `OutOfMemory` when the
+    /// system refuses.
+    ///
+    /// # Safety
+    ///
+    /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
+    func Allocate(self: *var SystemAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+        if layout.size == 0 {
+            *result = EmptyBlockAddress();
+            return AllocError::None;
+        }
+
+        // The header sits immediately before the caller's address, and the caller's address has to satisfy the
+        // layout, so the space reserved before it is the header rounded up to the alignment.
+        let headerSize = sizeof(SystemBlockHeader);
+        let prefix = AlignUp(headerSize, layout.alignment);
+        if prefix < headerSize {
+            return AllocError::Unsupported;
+        }
+        var total: uint = 0;
+        if AlignUpChecked(layout.size, layout.alignment, @total) {
+            return AllocError::Unsupported;
+        }
+        if total > uint::Max - prefix {
+            return AllocError::Unsupported;
+        }
+        total = total + prefix;
+
+        let length = PageAlign(total);
+        if length < total {
+            return AllocError::Unsupported;
+        }
+
+        var base: *var opaque = null;
+        let pageError = PageAllocate(length, PageRead | PageWrite, @base);
+        if pageError != PageError::None {
+            return pageError == PageError::OutOfMemory ? AllocError::OutOfMemory : AllocError::Unsupported;
+        }
+
+        let address = (base as uint) + prefix;
+        let header = (address - headerSize) as *var SystemBlockHeader;
+        header.magic = SystemBlockMagic;
+        header.base = base as uint;
+        header.length = length;
+        header.size = layout.size;
+        *result = address as *var opaque;
+        return AllocError::None;
+    }
+
+    /// Gives the storage behind `block` back to the operating system.
+    ///
+    /// `layout` must equal the one the block was allocated with. Reports `InvalidBlock` when the header is not
+    /// there or does not agree with the layout, which catches a foreign pointer and a mismatched size before either
+    /// reaches the page layer.
+    ///
+    /// # Safety
+    ///
+    /// Every pointer into the block becomes invalid.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
+    func Deallocate(self: *var SystemAllocator, block: *var opaque, layout: Layout) -> AllocError {
+        if layout.size == 0 {
+            return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
+        }
+        if block == null || IsEmptyBlock(block) {
+            return AllocError::InvalidBlock;
+        }
+
+        let headerSize = sizeof(SystemBlockHeader);
+        let header = ((block as uint) - headerSize) as *var SystemBlockHeader;
+        if header.magic != SystemBlockMagic || header.size != layout.size {
+            return AllocError::InvalidBlock;
+        }
+        header.magic = 0;
+        return PageRelease(header.base as *var opaque, header.length) == PageError::None
+                 ? AllocError::None
+                 : AllocError::InvalidBlock;
+    }
+
+    /// Changes the size of a block by taking a new one and copying what fits.
+    ///
+    /// The two layouts must share an alignment; anything else reports `Unsupported` rather than moving the block to
+    /// a different one. On success the original block is released and `result` holds the new address, which is
+    /// generally not the old one.
+    ///
+    /// This allocator never grows a block in place, even when the page it sits in has room: doing so would need a
+    /// free-list it deliberately does not keep.
+    ///
+    /// # Safety
+    ///
+    /// The old pointer is invalid once this succeeds. On failure it is untouched and still the caller's.
+    ///
+    /// https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
+    func Reallocate(self: *var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError {
+        if oldLayout.alignment != newLayout.alignment {
+            return AllocError::Unsupported;
+        }
+        if oldLayout.size == newLayout.size {
+            *result = block;
+            return AllocError::None;
+        }
+
+        var fresh: *var opaque = null;
+        let error = self.Allocate(newLayout, @fresh);
+        if error != AllocError::None {
+            return error;
+        }
+        let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
+        CopyBlock(fresh, block, keep);
+
+        let released = self.Deallocate(block, oldLayout);
+        if released != AllocError::None {
+            // The new block is good and the old one could not be released. Reporting the release failure would
+            // leave the caller holding an address it was never told about, so the allocation stands and the leak is
+            // the lesser outcome.
+            *result = fresh;
+            return AllocError::None;
+        }
+        *result = fresh;
+        return AllocError::None;
+    }
+}
+
+// Copying is spelled out here rather than taken from `Rux/Memory` because that module's `Copy` takes a `*opaque`
+// source, and a block being reallocated is `*var opaque` -- the cast is the whole of the difference.
+func CopyBlock(destination: *var opaque, source: *var opaque, length: uint) {
+    let target = destination as *var byte;
+    let origin = source as *byte;
+    var offset: uint = 0;
+    while offset < length {
+        *(target + offset) = *(origin + offset);
+        offset++;
+    }
+}
