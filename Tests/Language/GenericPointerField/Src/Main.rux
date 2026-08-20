@@ -1,0 +1,71 @@
+import Core::Assert;
+
+// Reaching a field of a generic instantiation through a pointer to it.
+//
+// The type arguments are spelled in the name of the type that carries them, and a pointer has no name of its own.
+// Reading them off the pointer found none, so the instantiation was treated as the bare declaration and its fields
+// were still spelled in the type parameters -- which resolve to nothing outside the declaration. The result was a
+// pair of errors that contradicted each other: the parameter's type is unknown, and the struct has no field, listing
+// the field it does not have.
+//
+// Nothing inside an `extend` block ever saw it, because there the parameters are in scope and resolve to themselves.
+// It took a plain function holding a pointer to a concrete instantiation, which is exactly what a linked structure
+// hands out.
+
+struct Node<T> {
+    value: T;
+    next: *var Node<T>;
+}
+
+struct Pair<T, U> {
+    left: T;
+    right: U;
+}
+
+// A pointer to an instantiation, in a function that is not generic at all.
+func Total(node: *var Node<int32>) -> int32 {
+    var sum: int32 = 0;
+    var walk = node;
+    while walk != null {
+        sum = sum + walk.value;
+        walk = walk.next;
+    }
+    return sum;
+}
+
+// A field written through the pointer, so the offset is used for a store and not only a load.
+func Double(node: *var Node<int32>) {
+    node.value = node.value * 2i32;
+}
+
+// Both parameters of a two-parameter instantiation, in a fixed order, so a substitution that used the wrong one
+// would land on the wrong type rather than nowhere.
+func Combine(pair: *Pair<int32, int64>) -> int64 {
+    return (pair.left as int64) + pair.right;
+}
+
+// A pointer to an instantiation whose argument is itself an instantiation.
+func Inner(nested: *var Node<Pair<int32, int64>>) -> int64 {
+    return (nested.value.left as int64) + nested.value.right;
+}
+
+func Main() -> int {
+    var third = Node<int32> { value: 3, next: null };
+    var second = Node<int32> { value: 2, next: @third };
+    var first = Node<int32> { value: 1, next: @second };
+
+    Assert(Total(@first) == 6, "a field is read through a pointer to an instantiation");
+    Assert(first.next.next.value == 3, "and through a chain of them");
+
+    Double(@second);
+    Assert(second.value == 4, "a field is written through one too");
+    Assert(Total(@first) == 8, "and the write is the one the caller sees");
+
+    var pair = Pair<int32, int64> { left: 7, right: 11i64 };
+    Assert(Combine(@pair) == 18i64, "both arguments of a two-parameter instantiation substitute");
+
+    var nested = Node<Pair<int32, int64>> { value: Pair<int32, int64> { left: 4, right: 5i64 }, next: null };
+    Assert(Inner(@nested) == 9i64, "an argument that is itself an instantiation substitutes");
+
+    return 0;
+}
