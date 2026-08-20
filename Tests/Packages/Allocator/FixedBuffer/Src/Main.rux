@@ -1,0 +1,125 @@
+import Allocator::{ AllocError, Allocator, FixedBuffer, FixedBufferHandle, IsEmptyBlock, Layout };
+import Core::Assert;
+import Memory::IsPointerAligned;
+
+// A fixed-buffer allocator never asks anyone for storage, so what is checked is that it hands out exactly what the
+// buffer holds, that it aligns what it hands out and counts the padding, that it says `OutOfMemory` rather than
+// going past the end, and that a reset makes the whole buffer available again.
+
+func Main() -> int {
+    // The buffer is a local array, so nothing here allocates at all.
+    var storage: byte[512];
+    var buffer = FixedBuffer::New(@storage[0] as *var opaque, 512);
+    Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
+    Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
+
+    var handle = buffer.Handle();
+    let allocator: Allocator = handle;
+
+    // A zero-sized layout costs the buffer nothing.
+    let zero = Layout::New(0, 8).ValueOr(Layout { size: 0, alignment: 1 });
+    var empty: *var opaque = null;
+    Assert(allocator.Allocate(zero, @empty) == AllocError::None, "a zero-sized allocation succeeds");
+    Assert(IsEmptyBlock(empty), "and gives the shared empty block");
+    Assert(buffer.BytesUsed() == 0, "without consuming any of the buffer");
+
+    // The first request comes out of the front of the buffer.
+    let small = Layout::New(32, 8).ValueOr(zero);
+    var first: *var opaque = null;
+    Assert(allocator.Allocate(small, @first) == AllocError::None, "the first allocation succeeds");
+    Assert(first != null, "and reports an address");
+    Assert(buffer.BytesUsed() == 32, "consuming exactly what was asked for");
+    Assert(buffer.BytesRemaining() == 480, "and leaving the rest");
+
+    // The next one lands immediately after it, since both are already aligned.
+    var second: *var opaque = null;
+    Assert(allocator.Allocate(small, @second) == AllocError::None, "the second allocation succeeds");
+    Assert((second as uint) == (first as uint) + 32, "landing immediately after the first");
+
+    // Writing through both addresses must not disturb either.
+    let firstBytes = first as *var uint64;
+    let secondBytes = second as *var uint64;
+    *firstBytes = 0x0123456789ABCDEFu64;
+    *secondBytes = 0xFEDCBA9876543210u64;
+    Assert(*firstBytes == 0x0123456789ABCDEFu64, "the first allocation keeps its bytes");
+    Assert(*secondBytes == 0xFEDCBA9876543210u64, "and so does the second");
+
+    // A stricter alignment is honoured, and the padding it needs is counted as used.
+    let usedBefore = buffer.BytesUsed();
+    let aligned = Layout::New(8, 64).ValueOr(zero);
+    var strict: *var opaque = null;
+    Assert(allocator.Allocate(aligned, @strict) == AllocError::None, "a strictly aligned allocation succeeds");
+    Assert(IsPointerAligned(strict as *opaque, 64), "and satisfies its alignment");
+    Assert(buffer.BytesUsed() >= usedBefore + 8, "with the padding counted as used");
+    Assert((strict as uint) % 64 == 0, "the address itself is a multiple of the alignment");
+
+    // The most recent allocation is the one a release can rewind.
+    let beforeRelease = buffer.BytesUsed();
+    Assert(allocator.Deallocate(strict, aligned) == AllocError::None, "releasing the most recent succeeds");
+    Assert(buffer.BytesUsed() < beforeRelease, "and gives its space back");
+
+    // An ordinary release is accepted and does nothing, so a fixed buffer can stand in for any allocator.
+    let steady = buffer.BytesUsed();
+    Assert(allocator.Deallocate(first, small) == AllocError::None, "releasing an older block is accepted");
+    Assert(buffer.BytesUsed() == steady, "and changes nothing");
+
+    // Growing the most recent allocation extends it in place rather than moving it.
+    var grown: *var opaque = null;
+    let bigger = Layout::New(64, 8).ValueOr(zero);
+    Assert(allocator.Allocate(small, @second) == AllocError::None, "a fresh allocation to grow succeeds");
+    let growFrom = buffer.BytesUsed();
+    Assert(allocator.Reallocate(second, small, bigger, @grown) == AllocError::None, "growing the most recent succeeds");
+    Assert((grown as uint) == (second as uint), "without moving it");
+    Assert(buffer.BytesUsed() == growFrom + 32, "taking only the difference");
+
+    // Reallocating across alignments is refused rather than quietly moving the block.
+    var moved: *var opaque = null;
+    let realigned = Layout::New(64, 32).ValueOr(zero);
+    Assert(allocator.Reallocate(grown, bigger, realigned, @moved) == AllocError::Unsupported,
+           "changing the alignment of a block is refused");
+
+    // Exhaustion: requests until the buffer says no, and it must say no rather than pass the end.
+    var taken: uint = 0;
+    var guard: uint = 0;
+    var last: *var opaque = null;
+    var error = AllocError::None;
+    while guard < 64 {
+        var block: *var opaque = null;
+        error = allocator.Allocate(small, @block);
+        if error != AllocError::None {
+            break;
+        }
+        last = block;
+        Assert((block as uint) >= (@storage[0] as uint), "every block is inside the buffer");
+        Assert((block as uint) + 32 <= (@storage[0] as uint) + 512, "and never passes its end");
+        taken++;
+        guard++;
+    }
+    Assert(error == AllocError::OutOfMemory, "the buffer runs out rather than passing its end");
+    Assert(taken > 0, "after handing out what it had");
+    Assert(buffer.BytesUsed() <= 512, "never having counted more used than it holds");
+
+    // Once exhausted it stays exhausted, and a zero-sized request still works.
+    var again: *var opaque = null;
+    Assert(allocator.Allocate(small, @again) == AllocError::OutOfMemory, "an exhausted buffer keeps refusing");
+    Assert(allocator.Allocate(zero, @again) == AllocError::None, "but a zero-sized request still succeeds");
+
+    // A reset makes the whole buffer available again.
+    buffer.Reset();
+    Assert(buffer.BytesUsed() == 0, "a reset rewinds everything");
+    Assert(buffer.BytesRemaining() == 512, "making the whole buffer available");
+    var afterReset: *var opaque = null;
+    Assert(allocator.Allocate(small, @afterReset) == AllocError::None, "and allocation works again");
+    Assert((afterReset as uint) == (first as uint), "starting from the front of the buffer once more");
+
+    // An allocator over no storage is a usable allocator that refuses everything.
+    var none = FixedBuffer::New(null, 4096);
+    Assert(none.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
+    var noneHandle = none.Handle();
+    let empties: Allocator = noneHandle;
+    var refused: *var opaque = null;
+    Assert(empties.Allocate(small, @refused) == AllocError::OutOfMemory, "and refuses every request");
+    Assert(empties.Allocate(zero, @refused) == AllocError::None, "except a zero-sized one");
+
+    return 0;
+}

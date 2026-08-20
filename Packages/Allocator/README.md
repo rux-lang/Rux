@@ -18,6 +18,8 @@ rux add Rux/Allocator
 | `System`   | `SystemAllocator`, which asks the operating system for pages               |
 | `Box`      | `Box<T>`, one heap value with exactly one owner                             |
 | `Arena`    | `Arena`, which advances a pointer and reclaims everything at once           |
+| `FixedBuffer` | `FixedBuffer`, which hands out storage the caller already has            |
+| `Pool`     | `Pool`, which serves small blocks from per-class free lists                 |
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
@@ -59,6 +61,22 @@ its arena, and nothing checks that.
 An arena accepts a release rather than refusing one, so it can stand in for any allocator in generic code that
 releases what it takes. Ordinary releases do nothing; the most recent allocation is rewound, which is what lets a
 growing collection in an arena avoid wasting every earlier size it passed through.
+
+A `FixedBuffer` is the arena's shape without the arena's appetite: it hands out storage the caller already has,
+never asks anyone for more, and reports `OutOfMemory` when the buffer runs out. That makes it the allocator for the
+places where allocation must not happen — a fixed working set, a signal-safe path, a target with no allocator
+underneath at all. It owns nothing and has no destructor, but it does have state, so it is used through
+`FixedBuffer::Handle` for the same reason an arena is: an allocator copied while it is in use would hand out the same
+storage twice.
+
+A `Pool` is for the other shape — many small values whose lives end at different times and in no particular order.
+A request is rounded up to one of five power-of-two classes, each keeping its own free list, so both allocation and
+release are a pointer swap with no search and no coalescing. A class that runs dry takes one chunk from a backing
+allocator and carves it, so the backing allocator sees one request per chunk rather than one per block. Rounding up
+is what pays for the speed: a 17-byte request occupies a 32-byte block, and those 15 bytes are not recoverable until
+the chunk is released. A request too large for the largest class, or needing a stricter alignment than a chunk is
+taken at, goes straight to the backing allocator — decided from the layout alone, so a release reaches the same
+conclusion as its allocation without the pool recording anything per block.
 
 `SystemAllocator` is page-granular, so a small allocation costs a whole page. It is the backing store for an arena or
 a pool rather than the allocator a program uses for many small values directly.
