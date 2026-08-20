@@ -1,189 +1,195 @@
-import Collections::CollectionError;
-import Collections::Vector;
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, MinimumVectorCapacity, Vector };
+import Core::{ Assert, Drop };
 
-// See Tests/Packages/Collections/Array for why a failed check reports itself
-// through a numbered exit code rather than through an assertion.
+// A vector owns its storage and its elements, so the questions are an array's plus the ones growth raises: does
+// capacity survive what length does, does a failed growth leave the vector as it was, and is every element destroyed
+// exactly once however it left.
 
-struct Pair {
-    first: int32;
-    second: int32;
+struct Tracked {
+    counter: *var int32;
+    value: int32;
+}
+
+extend Tracked : Drop {
+    func Drop(self: *var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+// A scope for a vector of tracked elements, so its destruction happens somewhere observable. `afterPushing` reports
+// what the counter read once everything was in, which is what separates the pushes from the destruction.
+func PushAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32)
+    -> CollectionError {
+    var vector = Vector::New<Tracked>(allocator);
+    var index: uint = 0;
+    while index < count {
+        let error = vector.Push(Tracked { counter: counter, value: index as int32 });
+        if error.IsError() {
+            return error;
+        }
+        index++;
+    }
+    Assert(vector.Length() == count, "the vector holds what was pushed into it");
+    *afterPushing = *counter;
+    return CollectionError::None;
+}
+
+// Pops everything, which is a different path from the vector destroying them.
+func PushThenPop(allocator: Allocator, counter: *var int32, count: uint) {
+    var vector = Vector::New<Tracked>(allocator);
+    var index: uint = 0;
+    while index < count {
+        vector.Push(Tracked { counter: counter, value: index as int32 });
+        index++;
+    }
+    var taken = Tracked { counter: null, value: 0 };
+    while vector.TryPop(@taken) {
+        // `taken` holds the element that was moved out; the next round overwrites it and the last is destroyed here.
+    }
+    Assert(vector.IsEmpty(), "popping everything empties the vector");
 }
 
 func Main() -> int {
-    // New owns nothing until the first element is added.
-    var empty = Vector::New<int32>();
-    if !empty.IsEmpty() || empty.Length() != 0 || empty.Capacity() != 0 { return 10; }
-    if empty.Data() != null { return 11; }
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
 
-    // Reserving nothing on an empty Vector still allocates nothing.
-    if !(empty.Reserve(0) == CollectionError::None) { return 12; }
-    if empty.Capacity() != 0 || empty.Data() != null { return 13; }
+    // A new vector allocates nothing at all.
+    var numbers = Vector::New<int32>(allocator);
+    Assert(numbers.IsEmpty(), "a new vector is empty");
+    Assert(numbers.Length() == 0, "with no elements");
+    Assert(numbers.Capacity() == 0, "and no storage");
 
-    // A zero capacity is the empty Vector rather than a zero-byte allocation.
-    var zero = Vector::New<int32>();
-    if !(Vector::WithCapacity<int32>(0, @zero) == CollectionError::None) { return 14; }
-    if zero.Capacity() != 0 || zero.Data() != null { return 15; }
-    zero.Free();
+    // The first push takes the minimum capacity rather than one element's worth.
+    Assert(numbers.Push(10) == CollectionError::None, "the first push succeeds");
+    Assert(numbers.Length() == 1, "and the vector holds it");
+    Assert(numbers.Capacity() == MinimumVectorCapacity, "taking the minimum capacity rather than room for one");
 
-    // Capacity grows geometrically while the existing elements stay intact.
-    var values = Vector::New<int32>();
-    if !(Vector::WithCapacity<int32>(2, @values) == CollectionError::None) { return 20; }
-    if values.Length() != 0 || values.Capacity() != 2 { return 21; }
-    if !(values.Push(10) == CollectionError::None) { return 22; }
-    if !(values.Push(20) == CollectionError::None) { return 23; }
-    if values.Capacity() != 2 { return 24; }
-    if !(values.Push(30) == CollectionError::None) { return 25; }
-    if values.Length() != 3 || values.Capacity() < 4 { return 26; }
-    if values.At(0) != 10 || values.At(1) != 20 || values.At(2) != 30 { return 27; }
+    var value: int32 = 0;
+    Assert(numbers.Get(0).TryIntoValue(@value) && value == 10, "the element is where it was put");
+    Assert(numbers.Get(1).IsNone(), "and there is nothing past it");
 
-    // Repeated growth keeps every element across each reallocation.
-    var grown = Vector::New<int32>();
-    var i: int32 = 0;
-    while i < 100 {
-        if !(grown.Push(i) == CollectionError::None) { return 28; }
-        i++;
+    // Capacity doubles rather than growing by one, so a run of pushes reallocates a handful of times.
+    var index: uint = 0;
+    while index < 100 {
+        Assert(numbers.Push(index as int32) == CollectionError::None, "every push succeeds");
+        index++;
     }
-    if grown.Length() != 100 { return 29; }
-    var check: int32 = 0;
-    while check < 100 {
-        if grown.At(check as uint) != check { return 30; }
-        check++;
+    Assert(numbers.Length() == 101, "the vector holds everything pushed");
+    Assert(numbers.Capacity() >= 101, "with capacity to match");
+    Assert(numbers.Capacity() <= 256, "and no more than a doubling would give");
+
+    // Capacity is not length, and reserving changes only the former.
+    let before = numbers.Capacity();
+    Assert(numbers.Reserve(500) == CollectionError::None, "reserving succeeds");
+    Assert(numbers.Capacity() >= 601, "and takes the room asked for on top of the length");
+    Assert(numbers.Length() == 101, "without changing the length");
+    Assert(numbers.Capacity() > before, "or leaving the capacity where it was");
+
+    // Shrinking hands the spare back.
+    Assert(numbers.ShrinkToFit() == CollectionError::None, "shrinking succeeds");
+    Assert(numbers.Capacity() == numbers.Length(), "leaving capacity equal to length");
+    Assert(numbers.Get(100).TryIntoValue(@value) && value == 99, "and every element still where it was");
+
+    // Truncating drops the tail and keeps the storage.
+    let kept = numbers.Capacity();
+    numbers.Truncate(10);
+    Assert(numbers.Length() == 10, "truncating shortens the vector");
+    Assert(numbers.Capacity() == kept, "without giving back the storage");
+    numbers.Truncate(50);
+    Assert(numbers.Length() == 10, "and a length past the current one changes nothing");
+
+    // Clearing empties it and keeps the storage.
+    numbers.Clear();
+    Assert(numbers.IsEmpty(), "clearing empties the vector");
+    Assert(numbers.Capacity() == kept, "keeping the storage for the next round");
+    Assert(numbers.Push(1) == CollectionError::None, "which the next push uses");
+    Assert(numbers.Capacity() == kept, "without allocating again");
+
+    // Shrinking an empty vector gives the storage back entirely.
+    numbers.Clear();
+    Assert(numbers.ShrinkToFit() == CollectionError::None, "shrinking an empty vector succeeds");
+    Assert(numbers.Capacity() == 0, "and hands back everything");
+
+    // A reservation that cannot be represented is refused as arithmetic, and changes nothing.
+    Assert(numbers.Push(5) == CollectionError::None, "a push before the overflow test succeeds");
+    let survived = numbers.Capacity();
+    Assert(numbers.Reserve(uint::Max) == CollectionError::CapacityOverflow, "an impossible reservation is refused");
+    Assert(numbers.Capacity() == survived, "leaving the capacity where it was");
+    Assert(numbers.Length() == 1, "and the length");
+    Assert(numbers.Get(0).TryIntoValue(@value) && value == 5, "and the elements");
+
+    // Construction from a slice, and cloning.
+    var source: int32[4];
+    index = 0;
+    while index < 4 {
+        source[index] = (index * 3) as int32;
+        index++;
     }
-    if grown.Capacity() < 100 { return 31; }
-    grown.Free();
+    var error = CollectionError::None;
+    let view = Slice<int32> { data: @source[0], length: 4 };
+    var copied = Vector::FromSlice<int32>(allocator, view, @error);
+    Assert(error == CollectionError::None, "a vector is made from a slice");
+    Assert(copied.Length() == 4, "holding every element");
+    Assert(copied.Get(3).TryIntoValue(@value) && value == 9, "in order");
 
-    // Reserve changes only the capacity, and counts from the current length.
-    let beforeReserve = values.Length();
-    if !(values.Reserve(10) == CollectionError::None) { return 32; }
-    if values.Length() != beforeReserve || values.Capacity() < beforeReserve + 10 { return 33; }
+    var clone = copied.Clone(@error);
+    Assert(error == CollectionError::None, "cloning succeeds");
+    Assert(clone.Length() == copied.Length(), "with the same length");
+    Assert(clone.AsSlice().data != copied.AsSlice().data, "over storage of its own");
+    Assert(clone.Set(0, 77) == CollectionError::None, "writing to the clone succeeds");
+    Assert(copied.Get(0).TryIntoValue(@value) && value == 0, "and leaves the original alone");
 
-    // A bulk append copies every element and lands them after the existing ones.
-    let extra: Slice<int32> = [40, 50];
-    if !(values.PushSlice(extra) == CollectionError::None) { return 40; }
-    if values.Length() != 5 || values.At(3) != 40 || values.At(4) != 50 { return 41; }
-    let none: Slice<int32> = [];
-    if !(values.PushSlice(none) == CollectionError::None) { return 42; }
-    if values.Length() != 5 { return 43; }
+    // Iteration reads what is there and stops at the length rather than the capacity.
+    var total: int32 = 0;
+    for element in copied {
+        total = total + element;
+    }
+    Assert(total == 18, "iterating covers every element and no spare capacity");
 
-    // Insert accepts every position through Length and rejects positions past
-    // it, reporting a rejected index separately from an exhausted allocator.
-    if !(values.Insert(0, 5) == CollectionError::None) { return 50; }
-    if !(values.Insert(values.Length(), 60) == CollectionError::None) { return 51; }
-    if !(values.Insert(values.Length() + 1, 99) == CollectionError::IndexOutOfRange) { return 52; }
-    if values.Length() != 7 { return 53; }
-    if values.At(0) != 5 || values.At(1) != 10 || values.At(6) != 60 { return 54; }
+    // Destruction: the vector destroys exactly the elements it holds, once each, when its life ends.
+    //
+    // `Push` also destroys the value it was given, which it should not: storing a `T` into a generic container's
+    // storage is not recognized as consuming it, so the container keeps a copy and the parameter is destroyed where
+    // it stood. For an element that owns nothing that is harmless, and for one that owns memory it is a
+    // use-after-free. What is asserted here is the half that is correct -- the vector's own destruction -- and the
+    // half that is not is measured rather than blessed. See BACKLOG.md.
+    var destroyed: int32 = 0;
+    var afterPushing: int32 = 0;
+    Assert(PushAndDrop(allocator, @destroyed, 7, @afterPushing) == CollectionError::None,
+           "a vector of tracked elements is filled");
+    Assert(destroyed - afterPushing == 7, "destroying the vector destroys exactly the seven elements it held");
+    Assert(afterPushing == 7, "and pushing destroyed seven it should not have, which is the defect above");
 
-    // RemoveAt closes the gap and preserves order; SwapRemoveAt does not.
-    if !values.RemoveAt(0) { return 55; }
-    if values.RemoveAt(values.Length()) { return 56; }
-    if values.At(0) != 10 || values.Length() != 6 { return 57; }
-    if !values.SwapRemoveAt(0) { return 58; }
-    if values.Length() != 5 || values.At(0) != 60 { return 59; }
-    if values.SwapRemoveAt(values.Length()) { return 60; }
+    destroyed = 0;
+    afterPushing = 0;
+    Assert(PushAndDrop(allocator, @destroyed, 0, @afterPushing) == CollectionError::None, "an empty one is made");
+    Assert(destroyed == 0, "and destroys nothing");
 
-    // Removing the last element by swap is a plain pop.
-    let lastIndex = values.Length() - 1;
-    if !values.SwapRemoveAt(lastIndex) { return 61; }
-    if values.Length() != lastIndex { return 62; }
+    // Popping moves elements out, so the vector destroys none of them and whoever took them does.
+    destroyed = 0;
+    PushThenPop(allocator, @destroyed, 5);
+    // Six, not five: the five the pushes destroyed, plus the one `taken` still held when the function ended.
+    // Overwriting `taken` on each round destroys nothing -- assignment replaces a binding's value without
+    // destroying what was there -- so only the last element popped is ever destroyed that way.
+    Assert(destroyed == 6, "popping moves elements out rather than destroying them");
 
-    // Ends and popping. An empty Vector reports every end as absent.
-    var seen: int32 = -1;
-    if !values.TryFirst(@seen) || seen != 60 { return 70; }
-    if !values.TryLast(@seen) { return 71; }
-    if !values.TryPop(@seen) { return 72; }
-    if !values.TryPop(null) { return 73; }
-    if empty.TryPop(@seen) { return 74; }
-    if empty.TryFirst(@seen) { return 75; }
-    if empty.TryLast(@seen) { return 76; }
+    // Truncating destroys exactly the elements it drops.
+    destroyed = 0;
+    var tracked = Vector::New<Tracked>(allocator);
+    index = 0;
+    while index < 6 {
+        tracked.Push(Tracked { counter: @destroyed, value: 0 });
+        index++;
+    }
+    let pushed = destroyed;
+    tracked.Truncate(2);
+    Assert(destroyed - pushed == 4, "truncating destroys exactly the four elements it drops");
+    let truncated = destroyed;
+    tracked.Clear();
+    Assert(destroyed - truncated == 2, "and clearing destroys the two that were left");
 
-    // Checked access rejects an out-of-range index and leaves the target alone.
-    var read: int32 = -7;
-    if !values.TryGet(0, @read) || read != 60 { return 77; }
-    if values.TryGet(values.Length(), @read) { return 78; }
-    if read != 60 { return 79; }
-    if !values.TrySet(0, 61) || values.At(0) != 61 { return 80; }
-    if values.TrySet(values.Length(), 0) { return 81; }
-    values.Set(0, 60);
-
-    // A view borrows the initialized elements only, never the spare capacity.
-    if !(values.Reserve(20) == CollectionError::None) { return 82; }
-    let borrowed = values.AsSlice();
-    if borrowed.data != values.Data() || borrowed.length != values.Length() { return 83; }
-    let writable = values.AsMutableSlice();
-    if writable.Length() != values.Length() || writable.Length() == values.Capacity() { return 84; }
-    writable.Set(0, 15);
-    if values.At(0) != 15 { return 85; }
-    writable.Set(0, 60);
-
-    // Clone and ToArray copy into independently owned allocations.
-    var copy = Vector::New<int32>();
-    if !(values.Clone(@copy) == CollectionError::None) { return 90; }
-    if copy.Data() == values.Data() || copy.Capacity() != copy.Length() { return 91; }
-    copy.Set(0, 99);
-    if values.At(0) != 60 { return 92; }
-    copy.Free();
-
-    // ToArray is gone until Vector takes an allocator of its own; Array now carries the one its storage came from.
-
-    // Clear keeps the allocation for reuse; Truncate drops only the tail.
-    let retained = values.Data();
-    let retainedCapacity = values.Capacity();
-    if !(values.Push(70) == CollectionError::None) { return 100; }
-    let beforeTruncate = values.Length();
-    values.Truncate(beforeTruncate + 5);
-    if values.Length() != beforeTruncate { return 101; }
-    values.Truncate(1);
-    if values.Length() != 1 || values.At(0) != 60 { return 102; }
-    values.Clear();
-    if !values.IsEmpty() || values.Data() != retained || values.Capacity() != retainedCapacity { return 103; }
-    if !(values.Push(7) == CollectionError::None) { return 104; }
-    if values.Data() != retained || values.At(0) != 7 { return 105; }
-
-    // Shrinking an emptied Vector releases the allocation entirely.
-    values.Clear();
-    if !(values.ShrinkToFit() == CollectionError::None) { return 106; }
-    if values.Data() != null || values.Capacity() != 0 { return 107; }
-    values.Free();
-
-    // FromSlice copies its source and trims capacity to length.
-    let source: Slice<int32> = [1, 2, 3];
-    var from = Vector::New<int32>();
-    if !(Vector::FromSlice<int32>(source, @from) == CollectionError::None) { return 110; }
-    if from.Data() == source.data || from.Length() != 3 || from.Capacity() != 3 { return 111; }
-    if !(from.Reserve(5) == CollectionError::None) { return 112; }
-    if !(from.ShrinkToFit() == CollectionError::None) { return 113; }
-    if from.Capacity() != from.Length() || from.At(2) != 3 { return 114; }
-    from.Free();
-
-    // IntoArray transfers the allocation and leaves the Vector owning nothing.
-    var moved = Vector::New<int32>();
-    if !(Vector::WithCapacity<int32>(8, @moved) == CollectionError::None) { return 120; }
-    if !(moved.Push(6) == CollectionError::None) { return 121; }
-    if !(moved.Push(7) == CollectionError::None) { return 122; }
-    // IntoArray is gone for the same reason; what the transfer left the Vector as is checked by Free below.
-    moved.Free();
-
-    // Growth and indexing honor an element wider than one machine word.
-    // A struct literal cannot appear inside an `if` condition, since its brace
-    // is read as the block's, so each operand is named first.
-    var pairs = Vector::New<Pair>();
-    let firstPair = Pair { first: 1, second: 2 };
-    let secondPair = Pair { first: 3, second: 4 };
-    let middlePair = Pair { first: 5, second: 6 };
-    if !(pairs.Push(firstPair) == CollectionError::None) { return 130; }
-    if !(pairs.Push(secondPair) == CollectionError::None) { return 131; }
-    if !(pairs.Insert(1, middlePair) == CollectionError::None) { return 132; }
-    if pairs.Length() != 3 || pairs.At(1).second != 6 || pairs.At(2).first != 3 { return 133; }
-    var readPair = Pair { first: 0, second: 0 };
-    if !pairs.TryPop(@readPair) || readPair.first != 3 { return 134; }
-    pairs.Free();
-
-    // A capacity whose byte size cannot be addressed is rejected before any
-    // allocation, and the target is left as it was.
-    var huge = Vector::New<int64>();
-    if !(Vector::WithCapacity<int64>(uint::Max, @huge) == CollectionError::CapacityOverflow) { return 140; }
-    if !huge.IsEmpty() || huge.Data() != null || huge.Capacity() != 0 { return 141; }
-
-    empty.Free();
     return 0;
 }

@@ -1,158 +1,158 @@
-import Core::MutableSlice;
-import Memory::{ Alloc, Copy, Free, Realloc };
+// A contiguous run of elements that grows as things are appended to it.
+//
+// `Vector<T>` is the container to reach for by default. It is the stack -- `Push` and `TryPop` work at the end that
+// costs nothing to reach -- and it is what a sequence of unknown length is built into before anything else looks at
+// it. `Array<T>` is what it becomes when the length stops changing.
+//
+// A vector owns its storage and its elements, so it implements `Drop` and is move-only. Handing one to a function
+// transfers it, and reading the source afterwards is rejected while compiling. Destruction destroys every element it
+// holds and then releases the block; the spare capacity past the length holds nothing and is not touched.
+//
+// The allocator is injected at construction and kept, so a vector built from an arena disappears with the arena.
+//
+// Capacity doubles rather than growing by a constant, which is what makes a run of appends cost an amortized
+// constant each rather than a reallocation every time. Capacity is never reduced except by `ShrinkToFit`, so a
+// vector that has been large stays cheap to refill.
+//
+// Two failure shapes, as everywhere in this package: an operation that may allocate reports a `CollectionError`, and
+// one that cannot allocate reports an ordinary miss with a `bool` and an out-parameter. A reported failure means the
+// vector is exactly as it was.
 
-// Four slots is where growth starts. Below that a doubling sequence spends more
-// reallocations than it saves.
+// **A known defect, until the compiler is fixed.** Storing a `T` into a generic container's storage is not
+// recognized as consuming it, so `Push` keeps a copy and the value it was given is destroyed where it stood. For an
+// element type that owns nothing that is harmless and invisible. For one that owns memory it is a use-after-free:
+// the vector holds a copy of something whose storage the parameter's destructor already released. Until this is
+// fixed, a vector of elements that own something is not safe to build with `Push`. See BACKLOG.md.
+
+import Allocator::Allocator;
+import Core::{ Drop, MutableSlice, Option };
+
+/// The capacity a vector takes when it first has to allocate.
+///
+/// Four elements rather than one: the first few appends are the common case, and three reallocations to reach four
+/// elements is three more than the work is worth.
+///
+/// https://rux-lang.dev/docs/api/collections/minimum-vector-capacity
 const MinimumVectorCapacity: uint = 4;
 
-// A growable collection owning one contiguous heap allocation. Capacity grows
-// geometrically as elements are appended, while length counts only the
-// initialized ones.
-//
-// This is also the stack: Push and TryPop work at the end, which is the end
-// that costs nothing to reach. Deque is the double-ended counterpart, and is
-// what to reach for when elements have to leave from the front.
-//
-// Ownership is manual, because Rux has no destructors and no move semantics.
-// Assignment copies the Vector value and therefore shares its allocation, so
-// Clone when both copies must be freed, and Free exactly once for every
-// allocation. Clone copies element bytes verbatim: an element that owns a
-// resource ends up referenced by both copies, and releasing it stays the
-// element owner's job.
-//
-// Every fallible operation reports a CollectionError and leaves the receiver
-// unchanged unless it returns None. Operations that cannot allocate report an
-// ordinary miss with a bool instead, so an exhausted allocator is never
-// confused with an empty container or a rejected index.
-//
-// Any growth may move the allocation. Every pointer and every view into a
-// Vector is invalidated by Push, PushSlice, Insert, Reserve, ShrinkToFit,
-// IntoArray, and Free.
+/// A growable contiguous run of elements on storage this vector owns.
+///
+/// Move-only: it owns its elements and its storage, so it implements `Drop`.
+///
+/// https://rux-lang.dev/docs/api/collections/vector
 struct Vector<T> {
+    /// The storage. Null for a vector that has not allocated yet.
     data: *var T;
+    /// How many elements are initialized, counting from the front.
     length: uint;
+    /// How many the storage could hold. Never below `length`.
     capacity: uint;
+    /// Where the storage came from, and where it goes back to.
+    allocator: Allocator;
 }
 
 extend Vector<T> {
-    // The empty Vector. Owns nothing until the first element is added.
-    func New() -> Vector<T> {
-        return Vector<T> { data: null, length: 0, capacity: 0 };
+    /// An empty vector that has not allocated anything.
+    ///
+    /// `allocator` is borrowed for the call and kept. Costs nothing: a vector that is never pushed to never
+    /// allocates, which is what makes one cheap to have and to return.
+    ///
+    /// Cannot fail. Runs in constant time.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/new
+    func New(allocator: Allocator) -> Vector<T> {
+        return Vector<T> { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    // An empty Vector with room for `capacity` elements reserved up front, so
-    // a known number of appends does not reallocate. A zero capacity allocates
-    // nothing.
-    func WithCapacity(capacity: uint, result: *var Vector<T>) -> CollectionError {
+    /// An empty vector with room for `capacity` elements already taken.
+    ///
+    /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The
+    /// vector is empty either way -- capacity is not length -- and on failure it has no storage, so destroying it is
+    /// harmless.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/with-capacity
+    func WithCapacity(allocator: Allocator, capacity: uint, error: *var CollectionError) -> Vector<T> {
+        var vector = Vector<T> { data: null, length: 0, capacity: 0, allocator: allocator };
         if capacity == 0 {
-            *result = Vector<T> { data: null, length: 0, capacity: 0 };
-            return CollectionError::None;
+            *error = CollectionError::None;
+            return vector;
         }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(capacity, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        *result = Vector<T> { data: ptr, length: 0, capacity: capacity };
-        return CollectionError::None;
+        *error = vector.Grow(capacity);
+        return vector;
     }
 
-    // Copies a slice into an independently owned Vector whose capacity is
-    // exactly its length. The source is left untouched.
-    func FromSlice(items: Slice<T>, result: *var Vector<T>) -> CollectionError {
+    /// A vector holding a copy of every element of `items`, in order.
+    ///
+    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read; `error` is written with why the
+    /// vector could not be made. Copies its elements, so a move-only element type is built with `Push` instead.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/from-slice
+    func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Vector<T> {
+        var vector = Vector<T> { data: null, length: 0, capacity: 0, allocator: allocator };
         if items.length == 0 {
-            *result = Vector<T> { data: null, length: 0, capacity: 0 };
-            return CollectionError::None;
+            *error = CollectionError::None;
+            return vector;
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(items.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
+        let room = vector.Grow(items.length);
+        if room.IsError() {
+            *error = room;
+            return vector;
         }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
+        var index: uint = 0;
+        while index < items.length {
+            vector.data[index] = items.data[index];
+            index++;
         }
-
-        Copy(ptr, items.data, bytes);
-        *result = Vector<T> { data: ptr, length: items.length, capacity: items.length };
-        return CollectionError::None;
+        vector.length = items.length;
+        *error = CollectionError::None;
+        return vector;
     }
 
-    // An independent copy of the initialized elements, with capacity trimmed to
-    // length. Element values are copied byte for byte, so allocations owned by
-    // individual elements are shared with the original rather than duplicated.
-    func Clone(self: *Vector<T>, result: *var Vector<T>) -> CollectionError {
-        if self.length == 0 {
-            *result = Vector<T> { data: null, length: 0, capacity: 0 };
-            return CollectionError::None;
-        }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(self.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        let ptr = Alloc(bytes) as *var T;
-        if ptr == null {
-            return CollectionError::OutOfMemory;
-        }
-
-        Copy(ptr, self.data, bytes);
-        *result = Vector<T> { data: ptr, length: self.length, capacity: self.length };
-        return CollectionError::None;
+    /// An independent vector holding a copy of every element of this one.
+    ///
+    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy takes
+    /// exactly the room it needs rather than matching this one's capacity, since the spare holds nothing worth
+    /// reproducing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/clone
+    func Clone(self: *Vector<T>, error: *var CollectionError) -> Vector<T> {
+        return Vector::FromSlice<T>(self.allocator, self.AsSlice(), error);
     }
+}
 
-    // Releases the allocation and leaves the empty Vector behind, so calling
-    // Free again is a no-op.
-    func Free(self: *var Vector<T>) {
-        Free(self.data);
-        self.data = null;
-        self.length = 0;
-        self.capacity = 0;
-    }
-
-    // The allocation holding the initialized elements and the spare capacity
-    // after them, read-only. A growth may move it; Free invalidates it.
-    func Data(self: *Vector<T>) -> *T {
-        return self.data;
-    }
-
-    // The same allocation, writable.
-    func MutableData(self: *var Vector<T>) -> *var T {
-        return self.data;
-    }
-
-    // The number of initialized elements, which is not the capacity.
+extend Vector<T> {
+    /// How many elements the vector holds.
+    ///
+    /// `self` is borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/length
     func Length(self: *Vector<T>) -> uint {
         return self.length;
     }
 
-    // The number of elements the allocation holds before it has to grow.
+    /// How many elements the storage could hold without growing.
+    ///
+    /// `self` is borrowed. Never below the length, and never reduced except by `ShrinkToFit`.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/capacity
     func Capacity(self: *Vector<T>) -> uint {
         return self.capacity;
     }
 
+    /// Whether the vector holds no elements.
+    ///
+    /// `self` is borrowed. A vector with capacity and no elements is empty: capacity is not length.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/is-empty
     func IsEmpty(self: *Vector<T>) -> bool {
         return self.length == 0;
     }
 
-    // Grows the allocation to hold at least `required` elements, leaving a
-    // Vector that is already large enough alone.
+    // Grows the storage to hold at least `required` elements, leaving a vector that is already large enough alone.
     //
-    // Internal helper; not part of the package API. Reserve is the public way
-    // to ask for room, because it counts from the current length rather than
-    // from zero.
+    // Internal: `Reserve` is the public way to ask for room, because it counts from the current length rather than
+    // from zero, which is what a caller about to append that many actually means.
     func Grow(self: *var Vector<T>, required: uint) -> CollectionError {
         if required <= self.capacity {
             return CollectionError::None;
@@ -160,25 +160,18 @@ extend Vector<T> {
 
         var capacity: uint = 0;
         let planned = GrowCapacity(self.capacity, required, MinimumVectorCapacity, sizeof(T), @capacity);
-        if !(planned == CollectionError::None) {
+        if planned.IsError() {
             return planned;
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(capacity, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        // Into a local first. Memory::Realloc leaves the original block valid
-        // when it fails, so assigning its null return straight to self.data
-        // would drop the only pointer to the elements and leave a capacity the
-        // Vector does not own.
-        let resized = self.data == null
-            ? Alloc(bytes) as *var T
-            : Realloc(self.data, bytes) as *var T;
-        if resized == null {
-            return CollectionError::OutOfMemory;
+        // Into a local first. A failed reallocation leaves the original block valid and the vector's own, so writing
+        // the result straight into the field would drop the only pointer to the elements on failure.
+        var resized: *var T = null;
+        let moved = self.data == null ? AllocateBlock<T>(self.allocator, capacity, @resized)
+                                      : ReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity,
+                                                           @resized);
+        if moved.IsError() {
+            return moved;
         }
 
         self.data = resized;
@@ -186,266 +179,266 @@ extend Vector<T> {
         return CollectionError::None;
     }
 
-    // Makes room for `additional` more elements on top of those already
-    // present, without changing Length. Capacity only ever grows here;
-    // ShrinkToFit is what hands it back.
+    /// Makes room for `additional` more elements on top of those already present.
+    ///
+    /// `self` is borrowed mutably; the length does not change. Capacity only grows here; `ShrinkToFit` is what hands
+    /// it back. A failure leaves the vector exactly as it was.
+    ///
+    /// Reports `CapacityOverflow` when the current length plus `additional` cannot be represented, which is what
+    /// turns a `Reserve(uint::Max)` on a non-empty vector into a reported error rather than a silently tiny capacity.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/reserve
     func Reserve(self: *var Vector<T>, additional: uint) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
-        if !(total == CollectionError::None) {
+        if total.IsError() {
             return total;
         }
-
         return self.Grow(required);
     }
 
-    // Releases the capacity beyond Length. An empty Vector becomes
-    // allocation-free. A failure leaves the Vector usable at its current
-    // capacity.
+    /// Releases the capacity past the length.
+    ///
+    /// `self` is borrowed mutably. A vector with nothing in it gives up its storage entirely and becomes as cheap as
+    /// a new one. A failure leaves the vector usable at its current capacity, since failing to hand memory back is
+    /// never a reason to stop working.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/shrink-to-fit
     func ShrinkToFit(self: *var Vector<T>) -> CollectionError {
         if self.capacity == self.length {
             return CollectionError::None;
         }
         if self.length == 0 {
-            self.Free();
+            if self.data != null {
+                ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+                self.data = null;
+                self.capacity = 0;
+            }
             return CollectionError::None;
         }
 
-        var bytes: uint = 0;
-        let sizing = ByteSize(self.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
+        var resized: *var T = null;
+        let moved = ReallocateBlock<T>(self.allocator, self.data, self.capacity, self.length, @resized);
+        if moved.IsError() {
+            return moved;
         }
-
-        let resized = Realloc(self.data, bytes) as *var T;
-        if resized == null {
-            return CollectionError::OutOfMemory;
-        }
-
         self.data = resized;
         self.capacity = self.length;
         return CollectionError::None;
     }
 
-    // Drops every element while keeping the allocation, so the Vector can be
-    // refilled without allocating again. Free is what releases it.
+    /// Destroys every element, keeping the storage.
+    ///
+    /// `self` is borrowed mutably. The vector is empty afterwards and can be refilled without allocating again.
+    ///
+    /// Runs in time proportional to the length.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/clear
     func Clear(self: *var Vector<T>) {
-        self.length = 0;
+        self.Truncate(0);
     }
 
-    // Drops the elements past `length`, keeping the allocation. A `length` at
-    // or past the current one changes nothing, so this never grows.
-    //
-    // This is the other half of the Rux/Algorithms seam: Unique, RemoveIf,
-    // RemoveValue and Partition compact survivors toward the front and return
-    // the surviving length without resizing anything, and this is how a Vector
-    // is told about it.
+    /// Destroys the elements past `length`, keeping the storage.
+    ///
+    /// `self` is borrowed mutably. A `length` at or past the current one changes nothing, so this never grows.
+    ///
+    /// This is the other half of the `Rux/Algorithms` seam: `Unique`, `RemoveWhere`, `RemoveValue` and `Partition`
+    /// compact survivors toward the front and report the surviving length without resizing anything, and this is how
+    /// a vector is told about it.
+    ///
+    /// Runs in time proportional to how many elements go.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/truncate
     func Truncate(self: *var Vector<T>, length: uint) {
-        if length < self.length {
-            self.length = length;
+        if length >= self.length {
+            return;
+        }
+        var index = length;
+        while index < self.length {
+            // Moving each element into a local destroys it when the local's life ends -- the same mechanism `Array`
+            // uses, and the only one a container has for an element it does not know is droppable.
+            let taken = self.data[index];
+            index++;
+        }
+        self.length = length;
+    }
+}
+
+extend Vector<T> : Drop {
+    /// Destroys every element and releases the storage.
+    ///
+    /// Runs when the vector's life ends. The spare capacity past the length holds nothing and is not touched; the
+    /// elements go first and the block second, since an element destroyed after its storage was released would be
+    /// read from freed memory.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/drop
+    func Drop(self: *var Vector<T>) {
+        self.Truncate(0);
+        if self.data != null {
+            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+            self.data = null;
+            self.capacity = 0;
         }
     }
+}
 
-    // Appends one element, growing the allocation when it is full.
+extend Vector<T> {
+    /// Appends one element, growing the storage when it is full.
+    ///
+    /// `self` is borrowed mutably; `value` is read by value and moved into the vector. A failure leaves the vector
+    /// exactly as it was and the value with the caller.
+    ///
+    /// Amortized constant time: the doubling is what spreads the cost of growing across the appends that caused it.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/push
     func Push(self: *var Vector<T>, value: T) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, 1, @required);
-        if !(total == CollectionError::None) {
-            return total;
+        if self.length == self.capacity {
+            var required: uint = 0;
+            let total = AddLength(self.length, 1, @required);
+            if total.IsError() {
+                return total;
+            }
+            let room = self.Grow(required);
+            if room.IsError() {
+                return room;
+            }
         }
-
-        let grown = self.Grow(required);
-        if !(grown == CollectionError::None) {
-            return grown;
-        }
-
         self.data[self.length] = value;
-        self.length++;
+        self.length = self.length + 1;
         return CollectionError::None;
     }
 
-    // Appends every element of a slice. The slice must not borrow this
-    // Vector's own storage: the copy runs front to back and would read
-    // elements it had already overwritten.
-    //
-    // A separate name rather than an overload of Push, because Rux resolves an
-    // untyped integer literal against a single candidate but not against an
-    // overload set, so a second Push would stop `numbers.Push(1)` compiling.
+    /// Appends a copy of every element of `items`, in order.
+    ///
+    /// `self` is borrowed mutably; `items` is borrowed and read. Room for all of them is taken first, so this either
+    /// appends every element or none of them.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/push-slice
     func PushSlice(self: *var Vector<T>, items: Slice<T>) -> CollectionError {
         if items.length == 0 {
             return CollectionError::None;
         }
-
-        var required: uint = 0;
-        let total = AddLength(self.length, items.length, @required);
-        if !(total == CollectionError::None) {
-            return total;
+        let room = self.Reserve(items.length);
+        if room.IsError() {
+            return room;
         }
-
-        let grown = self.Grow(required);
-        if !(grown == CollectionError::None) {
-            return grown;
+        var index: uint = 0;
+        while index < items.length {
+            self.data[self.length + index] = items.data[index];
+            index++;
         }
-
-        var bytes: uint = 0;
-        let sizing = ByteSize(items.length, sizeof(T), @bytes);
-        if !(sizing == CollectionError::None) {
-            return sizing;
-        }
-
-        Copy(@self.data[self.length], items.data, bytes);
-        self.length = required;
+        self.length = self.length + items.length;
         return CollectionError::None;
     }
 
-    // Inserts before `index`, shifting the elements after it to the right. An
-    // index equal to Length appends; a larger one is rejected, and is reported
-    // separately from an exhausted allocator.
-    func Insert(self: *var Vector<T>, index: uint, value: T) -> CollectionError {
-        if index > self.length {
+    /// Takes the last element out of the vector.
+    ///
+    /// `self` is borrowed mutably; `value` receives the element, which is moved out rather than copied, so this is
+    /// how an element that owns something leaves a vector without being destroyed. Reports false and writes nothing
+    /// when the vector is empty.
+    ///
+    /// The storage is kept, so a vector emptied this way costs nothing to refill.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/try-pop
+    func TryPop(self: *var Vector<T>, value: *var T) -> bool {
+        if self.length == 0 || value == null {
+            return false;
+        }
+        self.length = self.length - 1;
+        *value = self.data[self.length];
+        return true;
+    }
+
+    /// The element at `index`, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the element is returned by copy.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/get
+    func Get(self: *Vector<T>, index: uint) -> Option<T> {
+        if index >= self.length {
+            return Option::None<T>();
+        }
+        return Option::Some<T>(self.data[index]);
+    }
+
+    /// A pointer to the element at `index`, or `None` when there is no such index.
+    ///
+    /// `self` is borrowed; the pointer borrows the element where it sits.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is valid until the vector grows, shrinks, or is destroyed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/reference
+    func Reference(self: *Vector<T>, index: uint) -> Option<*T> {
+        if index >= self.length {
+            return Option::None<*T>();
+        }
+        return Option::Some<*T>(@self.data[index]);
+    }
+
+    /// Replaces the element at `index` with `value`.
+    ///
+    /// `self` is borrowed mutably. Reports `IndexOutOfRange` and changes nothing when there is no such index.
+    ///
+    /// # Safety
+    ///
+    /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/set
+    func Set(self: *var Vector<T>, index: uint, value: T) -> CollectionError {
+        if index >= self.length {
             return CollectionError::IndexOutOfRange;
         }
-
-        var required: uint = 0;
-        let total = AddLength(self.length, 1, @required);
-        if !(total == CollectionError::None) {
-            return total;
-        }
-
-        let grown = self.Grow(required);
-        if !(grown == CollectionError::None) {
-            return grown;
-        }
-
-        // A backward element loop rather than Memory::Copy: that one copies
-        // front to back and would overwrite the tail while still reading it.
-        var i = self.length;
-        while i > index {
-            self.data[i] = self.data[i - 1];
-            i--;
-        }
-
         self.data[index] = value;
-        self.length++;
         return CollectionError::None;
     }
 
-    // Removes the last element and hands it back, reporting whether there was
-    // one. Capacity is retained. A null `value` discards the element rather
-    // than refusing to pop.
-    func TryPop(self: *var Vector<T>, value: *var T) -> bool {
-        if self.length == 0 {
-            return false;
-        }
-
-        self.length--;
-        if value != null {
-            *value = self.data[self.length];
-        }
-        return true;
-    }
-
-    // Reads the first element without removing it.
-    func TryFirst(self: *Vector<T>, value: *var T) -> bool {
-        if value == null || self.length == 0 {
-            return false;
-        }
-
-        *value = self.data[0];
-        return true;
-    }
-
-    // Reads the last element without removing it.
-    func TryLast(self: *Vector<T>, value: *var T) -> bool {
-        if value == null || self.length == 0 {
-            return false;
-        }
-
-        *value = self.data[self.length - 1];
-        return true;
-    }
-
-    // Removes the element at `index` and closes the gap, preserving the order
-    // of the rest. Capacity is retained so later additions reuse the
-    // allocation. Rejects an index at or past Length.
-    func RemoveAt(self: *var Vector<T>, index: uint) -> bool {
-        if index >= self.length {
-            return false;
-        }
-
-        var i = index;
-        while i + 1 < self.length {
-            self.data[i] = self.data[i + 1];
-            i++;
-        }
-
-        self.length--;
-        return true;
-    }
-
-    // Removes the element at `index` by moving the last element into its
-    // place. Constant time, and it does not preserve order — reach for
-    // RemoveAt when order matters. Removing the last element is a plain pop.
-    func SwapRemoveAt(self: *var Vector<T>, index: uint) -> bool {
-        if index >= self.length {
-            return false;
-        }
-
-        self.length--;
-        if index != self.length {
-            self.data[index] = self.data[self.length];
-        }
-        return true;
-    }
-
-    // The element at `index`. Unchecked, like pointer and slice indexing: an
-    // index at or past Length is undefined behavior, not a reported error.
-    // TryGet is the checked form.
-    func At(self: *Vector<T>, index: uint) -> T {
-        return self.data[index];
-    }
-
-    // Reads the element at `index`, reporting whether the index was in range.
-    // A rejected index leaves `value` untouched, so a caller may seed it with
-    // a fallback. A null `value` reports failure rather than reading.
-    func TryGet(self: *Vector<T>, index: uint, value: *var T) -> bool {
-        if value == null || index >= self.length {
-            return false;
-        }
-
-        *value = self.data[index];
-        return true;
-    }
-
-    // Replaces the element at `index`. Unchecked, as in At.
-    func Set(self: *var Vector<T>, index: uint, value: T) {
-        self.data[index] = value;
-    }
-
-    // Replaces the element at `index`, reporting whether it was in range. A
-    // rejected index writes nothing.
-    func TrySet(self: *var Vector<T>, index: uint, value: T) -> bool {
-        if index >= self.length {
-            return false;
-        }
-
-        self.data[index] = value;
-        return true;
-    }
-
-    // Borrows the initialized elements read-only, never the spare capacity.
-    // The view must not outlive the allocation, and any growth invalidates it.
+    /// The initialized elements as a borrowed read-only view.
+    ///
+    /// `self` is borrowed. Never the spare capacity, which holds nothing.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the vector grows, shrinks, or is destroyed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/as-slice
     func AsSlice(self: *Vector<T>) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
     }
 
-    // Borrows the initialized elements writably, again never the spare
-    // capacity. Takes a writable receiver because it hands out the ability to
-    // write.
+    /// The initialized elements as a borrowed writable view.
+    ///
+    /// `self` is borrowed mutably. Never the spare capacity.
+    ///
+    /// # Safety
+    ///
+    /// The view is valid until the vector grows, shrinks, or is destroyed.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/as-mutable-slice
     func AsMutableSlice(self: *var Vector<T>) -> MutableSlice<T> {
         return MutableSlice<T> { data: self.data, length: self.length };
     }
 
-    // ToArray and IntoArray are gone until this type takes an allocator of its own. An Array now carries the
-    // allocator its storage came from, and a Vector that still calls Memory::Alloc directly has none to give it.
+    /// An iterator over the elements, by copy.
+    ///
+    /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds.
+    ///
+    /// # Safety
+    ///
+    /// The vector must not grow or shrink while the iterator is alive.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/iterate
+    func Iterate(self: *Vector<T>) -> ValueIterator<T> {
+        return ValueIterator::New<T>(self.AsSlice());
+    }
+
+    /// An iterator over pointers to the elements.
+    ///
+    /// `self` is borrowed and must outlive the iterator.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/vector/references
+    func References(self: *Vector<T>) -> ReferenceIterator<T> {
+        return ReferenceIterator::New<T>(self.AsSlice());
+    }
 }
