@@ -143,8 +143,13 @@ TypeRef SemanticAnalyzerContext::StructFieldType(const TypeRef &objectType, cons
         return TypeRef::MakeUnknown();
     }
 
+    // The arguments are spelled in the name of the type that carries them, which is the pointee when the field is
+    // reached through a pointer -- a pointer has no name of its own, so reading them off `objectType` would leave a
+    // generic instantiation looking like a bare declaration and its fields still spelled in the type parameters.
+    const TypeRef &named =
+        objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty() ? objectType.inner[0] : objectType;
     std::unordered_map<std::string, TypeRef> substitutions;
-    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(objectType.name);
+    const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named.name);
     const auto &parameters = structure->second->typeParams;
     const std::size_t count = std::min(parameters.size(), typeArguments.size());
     for (std::size_t i = 0; i < count; ++i) {

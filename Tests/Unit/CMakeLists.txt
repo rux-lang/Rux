@@ -97,6 +97,7 @@ set(RUX_TEST_SOURCES
     SemanticPropagationDiagnosticsTests.cpp
     SemanticConstraintDiagnosticsTests.cpp
     SemanticControlFlowDiagnosticsTests.cpp
+    SemanticGenericInstantiationTests.cpp
     SemanticIterationDiagnosticsTests.cpp
     SemanticNameDiagnosticsTests.cpp
     SemanticOperatorAssignmentDiagnosticsTests.cpp
