@@ -14,6 +14,7 @@ rux add Rux/Hash
 | -------- | ----------------------------------------------------------------------------- |
 | `Hasher` | the `Hasher` contract, and the writers every caller of one needs               |
 | `Fnv`    | FNV-1a over 32 and 64 bits, incremental and one-shot                          |
+| `Crc`    | CRC-32 and CRC-32C, their tables and their polynomials                         |
 
 ## Design
 
@@ -28,6 +29,21 @@ the caller's hasher exactly where it started. The interface exists to be the bou
 `WriteUint32` and `WriteUint64` use a fixed byte order rather than the machine's, so a value hashes the same on every
 target. That is what makes the hash of a struct mean the same thing everywhere, and it costs nothing on a
 little-endian machine.
+
+## Checksums
+
+`Crc32` and `Crc32c` are cyclic redundancy checks, and what they buy over a sum is a guarantee rather than a hope: a
+32-bit CRC detects every burst error up to 32 bits long, every single-bit and double-bit error, and every error of odd
+weight — none of which a general-purpose hash promises about anything.
+
+Both are the reflected, table-driven forms every implementation uses, so a value computed here matches gzip, PNG and
+zip for `Crc32`, and iSCSI, ext4, Btrfs and SCTP for `Crc32c`. Prefer `Crc32c` for new work: it detects more of the
+double-bit errors that appear at storage-record lengths, and both supported architectures implement it in hardware.
+This implementation is the table rather than the instruction — correct everywhere, and about a byte per cycle.
+
+A CRC detects accident, never intent. Given any message and any target value, producing a message with that CRC is
+arithmetic a beginner can do. They implement `Hasher` because feeding them bytes has the same shape, not because they
+substitute for one.
 
 ## What this is not
 
