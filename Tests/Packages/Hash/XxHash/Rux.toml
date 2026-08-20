@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "XxHash"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Hash: xxHash64 against the reference vectors, streamed and in one shot"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Hash = { Path = "../../../../Packages/Hash" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Hash"

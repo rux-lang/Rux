@@ -15,6 +15,7 @@ rux add Rux/Hash
 | `Hasher` | the `Hasher` contract, and the writers every caller of one needs               |
 | `Fnv`    | FNV-1a over 32 and 64 bits, incremental and one-shot                          |
 | `Crc`    | CRC-32 and CRC-32C, their tables and their polynomials                         |
+| `XxHash` | xxHash64, seeded, streaming and one-shot                                       |
 
 ## Design
 
@@ -29,6 +30,20 @@ the caller's hasher exactly where it started. The interface exists to be the bou
 `WriteUint32` and `WriteUint64` use a fixed byte order rather than the machine's, so a value hashes the same on every
 target. That is what makes the hash of a struct mean the same thing everywhere, and it costs nothing on a
 little-endian machine.
+
+## Speed
+
+`XxHash64` is the one to reach for when there is a lot of data. Where FNV-1a takes a byte at a time, it takes
+thirty-two: four independent accumulators, so a wide machine has four chains to run at once rather than one
+dependency chain to wait on. The mixing is arithmetic rather than table lookup, which is what keeps it fast on data
+that does not fit in cache — there is no table to evict.
+
+A seed is part of the algorithm rather than an afterthought: two hashers with different seeds give unrelated answers
+for the same input, which keeps accidental collisions from following data between tables. It is not enough to stop a
+deliberate one.
+
+Streaming is exact. Any division of the same byte stream into writes gives the same answer, including one byte at a
+time and including a write that lands one byte short of a block boundary.
 
 ## Checksums
 
