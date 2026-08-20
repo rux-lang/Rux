@@ -104,7 +104,9 @@ std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression
     if (!layout) {
         std::abort();
     }
-    return layout->size;
+    // Which of the two was asked for. Analysis answers this for a type that is concrete where it is written; this
+    // path is what answers it for a type parameter, once an instantiation says what the parameter stands for.
+    return expression.query == TypeQueryExpr::Query::Size ? layout->size : layout->alignment;
 }
 
 std::string AstToHirContext::GenericStructInitName(const StructInitExpr &expression) {
