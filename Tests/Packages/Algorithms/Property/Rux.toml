@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "AlgorithmsProperty"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Algorithms: every operation against a naive reference over pseudorandom data"
+
+[Dependencies]
+Algorithms = { Path = "../../../../Packages/Algorithms" }
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Algorithms"

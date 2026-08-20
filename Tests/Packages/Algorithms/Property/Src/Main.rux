@@ -1,0 +1,287 @@
+import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition,
+                     RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique,
+                     UpperBound };
+import Core::{ Assert, MutableSlice };
+
+// The phase gate for algorithms: every operation checked against a naive implementation of the same thing, over
+// pseudorandom sequences, at many lengths. A hand-written case checks what its author thought of; this checks what
+// they did not, and the reference is written for obviousness rather than speed so that the two are unlikely to be
+// wrong in the same way.
+//
+// The generator is a fixed-seed xorshift, so a failure is reproducible: the same run produces the same sequences
+// every time, on every target.
+
+const Trials: uint = 200;
+const MaxLength: uint = 48;
+
+func NextRandom(state: *var uint64) -> uint64 {
+    var value = *state;
+    value = value ^ (value << 13);
+    value = value ^ (value >> 7);
+    value = value ^ (value << 17);
+    *state = value;
+    return value;
+}
+
+func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
+    return MutableSlice<int32> { data: data, length: length };
+}
+
+func ReadInts(data: *int32, length: uint) -> Slice<int32> {
+    return Slice<int32> { data: data, length: length };
+}
+
+func Same(left: *int32, right: *int32, length: uint) -> bool {
+    return SequenceEqual<int32>(ReadInts(left, length), ReadInts(right, length));
+}
+
+// A selection sort, which is as obviously correct as a sort gets.
+func ReferenceSort(data: *var int32, length: uint) {
+    var index: uint = 0;
+    while index < length {
+        var least = index;
+        var probe = index + 1;
+        while probe < length {
+            if data[probe] < data[least] {
+                least = probe;
+            }
+            probe++;
+        }
+        let held = data[index];
+        data[index] = data[least];
+        data[least] = held;
+        index++;
+    }
+}
+
+// A linear search for the first element not less than the value.
+func ReferenceLowerBound(data: *int32, length: uint, value: int32) -> uint {
+    var index: uint = 0;
+    while index < length {
+        if !(data[index] < value) {
+            return index;
+        }
+        index++;
+    }
+    return length;
+}
+
+// A linear search for the first element greater than the value.
+func ReferenceUpperBound(data: *int32, length: uint, value: int32) -> uint {
+    var index: uint = 0;
+    while index < length {
+        if value < data[index] {
+            return index;
+        }
+        index++;
+    }
+    return length;
+}
+
+func IsEven(value: int32) -> bool {
+    return value % 2 == 0;
+}
+
+// Both sequences sorted and compared, which says they hold the same elements however they are arranged.
+func SameElements(left: *int32, right: *int32, length: uint) -> bool {
+    var leftCopy: int32[48];
+    var rightCopy: int32[48];
+    var index: uint = 0;
+    while index < length {
+        leftCopy[index] = left[index];
+        rightCopy[index] = right[index];
+        index++;
+    }
+    ReferenceSort(@leftCopy[0], length);
+    ReferenceSort(@rightCopy[0], length);
+    return Same(@leftCopy[0], @rightCopy[0], length);
+}
+
+func Main() -> int {
+    var state: uint64 = 0x243F6A8885A308D3;
+    var trial: uint = 0;
+    while trial < Trials {
+        // A length from zero to MaxLength, so the degenerate cases come up as often as any other.
+        let length = (NextRandom(@state) % ((MaxLength + 1) as uint64)) as uint;
+
+        // Values from a range narrow enough that duplicates are common, since duplicates are what the interesting
+        // cases are made of.
+        var values: int32[48];
+        var expected: int32[48];
+        var working: int32[48];
+        var index: uint = 0;
+        while index < length {
+            let value = (NextRandom(@state) % 20u64) as int32;
+            values[index] = value;
+            expected[index] = value;
+            index++;
+        }
+
+        // Sorting agrees with the reference, element for element.
+        index = 0;
+        while index < length {
+            working[index] = values[index];
+            index++;
+        }
+        Sort<int32>(Ints(@working[0], length));
+        ReferenceSort(@expected[0], length);
+        Assert(Same(@working[0], @expected[0], length), "the sort agrees with a selection sort");
+        Assert(IsSorted<int32>(ReadInts(@working[0], length)), "and reports itself sorted");
+
+        // A stable sort agrees with it too.
+        var stable: int32[48];
+        var scratch: int32[48];
+        index = 0;
+        while index < length {
+            stable[index] = values[index];
+            index++;
+        }
+        Assert(StableSort<int32>(Ints(@stable[0], length), Ints(@scratch[0], length)), "the stable sort runs");
+        Assert(Same(@stable[0], @expected[0], length), "and agrees with the reference");
+
+        // The searches agree with a linear scan, for every value the sequence could be asked about.
+        let sorted = ReadInts(@working[0], length);
+        var probe: int32 = -1;
+        while probe <= 20 {
+            let low = ReferenceLowerBound(@working[0] as *int32, length, probe);
+            let high = ReferenceUpperBound(@working[0] as *int32, length, probe);
+            Assert(LowerBound<int32>(sorted, probe) == low, "the lower bound agrees with a linear scan");
+            Assert(UpperBound<int32>(sorted, probe) == high, "and the upper bound too");
+            var found: uint = 0;
+            if low == high {
+                Assert(BinarySearch<int32>(sorted, probe).IsNone(), "a value with an empty range is not found");
+            }
+            else {
+                Assert(BinarySearch<int32>(sorted, probe).TryIntoValue(@found), "a value in range is found");
+                Assert(found == low, "at the first of its equals");
+            }
+            probe = probe + 1;
+        }
+
+        // The extremes agree with the sorted sequence, and neither exists for an empty one.
+        var least: uint = 0;
+        var largest: uint = 0;
+        let unsorted = ReadInts(@values[0], length);
+        if length == 0 {
+            Assert(MinIndex<int32>(unsorted).IsNone(), "an empty sequence has no smallest element");
+            Assert(MaxIndex<int32>(unsorted).IsNone(), "and no largest");
+        }
+        else {
+            Assert(MinIndex<int32>(unsorted).TryIntoValue(@least), "a non-empty sequence has a smallest element");
+            Assert(MaxIndex<int32>(unsorted).TryIntoValue(@largest), "and a largest");
+            Assert(values[least] == expected[0], "which is the first of the sorted sequence");
+            Assert(values[largest] == expected[length - 1], "and the last");
+        }
+
+        // A heap holds the same elements, and sorting it agrees with the sort.
+        var heaped: int32[48];
+        index = 0;
+        while index < length {
+            heaped[index] = values[index];
+            index++;
+        }
+        MakeHeap<int32>(Ints(@heaped[0], length));
+        Assert(IsHeap<int32>(ReadInts(@heaped[0], length)), "making a heap makes one");
+        Assert(SameElements(@heaped[0], @values[0], length), "without losing or inventing an element");
+        SortHeap<int32>(Ints(@heaped[0], length));
+        Assert(Same(@heaped[0], @expected[0], length), "and sorting it agrees with the sort");
+
+        // Reversing twice is the identity, and once agrees with reading backwards.
+        var reversed: int32[48];
+        index = 0;
+        while index < length {
+            reversed[index] = values[index];
+            index++;
+        }
+        Reverse<int32>(Ints(@reversed[0], length));
+        index = 0;
+        while index < length {
+            Assert(reversed[index] == values[length - 1 - index], "reversing puts each element where it belongs");
+            index++;
+        }
+        Reverse<int32>(Ints(@reversed[0], length));
+        Assert(Same(@reversed[0], @values[0], length), "and reversing twice restores the original");
+
+        // Rotating by every offset keeps the elements and puts the right one first.
+        var rotated: int32[48];
+        var offset: uint = 0;
+        while offset <= length {
+            index = 0;
+            while index < length {
+                rotated[index] = values[index];
+                index++;
+            }
+            Assert(Rotate<int32>(Ints(@rotated[0], length), offset), "rotating within the length succeeds");
+            Assert(SameElements(@rotated[0], @values[0], length), "keeping every element");
+            if length > 0 && offset < length {
+                Assert(rotated[0] == values[offset], "and bringing the element at the offset to the front");
+            }
+            offset++;
+        }
+
+        // Partitioning satisfies its own postcondition and keeps every element.
+        var split: int32[48];
+        index = 0;
+        while index < length {
+            split[index] = values[index];
+            index++;
+        }
+        let boundary = Partition<int32>(Ints(@split[0], length), IsEven);
+        Assert(SameElements(@split[0], @values[0], length), "partitioning keeps every element");
+        index = 0;
+        while index < boundary {
+            Assert(IsEven(split[index]), "everything before the boundary is accepted");
+            index++;
+        }
+        while index < length {
+            Assert(!IsEven(split[index]), "and everything after it is not");
+            index++;
+        }
+
+        // Unique over the sorted sequence leaves exactly the distinct values, in order.
+        var distinct: int32[48];
+        index = 0;
+        while index < length {
+            distinct[index] = working[index];
+            index++;
+        }
+        let kept = Unique<int32>(Ints(@distinct[0], length));
+        Assert(IsSorted<int32>(ReadInts(@distinct[0], kept)), "the survivors are still in order");
+        index = 1;
+        while index < kept {
+            Assert(distinct[index - 1] != distinct[index], "and no two of them are equal");
+            index++;
+        }
+        index = 0;
+        while index < length {
+            Assert(BinarySearch<int32>(ReadInts(@distinct[0], kept), working[index]).IsSome(),
+                   "and every original value is still among them");
+            index++;
+        }
+
+        // Removing a value removes exactly its occurrences, and the total drops by exactly what went.
+        var pruned: int32[48];
+        index = 0;
+        while index < length {
+            pruned[index] = values[index];
+            index++;
+        }
+        let target = (NextRandom(@state) % 20u64) as int32;
+        var occurrences: int32 = 0;
+        index = 0;
+        while index < length {
+            if values[index] == target {
+                occurrences = occurrences + 1;
+            }
+            index++;
+        }
+        let left = RemoveValue<int32>(Ints(@pruned[0], length), target);
+        Assert(left == length - (occurrences as uint), "removal leaves everything that did not match");
+        Assert(Sum<int32>(ReadInts(@pruned[0], left), 0) == Sum<int32>(unsorted, 0) - occurrences * target,
+               "and the total drops by exactly what was removed");
+
+        trial++;
+    }
+
+    return 0;
+}
