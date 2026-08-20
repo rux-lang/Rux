@@ -6,6 +6,7 @@ Build-*/
 build/
 Out/
 out/
+*.log
 **/Temp/*
 **/temp/*
 !Temp/.gitkeep

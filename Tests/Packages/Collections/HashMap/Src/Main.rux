@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, TableSeed };
+import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, KeyValue, TableSeed };
 import Core::{ Assert, Drop };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
@@ -29,6 +29,54 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
     *afterFilling = *counter;
+}
+
+// Drains a map of tracked values completely, giving each yielded entry its own scope so it is owned by exactly one
+// binding and destroyed once.
+func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint {
+    var map = HashMap::New<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var key: int32 = 0;
+    while key < count {
+        map.Insert(key, Tracked { counter: counter, value: key });
+        key = key + 1;
+    }
+    var taken = map.IntoIterator();
+    var yielded: uint = 0;
+    var draining = true;
+    while draining {
+        match taken.Next() {
+            .Some(entry) => {
+                yielded = yielded + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+    return yielded;
+}
+
+// Stops part-way, so the iterator has to destroy what nobody took.
+func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAfter: uint) {
+    var map = HashMap::New<int32, Tracked>(allocator, HashInt32, EqualsInt32);
+    var key: int32 = 0;
+    while key < count {
+        map.Insert(key, Tracked { counter: counter, value: key });
+        key = key + 1;
+    }
+    var taken = map.IntoIterator();
+    var yielded: uint = 0;
+    var draining = true;
+    while draining && yielded < stopAfter {
+        match taken.Next() {
+            .Some(entry) => {
+                yielded = yielded + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
 }
 
 func Main() -> int {
@@ -223,6 +271,88 @@ func Main() -> int {
     Assert(destroyed == 1, "but replacing a value destroys the one it replaced");
     owning.Clear();
     Assert(destroyed == 2, "and clearing destroys what is left");
+
+    // One operation where a lookup and an insertion would have been two, and the key named once.
+    var lookup = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var existing: *var int32 = null;
+    var inserted = false;
+    Assert(lookup.GetOrInsert(5, 50, @existing, @inserted) == CollectionError::None, "get-or-insert succeeds");
+    Assert(inserted, "reporting that the map grew");
+    Assert(*existing == 50, "and pointing at the value it put there");
+    *existing = 55;
+    Assert(lookup.Get(5).ValueOr(-1) == 55, "which is the stored value, not a copy of it");
+
+    Assert(lookup.GetOrInsert(5, 999, @existing, @inserted) == CollectionError::None, "asking again succeeds");
+    Assert(!inserted, "reporting that the map did not grow");
+    Assert(*existing == 55, "and pointing at what was already there rather than what was offered");
+    Assert(lookup.Length() == 1, "with the map still holding one entry");
+
+    // Replacement hands the old value back, where Insert throws it away.
+    var replaceError = CollectionError::None;
+    Assert(lookup.Replace(5, 60, @replaceError).ValueOr(-1) == 55, "replacing hands back what was there");
+    Assert(replaceError == CollectionError::None, "and reports no failure");
+    Assert(lookup.Get(5).ValueOr(-1) == 60, "having stored the new value");
+    Assert(lookup.Replace(6, 70, @replaceError).IsNone(), "replacing an absent key hands back nothing");
+    Assert(replaceError == CollectionError::None, "and is not a failure");
+    Assert(lookup.Get(6).ValueOr(-1) == 70, "having inserted it");
+
+    // Consuming removal hands back both halves.
+    var entry = KeyValue<int32, int32> { key: 0, value: 0 };
+    Assert(lookup.RemoveEntry(5).TryIntoValue(@entry), "removing an entry finds it");
+    Assert(entry.key == 5 && entry.value == 60, "and hands back the key as well as the value");
+    Assert(!lookup.ContainsKey(5), "leaving the map without it");
+    Assert(lookup.RemoveEntry(5).IsNone(), "and a second removal finds nothing");
+
+    // Iterating with a `for` loop reaches every entry exactly once.
+    var loops = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    key = 0;
+    while key < 50 {
+        loops.Insert(key, key * 2);
+        key = key + 1;
+    }
+    var iterated: uint = 0;
+    var sum: int64 = 0;
+    for pair in loops {
+        Assert(pair.value == pair.key * 2, "every entry a loop yields is one that was put in");
+        sum = sum + (pair.key as int64);
+        iterated = iterated + 1;
+    }
+    Assert(iterated == 50, "and a loop reaches every entry");
+    Assert(sum == 1225, "each exactly once, since the keys sum to what they should");
+
+    // Consuming iteration moves every entry out and takes the storage with it.
+    var drained = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    key = 0;
+    while key < 20 {
+        drained.Insert(key, key + 100);
+        key = key + 1;
+    }
+    var moving = drained.IntoIterator();
+    var moved: uint = 0;
+    var movedSum: int64 = 0;
+    var draining = true;
+    while draining {
+        match moving.Next() {
+            .Some(pair) => {
+                movedSum = movedSum + (pair.value as int64);
+                moved = moved + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+    Assert(moved == 20, "consuming iteration yields every entry");
+    Assert(movedSum == 2190, "each exactly once");
+
+    // Every value leaves exactly once, and stopping part-way destroys only what is left.
+    destroyed = 0;
+    Assert(DrainFully(allocator, @destroyed, 12) == 12, "consuming iteration yields every tracked entry");
+    Assert(destroyed == 12, "each destroyed once, by the arm that took it");
+
+    destroyed = 0;
+    DrainPartly(allocator, @destroyed, 12, 5);
+    Assert(destroyed == 12, "and stopping part-way destroys the five taken and the seven left, once each");
 
     return 0;
 }

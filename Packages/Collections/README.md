@@ -155,6 +155,25 @@ it to `WithSeed`. `TableSeed::Of` takes the words directly, for a test that need
 A table's iteration order is its seed's, so it differs between two tables in one program and between two runs of it.
 Nothing may rely on that order.
 
+### Reading and writing in one operation
+
+There is no `Entry` type. An entry API is closure-shaped, and Rux has no closures — so the operation it exists for is
+offered directly instead:
+
+```rux
+var count: *var int32 = null;
+var inserted = false;
+counts.GetOrInsert(word, 0, @count, @inserted);
+*count = *count + 1;
+```
+
+One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands
+back the one that was there, where `Insert` throws it away.
+
+`RemoveEntry` hands back both halves, so a key that owns something leaves intact too — and it hands back the *stored*
+key rather than the one looked up. The two compare equal, but a key type carrying anything the equality ignores makes
+them different values, and the map's is the one it kept.
+
 ### Supplying the pair
 
 The hash and equality are supplied as functions rather than taken from the key type, because Rux has no closures and
