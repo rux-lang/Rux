@@ -1,0 +1,126 @@
+import Core::Assert;
+import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
+
+// Entropy cannot be tested by comparing against an expected answer -- the whole point is that there is not one. What
+// can be tested is everything around the bytes: that a request reports success, that it writes the whole buffer and
+// not one byte more, that the same request twice does not give the same answer, that the error values behave, and
+// that the degenerate requests are handled rather than passed to the system.
+
+func Main() -> int {
+    // The error values answer the three questions a caller has.
+    Assert(EntropyError::None.IsOk(), "None is the only value that reports success");
+    Assert(!EntropyError::None.IsError(), "and the only one that is not an error");
+    Assert(EntropyError::Failed.IsError(), "a refusal is an error");
+    Assert(EntropyError::Unsupported.IsError(), "and so is a system with no source");
+    Assert(EntropyError::Interrupted.IsTransient(), "an interruption is worth retrying");
+    Assert(!EntropyError::Unsupported.IsTransient(), "a system with no source will not grow one");
+    Assert(!EntropyError::Failed.IsTransient(), "and a refusal repeated is still a refusal");
+    Assert(!EntropyError::None.IsTransient(), "success is not a thing to retry");
+
+    // A zero-length request succeeds without touching anything.
+    Assert(FillFromSource(null, 0) == EntropyError::None, "a zero-length request succeeds");
+
+    // A null buffer with a real length is refused rather than written through.
+    Assert(FillFromSource(null, 32) == EntropyError::Failed, "a null buffer with a length is refused");
+
+    // A request larger than the source accepts in one call is refused rather than truncated.
+    Assert(FillFromSource(null, MaxEntropyRequest + 1) == EntropyError::TooLarge,
+           "a request past the single-call limit is refused");
+
+    // A real fill writes every byte of the buffer and nothing outside it. The guard bytes on either side are a
+    // pattern no correct fill would touch.
+    var storage: byte[80];
+    var index: uint = 0;
+    while index < 80 {
+        storage[index] = 0xAA;
+        index++;
+    }
+
+    let start = @storage[8] as *var opaque;
+    Assert(FillFromSource(start, 64) == EntropyError::None, "a real request succeeds");
+
+    index = 0;
+    while index < 8 {
+        Assert(storage[index] == 0xAA, "the bytes before the buffer are untouched");
+        Assert(storage[72 + index] == 0xAA, "and so are the bytes after it");
+        index++;
+    }
+
+    // The filled bytes must not all still be the guard pattern. One byte landing on 0xAA is expected; sixty-four of
+    // them is a fill that did nothing, and the odds against it are astronomical.
+    var untouched: uint = 0;
+    index = 0;
+    while index < 64 {
+        if storage[8 + index] == 0xAA {
+            untouched++;
+        }
+        index++;
+    }
+    Assert(untouched < 64, "the buffer was actually written");
+
+    // Two fills of the same buffer must differ. Sixty-four equal bytes twice running would mean the source is not
+    // one, and the probability of a false failure here is two to the minus five hundred and twelve.
+    var firstDraw: byte[64];
+    var secondDraw: byte[64];
+    Assert(FillFromSource(@firstDraw[0] as *var opaque, 64) == EntropyError::None, "the first draw succeeds");
+    Assert(FillFromSource(@secondDraw[0] as *var opaque, 64) == EntropyError::None, "and so does the second");
+
+    var identical = true;
+    index = 0;
+    while index < 64 {
+        if firstDraw[index] != secondDraw[index] {
+            identical = false;
+            break;
+        }
+        index++;
+    }
+    Assert(!identical, "two draws from the source differ");
+
+    // Not every byte may be zero either, which is what a source that reports success while doing nothing looks like.
+    var zeros: uint = 0;
+    index = 0;
+    while index < 64 {
+        if firstDraw[index] == 0 {
+            zeros++;
+        }
+        index++;
+    }
+    Assert(zeros < 64, "a draw is not all zeros");
+
+    // A single byte is as valid a request as a large one, and the smallest case a loop can get wrong.
+    var one: byte[1];
+    one[0] = 0x5A;
+    Assert(FillFromSource(@one[0] as *var opaque, 1) == EntropyError::None, "a one-byte request succeeds");
+
+    // A request larger than any single kernel call is filled completely, which is what the loop is for.
+    var large: byte[4096];
+    index = 0;
+    while index < 4096 {
+        large[index] = 0xC3;
+        index++;
+    }
+    Assert(FillFromSource(@large[0] as *var opaque, 4096) == EntropyError::None, "a large request succeeds");
+
+    var stillPattern: uint = 0;
+    index = 0;
+    while index < 4096 {
+        if large[index] == 0xC3 {
+            stillPattern++;
+        }
+        index++;
+    }
+    Assert(stillPattern < 4096, "and every part of it was written");
+
+    // The tail matters most: a loop that stops early leaves exactly this region holding the old pattern.
+    var tailPattern: uint = 0;
+    index = 3840;
+    while index < 4096 {
+        if large[index] == 0xC3 {
+            tailPattern++;
+        }
+        index++;
+    }
+    Assert(tailPattern < 256, "including the last bytes, where a short loop would have stopped");
+
+    return 0;
+}

@@ -1,0 +1,128 @@
+// The system's own generator, reached the way each system wants to be asked.
+//
+// Four systems, four interfaces. Linux and FreeBSD have a `getrandom` system call that may write fewer bytes than
+// asked for and may be interrupted by a signal, so a caller who needs the whole buffer has to loop -- and looping
+// correctly is most of what this module is. Darwin's `arc4random_buf` is always seeded, never blocks and cannot
+// fail, so it returns nothing at all. Windows has `BCryptGenRandom`, which either fills the whole buffer or fails,
+// and reports through an `NTSTATUS` rather than an error number.
+//
+// What comes out is fit for a key, a token, or anything an adversary would like to guess. It is not a generator:
+// there is no state here, nothing is reproducible, and drawing a lot of bytes at once is slower than drawing them
+// from a seeded generator. Ask for a seed here and take the rest from `Rux/Random`.
+//
+// A failure leaves nothing usable behind. Whatever a short read managed to write is zeroized before the failure is
+// reported, because a half-filled key looks exactly as random as a whole one, and a caller who ignores a return
+// value should get an obviously wrong buffer rather than a subtly weak one.
+
+import Core::{ #target, #Error };
+import Entropy::EntropyError;
+import Memory::ZeroizeBlock;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ Errno, GetRandom, IsError, EAGAIN, EINTR, ENOSYS },
+    .Linux => import Linux::{ Errno, GetRandom, IsError, EAGAIN, EINTR, ENOSYS },
+    .macOS => import macOS::GetRandom,
+    .Windows => import Windows::GetRandom,
+    else => #Error("Unsupported operating system")
+}
+
+/// How many times a fill will go back to an interrupted source before giving up.
+///
+/// A signal arriving during the call is ordinary and retrying is correct, but a process taking signals steadily
+/// must not spin forever inside what its caller believes is one operation. Reaching this reports `Interrupted`,
+/// which says exactly that and leaves trying again to the caller, who knows whether it is worth it.
+///
+/// https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
+const MaxEntropyAttempts: uint = 16;
+
+/// The largest request the source accepts in a single call.
+///
+/// Windows takes a 32-bit count, so this is what a portable caller may ask for at once. A larger buffer is filled by
+/// asking more than once, which `Fill` does.
+///
+/// https://rux-lang.dev/docs/api/entropy/max-entropy-request
+const MaxEntropyRequest: uint = 0xFFFFFFFF;
+
+/// Fills `length` bytes of `buffer` from the system's generator, in one pass.
+///
+/// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
+/// A zero length succeeds without touching anything. A length past what the source accepts is reported before the
+/// buffer is looked at, so an impossible request is refused whatever was passed with it; a null buffer with an
+/// ordinary length reports `Failed` rather than being written through.
+///
+/// On Linux and FreeBSD a short count is not a failure, so this loops until the buffer is full; a signal in the
+/// middle is retried up to `MaxEntropyAttempts` times before reporting `Interrupted`. A kernel with no such call
+/// reports `Unsupported`. On Darwin the source cannot fail. On Windows a request above `MaxEntropyRequest` reports
+/// `TooLarge`, since the count is passed as 32 bits.
+///
+/// Runs in time proportional to `length` and allocates nothing.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `length` bytes. On any failure the buffer is zeroized, so a caller who ignores the
+/// result gets zeros rather than a partly random buffer that would pass a glance.
+///
+/// https://rux-lang.dev/docs/api/entropy/fill-from-source
+func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
+    if length == 0 {
+        return EntropyError::None;
+    }
+    if length > MaxEntropyRequest {
+        return EntropyError::TooLarge;
+    }
+    if buffer == null {
+        return EntropyError::Failed;
+    }
+
+    when #target.os {
+        .Windows => {
+            if GetRandom(buffer, length) {
+                return EntropyError::None;
+            }
+            ZeroizeBlock(buffer, length);
+            return EntropyError::Failed;
+        },
+        .macOS => {
+            // Darwin's generator is seeded before any user code runs and has no failure to report.
+            GetRandom(buffer, length);
+            return EntropyError::None;
+        },
+        else => {
+            var filled: uint = 0;
+            var attempts: uint = 0;
+            while filled < length {
+                let target = ((buffer as uint) + filled) as *var opaque;
+                let taken = GetRandom(target, length - filled, 0);
+                if IsError(taken) {
+                    let number = Errno(taken);
+                    if number == EINTR || number == EAGAIN {
+                        attempts = attempts + 1;
+                        if attempts >= MaxEntropyAttempts {
+                            ZeroizeBlock(buffer, length);
+                            return EntropyError::Interrupted;
+                        }
+                        continue;
+                    }
+                    if number == ENOSYS {
+                        ZeroizeBlock(buffer, length);
+                        return EntropyError::Unsupported;
+                    }
+                    ZeroizeBlock(buffer, length);
+                    return EntropyError::Failed;
+                }
+                if taken == 0 {
+                    // A source that accepts the call and writes nothing is not going to start; do not spin on it.
+                    attempts = attempts + 1;
+                    if attempts >= MaxEntropyAttempts {
+                        ZeroizeBlock(buffer, length);
+                        return EntropyError::Failed;
+                    }
+                    continue;
+                }
+                filled = filled + (taken as uint);
+                attempts = 0;
+            }
+            return EntropyError::None;
+        }
+    }
+}

@@ -9,6 +9,7 @@ Packages = [
     "Packages/C",
     "Packages/Collections",
     "Packages/Core",
+    "Packages/Entropy",
     "Packages/Format",
     "Packages/FreeBSD",
     "Packages/Hash",
