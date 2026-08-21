@@ -1,0 +1,20 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Unicode"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Unicode character properties, case, normalization and segmentation"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Unicode", "Normalization", "Graphemes", "CaseFolding"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/unicode"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }

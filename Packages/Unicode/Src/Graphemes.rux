@@ -1,0 +1,194 @@
+// Where one user-perceived character ends and the next begins.
+//
+// A scalar value is not a character as a reader counts them: an e and its acute are two values and one thing on the
+// screen, a family emoji is seven values and one glyph, a Hangul syllable typed as jamo is three. The extended
+// grapheme cluster is Unicode's answer to "what does one arrow-key press cross", and these are the UAX #29 rules
+// that define it, the emoji and Indic conjunct rules included.
+//
+// The interface is one question: is there a boundary before position N. Everything else -- counting clusters,
+// walking them -- is a loop over that question, and the committed break vectors hold every rule to the standard's
+// own test file.
+
+import Core::Slice;
+
+/// The grapheme break class of a scalar value.
+///
+/// The ordinals match the generated table and must not be reordered.
+///
+/// https://rux-lang.dev/docs/api/unicode/grapheme-break
+enum GraphemeBreak: int32 {
+    /// Everything with no class of its own.
+    Any = 0,
+    /// A carriage return, which joins only the line feed after it.
+    CarriageReturn = 1,
+    /// A line feed.
+    LineFeed = 2,
+    /// A control character, which stands alone.
+    Control = 3,
+    /// A mark that extends the cluster before it.
+    Extend = 4,
+    /// The zero-width joiner, which is what glues emoji sequences.
+    ZeroWidthJoiner = 5,
+    /// A regional indicator, half of a flag.
+    RegionalIndicator = 6,
+    /// A prefix that binds to what follows it.
+    Prepend = 7,
+    /// A spacing mark, kept with what precedes it.
+    SpacingMark = 8,
+    /// A Hangul leading consonant.
+    HangulL = 9,
+    /// A Hangul vowel.
+    HangulV = 10,
+    /// A Hangul trailing consonant.
+    HangulT = 11,
+    /// A Hangul LV syllable.
+    HangulLV = 12,
+    /// A Hangul LVT syllable.
+    HangulLVT = 13
+}
+
+/// The break class of `scalar`.
+///
+/// https://rux-lang.dev/docs/api/unicode/grapheme-break-of
+func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
+    return RangeValue(GraphemeBreakRanges[..], scalar as uint32, 0) as GraphemeBreak;
+}
+
+/// Whether `scalar` is an extended pictograph: the emoji and everything reserved to become one.
+///
+/// https://rux-lang.dev/docs/api/unicode/is-pictographic
+func IsPictographic(scalar: char32) -> bool {
+    return InRangePairs(PictographicRanges[..], scalar as uint32);
+}
+
+// The three InCB classes GB9c runs on.
+func IsConjunctConsonant(scalar: char32) -> bool {
+    return InRangePairs(ConjunctConsonantRanges[..], scalar as uint32);
+}
+
+func IsConjunctLinker(scalar: char32) -> bool {
+    return InRangePairs(ConjunctLinkerRanges[..], scalar as uint32);
+}
+
+func IsConjunctExtend(scalar: char32) -> bool {
+    return InRangePairs(ConjunctExtendRanges[..], scalar as uint32);
+}
+
+/// Whether a cluster boundary falls before `index` in `text`.
+///
+/// The ends count: position zero and the length are always boundaries, which is what makes "the clusters of a
+/// text" a partition of it. The rules between are UAX #29's, applied to the pair either side of the position with
+/// lookback where a rule reaches further -- the emoji join, the flag pairs, and the Indic conjuncts.
+///
+/// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
+func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
+    if index == 0 || index >= text.length {
+        return true;
+    }
+    let before = GraphemeBreakOf(text.data[index - 1]);
+    let after = GraphemeBreakOf(text.data[index]);
+
+    // GB3: a CR joins the LF after it, and only that.
+    if before == GraphemeBreak::CarriageReturn && after == GraphemeBreak::LineFeed {
+        return false;
+    }
+    // GB4 and GB5: controls stand alone on both sides.
+    if before == GraphemeBreak::Control || before == GraphemeBreak::CarriageReturn ||
+       before == GraphemeBreak::LineFeed {
+        return true;
+    }
+    if after == GraphemeBreak::Control || after == GraphemeBreak::CarriageReturn ||
+       after == GraphemeBreak::LineFeed {
+        return true;
+    }
+    // GB6, GB7, GB8: Hangul jamo join into syllables.
+    if before == GraphemeBreak::HangulL &&
+       (after == GraphemeBreak::HangulL || after == GraphemeBreak::HangulV ||
+        after == GraphemeBreak::HangulLV || after == GraphemeBreak::HangulLVT) {
+        return false;
+    }
+    if (before == GraphemeBreak::HangulLV || before == GraphemeBreak::HangulV) &&
+       (after == GraphemeBreak::HangulV || after == GraphemeBreak::HangulT) {
+        return false;
+    }
+    if (before == GraphemeBreak::HangulLVT || before == GraphemeBreak::HangulT) &&
+       after == GraphemeBreak::HangulT {
+        return false;
+    }
+    // GB9, GB9a: marks and the joiner extend backwards; spacing marks too.
+    if after == GraphemeBreak::Extend || after == GraphemeBreak::ZeroWidthJoiner ||
+       after == GraphemeBreak::SpacingMark {
+        return false;
+    }
+    // GB9b: a prepend binds forward.
+    if before == GraphemeBreak::Prepend {
+        return false;
+    }
+    // GB9c: a consonant, a linker somewhere in the marks behind, and this consonant, all one conjunct.
+    if IsConjunctConsonant(text.data[index]) {
+        var walk = index;
+        var sawLinker = false;
+        var joined = false;
+        while walk > 0 && !joined {
+            walk = walk - 1;
+            let each = text.data[walk];
+            if IsConjunctLinker(each) {
+                sawLinker = true;
+            }
+            else if IsConjunctConsonant(each) {
+                if sawLinker {
+                    return false;
+                }
+                joined = true;
+            }
+            else if !IsConjunctExtend(each) {
+                joined = true;
+            }
+        }
+    }
+    // GB11: a pictograph, marks, a joiner, and another pictograph is one emoji.
+    if before == GraphemeBreak::ZeroWidthJoiner && IsPictographic(text.data[index]) {
+        var walk = index - 1;
+        while walk > 0 {
+            walk = walk - 1;
+            let kind = GraphemeBreakOf(text.data[walk]);
+            if kind != GraphemeBreak::Extend {
+                if IsPictographic(text.data[walk]) {
+                    return false;
+                }
+                walk = 0;
+            }
+        }
+    }
+    // GB12 and GB13: regional indicators pair up, and a boundary falls only between pairs.
+    if before == GraphemeBreak::RegionalIndicator && after == GraphemeBreak::RegionalIndicator {
+        var run: uint = 0;
+        var walk = index;
+        while walk > 0 && GraphemeBreakOf(text.data[walk - 1]) == GraphemeBreak::RegionalIndicator {
+            run = run + 1;
+            walk = walk - 1;
+        }
+        if run % 2 == 1 {
+            return false;
+        }
+    }
+    // GB999: everything else breaks.
+    return true;
+}
+
+/// How many grapheme clusters `text` holds.
+///
+/// https://rux-lang.dev/docs/api/unicode/count-graphemes
+func CountGraphemes(text: Slice<char32>) -> uint {
+    var counted: uint = 0;
+    var index: uint = 0;
+    while index < text.length {
+        if IsGraphemeBoundary(text, index) {
+            counted = counted + 1;
+        }
+        index = index + 1;
+    }
+    return counted;
+}

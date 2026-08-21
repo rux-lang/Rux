@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "UnicodeGraphemes"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Unicode: every grapheme boundary of the official break test"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Unicode = { Path = "../../../../Packages/Unicode" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Unicode"

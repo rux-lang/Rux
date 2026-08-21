@@ -1,0 +1,88 @@
+// Binary search over the generated tables.
+//
+// Every table is a flat, sorted `uint32` array: pairs of (first, last) for a boolean property, triples of
+// (first, last, value) where a range carries one, and (key, offset, length) index triples over an element pool
+// where a code point maps to a sequence. Three searches serve all of them, and everything else in the package is
+// written against these rather than against the arrays' shapes.
+
+import Core::Slice;
+
+// Whether `cp` falls in any (first, last) pair of `table`.
+func InRangePairs(table: Slice<uint32>, cp: uint32) -> bool {
+    var low: uint = 0;
+    var high = table.length / 2;
+    while low < high {
+        let middle = (low + high) / 2;
+        if cp < table.data[middle * 2] {
+            high = middle;
+        }
+        else if cp > table.data[middle * 2 + 1] {
+            low = middle + 1;
+        }
+        else {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The value of the (first, last, value) triple holding `cp`, or `fallback`.
+func RangeValue(table: Slice<uint32>, cp: uint32, fallback: uint32) -> uint32 {
+    var low: uint = 0;
+    var high = table.length / 3;
+    while low < high {
+        let middle = (low + high) / 2;
+        if cp < table.data[middle * 3] {
+            high = middle;
+        }
+        else if cp > table.data[middle * 3 + 1] {
+            low = middle + 1;
+        }
+        else {
+            return table.data[middle * 3 + 2];
+        }
+    }
+    return fallback;
+}
+
+// Finds `key` in a (key, offset, length) index and reports its pool window, or reports `false` and leaves the
+// window untouched.
+func IndexWindow(table: Slice<uint32>, key: uint32, offset: *var uint, length: *var uint) -> bool {
+    var low: uint = 0;
+    var high = table.length / 3;
+    while low < high {
+        let middle = (low + high) / 2;
+        if key < table.data[middle * 3] {
+            high = middle;
+        }
+        else if key > table.data[middle * 3] {
+            low = middle + 1;
+        }
+        else {
+            *offset = table.data[middle * 3 + 1] as uint;
+            *length = table.data[middle * 3 + 2] as uint;
+            return true;
+        }
+    }
+    return false;
+}
+
+// The mapped value of `key` in a (key, value) pair table, or `key` itself: a case table's absence means the point
+// maps to itself.
+func PairValue(table: Slice<uint32>, key: uint32) -> uint32 {
+    var low: uint = 0;
+    var high = table.length / 2;
+    while low < high {
+        let middle = (low + high) / 2;
+        if key < table.data[middle * 2] {
+            high = middle;
+        }
+        else if key > table.data[middle * 2] {
+            low = middle + 1;
+        }
+        else {
+            return table.data[middle * 2 + 1];
+        }
+    }
+    return key;
+}

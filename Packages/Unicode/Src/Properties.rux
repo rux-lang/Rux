@@ -1,0 +1,115 @@
+// What kind of character a scalar value is.
+//
+// Every answer is a binary search over the generated ranges, so a property costs a handful of comparisons and no
+// table costs more memory than its ranges. The category ordinals mirror `GeneralCategory` exactly; the table
+// stores numbers, and this enum is what the numbers mean.
+
+import Core::Slice;
+
+/// The Unicode general category, one per scalar value.
+///
+/// The ordinals match the generated table and must not be reordered: the table stores them as numbers.
+///
+/// https://rux-lang.dev/docs/api/unicode/general-category
+enum GeneralCategory: int32 {
+    /// Unassigned, or outside every range.
+    Unassigned = 0,
+    /// Lu: an uppercase letter.
+    UppercaseLetter = 1,
+    /// Ll: a lowercase letter.
+    LowercaseLetter = 2,
+    /// Lt: a titlecase letter.
+    TitlecaseLetter = 3,
+    /// Lm: a modifier letter.
+    ModifierLetter = 4,
+    /// Lo: a letter without case.
+    OtherLetter = 5,
+    /// Mn: a nonspacing mark.
+    NonspacingMark = 6,
+    /// Mc: a spacing combining mark.
+    SpacingMark = 7,
+    /// Me: an enclosing mark.
+    EnclosingMark = 8,
+    /// Nd: a decimal digit.
+    DecimalNumber = 9,
+    /// Nl: a letterlike number.
+    LetterNumber = 10,
+    /// No: some other number.
+    OtherNumber = 11,
+    /// Pc: a connector.
+    ConnectorPunctuation = 12,
+    /// Pd: a dash.
+    DashPunctuation = 13,
+    /// Ps: an opening bracket.
+    OpenPunctuation = 14,
+    /// Pe: a closing bracket.
+    ClosePunctuation = 15,
+    /// Pi: an initial quote.
+    InitialPunctuation = 16,
+    /// Pf: a final quote.
+    FinalPunctuation = 17,
+    /// Po: other punctuation.
+    OtherPunctuation = 18,
+    /// Sm: a mathematical symbol.
+    MathSymbol = 19,
+    /// Sc: a currency symbol.
+    CurrencySymbol = 20,
+    /// Sk: a modifier symbol.
+    ModifierSymbol = 21,
+    /// So: some other symbol.
+    OtherSymbol = 22,
+    /// Zs: a space separator.
+    SpaceSeparator = 23,
+    /// Zl: the line separator.
+    LineSeparator = 24,
+    /// Zp: the paragraph separator.
+    ParagraphSeparator = 25,
+    /// Cc: a control character.
+    Control = 26,
+    /// Cf: an invisible formatting character.
+    Format = 27,
+    /// Cs: a surrogate half, which no scalar value is.
+    Surrogate = 28,
+    /// Co: private use.
+    PrivateUse = 29
+}
+
+/// The general category of `scalar`.
+///
+/// Runs in a handful of comparisons and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/unicode/category-of
+func CategoryOf(scalar: char32) -> GeneralCategory {
+    return RangeValue(CategoryRanges[..], scalar as uint32, 0) as GeneralCategory;
+}
+
+/// The canonical combining class of `scalar`: zero for nearly everything, and the reordering key for marks.
+///
+/// https://rux-lang.dev/docs/api/unicode/combining-class-of
+func CombiningClassOf(scalar: char32) -> uint32 {
+    return RangeValue(CombiningClassRanges[..], scalar as uint32, 0);
+}
+
+/// Whether `scalar` is whitespace by Unicode's `White_Space` property.
+///
+/// A superset of ASCII's six: the no-break spaces, the typographic spaces and the line and paragraph separators
+/// are all here, which is what separates this from `Text`'s deliberately ASCII-only trimming.
+///
+/// https://rux-lang.dev/docs/api/unicode/is-white-space
+func IsWhiteSpace(scalar: char32) -> bool {
+    return InRangePairs(WhiteSpaceRanges[..], scalar as uint32);
+}
+
+/// Whether `scalar` is alphabetic by the derived `Alphabetic` property.
+///
+/// https://rux-lang.dev/docs/api/unicode/is-alphabetic
+func IsAlphabetic(scalar: char32) -> bool {
+    return InRangePairs(AlphabeticRanges[..], scalar as uint32);
+}
+
+/// Whether `scalar` is numeric: a decimal digit, a letterlike number, or another number form.
+///
+/// https://rux-lang.dev/docs/api/unicode/is-numeric
+func IsNumeric(scalar: char32) -> bool {
+    return InRangePairs(NumericRanges[..], scalar as uint32);
+}

@@ -28,6 +28,10 @@ option(RUX_BUILD_TESTS "Build the C++ unit tests (Tests/Unit)" OFF)
 # The compiler is a self-contained component; its target lives in Compiler/.
 add_subdirectory(Compiler)
 
+# Offline tooling: the Unicode table generator, run by hand when the UCD data under Tools/UnicodeGen/Data changes.
+# Its output is committed, so nothing in an ordinary build depends on it.
+add_subdirectory(Tools/UnicodeGen)
+
 if (RUX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests/Unit)
