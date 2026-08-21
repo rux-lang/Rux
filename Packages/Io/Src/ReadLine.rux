@@ -1,3 +1,4 @@
+import Allocator::Allocator;
 import Core::{ #target };
 import Text::{ String, StringBuilder };
 
@@ -26,15 +27,15 @@ func ReadStdinByte(buffer: *char8) -> int64 {
     }
 }
 
-func ReadLine() -> String {
-    var builder = StringBuilder::New();
+func ReadLine(allocator: Allocator) -> String {
+    var builder = StringBuilder::New(allocator);
     var byte: char8[1];
     var pendingCarriageReturn = false;
     while true {
         let count = ReadStdinByte(@byte[0]);
         if count <= 0 {
             if pendingCarriageReturn {
-                builder.Append(c8'\r');
+                builder.AppendAscii(c8'\r');
             }
             return builder.IntoString();
         }
@@ -43,13 +44,13 @@ func ReadLine() -> String {
             return builder.IntoString();
         }
         if pendingCarriageReturn {
-            builder.Append(c8'\r');
+            builder.AppendAscii(c8'\r');
             pendingCarriageReturn = false;
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         } else {
-            builder.Append(ch);
+            builder.AppendAscii(ch);
         }
     }
 }

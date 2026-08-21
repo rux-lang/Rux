@@ -1,0 +1,31 @@
+// The two ways a value turns into text.
+//
+// `Display` is the text a value has for a reader: a number is its digits, a string is its characters, and nothing is
+// quoted or escaped. `Debug` is the text a value has for whoever is looking at a program: a string is quoted with
+// its escapes visible, a character is quoted, and a structure shows its parts. They differ for exactly the types
+// where the difference matters, and a type with only one sensible rendering implements both the same way.
+//
+// Both write into a `Writer` rather than answering with a `String`, which is what makes printing a value allocate
+// nothing. Rendering to a string is then one writer among several.
+//
+// Neither takes a specification. Width, alignment, precision and base belong to the placeholder rather than the
+// value, and are applied by what drives the writer; a type that implemented them itself would have to reimplement
+// them, and would get them subtly different.
+
+import Text::TextError;
+
+/// The text a value has for a reader.
+///
+/// https://rux-lang.dev/docs/api/format/display
+interface Display {
+    /// Writes this value's text, reporting what stopped it.
+    func Format(writer: Writer) -> TextError;
+}
+
+/// The text a value has for whoever is inspecting a program.
+///
+/// https://rux-lang.dev/docs/api/format/debug
+interface Debug {
+    /// Writes this value's inspection text, reporting what stopped it.
+    func FormatDebug(writer: Writer) -> TextError;
+}

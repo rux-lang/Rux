@@ -1,4 +1,4 @@
-import Text::{ String, StringBuilder };
+import Text::TextError;
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;
@@ -26,42 +26,52 @@ func IsFinite(value: float32) -> bool {
     return value as float64 >= -MaxFinite32 && value as float64 <= MaxFinite32;
 }
 
-// The decimal text of a float32, in a String the caller owns and frees.
-// Fixed notation while the exponent stays in [-4, 7), scientific outside it.
-func ToString(value: float32) -> String {
-    var builder = StringBuilder::WithCapacity(16);
-    WriteFloat(@builder, value);
-    return builder.IntoString();
+extend float32 : Display {
+    /// Writes this value's decimal text.
+    ///
+    /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
+    /// more than the longest rendering -- sign, digits, point and exponent -- can need.
+    ///
+    /// https://rux-lang.dev/docs/api/format/float32/format
+    func Format(self: *float32, writer: Writer) -> TextError {
+        var storage: char8[50];
+        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 50));
+        WriteFloat(@cursor, *self);
+        return WriteBytes(writer, cursor.Written());
+    }
 }
 
-extend float32 : Stringable {
-    func ToString(self: *float32) -> String {
-        return ToString(*self);
+extend float32 : Debug {
+    /// The same text.
+    ///
+    /// https://rux-lang.dev/docs/api/format/float32/format-debug
+    func FormatDebug(self: *float32, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
 }
 
 // Appends the text of a float32 to a builder. The conversion runs in float64,
 // which the value reaches exactly, and only the digit count says which type
 // it came from.
-func WriteFloat(builder: *var StringBuilder, value: float32) {
+func WriteFloat(cursor: *var ByteCursor, value: float32) {
     if IsNan(value) {
-        builder.Append("NaN");
+        cursor.PushBytes("NaN");
         return;
     }
     if IsInfinite(value) {
         if value < 0.0 {
-            builder.Append("-Inf");
+            cursor.PushBytes("-Inf");
         } else {
-            builder.Append("Inf");
+            cursor.PushBytes("Inf");
         }
         return;
     }
     if value == 0.0 {
         if 1.0 / (value as float64) < 0.0 {
-            builder.Append(c8'-');
+            cursor.Push(c8'-');
         }
-        builder.Append("0.0");
+        cursor.PushBytes("0.0");
         return;
     }
-    WriteDecimal(builder, value as float64, Digits32);
+    WriteDecimal(cursor, value as float64, Digits32);
 }

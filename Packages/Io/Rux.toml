@@ -17,6 +17,7 @@ Homepage = "https://rux-lang.dev/docs/api/io"
 ReadmeFile = "README.md"
 
 [Dependencies]
+Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }

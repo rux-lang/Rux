@@ -1,48 +1,61 @@
-import Text::String;
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Ordering, Slice };
+import Text::{ String, StringView, TextError };
 
-// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
-// itself through the exit code.
+// Comparison is by bytes, and for UTF-8 that is also by code point: the encoding is built so that comparing the
+// bytes of two strings and comparing their characters give the same answer. That is worth checking with characters
+// whose encodings differ in length, since it is exactly there that a byte comparison could have disagreed.
+//
+// What this is not is alphabetical. Two strings differing only in case are different here, and so are two that a
+// reader would call the same after normalization. Both of those need Unicode tables and a locale, and neither is
+// what a container keying on text wants.
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
 func Main() -> int {
-    var hello = String::From("Hello");
-    var same = String::From("Hello");
-    var other = String::From("World");
-    var shorter = String::From("Hell");
-    var empty = String::New();
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
 
-    // Equal contents in separate blocks compare equal, so equality is by value
-    // rather than by address.
-    if !hello.Equals(same) { return 10; }
-    if hello.Data() == same.Data() { return 11; }
-    if hello.Equals(other) { return 12; }
+    let empty = View("");
+    let a = View("apple");
+    let b = View("banana");
+    let alsoA = View("apple");
+    let prefix = View("app");
 
-    // A prefix of the same bytes is still a different String.
-    if hello.Equals(shorter) { return 13; }
-    if shorter.Equals(hello) { return 14; }
+    Assert(a.Equals(@alsoA), "the same bytes are equal");
+    Assert(!a.Equals(@b), "different bytes are not");
+    Assert(!a.Equals(@prefix), "and neither is a prefix of them");
+    Assert(a.Compare(@alsoA) == Ordering::Equal, "equal bytes order equal");
+    Assert(a.Compare(@b) == Ordering::Less, "and order by the first byte that differs");
+    Assert(b.Compare(@a) == Ordering::Greater, "in both directions");
+    Assert(prefix.Compare(@a) == Ordering::Less, "a prefix orders before what extends it");
+    Assert(empty.Compare(@a) == Ordering::Less, "and the empty view before everything");
+    Assert(empty.Compare(@empty) == Ordering::Equal, "though it equals itself");
 
-    // The operators route to Equals.
-    if !(hello == same) { return 20; }
-    if hello == other { return 21; }
-    if hello != same { return 22; }
-    if !(hello != other) { return 23; }
+    // Characters of different encoded lengths, where a byte comparison could have disagreed with a code point one.
+    let ascii = View("z");
+    let twoByte = View("é");
+    let threeByte = View("€");
+    let fourByte = View("😀");
+    Assert(ascii.Compare(@twoByte) == Ordering::Less, "a one-byte character orders before a two-byte one");
+    Assert(twoByte.Compare(@threeByte) == Ordering::Less, "a two-byte one before a three-byte one");
+    Assert(threeByte.Compare(@fourByte) == Ordering::Less, "and a three-byte one before a four-byte one");
 
-    // The empty String equals only itself. It owns no block, so the comparison
-    // must not reach into its null data.
-    var alsoEmpty = String::New();
-    if !empty.Equals(alsoEmpty) { return 30; }
-    if empty.Equals(hello) { return 31; }
-    if hello.Equals(empty) { return 32; }
-    alsoEmpty.Free();
+    // Case is not considered, which is a choice rather than an oversight.
+    let lower = View("apple");
+    let upper = View("APPLE");
+    Assert(!lower.Equals(@upper), "case makes two strings different");
+    Assert(upper.Compare(@lower) == Ordering::Less, "and upper case orders first, because its bytes are smaller");
 
-    // Equality is reflexive over a clone, which is the case Free has to keep
-    // working after.
-    var copy = hello.Clone();
-    if !(copy == hello) { return 40; }
-    copy.Free();
+    // A string compares as its view does, since that is what it is made of.
+    let owned = String::FromBytes(allocator, "apple", @error);
+    let other = String::FromBytes(allocator, "banana", @error);
+    Assert(error == TextError::None, "the strings are built");
+    Assert(owned.Compare(@other) == Ordering::Less, "an owning string orders the same way");
+    Assert(owned.Equals(@owned), "and equals itself");
 
-    empty.Free();
-    shorter.Free();
-    other.Free();
-    same.Free();
-    hello.Free();
     return 0;
 }

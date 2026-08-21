@@ -1,14 +1,29 @@
-import Text::{ String, StringBuilder };
+// The decimal text of an `int32`.
+//
+// A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
+// noise and one that is there on request belongs to the placeholder rather than the value.
 
-// The decimal text of an int32, widened to int64 for the digit loop.
-func ToString(value: int32) -> String {
-    var builder = StringBuilder::WithCapacity(12);
-    WriteInt(@builder, value as int64);
-    return builder.IntoString();
+import Text::TextError;
+
+extend int32 : Display {
+    /// Writes this value's digits.
+    ///
+    /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
+    ///
+    /// https://rux-lang.dev/docs/api/format/int32/format
+    func Format(self: *int32, writer: Writer) -> TextError {
+        var storage: char8[21];
+        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 21));
+        WriteInt(@cursor, *self as int64);
+        return WriteBytes(writer, cursor.Written());
+    }
 }
 
-extend int32 : Stringable {
-    func ToString(self: *int32) -> String {
-        return ToString(*self);
+extend int32 : Debug {
+    /// The same digits: a number reads the same whoever is looking.
+    ///
+    /// https://rux-lang.dev/docs/api/format/int32/format-debug
+    func FormatDebug(self: *int32, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
 }

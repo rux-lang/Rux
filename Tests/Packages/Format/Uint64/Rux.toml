@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Package test for Format: Uint64"
 
 [Dependencies]
+Core = { Path = "../../../../Packages/Core" }
 Format = { Path = "../../../../Packages/Format" }
 Text = { Path = "../../../../Packages/Text" }
 

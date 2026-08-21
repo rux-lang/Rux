@@ -1,5 +1,5 @@
 import Core::Result;
-import Text::String;
+import Text::StringView;
 
 // Why a decimal string could not be converted to a float64.
 enum ParseError {
@@ -120,9 +120,10 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
     return Result::Success<float64, ParseError>(value);
 }
 
-// Parses the bytes owned by a String without copying them or taking ownership.
-func ParseFloat64(str: String) -> Result<float64, ParseError> {
-    return ParseFloat64(Slice<char8> { data: str.data, length: str.length });
+// Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
+// nothing, and the bytes are known to be text.
+func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
+    return ParseFloat64(str.Bytes());
 }
 
 // Parses into value and reports only whether conversion succeeded. On failure,
@@ -143,7 +144,7 @@ func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
     }
 }
 
-// String convenience overload of TryParseFloat64; no allocation or copy.
-func TryParseFloat64(str: String, value: *var float64) -> bool {
-    return TryParseFloat64(Slice<char8> { data: str.data, length: str.length }, value);
+// The same for a view.
+func TryParseFloat64(str: StringView, value: *var float64) -> bool {
+    return TryParseFloat64(str.Bytes(), value);
 }

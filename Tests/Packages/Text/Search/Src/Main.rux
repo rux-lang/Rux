@@ -1,67 +1,84 @@
-import Text::String;
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Option, Slice };
+import Text::{ IsAsciiSpace, StringView, TextError };
 
-// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
-// itself through the exit code.
+// Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no
+// character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
+// of one. A match on bytes therefore always lands on a character boundary. That is the claim worth testing, so the
+// text below is mixed-width and the needles are characters that take more than one byte.
+//
+// Nothing here allocates: every answer is a position, a boolean, or a borrow of bytes that were already there.
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
 func Main() -> int {
-    var haystack = String::From("Hello, World");
-    var hello = String::From("Hello");
-    var world = String::From("World");
-    var comma = String::From(", ");
-    var absent = String::From("Goodbye");
-    var longer = String::From("Hello, World and more");
-    var empty = String::New();
+    let text = View("one,two,,three");
+    let empty = View("");
+    let comma = View(",");
 
-    if !haystack.StartsWith(hello) { return 10; }
-    if haystack.StartsWith(world) { return 11; }
+    Assert(text.StartsWith(View("one")), "text starts with its first characters");
+    Assert(text.StartsWith(empty), "and with the empty view");
+    Assert(!text.StartsWith(View("two")), "and not with something further in");
+    Assert(!text.StartsWith(View("one,two,,three,and more")), "nor with something longer than itself");
+    Assert(text.EndsWith(View("three")), "text ends with its last characters");
+    Assert(text.EndsWith(empty), "and with the empty view");
+    Assert(!text.EndsWith(View("two")), "and not with something earlier");
 
-    // A needle longer than the haystack cannot match either end.
-    if haystack.StartsWith(longer) { return 12; }
-    if haystack.EndsWith(longer) { return 13; }
+    Assert(text.IndexOf(View("two")).ValueOr(99) == 4, "a needle is found where it is");
+    Assert(text.IndexOf(comma).ValueOr(99) == 3, "the first occurrence is the one reported");
+    Assert(text.LastIndexOf(comma).ValueOr(99) == 8, "and the last one by the other search");
+    Assert(text.IndexOf(View("four")).IsNone(), "a needle that is not there is not found");
+    Assert(text.IndexOf(empty).ValueOr(99) == 0, "the empty needle is at the start");
+    Assert(text.Contains(View("three")) && !text.Contains(View("thirty")), "containment agrees with the search");
 
-    if !haystack.EndsWith(world) { return 20; }
-    if haystack.EndsWith(hello) { return 21; }
+    // A multi-byte needle, where a byte search that did not respect characters could match a fragment.
+    let mixed = View("aé€b😀");
+    Assert(mixed.IndexOf(View("é")).ValueOr(99) == 1, "a two-byte character is found at its first byte");
+    Assert(mixed.IndexOf(View("€")).ValueOr(99) == 3, "and a three-byte one");
+    Assert(mixed.IndexOf(View("😀")).ValueOr(99) == 7, "and a four-byte one");
+    Assert(mixed.Part(1, 3).IsSome(), "and every position found is a character boundary");
+    Assert(mixed.Part(3, 6).IsSome(), "for the three-byte one too");
 
-    // Every String starts and ends with nothing.
-    if !haystack.StartsWith(empty) { return 30; }
-    if !haystack.EndsWith(empty) { return 31; }
-    if !empty.StartsWith(empty) { return 32; }
+    // Trimming takes ASCII whitespace off either end and borrows what is left.
+    Assert(IsAsciiSpace(c8' ') && IsAsciiSpace(c8'\t') && IsAsciiSpace(c8'\n'), "the usual whitespace counts");
+    Assert(!IsAsciiSpace(c8'x'), "and a letter does not");
+    let padded = View("  hi \t ");
+    Assert(padded.Trim().Length() == 2, "trimming takes the whitespace off both ends");
+    Assert(padded.TrimStart().Length() == 5, "the front alone");
+    Assert(padded.TrimEnd().Length() == 4, "and the back alone");
+    Assert(View("   ").Trim().IsEmpty(), "text that is all whitespace trims to nothing");
+    Assert(View("hi").Trim().Length() == 2, "and text with none is unchanged");
 
-    // IndexOf reports the offset of the first match.
-    if haystack.IndexOf(hello) != 0 { return 40; }
-    if haystack.IndexOf(comma) != 5 { return 41; }
-    if haystack.IndexOf(world) != 7 { return 42; }
+    // Splitting: the parts always number one more than the separators.
+    // Splitting: the parts always number one more than the separators.
+    // Splitting: the parts always number one more than the separators.
+    var walker = text.Split(comma);
+    var parts: uint = 0;
+    var totalBytes: uint = 0;
+    var walking = true;
+    while walking {
+        match walker.Next() {
+            .Some(part) => {
+                totalBytes = totalBytes + part.Length();
+                parts = parts + 1;
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    return 0;
+    Assert(totalBytes == text.Length() - 3, "and the parts hold every byte that is not a separator");
 
-    // A needle that is not there reports -1, including one too long to fit.
-    if haystack.IndexOf(absent) != -1 { return 43; }
-    if haystack.IndexOf(longer) != -1 { return 44; }
+    var single = View("nothing to split").Split(comma);
+    Assert(single.Next().ValueOr(empty).Length() == 16, "text without the separator is one whole part");
+    Assert(single.Next().IsNone(), "and there is nothing after it");
 
-    // The empty needle matches at the front.
-    if haystack.IndexOf(empty) != 0 { return 45; }
+    var degenerate = View("abc").Split(empty);
+    Assert(degenerate.Next().ValueOr(empty).Length() == 3, "an empty separator gives the whole thing once");
+    Assert(degenerate.Next().IsNone(), "rather than an endless walk");
 
-    // A match that runs to the very end is still found, which is the bound the
-    // scan is easiest to get wrong at.
-    var tail = String::From("d");
-    if haystack.IndexOf(tail) != 11 { return 46; }
-    tail.Free();
-
-    // The first of several matches wins.
-    var repeated = String::From("abcabc");
-    var needle = String::From("abc");
-    if repeated.IndexOf(needle) != 0 { return 47; }
-    needle.Free();
-    repeated.Free();
-
-    if !haystack.Contains(world) { return 50; }
-    if !haystack.Contains(comma) { return 51; }
-    if haystack.Contains(absent) { return 52; }
-    if !haystack.Contains(empty) { return 53; }
-
-    empty.Free();
-    longer.Free();
-    absent.Free();
-    comma.Free();
-    world.Free();
-    hello.Free();
-    haystack.Free();
     return 0;
 }

@@ -1,39 +1,49 @@
-import Format::ToString;
-import Text::String;
+import Core::{ MutableSlice, Slice };
+import Format::{ ByteCursor, CursorWriter, Display, Writer };
 
-// Std stays out of the dependencies, and a failed check reports itself through
-// the exit code. See the Int8 test for why.
-func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    var text = actual;
-    var wanted = String::From(expected);
-    let ok = text == wanted;
-    text.Free();
-    wanted.Free();
-
-    if ok {
-        return 0;
+// Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
+// the overloads of two same-named symbols, so Std's would win over this package's and the code under test would
+// never run. That rules out Std::Assert, so a failed check reports itself through the exit code instead: each one
+// below is numbered, and `rux test` prints the number of the first that fails.
+//
+// Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
+// buys: this test needs no allocator at all.
+func Check(value: uint64, expected: Slice<char8>, code: int) -> int {
+    var storage: char8[64];
+    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
+    let writer: Writer = CursorWriter::Of(@cursor);
+    let shown: Display = value;
+    if shown.Format(writer).IsError() {
+        return code;
     }
-    return code;
+    let actual = cursor.Written();
+    if actual.length != expected.length {
+        return code;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return code;
+        }
+        index = index + 1;
+    }
+    return 0;
 }
 
 func Main() -> int {
     let zero: uint64 = 0;
-    var code = Check(ToString(zero), "0", 10);
+    var code = Check(zero, "0", 10);
     if code != 0 { return code; }
 
     let value: uint64 = 9876543210;
-    code = Check(ToString(value), "9876543210", 11);
+    code = Check(value, "9876543210", 11);
     if code != 0 { return code; }
 
     // uint64 is the type every unsigned conversion widens to, so its largest
     // value is the one the digit buffer is sized for: twenty digits, and the
     // only value that fills it.
     let max: uint64 = 18446744073709551615;
-    code = Check(ToString(max), "18446744073709551615", 20);
-    if code != 0 { return code; }
-
-    // The method the Stringable extension provides.
-    code = Check(max.ToString(), "18446744073709551615", 30);
+    code = Check(max, "18446744073709551615", 20);
     if code != 0 { return code; }
 
     return 0;

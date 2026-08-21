@@ -1,0 +1,139 @@
+// Where formatted text goes.
+//
+// Formatting used to answer with a `String`, which meant every value rendered allocated a block, had its bytes
+// copied somewhere else, and released the block again. Printing a line of six values allocated six times to produce
+// text that went straight to a file descriptor.
+//
+// A writer is the other way round: a value writes its bytes into whatever the caller supplies, and what that is --
+// a builder, a file, a fixed buffer -- is the caller's business. Rendering a value into a string is then one
+// particular writer rather than the only shape available, and printing one allocates nothing at all.
+//
+// What is written must be well-formed UTF-8, and must not stop part-way through a character. Every writer here
+// relies on that; a builder's promise that it holds text at every moment is exactly this promise passed along.
+
+import Core::{ MutableSlice, Slice };
+import Text::{ Encode, StringBuilder, TextError };
+
+/// Somewhere formatted text can be written.
+///
+/// Implementations hold their state behind a pointer, as an allocator does, because an interface value is copied
+/// when it is passed and a writer that lost its position each time would write everything at the start.
+///
+/// https://rux-lang.dev/docs/api/format/writer
+interface Writer {
+    /// Writes `bytes`, reporting what stopped it.
+    ///
+    /// The bytes must be well-formed UTF-8 and must not end part-way through a character.
+    func Write(bytes: Slice<char8>) -> TextError;
+}
+
+/// Writes `bytes` to `writer`.
+///
+/// The interface value is copied into a mutable binding first, which is what lets a method taking `*var self` be
+/// called on it. Every helper here exists to keep that ceremony out of the formatting code.
+///
+/// https://rux-lang.dev/docs/api/format/write-bytes
+func WriteBytes(writer: Writer, bytes: Slice<char8>) -> TextError {
+    var sink = writer;
+    return sink.Write(bytes);
+}
+
+/// Writes one ASCII byte.
+///
+/// Reports `InvalidUtf8` for a byte above 0x7F: a single byte above that is never a whole character, and a writer
+/// takes whole characters. `WriteScalar` is what writes one that takes more than a byte.
+///
+/// https://rux-lang.dev/docs/api/format/write-ascii
+func WriteAscii(writer: Writer, byte: char8) -> TextError {
+    if (byte as uint32) > 0x7F {
+        return TextError::InvalidUtf8;
+    }
+    var one: char8[1];
+    one[0] = byte;
+    return WriteBytes(writer, Slice<char8> { data: @one[0], length: 1 });
+}
+
+/// Writes one character, encoded as UTF-8.
+///
+/// Reports `InvalidUtf8` for a value that is not a scalar value.
+///
+/// https://rux-lang.dev/docs/api/format/write-scalar
+func WriteScalar(writer: Writer, scalar: char32) -> TextError {
+    var encoded: char8[4];
+    var written: uint = 0;
+    let sink = MutableSlice::From<char8>(@encoded[0], 4);
+    if Encode(scalar, sink, @written).IsError() {
+        return TextError::InvalidUtf8;
+    }
+    return WriteBytes(writer, Slice<char8> { data: @encoded[0], length: written });
+}
+
+/// A writer that appends to a `StringBuilder`.
+///
+/// Holds the builder behind a pointer rather than by value, for the reason the allocator handles do: an interface
+/// value is copied when it is passed, and a builder copied mid-write would leave what was written behind.
+///
+/// https://rux-lang.dev/docs/api/format/builder-writer
+struct BuilderWriter {
+    /// The builder being appended to. Never null for a writer `Of` produced.
+    builder: *var StringBuilder;
+}
+
+extend BuilderWriter {
+    /// A writer over `builder`.
+    ///
+    /// # Safety
+    ///
+    /// The builder must outlive the writer and must not be moved while it is in use.
+    ///
+    /// https://rux-lang.dev/docs/api/format/builder-writer/of
+    func Of(builder: *var StringBuilder) -> BuilderWriter {
+        return BuilderWriter { builder: builder };
+    }
+}
+
+extend BuilderWriter : Writer {
+    /// Appends `bytes` to the builder.
+    ///
+    /// Reports `OutOfMemory` when the builder cannot make room, having appended nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/format/builder-writer/write
+    func Write(self: *var BuilderWriter, bytes: Slice<char8>) -> TextError {
+        return self.builder.AppendValidated(bytes);
+    }
+}
+
+/// A writer that fills a fixed buffer.
+///
+/// Allocates nothing and cannot fail for want of memory, which is what makes it the writer to reach for where there
+/// is no allocator: an early startup path, a signal handler, a test that would rather not depend on one. A write
+/// that does not fit is refused rather than truncated, and the cursor remembers that it happened.
+///
+/// https://rux-lang.dev/docs/api/format/cursor-writer
+struct CursorWriter {
+    /// The cursor being filled. Never null for a writer `Of` produced.
+    cursor: *var ByteCursor;
+}
+
+extend CursorWriter {
+    /// A writer over `cursor`.
+    ///
+    /// # Safety
+    ///
+    /// The cursor must outlive the writer and must not be moved while it is in use.
+    ///
+    /// https://rux-lang.dev/docs/api/format/cursor-writer/of
+    func Of(cursor: *var ByteCursor) -> CursorWriter {
+        return CursorWriter { cursor: cursor };
+    }
+}
+
+extend CursorWriter : Writer {
+    /// Writes `bytes` into the buffer, reporting `LengthOverflow` when they do not fit.
+    ///
+    /// https://rux-lang.dev/docs/api/format/cursor-writer/write
+    func Write(self: *var CursorWriter, bytes: Slice<char8>) -> TextError {
+        self.cursor.PushBytes(bytes);
+        return self.cursor.Overran() ? TextError::LengthOverflow : TextError::None;
+    }
+}

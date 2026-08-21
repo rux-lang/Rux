@@ -1,5 +1,3 @@
-import Text::StringBuilder;
-
 // The float conversions all funnel through here. What separates a float32
 // from a float64 is only how many digits it can carry before the noise of
 // the binary representation shows through, so that count is a parameter and
@@ -8,10 +6,10 @@ import Text::StringBuilder;
 // The digits of a finite, non-zero magnitude, and the point placed by the
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
-func WriteDecimal(builder: *var StringBuilder, value: float64, significant: uint) {
+func WriteDecimal(cursor: *var ByteCursor, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {
-        builder.Append(c8'-');
+        cursor.Push(c8'-');
         abs = -value;
     }
 
@@ -80,9 +78,9 @@ func WriteDecimal(builder: *var StringBuilder, value: float64, significant: uint
     // leading zeros than on digits, and one at or above the digit count
     // would spend it on trailing ones.
     if exp10 < -4 || exp10 >= significant as int {
-        WriteScientific(builder, digits, count, exp10);
+        WriteScientific(cursor, digits, count, exp10);
     } else {
-        WriteFixed(builder, digits, count, exp10);
+        WriteFixed(cursor, digits, count, exp10);
     }
 }
 
@@ -90,20 +88,20 @@ func WriteDecimal(builder: *var StringBuilder, value: float64, significant: uint
 // exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
 // written, so the text still reads as a float when the value has no fraction
 // of its own to show.
-func WriteFixed(builder: *var StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteFixed(cursor: *var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
     if exp10 < 0 {
         // Below one, so the text opens with a zero and the point, then as
         // many more zeros as the exponent calls for: -1 puts the first digit
         // straight after the point, -3 leaves two zeros in front of it.
-        builder.Append("0.");
+        cursor.PushBytes("0.");
         var pad = exp10 + 1;
         while pad < 0 {
-            builder.Append(c8'0');
+            cursor.Push(c8'0');
             pad++;
         }
 
         for i in 0..count {
-            builder.Append(digits[i]);
+            cursor.Push(digits[i]);
         }
         return;
     }
@@ -115,22 +113,22 @@ func WriteFixed(builder: *var StringBuilder, digits: Slice<char8>, count: uint, 
     var i: uint = 0;
     while i < length {
         if i < count {
-            builder.Append(digits[i]);
+            cursor.Push(digits[i]);
         } else {
-            builder.Append(c8'0');
+            cursor.Push(c8'0');
         }
         i++;
     }
 
-    builder.Append(c8'.');
+    cursor.Push(c8'.');
     if count <= length {
-        builder.Append(c8'0');
+        cursor.Push(c8'0');
         return;
     }
 
     var j = length;
     while j < count {
-        builder.Append(digits[j]);
+        cursor.Push(digits[j]);
         j++;
     }
 }
@@ -138,26 +136,26 @@ func WriteFixed(builder: *var StringBuilder, digits: Slice<char8>, count: uint, 
 // One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
 // exponent carries a sign and at least two digits, so the tail keeps a
 // steady width across the range.
-func WriteScientific(builder: *var StringBuilder, digits: Slice<char8>, count: uint, exp10: int) {
-    builder.Append(digits[0]);
-    builder.Append(c8'.');
+func WriteScientific(cursor: *var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
+    cursor.Push(digits[0]);
+    cursor.Push(c8'.');
     if count == 1 {
-        builder.Append(c8'0');
+        cursor.Push(c8'0');
     } else {
         var i: uint = 1;
         while i < count {
-            builder.Append(digits[i]);
+            cursor.Push(digits[i]);
             i++;
         }
     }
 
-    builder.Append(c8'e');
+    cursor.Push(c8'e');
     var exp = exp10;
     if exp < 0 {
-        builder.Append(c8'-');
+        cursor.Push(c8'-');
         exp = -exp;
     } else {
-        builder.Append(c8'+');
+        cursor.Push(c8'+');
     }
 
     // The digits come out least significant first and go back reversed.
@@ -174,13 +172,13 @@ func WriteScientific(builder: *var StringBuilder, digits: Slice<char8>, count: u
     }
 
     if length < 2 {
-        builder.Append(c8'0');
+        cursor.Push(c8'0');
     }
 
     var i = length;
     while i > 0 {
         i--;
-        builder.Append(expDigits[i]);
+        cursor.Push(expDigits[i]);
     }
 }
 

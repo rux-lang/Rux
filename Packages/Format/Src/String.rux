@@ -1,12 +1,59 @@
-import Text::String;
+// Text rendering itself is the text it already is.
+//
+// A `String` and a `StringView` write their bytes straight through, with no conversion: they are UTF-8 by
+// construction, which is exactly what a writer takes. Nothing is copied and nothing is allocated, which is the
+// difference from the old shape, where rendering a string produced a second string.
+//
+// `Debug` is where the two part company. A string shown to a reader is its characters; a string shown to somebody
+// looking at a program is quoted, so that where it starts and stops is visible and an empty one is not invisible.
 
-// A String is already the text it would render into, so the conversion is a
-// copy rather than a formatting step. It has to be a copy: Format frees the
-// String an argument renders itself into as soon as its bytes are in the
-// builder, and handing back the receiver's own block would leave the caller
-// holding a String whose allocation is gone.
-extend String : Stringable {
-    func ToString(self: *String) -> String {
-        return self.Clone();
+import Core::Slice;
+import Text::{ String, StringView, TextError };
+
+extend String : Display {
+    /// Writes this string's bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string/format
+    func Format(self: *String, writer: Writer) -> TextError {
+        return WriteBytes(writer, self.Bytes());
+    }
+}
+
+extend String : Debug {
+    /// Writes this string quoted.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string/format-debug
+    func FormatDebug(self: *String, writer: Writer) -> TextError {
+        let view = self.View();
+        return view.FormatDebug(writer);
+    }
+}
+
+extend StringView : Display {
+    /// Writes what this view spans.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string-view/format
+    func Format(self: *StringView, writer: Writer) -> TextError {
+        return WriteBytes(writer, self.Bytes());
+    }
+}
+
+extend StringView : Debug {
+    /// Writes what this view spans, quoted.
+    ///
+    /// The quotes are all that is added. Escaping the characters between them is a question about which of them
+    /// need it, which is a Unicode question and belongs where the Unicode tables are.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string-view/format-debug
+    func FormatDebug(self: *StringView, writer: Writer) -> TextError {
+        let opening = WriteAscii(writer, c8'"');
+        if opening.IsError() {
+            return opening;
+        }
+        let body = WriteBytes(writer, self.Bytes());
+        if body.IsError() {
+            return body;
+        }
+        return WriteAscii(writer, c8'"');
     }
 }

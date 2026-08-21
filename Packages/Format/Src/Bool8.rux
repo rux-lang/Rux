@@ -1,21 +1,23 @@
-import Text::{ String, StringBuilder };
+// A `bool8` is the word `true` or the word `false`.
+//
+// Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
-// A bool prints as one of the two words it can name, never as 0 or 1.
-func ToString(value: bool8) -> String {
-    return value ? String::From("true") : String::From("false");
-}
+import Text::TextError;
 
-extend bool8 : Stringable {
-    func ToString(self: *bool8) -> String {
-        return ToString(*self);
+extend bool8 : Display {
+    /// Writes `true` or `false`.
+    ///
+    /// https://rux-lang.dev/docs/api/format/bool8/format
+    func Format(self: *bool8, writer: Writer) -> TextError {
+        return WriteBytes(writer, *self ? "true" : "false");
     }
 }
 
-// Appends the word to a builder, for a caller who is already accumulating.
-func WriteBool(builder: *var StringBuilder, value: bool8) {
-    if value {
-        builder.Append("true");
-        return;
+extend bool8 : Debug {
+    /// The same two words.
+    ///
+    /// https://rux-lang.dev/docs/api/format/bool8/format-debug
+    func FormatDebug(self: *bool8, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
-    builder.Append("false");
 }

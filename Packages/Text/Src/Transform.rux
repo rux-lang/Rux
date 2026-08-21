@@ -1,0 +1,157 @@
+// Making new text out of old.
+//
+// Everything here allocates, because everything here produces text that did not exist before: joining two runs,
+// repeating one, replacing part of one, changing the case of one. That is what separates these from `Search`, whose
+// answers are all borrows of what was already there.
+//
+// The case operations are ASCII-only and say so in their names. Case in Unicode is not a per-character mapping: it
+// depends on the locale (a Turkish dotless i), on neighbours (a Greek final sigma), and it changes the length (a
+// German sharp s becomes two letters). Every one of those needs the tables, and a `ToUpper` that quietly did the
+// ASCII thing to text that was not ASCII would be wrong in a way nobody notices until the text is not English.
+
+import Allocator::Allocator;
+import Core::{ Option, Slice };
+
+/// The text of `left` followed by the text of `right`.
+///
+/// `error` receives what went wrong, and the string comes back empty.
+///
+/// https://rux-lang.dev/docs/api/text/concat
+func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
+    var builder = StringBuilder::New(allocator);
+    *error = builder.Reserve(left.bytes.length + right.bytes.length);
+    if error.IsError() {
+        return builder.IntoString();
+    }
+    *error = builder.Append(left);
+    if error.IsError() {
+        return builder.IntoString();
+    }
+    *error = builder.Append(right);
+    return builder.IntoString();
+}
+
+/// The text of `view` written `count` times.
+///
+/// A `count` of zero gives empty text, which is what makes repeating agree with joining: repeating twice is the
+/// same as joining a thing to itself.
+///
+/// https://rux-lang.dev/docs/api/text/repeat
+func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
+    var builder = StringBuilder::New(allocator);
+    if count != 0 && view.bytes.length != 0 {
+        if count > 0xFFFFFFFFFFFFFFFFu / view.bytes.length {
+            *error = TextError::LengthOverflow;
+            return builder.IntoString();
+        }
+        *error = builder.Reserve(view.bytes.length * count);
+        if error.IsError() {
+            return builder.IntoString();
+        }
+    }
+    var done: uint = 0;
+    while done < count {
+        *error = builder.Append(view);
+        if error.IsError() {
+            return builder.IntoString();
+        }
+        done = done + 1;
+    }
+    *error = TextError::None;
+    return builder.IntoString();
+}
+
+/// The text of `view` with every occurrence of `needle` replaced by `replacement`.
+///
+/// Occurrences are found left to right and never overlap, and what is put in their place is not searched again --
+/// so replacing `a` with `aa` terminates rather than growing forever. An empty `needle` matches nothing, since the
+/// alternative is a replacement between every pair of characters and before and after every one of them.
+///
+/// https://rux-lang.dev/docs/api/text/replace
+func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
+             error: *var TextError) -> String {
+    var builder = StringBuilder::New(allocator);
+    if needle.bytes.length == 0 {
+        *error = builder.Append(view);
+        return builder.IntoString();
+    }
+
+    var rest = view;
+    var walking = true;
+    while walking {
+        match rest.IndexOf(needle) {
+            .Some(at) => {
+                let before = rest.Part(0, at).ValueOr(StringView::New());
+                *error = builder.Append(before);
+                if error.IsError() {
+                    return builder.IntoString();
+                }
+                *error = builder.Append(replacement);
+                if error.IsError() {
+                    return builder.IntoString();
+                }
+                rest = rest.Part(at + needle.bytes.length, rest.bytes.length).ValueOr(StringView::New());
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    *error = builder.Append(rest);
+    return builder.IntoString();
+}
+
+/// Whether `byte` is an ASCII letter.
+///
+/// https://rux-lang.dev/docs/api/text/is-ascii-letter
+func IsAsciiLetter(byte: char8) -> bool {
+    let value = byte as uint32;
+    return (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A);
+}
+
+/// The text of `view` with every ASCII lower-case letter raised, and everything else left alone.
+///
+/// ASCII only: every byte above 0x7F passes through untouched, which is why this cannot change the length and
+/// cannot produce anything that is not UTF-8.
+///
+/// https://rux-lang.dev/docs/api/text/to-ascii-upper
+func ToAsciiUpper(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+    return MapAscii(allocator, view, 0x61, 0x7A, 0x20, error);
+}
+
+/// The text of `view` with every ASCII upper-case letter lowered.
+///
+/// https://rux-lang.dev/docs/api/text/to-ascii-lower
+func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+    return MapAscii(allocator, view, 0x41, 0x5A, 0x20, error);
+}
+
+// Copies `view`, shifting every byte in [low, high] by `delta`. The two case operations differ only in which range
+// moves and in which direction, so the copy loop is written once.
+func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32,
+              error: *var TextError) -> String {
+    var builder = StringBuilder::New(allocator);
+    *error = builder.Reserve(view.bytes.length);
+    if error.IsError() {
+        return builder.IntoString();
+    }
+    var index: uint = 0;
+    while index < view.bytes.length {
+        let byte = view.bytes.data[index];
+        let value = byte as uint32;
+        let shifted = value >= low && value <= high ? (low == 0x61 ? value - delta : value + delta) : value;
+        *error = builder.AppendAscii(shifted as char8);
+        if error.IsError() {
+            // A byte above 0x7F is not ASCII and passes through as it stands, as part of whatever character it
+            // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
+            var one: char8[1];
+            one[0] = byte;
+            *error = builder.AppendValidated(Slice<char8> { data: @one[0], length: 1 });
+            if error.IsError() {
+                return builder.IntoString();
+            }
+        }
+        index = index + 1;
+    }
+    return builder.IntoString();
+}

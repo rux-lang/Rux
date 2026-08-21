@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Package test for Io: Print"
 
 [Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
 Io = { Path = "../../../../Packages/Io" }
 Text = { Path = "../../../../Packages/Text" }
 

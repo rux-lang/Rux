@@ -1,16 +1,32 @@
-import Text::{ String, StringBuilder };
+// The decimal text of an `int`.
+//
+// A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
+// noise and one that is there on request belongs to the placeholder rather than the value.
 
-// The decimal text of an int, the signed integer that is as wide as a
-// pointer. It is a type of its own rather than a name for int64, so it needs
-// its own conversion even where the two happen to be the same width.
-func ToString(value: int) -> String {
-    var builder = StringBuilder::WithCapacity(20);
-    WriteInt(@builder, value as int64);
-    return builder.IntoString();
+// `int` is a type of its own rather than a name for `int64`, so it needs its own implementation even where
+// the two happen to be the same width. Widening to `int64` first is what makes that implementation one line.
+
+import Text::TextError;
+
+extend int : Display {
+    /// Writes this value's digits.
+    ///
+    /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
+    ///
+    /// https://rux-lang.dev/docs/api/format/int/format
+    func Format(self: *int, writer: Writer) -> TextError {
+        var storage: char8[21];
+        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 21));
+        WriteInt(@cursor, *self as int64);
+        return WriteBytes(writer, cursor.Written());
+    }
 }
 
-extend int : Stringable {
-    func ToString(self: *int) -> String {
-        return ToString(*self);
+extend int : Debug {
+    /// The same digits: a number reads the same whoever is looking.
+    ///
+    /// https://rux-lang.dev/docs/api/format/int/format-debug
+    func FormatDebug(self: *int, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
 }

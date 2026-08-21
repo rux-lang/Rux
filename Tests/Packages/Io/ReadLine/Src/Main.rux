@@ -1,21 +1,19 @@
-import Io::{
-    Print,
-    PrintLine,
-    ReadLine
-};
+import Allocator::{ Allocator, SystemAllocator };
+import Io::{ Print, PrintLine, ReadLine };
 
-func EchoLine() {
-    var line = ReadLine();
+func EchoLine(allocator: Allocator) {
+    let line = ReadLine(allocator);
     Print("[");
     Print(line);
     PrintLine("]");
-    line.Free();
 }
 
 func Main() -> int {
-    EchoLine();
-    EchoLine();
-    EchoLine();
-    EchoLine();
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    EchoLine(allocator);
+    EchoLine(allocator);
+    EchoLine(allocator);
+    EchoLine(allocator);
     return 0;
 }

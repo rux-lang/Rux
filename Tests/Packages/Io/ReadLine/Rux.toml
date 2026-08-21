@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Package test for Io: ReadLine"
 
 [Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
 Io = { Path = "../../../../Packages/Io" }
 
 [Build]

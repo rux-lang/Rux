@@ -1,0 +1,51 @@
+// What can go wrong in this package, and nothing else.
+//
+// Two things can, and they are different in kind. An allocation can fail, which says nothing about the text and
+// everything about the machine; and bytes can fail to be UTF-8, which says nothing about the machine and everything
+// about where the bytes came from. A caller handles those differently -- one is retried or reported, the other means
+// the input is not text -- so they are not one error.
+
+import Allocator::AllocError;
+
+/// What went wrong, or `None` when nothing did.
+///
+/// https://rux-lang.dev/docs/api/text/text-error
+enum TextError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// The allocator could not supply the storage.
+    OutOfMemory = 1,
+    /// A length or offset computation passed what a `uint` can hold.
+    LengthOverflow = 2,
+    /// The bytes are not well-formed UTF-8.
+    InvalidUtf8 = 3,
+    /// A byte offset that is not where a character starts, and so not a place text may be cut.
+    NotABoundary = 4
+}
+
+extend TextError {
+    /// Whether this reports success.
+    ///
+    /// https://rux-lang.dev/docs/api/text/text-error/is-ok
+    func IsOk(self: *TextError) -> bool {
+        return *self == TextError::None;
+    }
+
+    /// Whether this reports a failure.
+    ///
+    /// https://rux-lang.dev/docs/api/text/text-error/is-error
+    func IsError(self: *TextError) -> bool {
+        return *self != TextError::None;
+    }
+}
+
+/// The text error an allocator's failure becomes.
+///
+/// Everything an allocator can refuse is a failure to supply storage as far as text is concerned; the distinctions
+/// the allocator draws are about the request, and this package makes no requests a caller could have made
+/// differently.
+///
+/// https://rux-lang.dev/docs/api/text/from-alloc-error
+func FromAllocError(error: AllocError) -> TextError {
+    return error == AllocError::None ? TextError::None : TextError::OutOfMemory;
+}

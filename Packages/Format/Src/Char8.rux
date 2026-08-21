@@ -1,24 +1,57 @@
-import Text::{ String, StringBuilder };
+// A `char8` is one byte of UTF-8, which is not the same thing as one character.
+//
+// A byte below 0x80 is a whole character and is written as it stands. A byte above that is one piece of a character
+// spread over several, and a writer takes whole characters -- so what is written for one is the replacement
+// character, U+FFFD, which is what "there was something here and it could not be represented" looks like in text.
+// Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
+// reader of the result together.
 
-// A char8 is one byte of UTF-8, not one character: the String it becomes is
-// one byte long, and for a byte out of the middle of a multi-byte sequence
-// that String holds a fragment rather than a letter. Nothing is encoded or
-// validated here, since there is nothing to encode -- the byte is passed
-// through as it stands.
-func ToString(value: char8) -> String {
-    var buffer: char8[1];
-    buffer[0] = value;
-    return String::From(@buffer[0], 1u);
-}
+import Core::Slice;
+import Text::TextError;
 
-extend char8 : Stringable {
-    func ToString(self: *char8) -> String {
-        return ToString(*self);
+/// The character written in place of anything that is not one.
+///
+/// https://rux-lang.dev/docs/api/format/replacement-character
+const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
+
+extend char8 : Display {
+    /// Writes this byte, or the replacement character when it is not a whole one.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char8/format
+    func Format(self: *char8, writer: Writer) -> TextError {
+        if (*self as uint32) > 0x7F {
+            return WriteScalar(writer, ReplacementCharacter);
+        }
+        return WriteAscii(writer, *self);
     }
 }
 
-extend Slice<char8> : Stringable {
-    func ToString(self: Slice<char8>) -> String {
-        return String::From(self);
+extend char8 : Debug {
+    /// The same byte, quoted, as a character literal is written.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char8/format-debug
+    func FormatDebug(self: *char8, writer: Writer) -> TextError {
+        let opening = WriteAscii(writer, c8'\'');
+        if opening.IsError() {
+            return opening;
+        }
+        let body = self.Format(writer);
+        if body.IsError() {
+            return body;
+        }
+        return WriteAscii(writer, c8'\'');
+    }
+}
+
+extend Slice<char8> : Display {
+    /// Writes these bytes.
+    ///
+    /// # Safety
+    ///
+    /// The bytes must be well-formed UTF-8; a slice is not checked, which is what `StringView` is for.
+    ///
+    /// https://rux-lang.dev/docs/api/format/slice-char8/format
+    func Format(self: Slice<char8>, writer: Writer) -> TextError {
+        return WriteBytes(writer, self);
     }
 }

@@ -1,77 +1,53 @@
-import Text::String;
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ Concat, Repeat, String, StringView, TextError };
 
-// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
-// itself through the exit code.
+// Joining and repeating are the operations that make new text, so what is worth checking is what they allocate and
+// what they leave behind: the inputs are borrowed views and stay whole, the result is an owning string with a block
+// of its own, and the empty cases cost nothing.
 
-// Comparing against a literal needs a String to compare with, and that String
-// owns a block like any other. Freeing it here keeps the tests honest about the
-// ownership rule the package is built on.
-func Matches(value: String, expected: Slice<char8>) -> bool {
-    var want = String::From(expected);
-    let result = value.Equals(want);
-    want.Free();
-    return result;
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
 }
 
 func Main() -> int {
-    var hello = String::From("Hello");
-    var world = String::From("World");
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
 
-    // Concatenation builds a new block and leaves both operands alone: that is
-    // the whole contract of an immutable String.
-    var joined = hello + world;
-    if joined.Length() != 10 { return 10; }
-    if !Matches(joined, "HelloWorld") { return 11; }
-    if hello.Length() != 5 { return 12; }
-    if world.Length() != 5 { return 13; }
-    if joined.Data() == hello.Data() { return 14; }
-    joined.Free();
+    let hello = View("Hello, ");
+    let world = View("world!");
 
-    // A slice on the right avoids wrapping the literal in a String first.
-    var greeting = hello + ", " + world;
-    if greeting.Length() != 12 { return 20; }
-    if !Matches(greeting, "Hello, World") { return 21; }
-    greeting.Free();
+    let joined = Concat(allocator, hello, world, @error);
+    Assert(error == TextError::None, "two views join");
+    Assert(joined.Length() == 13, "into text spanning both");
+    let expected = View("Hello, world!");
+    let joinedView = joined.View();
+    Assert(joinedView.Equals(@expected), "in order, left then right");
 
-    // Concatenating an empty String copies the other side rather than aliasing
-    // it, so the result can be freed on its own.
-    var empty = String::New();
-    var copy = hello + empty;
-    if !copy.Equals(hello) { return 30; }
-    if copy.Data() == hello.Data() { return 31; }
-    copy.Free();
+    // The empty view is the identity, on either side.
+    let leftEmpty = Concat(allocator, View(""), world, @error);
+    Assert(error == TextError::None && leftEmpty.View().Equals(@world), "the empty view joins as nothing, on the left");
+    let rightEmpty = Concat(allocator, world, View(""), @error);
+    Assert(error == TextError::None && rightEmpty.View().Equals(@world), "and on the right");
+    let bothEmpty = Concat(allocator, View(""), View(""), @error);
+    Assert(error == TextError::None && bothEmpty.IsEmpty(), "and two of them join into nothing");
 
-    var back = empty + hello;
-    if !back.Equals(hello) { return 32; }
-    back.Free();
+    // Multi-byte characters cross the join whole.
+    let mixed = Concat(allocator, View("é"), View("€"), @error);
+    Assert(error == TextError::None && mixed.Length() == 5, "multi-byte characters join whole");
+    Assert(mixed.ScalarCount() == 2, "and stay two characters");
 
-    // Two empty operands allocate nothing.
-    var nothing = empty + String::New();
-    if !nothing.IsEmpty() { return 33; }
-    if nothing.Data() != null { return 34; }
-    nothing.Free();
+    // Repetition.
+    let thrice = Repeat(allocator, View("ab"), 3, @error);
+    Assert(error == TextError::None && thrice.Length() == 6, "a view is repeated");
+    let abab = View("ababab");
+    let thriceView = thrice.View();
+    Assert(thriceView.Equals(@abab), "in order, however many times");
+    let none = Repeat(allocator, View("ab"), 0, @error);
+    Assert(error == TextError::None && none.IsEmpty(), "zero times is empty text");
+    let emptyRepeated = Repeat(allocator, View(""), 1000, @error);
+    Assert(error == TextError::None && emptyRepeated.IsEmpty(), "and so is the empty view any number of times");
 
-    // Repeat lays the contents down count times.
-    var thrice = hello.Repeat(3);
-    if thrice.Length() != 15 { return 40; }
-    if !Matches(thrice, "HelloHelloHello") { return 41; }
-    thrice.Free();
-
-    var once = hello.Repeat(1);
-    if !once.Equals(hello) { return 42; }
-    once.Free();
-
-    // A count of zero, or repeating nothing, yields the empty String.
-    var never = hello.Repeat(0);
-    if !never.IsEmpty() { return 43; }
-    never.Free();
-
-    var stillEmpty = empty.Repeat(4);
-    if !stillEmpty.IsEmpty() { return 44; }
-    stillEmpty.Free();
-
-    empty.Free();
-    world.Free();
-    hello.Free();
     return 0;
 }

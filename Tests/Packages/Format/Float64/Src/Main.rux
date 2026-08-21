@@ -1,6 +1,7 @@
-import Format::{ ToString, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
+import Text::StringView;
+import Format::{ ByteCursor, CursorWriter, Display, Writer, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
 import Core::Result;
-import Text::String;
+import Core::{ MutableSlice, Slice };
 
 // Std is deliberately absent from the dependencies: it exports conversions of
 // the same name, and the compiler pools the overloads of two same-named symbols,
@@ -9,16 +10,25 @@ import Text::String;
 // exit code instead: each one below is numbered, and `rux test` prints the
 // number of the first that fails.
 func Check(value: float64, expected: Slice<char8>, code: int) -> int {
-    var actual = ToString(value);
-    var wanted = String::From(expected);
-    let ok = actual == wanted;
-    actual.Free();
-    wanted.Free();
-
-    if ok {
-        return 0;
+    var storage: char8[64];
+    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
+    let writer: Writer = CursorWriter::Of(@cursor);
+    let shown: Display = value;
+    if shown.Format(writer).IsError() {
+        return code;
     }
-    return code;
+    let actual = cursor.Written();
+    if actual.length != expected.length {
+        return code;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return code;
+        }
+        index = index + 1;
+    }
+    return 0;
 }
 
 func CheckParse(str: Slice<char8>, expected: float64, code: int) -> int {
@@ -58,9 +68,8 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = String::From("3.5");
+    var text = StringView::FromBytes("3.5").ValueOr(StringView::New());
     let parsed = ParseFloat64(text);
-    text.Free();
     let code = match parsed {
         Result::Success(value) => value == 3.5 ? 0 : 120,
         Result::Error(_) => 120
@@ -74,15 +83,13 @@ func CheckParseOverloads() -> int {
     if value != 6.25 { return 124; }
     if TryParseFloat64("1.0", null) { return 125; }
 
-    text = String::From("-4.5");
+    text = StringView::FromBytes("-4.5").ValueOr(StringView::New());
     let ok = TryParseFloat64(text, @value);
-    text.Free();
     if !ok { return 126; }
     if value != -4.5 { return 127; }
 
-    text = String::From("bad");
+    text = StringView::FromBytes("bad").ValueOr(StringView::New());
     let failed = TryParseFloat64(text, @value);
-    text.Free();
     if failed { return 128; }
     if value != -4.5 { return 129; }
     return 0;
@@ -179,15 +186,9 @@ func Main() -> int {
     // invalid character and a distinct overflow error.
     code = CheckParsing();
     if code != 0 { return code; }
-
-    // The method the Stringable extension provides, which is the same
-    // conversion reached through the interface.
-    var text = 2.5.ToString();
-    var wanted = String::From("2.5");
-    let ok = text == wanted;
-    text.Free();
-    wanted.Free();
-    if !ok { return 90; }
+    // Reached through the interface rather than through the concrete type, which is how a format call reaches it.
+    let code70 = Check(2.5, "2.5", 70);
+    if code70 != 0 { return code70; }
 
     return 0;
 }

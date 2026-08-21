@@ -1,0 +1,70 @@
+// A fixed run of bytes being filled from the front.
+//
+// Every primitive has a longest possible rendering that is known in advance -- twenty digits for a `uint64`, a
+// handful more for a float's sign, point and exponent -- so the digits go into a buffer on the stack and reach the
+// writer in one call. Nothing here allocates, which is the point: printing a number should not need an allocator to
+// exist, let alone succeed.
+//
+// A cursor that runs out stops writing rather than overrunning, and says so. Every caller in this package sizes its
+// buffer from the same bound the formatter is written against, so running out means the bound is wrong; refusing
+// silently would turn that into a truncated number, which is worse than an obvious one.
+
+import Core::{ MutableSlice, Slice };
+
+/// A fixed buffer being filled from the front.
+///
+/// https://rux-lang.dev/docs/api/format/byte-cursor
+struct ByteCursor {
+    /// The room available.
+    room: MutableSlice<char8>;
+    /// How much of it is used.
+    length: uint;
+    /// Whether a write was refused for want of room.
+    overran: bool;
+}
+
+extend ByteCursor {
+    /// A cursor over `room`, filling from its start.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/new
+    func New(room: MutableSlice<char8>) -> ByteCursor {
+        return ByteCursor { room: room, length: 0, overran: false };
+    }
+
+    /// Appends one byte, or records an overrun when there is no room.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/push
+    func Push(self: *var ByteCursor, byte: char8) {
+        if self.length >= self.room.length {
+            self.overran = true;
+            return;
+        }
+        self.room.data[self.length] = byte;
+        self.length = self.length + 1;
+    }
+
+    /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
+    func PushBytes(self: *var ByteCursor, bytes: Slice<char8>) {
+        var index: uint = 0;
+        while index < bytes.length {
+            self.Push(bytes.data[index]);
+            index = index + 1;
+        }
+    }
+
+    /// What has been written.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/written
+    func Written(self: *ByteCursor) -> Slice<char8> {
+        return Slice<char8> { data: self.room.data, length: self.length };
+    }
+
+    /// Whether a write was refused for want of room.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/overran
+    func Overran(self: *ByteCursor) -> bool {
+        return self.overran;
+    }
+}

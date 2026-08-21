@@ -1,5 +1,0 @@
-import Text::String;
-
-interface Stringable {
-    func ToString() -> String;
-}
