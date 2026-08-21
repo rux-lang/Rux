@@ -7,8 +7,8 @@
 // The descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a type
 // alias declared in another file of the package.
 
-import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, close, dup2, fsync, ftruncate, lseek, mkdirat,
-                openat, pipe, read, renameat, unlinkat, write };
+import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, __getdirentries64, close, dup2, fsync, ftruncate,
+                lseek, mkdirat, openat, pipe, read, renameat, unlinkat, write };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///
@@ -158,6 +158,18 @@ func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileM
 /// https://rux-lang.dev/docs/api/macos/lseek
 func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
     return Normalize(lseek(fd, offset, whence));
+}
+
+/// Reads directory entries from `fd` into `buffer`, and returns the bytes filled, zero at the end, or a negative
+/// error number.
+///
+/// The buffer holds packed 64-bit-inode `dirent` records: the inode at offset 0 (8 bytes), a seek cookie at 8
+/// (8 bytes), the record's length at 16 (2 bytes), the name's length at 18 (2 bytes), the entry type at 20
+/// (1 byte), and the name from 21. The kernel writes as many whole records as fit.
+///
+/// https://rux-lang.dev/docs/api/macos/getdirentries64
+func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: uint, position: *var int64) -> int64 {
+    return Normalize(__getdirentries64(fd, buffer, count, position));
 }
 
 /// Flushes everything written to `fd` toward the storage device.

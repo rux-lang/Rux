@@ -82,6 +82,15 @@ const ERROR_INVALID_PARAMETER: uint32 = 87;
 #Allow("naming.const")
 const ERROR_DISK_FULL: uint32 = 112;
 
+/// `ERROR_NO_MORE_FILES`: a directory enumeration has handed over its last entry.
+///
+/// Reported by `FindNextFileW` at the end of an enumeration, where nothing has gone wrong at all -- the caller
+/// distinguishes it from a real failure by this code.
+///
+/// https://rux-lang.dev/docs/api/windows/error-no-more-files
+#Allow("naming.const")
+const ERROR_NO_MORE_FILES: uint32 = 18;
+
 /// `ERROR_ALREADY_EXISTS`: the object already exists.
 ///
 /// Reported by `CreateDirectoryW` where `ERROR_FILE_EXISTS` is reported by the file calls, which is why a caller

@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Directory"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Directories made, read losslessly entry by entry, and deleted empty."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Storage = { Path = "../../../../Packages/Storage" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Storage"

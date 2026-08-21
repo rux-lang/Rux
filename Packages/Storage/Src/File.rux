@@ -165,7 +165,12 @@ func NativePath(allocator: Allocator, path: Path, block: *var *var OsUnit) -> Io
         copied[index] = units.data[index];
         index = index + 1;
     }
-    copied[units.length] = 0;
+    when #target.os == .Windows {
+        copied[units.length] = 0;
+    }
+    else {
+        copied[units.length] = 0u8 as char8;
+    }
     *block = copied;
     return IoError::Ok();
 }

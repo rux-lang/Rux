@@ -1,0 +1,390 @@
+// Directories: made, deleted, and read entry by entry with nothing lost in the names.
+//
+// Enumeration hands back each entry's name as an `OsString` -- the units the system actually stores, not a text
+// conversion that a hostile or merely foreign name would fail. The `.` and `..` entries are skipped, because no
+// caller walking a directory has ever wanted the directory itself twice. Order is whatever the filesystem
+// chooses; nothing here sorts, because a sorted walk is a policy and this is a primitive.
+
+import Allocator::Allocator;
+import Core::{ #target, Drop, Slice };
+import Io::{ IoError, IoErrorKind };
+import Path::{ OsString, OsStringView, OsUnit, Path };
+import Text::TextError;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ AtFdCwd, Close, Getdirentries, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                                  RemoveDirectory, UnlinkAt },
+    .Linux => import Linux::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                              RemoveDirectory, UnlinkAt },
+    .macOS => import macOS::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                              RemoveDirectory, UnlinkAt },
+    .Windows => import Windows::{
+        CreateDirectoryW,
+        DeleteFileW,
+        ERROR_NO_MORE_FILES,
+        FindClose,
+        FindFirstFileW,
+        FindNextFileW,
+        GetLastError,
+        InvalidHandleValue,
+        RemoveDirectoryW
+    }
+}
+
+/// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.
+///
+/// https://rux-lang.dev/docs/api/storage/make-directory
+func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
+    var native: *var OsUnit = null;
+    let converted = NativePath(allocator, path, @native);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if CreateDirectoryW(native as *char16, null) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        // Read, write and search for everyone, cut down by the process umask.
+        let result = MkdirAt(AtFdCwd, native as *char8, 511);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePath(allocator, native, path.name.units.length);
+    return outcome;
+}
+
+/// Deletes the empty directory `path` names; a directory with anything still in it is refused.
+///
+/// https://rux-lang.dev/docs/api/storage/delete-directory
+func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
+    var native: *var OsUnit = null;
+    let converted = NativePath(allocator, path, @native);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if RemoveDirectoryW(native as *char16) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePath(allocator, native, path.name.units.length);
+    return outcome;
+}
+
+/// Deletes the file `path` names. Removing the name does not disturb any handle still open on the file.
+///
+/// https://rux-lang.dev/docs/api/storage/delete-file
+func DeleteFile(allocator: Allocator, path: Path) -> IoError {
+    var native: *var OsUnit = null;
+    let converted = NativePath(allocator, path, @native);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if DeleteFileW(native as *char16) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = UnlinkAt(AtFdCwd, native as *char8, 0);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePath(allocator, native, path.name.units.length);
+    return outcome;
+}
+
+/// A directory read one entry at a time.
+///
+/// Move-only: `Release` (or `Drop`) gives back the platform handle and the record buffer. `Next` hands each
+/// name over as a fresh `OsString` owned by the caller.
+///
+/// https://rux-lang.dev/docs/api/storage/directory-iterator
+struct DirectoryIterator {
+    /// Where the record buffer came from, and where the names come from.
+    allocator: Allocator;
+    /// The platform's enumeration handle.
+    handle: RawFile;
+    /// The record buffer.
+    data: *var char8;
+    /// Its size.
+    capacity: uint;
+    /// How many bytes of it are records (the Unix systems).
+    length: uint;
+    /// The parse position within them (the Unix systems).
+    offset: uint;
+    /// Whether an entry is already waiting in the buffer (Windows).
+    pending: bool;
+    /// Whether the handle is still this value's to give back.
+    open: bool;
+}
+
+// The buffer each platform's record needs: one WIN32_FIND_DATAW, or a batch of dirent records.
+func DirectoryBufferSize() -> uint {
+    when #target.os == .Windows {
+        return 592;
+    }
+    else {
+        return 4096;
+    }
+}
+
+/// Begins enumerating the directory `path` names.
+///
+/// https://rux-lang.dev/docs/api/storage/read-directory
+func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> DirectoryIterator {
+    *error = IoError::Ok();
+    var iterator = DirectoryIterator {
+        allocator: allocator,
+        handle: NoFile(),
+        data: null,
+        capacity: 0,
+        length: 0,
+        offset: 0,
+        pending: false,
+        open: false
+    };
+    let wanted = DirectoryBufferSize();
+    let layout = Layout { size: wanted, alignment: 8 };
+    var borrowed = allocator;
+    var block: *var opaque = null;
+    if borrowed.Allocate(layout, @block) != AllocError::None {
+        *error = IoError::Of(IoErrorKind::Other);
+        return iterator;
+    }
+    iterator.data = block as *var char8;
+    iterator.capacity = wanted;
+
+    when #target.os == .Windows {
+        // The search takes a pattern, so the path gets a separator and a star appended.
+        let units = path.name.units;
+        let patternLayout = Layout { size: (units.length + 3) * 2, alignment: 2 };
+        var raw: *var opaque = null;
+        if borrowed.Allocate(patternLayout, @raw) != AllocError::None {
+            iterator.Release();
+            *error = IoError::Of(IoErrorKind::Other);
+            return iterator;
+        }
+        let pattern = raw as *var uint16;
+        var index: uint = 0;
+        var length: uint = 0;
+        while index < units.length {
+            if (units.data[index] as uint32) == 0u32 {
+                borrowed.Deallocate(raw, patternLayout);
+                iterator.Release();
+                *error = IoError::Of(IoErrorKind::InvalidInput);
+                return iterator;
+            }
+            pattern[length] = units.data[index];
+            length = length + 1;
+            index = index + 1;
+        }
+        if length > 0 && pattern[length - 1] != 0x5Cu16 && pattern[length - 1] != 0x2Fu16 {
+            pattern[length] = 0x5Cu16;
+            length = length + 1;
+        }
+        pattern[length] = 0x2Au16;
+        pattern[length + 1] = 0;
+        let found = FindFirstFileW(pattern as *char16, iterator.data as *var opaque);
+        borrowed.Deallocate(raw, patternLayout);
+        if (found as uint64) == InvalidHandleValue {
+            let raw = GetLastError() as int32;
+            iterator.Release();
+            *error = TranslateNative(raw);
+            return iterator;
+        }
+        iterator.handle = found;
+        iterator.pending = true;
+        iterator.open = true;
+        return iterator;
+    }
+    else {
+        var native: *var OsUnit = null;
+        let converted = NativePath(allocator, path, @native);
+        if converted.IsError() {
+            iterator.Release();
+            *error = converted;
+            return iterator;
+        }
+        let opened = OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0);
+        ReleaseNativePath(allocator, native, path.name.units.length);
+        if opened < 0 {
+            iterator.Release();
+            *error = TranslateNative((0i64 - opened) as int32);
+            return iterator;
+        }
+        iterator.handle = opened as int32;
+        iterator.open = true;
+        return iterator;
+    }
+}
+
+extend DirectoryIterator {
+    /// Hands over the next entry's name, or reports that the directory is done.
+    ///
+    /// Reports `true` with `name` freshly owned by the caller; `false` at the end with `failure` still `None`,
+    /// or `false` with `failure` saying what went wrong. The `.` and `..` entries are skipped.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/directory-iterator/next
+    func Next(self: *var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
+        *failure = IoError::Ok();
+        if !self.open {
+            *failure = IoError::Of(IoErrorKind::InvalidHandle);
+            return false;
+        }
+        when #target.os == .Windows {
+            while true {
+                if !self.pending {
+                    if FindNextFileW(self.handle, self.data as *var opaque) == 0 {
+                        let raw = GetLastError();
+                        if raw != ERROR_NO_MORE_FILES {
+                            *failure = TranslateNative(raw as int32);
+                        }
+                        return false;
+                    }
+                }
+                self.pending = false;
+                // The UTF-16 name starts at offset 44 of the record and ends at its NUL.
+                let start = (self.data as uint + 44u) as *var uint16;
+                var length: uint = 0;
+                while length < 260u && start[length] != 0 {
+                    length = length + 1;
+                }
+                if !IsDotEntry16(start, length) {
+                    let view = OsStringView::FromUnits(Slice<OsUnit> { data: start, length: length });
+                    var textError = TextError::None;
+                    *name = OsString::FromView(self.allocator, view, @textError);
+                    if textError != TextError::None {
+                        *failure = IoError::Of(IoErrorKind::Other);
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+        else {
+            while true {
+                if self.offset >= self.length {
+                    var filled: int64 = 0;
+                    when #target.os == .Linux {
+                        filled = Getdents64(self.handle, self.data as *var opaque, self.capacity);
+                    }
+                    else {
+                        when #target.os == .FreeBSD {
+                            filled = Getdirentries(self.handle, self.data as *var opaque, self.capacity, null);
+                        }
+                        else {
+                            var position: int64 = 0;
+                            filled = Getdirentries64(self.handle, self.data as *var opaque, self.capacity,
+                                                     @position);
+                        }
+                    }
+                    if filled < 0 {
+                        *failure = TranslateNative((0i64 - filled) as int32);
+                        return false;
+                    }
+                    if filled == 0 {
+                        return false;
+                    }
+                    self.length = filled as uint;
+                    self.offset = 0;
+                }
+                let record = (self.data as uint + self.offset) as *var char8;
+                let reclen = ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8u));
+                if reclen == 0 || self.offset + reclen > self.length {
+                    // A zero-length record would loop forever; a torn one reaches past the buffer. Either way
+                    // the kernel and this code disagree about the layout, which is worth failing loudly over.
+                    *failure = IoError::Of(IoErrorKind::Other);
+                    return false;
+                }
+                self.offset = self.offset + reclen;
+
+                var nameStart: uint = 0;
+                var nameLength: uint = 0;
+                when #target.os == .Linux {
+                    nameStart = 19;
+                    while nameStart + nameLength < reclen && record[nameStart + nameLength] != (0u8 as char8) {
+                        nameLength = nameLength + 1;
+                    }
+                }
+                else {
+                    when #target.os == .FreeBSD {
+                        nameStart = 24;
+                        nameLength = (record[20] as uint8 as uint) | ((record[21] as uint8 as uint) << 8u);
+                    }
+                    else {
+                        nameStart = 21;
+                        nameLength = (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8u);
+                    }
+                }
+                let start = (record as uint + nameStart) as *var char8;
+                if !IsDotEntry8(start, nameLength) {
+                    let view = OsStringView::FromUnits(Slice<OsUnit> { data: start, length: nameLength });
+                    var textError = TextError::None;
+                    *name = OsString::FromView(self.allocator, view, @textError);
+                    if textError != TextError::None {
+                        *failure = IoError::Of(IoErrorKind::Other);
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Gives back the handle and the buffer.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/directory-iterator/release
+    func Release(self: *var DirectoryIterator) {
+        if self.open {
+            self.open = false;
+            when #target.os == .Windows {
+                FindClose(self.handle);
+            }
+            else {
+                Close(self.handle);
+            }
+        }
+        if self.data != null {
+            var borrowed = self.allocator;
+            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 });
+            self.data = null;
+            self.capacity = 0;
+        }
+    }
+
+    /// `Release`, as the safety net.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/directory-iterator/drop
+    func Drop(self: *var DirectoryIterator) {
+        self.Release();
+    }
+}
+
+func IsDotEntry8(name: *char8, length: uint) -> bool {
+    if length == 1 {
+        return name[0] == c8'.';
+    }
+    return length == 2 && name[0] == c8'.' && name[1] == c8'.';
+}
+
+func IsDotEntry16(name: *uint16, length: uint) -> bool {
+    if length == 1 {
+        return name[0] == 0x2Eu16;
+    }
+    return length == 2 && name[0] == 0x2Eu16 && name[1] == 0x2Eu16;
+}
