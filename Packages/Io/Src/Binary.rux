@@ -1,0 +1,392 @@
+// Binary values on a byte stream, with the byte order named rather than assumed.
+//
+// A file format or a wire protocol fixes its byte order once, in its specification, and every machine that reads
+// it honors that choice regardless of its own. So every function here takes the order as an argument: the caller
+// names the format's choice, and the code assembles values arithmetically -- shift and or, never a reinterpreted
+// memory read -- so the host's own order never enters into it.
+//
+// One pair of word functions does the actual work at every width, accumulating in the widest integer there is;
+// the typed functions are the surface, one per primitive width, so a format description reads as what it stores.
+// Floats travel as the IEEE 754 bit patterns of their width, moved between integer and float representation
+// without conversion.
+
+import Core::{ MutableSlice, Slice };
+import Memory::Copy;
+
+/// A byte order: which end of a multi-byte value comes first.
+///
+/// https://rux-lang.dev/docs/api/io/endian
+enum Endian: int32 {
+    /// The least significant byte first: x86-64, AArch64, and most formats born on them.
+    Little = 0,
+    /// The most significant byte first: network order, and the older big machines.
+    Big = 1
+}
+
+/// Reads a `width`-byte unsigned word in the given order, into the low bytes of `value`.
+///
+/// The word functions are the one implementation the typed surface below stands on; call those unless the width
+/// itself is a runtime quantity.
+///
+/// https://rux-lang.dev/docs/api/io/read-word
+func ReadWord(reader: Reader, endian: Endian, width: uint, value: *var uint512) -> IoError {
+    var bytes: char8[64];
+    let outcome = ReadExact(reader, MutableSlice::From<char8>(@bytes[0], width));
+    if outcome.IsError() {
+        return outcome;
+    }
+    var word = 0u512;
+    var index: uint = 0;
+    while index < width {
+        // Most significant first into the accumulator, so each step is one shift -- which byte that is
+        // is the only place the order matters.
+        let at = endian == Endian::Big ? index : width - 1 - index;
+        word = (word << 8u512) | ((bytes[at] as uint8) as uint512);
+        index = index + 1;
+    }
+    *value = word;
+    return IoError::Ok();
+}
+
+/// Writes the low `width` bytes of `value` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-word
+func WriteWord(writer: Writer, endian: Endian, width: uint, value: uint512) -> IoError {
+    var bytes: char8[64];
+    var word = value;
+    var index: uint = 0;
+    while index < width {
+        // Least significant out of the accumulator, placed at whichever end the order says it lives.
+        let at = endian == Endian::Little ? index : width - 1 - index;
+        bytes[at] = ((word & 0xFFu512) as uint8) as char8;
+        word = word >> 8u512;
+        index = index + 1;
+    }
+    return WriteAll(writer, bytes[0..width]);
+}
+
+/// Reads a `uint8` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint8
+func ReadUint8(reader: Reader, endian: Endian, value: *var uint8) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 1, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint8;
+    return IoError::Ok();
+}
+
+/// Writes a `uint8` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint8
+func WriteUint8(writer: Writer, endian: Endian, value: uint8) -> IoError {
+    return WriteWord(writer, endian, 1, value as uint512);
+}
+
+/// Reads an `int8`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int8
+func ReadInt8(reader: Reader, endian: Endian, value: *var int8) -> IoError {
+    var word = 0u8;
+    let outcome = ReadUint8(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int8;
+    return IoError::Ok();
+}
+
+/// Writes an `int8`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int8
+func WriteInt8(writer: Writer, endian: Endian, value: int8) -> IoError {
+    return WriteUint8(writer, endian, value as uint8);
+}
+
+/// Reads a `uint16` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint16
+func ReadUint16(reader: Reader, endian: Endian, value: *var uint16) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 2, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint16;
+    return IoError::Ok();
+}
+
+/// Writes a `uint16` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint16
+func WriteUint16(writer: Writer, endian: Endian, value: uint16) -> IoError {
+    return WriteWord(writer, endian, 2, value as uint512);
+}
+
+/// Reads an `int16`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int16
+func ReadInt16(reader: Reader, endian: Endian, value: *var int16) -> IoError {
+    var word = 0u16;
+    let outcome = ReadUint16(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int16;
+    return IoError::Ok();
+}
+
+/// Writes an `int16`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int16
+func WriteInt16(writer: Writer, endian: Endian, value: int16) -> IoError {
+    return WriteUint16(writer, endian, value as uint16);
+}
+
+/// Reads a `uint32` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint32
+func ReadUint32(reader: Reader, endian: Endian, value: *var uint32) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 4, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint32;
+    return IoError::Ok();
+}
+
+/// Writes a `uint32` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint32
+func WriteUint32(writer: Writer, endian: Endian, value: uint32) -> IoError {
+    return WriteWord(writer, endian, 4, value as uint512);
+}
+
+/// Reads an `int32`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int32
+func ReadInt32(reader: Reader, endian: Endian, value: *var int32) -> IoError {
+    var word = 0u32;
+    let outcome = ReadUint32(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int32;
+    return IoError::Ok();
+}
+
+/// Writes an `int32`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int32
+func WriteInt32(writer: Writer, endian: Endian, value: int32) -> IoError {
+    return WriteUint32(writer, endian, value as uint32);
+}
+
+/// Reads a `uint64` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint64
+func ReadUint64(reader: Reader, endian: Endian, value: *var uint64) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 8, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint64;
+    return IoError::Ok();
+}
+
+/// Writes a `uint64` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint64
+func WriteUint64(writer: Writer, endian: Endian, value: uint64) -> IoError {
+    return WriteWord(writer, endian, 8, value as uint512);
+}
+
+/// Reads an `int64`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int64
+func ReadInt64(reader: Reader, endian: Endian, value: *var int64) -> IoError {
+    var word = 0u64;
+    let outcome = ReadUint64(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int64;
+    return IoError::Ok();
+}
+
+/// Writes an `int64`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int64
+func WriteInt64(writer: Writer, endian: Endian, value: int64) -> IoError {
+    return WriteUint64(writer, endian, value as uint64);
+}
+
+/// Reads a `uint128` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint128
+func ReadUint128(reader: Reader, endian: Endian, value: *var uint128) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 16, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint128;
+    return IoError::Ok();
+}
+
+/// Writes a `uint128` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint128
+func WriteUint128(writer: Writer, endian: Endian, value: uint128) -> IoError {
+    return WriteWord(writer, endian, 16, value as uint512);
+}
+
+/// Reads an `int128`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int128
+func ReadInt128(reader: Reader, endian: Endian, value: *var int128) -> IoError {
+    var word = 0u128;
+    let outcome = ReadUint128(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int128;
+    return IoError::Ok();
+}
+
+/// Writes an `int128`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int128
+func WriteInt128(writer: Writer, endian: Endian, value: int128) -> IoError {
+    return WriteUint128(writer, endian, value as uint128);
+}
+
+/// Reads a `uint256` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint256
+func ReadUint256(reader: Reader, endian: Endian, value: *var uint256) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 32, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint256;
+    return IoError::Ok();
+}
+
+/// Writes a `uint256` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint256
+func WriteUint256(writer: Writer, endian: Endian, value: uint256) -> IoError {
+    return WriteWord(writer, endian, 32, value as uint512);
+}
+
+/// Reads an `int256`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int256
+func ReadInt256(reader: Reader, endian: Endian, value: *var int256) -> IoError {
+    var word = 0u256;
+    let outcome = ReadUint256(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int256;
+    return IoError::Ok();
+}
+
+/// Writes an `int256`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int256
+func WriteInt256(writer: Writer, endian: Endian, value: int256) -> IoError {
+    return WriteUint256(writer, endian, value as uint256);
+}
+
+/// Reads a `uint512` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/read-uint512
+func ReadUint512(reader: Reader, endian: Endian, value: *var uint512) -> IoError {
+    var word = 0u512;
+    let outcome = ReadWord(reader, endian, 64, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as uint512;
+    return IoError::Ok();
+}
+
+/// Writes a `uint512` in the given order.
+///
+/// https://rux-lang.dev/docs/api/io/write-uint512
+func WriteUint512(writer: Writer, endian: Endian, value: uint512) -> IoError {
+    return WriteWord(writer, endian, 64, value as uint512);
+}
+
+/// Reads an `int512`: the unsigned bytes, reinterpreted in two's complement.
+///
+/// https://rux-lang.dev/docs/api/io/read-int512
+func ReadInt512(reader: Reader, endian: Endian, value: *var int512) -> IoError {
+    var word = 0u512;
+    let outcome = ReadUint512(reader, endian, @word);
+    if outcome.IsError() {
+        return outcome;
+    }
+    *value = word as int512;
+    return IoError::Ok();
+}
+
+/// Writes an `int512`: its two's-complement bytes, unchanged.
+///
+/// https://rux-lang.dev/docs/api/io/write-int512
+func WriteInt512(writer: Writer, endian: Endian, value: int512) -> IoError {
+    return WriteUint512(writer, endian, value as uint512);
+}
+
+/// Reads a `float32` as the IEEE 754 bit pattern of its width.
+///
+/// https://rux-lang.dev/docs/api/io/read-float32
+func ReadFloat32(reader: Reader, endian: Endian, value: *var float32) -> IoError {
+    var bits = 0u32;
+    let outcome = ReadUint32(reader, endian, @bits);
+    if outcome.IsError() {
+        return outcome;
+    }
+    Copy(value as *var opaque, @bits as *opaque, 4);
+    return IoError::Ok();
+}
+
+/// Writes a `float32` as the IEEE 754 bit pattern of its width.
+///
+/// https://rux-lang.dev/docs/api/io/write-float32
+func WriteFloat32(writer: Writer, endian: Endian, value: float32) -> IoError {
+    var bits = 0u32;
+    var held = value;
+    Copy(@bits as *var opaque, @held as *opaque, 4);
+    return WriteUint32(writer, endian, bits);
+}
+
+/// Reads a `float64` as the IEEE 754 bit pattern of its width.
+///
+/// https://rux-lang.dev/docs/api/io/read-float64
+func ReadFloat64(reader: Reader, endian: Endian, value: *var float64) -> IoError {
+    var bits = 0u64;
+    let outcome = ReadUint64(reader, endian, @bits);
+    if outcome.IsError() {
+        return outcome;
+    }
+    Copy(value as *var opaque, @bits as *opaque, 8);
+    return IoError::Ok();
+}
+
+/// Writes a `float64` as the IEEE 754 bit pattern of its width.
+///
+/// https://rux-lang.dev/docs/api/io/write-float64
+func WriteFloat64(writer: Writer, endian: Endian, value: float64) -> IoError {
+    var bits = 0u64;
+    var held = value;
+    Copy(@bits as *var opaque, @held as *opaque, 8);
+    return WriteUint64(writer, endian, bits);
+}
