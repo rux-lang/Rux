@@ -999,6 +999,10 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         const TypeRef &type = instruction.type;
         const int size = SizeOfRuntime(type);
         const int runtimeSize = SizeOfRuntime(type);
+        // Nothing to read either, and reading a word for it could reach past the end of what was allocated.
+        if (IsAggregate(type) && runtimeSize == 0) {
+            return true;
+        }
         if (!instruction.strArg.empty()) {
             const std::uint32_t symbol = hooks.ResolveNamedDataSymbol(instruction.strArg);
             std::uint32_t relocationOffset;
@@ -1086,6 +1090,12 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         const TypeRef &type = instruction.type;
         const int size = SizeOfRuntime(type);
         const int runtimeSize = SizeOfRuntime(type);
+        // A value occupying no bytes has nothing to move, and the eight-byte fallback below is for a width the back
+        // end could not work out, which is a different thing. Storing a word for a zero-sized field wrote over
+        // whatever followed it -- for a node whose value sits between its key and its links, that is the links.
+        if (IsAggregate(type) && runtimeSize == 0) {
+            return true;
+        }
         if (const auto physical = physicalRegisters.find(pointer); physical != physicalRegisters.end()) {
             encoder.MovR11PhysReg(physical->second);
         }

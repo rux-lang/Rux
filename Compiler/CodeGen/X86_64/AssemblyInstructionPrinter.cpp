@@ -768,6 +768,12 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         const LirReg pointer = instruction.srcs[1];
         const TypeRef &type = instruction.type;
         const int size = SizeOfRuntime(type);
+        // A value occupying no bytes has nothing to move, and the eight-byte fallback below is for a width the back
+        // end could not work out, which is a different thing. Storing a word for a zero-sized field wrote over
+        // whatever followed it -- for a node whose value sits between its key and its links, that is the links.
+        if (size == 0 && type.kind == TypeRef::Kind::Named) {
+            return true;
+        }
         const auto physical = framePlan.PhysicalRegisters().find(pointer);
         if (physical != framePlan.PhysicalRegisters().end()) {
             modulePrinter.TextInstruction(std::format("{:<8}r11, {}", "mov", PhysicalRegisterName(physical->second)));
