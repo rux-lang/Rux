@@ -1,0 +1,86 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ #target, Assert, Slice };
+import Path::{ OsString, OsStringView, OsUnit };
+import Text::TextError;
+
+// The one promise a native string makes is losslessness: whatever units go in come back, whether or not they are
+// text. So the test drives exactly the units no text type would accept -- bytes that are not UTF-8 on the Unix
+// systems, an unpaired surrogate on Windows -- alongside ordinary text, whose conversion always succeeds and whose
+// unit count differs per platform in a way the test states rather than papers over.
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    let empty = OsString::New(allocator);
+    Assert(empty.IsEmpty() && empty.Length() == 0, "new native text holds nothing");
+
+    // Ordinary text converts, and its unit count is the platform's business: an accented word is six UTF-8 bytes
+    // and five UTF-16 units, and a supplementary character four bytes or one surrogate pair.
+    let plain = OsString::FromText(allocator, "hi", @error);
+    Assert(error == TextError::None && plain.Length() == 2, "ASCII is two units either way");
+    let accented = OsString::FromText(allocator, "héllo", @error);
+    when #target.os == .Windows {
+        Assert(accented.Length() == 5, "five UTF-16 units on Windows");
+    }
+    else {
+        Assert(accented.Length() == 6, "six UTF-8 bytes on the Unix systems");
+    }
+    let emoji = OsString::FromText(allocator, "😀", @error);
+    when #target.os == .Windows {
+        Assert(emoji.Length() == 2, "a supplementary character is a surrogate pair");
+        let pair = emoji.View();
+        Assert((pair.Units().data[0] as uint32) == 0xD83D, "the high half first");
+        Assert((pair.Units().data[1] as uint32) == 0xDE00, "the low half second");
+    }
+    else {
+        Assert(emoji.Length() == 4, "and four bytes of UTF-8");
+    }
+
+    // The lossless promise, at the units text would refuse.
+    var hostile: OsUnit[4];
+    when #target.os == .Windows {
+        // An unpaired high surrogate between letters: a name Windows will happily keep on disk.
+        hostile[0] = 0x0061u16;
+        hostile[1] = 0xD800u16;
+        hostile[2] = 0x0062u16;
+        hostile[3] = 0x0063u16;
+    }
+    else {
+        // Bytes that are not UTF-8: a lone continuation and an overlong lead, between letters.
+        hostile[0] = 0x61u8 as char8;
+        hostile[1] = 0x80u8 as char8;
+        hostile[2] = 0xC0u8 as char8;
+        hostile[3] = 0x63u8 as char8;
+    }
+    let view = OsStringView::FromUnits(hostile[0..4]);
+    Assert(view.Length() == 4, "hostile units make a view without complaint");
+    let kept = OsString::FromView(allocator, view, @error);
+    Assert(error == TextError::None && kept.Length() == 4, "and an owning copy without complaint");
+    let keptView = kept.View();
+    Assert(keptView.Equals(@view), "which holds exactly the units that went in");
+    var index: uint = 0;
+    while index < 4 {
+        Assert(keptView.Units().data[index] == hostile[index], "unit for unit");
+        index = index + 1;
+    }
+
+    // Equality is unit equality and nothing smarter.
+    let alsoPlain = OsString::FromText(allocator, "hi", @error);
+    let plainView = plain.View();
+    let alsoView = alsoPlain.View();
+    Assert(plainView.Equals(@alsoView), "the same text is the same units");
+    let upper = OsString::FromText(allocator, "HI", @error);
+    let upperView = upper.View();
+    Assert(!plainView.Equals(@upperView), "and case is not folded, deliberately");
+
+    // Releasing early leaves something usable, and twice is not a second release.
+    var released = OsString::FromText(allocator, "gone", @error);
+    released.Clear();
+    Assert(released.IsEmpty(), "clearing empties");
+    released.Clear();
+    Assert(released.IsEmpty(), "and clearing again is nothing");
+
+    return 0;
+}

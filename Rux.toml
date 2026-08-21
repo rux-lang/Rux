@@ -19,6 +19,7 @@ Packages = [
     "Packages/macOS",
     "Packages/Math",
     "Packages/Memory",
+    "Packages/Path",
     "Packages/Random",
     "Packages/Text",
     "Packages/Time",
