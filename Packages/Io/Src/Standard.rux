@@ -1,0 +1,419 @@
+// The three streams every process is born holding, as byte streams with the encoding question answered once.
+//
+// Nothing here is opened and nothing is closed: stdin, stdout and stderr belong to the process, not to any value
+// in it, and a handle that closed them on drop would take them from every other part of the program. What
+// acquisition does own is the answer to a question that must not be asked per write: whether the stream is a
+// console. On Windows that decides the encoding -- a console wants UTF-16 through its own entry points, while a
+// redirected stream wants the raw UTF-8 bytes on disk exactly as written -- and deciding it per operation would
+// put a system call in front of every one. Elsewhere the bytes are the bytes, console or not.
+
+import Core::{ #target, MutableSlice, Slice };
+import Text::IsBoundary;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ Read, StdErr, StdIn, StdOut, Write },
+    .Linux => import Linux::{ Read, StdErr, StdIn, StdOut, Write },
+    .macOS => import macOS::{ Read, StdErr, StdIn, StdOut, Write },
+    .Windows => import Windows::{
+        CodePage,
+        GetConsoleMode,
+        GetLastError,
+        GetStdHandle,
+        MultiByteToWideChar,
+        ReadConsoleW,
+        ReadFile,
+        StdErrorHandle,
+        StdInputHandle,
+        StdOutputHandle,
+        WideCharToMultiByte,
+        WriteConsoleW,
+        WriteFile
+    }
+}
+
+when #target.os == .Windows {
+    type RawStream = *opaque;
+}
+else {
+    type RawStream = int32;
+}
+
+// What a platform failure becomes. The raw code always travels with it; this names the handful of codes whose
+// meaning a caller acts on, and leaves the rest `Other` until `Storage` does the systematic translation.
+func KindOfRaw(raw: int32) -> IoErrorKind {
+    when #target.os == .Windows {
+        if raw == 5 {
+            return IoErrorKind::PermissionDenied;
+        }
+        if raw == 6 {
+            return IoErrorKind::InvalidHandle;
+        }
+        return IoErrorKind::Other;
+    }
+    else {
+        if raw == 4 {
+            return IoErrorKind::Interrupted;
+        }
+        when #target.os == .Linux {
+            if raw == 11 {
+                return IoErrorKind::WouldBlock;
+            }
+        }
+        else {
+            if raw == 35 {
+                return IoErrorKind::WouldBlock;
+            }
+        }
+        if raw == 9 {
+            return IoErrorKind::InvalidHandle;
+        }
+        if raw == 13 {
+            return IoErrorKind::PermissionDenied;
+        }
+        return IoErrorKind::Other;
+    }
+}
+
+func PlatformFailure(raw: int32) -> IoError {
+    return IoError { kind: KindOfRaw(raw), raw: raw };
+}
+
+// One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
+func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    *taken = 0;
+    if bytes.length == 0 {
+        return IoError::Ok();
+    }
+    when #target.os == .Windows {
+        if !console {
+            let count = bytes.length > 0x100000u ? 0x100000u32 : bytes.length as uint32;
+            var written: uint32 = 0;
+            if !WriteFile(handle, bytes.data as *opaque, count, @written, null) {
+                return PlatformFailure(GetLastError() as int32);
+            }
+            *taken = written as uint;
+            return IoError::Ok();
+        }
+        // A console renders characters, so the bytes convert to UTF-16 and go through the console's own door.
+        // The chunk backs off to a scalar boundary so no character is cut by the chunking; text that has no
+        // boundary to back off to goes through whole and renders as the malformed thing it is.
+        var offset: uint = 0;
+        while offset < bytes.length {
+            var chunk = bytes.length - offset;
+            if chunk > 1024u {
+                chunk = 1024u;
+                var backedOff = chunk;
+                while backedOff > 0 && !IsBoundary(bytes, offset + backedOff) {
+                    backedOff = backedOff - 1;
+                }
+                if backedOff > 0 {
+                    chunk = backedOff;
+                }
+            }
+            var wide: char16[1024];
+            let units = MultiByteToWideChar(CodePage::Utf8 as uint32, 0, @bytes.data[offset], chunk as int32,
+                                            @wide[0], 1024);
+            if units <= 0 {
+                return PlatformFailure(GetLastError() as int32);
+            }
+            var sent: uint = 0;
+            while sent < units as uint {
+                var written: uint32 = 0;
+                if !WriteConsoleW(handle, @wide[sent], (units as uint - sent) as uint32, @written, null) {
+                    return PlatformFailure(GetLastError() as int32);
+                }
+                if written == 0 {
+                    return IoError::Of(IoErrorKind::WriteZero);
+                }
+                sent = sent + written as uint;
+            }
+            offset = offset + chunk;
+            *taken = offset;
+        }
+        return IoError::Ok();
+    }
+    else {
+        let result = Write(handle, bytes.data as *opaque, bytes.length);
+        if result < 0 {
+            return PlatformFailure((0i64 - result) as int32);
+        }
+        *taken = result as uint;
+        return IoError::Ok();
+    }
+}
+
+/// Standard input, with the console-versus-redirection question answered at acquisition.
+///
+/// On Windows a console delivers UTF-16, which arrives here converted to UTF-8 so a program reads the same bytes
+/// whether its input is typed or piped; a redirected stream is read as the bytes it is. The value carries the
+/// few bytes of a converted character that did not fit the caller's buffer, and a surrogate half waiting for the
+/// other, so no reading pattern can tear a character.
+///
+/// https://rux-lang.dev/docs/api/io/standard-in
+struct StandardIn {
+    /// The platform's handle for the stream.
+    handle: RawStream;
+    /// Whether the stream is a console, decided once.
+    console: bool;
+    /// Converted bytes that did not fit the last read, least significant byte first in stream order.
+    pending: uint64;
+    /// How many of them there are.
+    pendingCount: uint;
+    /// A high surrogate whose partner has not arrived yet.
+    heldUnit: uint16;
+    /// Whether one is waiting.
+    hasHeldUnit: bool;
+}
+
+extend StandardIn {
+    /// The process's standard input.
+    ///
+    /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-in/acquire
+    func Acquire() -> StandardIn {
+        when #target.os == .Windows {
+            let handle = GetStdHandle(StdInputHandle);
+            var mode: uint32 = 0;
+            let console = GetConsoleMode(handle, @mode) ? true : false;
+            return StandardIn {
+                handle: handle, console: console, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
+            };
+        }
+        else {
+            return StandardIn {
+                handle: StdIn, console: false, pending: 0, pendingCount: 0, heldUnit: 0, hasHeldUnit: false
+            };
+        }
+    }
+}
+
+extend StandardIn : Reader {
+    /// Fills what it can of `into` from standard input.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-in/read
+    func Read(self: *var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        if into.length == 0 {
+            return IoError::Ok();
+        }
+        var served: uint = 0;
+        while self.pendingCount > 0 && served < into.length {
+            into.data[served] = (self.pending & 0xFFu64) as uint8 as char8;
+            self.pending = self.pending >> 8u64;
+            self.pendingCount = self.pendingCount - 1;
+            served = served + 1;
+        }
+        if served == into.length {
+            *filled = served;
+            return IoError::Ok();
+        }
+        when #target.os == .Windows {
+            if self.console {
+                return self.ReadConsole(into, served, filled);
+            }
+            var read: uint32 = 0;
+            let room = into.length - served;
+            let count = room > 0x100000u ? 0x100000u32 : room as uint32;
+            if !ReadFile(self.handle, @into.data[served] as *var opaque, count, @read, null) {
+                let raw = GetLastError() as int32;
+                if served > 0 {
+                    *filled = served;
+                    return IoError::Ok();
+                }
+                // A pipe whose writing end has closed reports through a failure; it means the stream is over.
+                if raw == 109 {
+                    return IoError::Of(IoErrorKind::EndOfStream);
+                }
+                return PlatformFailure(raw);
+            }
+            *filled = served + read as uint;
+            if *filled == 0 {
+                return IoError::Of(IoErrorKind::EndOfStream);
+            }
+            return IoError::Ok();
+        }
+        else {
+            let result = Read(self.handle, @into.data[served] as *var opaque, into.length - served);
+            if result < 0 {
+                if served > 0 {
+                    *filled = served;
+                    return IoError::Ok();
+                }
+                return PlatformFailure((0i64 - result) as int32);
+            }
+            *filled = served + result as uint;
+            if *filled == 0 {
+                return IoError::Of(IoErrorKind::EndOfStream);
+            }
+            return IoError::Ok();
+        }
+    }
+}
+
+when #target.os == .Windows {
+    extend StandardIn {
+        // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
+        // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
+        // substitute character first in a read is the console's end-of-input.
+        func ReadConsole(self: *var StandardIn, into: MutableSlice<char8>, served: uint, filled: *var uint)
+            -> IoError {
+            var wide: char16[257];
+            var base: uint = 0;
+            if self.hasHeldUnit {
+                wide[0] = self.heldUnit as char16;
+                self.hasHeldUnit = false;
+                base = 1;
+            }
+            let room = into.length - served;
+            var ask = room / 3u;
+            if ask == 0 {
+                ask = 1;
+            }
+            if ask > 256u {
+                ask = 256;
+            }
+            var read: uint32 = 0;
+            if ReadConsoleW(self.handle as *var opaque, @wide[base] as *var opaque, ask as uint32, @read, null) == 0 {
+                if served > 0 {
+                    *filled = served;
+                    return IoError::Ok();
+                }
+                return PlatformFailure(GetLastError() as int32);
+            }
+            var total = base + read as uint;
+            if total == 0 {
+                *filled = served;
+                return served > 0 ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+            }
+            // Ctrl-Z at the start of a line is how a console says the input is over.
+            if (wide[0] as uint16) == 0x1Au16 {
+                *filled = served;
+                return served > 0 ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+            }
+            let last = wide[total - 1] as uint16;
+            if last >= 0xD800u16 && last <= 0xDBFFu16 {
+                self.heldUnit = last;
+                self.hasHeldUnit = true;
+                total = total - 1;
+                if total == 0 {
+                    *filled = served;
+                    return IoError::Ok();
+                }
+            }
+            var text: char8[1028];
+            let converted = WideCharToMultiByte(CodePage::Utf8 as uint32, 0, @wide[0], total as int32,
+                                                @text[0], 1028, null, null);
+            if converted <= 0 {
+                if served > 0 {
+                    *filled = served;
+                    return IoError::Ok();
+                }
+                return PlatformFailure(GetLastError() as int32);
+            }
+            var index: uint = 0;
+            var at = served;
+            while index < converted as uint && at < into.length {
+                into.data[at] = text[index];
+                index = index + 1;
+                at = at + 1;
+            }
+            // What did not fit waits, in order, for the next read.
+            var shift: uint = 0;
+            while index < converted as uint {
+                self.pending = self.pending | ((text[index] as uint8 as uint64) << (8u64 * shift as uint64));
+                self.pendingCount = self.pendingCount + 1;
+                index = index + 1;
+                shift = shift + 1;
+            }
+            *filled = at;
+            return IoError::Ok();
+        }
+    }
+}
+
+/// Standard output: a byte `Writer` whose encoding matches where the bytes land.
+///
+/// https://rux-lang.dev/docs/api/io/standard-out
+struct StandardOut {
+    /// The platform's handle for the stream.
+    handle: RawStream;
+    /// Whether the stream is a console, decided once.
+    console: bool;
+}
+
+extend StandardOut {
+    /// The process's standard output.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-out/acquire
+    func Acquire() -> StandardOut {
+        when #target.os == .Windows {
+            let handle = GetStdHandle(StdOutputHandle);
+            var mode: uint32 = 0;
+            let console = GetConsoleMode(handle, @mode) ? true : false;
+            return StandardOut { handle: handle, console: console };
+        }
+        else {
+            return StandardOut { handle: StdOut, console: false };
+        }
+    }
+}
+
+extend StandardOut : Writer {
+    /// Writes what it can of `bytes` to standard output.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-out/write
+    func Write(self: *var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        return WriteRaw(self.handle, self.console, bytes, taken);
+    }
+
+    /// Nothing: these writes hold nothing back.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-out/flush
+    func Flush(self: *var StandardOut) -> IoError {
+        return IoError::Ok();
+    }
+}
+
+/// Standard error: the same contract as standard output, on the stream reports belong to.
+///
+/// https://rux-lang.dev/docs/api/io/standard-error
+struct StandardError {
+    /// The platform's handle for the stream.
+    handle: RawStream;
+    /// Whether the stream is a console, decided once.
+    console: bool;
+}
+
+extend StandardError {
+    /// The process's standard error.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-error/acquire
+    func Acquire() -> StandardError {
+        when #target.os == .Windows {
+            let handle = GetStdHandle(StdErrorHandle);
+            var mode: uint32 = 0;
+            let console = GetConsoleMode(handle, @mode) ? true : false;
+            return StandardError { handle: handle, console: console };
+        }
+        else {
+            return StandardError { handle: StdErr, console: false };
+        }
+    }
+}
+
+extend StandardError : Writer {
+    /// Writes what it can of `bytes` to standard error.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-error/write
+    func Write(self: *var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        return WriteRaw(self.handle, self.console, bytes, taken);
+    }
+
+    /// Nothing: these writes hold nothing back.
+    ///
+    /// https://rux-lang.dev/docs/api/io/standard-error/flush
+    func Flush(self: *var StandardError) -> IoError {
+        return IoError::Ok();
+    }
+}
