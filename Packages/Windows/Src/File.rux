@@ -94,6 +94,18 @@ extern {
     func CreateFileW(fileName: *char16, desiredAccess: uint32, shareMode: uint32, securityAttributes: *var opaque,
                      creationDisposition: uint32, flagsAndAttributes: uint32, templateFile: *var opaque) -> *var opaque;
 
+    // Begins a directory enumeration matching a UTF-16 pattern
+    //
+    // Returns InvalidHandleValue on failure. `findFileData` receives a WIN32_FIND_DATAW record: attributes at
+    // offset 0 (4 bytes), three FILETIMEs from 4, the size's halves at 28 and 32, and the entry's NUL-terminated
+    // UTF-16 name from offset 44. The record is 592 bytes.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilew
+    func FindFirstFileW(fileName: *char16, findFileData: *var opaque) -> *var opaque;
+
+    // Continues a directory enumeration; fails with ERROR_NO_MORE_FILES at its end
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilew
+    func FindNextFileW(findFile: *var opaque, findFileData: *var opaque) -> int32;
+
     // Deletes a file, taking a UTF-16 path
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
     func DeleteFileW(fileName: *char16) -> int32;

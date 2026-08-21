@@ -32,6 +32,7 @@ when #target.arch {
         const SysExit: uint64 = 60;
         const SysClockGetTime: uint64 = 228;
         const SysOpenAt: uint64 = 257;
+        const SysGetdents64: uint64 = 217;
         const SysLseek: uint64 = 8;
         const SysFsync: uint64 = 74;
         const SysFtruncate: uint64 = 77;
@@ -59,6 +60,7 @@ when #target.arch {
         const SysExit: uint64 = 93;
         const SysClockGetTime: uint64 = 113;
         const SysOpenAt: uint64 = 56;
+        const SysGetdents64: uint64 = 61;
         const SysLseek: uint64 = 62;
         const SysFsync: uint64 = 82;
         const SysFtruncate: uint64 = 46;

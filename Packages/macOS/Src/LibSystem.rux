@@ -76,6 +76,13 @@ extern {
     // https://keith.github.io/xcode-man-pages/pipe.2.html
     func pipe(descriptors: *var int32) -> int32;
 
+    // Reads directory entries in the 64-bit-inode layout; returns the bytes filled, zero at the end, or -1
+    //
+    // The plain readdir symbol on x86-64 resolves to the 32-bit-inode variant with a different record layout, so
+    // this is the one entry point whose records are the same on both architectures.
+    // https://keith.github.io/xcode-man-pages/getdirentries.2.html
+    func __getdirentries64(fd: int32, buffer: *var opaque, byteCount: uint, position: *var int64) -> int64;
+
     // Creates a memory mapping; returns its address, or MAP_FAILED
     // https://keith.github.io/xcode-man-pages/mmap.2.html
     func mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32,
