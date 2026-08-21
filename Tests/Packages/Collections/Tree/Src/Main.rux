@@ -190,6 +190,28 @@ func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *
     *afterReplacing = *counter;
 }
 
+// Entries leaving through `Detach` rather than through the tree's own destruction, so the kernel's handover of a
+// value it owns is counted on its own -- away from anything a map built on it does.
+func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
+    var tree = Tree::New<int32, Tracked>(allocator);
+    var replaced = Option::None<Tracked>();
+    var key: int32 = 0;
+    while key < count {
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32, @replaced);
+        key = key + 1;
+    }
+
+    var taken: int32 = 0;
+    while taken < take {
+        let node = Tree::Minimum<int32, Tracked>(tree.root);
+        Assert(node != null, "the tree has as many entries as went in");
+        let entry = tree.Detach(node);
+        Assert(entry.key == taken, "and hands out the smallest key first");
+        taken = taken + 1;
+    }
+    *afterTaking = *counter;
+}
+
 func Main() -> int {
     var system = SystemAllocator::New();
     let allocator: Allocator = system;
@@ -288,6 +310,12 @@ func Main() -> int {
     ReplaceAndDrop(allocator, @destroyed, @afterReplacing);
     Assert(afterReplacing == 0, "a replaced value is handed back rather than destroyed in place");
     Assert(destroyed == 2, "and both it and the one that took its place are destroyed exactly once");
+
+    destroyed = 0;
+    var afterDetaching: int32 = 0;
+    DetachAndDrop(allocator, @destroyed, 20, 7, @afterDetaching);
+    Assert(afterDetaching == 7, "an entry handed out by the kernel is destroyed by whoever received it");
+    Assert(destroyed == 20, "and the seven taken and the thirteen left are each destroyed once");
 
     return 0;
 }

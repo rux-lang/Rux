@@ -44,16 +44,6 @@ struct TreeNode<K, V> {
     red: bool;
 }
 
-/// A key and the value it was stored under, handed back together when an entry leaves a tree.
-///
-/// https://rux-lang.dev/docs/api/collections/tree-entry
-struct TreeEntry<K, V> {
-    /// The key the entry was ordered by.
-    key: K;
-    /// The value it held.
-    value: V;
-}
-
 /// An ordered collection of entries, kept balanced by colouring.
 ///
 /// Owns every node and everything in them, so it is move-only and implements `Drop`.
@@ -492,7 +482,7 @@ extend Tree<K, V> {
     /// Takes `node` out of the tree and hands back what it held.
     ///
     /// `node` must be a node of this tree, and is freed here -- nothing may read through it afterwards. The key and
-    /// value become the caller's.
+    /// value become the caller's, in the pair a hash map hands its entries back in.
     ///
     /// A node with two children is not emptied into: the successor is relinked in its place instead, so the entry
     /// that stays keeps the address it had and any pointer to it stays good. That is the whole reason the nodes are
@@ -501,7 +491,7 @@ extend Tree<K, V> {
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/detach
-    func Detach(self: *var Tree<K, V>, node: *var TreeNode<K, V>) -> TreeEntry<K, V> {
+    func Detach(self: *var Tree<K, V>, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
         // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
         // black, so the fix-up is only run when a black one goes.
         var vacatedWasRed = node.red;
@@ -548,7 +538,7 @@ extend Tree<K, V> {
         let key = node.key;
         let value = node.value;
         ReleaseBlock<TreeNode<K, V>>(self.allocator, node, 1);
-        return TreeEntry<K, V> { key: key, value: value };
+        return KeyValue<K, V> { key: key, value: value };
     }
 
     /// Destroys every entry and gives every node back to the allocator, leaving an empty tree.

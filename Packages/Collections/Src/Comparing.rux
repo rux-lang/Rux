@@ -1,0 +1,128 @@
+// Ready-made ordering callbacks for the key types an ordered container is usually keyed on.
+//
+// A tree takes its comparison as a function for the reason a table takes its hash as one: Rux has no closures, and
+// an interface value would be stored and dispatched through at every step of every descent -- a dozen indirect calls
+// for a lookup that should be a dozen compares.
+//
+// An ordering is one answer rather than two calls, which is why these return `Ordering` and not a pair of `<` and
+// `==` predicates. A descent asks one question per node and branches three ways on the answer.
+//
+// A caller keying on a type not listed here writes its own. The rules are the ordinary ones: the comparison must be
+// consistent, must be the same every call, and must agree with equality -- two keys that compare `Equal` are one key
+// as far as a tree is concerned, and the second one to arrive replaces the first.
+
+import Core::{ Ordering, Slice };
+
+/// The ordering of two `uint` values.
+///
+/// Both are read by value. Cannot fail; runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-uint
+func CompareUint(left: uint, right: uint) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two `uint64` values.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-uint64
+func CompareUint64(left: uint64, right: uint64) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two `uint32` values.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-uint32
+func CompareUint32(left: uint32, right: uint32) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two `int64` values.
+///
+/// Signed, so this is not the unsigned comparison of the same bits: a negative key sorts below every positive one.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-int64
+func CompareInt64(left: int64, right: int64) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two `int32` values.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-int32
+func CompareInt32(left: int32, right: int32) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two `char8` code units.
+///
+/// By code unit, which for ASCII is alphabetical and for anything above it is UTF-8 byte order -- which is the order
+/// of the code points, since UTF-8 is ordered that way by construction.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-char8
+func CompareChar8(left: char8, right: char8) -> Ordering {
+    if left < right {
+        return Ordering::Less;
+    }
+    if left > right {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}
+
+/// The ordering of two runs of characters, shortest-first where one is a prefix of the other.
+///
+/// Both are borrowed and read. Compares code unit by code unit and, where every shared position agrees, orders the
+/// shorter one first -- which is the ordering a dictionary uses, and the one `Rux/Algorithms` sorts by.
+///
+/// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/collections/compare-slice
+func CompareSlice(left: Slice<char8>, right: Slice<char8>) -> Ordering {
+    let shared = left.length < right.length ? left.length : right.length;
+    var index: uint = 0;
+    while index < shared {
+        if left.data[index] < right.data[index] {
+            return Ordering::Less;
+        }
+        if left.data[index] > right.data[index] {
+            return Ordering::Greater;
+        }
+        index++;
+    }
+    if left.length < right.length {
+        return Ordering::Less;
+    }
+    if left.length > right.length {
+        return Ordering::Greater;
+    }
+    return Ordering::Equal;
+}

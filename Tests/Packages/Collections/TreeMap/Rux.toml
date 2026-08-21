@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "CollectionsTreeMap"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Collections: TreeMap lookup, mutation, ranges and ordered iteration"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Collections = { Path = "../../../../Packages/Collections" }
+Core = { Path = "../../../../Packages/Core" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Collections"
