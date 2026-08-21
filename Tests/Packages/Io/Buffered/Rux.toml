@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "IoBuffered"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Io: buffering, bypass, and the close contracts"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Io"
