@@ -645,9 +645,7 @@ private:
         for (const auto &name : packageInterfaceNames) {
             interfaceNames.insert(name);
         }
-        for (const auto &s : structDecls) {
-            layouts[s.name] = ComputeStructLayout(s, layouts, interfaceNames);
-        }
+        BuildStructLayouts(structDecls, layouts, interfaceNames);
     }
 
     void EmitStackAlloc(int32_t bytes) const {

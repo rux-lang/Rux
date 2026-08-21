@@ -70,6 +70,11 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 [[nodiscard]] StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                                                const std::unordered_set<std::string> &interfaceNames);
 
+/// Lay out every struct, repeating until no layout changes, so a field whose struct is declared later -- in the
+/// same file or a later one -- is sized by its declaration rather than by the one-word fallback.
+void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &layouts,
+                        const std::unordered_set<std::string> &interfaceNames);
+
 /// Size of a LIR type as the running program lays it out, which is what a stack slot and a copy are measured in. SizeOf
 /// alone cannot answer for a named type: an interface value is a fat pointer whether or not the module declaring it is
 /// in hand, and a struct is whatever its computed layout came to. Both back ends size their frames by this, so the rule

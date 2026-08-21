@@ -1,0 +1,6 @@
+// The field type, declared in the file that sorts last.
+
+struct Wide {
+    data: *char8;
+    length: uint;
+}

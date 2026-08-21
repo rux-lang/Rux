@@ -17,14 +17,14 @@ namespace {
 [[nodiscard]] std::string GenerateAssembly(const LirPackage &package, const Target::OS targetOs) {
     Layout::LayoutMap layouts;
     std::unordered_set<std::string> interfaceNames;
+    std::vector<LirStructDecl> allStructs;
     for (const auto &module : package.modules) {
         for (const auto &name : module.interfaceNames) {
             interfaceNames.insert(name);
         }
-        for (const auto &structure : module.structs) {
-            layouts[structure.name] = Layout::ComputeStructLayout(structure, layouts, interfaceNames);
-        }
+        allStructs.insert(allStructs.end(), module.structs.begin(), module.structs.end());
     }
+    Layout::BuildStructLayouts(allStructs, layouts, interfaceNames);
 
     AssemblyModulePrinter modulePrinter(targetOs);
     AssemblyControlFlowPrinter functionPrinter(modulePrinter, layouts, interfaceNames, targetOs);

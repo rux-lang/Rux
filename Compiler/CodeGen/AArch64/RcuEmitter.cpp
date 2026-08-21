@@ -1332,9 +1332,7 @@ private:
         for (const auto &name : packageInterfaceNames) {
             interfaceNames.insert(name);
         }
-        for (const auto &s : structDecls) {
-            layouts[s.name] = ComputeStructLayout(s, layouts, interfaceNames);
-        }
+        BuildStructLayouts(structDecls, layouts, interfaceNames);
 
         PredeclareFunctions();
         for (const auto &ev : mod.externVars) {
