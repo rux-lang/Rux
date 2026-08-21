@@ -16,8 +16,13 @@ rux add Rux/Path
   always succeeds; conversion **to** UTF-8 is fallible, because the system's names are under no obligation to be
   text.
 
-More arrives with the rest of the phase: borrowed `Path` and owning `PathBuffer`, components, joining, and lexical
-normalization.
+- **`Path` and `PathBuffer`** — borrowed structure and the owning, growable buffer; component iteration where
+  separator runs count once and an absolute path opens with an empty root component.
+- **Parts and joins** — `Parent`, `FileName`, `Stem`, `Extension`, `Join`, and lexical `Normalize`, each edge
+  decided in writing — including that `x/..` simplification is the truth about directories and a lie about
+  symlinks, with the filesystem-true answer deferred to canonicalization.
+- **Prefixes** — the Windows family (drive, UNC share, verbatim) behind `PrefixLength`, `HasRoot` and
+  `IsAbsolute`; the Unix systems have no prefixes, and nothing here folds case.
 
 ## Documentation
 

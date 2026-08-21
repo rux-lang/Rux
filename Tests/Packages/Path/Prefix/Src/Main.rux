@@ -1,0 +1,101 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ #target, Assert, Slice };
+import Path::{ HasRoot, IsAbsolute, OsString, OsStringView, OsUnit, Path, PrefixKind, PrefixLength };
+import Text::{ String, StringView, TextError };
+
+// The fallible direction of the conversion, at the values that make it fallible, and the prefixes as each platform
+// actually has them: none on the Unix systems, where a name is rooted or it is not, and the Windows family with
+// its case left unfolded -- C: and c: are the same drive to the system and different units here, on purpose.
+
+func PathText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> OsString {
+    return OsString::FromText(allocator, text, error);
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Text survives the round trip through native units, multi-byte characters included.
+    let owned = PathText(allocator, "héllo/wörld", @error);
+    let view = owned.View();
+    let round = view.ToText(allocator, @error);
+    Assert(round.IsSome() && error == TextError::None, "text goes native and comes back");
+    let text = round.ValueOr(String::New(allocator));
+    let wanted = StringView::FromValidated("héllo/wörld");
+    let textView = text.View();
+    Assert(textView.Equals(@wanted), "unchanged");
+
+    // The units no text can spell refuse to convert, each platform's own kind.
+    var hostile: OsUnit[3];
+    when #target.os == .Windows {
+        hostile[0] = 0x0061u16;
+        hostile[1] = 0xD800u16;
+        hostile[2] = 0x0062u16;
+    }
+    else {
+        hostile[0] = 0x61u8 as char8;
+        hostile[1] = 0xFFu8 as char8;
+        hostile[2] = 0x62u8 as char8;
+    }
+    let bad = OsStringView::FromUnits(hostile[0..3]);
+    Assert(bad.ToText(allocator, @error).IsNone(), "a name that is not text refuses to become text");
+    Assert(error == TextError::InvalidUtf8, "and says why");
+
+    // Roots and absoluteness, in the spellings both platforms share.
+    let rootedOwned = PathText(allocator, "/etc/hosts", @error);
+    let rooted = Path::FromView(rootedOwned.View());
+    let plainOwned = PathText(allocator, "etc/hosts", @error);
+    let plain = Path::FromView(plainOwned.View());
+    Assert(HasRoot(rooted), "a leading separator is a root");
+    Assert(!HasRoot(plain), "and its absence is not");
+    Assert(!IsAbsolute(plain), "a relative path is not absolute anywhere");
+
+    var kind = PrefixKind::None;
+    when #target.os == .Windows {
+        // The family: drive, drive-rooted, share, verbatim, and the shapes that are neither one thing nor another.
+        let driveOwned = PathText(allocator, "C:\\Users", @error);
+        let drive = Path::FromView(driveOwned.View());
+        Assert(PrefixLength(drive, @kind) == 2 && kind == PrefixKind::Drive, "a drive is two units of prefix");
+        Assert(HasRoot(drive) && IsAbsolute(drive), "and rooted after it, absolute");
+
+        let driveRelativeOwned = PathText(allocator, "C:Users", @error);
+        let driveRelative = Path::FromView(driveRelativeOwned.View());
+        Assert(PrefixLength(driveRelative, @kind) == 2 && kind == PrefixKind::Drive, "a bare drive still prefixes");
+        Assert(!HasRoot(driveRelative) && !IsAbsolute(driveRelative),
+               "but C:name is drive-relative, a shape only Windows has");
+
+        let rootRelativeOwned = PathText(allocator, "\\Users", @error);
+        let rootRelative = Path::FromView(rootRelativeOwned.View());
+        Assert(PrefixLength(rootRelative, @kind) == 0 && kind == PrefixKind::None, "a lone root has no prefix");
+        Assert(HasRoot(rootRelative) && !IsAbsolute(rootRelative), "rooted, and still not one place");
+
+        let shareOwned = PathText(allocator, "\\\\server\\share\\file", @error);
+        let share = Path::FromView(shareOwned.View());
+        Assert(PrefixLength(share, @kind) == 14 && kind == PrefixKind::Share, "a share runs through its name");
+        Assert(HasRoot(share) && IsAbsolute(share), "and is its own root");
+
+        let verbatimOwned = PathText(allocator, "\\\\?\\C:\\Users", @error);
+        let verbatim = Path::FromView(verbatimOwned.View());
+        Assert(PrefixLength(verbatim, @kind) == 6 && kind == PrefixKind::Verbatim,
+               "the verbatim prefix covers the drive inside it");
+        Assert(IsAbsolute(verbatim), "and is always absolute");
+
+        // No case folding: the lower-case drive is the same drive to the system and different units here.
+        let lowerOwned = PathText(allocator, "c:\\Users", @error);
+        let lower = Path::FromView(lowerOwned.View());
+        Assert(PrefixLength(lower, @kind) == 2 && kind == PrefixKind::Drive, "a lower-case drive prefixes too");
+        Assert(!lower.Equals(drive), "and the two spellings stay two paths");
+    }
+    else {
+        // The Unix answer is one answer.
+        Assert(PrefixLength(rooted, @kind) == 0 && kind == PrefixKind::None, "no path has a prefix");
+        let doubledOwned = PathText(allocator, "//server/share", @error);
+        let doubled = Path::FromView(doubledOwned.View());
+        Assert(PrefixLength(doubled, @kind) == 0, "not even the double-slash spelling");
+        Assert(HasRoot(doubled) && IsAbsolute(doubled), "which is just a rooted path here");
+        Assert(IsAbsolute(rooted), "rooted is absolute");
+    }
+
+    return 0;
+}

@@ -12,7 +12,7 @@
 import Allocator::{ AllocError, Allocator, Layout };
 import Core::{ #target, Drop, Option, Slice };
 import Memory::Copy;
-import Text::{ DecodeAt, FromAllocError, TextError };
+import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
 when #target.os == .Windows {
     /// The unit a native string is made of: a UTF-16 code unit on Windows.
@@ -262,5 +262,104 @@ extend OsString {
             // Bytes are bytes: the copy is the conversion.
             return OsString::FromView(allocator, OsStringView { units: text }, error);
         }
+    }
+}
+
+extend OsStringView {
+    /// This native text as UTF-8, or nothing where it is not text.
+    ///
+    /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
+    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. `error` says
+    /// `InvalidUtf8` for both, because both mean the same thing to the caller -- this name is not text, and a
+    /// program that must show it anyway shows it lossily by its own policy, knowingly.
+    ///
+    /// https://rux-lang.dev/docs/api/path/os-string-view/to-text
+    func ToText(self: *OsStringView, allocator: Allocator, error: *var TextError) -> Option<String> {
+        when #target.os == .Windows {
+            // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
+            // checked builder so the promise chain stays intact.
+            let units = self.units;
+            var needed: uint = 0;
+            var index: uint = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    *error = TextError::InvalidUtf8;
+                    return Option::None<String>();
+                }
+                needed = needed + Utf8Width(scalar);
+                index = index + width;
+            }
+
+            var builder = StringBuilder::WithCapacity(allocator, needed, error);
+            if error.IsError() {
+                return Option::None<String>();
+            }
+            index = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    *error = TextError::InvalidUtf8;
+                    return Option::None<String>();
+                }
+                let appended = builder.AppendScalar(scalar as char32);
+                if appended.IsError() {
+                    *error = appended;
+                    return Option::None<String>();
+                }
+                index = index + width;
+            }
+            return Option::Some<String>(builder.IntoString());
+        }
+        else {
+            // Bytes: the check is the conversion.
+            let made = String::FromBytes(allocator, self.units, error);
+            if error.IsError() {
+                return Option::None<String>();
+            }
+            return Option::Some<String>(made);
+        }
+    }
+}
+
+when #target.os == .Windows {
+    // One scalar out of the UTF-16 units at `index`: a lone unit below the surrogates, or a high-low pair.
+    // Anything else -- a low half first, a high half with no partner -- is not text.
+    func DecodeUnit(units: Slice<uint16>, index: uint, scalar: *var uint32, width: *var uint) -> bool {
+        let unit = units.data[index] as uint32;
+        if unit < 0xD800 || unit > 0xDFFF {
+            *scalar = unit;
+            *width = 1;
+            return true;
+        }
+        if unit >= 0xDC00 {
+            return false;
+        }
+        if index + 1 >= units.length {
+            return false;
+        }
+        let low = units.data[index + 1] as uint32;
+        if low < 0xDC00 || low > 0xDFFF {
+            return false;
+        }
+        *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
+        *width = 2;
+        return true;
+    }
+
+    // How many UTF-8 bytes a scalar takes; every input here is a valid scalar by construction.
+    func Utf8Width(scalar: uint32) -> uint {
+        if scalar < 0x80 {
+            return 1;
+        }
+        if scalar < 0x800 {
+            return 2;
+        }
+        if scalar < 0x10000 {
+            return 3;
+        }
+        return 4;
     }
 }
