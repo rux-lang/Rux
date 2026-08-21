@@ -1,0 +1,42 @@
+import Core::Assert;
+import Time::{ Duration, Instant, SleepFor };
+
+// A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,
+// not values -- readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
+// refuses rather than answering with a wildly large span. Nothing here asserts an upper bound on anything, because
+// a loaded machine is allowed to be slow and a test that fails under load is a test that lies.
+
+func Main() -> int {
+    let first = Instant::Now();
+    let second = Instant::Now();
+    Assert(second.Since(first).IsSome(), "a later reading is never earlier");
+    var spin: uint = 0;
+    while spin < 10000 {
+        spin = spin + 1;
+    }
+    let third = Instant::Now();
+    let gap = third.Since(first);
+    Assert(gap.IsSome(), "and later still after doing work");
+    Assert(!gap.ValueOr(Duration::FromSeconds(-1i64)).IsNegative(), "with a non-negative span between");
+
+    // The reversed pair refuses, unless the two readings tied at the clock's resolution.
+    if third.Since(first).ValueOr(Duration::Zero()).IsZero() == false {
+        Assert(first.Since(third).IsNone(), "the reversed subtraction refuses");
+    }
+
+    // A sleep takes at least what was asked. Fifty milliseconds is long enough that every supported clock can see
+    // it, and short enough not to slow the suite.
+    let before = Instant::Now();
+    SleepFor(Duration::FromMilliseconds(50i64));
+    let slept = before.Elapsed();
+    let floor = Duration::FromMilliseconds(50i64);
+    Assert(!slept.Compare(floor).IsLess(), "a sleep takes at least the span asked for");
+
+    // The degenerate spans return at once rather than sleeping forever or refusing.
+    SleepFor(Duration::Zero());
+    SleepFor(Duration::FromMilliseconds(-100i64));
+    let after = before.Elapsed();
+    Assert(after.Compare(Duration::FromSeconds(30i64)).IsLess(), "and the degenerate spans do not sleep");
+
+    return 0;
+}

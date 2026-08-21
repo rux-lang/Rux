@@ -1,0 +1,125 @@
+// A point on the clock that only moves forward.
+//
+// The monotonic clock answers one question -- how much time passed between two readings -- and answers it even
+// while somebody sets the wall clock, which is exactly when the wall clock answers it wrongly. An `Instant` means
+// nothing as a number: it has no epoch, no calendar, and no meaning in another process. What it has is that a
+// later reading minus an earlier one is the time that really elapsed.
+//
+// Sleep lives here because it is the same clock's other direction. A signal can cut a sleep short on the Unix
+// systems, and the loop goes back for the remainder rather than returning early: a caller asked for a span, not
+// for a span unless the process happened to receive a signal.
+
+import Core::{ #target, #Error, Option };
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
+    .Linux => import Linux::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
+    .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
+    .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency, Sleep },
+    else => #Error("Unsupported operating system")
+}
+
+/// A reading of the monotonic clock.
+///
+/// `Copy`. Meaningful only against another reading from the same process: there is no epoch and no calendar here,
+/// which is the point -- nothing anybody does to the wall clock changes what `Since` answers.
+///
+/// https://rux-lang.dev/docs/api/time/instant
+struct Instant {
+    /// Nanoseconds since some origin fixed for the life of the process.
+    ticks: uint64;
+}
+
+extend Instant {
+    /// The clock, read now.
+    ///
+    /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
+    ///
+    /// https://rux-lang.dev/docs/api/time/instant/now
+    func Now() -> Instant {
+        when #target.os == .Windows {
+            // The counter runs in units the machine chooses, so the frequency turns it into nanoseconds. Splitting
+            // the division keeps the intermediate product inside a uint64 for centuries of uptime.
+            var count: int64 = 0;
+            var frequency: int64 = 0;
+            QueryPerformanceCounter(@count);
+            QueryPerformanceFrequency(@frequency);
+            let ticks = count as uint64;
+            let rate = frequency as uint64;
+            let whole = ticks / rate;
+            let rest = ticks % rate;
+            return Instant { ticks: whole * 1000000000u64 + rest * 1000000000u64 / rate };
+        }
+        else {
+            var time = Timespec { seconds: 0, nanoseconds: 0 };
+            ClockGetTime(ClockMonotonic, @time);
+            return Instant { ticks: (time.seconds as uint64) * 1000000000u64 + time.nanoseconds as uint64 };
+        }
+    }
+
+    /// The time between `earlier` and this reading, or `None` when `earlier` is not earlier.
+    ///
+    /// Refusing the reversed pair rather than answering with garbage is what makes a mixed-up argument order a
+    /// visible bug instead of a wildly large duration.
+    ///
+    /// https://rux-lang.dev/docs/api/time/instant/since
+    func Since(self: *Instant, earlier: Instant) -> Option<Duration> {
+        if self.ticks < earlier.ticks {
+            return Option::None<Duration>();
+        }
+        let gap = self.ticks - earlier.ticks;
+        var result = Duration::FromSeconds((gap / 1000000000u64) as int64);
+        result.nanoseconds = (gap % 1000000000u64) as uint32;
+        return Option::Some<Duration>(result);
+    }
+
+    /// The time from this reading to now.
+    ///
+    /// https://rux-lang.dev/docs/api/time/instant/elapsed
+    func Elapsed(self: *Instant) -> Duration {
+        let now = Instant::Now();
+        return now.Since(*self).ValueOr(Duration::Zero());
+    }
+}
+
+/// Stops the calling thread for at least `span`.
+///
+/// At least: the system wakes the thread no earlier, and how much later is the scheduler's business. A negative or
+/// zero span returns at once. On the Unix systems a signal can interrupt the wait, and the loop goes back for the
+/// remainder until the whole span has passed -- the interruption is invisible to the caller, which is what makes
+/// this safe to use for pacing.
+///
+/// https://rux-lang.dev/docs/api/time/sleep
+func SleepFor(span: Duration) {
+    if span.IsNegative() || span.IsZero() {
+        return;
+    }
+    when #target.os == .Windows {
+        // The system sleep is millisecond-grained, so the span rounds up: at least, never less.
+        let millis = span.TotalMilliseconds().ValueOr(4294967294i64);
+        var rounded = millis;
+        if span.SubsecondNanoseconds() % 1000000u32 != 0u32 {
+            rounded = rounded + 1i64;
+        }
+        if rounded > 4294967294i64 {
+            rounded = 4294967294i64;
+        }
+        Sleep(rounded as uint32);
+    }
+    else {
+        var request = Timespec {
+            seconds: span.WholeSeconds(),
+            nanoseconds: span.SubsecondNanoseconds() as int64
+        };
+        var remaining = Timespec { seconds: 0, nanoseconds: 0 };
+        // Interrupted sleeps hand back what is left, and the loop asks again for exactly that. Any other failure
+        // means the request itself was bad, which a normalized non-negative span cannot be, so the loop ends.
+        while Nanosleep(@request, @remaining) != 0i64 {
+            if remaining.seconds == 0i64 && remaining.nanoseconds == 0i64 {
+                return;
+            }
+            request = remaining;
+            remaining = Timespec { seconds: 0, nanoseconds: 0 };
+        }
+    }
+}

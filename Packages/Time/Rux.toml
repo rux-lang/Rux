@@ -18,3 +18,7 @@ ReadmeFile = "README.md"
 
 [Dependencies]
 Core = { Namespace = "Rux", Version = "0.1.0" }
+FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
+Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
+macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
+Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }
