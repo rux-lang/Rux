@@ -61,7 +61,15 @@ private:
         std::unordered_map<std::string, TypeRef> substitutions;
     };
 
+    /// An enum a generic body composes out of its own parameters -- `Option<V>` written inside a container -- noted
+    /// against the function that writes it, so it can be composed again where the parameters are finally types.
+    struct DeferredEnumInstantiation {
+        const EnumDecl *decl;
+        std::vector<TypeRef> typeArgs;
+    };
+
     std::unordered_map<const FuncDecl *, std::vector<DeferredGenericCall>> deferredGenericCalls;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredEnumInstantiation>> deferredEnumInstantiations;
     std::vector<PendingGenericInstantiation> pendingGenericInstantiations;
     std::unordered_map<const FuncDecl *, std::unordered_set<std::string>> validatedGenericInstantiations;
     std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
@@ -1891,11 +1899,24 @@ private:
             return type;
         }
         if (typeArgs.size() == decl.typeParams.size()) {
+            // An instantiation built out of the enclosing generic's parameters cannot be laid out here and is not
+            // spelled anywhere else, so it is noted against the function writing it and composed again at each
+            // instantiation of that function -- which is where the arguments are finally types.
+            if (currentFunctionDecl && std::ranges::any_of(typeArgs, [this](const TypeRef &argument) {
+                    return MentionsTypeParameter(argument);
+                })) {
+                deferredEnumInstantiations[currentFunctionDecl].push_back({&decl, typeArgs});
+            }
             std::unordered_map<std::string, TypeRef> substitutions;
             for (std::size_t i = 0; i < typeArgs.size(); ++i) {
                 substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
             }
             if (const auto layout = LayoutOfEnum(decl, substitutions)) {
+                // Under the instantiation's own name, for the reason the branch above records it: lowering builds
+                // this type a second time and reads its size back from here, having no layout machinery of its own.
+                // An instantiation composed only inside generic bodies -- where nothing concrete ever spells it --
+                // otherwise reached lowering with no marker at all.
+                typeLayouts.insert_or_assign(type.name, *layout);
                 type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
             }
         }
@@ -3339,72 +3360,6 @@ private:
         }
     }
 
-    /// Whether `type` still stands for something a type parameter in scope decides.
-    ///
-    /// An instantiation spells its arguments inside its own name -- `Node<T>` is one `Named` whose name says `T`,
-    /// with nothing structural to walk. Asking only about structure called that concrete, so a call passing it as a
-    /// type argument was queued as an instantiation of a type that does not exist yet, and never re-queued once the
-    /// enclosing generic said what `T` was. The name is where the parameter is, so the name is what this reads.
-    bool MentionsTypeParameter(const TypeRef &type) const {
-        if (type.kind == TypeRef::Kind::TypeParam) {
-            return true;
-        }
-        if (type.kind == TypeRef::Kind::Named) {
-            if (std::ranges::contains(currentTypeParams, BaseTypeName(type.name))) {
-                return true;
-            }
-            for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
-                if (MentionsTypeParameter(argument)) {
-                    return true;
-                }
-            }
-        }
-        return std::ranges::any_of(type.inner, [this](const TypeRef &inner) { return MentionsTypeParameter(inner); });
-    }
-
-    TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) const {
-        // An argument spelled inside an instantiation's name is substituted by rebuilding the name around what the
-        // arguments became. Walking only `inner` left `Node<T>` exactly as it was, so the instantiation that arrived
-        // asked for a layout of a type still mentioning a parameter, and got none.
-        if (type.kind == TypeRef::Kind::Named && type.name.find('<') != std::string::npos) {
-            std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
-            bool changed = false;
-            for (TypeRef &argument : arguments) {
-                TypeRef substituted = SubstituteTypeParams(argument, substitutions);
-                changed = changed || substituted.ToString() != argument.ToString();
-                argument = std::move(substituted);
-            }
-            if (changed) {
-                TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
-                rebuilt.isMut = type.isMut;
-                return rebuilt;
-            }
-            return type;
-        }
-        if (type.kind == TypeRef::Kind::Named) {
-            if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
-                TypeRef substituted = it->second;
-                substituted.isMut = type.isMut;
-                return substituted;
-            }
-        }
-        if (type.kind == TypeRef::Kind::TypeParam) {
-            if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
-                TypeRef substituted = it->second;
-                // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to
-                // carry that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only
-                // pointer the moment a type argument arrived -- silently, because the two render identically.
-                substituted.isMut = type.isMut;
-                return substituted;
-            }
-            return type;
-        }
-        for (TypeRef &inner : type.inner) {
-            inner = SubstituteTypeParams(std::move(inner), substitutions);
-        }
-        return type;
-    }
-
     /// Counts a type's structural nodes, stopping once the limit is passed so a runaway type costs no more to
     /// measure than a well-behaved one.
     static std::size_t TypeNodeCount(const TypeRef &type, const std::size_t limit) {
@@ -3521,12 +3476,24 @@ private:
                 LayoutOfTypeRef(substitution.second);
             }
 
+            if (const auto it = deferredEnumInstantiations.find(instantiation.decl);
+                it != deferredEnumInstantiations.end()) {
+                for (const DeferredEnumInstantiation &deferred : it->second) {
+                    std::vector<TypeRef> arguments;
+                    arguments.reserve(deferred.typeArgs.size());
+                    for (const TypeRef &argument : deferred.typeArgs) {
+                        arguments.push_back(SubstituteTypeParameters(argument, instantiation.substitutions));
+                    }
+                    instantiatedTypes.push_back(EnumType(*deferred.decl, arguments));
+                }
+            }
+
             ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
             if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
                 for (const DeferredGenericCall &call : it->second) {
                     std::unordered_map<std::string, TypeRef> substitutions;
                     for (const auto &[param, type] : call.substitutions) {
-                        substitutions.emplace(param, SubstituteTypeParams(type, instantiation.substitutions));
+                        substitutions.emplace(param, SubstituteTypeParameters(type, instantiation.substitutions));
                     }
                     QueueGenericInstantiation(*call.callee, substitutions);
                 }

@@ -16,24 +16,6 @@ bool ContainsTypeParam(const TypeRef &type) {
     return std::ranges::any_of(type.inner, [](const TypeRef &inner) { return ContainsTypeParam(inner); });
 }
 
-TypeRef SubstituteTypeParams(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
-    if (type.kind == TypeRef::Kind::TypeParam) {
-        if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
-            TypeRef substituted = it->second;
-            // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to carry
-            // that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only pointer the
-            // moment a type argument arrived -- silently, because the two render identically.
-            substituted.isMut = type.isMut;
-            return substituted;
-        }
-        return type;
-    }
-    for (TypeRef &inner : type.inner) {
-        inner = SubstituteTypeParams(std::move(inner), substitutions);
-    }
-    return type;
-}
-
 /// A slice borrows its elements through the read-only `*T` in its `data` field, so writing one writes through that
 /// pointer whatever the binding itself is declared as. `MutableSlice` is the writable counterpart.
 bool IsSliceType(const TypeRef &type) {
@@ -353,20 +335,21 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
     const FuncDecl &declaration, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (const auto it = deferredUnaryChecks.find(&declaration); it != deferredUnaryChecks.end()) {
         for (const DeferredUnaryCheck &check : it->second) {
-            static_cast<void>(CheckUnary(check.op, SubstituteTypeParams(check.operand, substitutions), check.location));
+            static_cast<void>(
+                CheckUnary(check.op, SubstituteTypeParameters(check.operand, substitutions), check.location));
         }
     }
     if (const auto it = deferredBinaryChecks.find(&declaration); it != deferredBinaryChecks.end()) {
         for (const DeferredBinaryCheck &check : it->second) {
-            static_cast<void>(CheckBinary(check.op, SubstituteTypeParams(check.left, substitutions),
-                                          SubstituteTypeParams(check.right, substitutions), *check.leftExpression,
+            static_cast<void>(CheckBinary(check.op, SubstituteTypeParameters(check.left, substitutions),
+                                          SubstituteTypeParameters(check.right, substitutions), *check.leftExpression,
                                           *check.rightExpression, check.location));
         }
     }
     if (const auto it = deferredCastChecks.find(&declaration); it != deferredCastChecks.end()) {
         for (const DeferredCastCheck &check : it->second) {
-            CheckCast(SubstituteTypeParams(check.operand, substitutions),
-                      SubstituteTypeParams(check.target, substitutions), check.location);
+            CheckCast(SubstituteTypeParameters(check.operand, substitutions),
+                      SubstituteTypeParameters(check.target, substitutions), check.location);
         }
     }
     if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {
@@ -374,7 +357,7 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             // What the parameter stands for decides. A copyable argument consumes nothing and needs no fact
             // recorded; a move-only one hands its value over, and the fact is what tells lowering not to destroy the
             // source afterwards.
-            const TypeRef resolved = SubstituteTypeParams(deferred.type, substitutions);
+            const TypeRef resolved = SubstituteTypeParameters(deferred.type, substitutions);
             if (!ClassifyTypeProperties(resolved).IsMoveOnly()) {
                 continue;
             }

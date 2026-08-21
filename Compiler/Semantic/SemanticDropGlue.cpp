@@ -177,6 +177,9 @@ void SemanticAnalyzerContext::SynthesizeResolvedDropGlue() {
     for (const auto &[_, type] : patternTypes) {
         synthesize(type);
     }
+    for (const TypeRef &type : instantiatedTypes) {
+        synthesize(type);
+    }
     for (const auto &[name, declaration] : structDecls) {
         if (declaration->typeParams.empty()) {
             synthesize(TypeRef::MakeNamed(name));

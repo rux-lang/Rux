@@ -265,6 +265,10 @@ protected:
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
+    /// Types an instantiation named for the first time, which nothing written concretely spells. A generic body
+    /// composing `Option<V>` mentions no such type until `V` is decided, so the walks over what the program wrote
+    /// never reach it and it would have neither a layout nor a destructor.
+    std::vector<TypeRef> instantiatedTypes;
     /// One entry per (bound, concrete type) pair a use site proved, so lowering can call the satisfying method directly
     /// in each instantiation instead of dispatching through the interface.
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
@@ -334,6 +338,18 @@ protected:
     /// An unsuffixed literal is checked against whatever it is being assigned to; a suffixed one names its type
     /// itself, so nothing else ever checks it.
     void ValidateSuffixedIntegerLiteral(const LiteralExpr &literal, bool negative);
+
+    /// Whether `type` still stands for something a type parameter in scope decides.
+    ///
+    /// An instantiation spells its arguments inside its own name -- `Option<T>` is one `Named` whose name says `T`,
+    /// with nothing structural to walk -- so a test that reads only structure calls it concrete and every question
+    /// deferred until the parameter is known is answered here instead, wrongly.
+    [[nodiscard]] bool MentionsTypeParameter(const TypeRef &type) const;
+
+    /// `type` with every type parameter replaced by what `substitutions` says it stands for, including the ones
+    /// spelled inside an instantiation's name.
+    [[nodiscard]] TypeRef SubstituteTypeParameters(TypeRef type,
+                                                   const std::unordered_map<std::string, TypeRef> &substitutions) const;
 
 private:
     struct DeferredUnaryCheck {
@@ -446,6 +462,7 @@ private:
     [[nodiscard]] virtual std::string AssignmentErrorMessage(const Expr &expression, const TypeRef &targetType,
                                                              std::string fallback) = 0;
     [[nodiscard]] virtual std::string BaseTypeName(const std::string &name) const = 0;
+
     [[nodiscard]] virtual TypeRef ParseTypeRefFromString(std::string typeName) const = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const = 0;
     virtual void ApplyModuleImports(const Module &module) = 0;
