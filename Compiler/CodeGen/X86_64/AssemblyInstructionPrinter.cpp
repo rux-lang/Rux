@@ -680,11 +680,7 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
         }
         const TypeRef &type = instruction.type;
         const int size = SizeOf(type);
-        if (type.kind == TypeRef::Kind::Str) {
-            const std::string label = modulePrinter.InternString(instruction.strArg);
-            modulePrinter.TextInstruction(std::format("{:<8}rax, {}", "lea", label));
-        }
-        else if (type.kind == TypeRef::Kind::Float32) {
+        if (type.kind == TypeRef::Kind::Float32) {
             const std::string label = modulePrinter.InternFloat32(instruction.strArg);
             modulePrinter.TextInstruction(std::format("{:<8}xmm0, dword [rel {}]", "movss", label));
             modulePrinter.TextInstruction(

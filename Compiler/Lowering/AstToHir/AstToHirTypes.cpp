@@ -137,9 +137,6 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) {
     if (str == "opaque") {
         return TypeRef::MakeOpaque();
     }
-    if (str == "String") {
-        return TypeRef::MakeStr();
-    }
     if (const auto primitive = PrimitiveTypeFromName(str)) {
         return *primitive;
     }
@@ -575,7 +572,6 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     case TypeRef::Kind::UInt:
     case TypeRef::Kind::Float32:
     case TypeRef::Kind::Float64:
-    case TypeRef::Kind::Str:
         return named->ToString();
     default:
         return {};

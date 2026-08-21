@@ -1,0 +1,56 @@
+import Core::Assert;
+
+// `String` is a name like any other.
+//
+// The compiler used to know it: any type so named was sized at sixteen bytes and resolved to a built-in kind, so
+// `Rux/Text`'s `String` was `{ data, length }` because it had to be. A string that owns its bytes needs to carry the
+// allocator it must give them back to, which is sixteen bytes more -- and the compiler would have gone on sizing it
+// at sixteen, laying out something half the width of the value actually there.
+//
+// Nothing needed the special case. String literals are `Slice<char8>` and always were; the built-in kind was
+// produced by nothing except that name being resolved.
+
+struct String {
+    data: *var char8;
+    length: uint;
+    tag: int64;
+    extra: int64;
+}
+
+struct Holder {
+    before: int64;
+    text: String;
+    after: int64;
+}
+
+func Main() -> int {
+    Assert(sizeof(String) == 32u, "a struct named String is the size of its own fields");
+    Assert(alignof(String) == 8u, "with its own alignment");
+    Assert(sizeof(Holder) == 48u, "and takes that much room inside another value");
+
+    var storage: char8[4];
+    storage[0] = c8'r';
+    storage[1] = c8'u';
+    storage[2] = c8'x';
+    storage[3] = c8'!';
+
+    var held = Holder {
+        before: 11i64,
+        text: String { data: @storage[0], length: 4, tag: 22i64, extra: 33i64 },
+        after: 44i64
+    };
+    Assert(held.before == 11i64, "the field before it is where it should be");
+    Assert(held.after == 44i64, "and the field after it");
+    Assert(held.text.length == 4, "every field of it survives being stored");
+    Assert(held.text.tag == 22i64 && held.text.extra == 33i64, "including the ones past the first sixteen bytes");
+    Assert(held.text.data[0] == c8'r' && held.text.data[3] == c8'!', "and it still points at its bytes");
+
+    // Passed by value, which is where a width the compiler disagreed about would show.
+    Assert(Sum(held.text) == 55i64, "and it arrives whole across a call");
+
+    return 0;
+}
+
+func Sum(text: String) -> int64 {
+    return text.tag + text.extra;
+}

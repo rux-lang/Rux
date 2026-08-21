@@ -927,14 +927,7 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         }
         const TypeRef &type = instruction.type;
         const int size = SizeOf(type);
-        if (type.kind == TypeRef::Kind::Str) {
-            const std::uint32_t symbol = hooks.InternStringLiteral(instruction.strArg);
-            std::uint32_t relocationOffset;
-            encoder.LeaRaxRip(relocationOffset);
-            hooks.AddTextRelocation(relocationOffset, symbol);
-            hooks.StoreA(instruction.dst, type);
-        }
-        else if (type.kind == TypeRef::Kind::Float32) {
+        if (type.kind == TypeRef::Kind::Float32) {
             const std::uint32_t symbol = hooks.InternFloat32Literal(instruction.strArg);
             std::uint32_t relocationOffset;
             encoder.MovssXmm0Rip(relocationOffset);

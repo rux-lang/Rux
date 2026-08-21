@@ -149,7 +149,6 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     case Kind::Opaque:
         return 0;
     case Kind::Pointer:
-    case Kind::Str:
     case Kind::Func:
         return 8;
     case Kind::Array: {
@@ -232,8 +231,6 @@ std::string TypeRef::ToString() const {
         return "?";
     case Kind::Opaque:
         return "opaque";
-    case Kind::Str:
-        return "String";
     case Kind::Named:
         return name;
     case Kind::TypeParam:

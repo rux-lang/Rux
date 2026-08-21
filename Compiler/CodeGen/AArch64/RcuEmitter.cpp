@@ -473,7 +473,7 @@ private:
     // all. Both are a constant, a comparison and a cast away from a program,
     // and the x86-64 back end reads them the same way.
     [[nodiscard]] bool IsRegisterValue(const TypeRef &t) const {
-        return !IsFloat(t) && !IsAggregate(t) && t.kind != TypeRef::Kind::Str;
+        return !IsFloat(t) && !IsAggregate(t);
     }
 
     // Whether a value of this type moves as a block of bytes rather than in one

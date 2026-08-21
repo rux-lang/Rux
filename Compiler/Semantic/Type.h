@@ -49,8 +49,7 @@ struct TypeRef {
         Float80,
         Float128,
         Float256,
-        Float512,
-        Str,              // String
+        Float512,         // String
         Pointer,          // *T  — inner[0] = pointee
         Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
         Range,            // start..end — inner[0] = element
@@ -148,12 +147,6 @@ struct TypeRef {
     static TypeRef MakeChar() {
         TypeRef t;
         t.kind = Kind::Char32;
-        return t;
-    }
-
-    static TypeRef MakeStr() {
-        TypeRef t;
-        t.kind = Kind::Str;
         return t;
     }
 
