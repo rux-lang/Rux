@@ -1,0 +1,233 @@
+// The text form of a moment: RFC 3339, the internet profile of ISO 8601.
+//
+// One shape, `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`, chosen because it is the one that machines
+// exchange: sortable as text when the offset is fixed, unambiguous about the offset always, and free of the
+// calendar localisms the full ISO grammar drags in. Parsing takes exactly this shape; formatting produces it.
+//
+// **The leap-second policy, explicitly:** parsing accepts second 60, as RFC 3339 requires, and folds it to the
+// last representable nanosecond of second 59. A leap second is real, but a representation that carried it would
+// make every consumer of a time handle a sixtieth second that occurs a handful of times a decade; folding keeps
+// ordering within the minute and loses under a nanosecond of a second that most clocks never show at all.
+// Formatting never produces second 60, so the fold is one-way and the round trip is clean for every ordinary
+// moment.
+
+import Core::{ MutableSlice, Option, Slice };
+
+// Two ASCII digits at `at`, or a refusal.
+func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
+    if at + 2 > text.length {
+        return false;
+    }
+    let high = text.data[at] as uint32;
+    let low = text.data[at + 1] as uint32;
+    if high < 0x30 || high > 0x39 || low < 0x30 || low > 0x39 {
+        return false;
+    }
+    *value = (high - 0x30) * 10 + (low - 0x30);
+    return true;
+}
+
+/// Reads `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)` into a date-time and its offset.
+///
+/// Strict: four year digits, the dashes and colons where the shape puts them, one to nine fraction digits when the
+/// point appears, and nothing after the offset. `T` may be lower case or a space, and `Z` lower case, which is as
+/// far as the RFC's own liberality goes. Second 60 folds to the last nanosecond of 59 -- the policy the module
+/// header states.
+///
+/// https://rux-lang.dev/docs/api/time/parse-rfc3339
+func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
+    if text.length < 20 {
+        return false;
+    }
+    var yearHigh: uint32 = 0;
+    var yearLow: uint32 = 0;
+    if !TwoDigits(text, 0, @yearHigh) || !TwoDigits(text, 2, @yearLow) {
+        return false;
+    }
+    if text.data[4] != c8'-' || text.data[7] != c8'-' {
+        return false;
+    }
+    var month: uint32 = 0;
+    var day: uint32 = 0;
+    if !TwoDigits(text, 5, @month) || !TwoDigits(text, 8, @day) {
+        return false;
+    }
+    let separator = text.data[10];
+    if separator != c8'T' && separator != c8't' && separator != c8' ' {
+        return false;
+    }
+    var hour: uint32 = 0;
+    var minute: uint32 = 0;
+    var second: uint32 = 0;
+    if !TwoDigits(text, 11, @hour) || !TwoDigits(text, 14, @minute) || !TwoDigits(text, 17, @second) {
+        return false;
+    }
+    if text.data[13] != c8':' || text.data[16] != c8':' {
+        return false;
+    }
+
+    var at: uint = 19;
+    var nanosecond: uint32 = 0;
+    if at < text.length && text.data[at] == c8'.' {
+        at = at + 1;
+        var digits: uint = 0;
+        var scale: uint32 = 100000000;
+        while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
+            if digits < 9 {
+                nanosecond = nanosecond + ((text.data[at] as uint32) - 0x30) * scale;
+                scale = scale / 10;
+            }
+            digits = digits + 1;
+            at = at + 1;
+        }
+        if digits == 0 {
+            return false;
+        }
+    }
+
+    var parsedOffset = UtcOffset::Utc();
+    if at >= text.length {
+        return false;
+    }
+    let mark = text.data[at];
+    if mark == c8'Z' || mark == c8'z' {
+        at = at + 1;
+    }
+    else if mark == c8'+' || mark == c8'-' {
+        var offsetHours: uint32 = 0;
+        var offsetMinutes: uint32 = 0;
+        if !TwoDigits(text, at + 1, @offsetHours) || at + 3 >= text.length || text.data[at + 3] != c8':' ||
+           !TwoDigits(text, at + 4, @offsetMinutes) {
+            return false;
+        }
+        var signedHours = offsetHours as int32;
+        var signedMinutes = offsetMinutes as int32;
+        if mark == c8'-' {
+            signedHours = -signedHours;
+            signedMinutes = -signedMinutes;
+        }
+        let made = UtcOffset::Of(signedHours, signedMinutes);
+        if made.IsNone() {
+            return false;
+        }
+        parsedOffset = made.ValueOr(UtcOffset::Utc());
+        at = at + 6;
+    }
+    else {
+        return false;
+    }
+    if at != text.length {
+        return false;
+    }
+
+    // The fold: second 60 becomes the last representable nanosecond of 59, as the header says.
+    if second == 60u32 {
+        second = 59;
+        nanosecond = 999999999;
+    }
+    let year = (yearHigh * 100 + yearLow) as int32;
+    let madeDate = Date::New(year, month as uint8, day as uint8);
+    if madeDate.IsNone() {
+        return false;
+    }
+    let madeTime = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
+    if madeTime.IsNone() {
+        return false;
+    }
+    *dateTime = DateTime {
+        date: madeDate.ValueOr(Date::FromEpochDays(0i64)),
+        time: madeTime.ValueOr(TimeOfDay::Midnight())
+    };
+    *offset = parsedOffset;
+    return true;
+}
+
+// Writes `value` as `width` ASCII digits, zero-padded, into the cursor position.
+func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: uint) -> bool {
+    if *at + width > into.length {
+        return false;
+    }
+    var divisor: uint32 = 1;
+    var counted: uint = 1;
+    while counted < width {
+        divisor = divisor * 10;
+        counted = counted + 1;
+    }
+    var rest = value;
+    while divisor > 0u32 {
+        into.data[*at] = (rest / divisor + 0x30) as char8;
+        rest = rest % divisor;
+        divisor = divisor / 10;
+        *at = *at + 1;
+    }
+    return true;
+}
+
+func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
+    if *at >= into.length {
+        return false;
+    }
+    into.data[*at] = byte;
+    *at = *at + 1;
+    return true;
+}
+
+/// Writes `dateTime` at `offset` as RFC 3339 text and reports the length through `written`.
+///
+/// The fraction appears only when it is not zero, trimmed of trailing zeros; the offset is `Z` for UTC and
+/// `+HH:MM` or `-HH:MM` otherwise. Thirty-five bytes of room always suffice. Never writes second 60, which is what
+/// makes the leap-second fold one-way.
+///
+/// Refuses years outside 0000 through 9999: the shape has four digits, and a wider year needs the expanded form
+/// this module deliberately does not speak.
+///
+/// https://rux-lang.dev/docs/api/time/format-rfc3339
+func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice<char8>,
+                   written: *var uint) -> bool {
+    *written = 0;
+    if dateTime.date.year < 0i32 || dateTime.date.year > 9999i32 {
+        return false;
+    }
+    var at: uint = 0;
+    if !PushPadded(into, @at, dateTime.date.year as uint32, 4) || !PushByte(into, @at, c8'-') ||
+       !PushPadded(into, @at, dateTime.date.month as uint32, 2) || !PushByte(into, @at, c8'-') ||
+       !PushPadded(into, @at, dateTime.date.day as uint32, 2) || !PushByte(into, @at, c8'T') {
+        return false;
+    }
+    if !PushPadded(into, @at, dateTime.time.hour as uint32, 2) || !PushByte(into, @at, c8':') ||
+       !PushPadded(into, @at, dateTime.time.minute as uint32, 2) || !PushByte(into, @at, c8':') ||
+       !PushPadded(into, @at, dateTime.time.second as uint32, 2) {
+        return false;
+    }
+
+    if dateTime.time.nanosecond != 0u32 {
+        // Nine digits, then the trailing zeros come back off: `.5` rather than `.500000000`.
+        if !PushByte(into, @at, c8'.') {
+            return false;
+        }
+        let opening = at;
+        if !PushPadded(into, @at, dateTime.time.nanosecond, 9) {
+            return false;
+        }
+        while at > opening + 1 && into.data[at - 1] == c8'0' {
+            at = at - 1;
+        }
+    }
+
+    let shift = offset.TotalSeconds();
+    if shift == 0i32 {
+        if !PushByte(into, @at, c8'Z') {
+            return false;
+        }
+    }
+    else {
+        let sign = shift < 0i32 ? c8'-' : c8'+';
+        let magnitude = (shift < 0i32 ? -shift : shift) as uint32;
+        if !PushByte(into, @at, sign) || !PushPadded(into, @at, magnitude / 3600u32, 2) ||
+           !PushByte(into, @at, c8':') || !PushPadded(into, @at, magnitude % 3600u32 / 60u32, 2) {
+            return false;
+        }
+    }
+    *written = at;
+    return true;
+}
