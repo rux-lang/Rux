@@ -1,0 +1,133 @@
+// The wall clock, in UTC, as a count from the Unix epoch.
+//
+// A timestamp is what the machine believes the time is: it jumps when the clock is set, drifts until NTP pulls it
+// back, and two machines disagree about it. That is not a defect to paper over -- it is what a wall clock is, and
+// the reason `Instant` exists for measuring. What a timestamp is for is naming a moment so another machine, or a
+// later run, can recognize it.
+//
+// The representation is seconds since 1970-01-01T00:00:00 UTC and a nanosecond fraction, normalized exactly as a
+// `Duration` is: fraction in [0, 1e9), sign in the seconds, so a moment before the epoch is negative seconds and a
+// fraction counting up. Windows counts from 1601 in hundred-nanosecond ticks, and the conversion is one constant
+// the platform package already carries.
+
+import Core::{ #target, #Error, Option, Ordering };
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ ClockGetTime, ClockRealtime, Timespec },
+    .Linux => import Linux::{ ClockGetTime, ClockRealtime, Timespec },
+    .macOS => import macOS::{ ClockGetTime, ClockRealtime, Timespec },
+    .Windows => import Windows::{
+        FileTime,
+        FileTimeTicks,
+        FileTimeTicksPerSecond,
+        FileTimeToUnixEpochSeconds,
+        GetSystemTimePreciseAsFileTime
+    },
+    else => #Error("Unsupported operating system")
+}
+
+/// A moment in UTC: seconds since the Unix epoch and a fraction, normalized.
+///
+/// `Copy`. The value is `seconds + nanoseconds / 1e9` from 1970-01-01T00:00:00 UTC, and `nanoseconds` is always in
+/// [0, 1e9).
+///
+/// https://rux-lang.dev/docs/api/time/timestamp
+struct Timestamp {
+    /// Whole seconds since the epoch, carrying the sign.
+    seconds: int64;
+    /// The fraction, in nanoseconds, always in [0, 1e9).
+    nanoseconds: uint32;
+}
+
+extend Timestamp {
+    /// The epoch itself: 1970-01-01T00:00:00 UTC exactly.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/epoch
+    func Epoch() -> Timestamp {
+        return Timestamp { seconds: 0, nanoseconds: 0 };
+    }
+
+    /// The wall clock, read now.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/now
+    func Now() -> Timestamp {
+        when #target.os == .Windows {
+            // The system counts hundred-nanosecond ticks from 1601; the epoch shift and the tick width are the
+            // whole conversion.
+            var time = FileTime { lowDateTime: 0, highDateTime: 0 };
+            GetSystemTimePreciseAsFileTime(@time);
+            let ticks = FileTimeTicks(@time);
+            let seconds = ticks / FileTimeTicksPerSecond;
+            let rest = ticks % FileTimeTicksPerSecond;
+            return Timestamp {
+                seconds: (seconds as int64) - (FileTimeToUnixEpochSeconds as int64),
+                nanoseconds: (rest as uint32) * 100u32
+            };
+        }
+        else {
+            var time = Timespec { seconds: 0, nanoseconds: 0 };
+            ClockGetTime(ClockRealtime, @time);
+            return Timestamp { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
+        }
+    }
+
+    /// A moment from a plain second count, the shape most protocols carry.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/from-unix-seconds
+    func FromUnixSeconds(seconds: int64) -> Timestamp {
+        return Timestamp { seconds: seconds, nanoseconds: 0 };
+    }
+
+    /// The whole seconds since the epoch, rounded toward negative infinity.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/unix-seconds
+    func UnixSeconds(self: *Timestamp) -> int64 {
+        return self.seconds;
+    }
+
+    /// The fraction beyond the whole seconds, in nanoseconds.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/subsecond-nanoseconds
+    func SubsecondNanoseconds(self: *Timestamp) -> uint32 {
+        return self.nanoseconds;
+    }
+
+    /// The span from `earlier` to this moment, or `None` past a duration's range.
+    ///
+    /// May be negative: the wall clock jumps, and two readings taken across a clock-set really can come back
+    /// reversed. That is information, not an error, which is the difference from `Instant::Since`.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/since
+    func Since(self: *Timestamp, earlier: Timestamp) -> Option<Duration> {
+        let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
+        return mine.Minus(Duration { seconds: earlier.seconds, nanoseconds: earlier.nanoseconds });
+    }
+
+    /// This moment shifted by `span`, or `None` past the range.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/plus
+    func Plus(self: *Timestamp, span: Duration) -> Option<Timestamp> {
+        let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
+        let shifted = mine.Plus(span);
+        if shifted.IsNone() {
+            return Option::None<Timestamp>();
+        }
+        let landed = shifted.ValueOr(Duration::Zero());
+        return Option::Some<Timestamp>(Timestamp { seconds: landed.seconds, nanoseconds: landed.nanoseconds });
+    }
+
+    /// Whether two timestamps name the same moment.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/equals
+    func Equals(self: *Timestamp, other: Timestamp) -> bool {
+        return self.seconds == other.seconds && self.nanoseconds == other.nanoseconds;
+    }
+
+    /// How this moment orders against `other`.
+    ///
+    /// https://rux-lang.dev/docs/api/time/timestamp/compare
+    func Compare(self: *Timestamp, other: Timestamp) -> Ordering {
+        let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
+        return mine.Compare(Duration { seconds: other.seconds, nanoseconds: other.nanoseconds });
+    }
+}

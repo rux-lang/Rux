@@ -1,0 +1,47 @@
+import Core::{ Assert, Ordering };
+import Time::{ Duration, Timestamp };
+
+// A wall clock cannot be tested for what it says -- the machine's clock is whatever it is -- so what is tested is
+// the arithmetic around it and the one claim that survives any clock setting: now is after 2020 and before 2100,
+// or the machine is so wrong that no test suite result means anything.
+
+func Main() -> int {
+    let epoch = Timestamp::Epoch();
+    Assert(epoch.UnixSeconds() == 0i64 && epoch.SubsecondNanoseconds() == 0u32, "the epoch is zero exactly");
+
+    let now = Timestamp::Now();
+    Assert(now.UnixSeconds() > 1577836800i64, "now is after the start of 2020");
+    Assert(now.UnixSeconds() < 4102444800i64, "and before the start of 2100");
+    Assert(now.SubsecondNanoseconds() < 1000000000u32, "with the fraction in range");
+    Assert(now.Compare(epoch) == Ordering::Greater, "and later than the epoch");
+
+    // The distance from the epoch is the seconds themselves.
+    let sinceEpoch = now.Since(epoch).ValueOr(Duration::Zero());
+    Assert(sinceEpoch.WholeSeconds() == now.UnixSeconds(), "the span from the epoch is the count itself");
+    Assert(sinceEpoch.SubsecondNanoseconds() == now.SubsecondNanoseconds(), "fraction included");
+
+    // A reversed pair answers with a negative span rather than refusing: the wall clock really does go backwards.
+    let reversed = epoch.Since(now).ValueOr(Duration::Zero());
+    Assert(reversed.IsNegative(), "the reversed pair is a negative span");
+    let cancelled = sinceEpoch.Plus(reversed).ValueOr(Duration::FromSeconds(99i64));
+    Assert(cancelled.IsZero(), "and the two cancel exactly");
+
+    // Shifting, both directions, across the epoch.
+    let early = Timestamp::FromUnixSeconds(-1i64);
+    Assert(early.Compare(epoch) == Ordering::Less, "a moment before the epoch is negative seconds");
+    let shifted = early.Plus(Duration::FromMilliseconds(1500i64)).ValueOr(epoch);
+    Assert(shifted.UnixSeconds() == 0i64 && shifted.SubsecondNanoseconds() == 500000000u32,
+           "shifting across the epoch normalizes");
+    let moved = now.Plus(Duration::FromSeconds(3600i64)).ValueOr(epoch);
+    Assert(moved.Since(now).ValueOr(Duration::Zero()).WholeSeconds() == 3600i64,
+           "an hour forward is an hour apart");
+    Assert(now.Plus(Duration::FromSeconds(9223372036854775807i64)).IsNone(), "and the far edge refuses");
+
+    // A second reading is close to the first: within a minute, or the clock jumped mid-test, which is exactly the
+    // kind of claim a wall clock is allowed to break -- so the bound is generous rather than tight.
+    let later = Timestamp::Now();
+    let gap = later.Since(now).ValueOr(Duration::FromSeconds(-999i64));
+    Assert(gap.Compare(Duration::FromSeconds(60i64)) == Ordering::Less, "two readings sit close together");
+
+    return 0;
+}
