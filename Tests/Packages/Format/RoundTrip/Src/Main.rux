@@ -1,0 +1,117 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::Slice;
+import Format::{ Format, IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint64, ParseUint512 };
+import Text::TextError;
+
+// The round trip is the contract the two halves owe each other: what formatting writes, parsing reads back to the
+// value it was. Checked at the values where the halves are most likely to disagree -- the bounds, the bases, the
+// negative edge with no positive twin -- and for floats at the values whose text is exact, since the shortest
+// rendering is fifteen digits and deliberately not a round trip past them.
+
+func TripInt64(allocator: Allocator, value: int64) -> bool {
+    var error = TextError::None;
+    let text = Format(allocator, "{}", @error, value);
+    if error != TextError::None {
+        return false;
+    }
+    match ParseInt64(text.View()) {
+        .Success(parsed) => {
+            return parsed == value;
+        },
+        .Error(_) => {
+            return false;
+        }
+    }
+}
+
+func TripUint64Hex(allocator: Allocator, value: uint64) -> bool {
+    var error = TextError::None;
+    let text = Format(allocator, "{:#x}", @error, value);
+    if error != TextError::None {
+        return false;
+    }
+    match ParseUint64(text.View()) {
+        .Success(parsed) => {
+            return parsed == value;
+        },
+        .Error(_) => {
+            return false;
+        }
+    }
+}
+
+func TripFloat64(allocator: Allocator, value: float64) -> bool {
+    var error = TextError::None;
+    let text = Format(allocator, "{}", @error, value);
+    if error != TextError::None {
+        return false;
+    }
+    match ParseFloat64(text.View()) {
+        .Success(parsed) => {
+            return parsed == value;
+        },
+        .Error(_) => {
+            return false;
+        }
+    }
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // The signed edges, the zero, and values crossing each digit-count boundary.
+    if !TripInt64(allocator, 0i64) { return 10; }
+    if !TripInt64(allocator, 1i64) { return 11; }
+    if !TripInt64(allocator, -1i64) { return 12; }
+    if !TripInt64(allocator, 9223372036854775807i64) { return 13; }
+    if !TripInt64(allocator, -9223372036854775808i64) { return 14; }
+    if !TripInt64(allocator, 1000000i64) { return 15; }
+    if !TripInt64(allocator, -999999999i64) { return 16; }
+
+    // Hex with its prefix, through the parser that reads the prefix.
+    if !TripUint64Hex(allocator, 0u64) { return 20; }
+    if !TripUint64Hex(allocator, 255u64) { return 21; }
+    if !TripUint64Hex(allocator, 18446744073709551615u64) { return 22; }
+
+    // The wide widths: the largest value there is, formatted and read back.
+    let wide = Format(allocator, "{}", @error, -170141183460469231731687303715884105728i128);
+    if error != TextError::None { return 30; }
+    match ParseInt128(wide.View()) {
+        .Success(parsed) => {
+            if parsed != -170141183460469231731687303715884105728i128 { return 31; }
+        },
+        .Error(_) => { return 32; }
+    }
+    let widest = Format(allocator, "{}", @error,
+        13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512);
+    if error != TextError::None { return 33; }
+    match ParseUint512(widest.View()) {
+        .Success(parsed) => {
+            if parsed % 10u512 != 5u512 { return 34; }
+        },
+        .Error(_) => { return 35; }
+    }
+
+    // Floats whose text is exact at fifteen digits, and the special values.
+    if !TripFloat64(allocator, 0.0) { return 40; }
+    if !TripFloat64(allocator, 1.0) { return 41; }
+    if !TripFloat64(allocator, -2.5) { return 42; }
+    if !TripFloat64(allocator, 0.125) { return 43; }
+    if !TripFloat64(allocator, 1048576.0) { return 44; }
+    if !TripFloat64(allocator, 1.0 / 0.0) { return 45; }
+    if !TripFloat64(allocator, -1.0 / 0.0) { return 46; }
+
+    // A NaN never equals itself, so its trip is checked by kind rather than by value.
+    let nan = Format(allocator, "{}", @error, 0.0 / 0.0);
+    if error != TextError::None { return 50; }
+    match ParseFloat64(nan.View()) {
+        .Success(parsed) => {
+            if !IsNan(parsed) { return 51; }
+        },
+        .Error(_) => { return 52; }
+    }
+
+    return 0;
+}
