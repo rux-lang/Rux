@@ -1,0 +1,261 @@
+// The open file as the streams everything else already speaks.
+//
+// `File` implements `Reader`, `Writer` and `Seeker`, which is the whole point of those interfaces: the buffered
+// pair, line reading, binary values and format writing all stack on a file exactly as they stacked on memory and
+// the standard streams, none of them knowing the difference. Reads and writes are one attempt each, partial on
+// purpose -- the looping belongs to `ReadExact` and `WriteAll`, written once for every stream.
+//
+// `Flush` reports nothing gathered, because nothing is: these writes go to the platform as they are made. What a
+// caller usually wants after writing is `Sync`, which is a different promise -- not "handed to the kernel" but
+// "acknowledged by the device", the one that holds through a power failure.
+
+import Core::{ #target, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, Reader, SeekFrom, Seeker, Writer };
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
+    .Linux => import Linux::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
+    .macOS => import macOS::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
+    .Windows => import Windows::{
+        FlushFileBuffers,
+        GetFileSizeEx,
+        GetLastError,
+        ReadFile,
+        SetEndOfFile,
+        SetFilePointerEx,
+        WriteFile
+    }
+}
+
+// The one closed-handle answer, so every operation refuses the same way.
+func ClosedFile() -> IoError {
+    return IoError::Of(IoErrorKind::InvalidHandle);
+}
+
+extend File : Reader {
+    /// Reads what one attempt yields into `into`; a short count is not an error and the end is `EndOfStream`.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/read
+    func Read(self: *var File, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        if !self.open {
+            return ClosedFile();
+        }
+        if into.length == 0 {
+            return IoError::Ok();
+        }
+        when #target.os == .Windows {
+            let count = into.length > 0x40000000u ? 0x40000000u32 : into.length as uint32;
+            var read: uint32 = 0;
+            if !ReadFile(self.handle, into.data as *var opaque, count, @read, null) {
+                let raw = GetLastError() as int32;
+                // A pipe whose writing end closed reports through a failure; for a reader it is the end.
+                if raw == 109 {
+                    return IoError::Of(IoErrorKind::EndOfStream);
+                }
+                return TranslateNative(raw);
+            }
+            if read == 0 {
+                return IoError::Of(IoErrorKind::EndOfStream);
+            }
+            *filled = read as uint;
+            return IoError::Ok();
+        }
+        else {
+            let result = Read(self.handle, into.data as *var opaque, into.length);
+            if result < 0 {
+                return TranslateNative((0i64 - result) as int32);
+            }
+            if result == 0 {
+                return IoError::Of(IoErrorKind::EndOfStream);
+            }
+            *filled = result as uint;
+            return IoError::Ok();
+        }
+    }
+}
+
+extend File : Writer {
+    /// Writes what one attempt takes of `bytes`; a short count means call again, which `WriteAll` does.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/write
+    func Write(self: *var File, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        *taken = 0;
+        if !self.open {
+            return ClosedFile();
+        }
+        if bytes.length == 0 {
+            return IoError::Ok();
+        }
+        when #target.os == .Windows {
+            let count = bytes.length > 0x40000000u ? 0x40000000u32 : bytes.length as uint32;
+            var written: uint32 = 0;
+            if !WriteFile(self.handle, bytes.data as *opaque, count, @written, null) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            *taken = written as uint;
+            return IoError::Ok();
+        }
+        else {
+            let result = Write(self.handle, bytes.data as *opaque, bytes.length);
+            if result < 0 {
+                return TranslateNative((0i64 - result) as int32);
+            }
+            *taken = result as uint;
+            return IoError::Ok();
+        }
+    }
+
+    /// Nothing: these writes hold nothing back. Durability is `Sync`, which is a different promise.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/flush
+    func Flush(self: *var File) -> IoError {
+        if !self.open {
+            return ClosedFile();
+        }
+        return IoError::Ok();
+    }
+}
+
+extend File : Seeker {
+    /// Moves the position `offset` bytes from `origin` and reports where it landed.
+    ///
+    /// A position before the start of the file is refused by the platform; one past the end is allowed, and a
+    /// later write there leaves a hole. A handle opened for appending still seeks -- but its writes land at the
+    /// end regardless, because append is a property of the writes, not of the position.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/seek
+    func Seek(self: *var File, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
+        *position = 0;
+        if !self.open {
+            return ClosedFile();
+        }
+        when #target.os == .Windows {
+            var landed: int64 = 0;
+            if !SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            *position = landed as uint64;
+            return IoError::Ok();
+        }
+        else {
+            var whence = SeekSet;
+            if origin == SeekFrom::Current {
+                whence = SeekCurrent;
+            }
+            else if origin == SeekFrom::End {
+                whence = SeekEnd;
+            }
+            let landed = Lseek(self.handle, offset, whence);
+            if landed < 0 {
+                return TranslateNative((0i64 - landed) as int32);
+            }
+            *position = landed as uint64;
+            return IoError::Ok();
+        }
+    }
+}
+
+extend File {
+    /// Forces everything written through to the storage device.
+    ///
+    /// Not "handed to the kernel" but "acknowledged by the device": the promise that holds through a power
+    /// failure, and the one a caller who just wrote something they cannot lose actually wants.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/sync
+    func Sync(self: *var File) -> IoError {
+        if !self.open {
+            return ClosedFile();
+        }
+        when #target.os == .Windows {
+            if FlushFileBuffers(self.handle) == 0 {
+                return TranslateNative(GetLastError() as int32);
+            }
+            return IoError::Ok();
+        }
+        else {
+            let result = Fsync(self.handle);
+            if result < 0 {
+                return TranslateNative((0i64 - result) as int32);
+            }
+            return IoError::Ok();
+        }
+    }
+
+    /// The file's length in bytes.
+    ///
+    /// On the Unix systems this is measured by seeking to the end and back, which moves the shared kernel
+    /// position for a moment; a reader racing this on the same open file may see it. The stat-based answer
+    /// arrives with the metadata work.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/size
+    func Size(self: *var File, size: *var uint64) -> IoError {
+        *size = 0;
+        if !self.open {
+            return ClosedFile();
+        }
+        when #target.os == .Windows {
+            var reported: int64 = 0;
+            if !GetFileSizeEx(self.handle, @reported) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            *size = reported as uint64;
+            return IoError::Ok();
+        }
+        else {
+            let held = Lseek(self.handle, 0, SeekCurrent);
+            if held < 0 {
+                return TranslateNative((0i64 - held) as int32);
+            }
+            let end = Lseek(self.handle, 0, SeekEnd);
+            if end < 0 {
+                return TranslateNative((0i64 - end) as int32);
+            }
+            let back = Lseek(self.handle, held, SeekSet);
+            if back < 0 {
+                return TranslateNative((0i64 - back) as int32);
+            }
+            *size = end as uint64;
+            return IoError::Ok();
+        }
+    }
+
+    /// Sets the file's length: shrinking discards what was past the new end, growing leaves a hole.
+    ///
+    /// The position does not move. A position past the new end stays where it was, and the next write there
+    /// grows the file again -- the same rule as seeking past the end.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/set-length
+    func SetLength(self: *var File, length: uint64) -> IoError {
+        if !self.open {
+            return ClosedFile();
+        }
+        when #target.os == .Windows {
+            // SetEndOfFile cuts at the current position, so the position moves there and back.
+            var held: int64 = 0;
+            if !SetFilePointerEx(self.handle, 0, @held, 1) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            var landed: int64 = 0;
+            if !SetFilePointerEx(self.handle, length as int64, @landed, 0) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            if SetEndOfFile(self.handle as *var opaque) == 0 {
+                let raw = GetLastError() as int32;
+                SetFilePointerEx(self.handle, held, @landed, 0);
+                return TranslateNative(raw);
+            }
+            if !SetFilePointerEx(self.handle, held, @landed, 0) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            return IoError::Ok();
+        }
+        else {
+            let result = Ftruncate(self.handle, length as int64);
+            if result < 0 {
+                return TranslateNative((0i64 - result) as int32);
+            }
+            return IoError::Ok();
+        }
+    }
+}
