@@ -1,0 +1,51 @@
+import Core::Assert;
+import Unicode::{ CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, IsNumeric, IsWhiteSpace };
+
+// Spot checks against facts a reader can verify in the code charts, chosen to land in different tables and
+// different corners of them: the ASCII range, the BMP's edges, the supplementary planes, and the points that are
+// deliberately nothing.
+
+func Main() -> int {
+    Assert(CategoryOf(0x41u32 as char32) == GeneralCategory::UppercaseLetter, "A is Lu");
+    Assert(CategoryOf(0x61u32 as char32) == GeneralCategory::LowercaseLetter, "a is Ll");
+    Assert(CategoryOf(0x30u32 as char32) == GeneralCategory::DecimalNumber, "zero is Nd");
+    Assert(CategoryOf(0x20u32 as char32) == GeneralCategory::SpaceSeparator, "the space is Zs");
+    Assert(CategoryOf(0x0Au32 as char32) == GeneralCategory::Control, "the line feed is Cc");
+    Assert(CategoryOf(0x301u32 as char32) == GeneralCategory::NonspacingMark, "the combining acute is Mn");
+    Assert(CategoryOf(0x4E00u32 as char32) == GeneralCategory::OtherLetter, "a CJK ideograph is Lo");
+    Assert(CategoryOf(0x1F600u32 as char32) == GeneralCategory::OtherSymbol, "an emoji is So");
+    Assert(CategoryOf(0x24u32 as char32) == GeneralCategory::CurrencySymbol, "the dollar sign is Sc");
+    Assert(CategoryOf(0x1C5u32 as char32) == GeneralCategory::TitlecaseLetter, "a digraph is Lt");
+    Assert(CategoryOf(0x378u32 as char32) == GeneralCategory::Unassigned, "an unassigned point is nothing");
+    Assert(CategoryOf(0x10FFFFu32 as char32) == GeneralCategory::Unassigned, "and so is the very last one");
+    Assert(CategoryOf(0xE000u32 as char32) == GeneralCategory::PrivateUse, "private use is Co");
+
+    Assert(CombiningClassOf(0x41u32 as char32) == 0u32, "a letter reorders with nothing");
+    Assert(CombiningClassOf(0x301u32 as char32) == 230u32, "the acute is class 230");
+    Assert(CombiningClassOf(0x334u32 as char32) == 1u32, "an overlay is class 1");
+    Assert(CombiningClassOf(0x3099u32 as char32) == 8u32, "the kana voicing mark is class 8");
+    Assert(CombiningClassOf(0x5B4u32 as char32) == 14u32, "a Hebrew point carries its fixed class");
+
+    Assert(IsWhiteSpace(0x20u32 as char32), "the space is whitespace");
+    Assert(IsWhiteSpace(0x09u32 as char32), "and the tab");
+    Assert(IsWhiteSpace(0xA0u32 as char32), "and the no-break space, which ASCII cannot see");
+    Assert(IsWhiteSpace(0x2028u32 as char32), "and the line separator");
+    Assert(IsWhiteSpace(0x3000u32 as char32), "and the ideographic space");
+    Assert(!IsWhiteSpace(0x41u32 as char32), "a letter is not");
+    Assert(!IsWhiteSpace(0x200Bu32 as char32), "and neither is the zero-width space, deliberately");
+
+    Assert(IsAlphabetic(0x41u32 as char32), "A is alphabetic");
+    Assert(IsAlphabetic(0xE9u32 as char32), "and an accented letter");
+    Assert(IsAlphabetic(0x4E00u32 as char32), "and an ideograph");
+    Assert(IsAlphabetic(0x2167u32 as char32), "and a Roman numeral, which is a letterlike number");
+    Assert(!IsAlphabetic(0x30u32 as char32), "a digit is not");
+    Assert(!IsAlphabetic(0x2Bu32 as char32), "nor an operator");
+
+    Assert(IsNumeric(0x30u32 as char32), "a digit is numeric");
+    Assert(IsNumeric(0x663u32 as char32), "and an Arabic-Indic one");
+    Assert(IsNumeric(0xBDu32 as char32), "and the half fraction");
+    Assert(IsNumeric(0x2167u32 as char32), "and the Roman numeral, from the other side");
+    Assert(!IsNumeric(0x41u32 as char32), "a letter is not");
+
+    return 0;
+}

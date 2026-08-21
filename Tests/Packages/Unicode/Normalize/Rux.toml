@@ -1,0 +1,18 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "UnicodeNormalize"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Unicode: the four normal forms against the committed conformance vectors"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+Io = { Path = "../../../../Packages/Io" }
+Unicode = { Path = "../../../../Packages/Unicode" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Unicode"

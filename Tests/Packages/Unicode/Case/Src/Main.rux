@@ -1,0 +1,60 @@
+import Core::{ Assert, MutableSlice };
+import Unicode::{ Fold, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
+
+// The cases that separate the three kinds of mapping from each other: the sharp s, whose uppercase is two letters
+// no simple mapping can spell; the sigmas, three of which fold to one; and the dotted I, whose full lowercase
+// carries a combining mark. Every expected value is a fact of the data files, checkable against them.
+
+func Scalar(value: uint32) -> char32 {
+    return value as char32;
+}
+
+func Main() -> int {
+    // Simple: one to one, identity where there is nothing to do.
+    Assert(ToUpperSimple(Scalar(0x61)) == Scalar(0x41), "a raises to A");
+    Assert(ToLowerSimple(Scalar(0x41)) == Scalar(0x61), "and A lowers back");
+    Assert(ToUpperSimple(Scalar(0xE9)) == Scalar(0xC9), "an accented letter keeps its accent");
+    Assert(ToUpperSimple(Scalar(0x3C3)) == Scalar(0x3A3), "sigma raises to capital sigma");
+    Assert(ToUpperSimple(Scalar(0x3C2)) == Scalar(0x3A3), "and so does the final sigma");
+    Assert(ToLowerSimple(Scalar(0x3A3)) == Scalar(0x3C3), "capital sigma lowers to the ordinary one");
+    Assert(ToUpperSimple(Scalar(0x30)) == Scalar(0x30), "a digit has no case");
+    Assert(ToLowerSimple(Scalar(0x4E00)) == Scalar(0x4E00), "and neither does an ideograph");
+    Assert(ToUpperSimple(Scalar(0xDF)) == Scalar(0xDF), "the sharp s has no simple uppercase");
+    Assert(ToLowerSimple(Scalar(0x1E9E)) == Scalar(0xDF), "though the capital one lowers to it");
+
+    // Titlecase: the uppercase, except where a digraph has a middle form.
+    Assert(ToTitleSimple(Scalar(0x61)) == Scalar(0x41), "an ordinary letter titles as its uppercase");
+    Assert(ToTitleSimple(Scalar(0x1C6)) == Scalar(0x1C5), "a digraph titles to its middle form");
+    Assert(ToUpperSimple(Scalar(0x1C6)) == Scalar(0x1C4), "which is not its uppercase");
+
+    // Full: the mappings that change length, which the simple ones cannot say.
+    var storage: char32[4];
+    let room = MutableSlice::From<char32>(@storage[0], 4);
+    var written: uint = 0;
+
+    Assert(ToUpperFull(Scalar(0xDF), room, @written), "the sharp s has a full uppercase");
+    Assert(written == 2, "of two letters");
+    Assert(storage[0] == Scalar(0x53) && storage[1] == Scalar(0x53), "both of them S");
+
+    Assert(ToUpperFull(Scalar(0x61), room, @written), "a plain letter goes through the same door");
+    Assert(written == 1 && storage[0] == Scalar(0x41), "and comes out its simple self");
+
+    Assert(ToLowerFull(Scalar(0x130), room, @written), "the dotted capital I has a full lowercase");
+    Assert(written == 2, "of a letter and a mark");
+    Assert(storage[0] == Scalar(0x69) && storage[1] == Scalar(0x307), "an i and the combining dot above");
+
+    // Folding: the form comparison happens in, identical in every locale.
+    Assert(Fold(Scalar(0x41), room, @written), "A folds");
+    Assert(written == 1 && storage[0] == Scalar(0x61), "to a");
+    Assert(Fold(Scalar(0x3A3), room, @written) && storage[0] == Scalar(0x3C3), "capital sigma folds to sigma");
+    Assert(Fold(Scalar(0x3C2), room, @written) && storage[0] == Scalar(0x3C3), "and so does the final sigma");
+    Assert(Fold(Scalar(0xDF), room, @written), "the sharp s folds");
+    Assert(written == 2 && storage[0] == Scalar(0x73) && storage[1] == Scalar(0x73), "to two small s");
+    Assert(Fold(Scalar(0xFB03), room, @written), "the ffi ligature folds");
+    Assert(written == 3, "to three letters");
+    Assert(storage[0] == Scalar(0x66) && storage[1] == Scalar(0x66) && storage[2] == Scalar(0x69), "f f i");
+    Assert(Fold(Scalar(0x30), room, @written) && written == 1 && storage[0] == Scalar(0x30),
+           "a digit folds to itself");
+
+    return 0;
+}

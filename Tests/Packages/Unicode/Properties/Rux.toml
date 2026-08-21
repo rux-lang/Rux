@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "UnicodeProperties"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Unicode: Properties"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Unicode = { Path = "../../../../Packages/Unicode" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Unicode"

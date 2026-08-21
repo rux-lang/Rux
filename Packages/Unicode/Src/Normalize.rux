@@ -1,0 +1,261 @@
+// The four normal forms, over scalar values.
+//
+// Normalization is what makes "the same text" a checkable claim: an e-with-acute is one scalar value or two, and a
+// comparison that has not normalized calls them different. NFD takes everything apart canonically and orders the
+// marks; NFC puts back together what has a composed form; the K forms do the same after compatibility
+// decomposition, which also flattens ligatures, width variants and the like -- a bigger hammer, for callers who
+// mean "the same characters" more loosely.
+//
+// Everything works on slices of scalar values and writes into a caller's buffer, reporting the length or refusing
+// for want of room; nothing here allocates. Text-level normalization is a walk over a string's scalars into one of
+// these and back out through a builder, and belongs beside the text types rather than here.
+//
+// Hangul is arithmetic throughout: a syllable decomposes into its jamo and recomposes from them by formula, which
+// is why none of it is in the tables.
+
+import Core::{ MutableSlice, Slice };
+
+/// The first Hangul syllable, LV and LVT composition's base.
+///
+/// https://rux-lang.dev/docs/api/unicode/hangul-base
+const HangulBase: uint32 = 0xAC00;
+
+// The jamo bases and counts the arithmetic runs on.
+const HangulLeadBase: uint32 = 0x1100;
+const HangulVowelBase: uint32 = 0x1161;
+const HangulTrailBase: uint32 = 0x11A7;
+const HangulVowelCount: uint32 = 21;
+const HangulTrailCount: uint32 = 28;
+const HangulSyllableCount: uint32 = 11172;
+
+// Writes the canonical decomposition of one Hangul syllable, two or three jamo.
+func DecomposeHangul(offset: uint32, into: MutableSlice<char32>, at: uint, written: *var uint) -> bool {
+    let lead = HangulLeadBase + offset / (HangulVowelCount * HangulTrailCount);
+    let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
+    let trail = offset % HangulTrailCount;
+    let needed: uint = trail == 0u32 ? 2u : 3u;
+    if at + needed > into.length {
+        return false;
+    }
+    into.data[at] = lead as char32;
+    into.data[at + 1] = vowel as char32;
+    if trail != 0 {
+        into.data[at + 2] = (HangulTrailBase + trail) as char32;
+    }
+    *written = needed;
+    return true;
+}
+
+// Writes one scalar's full decomposition -- canonical or compatibility -- into `into` at `at`.
+func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32>, at: uint,
+                  written: *var uint) -> bool {
+    let value = scalar as uint32;
+    if value >= HangulBase && value < HangulBase + HangulSyllableCount {
+        return DecomposeHangul(value - HangulBase, into, at, written);
+    }
+
+    var offset: uint = 0;
+    var length: uint = 0;
+    var found = false;
+    if compatibility {
+        found = IndexWindow(CompatibilityDecompositionIndex[..], value, @offset, @length);
+    }
+    else {
+        found = IndexWindow(CanonicalDecompositionIndex[..], value, @offset, @length);
+    }
+    if !found {
+        if at + 1 > into.length {
+            return false;
+        }
+        into.data[at] = scalar;
+        *written = 1;
+        return true;
+    }
+    if at + length > into.length {
+        return false;
+    }
+    var each: uint = 0;
+    while each < length {
+        if compatibility {
+            into.data[at + each] = CompatibilityDecompositionElements[offset + each] as char32;
+        }
+        else {
+            into.data[at + each] = CanonicalDecompositionElements[offset + each] as char32;
+        }
+        each = each + 1;
+    }
+    *written = length;
+    return true;
+}
+
+// Sorts the combining marks into canonical order: a stable exchange of adjacent pairs where the left class is
+// higher and the right is not a starter. The runs between starters are short -- a handful of marks -- which is why
+// the quadratic sort is the right one: it is stable, in place, and never slower than the runs are long.
+func CanonicalOrder(items: MutableSlice<char32>, length: uint) {
+    var sorted = false;
+    while !sorted {
+        sorted = true;
+        var index: uint = 1;
+        while index < length {
+            let left = CombiningClassOf(items.data[index - 1]);
+            let right = CombiningClassOf(items.data[index]);
+            if right != 0 && left > right {
+                let held = items.data[index - 1];
+                items.data[index - 1] = items.data[index];
+                items.data[index] = held;
+                sorted = false;
+            }
+            index = index + 1;
+        }
+    }
+}
+
+/// Writes the canonical decomposition of `text` into `into`, marks in canonical order: NFD.
+///
+/// Reports the length through `written`, or `false` without a defined result when the room is short. The
+/// decompositions are fully expanded in the tables, so nothing recurses.
+///
+/// https://rux-lang.dev/docs/api/unicode/decompose-canonical
+func DecomposeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+    return Decompose(text, false, into, written);
+}
+
+/// Writes the compatibility decomposition of `text` into `into`, marks in canonical order: NFKD.
+///
+/// https://rux-lang.dev/docs/api/unicode/decompose-compatibility
+func DecomposeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+    return Decompose(text, true, into, written);
+}
+
+func Decompose(text: Slice<char32>, compatibility: bool, into: MutableSlice<char32>, written: *var uint) -> bool {
+    var length: uint = 0;
+    var index: uint = 0;
+    while index < text.length {
+        var wrote: uint = 0;
+        if !DecomposeOne(text.data[index], compatibility, into, length, @wrote) {
+            return false;
+        }
+        length = length + wrote;
+        index = index + 1;
+    }
+    CanonicalOrder(into, length);
+    *written = length;
+    return true;
+}
+
+// The composed form of a starter and one following scalar, or `None` of a sort: reported through `composed`, with
+// `false` meaning the pair has no composition. Hangul first, arithmetically; then the table pairs.
+func ComposePair(starter: char32, following: char32, composed: *var char32) -> bool {
+    let first = starter as uint32;
+    let second = following as uint32;
+
+    // L + V makes an LV syllable, LV + T an LVT one.
+    if first >= HangulLeadBase && first < HangulLeadBase + 19 && second >= HangulVowelBase &&
+       second < HangulVowelBase + HangulVowelCount {
+        let lead = first - HangulLeadBase;
+        let vowel = second - HangulVowelBase;
+        *composed = (HangulBase + (lead * HangulVowelCount + vowel) * HangulTrailCount) as char32;
+        return true;
+    }
+    if first >= HangulBase && first < HangulBase + HangulSyllableCount &&
+       (first - HangulBase) % HangulTrailCount == 0u32 && second > HangulTrailBase &&
+       second < HangulTrailBase + HangulTrailCount {
+        *composed = (first + (second - HangulTrailBase)) as char32;
+        return true;
+    }
+
+    // The table triples are sorted by (starter, combining), so one binary search finds the pair.
+    var low: uint = 0;
+    let triples: Slice<uint32> = CompositionTriples[..];
+    var high = triples.length / 3;
+    while low < high {
+        let middle = (low + high) / 2;
+        let midStarter = triples.data[middle * 3];
+        let midFollowing = triples.data[middle * 3 + 1];
+        if midStarter < first || (midStarter == first && midFollowing < second) {
+            low = middle + 1;
+        }
+        else if midStarter == first && midFollowing == second {
+            *composed = triples.data[middle * 3 + 2] as char32;
+            return true;
+        }
+        else {
+            high = middle;
+        }
+    }
+    return false;
+}
+
+// The canonical composition pass, run over text that is already decomposed and ordered.
+//
+// Each mark composes with the nearest starter before it unless something blocks the way: another starter, or a
+// mark of the same or higher class. Two adjacent starters compose where a form exists, which is where Hangul LV
+// and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
+// conformance vectors are what hold it to the standard.
+func Compose(items: MutableSlice<char32>, length: uint) -> uint {
+    if length == 0 {
+        return 0;
+    }
+    var result: uint = 1;
+    var starterAt: uint = 0;
+    var haveStarter = CombiningClassOf(items.data[0]) == 0u32;
+    // The class of the last kept character: what a new mark must exceed to reach the starter behind it.
+    var lastClass = CombiningClassOf(items.data[0]);
+
+    var index: uint = 1;
+    while index < length {
+        let current = items.data[index];
+        let currentClass = CombiningClassOf(current);
+        var composed = 0u32 as char32;
+
+        if haveStarter && lastClass < currentClass && currentClass != 0u32 &&
+           ComposePair(items.data[starterAt], current, @composed) {
+            // An unblocked mark reaches its starter; the classes of what stands between are unchanged.
+            items.data[starterAt] = composed;
+        }
+        else if currentClass == 0u32 {
+            if haveStarter && lastClass == 0u32 && ComposePair(items.data[starterAt], current, @composed) {
+                // Two adjacent starters with a composed form, which is Hangul's L+V and LV+T.
+                items.data[starterAt] = composed;
+            }
+            else {
+                items.data[result] = current;
+                starterAt = result;
+                haveStarter = true;
+                lastClass = 0;
+                result = result + 1;
+            }
+        }
+        else {
+            items.data[result] = current;
+            lastClass = currentClass;
+            result = result + 1;
+        }
+        index = index + 1;
+    }
+    return result;
+}
+
+/// Writes the NFC of `text` into `into`: canonical decomposition, canonical order, then composition.
+///
+/// https://rux-lang.dev/docs/api/unicode/normalize-canonical
+func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+    var length: uint = 0;
+    if !DecomposeCanonical(text, into, @length) {
+        return false;
+    }
+    *written = Compose(into, length);
+    return true;
+}
+
+/// Writes the NFKC of `text` into `into`: compatibility decomposition, canonical order, then composition.
+///
+/// https://rux-lang.dev/docs/api/unicode/normalize-compatibility
+func NormalizeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+    var length: uint = 0;
+    if !DecomposeCompatibility(text, into, @length) {
+        return false;
+    }
+    *written = Compose(into, length);
+    return true;
+}

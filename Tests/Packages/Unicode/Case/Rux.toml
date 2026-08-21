@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "UnicodeCase"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Unicode: Case"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Unicode = { Path = "../../../../Packages/Unicode" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Unicode"

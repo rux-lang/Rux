@@ -1,0 +1,41 @@
+import Core::{ Assert, Slice };
+import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints, IsGraphemeBoundary };
+
+// Every row of the official GraphemeBreakTest, boundary by boundary. Each row is a run of code points and a mask
+// saying where the boundaries fall -- bit N for the position before point N, the bit past the last for the end --
+// and the rules must agree at every position of every row: the Hangul rows, the emoji joins, the flag pairs and
+// the Indic conjuncts are all in here.
+
+func Main() -> int {
+    let table: Slice<uint32> = GraphemeVectorIndex[..];
+    let points: Slice<uint32> = GraphemeVectorPoints[..];
+    let masks: Slice<uint32> = GraphemeVectorBreaks[..];
+    let rows = table.length / 2;
+
+    var storage: char32[40];
+    var row: uint = 0;
+    while row < rows {
+        let offset = table.data[row * 2] as uint;
+        let length = table.data[row * 2 + 1] as uint;
+        var index: uint = 0;
+        while index < length {
+            storage[index] = points.data[offset + index] as char32;
+            index = index + 1;
+        }
+        let text = Slice<char32> { data: @storage[0], length: length };
+        let mask = masks.data[row];
+
+        var position: uint = 0;
+        while position <= length {
+            let expected = ((mask >> position) & 1) == 1;
+            if IsGraphemeBoundary(text, position) != expected {
+                // The row number is diagnosis enough: the official file numbers its rows the same way.
+                return (row + 1) as int;
+            }
+            position = position + 1;
+        }
+        row = row + 1;
+    }
+
+    return 0;
+}

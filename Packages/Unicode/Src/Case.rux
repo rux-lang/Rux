@@ -1,0 +1,95 @@
+// Case, without a locale.
+//
+// Three kinds of mapping live here and they answer different questions. The simple mappings take one scalar value
+// to one: cheap, allocation-free, and wrong for the handful of characters whose case changes their length -- a
+// sharp s uppercases to two letters, which one-to-one cannot say. The full mappings say it, writing up to three
+// values. And folding is neither case: it is the canonical form two strings are taken to before asking whether
+// they are the same text, chosen so the answer is the same in every locale.
+//
+// What is deliberately absent is everything conditional. A dotless i is what `i` uppercases to in Turkish and not
+// elsewhere; a final sigma depends on where in the word it stands. Those rules exist, are in the data, and are not
+// here, because applying them silently is how text changes meaning by passing through a machine set to the wrong
+// language. A caller with a locale applies its rules knowingly, on top.
+
+import Core::{ MutableSlice, Slice };
+
+/// The simple uppercase of `scalar`: one value to one, itself when it has no mapping.
+///
+/// https://rux-lang.dev/docs/api/unicode/to-upper-simple
+func ToUpperSimple(scalar: char32) -> char32 {
+    return PairValue(SimpleUpperPairs[..], scalar as uint32) as char32;
+}
+
+/// The simple lowercase of `scalar`.
+///
+/// https://rux-lang.dev/docs/api/unicode/to-lower-simple
+func ToLowerSimple(scalar: char32) -> char32 {
+    return PairValue(SimpleLowerPairs[..], scalar as uint32) as char32;
+}
+
+/// The simple titlecase of `scalar`: the uppercase, except for the few dozen characters whose titlecase differs.
+///
+/// https://rux-lang.dev/docs/api/unicode/to-title-simple
+func ToTitleSimple(scalar: char32) -> char32 {
+    let titled = PairValue(SimpleTitlePairs[..], scalar as uint32);
+    if titled != scalar as uint32 {
+        return titled as char32;
+    }
+    return ToUpperSimple(scalar);
+}
+
+// Writes a mapping's expansion into `into`, falling back to `fallback` for a point with no entry. The longest full
+// mapping is three values, so a buffer of three always suffices.
+func WriteMapping(index: Slice<uint32>, elements: Slice<uint32>, scalar: char32, fallback: char32,
+                  into: MutableSlice<char32>, written: *var uint) -> bool {
+    var offset: uint = 0;
+    var length: uint = 0;
+    if !IndexWindow(index, scalar as uint32, @offset, @length) {
+        if into.length < 1 {
+            *written = 0;
+            return false;
+        }
+        into.data[0] = fallback;
+        *written = 1;
+        return true;
+    }
+    if into.length < length {
+        *written = 0;
+        return false;
+    }
+    var each: uint = 0;
+    while each < length {
+        into.data[each] = elements.data[offset + each] as char32;
+        each = each + 1;
+    }
+    *written = length;
+    return true;
+}
+
+/// Writes the full uppercase of `scalar` into `into` and reports how many values it took.
+///
+/// Up to three values, so a buffer of three always suffices; reports `false` without writing when the room is
+/// short. Falls back to the simple mapping for the points that need no expansion, which is nearly all of them.
+///
+/// https://rux-lang.dev/docs/api/unicode/to-upper-full
+func ToUpperFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+    return WriteMapping(FullUpperIndex[..], FullUpperElements[..], scalar, ToUpperSimple(scalar), into, written);
+}
+
+/// Writes the full lowercase of `scalar` into `into`.
+///
+/// https://rux-lang.dev/docs/api/unicode/to-lower-full
+func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+    return WriteMapping(FullLowerIndex[..], FullLowerElements[..], scalar, ToLowerSimple(scalar), into, written);
+}
+
+/// Writes the full, locale-independent case folding of `scalar` into `into`.
+///
+/// Folding is for comparison rather than display: fold both strings, and equal foldings mean the same text
+/// whatever its case. It is built from the C and F entries alone, which is what makes the answer the same in every
+/// locale. A point with no entry folds to itself.
+///
+/// https://rux-lang.dev/docs/api/unicode/fold
+func Fold(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+    return WriteMapping(FullFoldIndex[..], FullFoldElements[..], scalar, scalar, into, written);
+}

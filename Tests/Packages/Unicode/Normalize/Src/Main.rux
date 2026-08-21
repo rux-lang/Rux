@@ -1,0 +1,134 @@
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ Print, PrintLine };
+import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVectorElements,
+                  NormalizationVectorIndex, NormalizeCanonical, NormalizeCompatibility };
+
+// The committed rows of the official NormalizationTest, each carrying five columns c1..c5 and the invariants the
+// standard states: c2 is the NFC of the first three columns, c3 their NFD, c4 the NFKC of all five and c5 their
+// NFKD. A single implementation mistake -- a blocked mark composed, an exclusion composed, Hangul off by one --
+// fails dozens of rows, and which rows fail says where to look.
+
+// The column at `column` of row `row`, as a slice into the element pool.
+func Column(row: uint, column: uint) -> Slice<uint32> {
+    let table: Slice<uint32> = NormalizationVectorIndex[..];
+    let elements: Slice<uint32> = NormalizationVectorElements[..];
+    let at = (row * 5 + column) * 2;
+    let offset = table.data[at] as uint;
+    let length = table.data[at + 1] as uint;
+    return Slice<uint32> { data: @elements.data[offset], length: length };
+}
+
+// Whether `actual` of length `actualLength` spells exactly `expected`.
+func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: Slice<uint32>) -> bool {
+    if actualLength != expected.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < actualLength {
+        if (actual.data[index] as uint32) != expected.data[index] {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Copies a pool column into scalar values, which is what the normalizers take.
+func Load(column: Slice<uint32>, into: MutableSlice<char32>) -> Slice<char32> {
+    var index: uint = 0;
+    while index < column.length {
+        into.data[index] = column.data[index] as char32;
+        index = index + 1;
+    }
+    return Slice<char32> { data: into.data as *char32, length: column.length };
+}
+
+func Main() -> int {
+    let table: Slice<uint32> = NormalizationVectorIndex[..];
+    let rows = table.length / 10;
+
+    var source: char32[64];
+    var result: char32[256];
+    let sourceRoom = MutableSlice::From<char32>(@source[0], 64);
+    let room = MutableSlice::From<char32>(@result[0], 256);
+
+    var row: uint = 0;
+    while row < rows {
+        var length: uint = 0;
+
+        // c2 == NFC(c1) == NFC(c2) == NFC(c3)
+        var column: uint = 0;
+        while column < 3 {
+            let text = Load(Column(row, column), sourceRoom);
+            Assert(NormalizeCanonical(text, room, @length), "the buffer holds every composition");
+            if !Matches(room, length, Column(row, 1)) {
+                PrintLine("row {} column {}", row, column);
+                Print("input:");
+                let text2 = Column(row, column);
+                var pi: uint = 0;
+                while pi < text2.length {
+                    Print(" {:x}", text2.data[pi]);
+                    pi = pi + 1;
+                }
+                PrintLine("");
+                Print("got:");
+                pi = 0;
+                while pi < length {
+                    Print(" {:x}", room.data[pi] as uint32);
+                    pi = pi + 1;
+                }
+                PrintLine("");
+                Print("want:");
+                let want = Column(row, 1);
+                pi = 0;
+                while pi < want.length {
+                    Print(" {:x}", want.data[pi]);
+                    pi = pi + 1;
+                }
+                PrintLine("");
+                return 1;
+            }
+            column = column + 1;
+        }
+        // c4 == NFC(c4) == NFC(c5)
+        column = 3;
+        while column < 5 {
+            let text = Load(Column(row, column), sourceRoom);
+            Assert(NormalizeCanonical(text, room, @length), "the buffer holds every composition");
+            Assert(Matches(room, length, Column(row, 3)), "NFC of c4..c5 is c4");
+            column = column + 1;
+        }
+
+        // c3 == NFD(c1) == NFD(c2) == NFD(c3), and c5 == NFD(c4) == NFD(c5)
+        column = 0;
+        while column < 3 {
+            let text = Load(Column(row, column), sourceRoom);
+            Assert(DecomposeCanonical(text, room, @length), "the buffer holds every decomposition");
+            Assert(Matches(room, length, Column(row, 2)), "NFD of c1..c3 is c3");
+            column = column + 1;
+        }
+        column = 3;
+        while column < 5 {
+            let text = Load(Column(row, column), sourceRoom);
+            Assert(DecomposeCanonical(text, room, @length), "the buffer holds every decomposition");
+            Assert(Matches(room, length, Column(row, 4)), "NFD of c4..c5 is c5");
+            column = column + 1;
+        }
+
+        // c4 == NFKC(c1..c5), c5 == NFKD(c1..c5)
+        column = 0;
+        while column < 5 {
+            let text = Load(Column(row, column), sourceRoom);
+            Assert(NormalizeCompatibility(text, room, @length), "the buffer holds every compatibility composition");
+            Assert(Matches(room, length, Column(row, 3)), "NFKC of every column is c4");
+            let again = Load(Column(row, column), sourceRoom);
+            Assert(DecomposeCompatibility(again, room, @length), "and every compatibility decomposition");
+            Assert(Matches(room, length, Column(row, 4)), "NFKD of every column is c5");
+            column = column + 1;
+        }
+
+        row = row + 1;
+    }
+
+    return 0;
+}
