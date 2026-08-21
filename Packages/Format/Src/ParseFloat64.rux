@@ -25,6 +25,16 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
         }
     }
 
+    // The two special spellings, exactly as formatting writes them, so what one side prints the other reads. A NaN
+    // has no sign to keep -- the sign is accepted because formatting never writes one and input may carry one, and
+    // there is only one NaN as far as comparison is concerned.
+    if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
+        return Result::Success<float64, ParseError>(0.0 / 0.0);
+    }
+    if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
+        return Result::Success<float64, ParseError>(negative ? -1.0 / 0.0 : 1.0 / 0.0);
+    }
+
     // Keep nineteen significant decimal digits. That is more precision than a
     // float64 can retain, while avoiding an overflowing intermediate value for
     // long input strings. decimalExponent accounts for the decimal point and
@@ -147,4 +157,37 @@ func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
 // The same for a view.
 func TryParseFloat64(str: StringView, value: *var float64) -> bool {
     return TryParseFloat64(str.Bytes(), value);
+}
+
+/// Parses a `float32` by the same grammar, reporting `Overflow` where the narrower width cannot hold the value.
+///
+/// The digits are read at `float64` precision and narrowed once at the end, so a value near the edge rounds the
+/// way one conversion rounds rather than accumulating error per digit. A value that underflows `float32` comes
+/// back as the zero it rounds to, exactly as a tiny value does at the wider width.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float32
+func ParseFloat32(str: Slice<char8>) -> Result<float32, ParseError> {
+    var wide = 0.0;
+    match ParseFloat64(str) {
+        .Success(value) => {
+            wide = value;
+        },
+        .Error(fault) => {
+            return Result::Error<float32, ParseError>(fault);
+        }
+    }
+    if IsFinite(wide) {
+        let magnitude = wide < 0.0 ? -wide : wide;
+        if magnitude > MaxFinite32 {
+            return Result::Error<float32, ParseError>(ParseError::Overflow);
+        }
+    }
+    return Result::Success<float32, ParseError>(wide as float32);
+}
+
+/// The same grammar for a view.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float32-view
+func ParseFloat32(str: StringView) -> Result<float32, ParseError> {
+    return ParseFloat32(str.Bytes());
 }
