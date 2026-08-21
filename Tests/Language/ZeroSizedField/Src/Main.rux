@@ -1,0 +1,61 @@
+import Core::{ Assert, Unit };
+
+// A value that occupies no bytes is written and read as nothing at all.
+//
+// The back end sizes a move from the type, and a size of zero used to fall through to the same eight-byte default a
+// width it could not work out gets. Those are different answers to different questions: an unknown width has to
+// guess, and a known width of zero has nothing to do. Storing a word for a field that occupies none wrote over
+// whatever came after it -- and a zero-sized field is almost always followed by something, since it is put there to
+// take up no room beside real data.
+//
+// A tree whose nodes carry no value is where this bites: the node's value sits between its key and its links, so
+// storing one replaced a pointer with whatever happened to be in the register. The tree kept answering lookups and
+// fell over when something walked it.
+
+struct Marker {}
+
+struct Cell<K, V> {
+    key: K;
+    value: V;
+    left: *var Cell<K, V>;
+    right: *var Cell<K, V>;
+    tag: int32;
+}
+
+func Store<K, V>(cell: *var Cell<K, V>, value: V) {
+    cell.value = value;
+}
+
+func Read<K, V>(cell: *var Cell<K, V>) -> V {
+    return cell.value;
+}
+
+func Main() -> int {
+    var sentinel = Cell<int32, Unit> { key: 1, value: Unit {}, left: null, right: null, tag: 11 };
+    var cell = Cell<int32, Unit> { key: 7, value: Unit {}, left: @sentinel, right: @sentinel, tag: 22 };
+
+    Store<int32, Unit>(@cell, Unit {});
+    Assert(cell.left == @sentinel, "a zero-sized store leaves the field after it alone");
+    Assert(cell.right == @sentinel, "and the one after that");
+    Assert(cell.key == 7, "and the one before it");
+    Assert(cell.tag == 22, "and everything else in the value");
+
+    // Reading one back is nothing to read, and must not fetch what follows either.
+    let taken = Read<int32, Unit>(@cell);
+    Assert(cell.left == @sentinel, "a zero-sized read disturbs nothing");
+    Store<int32, Unit>(@cell, taken);
+    Assert(cell.left == @sentinel, "and storing what it read back changes nothing");
+
+    // The same through a struct that declares its own empty type rather than the one Core supplies.
+    var marked = Cell<int32, Marker> { key: 3, value: Marker {}, left: null, right: null, tag: 33 };
+    var holder = Cell<int32, Marker> { key: 4, value: Marker {}, left: @marked, right: @marked, tag: 44 };
+    Store<int32, Marker>(@holder, Marker {});
+    Assert(holder.left == @marked && holder.right == @marked, "a user's own empty type behaves the same");
+    Assert(holder.tag == 44, "with nothing else touched");
+
+    // Assigned directly rather than through a generic, so the concrete path is checked too.
+    holder.value = Marker {};
+    Assert(holder.left == @marked && holder.tag == 44, "and assigning one directly is the same nothing");
+
+    return 0;
+}
