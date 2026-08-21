@@ -1,0 +1,128 @@
+// A struct of six booleans is six bytes, and six is not a register width. Every move of such a value -- out of
+// a return, through an assignment, into a by-value parameter -- must copy all of it: a scalar move rounded down
+// to a register width loses the tail, and one rounded up reads or writes past the object. Sizes one, two, four
+// and eight ride along to pin the widths that always worked.
+
+import Core::Assert;
+
+struct B1 {
+    f0: bool;
+}
+
+func Make1() -> B1 {
+    return B1 { f0: true };
+}
+
+struct B2 {
+    f0: bool;
+    f1: bool;
+}
+
+func Make2() -> B2 {
+    return B2 { f0: false, f1: true };
+}
+
+struct B3 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+}
+
+func Make3() -> B3 {
+    return B3 { f0: false, f1: true, f2: true };
+}
+
+struct B4 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+}
+
+func Make4() -> B4 {
+    return B4 { f0: false, f1: true, f2: false, f3: true };
+}
+
+struct B5 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+    f4: bool;
+}
+
+func Make5() -> B5 {
+    return B5 { f0: false, f1: true, f2: false, f3: true, f4: true };
+}
+
+struct B6 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+    f4: bool;
+    f5: bool;
+}
+
+func Make6() -> B6 {
+    return B6 { f0: false, f1: true, f2: false, f3: true, f4: false, f5: true };
+}
+
+struct B7 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+    f4: bool;
+    f5: bool;
+    f6: bool;
+}
+
+func Make7() -> B7 {
+    return B7 { f0: false, f1: true, f2: false, f3: true, f4: false, f5: true, f6: true };
+}
+
+struct B8 {
+    f0: bool;
+    f1: bool;
+    f2: bool;
+    f3: bool;
+    f4: bool;
+    f5: bool;
+    f6: bool;
+    f7: bool;
+}
+
+func Make8() -> B8 {
+    return B8 { f0: false, f1: true, f2: false, f3: true, f4: false, f5: true, f6: false, f7: true };
+}
+
+func TakeSix(value: B6) {
+    Assert(!value.f0 && value.f1 && !value.f2 && value.f3 && !value.f4 && value.f5, "a six-byte struct arrives whole by value");
+}
+
+func Main() -> int {
+    let s1 = Make1();
+    Assert(s1.f0, "a 1-byte struct returns whole");
+    let s2 = Make2();
+    Assert(!s2.f0 && s2.f1, "a 2-byte struct returns whole");
+    let s3 = Make3();
+    Assert(!s3.f0 && s3.f1 && s3.f2, "a 3-byte struct returns whole");
+    let s4 = Make4();
+    Assert(!s4.f0 && s4.f1 && !s4.f2 && s4.f3, "a 4-byte struct returns whole");
+    let s5 = Make5();
+    Assert(!s5.f0 && s5.f1 && !s5.f2 && s5.f3 && s5.f4, "a 5-byte struct returns whole");
+    let s6 = Make6();
+    Assert(!s6.f0 && s6.f1 && !s6.f2 && s6.f3 && !s6.f4 && s6.f5, "a 6-byte struct returns whole");
+    let s7 = Make7();
+    Assert(!s7.f0 && s7.f1 && !s7.f2 && s7.f3 && !s7.f4 && s7.f5 && s7.f6, "a 7-byte struct returns whole");
+    let s8 = Make8();
+    Assert(!s8.f0 && s8.f1 && !s8.f2 && s8.f3 && !s8.f4 && s8.f5 && !s8.f6 && s8.f7, "a 8-byte struct returns whole");
+
+    // The assignment overwrites a value initialized to the exact opposite pattern, so a partial copy shows.
+    var copied = B6 { f0: true, f1: false, f2: true, f3: false, f4: true, f5: false };
+    copied = s6;
+    Assert(!copied.f0 && copied.f1 && !copied.f2 && copied.f3 && !copied.f4 && copied.f5, "a six-byte struct assigns whole");
+    TakeSix(s6);
+    return 0;
+}
