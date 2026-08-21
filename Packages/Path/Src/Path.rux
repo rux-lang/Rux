@@ -1,0 +1,144 @@
+// A path is a name with structure: segments, separated.
+//
+// `Path` borrows and `PathBuffer` owns, exactly as `OsStringView` and `OsString` do underneath them -- a path adds
+// meaning, not storage. The meaning is small and lexical: which units separate segments, and how to walk the
+// segments between them. Nothing here touches a filesystem; whether a path names anything real is a question for
+// the S tasks, asked through the system.
+//
+// Windows accepts both slashes and prefers the backslash; the Unix systems know only the forward one. That pair of
+// facts is the whole platform difference at this layer, and it is confined to two functions.
+
+import Allocator::Allocator;
+import Core::{ #target, Drop, Option, Slice };
+import Text::TextError;
+
+/// Whether `unit` separates path segments on this system.
+///
+/// Both slashes on Windows, the forward one alone elsewhere.
+///
+/// https://rux-lang.dev/docs/api/path/is-separator
+func IsSeparator(unit: OsUnit) -> bool {
+    when #target.os == .Windows {
+        return unit == 0x2Fu16 || unit == 0x5Cu16;
+    }
+    else {
+        return unit == c8'/';
+    }
+}
+
+/// The separator this system prefers when one has to be written.
+///
+/// https://rux-lang.dev/docs/api/path/preferred-separator
+func PreferredSeparator() -> OsUnit {
+    when #target.os == .Windows {
+        return 0x5Cu16;
+    }
+    else {
+        return c8'/';
+    }
+}
+
+/// A borrowed path.
+///
+/// `Copy`, owning nothing: structure over an `OsStringView`'s units.
+///
+/// https://rux-lang.dev/docs/api/path/path
+struct Path {
+    /// The name, exactly as the system would hold it.
+    name: OsStringView;
+}
+
+extend Path {
+    /// A path over nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/new
+    func New() -> Path {
+        return Path { name: OsStringView::New() };
+    }
+
+    /// A path over `view`'s units as they stand.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/from-view
+    func FromView(view: OsStringView) -> Path {
+        return Path { name: view };
+    }
+
+    /// How many native units the path spans.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/length
+    func Length(self: *Path) -> uint {
+        return self.name.Length();
+    }
+
+    /// Whether the path is empty, which names nothing at all.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/is-empty
+    func IsEmpty(self: *Path) -> bool {
+        return self.name.IsEmpty();
+    }
+
+    /// The name under the structure.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/as-view
+    func AsView(self: *Path) -> OsStringView {
+        return self.name;
+    }
+
+    /// Whether two paths are the same units.
+    ///
+    /// Lexical, not semantic: `a/b` and `a//b` name the same file and are different paths here. Making them equal
+    /// is normalization's job, asked for by name.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/equals
+    func Equals(self: *Path, other: Path) -> bool {
+        let mine = self.name;
+        return mine.Equals(@other.name);
+    }
+
+    /// A walk over the path's components, first to last.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path/components
+    func Components(self: *Path) -> ComponentIterator {
+        return ComponentIterator { units: self.name.Units(), cursor: 0 };
+    }
+}
+
+/// A walk over a path's segments.
+///
+/// Runs of separators count as one, and a trailing separator ends the walk rather than yielding an empty segment:
+/// `a//b/` walks as `a`, `b`. A leading separator is the root, which the walk reports as an empty first component
+/// so that an absolute path is distinguishable from a relative one holding the same segments.
+///
+/// https://rux-lang.dev/docs/api/path/component-iterator
+struct ComponentIterator {
+    /// The units being walked.
+    units: Slice<OsUnit>;
+    /// Where the next component starts being looked for.
+    cursor: uint;
+}
+
+extend ComponentIterator {
+    /// The next component, or `None` when the walk is done.
+    ///
+    /// https://rux-lang.dev/docs/api/path/component-iterator/next
+    func Next(self: *var ComponentIterator) -> Option<OsStringView> {
+        // The root: a separator at the very start yields the empty component once, then the walk continues past
+        // every separator that follows it.
+        if self.cursor == 0 && self.units.length > 0 && IsSeparator(self.units.data[0]) {
+            self.cursor = 1;
+            return Option::Some<OsStringView>(OsStringView::New());
+        }
+        while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {
+            self.cursor = self.cursor + 1;
+        }
+        if self.cursor >= self.units.length {
+            return Option::None<OsStringView>();
+        }
+        let start = self.cursor;
+        while self.cursor < self.units.length && !IsSeparator(self.units.data[self.cursor]) {
+            self.cursor = self.cursor + 1;
+        }
+        let segment = Slice<OsUnit> { data: @self.units.data[start], length: self.cursor - start };
+        return Option::Some<OsStringView>(OsStringView::FromUnits(segment));
+    }
+}

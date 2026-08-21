@@ -1,0 +1,171 @@
+// A path that owns its units and can grow.
+//
+// The growable operation a path needs is exactly one: push a segment, with a separator supplied where one is
+// missing. Everything else -- parent, filename, joins that produce fresh paths -- reads structure and lives with
+// it; the buffer is where segments accumulate on the way to a system call.
+
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::{ Drop, Option, Slice };
+import Memory::Copy;
+import Text::{ FromAllocError, TextError };
+
+/// An owning, growable path.
+///
+/// Move-only: it owns its block and gives it back when it dies.
+///
+/// https://rux-lang.dev/docs/api/path/path-buffer
+struct PathBuffer {
+    /// The units, or null before the first push.
+    data: *var OsUnit;
+    /// How many units are in use.
+    length: uint;
+    /// How many units the block holds.
+    capacity: uint;
+    /// Where the block came from, and where it goes back to.
+    allocator: Allocator;
+}
+
+extend PathBuffer {
+    /// An empty buffer that has allocated nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/new
+    func New(allocator: Allocator) -> PathBuffer {
+        return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
+    }
+
+    /// A buffer opening with `path`'s units.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/from-path
+    func FromPath(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
+        var buffer = PathBuffer::New(allocator);
+        *error = buffer.AppendUnits(path.AsView().Units());
+        return buffer;
+    }
+
+    /// How many units the buffer holds.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/length
+    func Length(self: *PathBuffer) -> uint {
+        return self.length;
+    }
+
+    /// Whether the buffer holds nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/is-empty
+    func IsEmpty(self: *PathBuffer) -> bool {
+        return self.length == 0;
+    }
+
+    /// The buffer as a borrowed path, which is what every reading operation takes.
+    ///
+    /// The path borrows the buffer and must not outlive it or survive a push.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/as-path
+    func AsPath(self: *PathBuffer) -> Path {
+        return Path::FromView(OsStringView::FromUnits(Slice<OsUnit> { data: self.data, length: self.length }));
+    }
+
+    // Room for `additional` more units, by doubling.
+    func Reserve(self: *var PathBuffer, additional: uint) -> TextError {
+        let required = self.length + additional;
+        if required <= self.capacity {
+            return TextError::None;
+        }
+        var wanted = self.capacity * 2u;
+        if wanted < required {
+            wanted = required;
+        }
+        if wanted < 16u {
+            wanted = 16;
+        }
+        let unitSize = sizeof(OsUnit) as uint;
+        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint);
+        if layout.IsNone() {
+            return TextError::LengthOverflow;
+        }
+        var block: *var opaque = null;
+        var borrowed = self.allocator;
+        let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: wanted * unitSize, alignment: 1 }), @block);
+        if allocated != AllocError::None {
+            return FromAllocError(allocated);
+        }
+        if self.data != null {
+            Copy(block, self.data as *opaque, self.length * unitSize);
+            let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
+            borrowed.Deallocate(self.data as *var opaque,
+                                old.ValueOr(Layout { size: self.capacity * unitSize, alignment: 1 }));
+        }
+        self.data = block as *var OsUnit;
+        self.capacity = wanted;
+        return TextError::None;
+    }
+
+    // Appends raw units, structure unexamined.
+    func AppendUnits(self: *var PathBuffer, units: Slice<OsUnit>) -> TextError {
+        if units.length == 0 {
+            return TextError::None;
+        }
+        let room = self.Reserve(units.length);
+        if room.IsError() {
+            return room;
+        }
+        var index: uint = 0;
+        while index < units.length {
+            self.data[self.length + index] = units.data[index];
+            index = index + 1;
+        }
+        self.length = self.length + units.length;
+        return TextError::None;
+    }
+
+    /// Appends `segment` as one more component, supplying the separator where one is missing.
+    ///
+    /// A segment that is itself absolute -- opening with a separator -- replaces the buffer instead of extending
+    /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/push
+    func Push(self: *var PathBuffer, segment: OsStringView) -> TextError {
+        let units = segment.Units();
+        if units.length == 0 {
+            return TextError::None;
+        }
+        if IsSeparator(units.data[0]) {
+            self.length = 0;
+            return self.AppendUnits(units);
+        }
+        if self.length > 0 && !IsSeparator(self.data[self.length - 1]) {
+            var one: OsUnit[1];
+            one[0] = PreferredSeparator();
+            let separated = self.AppendUnits(one[0..1]);
+            if separated.IsError() {
+                return separated;
+            }
+        }
+        return self.AppendUnits(units);
+    }
+
+    /// Gives the block back and leaves an empty buffer.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/release
+    func Release(self: *var PathBuffer) {
+        if self.data != null {
+            let unitSize = sizeof(OsUnit) as uint;
+            let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
+            var borrowed = self.allocator;
+            borrowed.Deallocate(self.data as *var opaque,
+                                layout.ValueOr(Layout { size: self.capacity * unitSize, alignment: 1 }));
+        }
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
+    }
+}
+
+extend PathBuffer : Drop {
+    /// Gives the block back.
+    ///
+    /// https://rux-lang.dev/docs/api/path/path-buffer/drop
+    func Drop(self: *var PathBuffer) {
+        self.Release();
+    }
+}
