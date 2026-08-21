@@ -1,0 +1,165 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
+
+// What buffering promises is fewer conversations, and the way to test a count of conversations is to count them:
+// the scripted source and sink tally their calls, and the assertions are about the tallies as much as the bytes.
+// The bypass, the ordering across a bypass, and the flush contracts each get the shape that would catch them.
+
+// A source that hands out a repeating alphabet and counts how often it is asked.
+struct CountingSource {
+    served: uint;
+    calls: uint;
+    limit: uint;
+}
+
+struct SourceHandle {
+    state: *var CountingSource;
+}
+
+extend SourceHandle : Reader {
+    func Read(self: *var SourceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        let state = self.state;
+        state.calls = state.calls + 1;
+        if state.served >= state.limit {
+            return IoError::Of(IoErrorKind::EndOfStream);
+        }
+        var give = state.limit - state.served;
+        if give > into.length {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = ((state.served + index) % 26u + 0x61u) as char8;
+            index = index + 1;
+        }
+        state.served = state.served + give;
+        *filled = give;
+        return IoError::Ok();
+    }
+}
+
+// A sink that records everything and counts its calls.
+struct CountingSink {
+    room: MutableSlice<char8>;
+    written: uint;
+    calls: uint;
+    flushes: uint;
+}
+
+struct SinkHandle {
+    state: *var CountingSink;
+}
+
+extend SinkHandle : Writer {
+    func Write(self: *var SinkHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        let state = self.state;
+        state.calls = state.calls + 1;
+        var take = bytes.length;
+        if take > state.room.length - state.written {
+            take = state.room.length - state.written;
+        }
+        var index: uint = 0;
+        while index < take {
+            state.room.data[state.written + index] = bytes.data[index];
+            index = index + 1;
+        }
+        state.written = state.written + take;
+        *taken = take;
+        return IoError::Ok();
+    }
+
+    func Flush(self: *var SinkHandle) -> IoError {
+        self.state.flushes = self.state.flushes + 1;
+        return IoError::Ok();
+    }
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    // Sixty-four one-byte reads out of a 16-byte buffer cost the source four calls, not sixty-four.
+    var source = CountingSource { served: 0, calls: 0, limit: 64 };
+    let sourceHandle: Reader = SourceHandle { state: @source };
+    var reader = BufferedReader::New(allocator, sourceHandle, 16, @error);
+    Assert(error.IsOk(), "the reader takes its buffer");
+    var one: char8[1];
+    let oneRoom = MutableSlice::From<char8>(@one[0], 1);
+    var count: uint = 0;
+    var lastByte = 0u8 as char8;
+    var reading = true;
+    while reading {
+        var filled: uint = 0;
+        let outcome = reader.Read(oneRoom, @filled);
+        if outcome.IsEnd() {
+            reading = false;
+        }
+        else {
+            Assert(outcome.IsOk(), "every read before the end succeeds");
+            count = count + 1;
+            lastByte = one[0];
+        }
+    }
+    Assert(count == 64, "every byte arrives");
+    Assert(lastByte == ((63u % 26u + 0x61u) as char8), "in order, to the last");
+    Assert(source.calls <= 6, "and the source was asked a handful of times, not sixty-four");
+
+    // A read larger than the whole buffer bypasses it.
+    var bigSource = CountingSource { served: 0, calls: 0, limit: 64 };
+    let bigHandle: Reader = SourceHandle { state: @bigSource };
+    var bypassReader = BufferedReader::New(allocator, bigHandle, 8, @error);
+    var bigStorage: char8[32];
+    let bigRoom = MutableSlice::From<char8>(@bigStorage[0], 32);
+    var filled: uint = 0;
+    Assert(bypassReader.Read(bigRoom, @filled).IsOk(), "the large read succeeds");
+    Assert(filled == 32, "whole");
+    Assert(bigSource.calls == 1, "in one conversation, straight past the buffer");
+
+    // Buffered() and Consume() expose the lookahead line reading is built from.
+    var peekSource = CountingSource { served: 0, calls: 0, limit: 10 };
+    let peekHandle: Reader = SourceHandle { state: @peekSource };
+    var peekReader = BufferedReader::New(allocator, peekHandle, 16, @error);
+    Assert(peekReader.Fill().IsOk(), "the buffer fills on request");
+    Assert(peekReader.Available() == 10, "with everything the source had");
+    let peeked = peekReader.Buffered();
+    Assert(peeked.data[0] == c8'a' && peeked.data[9] == c8'j', "visible without being consumed");
+    peekReader.Consume(4);
+    Assert(peekReader.Available() == 6, "and consumed on request");
+
+    // The writer: many small writes, one conversation.
+    var sinkStorage: char8[64];
+    var sink = CountingSink {
+        room: MutableSlice::From<char8>(@sinkStorage[0], 64),
+        written: 0,
+        calls: 0,
+        flushes: 0
+    };
+    let sinkHandle: Writer = SinkHandle { state: @sink };
+    var writer = BufferedWriter::New(allocator, sinkHandle, 32, @error);
+    Assert(error.IsOk(), "the writer takes its buffer");
+    var piece: uint = 0;
+    while piece < 8 {
+        var taken: uint = 0;
+        Assert(writer.Write("ab", @taken).IsOk() && taken == 2, "each small write is taken whole");
+        piece = piece + 1;
+    }
+    Assert(sink.calls == 0, "and none of them reached the sink yet");
+    Assert(writer.Pending() == 16, "they wait in the buffer");
+    Assert(writer.Flush().IsOk(), "until the flush");
+    Assert(sink.calls == 1, "which is one conversation");
+    Assert(sink.flushes == 1, "passed through to the sink");
+    Assert(sink.written == 16 && sinkStorage[0] == c8'a' && sinkStorage[15] == c8'b', "carrying every byte in order");
+
+    // A write larger than the buffer goes around it -- after what was gathered, so order holds.
+    var taken: uint = 0;
+    Assert(writer.Write("xy", @taken).IsOk(), "a small write gathers");
+    Assert(writer.Write("0123456789abcdefghijklmnopqrstuvwxyz", @taken).IsOk(), "a huge one goes around");
+    Assert(sinkStorage[16] == c8'x' && sinkStorage[17] == c8'y', "the gathered bytes went first");
+    Assert(sinkStorage[18] == c8'0', "then the bypass");
+    Assert(writer.Pending() == 0, "and nothing waits");
+
+    return 0;
+}
