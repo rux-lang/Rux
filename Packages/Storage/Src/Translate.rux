@@ -1,0 +1,123 @@
+// What a platform failure means, translated in one place.
+//
+// Every operating system reports failure as a small integer whose meaning lives in its own header files, and a
+// program that switches on those numbers at each call site rewrites this table badly, several times, in
+// disagreement with itself. So the table is written once per platform, and everything in this package reports
+// through it: an `IoError` whose kind is the meaning a caller acts on and whose raw field is the platform's own
+// code, preserved because the translation is honest about being lossy -- many codes fold to `Other`, and the
+// number is how the rest stays diagnosable.
+
+import Core::{ #target };
+import Io::{ IoError, IoErrorKind };
+
+/// The meaning of a platform error code on the platform this program was compiled for.
+///
+/// Codes with no portable meaning translate to `Other`; the caller still has the raw code beside it.
+///
+/// https://rux-lang.dev/docs/api/storage/native-kind
+func NativeKind(raw: int32) -> IoErrorKind {
+    when #target.os == .Windows {
+        // winerror.h, the handful whose meaning a portable caller acts on.
+        if raw == 2 || raw == 3 {
+            return IoErrorKind::NotFound;
+        }
+        if raw == 5 || raw == 19 || raw == 32 {
+            // Access denied, write-protected media, and a sharing violation: three spellings of "you may not".
+            return IoErrorKind::PermissionDenied;
+        }
+        if raw == 6 {
+            return IoErrorKind::InvalidHandle;
+        }
+        if raw == 80 || raw == 183 {
+            return IoErrorKind::AlreadyExists;
+        }
+        if raw == 87 || raw == 123 || raw == 206 {
+            // An invalid parameter, an invalid name, and a name too long: the request itself was wrong.
+            return IoErrorKind::InvalidInput;
+        }
+        if raw == 109 {
+            // The pipe's writing end has closed; for a reader that is the end of the stream.
+            return IoErrorKind::EndOfStream;
+        }
+        if raw == 112 {
+            return IoErrorKind::StorageFull;
+        }
+        if raw == 121 {
+            return IoErrorKind::TimedOut;
+        }
+        if raw == 267 {
+            return IoErrorKind::NotDirectory;
+        }
+        if raw == 995 {
+            return IoErrorKind::Interrupted;
+        }
+        return IoErrorKind::Other;
+    }
+    else {
+        // errno. The names are universal; two of the values are not, and those two go through the target check.
+        if raw == 1 || raw == 13 || raw == 30 {
+            // EPERM, EACCES and EROFS: three spellings of "you may not".
+            return IoErrorKind::PermissionDenied;
+        }
+        if raw == 2 {
+            return IoErrorKind::NotFound;
+        }
+        if raw == 4 {
+            return IoErrorKind::Interrupted;
+        }
+        if raw == 9 {
+            return IoErrorKind::InvalidHandle;
+        }
+        if raw == 17 {
+            return IoErrorKind::AlreadyExists;
+        }
+        if raw == 20 {
+            return IoErrorKind::NotDirectory;
+        }
+        if raw == 21 {
+            return IoErrorKind::IsDirectory;
+        }
+        if raw == 22 {
+            return IoErrorKind::InvalidInput;
+        }
+        if raw == 28 {
+            return IoErrorKind::StorageFull;
+        }
+        when #target.os == .Linux {
+            if raw == 11 {
+                return IoErrorKind::WouldBlock;
+            }
+            if raw == 36 {
+                return IoErrorKind::InvalidInput;
+            }
+            if raw == 110 {
+                return IoErrorKind::TimedOut;
+            }
+            if raw == 122 {
+                return IoErrorKind::StorageFull;
+            }
+        }
+        else {
+            if raw == 35 {
+                return IoErrorKind::WouldBlock;
+            }
+            if raw == 63 {
+                return IoErrorKind::InvalidInput;
+            }
+            if raw == 60 {
+                return IoErrorKind::TimedOut;
+            }
+            if raw == 69 {
+                return IoErrorKind::StorageFull;
+            }
+        }
+        return IoErrorKind::Other;
+    }
+}
+
+/// A platform error code as the structured error everything here reports.
+///
+/// https://rux-lang.dev/docs/api/storage/translate-native
+func TranslateNative(raw: int32) -> IoError {
+    return IoError { kind: NativeKind(raw), raw: raw };
+}

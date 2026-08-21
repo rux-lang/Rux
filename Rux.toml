@@ -21,6 +21,7 @@ Packages = [
     "Packages/Memory",
     "Packages/Path",
     "Packages/Random",
+    "Packages/Storage",
     "Packages/Text",
     "Packages/Time",
     "Packages/Unicode",
