@@ -1,0 +1,80 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::Slice;
+import Format::Format;
+import Text::{ StringView, TextError };
+
+// The wide widths, checked at their edges: the largest value of each unsigned width, the most negative of each
+// signed one -- the value with no positive counterpart, which is exactly where a negation-based magnitude goes
+// wrong -- and the bases, whose digit counts at these widths are known numbers.
+//
+// The expected digit strings are facts about powers of two, not about this implementation, so a reader can check
+// them against any source.
+
+func Matches(allocator: Allocator, rendered: Slice<char8>, expected: Slice<char8>) -> bool {
+    let got = StringView::FromValidated(rendered);
+    let wanted = StringView::FromValidated(expected);
+    return got.Equals(@wanted);
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Small values render as their narrow selves, whatever the width behind them.
+    let small = Format(allocator, "{}", @error, 42u128);
+    if error != TextError::None || !Matches(allocator, small.Bytes(), "42") { return 10; }
+    let zero = Format(allocator, "{}", @error, 0u512);
+    if error != TextError::None || !Matches(allocator, zero.Bytes(), "0") { return 11; }
+    let negSmall = Format(allocator, "{}", @error, -42i256);
+    if error != TextError::None || !Matches(allocator, negSmall.Bytes(), "-42") { return 12; }
+
+    // The largest uint128: thirty-nine digits.
+    let max128 = Format(allocator, "{}", @error, 340282366920938463463374607431768211455u128);
+    if error != TextError::None ||
+       !Matches(allocator, max128.Bytes(), "340282366920938463463374607431768211455") { return 20; }
+
+    // The most negative int128, the value a negation cannot reach.
+    let min128 = Format(allocator, "{}", @error, -170141183460469231731687303715884105728i128);
+    if error != TextError::None ||
+       !Matches(allocator, min128.Bytes(), "-170141183460469231731687303715884105728") { return 21; }
+
+    // Hex of the largest uint128 is thirty-two f's, and the prefix sits outside them.
+    let hex128 = Format(allocator, "{:#x}", @error, 340282366920938463463374607431768211455u128);
+    if error != TextError::None ||
+       !Matches(allocator, hex128.Bytes(), "0xffffffffffffffffffffffffffffffff") { return 22; }
+
+    // A power of two straddling the 64-bit line: 2^64 in decimal and hex.
+    let past64 = Format(allocator, "{}", @error, 18446744073709551616u128);
+    if error != TextError::None || !Matches(allocator, past64.Bytes(), "18446744073709551616") { return 23; }
+    let past64hex = Format(allocator, "{:x}", @error, 18446744073709551616u128);
+    if error != TextError::None || !Matches(allocator, past64hex.Bytes(), "10000000000000000") { return 24; }
+
+    // 2^128 rendered from a uint256, in decimal and binary digit count.
+    let past128 = Format(allocator, "{}", @error, 340282366920938463463374607431768211456u256);
+    if error != TextError::None ||
+       !Matches(allocator, past128.Bytes(), "340282366920938463463374607431768211456") { return 30; }
+    let bits129 = Format(allocator, "{:b}", @error, 340282366920938463463374607431768211456u256);
+    if error != TextError::None || bits129.Length() != 129 { return 31; }
+
+    // The largest uint256: seventy-eight digits.
+    let max256 = Format(allocator, "{}", @error,
+        115792089237316195423570985008687907853269984665640564039457584007913129639935u256);
+    if error != TextError::None || !Matches(allocator, max256.Bytes(),
+        "115792089237316195423570985008687907853269984665640564039457584007913129639935") { return 32; }
+
+    // The largest uint512: one hundred fifty-five digits, checked by length and both ends.
+    let max512 = Format(allocator, "{:x}", @error,
+        13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512);
+    if error != TextError::None || max512.Length() != 128 { return 40; }
+    let ends = max512.View();
+    if !ends.StartsWith(StringView::FromValidated("ff")) || !ends.EndsWith(StringView::FromValidated("ff")) {
+        return 41;
+    }
+
+    // The spec machinery reaches the wide widths whole: zero-padded hex with a prefix.
+    let padded = Format(allocator, "{:#010x}", @error, 255u128);
+    if error != TextError::None || !Matches(allocator, padded.Bytes(), "0x000000ff") { return 50; }
+
+    return 0;
+}
