@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
-import Format::{ BuilderWriter, Debug, Display, Format, FormatSpec, Writer };
+import Format::{ BuilderWriter, Debug, Display, Format, FormatSpec, TextWriter };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
@@ -38,7 +38,7 @@ func Main() -> int {
 
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
     var builder = StringBuilder::New(allocator);
-    let writer: Writer = BuilderWriter::Of(@builder);
+    let writer: TextWriter = BuilderWriter::Of(@builder);
     let empty = String::New(allocator);
     let shownPlain: Display = empty.View();
     if shownPlain.Format(writer, FormatSpec::Plain()) != TextError::None { return 20; }

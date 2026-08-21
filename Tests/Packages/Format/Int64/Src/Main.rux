@@ -1,5 +1,5 @@
 import Text::StringView;
-import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, Writer, ParseError, ParseInt64, TryParseInt64 };
+import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, TextWriter, ParseError, ParseInt64, TryParseInt64 };
 import Core::Result;
 import Core::{ MutableSlice, Slice };
 
@@ -8,7 +8,7 @@ import Core::{ MutableSlice, Slice };
 func Check(value: int64, expected: Slice<char8>, code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
-    let writer: Writer = CursorWriter::Of(@cursor);
+    let writer: TextWriter = CursorWriter::Of(@cursor);
     let shown: Display = value;
     if shown.Format(writer, FormatSpec::Plain()).IsError() {
         return code;

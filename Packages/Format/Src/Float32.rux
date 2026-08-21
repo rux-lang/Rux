@@ -34,7 +34,7 @@ extend float32 : Display {
     /// more than the longest rendering -- sign, digits, point and exponent -- can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format
-    func Format(self: *float32, writer: Writer, spec: FormatSpec) -> TextError {
+    func Format(self: *float32, writer: TextWriter, spec: FormatSpec) -> TextError {
         var storage: char8[52];
         var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 50));
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
@@ -59,7 +59,7 @@ extend float32 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format-debug
-    func FormatDebug(self: *float32, writer: Writer, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *float32, writer: TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

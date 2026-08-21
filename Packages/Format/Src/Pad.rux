@@ -15,7 +15,7 @@ import Text::{ CountScalars, Encode, TextError };
 /// characters rather than bytes, so a name with an accent pads the same as one without.
 ///
 /// https://rux-lang.dev/docs/api/format/write-aligned
-func WriteAligned(writer: Writer, spec: FormatSpec, rendered: Slice<char8>, numeric: bool) -> TextError {
+func WriteAligned(writer: TextWriter, spec: FormatSpec, rendered: Slice<char8>, numeric: bool) -> TextError {
     let occupied = CountScalars(rendered);
     if spec.width <= occupied {
         return WriteBytes(writer, rendered);
@@ -82,7 +82,7 @@ func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: *var
 /// Writes `count` copies of the spec's fill byte.
 ///
 /// https://rux-lang.dev/docs/api/format/write-fill
-func WriteFill(writer: Writer, spec: FormatSpec, count: uint) -> TextError {
+func WriteFill(writer: TextWriter, spec: FormatSpec, count: uint) -> TextError {
     var written: uint = 0;
     while written < count {
         let filled = WriteAscii(writer, spec.fill);
@@ -102,7 +102,7 @@ func WriteFill(writer: Writer, spec: FormatSpec, count: uint) -> TextError {
 /// piece goes to the writer as it is reached, so the widest integer costs no more room than its own digit buffer.
 ///
 /// https://rux-lang.dev/docs/api/format/write-integer-digits
-func WriteIntegerDigits(writer: Writer, spec: FormatSpec, digits: Slice<char8>, count: uint,
+func WriteIntegerDigits(writer: TextWriter, spec: FormatSpec, digits: Slice<char8>, count: uint,
                         negative: bool) -> TextError {
     var lead: uint = 0;
     if negative || spec.showSign {
@@ -171,7 +171,7 @@ func WriteIntegerDigits(writer: Writer, spec: FormatSpec, digits: Slice<char8>, 
 /// signed width has no positive counterpart to negate into.
 ///
 /// https://rux-lang.dev/docs/api/format/write-integer-spec
-func WriteIntegerSpec(writer: Writer, spec: FormatSpec, magnitude: uint64, negative: bool) -> TextError {
+func WriteIntegerSpec(writer: TextWriter, spec: FormatSpec, magnitude: uint64, negative: bool) -> TextError {
     var digits: char8[64];
     var count: uint = 0;
     var radix: uint64 = 10;
@@ -202,7 +202,7 @@ func WriteIntegerSpec(writer: Writer, spec: FormatSpec, magnitude: uint64, negat
 /// Writes one character under `spec`'s width, fill and alignment.
 ///
 /// https://rux-lang.dev/docs/api/format/format-scalar
-func FormatScalar(writer: Writer, spec: FormatSpec, scalar: char32) -> TextError {
+func FormatScalar(writer: TextWriter, spec: FormatSpec, scalar: char32) -> TextError {
     var encoded: char8[4];
     var written: uint = 0;
     let sink = MutableSlice::From<char8>(@encoded[0], 4);
