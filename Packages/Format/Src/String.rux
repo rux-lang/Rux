@@ -14,7 +14,7 @@ extend String : Display {
     /// Writes this string's bytes.
     ///
     /// https://rux-lang.dev/docs/api/format/string/format
-    func Format(self: *String, writer: Writer, spec: FormatSpec) -> TextError {
+    func Format(self: *String, writer: TextWriter, spec: FormatSpec) -> TextError {
         let view = self.View();
         return view.Format(writer, spec);
     }
@@ -24,7 +24,7 @@ extend String : Debug {
     /// Writes this string quoted.
     ///
     /// https://rux-lang.dev/docs/api/format/string/format-debug
-    func FormatDebug(self: *String, writer: Writer, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *String, writer: TextWriter, spec: FormatSpec) -> TextError {
         let view = self.View();
         return view.FormatDebug(writer, spec);
     }
@@ -34,7 +34,7 @@ extend StringView : Display {
     /// Writes what this view spans.
     ///
     /// https://rux-lang.dev/docs/api/format/string-view/format
-    func Format(self: *StringView, writer: Writer, spec: FormatSpec) -> TextError {
+    func Format(self: *StringView, writer: TextWriter, spec: FormatSpec) -> TextError {
         return WriteAligned(writer, spec, Truncated(*self, spec), false);
     }
 }
@@ -47,7 +47,7 @@ extend StringView : Debug {
     /// is a Unicode question and belongs where the Unicode tables are.
     ///
     /// https://rux-lang.dev/docs/api/format/string-view/format-debug
-    func FormatDebug(self: *StringView, writer: Writer, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *StringView, writer: TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'"');
         if opening.IsError() {
             return opening;

@@ -1,4 +1,4 @@
-import Format::{ Display, FormatSpec, WriteFormat, Writer };
+import Format::{ Display, FormatSpec, WriteFormat, TextWriter };
 import Memory::{ Alloc, Free };
 import Core::{ #target };
 import Text::{ String, StringView, TextError };
@@ -108,7 +108,7 @@ func Print(data: *char8, length: uint) {
 /// A writer that sends its bytes to standard output.
 ///
 /// Holds nothing, because standard output is not a thing this package owns: every write goes to the same place
-/// however many writers there are. It is still a `Writer` rather than a free function, so that anything formatting
+/// however many writers there are. It is still a `TextWriter` rather than a free function, so that anything formatting
 /// into a builder can format into the console instead without knowing the difference.
 ///
 /// https://rux-lang.dev/docs/api/io/console-writer
@@ -126,7 +126,7 @@ extend ConsoleWriter {
     }
 }
 
-extend ConsoleWriter : Writer {
+extend ConsoleWriter : TextWriter {
     /// Writes `bytes` to standard output.
     ///
     /// Reports `None` whatever the console did: a write to a closed or full stream is not something a caller
@@ -147,7 +147,7 @@ extend ConsoleWriter : Writer {
 ///
 /// https://rux-lang.dev/docs/api/io/print-value
 func PrintValue(value: Display) {
-    let writer: Writer = ConsoleWriter::New();
+    let writer: TextWriter = ConsoleWriter::New();
     value.Format(writer, FormatSpec::Plain());
 }
 
@@ -178,7 +178,7 @@ func Print(value: Slice<char8>) {
 ///
 /// https://rux-lang.dev/docs/api/io/print-format
 func Print(format: Slice<char8>, args: Display...) {
-    let writer: Writer = ConsoleWriter::New();
+    let writer: TextWriter = ConsoleWriter::New();
     WriteFormat(writer, format, args...);
 }
 

@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
-import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, Writer };
+import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, TextWriter };
 import Text::{ StringView, TextError };
 
 // Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
@@ -15,7 +15,7 @@ struct Point {
 }
 
 extend Point : Display {
-    func Format(self: *Point, writer: Writer) -> TextError {
+    func Format(self: *Point, writer: TextWriter) -> TextError {
         let open = WriteAscii(writer, c8'(');
         if open.IsError() { return open; }
         let first: Display = self.x;
@@ -36,7 +36,7 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func Format(self: *Filler, writer: Writer) -> TextError {
+    func Format(self: *Filler, writer: TextWriter) -> TextError {
         var remaining = self.count;
         while remaining > 0 {
             let written = WriteBytes(writer, "0123456789abcdef");

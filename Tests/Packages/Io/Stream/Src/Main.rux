@@ -1,0 +1,170 @@
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
+
+// The helpers' whole job is looping over honesty: a reader that hands over two bytes at a time, a writer that
+// takes three, a stream that says "interrupted" before every real answer, and one that reports success while
+// moving nothing. Each of those lives here as a small scripted stream, and the helpers must assemble the truth
+// from all of them.
+
+// A reader over a fixed run of bytes that hands over at most `chunk` per call, and reports one interruption
+// before each real read when asked to.
+struct ScriptedReader {
+    bytes: Slice<char8>;
+    cursor: uint;
+    chunk: uint;
+    interruptions: uint;
+    pendingInterruption: bool;
+}
+
+// The handle that implements the interface: an interface value is a copy, so the state lives behind the pointer.
+struct ReaderHandle {
+    state: *var ScriptedReader;
+}
+
+extend ReaderHandle : Reader {
+    func Read(self: *var ReaderHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        return self.state.Read(into, filled);
+    }
+}
+
+extend ScriptedReader {
+    func Read(self: *var ScriptedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        if self.pendingInterruption && self.interruptions > 0 {
+            self.interruptions = self.interruptions - 1;
+            return IoError::Of(IoErrorKind::Interrupted);
+        }
+        self.pendingInterruption = true;
+        if self.cursor >= self.bytes.length {
+            return IoError::Of(IoErrorKind::EndOfStream);
+        }
+        var give = self.bytes.length - self.cursor;
+        if give > self.chunk {
+            give = self.chunk;
+        }
+        if give > into.length {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = self.bytes.data[self.cursor + index];
+            index = index + 1;
+        }
+        self.cursor = self.cursor + give;
+        *filled = give;
+        return IoError::Ok();
+    }
+}
+
+// A writer into a fixed buffer that takes at most `chunk` per call, and can be told to stall: report success and
+// take nothing.
+struct ScriptedWriter {
+    room: MutableSlice<char8>;
+    written: uint;
+    chunk: uint;
+    stalling: bool;
+}
+
+struct WriterHandle {
+    state: *var ScriptedWriter;
+}
+
+extend WriterHandle : Writer {
+    func Write(self: *var WriterHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        return self.state.Write(bytes, taken);
+    }
+
+    func Flush(self: *var WriterHandle) -> IoError {
+        return IoError::Ok();
+    }
+}
+
+extend ScriptedWriter {
+    func Write(self: *var ScriptedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        *taken = 0;
+        if self.stalling {
+            return IoError::Ok();
+        }
+        var take = bytes.length;
+        if take > self.chunk {
+            take = self.chunk;
+        }
+        if take > self.room.length - self.written {
+            take = self.room.length - self.written;
+        }
+        var index: uint = 0;
+        while index < take {
+            self.room.data[self.written + index] = bytes.data[index];
+            index = index + 1;
+        }
+        self.written = self.written + take;
+        *taken = take;
+        return IoError::Ok();
+    }
+
+}
+
+func Main() -> int {
+    // ReadExact assembles a full buffer from two-byte reads, riding out an interruption before each.
+    var source = ScriptedReader {
+        bytes: "abcdefgh",
+        cursor: 0,
+        chunk: 2,
+        interruptions: 10,
+        pendingInterruption: false
+    };
+    var storage: char8[8];
+    let into = MutableSlice::From<char8>(@storage[0], 8);
+    let sourceHandle: Reader = ReaderHandle { state: @source };
+    let outcome = ReadExact(sourceHandle, into);
+    Assert(outcome.IsOk(), "the exact read assembles from partial, interrupted reads");
+    Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
+
+    // A stream that ends early says so, rather than succeeding by silence.
+    var short = ScriptedReader {
+        bytes: "abc",
+        cursor: 0,
+        chunk: 2,
+        interruptions: 0,
+        pendingInterruption: false
+    };
+    var bigStorage: char8[8];
+    let big = MutableSlice::From<char8>(@bigStorage[0], 8);
+    let shortHandle: Reader = ReaderHandle { state: @short };
+    let ended = ReadExact(shortHandle, big);
+    Assert(ended.IsEnd(), "a stream that ends mid-buffer reports the end");
+
+    // WriteAll pushes everything through three-byte writes.
+    var sinkStorage: char8[16];
+    var sink = ScriptedWriter {
+        room: MutableSlice::From<char8>(@sinkStorage[0], 16),
+        written: 0,
+        chunk: 3,
+        stalling: false
+    };
+    let sinkHandle: Writer = WriterHandle { state: @sink };
+    let sent = WriteAll(sinkHandle, "hello world");
+    Assert(sent.IsOk(), "the whole write goes through partial writes");
+
+    // A writer that takes nothing while claiming success is refused rather than spun on.
+    var stallStorage: char8[4];
+    var stalled = ScriptedWriter {
+        room: MutableSlice::From<char8>(@stallStorage[0], 4),
+        written: 0,
+        chunk: 4,
+        stalling: true
+    };
+    let stalledHandle: Writer = WriterHandle { state: @stalled };
+    let refused = WriteAll(stalledHandle, "data");
+    Assert(refused.IsError() && refused.kind == IoErrorKind::WriteZero,
+           "a stream making no progress is refused, not spun on");
+
+    // The error type's own small contracts.
+    Assert(IoError::Ok().IsOk(), "nothing wrong is nothing wrong");
+    Assert(IoError::Of(IoErrorKind::Interrupted).IsTransient(), "an interruption is worth retrying");
+    Assert(IoError::Of(IoErrorKind::WouldBlock).IsTransient(), "and so is a would-block");
+    Assert(!IoError::Of(IoErrorKind::NotFound).IsTransient(), "a missing file is not");
+    Assert(IoError::Of(IoErrorKind::EndOfStream).IsEnd(), "and the end is the end");
+
+    return 0;
+}

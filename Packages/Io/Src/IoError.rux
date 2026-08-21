@@ -1,0 +1,102 @@
+// What went wrong at the edge of the machine.
+//
+// An I/O failure is not one thing. Some report a fact about the world -- the file is not there, the disk is full,
+// permission was refused -- and a caller acts on which fact. Some report a moment: the operation was interrupted,
+// or would block, and the right response is to go again. And the end of a stream is not a failure at all, but it
+// arrives through the same channel, so it lives in the same type where nobody can lose it.
+//
+// The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
+// translation loses detail, and the detail is sometimes the diagnosis.
+
+/// What an I/O operation reported.
+///
+/// https://rux-lang.dev/docs/api/io/io-error-kind
+enum IoErrorKind: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// The stream ended: not a failure, but it arrives where failures do.
+    EndOfStream = 1,
+    /// The named thing does not exist.
+    NotFound = 2,
+    /// The system refused on rights.
+    PermissionDenied = 3,
+    /// The named thing exists where something new was to be made.
+    AlreadyExists = 4,
+    /// A directory stood where a file was expected.
+    IsDirectory = 5,
+    /// A file stood where a directory was expected.
+    NotDirectory = 6,
+    /// The device has no room left.
+    StorageFull = 7,
+    /// The operation was interrupted and may simply be retried.
+    Interrupted = 8,
+    /// The operation would block a stream opened not to.
+    WouldBlock = 9,
+    /// A handle that is not open, or not open for this.
+    InvalidHandle = 10,
+    /// An argument the system rejected.
+    InvalidInput = 11,
+    /// The operation ran out of time.
+    TimedOut = 12,
+    /// A write reported fewer bytes than asked and cannot continue.
+    WriteZero = 13,
+    /// Something the platform reported that has no shared meaning; the raw code is the detail.
+    Other = 14
+}
+
+/// A structured I/O failure: the shared meaning, and the platform's own code beside it.
+///
+/// `Copy`. The `raw` field is `errno` on the Unix systems and the Win32 error code on Windows, kept because
+/// translation loses detail and the detail is sometimes the diagnosis.
+///
+/// https://rux-lang.dev/docs/api/io/io-error
+struct IoError {
+    /// The meaning every platform shares.
+    kind: IoErrorKind;
+    /// The platform's own code, zero where none applies.
+    raw: int32;
+}
+
+extend IoError {
+    /// Nothing went wrong.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/ok
+    func Ok() -> IoError {
+        return IoError { kind: IoErrorKind::None, raw: 0 };
+    }
+
+    /// A failure of `kind` with no platform code.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/of
+    func Of(kind: IoErrorKind) -> IoError {
+        return IoError { kind: kind, raw: 0 };
+    }
+
+    /// Whether nothing went wrong.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/is-ok
+    func IsOk(self: *IoError) -> bool {
+        return self.kind == IoErrorKind::None;
+    }
+
+    /// Whether something did.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/is-error
+    func IsError(self: *IoError) -> bool {
+        return self.kind != IoErrorKind::None;
+    }
+
+    /// Whether the stream ended, which is the one report that is not a failure.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/is-end
+    func IsEnd(self: *IoError) -> bool {
+        return self.kind == IoErrorKind::EndOfStream;
+    }
+
+    /// Whether going again is the right response: an interruption or a would-block.
+    ///
+    /// https://rux-lang.dev/docs/api/io/io-error/is-transient
+    func IsTransient(self: *IoError) -> bool {
+        return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
+    }
+}

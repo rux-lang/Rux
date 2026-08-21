@@ -5,7 +5,7 @@
 // its escapes visible, a character is quoted, and a structure shows its parts. They differ for exactly the types
 // where the difference matters, and a type with only one sensible rendering implements both the same way.
 //
-// Both write into a `Writer` rather than answering with a `String`, which is what makes printing a value allocate
+// Both write into a `TextWriter` rather than answering with a `String`, which is what makes printing a value allocate
 // nothing. Rendering to a string is then one writer among several.
 //
 // Both take the placeholder's specification, because it is the value that has to apply it: base and sign need the
@@ -20,7 +20,7 @@ import Text::TextError;
 /// https://rux-lang.dev/docs/api/format/display
 interface Display {
     /// Writes this value's text under `spec`, reporting what stopped it.
-    func Format(writer: Writer, spec: FormatSpec) -> TextError;
+    func Format(writer: TextWriter, spec: FormatSpec) -> TextError;
 }
 
 /// The text a value has for whoever is inspecting a program.
@@ -28,5 +28,5 @@ interface Display {
 /// https://rux-lang.dev/docs/api/format/debug
 interface Debug {
     /// Writes this value's inspection text under `spec`, reporting what stopped it.
-    func FormatDebug(writer: Writer, spec: FormatSpec) -> TextError;
+    func FormatDebug(writer: TextWriter, spec: FormatSpec) -> TextError;
 }
