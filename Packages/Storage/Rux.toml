@@ -1,0 +1,29 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Storage"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Files, directories, and filesystem operations"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["File", "Filesystem", "Directory", "Storage"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/storage"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Allocator = { Namespace = "Rux", Version = "0.1.0" }
+Core = { Namespace = "Rux", Version = "0.1.0" }
+FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
+Io = { Namespace = "Rux", Version = "0.1.0" }
+Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
+macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
+Memory = { Namespace = "Rux", Version = "0.1.0" }
+Path = { Namespace = "Rux", Version = "0.1.0" }
+Text = { Namespace = "Rux", Version = "0.1.0" }
+Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

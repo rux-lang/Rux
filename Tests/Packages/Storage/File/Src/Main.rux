@@ -1,0 +1,76 @@
+// Opening asks two questions -- what may happen, and what to do about existence -- and every answer is checked
+// where it can be checked deterministically: against a name that cannot exist, a file this test just made, and
+// requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert };
+import Io::{ IoError, IoErrorKind };
+import Path::{ OsString, Path };
+import Storage::{ File, NativeKind, OpenOptions, TranslateNative };
+import Text::TextError;
+
+func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+    var textError = TextError::None;
+    *holder = OsString::FromText(allocator, text, @textError);
+    Assert(textError == TextError::None, "the name converts");
+    return Path::FromView(holder.View());
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    // A name that does not exist is NotFound, in the platform's own words, translated.
+    var missingHolder = OsString::New(allocator);
+    let missing = PathOf(allocator, "Bin/StorageNoSuchFile.tmp", @missingHolder);
+    var absent = File::Open(allocator, missing, OpenOptions::Reading(), @error);
+    Assert(!absent.IsOpen() && error.kind == IoErrorKind::NotFound, "reading a missing file is NotFound");
+
+    // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
+    var scratchHolder = OsString::New(allocator);
+    let scratch = PathOf(allocator, "Bin/StorageOpen.tmp", @scratchHolder);
+    var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
+    Assert(written.IsOpen() && error.IsOk(), "writing creates the missing file");
+    Assert(written.Close().IsOk(), "and the close reports");
+    Assert(!written.IsOpen() && written.Close().IsOk(), "a second close is a no-op");
+
+    // Now that it exists: reading finds it, and a creation claim is refused.
+    var readable = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
+    Assert(readable.IsOpen() && error.IsOk(), "the created file reads");
+    Assert(readable.Close().IsOk(), "and closes");
+    var claimed = OpenOptions::New();
+    claimed.write = true;
+    claimed.createNew = true;
+    var exclusive = File::Open(allocator, scratch, claimed, @error);
+    Assert(!exclusive.IsOpen() && error.kind == IoErrorKind::AlreadyExists,
+           "createNew against an existing file is AlreadyExists");
+
+    // Appending opens what Writing made.
+    var appended = File::Open(allocator, scratch, OpenOptions::Appending(), @error);
+    Assert(appended.IsOpen() && error.IsOk(), "appending opens the existing file");
+    Assert(appended.Close().IsOk(), "and closes");
+
+    // The contradictions are refused before the platform is asked.
+    var nothing = OpenOptions::New();
+    var refusedNothing = File::Open(allocator, scratch, nothing, @error);
+    Assert(!refusedNothing.IsOpen() && error.kind == IoErrorKind::InvalidInput, "no access at all is refused");
+    var readTruncate = OpenOptions::Reading();
+    readTruncate.truncate = true;
+    var refusedTruncate = File::Open(allocator, scratch, readTruncate, @error);
+    Assert(!refusedTruncate.IsOpen() && error.kind == IoErrorKind::InvalidInput,
+           "truncating without writing is refused");
+    var readCreate = OpenOptions::Reading();
+    readCreate.create = true;
+    var refusedCreate = File::Open(allocator, scratch, readCreate, @error);
+    Assert(!refusedCreate.IsOpen() && error.kind == IoErrorKind::InvalidInput,
+           "creating without writing is refused");
+
+    // The translation table, sampled from both sides of the platform divide.
+    Assert(TranslateNative(0).kind == IoErrorKind::Other || TranslateNative(0).raw == 0,
+           "zero keeps its raw value");
+    Assert(NativeKind(2) == IoErrorKind::NotFound, "code 2 is NotFound on every platform");
+    Assert(TranslateNative(2).raw == 2, "and the raw code survives the translation");
+
+    return 0;
+}

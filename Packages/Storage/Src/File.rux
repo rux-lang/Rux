@@ -1,0 +1,320 @@
+// An owned file handle, opened under options that say what they mean.
+//
+// Opening a file asks two separate questions -- what may happen through the handle, and what to do about the
+// file's existence -- and most APIs tangle them. `OpenOptions` keeps them apart: `read`, `write` and `append`
+// answer the first; `create`, `createNew` and `truncate` answer the second. The contradictions are refused here,
+// before the platform is asked, so an impossible request fails the same way on every system instead of however
+// each platform happens to take it.
+//
+// `File` owns its handle the way `String` owns its bytes: `Close` releases it exactly once and reports what the
+// platform said, and `Drop` is the safety net that closes with the outcome discarded. A file being written
+// deserves the explicit `Close`, for the same reason a buffered writer deserves the explicit `Flush`: the
+// destructor has nowhere to report failure.
+
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::{ #target, Drop, Slice };
+import Io::{ IoError, IoErrorKind };
+import Path::Path;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
+                                  OpenReadWrite, OpenTruncate, OpenWriteOnly },
+    .Linux => import Linux::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
+                              OpenReadWrite, OpenTruncate, OpenWriteOnly },
+    .macOS => import macOS::{ AtFdCwd, Close, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly,
+                              OpenReadWrite, OpenTruncate, OpenWriteOnly },
+    .Windows => import Windows::{
+        CloseHandle,
+        CreateFileW,
+        CreationDisposition,
+        FILE_APPEND_DATA,
+        FILE_ATTRIBUTE_NORMAL,
+        FILE_SHARE_DELETE,
+        FILE_SHARE_READ,
+        FILE_SHARE_WRITE,
+        GENERIC_READ,
+        GENERIC_WRITE,
+        GetLastError,
+        InvalidHandleValue
+    }
+}
+
+when #target.os == .Windows {
+    type RawFile = *var opaque;
+}
+else {
+    type RawFile = int32;
+}
+
+/// What an open may do, and what it does about existence.
+///
+/// `read`, `write` and `append` say what may happen through the handle; `create`, `createNew` and `truncate` say
+/// what happens to the file itself. `append` positions every write at the end, whatever was written in between,
+/// which is the property log writers need and `write` alone does not have.
+///
+/// https://rux-lang.dev/docs/api/storage/open-options
+struct OpenOptions {
+    /// The handle may read.
+    read: bool;
+    /// The handle may write.
+    write: bool;
+    /// The handle may write, and every write lands at the end.
+    append: bool;
+    /// An existing file's contents are discarded on open. Requires `write`.
+    truncate: bool;
+    /// A missing file is created. Requires `write` or `append`.
+    create: bool;
+    /// The file must not exist: it is created, and an existing one is `AlreadyExists`. Wins over `create` and
+    /// `truncate`, and is the option that makes creation a claim rather than a race.
+    createNew: bool;
+}
+
+extend OpenOptions {
+    /// Nothing at all: the caller states every intention.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/open-options/new
+    func New() -> OpenOptions {
+        return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
+    }
+
+    /// Reading an existing file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/open-options/reading
+    func Reading() -> OpenOptions {
+        var options = OpenOptions::New();
+        options.read = true;
+        return options;
+    }
+
+    /// Writing a file from its beginning: created if missing, emptied if not.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/open-options/writing
+    func Writing() -> OpenOptions {
+        var options = OpenOptions::New();
+        options.write = true;
+        options.create = true;
+        options.truncate = true;
+        return options;
+    }
+
+    /// Adding to a file's end: created if missing, appended to if not.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/open-options/appending
+    func Appending() -> OpenOptions {
+        var options = OpenOptions::New();
+        options.append = true;
+        options.create = true;
+        return options;
+    }
+
+    // The contradictions, refused before any platform is asked.
+    func Validate(self: *OpenOptions) -> IoError {
+        if !self.read && !self.write && !self.append {
+            return IoError::Of(IoErrorKind::InvalidInput);
+        }
+        if self.truncate && !self.write {
+            return IoError::Of(IoErrorKind::InvalidInput);
+        }
+        if (self.create || self.createNew) && !self.write && !self.append {
+            return IoError::Of(IoErrorKind::InvalidInput);
+        }
+        return IoError::Ok();
+    }
+}
+
+/// An owned, open file.
+///
+/// Move-only: the handle closes exactly once, through `Close` or through `Drop`. `Close` is the error-visible
+/// path; `Drop` discards the outcome, which is fine for a file that was read and a silent loss for one that was
+/// written.
+///
+/// https://rux-lang.dev/docs/api/storage/file
+struct File {
+    /// The platform's handle.
+    handle: RawFile;
+    /// Whether it is still this value's to close.
+    open: bool;
+}
+
+// The path, copied to the NUL-terminated form the platform calls take. The block is `(length + 1)` units and
+// must go back to the same allocator.
+func NativePath(allocator: Allocator, path: Path, block: *var *var OsUnit) -> IoError {
+    let units = path.name.units;
+    var index: uint = 0;
+    while index < units.length {
+        // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
+        // not be the file named. Refused here on every platform.
+        if (units.data[index] as uint32) == 0u32 {
+            return IoError::Of(IoErrorKind::InvalidInput);
+        }
+        index = index + 1;
+    }
+    let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit));
+    if layout.IsNone() {
+        return IoError::Of(IoErrorKind::InvalidInput);
+    }
+    let fallback = Layout { size: (units.length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
+    var borrowed = allocator;
+    var raw: *var opaque = null;
+    if borrowed.Allocate(layout.ValueOr(fallback), @raw) != AllocError::None {
+        return IoError::Of(IoErrorKind::Other);
+    }
+    let copied = raw as *var OsUnit;
+    index = 0;
+    while index < units.length {
+        copied[index] = units.data[index];
+        index = index + 1;
+    }
+    copied[units.length] = 0;
+    *block = copied;
+    return IoError::Ok();
+}
+
+func ReleaseNativePath(allocator: Allocator, block: *var OsUnit, length: uint) {
+    let layout = Layout { size: (length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
+    var borrowed = allocator;
+    borrowed.Deallocate(block as *var opaque, layout);
+}
+
+extend File {
+    /// Opens `path` under `options`.
+    ///
+    /// The allocator is borrowed for the platform form of the path and holds nothing afterward. On failure the
+    /// returned value is not open, and `error` says why in the platform's own terms, translated.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/open
+    func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
+        *error = options.Validate();
+        var file = File { handle: NoFile(), open: false };
+        if error.IsError() {
+            return file;
+        }
+        var native: *var OsUnit = null;
+        *error = NativePath(allocator, path, @native);
+        if error.IsError() {
+            return file;
+        }
+        when #target.os == .Windows {
+            var access = 0u32;
+            if options.read {
+                access = access | GENERIC_READ;
+            }
+            if options.append {
+                // Append is its own access right, not a write positioned cleverly: every write through the
+                // handle lands at the end, no matter who else has grown the file since.
+                access = access | FILE_APPEND_DATA;
+            }
+            else if options.write {
+                access = access | GENERIC_WRITE;
+            }
+            var disposition = CreationDisposition::OpenExisting;
+            if options.createNew {
+                disposition = CreationDisposition::CreateNew;
+            }
+            else if options.create && options.truncate {
+                disposition = CreationDisposition::CreateAlways;
+            }
+            else if options.create {
+                disposition = CreationDisposition::OpenAlways;
+            }
+            else if options.truncate {
+                disposition = CreationDisposition::TruncateExisting;
+            }
+            // Sharing is granted broadly on purpose: denying it is Windows' default and no other system's, and a
+            // portable program should see one behavior.
+            let share = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+            let handle = CreateFileW(native as *char16, access, share, null, disposition as uint32,
+                                     FILE_ATTRIBUTE_NORMAL, null);
+            if (handle as uint64) == InvalidHandleValue {
+                *error = TranslateNative(GetLastError() as int32);
+            }
+            else {
+                file.handle = handle as *var opaque;
+                file.open = true;
+            }
+        }
+        else {
+            var flags = OpenReadOnly;
+            if options.read && (options.write || options.append) {
+                flags = OpenReadWrite;
+            }
+            else if options.write || options.append {
+                flags = OpenWriteOnly;
+            }
+            if options.append {
+                flags = flags | OpenAppend;
+            }
+            if options.create || options.createNew {
+                flags = flags | OpenCreate;
+            }
+            if options.createNew {
+                flags = flags | OpenExclusive;
+            }
+            if options.truncate {
+                flags = flags | OpenTruncate;
+            }
+            // Read and write for everyone, cut down by the process umask -- the ordinary permissions an
+            // ordinary file is born with.
+            let opened = OpenAt(AtFdCwd, native as *char8, flags, 438);
+            if opened < 0 {
+                *error = TranslateNative((0i64 - opened) as int32);
+            }
+            else {
+                file.handle = opened as int32;
+                file.open = true;
+            }
+        }
+        ReleaseNativePath(allocator, native, path.name.units.length);
+        return file;
+    }
+
+    /// Whether the handle is still open.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/is-open
+    func IsOpen(self: *File) -> bool {
+        return self.open;
+    }
+
+    /// Closes the handle and reports what the platform said.
+    ///
+    /// Closing twice is not an error here: the second call is a no-op reporting `Ok`, because the first already
+    /// gave the handle back. This is the error-visible path; a written file deserves it.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/close
+    func Close(self: *var File) -> IoError {
+        if !self.open {
+            return IoError::Ok();
+        }
+        self.open = false;
+        when #target.os == .Windows {
+            if !CloseHandle(self.handle) {
+                return TranslateNative(GetLastError() as int32);
+            }
+            return IoError::Ok();
+        }
+        else {
+            let result = Close(self.handle);
+            if result < 0 {
+                return TranslateNative((0i64 - result) as int32);
+            }
+            return IoError::Ok();
+        }
+    }
+
+    /// Closes with the outcome discarded: the safety net, not the contract.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/drop
+    func Drop(self: *var File) {
+        self.Close();
+    }
+}
+
+// The value of a handle that is not one.
+func NoFile() -> RawFile {
+    when #target.os == .Windows {
+        return null;
+    }
+    else {
+        return -1;
+    }
+}
