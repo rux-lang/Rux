@@ -1,0 +1,66 @@
+import Core::{ Assert, Drop };
+
+// A destructor whose body asks a question only an instantiation can answer.
+//
+// Nothing in a program calls a destructor: the generated glue does. So a destructor's body was never analyzed at the
+// types it would be built for, and anything it deferred until its type arguments arrived went unanswered. Here the
+// body asks for the size of `Cell<T>` -- a type built from the parameter, which no other line of the program names
+// -- and lowering reached it having never been told what `T` stood for. There is nothing to answer a size with at
+// that point, so the compiler stopped, with no diagnostic, because the program had already been accepted.
+//
+// It takes a body reachable no other way. A destructor that calls something the program also calls directly is
+// analyzed through that call instead, which is why every container in `Packages` compiles as it stands.
+
+struct Cell<T> {
+    value: T;
+    tag: int32;
+}
+
+func Width<T>() -> uint {
+    return sizeof(T);
+}
+
+struct Store<T> {
+    held: T;
+    released: *var int32;
+}
+
+extend Store<T> {
+    // A size that only an instantiation can answer, reached from the destructor below.
+    func Footprint(self: *Store<T>) -> uint {
+        return Width<Cell<T>>();
+    }
+}
+
+extend Store<T> : Drop {
+    func Drop(self: *var Store<T>) {
+        if self.released != null {
+            *self.released = *self.released + (self.Footprint() as int32);
+        }
+    }
+}
+
+struct Wide {
+    a: int64;
+    b: int64;
+}
+
+func DropNarrow(released: *var int32) {
+    var store = Store<int32> { held: 1, released: released };
+}
+
+func DropWide(released: *var int32) {
+    var store = Store<Wide> { held: Wide { a: 1i64, b: 2i64 }, released: released };
+}
+
+func Main() -> int {
+    var released: int32 = 0;
+    DropNarrow(@released);
+    Assert(released == 8, "the inner container's destructor runs, sized at the outer's argument");
+
+    released = 0;
+    DropWide(@released);
+    Assert(released == 24, "and at a different argument it is sized differently");
+
+    return 0;
+}

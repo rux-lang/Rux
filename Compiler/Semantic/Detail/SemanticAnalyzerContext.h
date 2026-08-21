@@ -471,6 +471,12 @@ private:
     virtual void ResolveModuleSignaturesInScope(const Module &module, Scope &scope) = 0;
     virtual void CheckModule(const Module &module) = 0;
     virtual void CheckModuleInScope(const Module &module, Scope &scope) = 0;
+    /// Queues the `Drop` of every droppable type recorded, so a destructor's body is analyzed at each type it will
+    /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
+    /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type
+    /// arguments were known is never answered.
+    virtual void QueueDropMethodInstantiations() = 0;
+
     virtual void ValidatePendingGenericInstantiations() = 0;
     virtual void RecordResolvedTypeLayouts() = 0;
     void RecordResolvedTypeProperties();
