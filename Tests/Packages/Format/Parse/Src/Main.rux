@@ -1,0 +1,111 @@
+import Core::{ Result, Slice };
+import Format::{ ParseBool, ParseChar, ParseError, ParseInt8, ParseInt64, ParseInt128, ParseUint8, ParseUint64,
+                 ParseUint128, ParseUint512 };
+
+// One grammar serves every width -- sign, optional base prefix, digits -- and the width's own bound is checked
+// last, so what is tested per width is the bound: the largest value in, one past it refused, and for the signed
+// widths the most negative value, which fits where its positive twin does not.
+//
+// The prefixes are exactly the ones formatting writes under `#`, so what one side prints the other reads.
+
+func Main() -> int {
+    // The grammar itself, at one width.
+    match ParseInt64("42") {
+        .Success(value) => { if value != 42i64 { return 1; } },
+        .Error(_) => { return 2; }
+    }
+    match ParseInt64("-42") {
+        .Success(value) => { if value != -42i64 { return 3; } },
+        .Error(_) => { return 4; }
+    }
+    match ParseInt64("+42") {
+        .Success(value) => { if value != 42i64 { return 5; } },
+        .Error(_) => { return 6; }
+    }
+    match ParseUint64("0xff") {
+        .Success(value) => { if value != 255u64 { return 7; } },
+        .Error(_) => { return 8; }
+    }
+    match ParseUint64("0b101") {
+        .Success(value) => { if value != 5u64 { return 9; } },
+        .Error(_) => { return 10; }
+    }
+    match ParseUint64("0o10") {
+        .Success(value) => { if value != 8u64 { return 11; } },
+        .Error(_) => { return 12; }
+    }
+    match ParseInt64("-0x10") {
+        .Success(value) => { if value != -16i64 { return 13; } },
+        .Error(_) => { return 14; }
+    }
+
+    // What is refused, and why.
+    if ParseInt64("").IsSuccess() { return 20; }
+    if ParseInt64("12a").IsSuccess() { return 21; }
+    if ParseInt64("-").IsSuccess() { return 22; }
+    if ParseInt64("0x").IsSuccess() { return 23; }
+    if ParseUint64("-1").IsSuccess() { return 24; }
+    if ParseUint64("0xG").IsSuccess() { return 25; }
+    if ParseUint64("0b2").IsSuccess() { return 26; }
+
+    // The bounds, narrow and wide: the largest in, one past it out.
+    match ParseInt8("127") {
+        .Success(value) => { if value != 127i8 { return 30; } },
+        .Error(_) => { return 31; }
+    }
+    if ParseInt8("128").IsSuccess() { return 32; }
+    match ParseInt8("-128") {
+        .Success(value) => { if value != -128i8 { return 33; } },
+        .Error(_) => { return 34; }
+    }
+    if ParseInt8("-129").IsSuccess() { return 35; }
+    match ParseUint8("255") {
+        .Success(value) => { if value != 255u8 { return 36; } },
+        .Error(_) => { return 37; }
+    }
+    if ParseUint8("256").IsSuccess() { return 38; }
+
+    match ParseUint128("340282366920938463463374607431768211455") {
+        .Success(value) => {
+            if (value % 10u128) != 5u128 { return 40; }
+        },
+        .Error(_) => { return 41; }
+    }
+    if ParseUint128("340282366920938463463374607431768211456").IsSuccess() { return 42; }
+    match ParseInt128("-170141183460469231731687303715884105728") {
+        .Success(value) => { if value >= 0i128 { return 43; } },
+        .Error(_) => { return 44; }
+    }
+    if ParseInt128("170141183460469231731687303715884105728").IsSuccess() { return 45; }
+
+    // The widest width takes its largest value, and one more digit is an overflow rather than a wrap.
+    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095").IsError() { return 50; }
+    if ParseUint512("13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084096").IsSuccess() { return 51; }
+
+    // Booleans are the two words and nothing else.
+    match ParseBool("true") {
+        .Success(value) => { if !value { return 60; } },
+        .Error(_) => { return 61; }
+    }
+    match ParseBool("false") {
+        .Success(value) => { if value { return 62; } },
+        .Error(_) => { return 63; }
+    }
+    if ParseBool("True").IsSuccess() { return 64; }
+    if ParseBool("1").IsSuccess() { return 65; }
+    if ParseBool("").IsSuccess() { return 66; }
+
+    // A character is one whole scalar value.
+    match ParseChar("A") {
+        .Success(value) => { if (value as uint32) != 0x41 { return 70; } },
+        .Error(_) => { return 71; }
+    }
+    match ParseChar("€") {
+        .Success(value) => { if (value as uint32) != 0x20AC { return 72; } },
+        .Error(_) => { return 73; }
+    }
+    if ParseChar("ab").IsSuccess() { return 74; }
+    if ParseChar("").IsSuccess() { return 75; }
+
+    return 0;
+}

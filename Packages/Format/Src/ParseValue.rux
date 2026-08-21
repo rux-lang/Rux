@@ -1,0 +1,68 @@
+// Parsing the two values whose text is a word or a character rather than digits.
+//
+// A boolean is exactly `true` or `false` -- not `True`, not `1`, not `yes`. Every widening of that set has to
+// choose which spellings count, and the choice differs by language and context; a caller wanting one applies it
+// before parsing, where the choice is visible.
+//
+// A character is exactly one scalar value's encoding, whole: an empty string is not a character, and neither are
+// two of them.
+
+import Core::{ Result, Slice };
+import Text::{ DecodeAt, StringView };
+
+/// Parses `true` or `false`, exactly.
+///
+/// Reports `Empty` for no bytes and `InvalidCharacter` at the start for anything else, including a correct word
+/// with trailing bytes.
+///
+/// https://rux-lang.dev/docs/api/format/parse-bool
+func ParseBool(str: Slice<char8>) -> Result<bool, ParseError> {
+    if str.length == 0 {
+        return Result::Error<bool, ParseError>(ParseError::Empty);
+    }
+    let text = StringView::FromValidated(str);
+    let yes = StringView::FromValidated("true");
+    let no = StringView::FromValidated("false");
+    if text.Equals(@yes) {
+        return Result::Success<bool, ParseError>(true);
+    }
+    if text.Equals(@no) {
+        return Result::Success<bool, ParseError>(false);
+    }
+    return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(0));
+}
+
+/// The same words for a view.
+///
+/// https://rux-lang.dev/docs/api/format/parse-bool-view
+func ParseBool(str: StringView) -> Result<bool, ParseError> {
+    return ParseBool(str.Bytes());
+}
+
+/// Parses exactly one character.
+///
+/// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value -- ill-formed
+/// UTF-8 at zero, a second character at its own index.
+///
+/// https://rux-lang.dev/docs/api/format/parse-char
+func ParseChar(str: Slice<char8>) -> Result<char32, ParseError> {
+    if str.length == 0 {
+        return Result::Error<char32, ParseError>(ParseError::Empty);
+    }
+    var scalar = 0u32 as char32;
+    var width: uint = 0;
+    if DecodeAt(str, 0, @scalar, @width).IsError() {
+        return Result::Error<char32, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if width != str.length {
+        return Result::Error<char32, ParseError>(ParseError::InvalidCharacter(width));
+    }
+    return Result::Success<char32, ParseError>(scalar);
+}
+
+/// The same single character for a view.
+///
+/// https://rux-lang.dev/docs/api/format/parse-char-view
+func ParseChar(str: StringView) -> Result<char32, ParseError> {
+    return ParseChar(str.Bytes());
+}

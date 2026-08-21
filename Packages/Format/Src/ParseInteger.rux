@@ -1,0 +1,506 @@
+// Parsing an integer of any width, in any of the four bases.
+//
+// One grammar serves every width: an optional sign, an optional base prefix -- `0x`, `0o`, `0b`, exactly the
+// prefixes formatting writes under `#` -- and digits of that base. The magnitude accumulates in `uint512`, the
+// widest integer there is, so one loop serves every width and overflow within the loop is impossible for any
+// narrower target; the width's own bound is checked once at the end, where the error can say which width refused.
+//
+// The bound is one larger for a negative value, because the most negative value of every signed width has no
+// positive counterpart: `-128` fits an `int8` whose largest value is `127`.
+
+import Core::{ Result, Slice };
+import Text::StringView;
+
+// What the sign and prefix left behind: where the digits start, which base they are in, and whether the value is
+// negated. An empty run of digits after a prefix is the error the prefix's index reports.
+func ParseIntegerMagnitude(str: Slice<char8>, magnitude: *var uint512,
+                           negative: *var bool) -> Result<bool, ParseError> {
+    if str.length == 0 {
+        return Result::Error<bool, ParseError>(ParseError::Empty);
+    }
+
+    var index: uint = 0;
+    *negative = false;
+    if str[index] == c8'+' || str[index] == c8'-' {
+        *negative = str[index] == c8'-';
+        index++;
+        if index == str.length {
+            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index - 1));
+        }
+    }
+
+    var radix: uint512 = 10u512;
+    if index + 1 < str.length && str[index] == c8'0' {
+        let mark = str[index + 1];
+        if mark == c8'x' || mark == c8'X' {
+            radix = 16u512;
+            index += 2;
+        }
+        else if mark == c8'o' || mark == c8'O' {
+            radix = 8u512;
+            index += 2;
+        }
+        else if mark == c8'b' || mark == c8'B' {
+            radix = 2u512;
+            index += 2;
+        }
+        if radix != 10u512 && index == str.length {
+            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index - 1));
+        }
+    }
+
+    let limit: uint512 = 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512;
+    *magnitude = 0u512;
+    while index < str.length {
+        let ch = str[index];
+        var digit: uint512 = 0u512;
+        if ch >= c8'0' && ch <= c8'9' {
+            digit = ((ch as uint) - 0x30) as uint512;
+        }
+        else if ch >= c8'a' && ch <= c8'f' {
+            digit = ((ch as uint) - 0x57) as uint512;
+        }
+        else if ch >= c8'A' && ch <= c8'F' {
+            digit = ((ch as uint) - 0x37) as uint512;
+        }
+        else {
+            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index));
+        }
+        if digit >= radix {
+            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index));
+        }
+        if *magnitude > (limit - digit) / radix {
+            return Result::Error<bool, ParseError>(ParseError::Overflow);
+        }
+        *magnitude = *magnitude * radix + digit;
+        index++;
+    }
+    return Result::Success<bool, ParseError>(true);
+}
+
+/// Parses a `uint8`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint8
+func ParseUint8(str: Slice<char8>) -> Result<uint8, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint8, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint8, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 255u512 {
+        return Result::Error<uint8, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint8, ParseError>(magnitude as uint8);
+}
+
+/// Parses an `int8`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int8
+func ParseInt8(str: Slice<char8>) -> Result<int8, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int8, ParseError>(failed);
+    }
+    let limit = negative ? 128u512 : 127u512;
+    if magnitude > limit {
+        return Result::Error<int8, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int8, ParseError>(~((magnitude as uint8) - 1u8) as int8);
+    }
+    return Result::Success<int8, ParseError>(magnitude as int8);
+}
+
+/// Parses a `uint16`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint16
+func ParseUint16(str: Slice<char8>) -> Result<uint16, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint16, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint16, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 65535u512 {
+        return Result::Error<uint16, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint16, ParseError>(magnitude as uint16);
+}
+
+/// Parses an `int16`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int16
+func ParseInt16(str: Slice<char8>) -> Result<int16, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int16, ParseError>(failed);
+    }
+    let limit = negative ? 32768u512 : 32767u512;
+    if magnitude > limit {
+        return Result::Error<int16, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int16, ParseError>(~((magnitude as uint16) - 1u16) as int16);
+    }
+    return Result::Success<int16, ParseError>(magnitude as int16);
+}
+
+/// Parses a `uint32`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint32
+func ParseUint32(str: Slice<char8>) -> Result<uint32, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint32, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint32, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 4294967295u512 {
+        return Result::Error<uint32, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint32, ParseError>(magnitude as uint32);
+}
+
+/// Parses an `int32`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int32
+func ParseInt32(str: Slice<char8>) -> Result<int32, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int32, ParseError>(failed);
+    }
+    let limit = negative ? 2147483648u512 : 2147483647u512;
+    if magnitude > limit {
+        return Result::Error<int32, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int32, ParseError>(~((magnitude as uint32) - 1u32) as int32);
+    }
+    return Result::Success<int32, ParseError>(magnitude as int32);
+}
+
+/// Parses a `uint64`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint64
+func ParseUint64(str: Slice<char8>) -> Result<uint64, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint64, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint64, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 18446744073709551615u512 {
+        return Result::Error<uint64, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint64, ParseError>(magnitude as uint64);
+}
+
+/// Parses an `int64`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int64
+func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int64, ParseError>(failed);
+    }
+    let limit = negative ? 9223372036854775808u512 : 9223372036854775807u512;
+    if magnitude > limit {
+        return Result::Error<int64, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int64, ParseError>(~((magnitude as uint64) - 1u64) as int64);
+    }
+    return Result::Success<int64, ParseError>(magnitude as int64);
+}
+
+/// Parses a `uint128`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint128
+func ParseUint128(str: Slice<char8>) -> Result<uint128, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint128, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint128, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 340282366920938463463374607431768211455u512 {
+        return Result::Error<uint128, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint128, ParseError>(magnitude as uint128);
+}
+
+/// Parses an `int128`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int128
+func ParseInt128(str: Slice<char8>) -> Result<int128, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int128, ParseError>(failed);
+    }
+    let limit = negative ? 170141183460469231731687303715884105728u512 : 170141183460469231731687303715884105727u512;
+    if magnitude > limit {
+        return Result::Error<int128, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int128, ParseError>(~((magnitude as uint128) - 1u128) as int128);
+    }
+    return Result::Success<int128, ParseError>(magnitude as int128);
+}
+
+/// Parses a `uint256`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint256
+func ParseUint256(str: Slice<char8>) -> Result<uint256, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint256, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint256, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 115792089237316195423570985008687907853269984665640564039457584007913129639935u512 {
+        return Result::Error<uint256, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint256, ParseError>(magnitude as uint256);
+}
+
+/// Parses an `int256`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int256
+func ParseInt256(str: Slice<char8>) -> Result<int256, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int256, ParseError>(failed);
+    }
+    let limit = negative ? 57896044618658097711785492504343953926634992332820282019728792003956564819968u512 : 57896044618658097711785492504343953926634992332820282019728792003956564819967u512;
+    if magnitude > limit {
+        return Result::Error<int256, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int256, ParseError>(~((magnitude as uint256) - 1u256) as int256);
+    }
+    return Result::Success<int256, ParseError>(magnitude as int256);
+}
+
+/// Parses a `uint512`: an optional `+`, an optional base prefix, and digits.
+///
+/// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
+/// part of the grammar -- a `-` included, since no unsigned value is negative.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint512
+func ParseUint512(str: Slice<char8>) -> Result<uint512, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<uint512, ParseError>(failed);
+    }
+    if negative {
+        return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(0));
+    }
+    if magnitude > 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512 {
+        return Result::Error<uint512, ParseError>(ParseError::Overflow);
+    }
+    return Result::Success<uint512, ParseError>(magnitude as uint512);
+}
+
+/// Parses an `int512`: an optional sign, an optional base prefix, and digits.
+///
+/// The negative bound is one larger than the positive one, because the most negative value has no positive
+/// counterpart: the value one past the largest positive fits only with its sign.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int512
+func ParseInt512(str: Slice<char8>) -> Result<int512, ParseError> {
+    var magnitude: uint512 = 0u512;
+    var negative = false;
+    let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
+    var failed = ParseError::Empty;
+    if parsed.TryIntoError(@failed) {
+        return Result::Error<int512, ParseError>(failed);
+    }
+    let limit = negative ? 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048u512 : 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047u512;
+    if magnitude > limit {
+        return Result::Error<int512, ParseError>(ParseError::Overflow);
+    }
+    if negative {
+        return Result::Success<int512, ParseError>(~((magnitude as uint512) - 1u512) as int512);
+    }
+    return Result::Success<int512, ParseError>(magnitude as int512);
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint8-view
+func ParseUint8(str: StringView) -> Result<uint8, ParseError> {
+    return ParseUint8(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int8-view
+func ParseInt8(str: StringView) -> Result<int8, ParseError> {
+    return ParseInt8(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint16-view
+func ParseUint16(str: StringView) -> Result<uint16, ParseError> {
+    return ParseUint16(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int16-view
+func ParseInt16(str: StringView) -> Result<int16, ParseError> {
+    return ParseInt16(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint32-view
+func ParseUint32(str: StringView) -> Result<uint32, ParseError> {
+    return ParseUint32(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int32-view
+func ParseInt32(str: StringView) -> Result<int32, ParseError> {
+    return ParseInt32(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint64-view
+func ParseUint64(str: StringView) -> Result<uint64, ParseError> {
+    return ParseUint64(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int64-view
+func ParseInt64(str: StringView) -> Result<int64, ParseError> {
+    return ParseInt64(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint128-view
+func ParseUint128(str: StringView) -> Result<uint128, ParseError> {
+    return ParseUint128(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int128-view
+func ParseInt128(str: StringView) -> Result<int128, ParseError> {
+    return ParseInt128(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint256-view
+func ParseUint256(str: StringView) -> Result<uint256, ParseError> {
+    return ParseUint256(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int256-view
+func ParseInt256(str: StringView) -> Result<int256, ParseError> {
+    return ParseInt256(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint512-view
+func ParseUint512(str: StringView) -> Result<uint512, ParseError> {
+    return ParseUint512(str.Bytes());
+}
+
+/// The same grammar for a view, which is what a caller holding text has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int512-view
+func ParseInt512(str: StringView) -> Result<int512, ParseError> {
+    return ParseInt512(str.Bytes());
+}

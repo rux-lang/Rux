@@ -1,54 +1,5 @@
-import Core::Result;
+import Core::{ Result, Slice };
 import Text::StringView;
-
-// Parses a base-10 signed integer with an optional leading `+` or `-`.
-func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
-    if str.length == 0 {
-        return Result::Error<int64, ParseError>(ParseError::Empty);
-    }
-
-    var index: uint = 0;
-    var negative = false;
-    if str[index] == c8'+' || str[index] == c8'-' {
-        negative = str[index] == c8'-';
-        index++;
-        if index == str.length {
-            return Result::Error<int64, ParseError>(ParseError::InvalidCharacter(index - 1));
-        }
-    }
-
-    // The negative limit is one larger because int64::Min has no positive
-    // int64 counterpart. Accumulating as uint64 handles both limits directly.
-    let limit = negative ? 9223372036854775808u64 : 9223372036854775807u64;
-    var magnitude: uint64 = 0u64;
-    while index < str.length {
-        let ch = str[index];
-        if ch < c8'0' || ch > c8'9' {
-            return Result::Error<int64, ParseError>(ParseError::InvalidCharacter(index));
-        }
-
-        let digit = ((ch as uint) - (c8'0' as uint)) as uint64;
-        if magnitude > (limit - digit) / 10u64 {
-            return Result::Error<int64, ParseError>(ParseError::Overflow);
-        }
-        magnitude = magnitude * 10u64 + digit;
-        index++;
-    }
-
-    if negative {
-        if magnitude == 9223372036854775808u64 {
-            return Result::Success<int64, ParseError>(int64::Min);
-        }
-        return Result::Success<int64, ParseError>(-(magnitude as int64));
-    }
-    return Result::Success<int64, ParseError>(magnitude as int64);
-}
-
-// Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
-// nothing, and the bytes are known to be text.
-func ParseInt64(str: StringView) -> Result<int64, ParseError> {
-    return ParseInt64(str.Bytes());
-}
 
 // Parses into value and reports only whether conversion succeeded. On failure,
 // value is left unchanged. A null output pointer also reports failure.
