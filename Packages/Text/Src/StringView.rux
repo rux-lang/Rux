@@ -1,0 +1,227 @@
+// A borrowed run of text that is known to be UTF-8.
+//
+// The point of a separate type is that the check happens once. A `Slice<char8>` may or may not be UTF-8, so every
+// function taking one either re-validates -- which turns a linear pass into a linear pass per call -- or assumes,
+// which is where the bugs are. A `StringView` cannot be built without the bytes being checked, so everything
+// downstream may assume and be right.
+//
+// It borrows: making one copies no bytes and owns nothing, so it is `Copy` and has no destructor. The bytes must
+// outlive it, and nothing here tracks that. `String` is what owns bytes.
+//
+// Every index it takes and gives is a byte index, not a scalar index. Counting scalars is linear, so an interface
+// in scalar indices would make indexing linear without saying so; byte indices are constant, and a cut at one that
+// is not a boundary is rejected rather than splitting a character in half.
+
+import Core::{ Iterator, Option, Ordering, Slice };
+
+/// A borrowed run of bytes that has been checked to be UTF-8.
+///
+/// Copy, owning nothing. The bytes it names must outlive it.
+///
+/// https://rux-lang.dev/docs/api/text/string-view
+struct StringView {
+    /// The bytes. Well-formed UTF-8 for any view this package produces.
+    bytes: Slice<char8>;
+}
+
+extend StringView {
+    /// A view over nothing.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/new
+    func New() -> StringView {
+        return StringView { bytes: Slice<char8> { data: null, length: 0 } };
+    }
+
+    /// A view over `bytes` when they are UTF-8, and `None` when they are not.
+    ///
+    /// `bytes` is borrowed and must outlive the view. This is the only way to make a view out of bytes whose
+    /// provenance is unknown, and it costs one pass over them.
+    ///
+    /// Runs in time proportional to the length and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/from-bytes
+    func FromBytes(bytes: Slice<char8>) -> Option<StringView> {
+        var failureIndex: uint = 0;
+        if Validate(bytes, @failureIndex).IsError() {
+            return Option::None<StringView>();
+        }
+        return Option::Some<StringView>(StringView { bytes: bytes });
+    }
+
+    /// A view over bytes the caller vouches are UTF-8.
+    ///
+    /// Skips the pass `FromBytes` makes, which is worth having when the bytes came from something that already
+    /// guarantees it -- another view, a `String`, a literal.
+    ///
+    /// # Safety
+    ///
+    /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
+    /// answers rather than errors: a scalar walk reads past a truncated sequence, and a cut lands mid-character.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/from-validated
+    func FromValidated(bytes: Slice<char8>) -> StringView {
+        return StringView { bytes: bytes };
+    }
+
+    /// How many bytes the view spans.
+    ///
+    /// Not how many characters: that is `ScalarCount`, and it costs a pass.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/length
+    func Length(self: *StringView) -> uint {
+        return self.bytes.length;
+    }
+
+    /// Whether the view spans no bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/is-empty
+    func IsEmpty(self: *StringView) -> bool {
+        return self.bytes.length == 0;
+    }
+
+    /// The bytes themselves, for handing to something that reads bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/bytes
+    func Bytes(self: *StringView) -> Slice<char8> {
+        return self.bytes;
+    }
+
+    /// How many scalar values the view holds.
+    ///
+    /// Runs in time proportional to the length: there is no way to know without looking, which is why this is a
+    /// method rather than a field.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/scalar-count
+    func ScalarCount(self: *StringView) -> uint {
+        return CountScalars(self.bytes);
+    }
+
+    /// Whether `index` is where a scalar value starts, and so a place this view may be cut.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/is-boundary
+    func IsBoundary(self: *StringView, index: uint) -> bool {
+        return IsBoundary(self.bytes, index);
+    }
+    /// The part of this view from `start` up to `end`, or `None` when either is not a boundary or they are the
+    /// wrong way round.
+    ///
+    /// Half-open, so `Part(a, b)` and `Part(b, c)` together are `Part(a, c)`. Refusing a cut that is not on a
+    /// boundary is the point: the alternative is a view whose first bytes are the tail of a character.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/part
+    func Part(self: *StringView, start: uint, end: uint) -> Option<StringView> {
+        if start > end || end > self.bytes.length {
+            return Option::None<StringView>();
+        }
+        if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) {
+            return Option::None<StringView>();
+        }
+        let part = Slice<char8> { data: @self.bytes.data[start], length: end - start };
+        return Option::Some<StringView>(StringView { bytes: part });
+    }
+
+    /// The scalar value starting at `index`, or `None` when `index` is not a boundary inside the view.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/scalar-at
+    func ScalarAt(self: *StringView, index: uint) -> Option<char32> {
+        var scalar = 0u32 as char32;
+        var width: uint = 0;
+        if DecodeAt(self.bytes, index, @scalar, @width).IsError() {
+            return Option::None<char32>();
+        }
+        return Option::Some<char32>(scalar);
+    }
+
+    /// Whether two views hold the same bytes.
+    ///
+    /// Byte equality, which for well-formed UTF-8 is scalar-by-scalar equality, since each scalar value has exactly
+    /// one encoding. It is not equality after normalization, which is a different question and a different package.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/equals
+    func Equals(self: *StringView, other: *StringView) -> bool {
+        if self.bytes.length != other.bytes.length {
+            return false;
+        }
+        var index: uint = 0;
+        while index < self.bytes.length {
+            if self.bytes.data[index] != other.bytes.data[index] {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    /// How this view orders against `other`, shortest first where one is a prefix of the other.
+    ///
+    /// Byte order, which for UTF-8 is also code point order: the encoding is built so that comparing bytes and
+    /// comparing scalar values give the same answer. It is not alphabetical in any language.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/compare
+    func Compare(self: *StringView, other: *StringView) -> Ordering {
+        let shared = self.bytes.length < other.bytes.length ? self.bytes.length : other.bytes.length;
+        var index: uint = 0;
+        while index < shared {
+            if self.bytes.data[index] < other.bytes.data[index] {
+                return Ordering::Less;
+            }
+            if self.bytes.data[index] > other.bytes.data[index] {
+                return Ordering::Greater;
+            }
+            index = index + 1;
+        }
+        if self.bytes.length < other.bytes.length {
+            return Ordering::Less;
+        }
+        if self.bytes.length > other.bytes.length {
+            return Ordering::Greater;
+        }
+        return Ordering::Equal;
+    }
+}
+
+/// A walk over the scalar values of a view, first to last.
+///
+/// https://rux-lang.dev/docs/api/text/scalar-iterator
+struct ScalarIterator {
+    /// The bytes being walked.
+    bytes: Slice<char8>;
+    /// The byte index the next scalar value starts at.
+    cursor: uint;
+}
+
+extend ScalarIterator {
+    /// The next scalar value, or `None` at the end.
+    ///
+    /// Bytes that are not well-formed end the walk rather than being reported: a view is validated when it is made,
+    /// so reaching one means the bytes were vouched for and were not.
+    ///
+    /// https://rux-lang.dev/docs/api/text/scalar-iterator/next
+    func Next(self: *var ScalarIterator) -> Option<char32> {
+        var scalar = 0u32 as char32;
+        var width: uint = 0;
+        if DecodeAt(self.bytes, self.cursor, @scalar, @width).IsError() {
+            self.cursor = self.bytes.length;
+            return Option::None<char32>();
+        }
+        self.cursor = self.cursor + width;
+        return Option::Some<char32>(scalar);
+    }
+}
+
+extend ScalarIterator : Iterator {}
+
+extend StringView {
+    /// A walk over this view's scalar values.
+    ///
+    /// `self` is borrowed and must outlive the walk.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/scalars
+    func Scalars(self: *StringView) -> ScalarIterator {
+        return ScalarIterator { bytes: self.bytes, cursor: 0 };
+    }
+}

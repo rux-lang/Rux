@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TextView"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Text: borrowed StringView over validated UTF-8"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Text"
