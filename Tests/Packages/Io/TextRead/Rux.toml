@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TextRead"
+Version = "0.1.0"
+Description = "Bounded line reading with newline normalization over a buffered byte stream."
+Type = "Executable"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Io"

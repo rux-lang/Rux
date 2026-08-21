@@ -40,6 +40,10 @@ enum IoErrorKind: int32 {
     TimedOut = 12,
     /// A write reported fewer bytes than asked and cannot continue.
     WriteZero = 13,
+    /// Bytes that were required to be UTF-8 text and are not.
+    InvalidText = 15,
+    /// A bounded operation met its bound before its end.
+    LimitExceeded = 16,
     /// Something the platform reported that has no shared meaning; the raw code is the detail.
     Other = 14
 }
