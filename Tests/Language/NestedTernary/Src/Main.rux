@@ -1,0 +1,56 @@
+import Core::Assert;
+
+// A conditional expression whose arm holds another one.
+//
+// The value the merge takes comes from whichever arm ran, and which block that value is in is the block the arm
+// *ends* in. For a plain arm that is the block it started in, and the two were confused. An arm holding another
+// conditional ends somewhere further along, so the merge was told to take its value from a block that does not
+// reach it, and none of the blocks that do.
+//
+// The verifier catches it, so this was a build that failed rather than a program that ran wrongly -- but only
+// because the verifier exists, and only on the arms that happen to be shaped this way.
+
+func Chain(value: uint) -> uint {
+    return value == 2 ? 10u : (value == 3 ? 20u : 30u);
+}
+
+func InThen(value: uint) -> uint {
+    return value < 10 ? (value < 5 ? 1u : 2u) : 3u;
+}
+
+func BothArms(value: uint) -> uint {
+    return value < 10 ? (value < 5 ? 1u : 2u) : (value < 20 ? 3u : 4u);
+}
+
+func ThreeDeep(value: uint) -> uint {
+    return value < 8 ? (value < 4 ? (value < 2 ? 1u : 2u) : 3u) : 4u;
+}
+
+// Nested inside an operand rather than standing alone, which is where the merge is reached from further away.
+func Masked(leading: uint32, expected: uint) -> uint32 {
+    return leading & (expected == 2 ? 0x1F : (expected == 3 ? 0x0F : 0x07));
+}
+
+func Main() -> int {
+    Assert(Chain(2) == 10, "the outer arm of a chain");
+    Assert(Chain(3) == 20, "the inner then");
+    Assert(Chain(4) == 30, "the inner else");
+
+    Assert(InThen(1) == 1, "a conditional in the then arm, taken");
+    Assert(InThen(7) == 2, "and not taken");
+    Assert(InThen(50) == 3, "with the outer else beyond it");
+
+    Assert(BothArms(1) == 1 && BothArms(7) == 2, "both arms holding one, on the low side");
+    Assert(BothArms(15) == 3 && BothArms(30) == 4, "and on the high side");
+
+    Assert(ThreeDeep(1) == 1, "three deep, innermost then");
+    Assert(ThreeDeep(3) == 2, "innermost else");
+    Assert(ThreeDeep(6) == 3, "middle else");
+    Assert(ThreeDeep(9) == 4, "outer else");
+
+    Assert(Masked(0xC2, 2) == 0x02, "an operand of a binary expression, two-byte mask");
+    Assert(Masked(0xE2, 3) == 0x02, "three-byte mask");
+    Assert(Masked(0xF2, 4) == 0x02, "four-byte mask");
+
+    return 0;
+}

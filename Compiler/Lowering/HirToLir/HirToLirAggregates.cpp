@@ -432,12 +432,17 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
     Branch(cond, thenBlock, elseBlock);
     SetBlock(thenBlock);
     LirReg thenVal = LowerExpr(*e.thenExpr);
+    // The block that reaches the merge is the one the arm ends in, which is the one it started in only when the arm
+    // built no control flow of its own. An arm holding another conditional ends somewhere further on, and naming
+    // the block it started in gave the merge a phi listing a block that does not branch to it and none of the
+    // blocks that do -- a program the verifier refuses rather than one that runs wrongly, but only because the
+    // verifier is there to catch it.
+    const std::uint32_t thenIdx = builder->CurrentBlock();
     Jump(mergeBlock);
-    std::uint32_t thenIdx = thenBlock;
     SetBlock(elseBlock);
     LirReg elseVal = LowerExpr(*e.elseExpr);
+    const std::uint32_t elseIdx = builder->CurrentBlock();
     Jump(mergeBlock);
-    std::uint32_t elseIdx = elseBlock;
     SetBlock(mergeBlock);
     LirReg result = NewReg();
     LirInstr phi;
