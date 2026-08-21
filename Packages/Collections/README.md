@@ -181,6 +181,24 @@ an interface value would be stored and dispatched through on every lookup. `Hash
 usual key types. A caller keying on its own type writes them, and the one rule is that keys comparing equal must hash
 the same.
 
+## Ordered maps
+
+`HashMap` is the one to reach for by default: constant expected time against a pointer chase per level. `TreeMap`
+earns its keep when order is part of the question. It walks smallest key first, answers `Floor` and `Ceiling` — the
+nearest key at or below, at or above — and hands back everything between two bounds through `Range`, none of which a
+hash table can do at all, since a hash scatters keys deliberately and moves them between slots as it grows.
+
+The ordering is the caller's, given once as a function. `Comparing` has ready-made ones for the key types
+`Hashing` covers. The rules are the ordinary ones: consistent, the same every call, and agreeing with equality —
+two keys that compare `Equal` are one key, and the second to arrive replaces the first's value.
+
+`Range(start, end)` is half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing
+repeated and nothing missed. Starting a range costs a descent rather than a walk from the smallest key.
+
+A borrow from a `TreeMap` outlives more than a `HashMap`'s: each entry is its own allocation and removal relinks the
+successor rather than copying into the removed node, so a pointer to an entry stays good across insertions and
+removals of every other key.
+
 ## Set algebra
 
 The predicates — `IsSubsetOf`, `IsSupersetOf`, `IsDisjointFrom`, `Equals` — allocate nothing and cannot fail. So do
