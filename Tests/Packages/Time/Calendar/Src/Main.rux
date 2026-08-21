@@ -91,5 +91,38 @@ func Main() -> int {
            "one second before the epoch is New Year's Eve 1969");
     Assert(lastMoment.time.hour == 23u8 && lastMoment.time.second == 59u8, "at the last second of the day");
 
+    // The arithmetic, with its stated clamps: days are exact, months and years clamp to the month's end.
+    let base = Date::New(2024i32, 1u8, 31u8).ValueOr(epochDay);
+    let dayOn = base.PlusDays(1i64).ValueOr(epochDay);
+    Assert(dayOn.Equals(Date::New(2024i32, 2u8, 1u8).ValueOr(epochDay)), "a day past the 31st is the 1st");
+    let dayBack = base.PlusDays(-31i64).ValueOr(epochDay);
+    Assert(dayBack.Equals(Date::New(2023i32, 12u8, 31u8).ValueOr(epochDay)), "and a month of days back crosses the year");
+    Assert(base.PlusDays(1i64).ValueOr(epochDay).PlusDays(-1i64).ValueOr(epochDay).Equals(base),
+           "days round-trip exactly");
+
+    let clamped = base.PlusMonths(1i64).ValueOr(epochDay);
+    Assert(clamped.Equals(Date::New(2024i32, 2u8, 29u8).ValueOr(epochDay)),
+           "January 31st plus a month clamps to the leap day");
+    let clampedFlat = Date::New(2023i32, 1u8, 31u8).ValueOr(epochDay).PlusMonths(1i64).ValueOr(epochDay);
+    Assert(clampedFlat.Equals(Date::New(2023i32, 2u8, 28u8).ValueOr(epochDay)),
+           "and to the 28th in a plain year");
+    let yearOn = Date::New(2024i32, 2u8, 29u8).ValueOr(epochDay).PlusYears(1i64).ValueOr(epochDay);
+    Assert(yearOn.Equals(Date::New(2025i32, 2u8, 28u8).ValueOr(epochDay)),
+           "the leap day plus a year clamps to the 28th");
+    let leapCycle = Date::New(2024i32, 2u8, 29u8).ValueOr(epochDay).PlusYears(4i64).ValueOr(epochDay);
+    Assert(leapCycle.Equals(Date::New(2028i32, 2u8, 29u8).ValueOr(epochDay)),
+           "and plus four lands on the next leap day whole");
+    let monthsBack = Date::New(2024i32, 3u8, 15u8).ValueOr(epochDay).PlusMonths(-15i64).ValueOr(epochDay);
+    Assert(monthsBack.Equals(Date::New(2022i32, 12u8, 15u8).ValueOr(epochDay)),
+           "months subtract across years");
+
+    Assert(base.PlusYears(9999i64).IsNone(), "arithmetic past the spellable years refuses");
+    Assert(epochDay.PlusDays(9223372036854775807i64).IsNone(), "and a day count past the range refuses");
+
+    let gap = Date::New(2024i32, 3u8, 1u8).ValueOr(epochDay);
+    Assert(gap.DaysSince(Date::New(2024i32, 2u8, 1u8).ValueOr(epochDay)) == 29i64,
+           "February 2024 was twenty-nine days long");
+    Assert(epochDay.DaysSince(gap) < 0i64, "and the distance is signed");
+
     return 0;
 }

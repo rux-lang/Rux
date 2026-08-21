@@ -1,0 +1,81 @@
+// Moving through the calendar, with the awkward cases decided rather than discovered.
+//
+// Days are the honest unit: adding days is adding to the epoch count, total and exact. Months and years are not --
+// the 31st of January has no counterpart one month on, and the leap day none one year on -- so those operations
+// need a policy, and the policy here is **clamp to the month's end**: January 31st plus a month is the last day of
+// February, and February 29th plus a year is February 28th. Clamping is what a human means by "same day next
+// month" when the day is missing, and it keeps the operation total; the alternative, refusing, would make month
+// arithmetic fail on a third of the calendar.
+//
+// What is deliberately deferred: IANA time zones and discovering the machine's local zone. Both are a database
+// with a release cycle, not arithmetic, and pretending otherwise is how software is wrong twice a year.
+
+import Core::{ AddChecked, MulChecked, Option };
+
+extend Date {
+    /// The date `days` later, negative for earlier, or `None` outside the years the calendar spells.
+    ///
+    /// Exact: a day is a day, and the round trip through the epoch count neither loses nor invents one.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/plus-days
+    func PlusDays(self: *Date, days: int64) -> Option<Date> {
+        var landed: int64 = 0;
+        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) {
+            return Option::None<Date>();
+        }
+        // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
+        // but the answers would be dates nothing else here can speak.
+        if landed < -719468i64 || landed > 2932896i64 {
+            return Option::None<Date>();
+        }
+        return Option::Some<Date>(Date::FromEpochDays(landed));
+    }
+
+    /// The date `months` later, clamped to the month's end where the day is missing.
+    ///
+    /// January 31st plus one month is the last day of February; the clamp is the policy the module header states.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/plus-months
+    func PlusMonths(self: *Date, months: int64) -> Option<Date> {
+        // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
+        var flat: int64 = (self.year as int64) * 12i64 + (self.month as int64) - 1i64;
+        if AddChecked<int64>(flat, months, @flat) {
+            return Option::None<Date>();
+        }
+        var year = flat / 12i64;
+        var month = flat % 12i64;
+        if month < 0i64 {
+            year = year - 1i64;
+            month = month + 12i64;
+        }
+        if year < 0i64 || year > 9999i64 {
+            return Option::None<Date>();
+        }
+        let cap = DaysInMonth(year as int32, (month + 1i64) as uint8);
+        let day = self.day <= cap ? self.day : cap;
+        return Date::New(year as int32, (month + 1i64) as uint8, day);
+    }
+
+    /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/plus-years
+    func PlusYears(self: *Date, years: int64) -> Option<Date> {
+        var target: int64 = 0;
+        if AddChecked<int64>(self.year as int64, years, @target) {
+            return Option::None<Date>();
+        }
+        if target < 0i64 || target > 9999i64 {
+            return Option::None<Date>();
+        }
+        let cap = DaysInMonth(target as int32, self.month);
+        let day = self.day <= cap ? self.day : cap;
+        return Date::New(target as int32, self.month, day);
+    }
+
+    /// The whole days from `earlier` to this date, negative when it is the later one.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/days-since
+    func DaysSince(self: *Date, earlier: Date) -> int64 {
+        return self.DaysFromEpoch() - earlier.DaysFromEpoch();
+    }
+}
