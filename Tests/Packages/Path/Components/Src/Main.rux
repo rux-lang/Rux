@@ -1,0 +1,99 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Option };
+import Path::{ IsSeparator, OsString, OsStringView, Path, PathBuffer, PreferredSeparator };
+import Text::TextError;
+
+// The lexical layer alone: which units separate, how segments walk out, and how a buffer grows a path one segment
+// at a time. The paths are spelled with the forward slash, which both platforms accept, so one test serves both;
+// the platform-specific prefixes are the next task's business.
+
+// Builds a native view of `text` for the walk. The conversions allocate, so the strings live in Main and this
+// only shapes them.
+func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected2: OsStringView,
+          count: uint) -> bool {
+    var walker = path.Components();
+    var seen: uint = 0;
+    var good = true;
+    var walking = true;
+    while walking {
+        match walker.Next() {
+            .Some(segment) => {
+                var piece = segment;
+                if seen == 0 {
+                    good = good && piece.Equals(@expected0);
+                }
+                else if seen == 1 {
+                    good = good && piece.Equals(@expected1);
+                }
+                else if seen == 2 {
+                    good = good && piece.Equals(@expected2);
+                }
+                else {
+                    good = false;
+                }
+                seen = seen + 1;
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    return good && seen == count;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    Assert(IsSeparator(PreferredSeparator()), "the preferred separator separates");
+
+    // The segment names, built once.
+    let aOwned = OsString::FromText(allocator, "a", @error);
+    let bOwned = OsString::FromText(allocator, "b", @error);
+    let cOwned = OsString::FromText(allocator, "c", @error);
+    Assert(error == TextError::None, "the segment names are built");
+    let a = aOwned.View();
+    let b = bOwned.View();
+    let c = cOwned.View();
+    let root = OsStringView::New();
+
+    // A relative path walks its segments; runs of separators count once; a trailing one adds nothing.
+    let plainOwned = OsString::FromText(allocator, "a/b/c", @error);
+    Assert(Walk(Path::FromView(plainOwned.View()), a, b, c, 3), "a/b/c walks as its three segments");
+    let doubledOwned = OsString::FromText(allocator, "a//b/", @error);
+    Assert(Walk(Path::FromView(doubledOwned.View()), a, b, root, 2), "a//b/ walks as a then b");
+
+    // An absolute path opens with the empty root component, which is what tells it from a relative one.
+    let absoluteOwned = OsString::FromText(allocator, "/a/b", @error);
+    Assert(Walk(Path::FromView(absoluteOwned.View()), root, a, b, 3), "/a/b opens with the root");
+    let slashOwned = OsString::FromText(allocator, "/", @error);
+    Assert(Walk(Path::FromView(slashOwned.View()), root, a, b, 1), "and the root alone is one component");
+
+    let empty = Path::New();
+    Assert(empty.IsEmpty(), "the empty path is empty");
+    Assert(Walk(empty, root, a, b, 0), "and walks as nothing at all");
+
+    // The buffer: pushes separate, an absolute push replaces, and the result reads back as a path.
+    var buffer = PathBuffer::New(allocator);
+    Assert(buffer.Push(a) == TextError::None, "the first segment goes in");
+    Assert(buffer.Push(b) == TextError::None, "and the second");
+    Assert(buffer.Push(c) == TextError::None, "and the third");
+    Assert(buffer.Length() == 5, "with separators supplied between them");
+    Assert(Walk(buffer.AsPath(), a, b, c, 3), "and the buffer walks as what was pushed");
+
+    let separatorAt = buffer.AsPath().AsView().Units().data[1];
+    Assert(IsSeparator(separatorAt), "the supplied separator is the platform's");
+
+    let absolute = absoluteOwned.View();
+    Assert(buffer.Push(absolute) == TextError::None, "an absolute segment is accepted");
+    Assert(Walk(buffer.AsPath(), root, a, b, 3), "and replaces everything before it");
+
+    // Pushing the empty segment changes nothing.
+    var settled = PathBuffer::New(allocator);
+    Assert(settled.Push(a) == TextError::None, "one segment");
+    Assert(settled.Push(OsStringView::New()) == TextError::None, "then the empty one");
+    Assert(settled.Length() == 1, "which adds nothing, not even a separator");
+
+    return 0;
+}
