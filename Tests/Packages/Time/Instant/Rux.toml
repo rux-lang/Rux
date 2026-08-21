@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TimeInstant"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Time: the monotonic clock and interruption-safe sleep"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Time"
