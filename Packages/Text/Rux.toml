@@ -17,4 +17,6 @@ Homepage = "https://rux-lang.dev/docs/api/text"
 ReadmeFile = "README.md"
 
 [Dependencies]
+Allocator = { Namespace = "Rux", Version = "0.1.0" }
+Core = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }

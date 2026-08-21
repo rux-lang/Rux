@@ -1,0 +1,102 @@
+import Core::{ Assert, Ordering, Slice };
+import Text::StringView;
+
+// A view is bytes plus a promise that they are UTF-8, and the promise is what everything downstream is allowed to
+// rely on. So the checks are about where the promise is made -- bytes that are not UTF-8 are refused rather than
+// producing a view nobody can trust -- and about the places a byte index can land: a cut through the middle of a
+// character has to be refused, not rounded.
+//
+// The text below is deliberately mixed-width: ASCII, a two-byte character, a three-byte one and a four-byte one, so
+// that byte length and character count differ and every boundary question has a wrong answer available.
+
+func Main() -> int {
+    // "hi" + U+00E9 (2 bytes) + U+20AC (3 bytes) + U+1F600 (4 bytes): eleven bytes, five scalar values.
+    let text: Slice<char8> = "hié€😀";
+    let view = StringView::FromBytes(text);
+    Assert(view.IsSome(), "well-formed bytes make a view");
+
+    let held = view.ValueOr(StringView::New());
+    Assert(held.Length() == 11, "the view spans every byte");
+    Assert(held.ScalarCount() == 5, "and holds five characters, which is not the same number");
+    Assert(!held.IsEmpty(), "and is not empty");
+
+    // Boundaries: the starts of the five characters, the end, and nothing in between.
+    Assert(held.IsBoundary(0) && held.IsBoundary(1), "the two ASCII bytes each start a character");
+    Assert(held.IsBoundary(2), "and so does the two-byte one");
+    Assert(!held.IsBoundary(3), "but its second byte does not");
+    Assert(held.IsBoundary(4), "the three-byte one starts here");
+    Assert(!held.IsBoundary(5) && !held.IsBoundary(6), "and its continuation bytes do not");
+    Assert(held.IsBoundary(7), "the four-byte one starts here");
+    Assert(!held.IsBoundary(8) && !held.IsBoundary(9) && !held.IsBoundary(10), "with three bytes that do not");
+    Assert(held.IsBoundary(11), "the end counts as a boundary, so a string can always be cut at its end");
+    Assert(!held.IsBoundary(12), "past the end does not");
+
+    // Cutting: only on boundaries, and half-open so two cuts meeting at one cover the whole.
+    let ascii = held.Part(0, 2);
+    Assert(ascii.IsSome(), "a cut on two boundaries is allowed");
+    Assert(ascii.ValueOr(StringView::New()).Length() == 2, "and spans what lies between them");
+    Assert(ascii.ValueOr(StringView::New()).ScalarCount() == 2, "which here is two characters");
+
+    Assert(held.Part(0, 3).IsNone(), "a cut through the middle of a character is refused");
+    Assert(held.Part(3, 4).IsNone(), "from either side of it");
+    Assert(held.Part(4, 2).IsNone(), "a cut whose bounds are the wrong way round is refused");
+    Assert(held.Part(0, 12).IsNone(), "and one past the end");
+    Assert(held.Part(2, 2).ValueOr(held).IsEmpty(), "a cut at one point is empty rather than refused");
+
+    let front = held.Part(0, 4).ValueOr(StringView::New());
+    let back = held.Part(4, 11).ValueOr(StringView::New());
+    Assert(front.Length() + back.Length() == held.Length(), "two cuts meeting at a boundary cover every byte");
+    Assert(front.ScalarCount() + back.ScalarCount() == held.ScalarCount(), "and every character, once each");
+
+    // The characters themselves, at the boundaries where they start.
+    Assert((held.ScalarAt(0).ValueOr(0u32 as char32) as uint32) == 0x68, "the first character is 'h'");
+    Assert((held.ScalarAt(2).ValueOr(0u32 as char32) as uint32) == 0xE9, "the two-byte one is U+00E9");
+    Assert((held.ScalarAt(4).ValueOr(0u32 as char32) as uint32) == 0x20AC, "the three-byte one is U+20AC");
+    Assert((held.ScalarAt(7).ValueOr(0u32 as char32) as uint32) == 0x1F600, "the four-byte one is U+1F600");
+    Assert(held.ScalarAt(3).IsNone(), "and there is no character starting mid-sequence");
+
+    // Walking gives the same characters in the same order.
+    var walker = held.Scalars();
+    var seen: uint = 0;
+    var total: uint32 = 0;
+    var walking = true;
+    while walking {
+        match walker.Next() {
+            .Some(scalar) => {
+                total = total + (scalar as uint32);
+                seen = seen + 1;
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    Assert(seen == 5, "the walk reaches every character");
+    Assert(total == 0x68 + 0x69 + 0xE9 + 0x20AC + 0x1F600, "and each of them exactly once");
+
+    // Ill-formed bytes make no view at all.
+    var broken: char8[3];
+    broken[0] = 0xEDu8 as char8;
+    broken[1] = 0xA0u8 as char8;
+    broken[2] = 0x80u8 as char8;
+    Assert(StringView::FromBytes(broken[0..3]).IsNone(), "a surrogate half makes no view");
+    broken[0] = 0xE2u8 as char8;
+    broken[1] = 0x82u8 as char8;
+    Assert(StringView::FromBytes(broken[0..2]).IsNone(), "and neither does a sequence that runs out");
+
+    // Comparison is by bytes, which for UTF-8 is also by code point.
+    let same = StringView::FromBytes(text).ValueOr(StringView::New());
+    let shorter = held.Part(0, 2).ValueOr(StringView::New());
+    Assert(held.Equals(@same), "a view equals one over the same bytes");
+    Assert(!held.Equals(@shorter), "and not one over fewer of them");
+    Assert(held.Compare(@same) == Ordering::Equal, "equal bytes order equal");
+    Assert(shorter.Compare(@held) == Ordering::Less, "a prefix orders before what extends it");
+    Assert(held.Compare(@shorter) == Ordering::Greater, "and the other way round");
+
+    let empty = StringView::New();
+    Assert(empty.IsEmpty() && empty.Length() == 0 && empty.ScalarCount() == 0, "the empty view holds nothing");
+    Assert(empty.IsBoundary(0), "its start is a boundary");
+    Assert(empty.Compare(@held) == Ordering::Less, "and it orders before anything with bytes in it");
+
+    return 0;
+}

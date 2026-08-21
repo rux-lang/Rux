@@ -1,0 +1,338 @@
+// UTF-8, decoded and encoded by the table that defines it.
+//
+// A byte sequence is well-formed UTF-8 only if it matches Table 3-7 of the Unicode standard, and that table is not
+// the obvious one. The obvious rule -- read the leading byte for a length, then take that many continuation bytes --
+// accepts three things the standard rejects, and each of them has been a security hole in something:
+//
+// - **Overlong forms.** `C0 80` would decode to U+0000 under the obvious rule. Encoding one scalar two ways means a
+//   check that looks for a byte sequence can be walked around by spelling it differently.
+// - **Surrogate halves.** U+D800 through U+DFFF are not scalar values; they exist only as a UTF-16 encoding
+//   mechanism. Encoded in UTF-8 they are `ED A0 80` and up, and accepting them lets text carry values that cannot
+//   round-trip through UTF-16.
+// - **Values past U+10FFFF.** Four bytes can express up to U+1FFFFF; Unicode stops at U+10FFFF.
+//
+// The table forbids all three by constraining the *second* byte's range per leading byte, rather than by decoding
+// and checking afterwards. That is what the ranges below are: a leading byte of `E0` admits only `A0..BF` next,
+// which is exactly the set that cannot produce an overlong; `ED` admits only `80..9F`, which is exactly the set
+// that cannot produce a surrogate. Checking after the fact would work too, and is easier to get subtly wrong.
+//
+// Every function here works on borrowed bytes and allocates nothing.
+
+import Core::{ MutableSlice, Option, Slice };
+
+/// The largest Unicode scalar value.
+///
+/// https://rux-lang.dev/docs/api/text/max-scalar-value
+const MaxScalarValue: uint32 = 0x10FFFF;
+
+/// The first value of the surrogate range, which holds no scalar values.
+///
+/// https://rux-lang.dev/docs/api/text/first-surrogate
+const FirstSurrogate: uint32 = 0xD800;
+
+/// The last value of the surrogate range.
+///
+/// https://rux-lang.dev/docs/api/text/last-surrogate
+const LastSurrogate: uint32 = 0xDFFF;
+
+/// The most bytes any one scalar value takes in UTF-8.
+///
+/// https://rux-lang.dev/docs/api/text/max-encoded-length
+const MaxEncodedLength: uint = 4;
+
+/// What was wrong with a byte sequence, or `None` when nothing was.
+///
+/// The cases are distinguished because they mean different things about where the bytes came from. `Truncated` is
+/// what a buffer boundary looks like and may just mean read more; the rest mean the bytes are not UTF-8 and no
+/// amount of reading will change that.
+///
+/// https://rux-lang.dev/docs/api/text/utf8-error
+enum Utf8Error: int32 {
+    /// The bytes are well-formed.
+    None = 0,
+    /// A sequence starts but the bytes run out before it ends.
+    Truncated = 1,
+    /// A byte that cannot start a sequence: a continuation byte on its own, or one of the values UTF-8 never uses.
+    InvalidStart = 2,
+    /// A byte where a continuation byte was required, or a continuation outside the range this leading byte allows
+    /// -- which is what rejects an overlong form, a surrogate half, or a value past the last scalar.
+    InvalidContinuation = 3
+}
+
+extend Utf8Error {
+    /// Whether this reports well-formed bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/text/utf8-error/is-ok
+    func IsOk(self: *Utf8Error) -> bool {
+        return *self == Utf8Error::None;
+    }
+
+    /// Whether this reports a problem.
+    ///
+    /// https://rux-lang.dev/docs/api/text/utf8-error/is-error
+    func IsError(self: *Utf8Error) -> bool {
+        return *self != Utf8Error::None;
+    }
+}
+
+/// Whether `value` is a Unicode scalar value: at most `MaxScalarValue`, and not a surrogate half.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/text/is-scalar-value
+func IsScalarValue(value: uint32) -> bool {
+    return value <= MaxScalarValue && (value < FirstSurrogate || value > LastSurrogate);
+}
+
+/// How many bytes `scalar` takes in UTF-8, or zero when it is not a scalar value.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/text/encoded-length
+func EncodedLength(scalar: char32) -> uint {
+    let value = scalar as uint32;
+    if !IsScalarValue(value) {
+        return 0;
+    }
+    if value < 0x80 {
+        return 1;
+    }
+    if value < 0x800 {
+        return 2;
+    }
+    if value < 0x10000 {
+        return 3;
+    }
+    return 4;
+}
+
+/// Whether `byte` is a continuation byte, the `10xxxxxx` shape every byte after a leading one has.
+///
+/// https://rux-lang.dev/docs/api/text/is-continuation
+func IsContinuation(byte: char8) -> bool {
+    return ((byte as uint32) & 0xC0) == 0x80;
+}
+
+/// Writes `scalar` into `into` as UTF-8 and reports how many bytes it took through `written`.
+///
+/// `into` is borrowed mutably and must have room for the encoding -- at most `MaxEncodedLength` bytes. Reports
+/// `InvalidStart` for a value that is not a scalar value, and `Truncated` when there is not enough room; `written`
+/// is left at zero in both cases and nothing is written.
+///
+/// Cannot allocate. Runs in constant time.
+///
+/// https://rux-lang.dev/docs/api/text/encode
+func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -> Utf8Error {
+    *written = 0;
+    let value = scalar as uint32;
+    let width = EncodedLength(scalar);
+    if width == 0 {
+        return Utf8Error::InvalidStart;
+    }
+    if width > into.length {
+        return Utf8Error::Truncated;
+    }
+
+    if width == 1 {
+        into.data[0] = value as char8;
+    }
+    else if width == 2 {
+        into.data[0] = (0xC0 | (value >> 6)) as char8;
+        into.data[1] = (0x80 | (value & 0x3F)) as char8;
+    }
+    else if width == 3 {
+        into.data[0] = (0xE0 | (value >> 12)) as char8;
+        into.data[1] = (0x80 | ((value >> 6) & 0x3F)) as char8;
+        into.data[2] = (0x80 | (value & 0x3F)) as char8;
+    }
+    else {
+        into.data[0] = (0xF0 | (value >> 18)) as char8;
+        into.data[1] = (0x80 | ((value >> 12) & 0x3F)) as char8;
+        into.data[2] = (0x80 | ((value >> 6) & 0x3F)) as char8;
+        into.data[3] = (0x80 | (value & 0x3F)) as char8;
+    }
+    *written = width;
+    return Utf8Error::None;
+}
+
+// The range of second bytes a leading byte admits, which is what forbids overlong forms, surrogate halves and
+// values past the last scalar without decoding anything first. `low` above `high` marks a leading byte UTF-8 never
+// uses.
+func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> uint {
+    if leading >= 0xC2 && leading <= 0xDF {
+        *low = 0x80;
+        *high = 0xBF;
+        return 2;
+    }
+    if leading == 0xE0 {
+        // Below A0 the value would fit in two bytes, so three would be an overlong spelling of it.
+        *low = 0xA0;
+        *high = 0xBF;
+        return 3;
+    }
+    if (leading >= 0xE1 && leading <= 0xEC) || leading == 0xEE || leading == 0xEF {
+        *low = 0x80;
+        *high = 0xBF;
+        return 3;
+    }
+    if leading == 0xED {
+        // Above 9F the value would be a surrogate half, which is not a scalar value.
+        *low = 0x80;
+        *high = 0x9F;
+        return 3;
+    }
+    if leading == 0xF0 {
+        // Below 90 the value would fit in three bytes.
+        *low = 0x90;
+        *high = 0xBF;
+        return 4;
+    }
+    if leading >= 0xF1 && leading <= 0xF3 {
+        *low = 0x80;
+        *high = 0xBF;
+        return 4;
+    }
+    if leading == 0xF4 {
+        // Above 8F the value would be past U+10FFFF.
+        *low = 0x80;
+        *high = 0x8F;
+        return 4;
+    }
+    *low = 1;
+    *high = 0;
+    return 0;
+}
+
+/// Decodes the scalar value starting at `index`, reporting it through `scalar` and its width through `width`.
+///
+/// `bytes` is borrowed. On any error `scalar` is left at U+0000 and `width` at zero, and the caller decides what to
+/// do -- a decoder replacing bad input with U+FFFD advances one byte and carries on, and one rejecting it stops.
+///
+/// Cannot allocate. Runs in constant time.
+///
+/// https://rux-lang.dev/docs/api/text/decode-at
+func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
+    *scalar = 0u32 as char32;
+    *width = 0;
+    if index >= bytes.length {
+        return Utf8Error::Truncated;
+    }
+
+    let leading = bytes.data[index] as uint32;
+    if leading < 0x80 {
+        *scalar = leading as char32;
+        *width = 1;
+        return Utf8Error::None;
+    }
+
+    var low: uint32 = 0;
+    var high: uint32 = 0;
+    let expected = SecondByteRange(leading, @low, @high);
+    if expected == 0 {
+        return Utf8Error::InvalidStart;
+    }
+    if index + expected > bytes.length {
+        return Utf8Error::Truncated;
+    }
+
+    let second = bytes.data[index + 1] as uint32;
+    if second < low || second > high {
+        return Utf8Error::InvalidContinuation;
+    }
+    var step: uint = 2;
+    while step < expected {
+        if !IsContinuation(bytes.data[index + step]) {
+            return Utf8Error::InvalidContinuation;
+        }
+        step = step + 1;
+    }
+
+    var value = leading & (expected == 2 ? 0x1F : (expected == 3 ? 0x0F : 0x07));
+    var taken: uint = 1;
+    while taken < expected {
+        value = (value << 6) | ((bytes.data[index + taken] as uint32) & 0x3F);
+        taken = taken + 1;
+    }
+    *scalar = value as char32;
+    *width = expected;
+    return Utf8Error::None;
+}
+
+/// Whether `bytes` is well-formed UTF-8 from end to end, reporting where it first is not through `failureIndex`.
+///
+/// `bytes` is borrowed. `failureIndex` receives the index of the byte that starts the offending sequence, or the
+/// length when there is none.
+///
+/// Cannot allocate. Runs in time proportional to the length.
+///
+/// https://rux-lang.dev/docs/api/text/validate
+func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
+    var index: uint = 0;
+    while index < bytes.length {
+        var scalar = 0u32 as char32;
+        var width: uint = 0;
+        let error = DecodeAt(bytes, index, @scalar, @width);
+        if error.IsError() {
+            *failureIndex = index;
+            return error;
+        }
+        index = index + width;
+    }
+    *failureIndex = bytes.length;
+    return Utf8Error::None;
+}
+
+/// Whether `index` is where a scalar value starts, and so a place a string may be cut.
+///
+/// The length counts as a boundary, so the end of a string is always a legal cut. An index past the length is not.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/text/is-boundary
+func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
+    if index > bytes.length {
+        return false;
+    }
+    if index == bytes.length {
+        return true;
+    }
+    return !IsContinuation(bytes.data[index]);
+}
+
+/// How many scalar values `bytes` holds, assuming it is well-formed.
+///
+/// Counts leading bytes, which is one per scalar value in well-formed UTF-8. Bytes that are not well-formed give a
+/// count that means nothing; `Validate` is what answers whether they are.
+///
+/// Cannot fail. Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/text/count-scalars
+func CountScalars(bytes: Slice<char8>) -> uint {
+    var counted: uint = 0;
+    var index: uint = 0;
+    while index < bytes.length {
+        if !IsContinuation(bytes.data[index]) {
+            counted = counted + 1;
+        }
+        index = index + 1;
+    }
+    return counted;
+}
+
+/// The index of the scalar boundary at or below `index`.
+///
+/// An index inside a sequence is walked back to the start of that sequence, which is what a caller cutting at an
+/// arbitrary byte offset needs. An index at or past the length gives the length.
+///
+/// https://rux-lang.dev/docs/api/text/boundary-at-or-below
+func BoundaryAtOrBelow(bytes: Slice<char8>, index: uint) -> uint {
+    if index >= bytes.length {
+        return bytes.length;
+    }
+    var walk = index;
+    // At most three steps: no scalar value takes more than four bytes, so no byte is more than three past a start.
+    while walk > 0 && IsContinuation(bytes.data[walk]) {
+        walk = walk - 1;
+    }
+    return walk;
+}

@@ -1,0 +1,95 @@
+import Core::{ Assert, MutableSlice, Slice };
+import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
+
+// UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:
+// an overlong form spells a character a second way, a surrogate half is not a character at all, and four bytes can
+// express values past the last one Unicode defines. So most of what is checked here is what must be refused.
+//
+// The round trip is checked at every boundary where the encoded width changes and one either side of it, since an
+// off-by-one in the width table shows nowhere else.
+
+// Whether a run of bytes is refused, and refused for the stated reason.
+func Refuses(bytes: Slice<char8>, expected: Utf8Error) -> bool {
+    var failureIndex: uint = 0;
+    return Validate(bytes, @failureIndex) == expected;
+}
+
+func Main() -> int {
+    // The widths, at each boundary and one either side.
+    Assert(EncodedLength(0u32 as char32) == 1, "U+0000 takes one byte");
+    Assert(EncodedLength(0x7Fu32 as char32) == 1, "and so does the last one-byte value");
+    Assert(EncodedLength(0x80u32 as char32) == 2, "the next one takes two");
+    Assert(EncodedLength(0x7FFu32 as char32) == 2, "up to the last two-byte value");
+    Assert(EncodedLength(0x800u32 as char32) == 3, "then three");
+    Assert(EncodedLength(0xFFFFu32 as char32) == 3, "up to the last of the basic plane");
+    Assert(EncodedLength(0x10000u32 as char32) == 4, "then four");
+    Assert(EncodedLength(0x10FFFFu32 as char32) == 4, "up to the last scalar value there is");
+
+    Assert(!IsScalarValue(0xD800), "a surrogate half is not a scalar value");
+    Assert(!IsScalarValue(0xDFFF), "at either end of the range");
+    Assert(IsScalarValue(0xD7FF) && IsScalarValue(0xE000), "but the values either side of it are");
+    Assert(!IsScalarValue(0x110000), "and nothing past the last one is");
+
+    // Round-tripping every width, through the encoder and back through the decoder.
+    var storage: char8[8];
+    let samples: uint32[9] = [0, 0x7F, 0x80, 0x7FF, 0x800, 0xD7FF, 0xE000, 0x10000, 0x10FFFF];
+    var index: uint = 0;
+    while index < 9 {
+        let value = samples[index];
+        var written: uint = 0;
+        let room = MutableSlice::From<char8>(@storage[0], 8);
+        Assert(Encode(value as char32, room, @written) == Utf8Error::None, "every scalar value encodes");
+        Assert(written == EncodedLength(value as char32), "in the width the table says");
+
+        var decoded = 0u32 as char32;
+        var width: uint = 0;
+        Assert(DecodeAt(storage[0..written], 0, @decoded, @width) == Utf8Error::None, "and decodes again");
+        Assert((decoded as uint32) == value, "to the value it started as");
+        Assert(width == written, "having read exactly what was written");
+        Assert(CountScalars(storage[0..written]) == 1, "and counts as one scalar value");
+        index = index + 1;
+    }
+
+    // The three families of ill-formed sequence, each spelled the way it is usually smuggled in.
+    storage[0] = 0xC0u8 as char8;
+    storage[1] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..2], Utf8Error::InvalidStart), "an overlong two-byte NUL is refused");
+
+    storage[0] = 0xE0u8 as char8;
+    storage[1] = 0x80u8 as char8;
+    storage[2] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..3], Utf8Error::InvalidContinuation), "and an overlong three-byte one");
+
+    storage[0] = 0xF0u8 as char8;
+    storage[1] = 0x80u8 as char8;
+    storage[2] = 0x80u8 as char8;
+    storage[3] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..4], Utf8Error::InvalidContinuation), "and an overlong four-byte one");
+
+    storage[0] = 0xEDu8 as char8;
+    storage[1] = 0xA0u8 as char8;
+    storage[2] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..3], Utf8Error::InvalidContinuation), "the first surrogate half is refused");
+
+    storage[1] = 0xBFu8 as char8;
+    storage[2] = 0xBFu8 as char8;
+    Assert(Refuses(storage[0..3], Utf8Error::InvalidContinuation), "and the last one");
+
+    storage[0] = 0xF4u8 as char8;
+    storage[1] = 0x90u8 as char8;
+    storage[2] = 0x80u8 as char8;
+    storage[3] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..4], Utf8Error::InvalidContinuation), "the first value past U+10FFFF is refused");
+
+    storage[0] = 0xF5u8 as char8;
+    Assert(Refuses(storage[0..1], Utf8Error::InvalidStart), "and a leading byte UTF-8 never uses");
+
+    storage[0] = 0x80u8 as char8;
+    Assert(Refuses(storage[0..1], Utf8Error::InvalidStart), "a continuation byte cannot start a sequence");
+
+    storage[0] = 0xE2u8 as char8;
+    storage[1] = 0x82u8 as char8;
+    Assert(Refuses(storage[0..2], Utf8Error::Truncated), "and a sequence that runs out is truncated, not invalid");
+
+    return 0;
+}
