@@ -1,0 +1,76 @@
+import Core::{ Assert, Ordering };
+import Time::Duration;
+
+// The invariant is the test: the fraction is always in [0, 1e9) with the sign in the seconds, so minus one and a
+// half seconds is seconds -2 and half a billion nanoseconds. Everything else -- carries, borrows, negative unit
+// constructors -- is that invariant holding through arithmetic, and the checked edges refuse at the very ends of
+// the range rather than wrapping.
+
+func Main() -> int {
+    let zero = Duration::Zero();
+    Assert(zero.IsZero() && !zero.IsNegative(), "nothing is nothing, and not negative");
+
+    // Constructors normalize, negative counts included.
+    let plain = Duration::FromSeconds(5i64);
+    Assert(plain.WholeSeconds() == 5i64 && plain.SubsecondNanoseconds() == 0u32, "whole seconds carry no fraction");
+    let millis = Duration::FromMilliseconds(1500i64);
+    Assert(millis.WholeSeconds() == 1i64 && millis.SubsecondNanoseconds() == 500000000u32,
+           "fifteen hundred milliseconds is one and a half seconds");
+    let negative = Duration::FromMilliseconds(-1500i64);
+    Assert(negative.WholeSeconds() == -2i64 && negative.SubsecondNanoseconds() == 500000000u32,
+           "minus fifteen hundred is seconds -2 and half a billion up");
+    Assert(negative.IsNegative(), "and it knows its sign");
+    let tiny = Duration::FromNanoseconds(-1i64);
+    Assert(tiny.WholeSeconds() == -1i64 && tiny.SubsecondNanoseconds() == 999999999u32,
+           "minus one nanosecond normalizes the same way");
+    let hour = Duration::FromHours(1i64).ValueOr(Duration::Zero());
+    Assert(hour.WholeSeconds() == 3600i64, "an hour is thirty-six hundred seconds");
+    Assert(Duration::FromHours(9223372036854775807i64).IsNone(), "and an impossible count of them refuses");
+
+    // The conversions truncate toward zero and refuse past the range.
+    Assert(millis.TotalMilliseconds().ValueOr(0i64) == 1500i64, "the milliseconds come back out");
+    Assert(negative.TotalMilliseconds().ValueOr(0i64) == -1500i64, "negative ones too");
+    Assert(tiny.TotalNanoseconds().ValueOr(0i64) == -1i64, "and a single negative nanosecond");
+    let vast = Duration::FromSeconds(9223372036854775807i64);
+    Assert(vast.TotalNanoseconds().IsNone(), "a span too wide for nanoseconds says so");
+    Assert(vast.TotalMilliseconds().IsNone(), "and for milliseconds");
+
+    // Addition carries, subtraction borrows, and both keep the fraction in range.
+    let sum = millis.Plus(Duration::FromMilliseconds(700i64)).ValueOr(Duration::Zero());
+    Assert(sum.WholeSeconds() == 2i64 && sum.SubsecondNanoseconds() == 200000000u32,
+           "one and a half plus seven tenths carries into the seconds");
+    let difference = millis.Minus(Duration::FromMilliseconds(700i64)).ValueOr(Duration::Zero());
+    Assert(difference.WholeSeconds() == 0i64 && difference.SubsecondNanoseconds() == 800000000u32,
+           "and less seven tenths borrows back");
+    let crossing = zero.Minus(Duration::FromMilliseconds(300i64)).ValueOr(Duration::FromSeconds(99i64));
+    Assert(crossing.WholeSeconds() == -1i64 && crossing.SubsecondNanoseconds() == 700000000u32,
+           "subtracting through zero lands normalized");
+    let back = crossing.Plus(Duration::FromMilliseconds(300i64)).ValueOr(Duration::FromSeconds(99i64));
+    Assert(back.IsZero(), "and adding it back returns exactly to zero");
+
+    // The checked edges.
+    Assert(vast.Plus(Duration::FromSeconds(1i64)).IsNone(), "the far edge refuses another second");
+    Assert(vast.Plus(Duration::FromNanoseconds(999999999i64)).ValueOr(Duration::Zero()).WholeSeconds() ==
+           9223372036854775807i64, "though the fraction still has room");
+    let deep = Duration::FromSeconds(-9223372036854775808i64);
+    Assert(deep.Minus(Duration::FromNanoseconds(1i64)).IsNone(), "the near edge refuses another nanosecond");
+    Assert(deep.Negated().IsNone(), "and the deepest value has no negation");
+    Assert(negative.Negated().ValueOr(Duration::Zero()).Equals(millis), "while an ordinary one negates and back");
+
+    // Scaling, both signs, with the fraction's carry.
+    let scaled = millis.Times(3i64).ValueOr(Duration::Zero());
+    Assert(scaled.WholeSeconds() == 4i64 && scaled.SubsecondNanoseconds() == 500000000u32,
+           "three times one and a half is four and a half");
+    let flipped = millis.Times(-2i64).ValueOr(Duration::Zero());
+    Assert(flipped.WholeSeconds() == -3i64 && flipped.SubsecondNanoseconds() == 0u32,
+           "minus two times one and a half is minus three");
+    Assert(vast.Times(2i64).IsNone(), "and a scale past the range refuses");
+
+    // Ordering: the seconds decide, the fraction tie-breaks.
+    Assert(negative.Compare(zero) == Ordering::Less, "a negative span is less than nothing");
+    Assert(millis.Compare(negative) == Ordering::Greater, "and more than its negation");
+    Assert(millis.Compare(Duration::FromMilliseconds(1500i64)) == Ordering::Equal, "equal spans compare equal");
+    Assert(Duration::FromNanoseconds(1i64).Compare(zero) == Ordering::Greater, "one nanosecond is more than none");
+
+    return 0;
+}

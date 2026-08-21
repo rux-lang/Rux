@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TimeDuration"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Time: normalized checked Duration arithmetic"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Time"
