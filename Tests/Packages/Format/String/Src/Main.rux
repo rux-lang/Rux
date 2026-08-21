@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
-import Format::{ BuilderWriter, Debug, Display, Format, Writer };
+import Format::{ BuilderWriter, Debug, Display, Format, FormatSpec, Writer };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
@@ -41,15 +41,15 @@ func Main() -> int {
     let writer: Writer = BuilderWriter::Of(@builder);
     let empty = String::New(allocator);
     let shownPlain: Display = empty.View();
-    if shownPlain.Format(writer) != TextError::None { return 20; }
+    if shownPlain.Format(writer, FormatSpec::Plain()) != TextError::None { return 20; }
     if builder.Length() != 0 { return 21; }
     let shownDebug: Debug = empty.View();
-    if shownDebug.FormatDebug(writer) != TextError::None { return 22; }
+    if shownDebug.FormatDebug(writer, FormatSpec::Plain()) != TextError::None { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     builder.Clear();
     let shownHello: Debug = hello.View();
-    if shownHello.FormatDebug(writer) != TextError::None { return 24; }
+    if shownHello.FormatDebug(writer, FormatSpec::Plain()) != TextError::None { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
     return 0;

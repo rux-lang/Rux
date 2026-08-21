@@ -8,11 +8,8 @@ extend uint32 : Display {
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
     /// https://rux-lang.dev/docs/api/format/uint32/format
-    func Format(self: *uint32, writer: Writer) -> TextError {
-        var storage: char8[20];
-        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 20));
-        WriteUint(@cursor, *self as uint64);
-        return WriteBytes(writer, cursor.Written());
+    func Format(self: *uint32, writer: Writer, spec: FormatSpec) -> TextError {
+        return WriteIntegerSpec(writer, spec, *self as uint64, false);
     }
 }
 
@@ -20,7 +17,7 @@ extend uint32 : Debug {
     /// The same digits.
     ///
     /// https://rux-lang.dev/docs/api/format/uint32/format-debug
-    func FormatDebug(self: *uint32, writer: Writer) -> TextError {
-        return self.Format(writer);
+    func FormatDebug(self: *uint32, writer: Writer, spec: FormatSpec) -> TextError {
+        return self.Format(writer, spec);
     }
 }

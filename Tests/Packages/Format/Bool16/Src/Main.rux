@@ -1,5 +1,5 @@
 import Core::{ MutableSlice, Slice };
-import Format::{ ByteCursor, CursorWriter, Display, Writer };
+import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, Writer };
 
 // Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
 // the overloads of two same-named symbols, so Std's would win over this package's and the code under test would
@@ -13,7 +13,7 @@ func Check(value: bool16, expected: Slice<char8>, code: int) -> int {
     var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
     let writer: Writer = CursorWriter::Of(@cursor);
     let shown: Display = value;
-    if shown.Format(writer).IsError() {
+    if shown.Format(writer, FormatSpec::Plain()).IsError() {
         return code;
     }
     let actual = cursor.Written();

@@ -14,9 +14,10 @@ import Text::{ String, StringBuilder, TextError };
 
 /// Writes `format` into `writer`, with each `{}` replaced by the next argument.
 ///
-/// A placeholder with no argument left is written as nothing rather than refused, so a mismatched call produces
-/// text that shows the mistake instead of failing at the point of printing, which is usually where the mistake can
-/// least be handled. `{{` and `}}` stand for a literal brace.
+/// A placeholder is `{}`, or `{:spec}` carrying fill, alignment, sign, width, precision and base -- see
+/// `ParseFormatSpec` for the grammar. One with no argument left is written as nothing rather than refused, and one
+/// whose spec does not parse is literal text, so either mistake shows where it was written instead of failing at
+/// the point of printing, which is usually where it can least be handled. `{{` and `}}` stand for a literal brace.
 ///
 /// Reports whatever the writer reported, having written what it managed to first.
 ///
@@ -45,16 +46,36 @@ func WriteFormat(writer: Writer, format: Slice<char8>, args: Display...) -> Text
             index += 2;
             continue;
         }
-        if ch == c8'{' && paired && format[index + 1] == c8'}' {
-            if next < args.length {
-                let written = args[next].Format(writer);
-                if written.IsError() {
-                    return written;
-                }
-                next++;
+        if ch == c8'{' && paired && format[index + 1] != c8'{' {
+            // A placeholder runs to the closing brace. `{}` asks for nothing; `{:spec}` asks for what the spec
+            // says; anything else -- no closing brace, or a spec that does not parse -- is literal text, so the
+            // mistake shows where it was written.
+            var close = index + 1;
+            while close < format.length && format[close] != c8'}' {
+                close++;
             }
-            index += 2;
-            continue;
+            var spec = FormatSpec::Plain();
+            var placeholder = close < format.length;
+            if placeholder && close > index + 1 {
+                if format[index + 1] == c8':' {
+                    let body = Slice<char8> { data: @format.data[index + 2], length: close - index - 2 };
+                    placeholder = ParseFormatSpec(body, @spec);
+                }
+                else {
+                    placeholder = false;
+                }
+            }
+            if placeholder {
+                if next < args.length {
+                    let written = args[next].Format(writer, spec);
+                    if written.IsError() {
+                        return written;
+                    }
+                    next++;
+                }
+                index = close + 1;
+                continue;
+            }
         }
         let written = WriteAscii(writer, ch);
         if written.IsError() {

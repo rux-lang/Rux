@@ -1,3 +1,4 @@
+import Core::Slice;
 import Text::TextError;
 
 // The largest finite float32, held here as the float64 it widens to exactly.
@@ -33,11 +34,17 @@ extend float32 : Display {
     /// more than the longest rendering -- sign, digits, point and exponent -- can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format
-    func Format(self: *float32, writer: Writer) -> TextError {
-        var storage: char8[50];
-        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 50));
+    func Format(self: *float32, writer: Writer, spec: FormatSpec) -> TextError {
+        var storage: char8[52];
+        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 50));
         WriteFloat(@cursor, *self);
-        return WriteBytes(writer, cursor.Written());
+        var rendered = cursor.Written();
+        // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
+        if spec.showSign && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
+            storage[1] = c8'+';
+            rendered = Slice<char8> { data: @storage[1], length: rendered.length + 1 };
+        }
+        return WriteAligned(writer, spec, rendered, true);
     }
 }
 
@@ -45,8 +52,8 @@ extend float32 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format-debug
-    func FormatDebug(self: *float32, writer: Writer) -> TextError {
-        return self.Format(writer);
+    func FormatDebug(self: *float32, writer: Writer, spec: FormatSpec) -> TextError {
+        return self.Format(writer, spec);
     }
 }
 

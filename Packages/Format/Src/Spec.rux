@@ -1,0 +1,186 @@
+// What a placeholder may ask for, parsed once and handed to the value.
+//
+// The grammar inside `{}` after the colon is `[[fill]align][sign][#][0][width][.precision][base]`, each piece
+// optional: `{:>8}` right-aligns in eight columns, `{:+}` shows a positive sign, `{:08x}` zero-pads eight hex
+// digits, `{:#b}` prefixes binary with `0b`, `{:.3}` keeps three characters of text. The spec belongs to the
+// placeholder and not to the value -- the same value renders differently under different placeholders -- but it is
+// the value that applies it, because base and sign need the bits and not the rendered text.
+//
+// An unrecognized spec fails to parse, and the placeholder that carried it is copied through as literal text: the
+// mistake shows where it was written, exactly as a starved placeholder does.
+
+import Core::Slice;
+
+/// Where the padding goes when the rendering is narrower than the width.
+///
+/// https://rux-lang.dev/docs/api/format/format-align
+enum FormatAlign: int32 {
+    /// The type's own default: numbers to the right, text to the left.
+    Default = 0,
+    /// The value at the start, fill after it.
+    Left = 1,
+    /// The value in the middle, fill on both sides, the odd column on the right.
+    Center = 2,
+    /// The value at the end, fill before it.
+    Right = 3
+}
+
+/// The base an integer renders in.
+///
+/// https://rux-lang.dev/docs/api/format/format-base
+enum FormatBase: int32 {
+    /// Base ten, the default.
+    Decimal = 0,
+    /// Base two, `b`, prefixed `0b` under `#`.
+    Binary = 1,
+    /// Base eight, `o`, prefixed `0o` under `#`.
+    Octal = 2,
+    /// Base sixteen with lower-case digits, `x`, prefixed `0x` under `#`.
+    LowerHex = 3,
+    /// Base sixteen with upper-case digits, `X`, prefixed `0x` under `#`.
+    UpperHex = 4
+}
+
+/// Everything a placeholder asked for.
+///
+/// `Copy`, and cheap to pass: a spec is read, never held.
+///
+/// https://rux-lang.dev/docs/api/format/format-spec
+struct FormatSpec {
+    /// The byte that pads, a space unless the spec names one.
+    fill: char8;
+    /// Where the padding goes.
+    align: FormatAlign;
+    /// Whether a non-negative number shows a plus sign.
+    showSign: bool;
+    /// Whether a based integer carries its base prefix.
+    alternate: bool;
+    /// Whether a number pads with zeros between its sign and its digits, which is different from filling: the
+    /// zeros are inside the number, so `-7` at width four is `-007` and not `00-7`.
+    zeroPad: bool;
+    /// The fewest columns the rendering occupies. Zero asks for nothing.
+    width: uint;
+    /// How many characters of text to keep, or how many digits a float carries. Meaningful only with
+    /// `hasPrecision`, since zero is a precision a caller can mean.
+    precision: uint;
+    /// Whether the spec named a precision.
+    hasPrecision: bool;
+    /// The base an integer renders in.
+    base: FormatBase;
+}
+
+extend FormatSpec {
+    /// What a bare `{}` asks for: nothing at all.
+    ///
+    /// https://rux-lang.dev/docs/api/format/format-spec/plain
+    func Plain() -> FormatSpec {
+        return FormatSpec {
+            fill: c8' ',
+            align: FormatAlign::Default,
+            showSign: false,
+            alternate: false,
+            zeroPad: false,
+            width: 0,
+            precision: 0,
+            hasPrecision: false,
+            base: FormatBase::Decimal
+        };
+    }
+}
+
+// Whether `byte` is one of the three alignment marks, and which.
+func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
+    if byte == c8'<' {
+        *align = FormatAlign::Left;
+        return true;
+    }
+    if byte == c8'^' {
+        *align = FormatAlign::Center;
+        return true;
+    }
+    if byte == c8'>' {
+        *align = FormatAlign::Right;
+        return true;
+    }
+    return false;
+}
+
+/// Parses the text between `{:` and `}` into `spec`, reporting whether it is well-formed.
+///
+/// The empty spec is well-formed and asks for nothing. A spec that fails here is not a spec, and the placeholder
+/// that carried it is literal text.
+///
+/// Cannot allocate. Runs in time proportional to the spec, which is a handful of bytes.
+///
+/// https://rux-lang.dev/docs/api/format/parse-format-spec
+func ParseFormatSpec(text: Slice<char8>, spec: *var FormatSpec) -> bool {
+    *spec = FormatSpec::Plain();
+    var index: uint = 0;
+
+    // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it -- `{:x}` is a
+    // base, not an x-shaped padding.
+    var align = FormatAlign::Default;
+    if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
+        spec.fill = text.data[index];
+        spec.align = align;
+        index = index + 2;
+    }
+    else if index < text.length && AlignOf(text.data[index], @align) {
+        spec.align = align;
+        index = index + 1;
+    }
+
+    if index < text.length && text.data[index] == c8'+' {
+        spec.showSign = true;
+        index = index + 1;
+    }
+    if index < text.length && text.data[index] == c8'#' {
+        spec.alternate = true;
+        index = index + 1;
+    }
+    if index < text.length && text.data[index] == c8'0' {
+        spec.zeroPad = true;
+        index = index + 1;
+    }
+    while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
+        if spec.width > 0xFFFFFFFFu {
+            return false;
+        }
+        spec.width = spec.width * 10 + ((text.data[index] as uint32) - 0x30) as uint;
+        index = index + 1;
+    }
+    if index < text.length && text.data[index] == c8'.' {
+        index = index + 1;
+        if index >= text.length || text.data[index] < c8'0' || text.data[index] > c8'9' {
+            return false;
+        }
+        spec.hasPrecision = true;
+        while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
+            if spec.precision > 0xFFFFFFFFu {
+                return false;
+            }
+            spec.precision = spec.precision * 10 + ((text.data[index] as uint32) - 0x30) as uint;
+            index = index + 1;
+        }
+    }
+    if index < text.length {
+        let mark = text.data[index];
+        if mark == c8'b' {
+            spec.base = FormatBase::Binary;
+        }
+        else if mark == c8'o' {
+            spec.base = FormatBase::Octal;
+        }
+        else if mark == c8'x' {
+            spec.base = FormatBase::LowerHex;
+        }
+        else if mark == c8'X' {
+            spec.base = FormatBase::UpperHex;
+        }
+        else {
+            return false;
+        }
+        index = index + 1;
+    }
+    return index == text.length;
+}

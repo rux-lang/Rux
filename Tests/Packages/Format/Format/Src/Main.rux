@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
-import Format::{ Display, Format, WriteAscii, WriteBytes, Writer };
+import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, Writer };
 import Text::{ StringView, TextError };
 
 // Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
@@ -19,12 +19,12 @@ extend Point : Display {
         let open = WriteAscii(writer, c8'(');
         if open.IsError() { return open; }
         let first: Display = self.x;
-        let leftWritten = first.Format(writer);
+        let leftWritten = first.Format(writer, FormatSpec::Plain());
         if leftWritten.IsError() { return leftWritten; }
         let comma = WriteBytes(writer, ", ");
         if comma.IsError() { return comma; }
         let second: Display = self.y;
-        let rightWritten = second.Format(writer);
+        let rightWritten = second.Format(writer, FormatSpec::Plain());
         if rightWritten.IsError() { return rightWritten; }
         return WriteAscii(writer, c8')');
     }

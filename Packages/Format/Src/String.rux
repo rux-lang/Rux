@@ -8,14 +8,15 @@
 // looking at a program is quoted, so that where it starts and stops is visible and an empty one is not invisible.
 
 import Core::Slice;
-import Text::{ String, StringView, TextError };
+import Text::{ DecodeAt, String, StringView, TextError };
 
 extend String : Display {
     /// Writes this string's bytes.
     ///
     /// https://rux-lang.dev/docs/api/format/string/format
-    func Format(self: *String, writer: Writer) -> TextError {
-        return WriteBytes(writer, self.Bytes());
+    func Format(self: *String, writer: Writer, spec: FormatSpec) -> TextError {
+        let view = self.View();
+        return view.Format(writer, spec);
     }
 }
 
@@ -23,9 +24,9 @@ extend String : Debug {
     /// Writes this string quoted.
     ///
     /// https://rux-lang.dev/docs/api/format/string/format-debug
-    func FormatDebug(self: *String, writer: Writer) -> TextError {
+    func FormatDebug(self: *String, writer: Writer, spec: FormatSpec) -> TextError {
         let view = self.View();
-        return view.FormatDebug(writer);
+        return view.FormatDebug(writer, spec);
     }
 }
 
@@ -33,27 +34,49 @@ extend StringView : Display {
     /// Writes what this view spans.
     ///
     /// https://rux-lang.dev/docs/api/format/string-view/format
-    func Format(self: *StringView, writer: Writer) -> TextError {
-        return WriteBytes(writer, self.Bytes());
+    func Format(self: *StringView, writer: Writer, spec: FormatSpec) -> TextError {
+        return WriteAligned(writer, spec, Truncated(*self, spec), false);
     }
 }
 
 extend StringView : Debug {
     /// Writes what this view spans, quoted.
     ///
-    /// The quotes are all that is added. Escaping the characters between them is a question about which of them
-    /// need it, which is a Unicode question and belongs where the Unicode tables are.
+    /// The quotes are all that is added, and they sit outside the precision: what is kept is text, and the quotes
+    /// say where it stops. Escaping the characters between them is a question about which of them need it, which
+    /// is a Unicode question and belongs where the Unicode tables are.
     ///
     /// https://rux-lang.dev/docs/api/format/string-view/format-debug
-    func FormatDebug(self: *StringView, writer: Writer) -> TextError {
+    func FormatDebug(self: *StringView, writer: Writer, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'"');
         if opening.IsError() {
             return opening;
         }
-        let body = WriteBytes(writer, self.Bytes());
+        let body = WriteBytes(writer, Truncated(*self, spec));
         if body.IsError() {
             return body;
         }
         return WriteAscii(writer, c8'"');
     }
+}
+
+// The front of `view` holding at most the spec's precision in characters, or all of it. A cut lands on a character
+// boundary by construction: it walks whole characters and stops.
+func Truncated(view: StringView, spec: FormatSpec) -> Slice<char8> {
+    let bytes = view.Bytes();
+    if !spec.hasPrecision {
+        return bytes;
+    }
+    var kept: uint = 0;
+    var index: uint = 0;
+    while index < bytes.length && kept < spec.precision {
+        var scalar = 0u32 as char32;
+        var width: uint = 0;
+        if DecodeAt(bytes, index, @scalar, @width).IsError() {
+            return Slice<char8> { data: bytes.data, length: index };
+        }
+        index = index + width;
+        kept = kept + 1;
+    }
+    return Slice<char8> { data: bytes.data, length: index };
 }

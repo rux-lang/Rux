@@ -1,5 +1,5 @@
 import Core::{ MutableSlice, Slice };
-import Format::{ ByteCursor, CursorWriter, Display, Writer };
+import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, Writer };
 
 // Std stays out of the dependencies, and a failed check reports itself through the exit code. See the Int8 test for
 // why.
@@ -14,7 +14,7 @@ func Check(value: char16, length: uint, bytes: uint64, code: int) -> int {
     var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 8));
     let writer: Writer = CursorWriter::Of(@cursor);
     let shown: Display = value;
-    if shown.Format(writer).IsError() {
+    if shown.Format(writer, FormatSpec::Plain()).IsError() {
         return code;
     }
     let actual = cursor.Written();

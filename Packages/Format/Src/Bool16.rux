@@ -8,8 +8,8 @@ extend bool16 : Display {
     /// Writes `true` or `false`.
     ///
     /// https://rux-lang.dev/docs/api/format/bool16/format
-    func Format(self: *bool16, writer: Writer) -> TextError {
-        return WriteBytes(writer, *self ? "true" : "false");
+    func Format(self: *bool16, writer: Writer, spec: FormatSpec) -> TextError {
+        return WriteAligned(writer, spec, *self ? "true" : "false", false);
     }
 }
 
@@ -17,7 +17,7 @@ extend bool16 : Debug {
     /// The same two words.
     ///
     /// https://rux-lang.dev/docs/api/format/bool16/format-debug
-    func FormatDebug(self: *bool16, writer: Writer) -> TextError {
-        return self.Format(writer);
+    func FormatDebug(self: *bool16, writer: Writer, spec: FormatSpec) -> TextError {
+        return self.Format(writer, spec);
     }
 }

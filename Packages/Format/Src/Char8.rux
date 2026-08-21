@@ -18,11 +18,13 @@ extend char8 : Display {
     /// Writes this byte, or the replacement character when it is not a whole one.
     ///
     /// https://rux-lang.dev/docs/api/format/char8/format
-    func Format(self: *char8, writer: Writer) -> TextError {
+    func Format(self: *char8, writer: Writer, spec: FormatSpec) -> TextError {
         if (*self as uint32) > 0x7F {
-            return WriteScalar(writer, ReplacementCharacter);
+            return FormatScalar(writer, spec, ReplacementCharacter);
         }
-        return WriteAscii(writer, *self);
+        var one: char8[1];
+        one[0] = *self;
+        return WriteAligned(writer, spec, Slice<char8> { data: @one[0], length: 1 }, false);
     }
 }
 
@@ -35,7 +37,7 @@ extend char8 : Debug {
         if opening.IsError() {
             return opening;
         }
-        let body = self.Format(writer);
+        let body = self.Format(writer, FormatSpec::Plain());
         if body.IsError() {
             return body;
         }
@@ -51,7 +53,7 @@ extend Slice<char8> : Display {
     /// The bytes must be well-formed UTF-8; a slice is not checked, which is what `StringView` is for.
     ///
     /// https://rux-lang.dev/docs/api/format/slice-char8/format
-    func Format(self: Slice<char8>, writer: Writer) -> TextError {
-        return WriteBytes(writer, self);
+    func Format(self: Slice<char8>, writer: Writer, spec: FormatSpec) -> TextError {
+        return WriteAligned(writer, spec, self, false);
     }
 }

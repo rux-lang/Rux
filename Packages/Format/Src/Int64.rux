@@ -11,11 +11,13 @@ extend int64 : Display {
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
     /// https://rux-lang.dev/docs/api/format/int64/format
-    func Format(self: *int64, writer: Writer) -> TextError {
-        var storage: char8[21];
-        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 21));
-        WriteInt(@cursor, *self as int64);
-        return WriteBytes(writer, cursor.Written());
+    func Format(self: *int64, writer: Writer, spec: FormatSpec) -> TextError {
+        let wide = *self as int64;
+        // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
+        // no positive counterpart there.
+        let negative = wide < 0i64;
+        let magnitude = negative ? ~(wide as uint64) + 1u64 : wide as uint64;
+        return WriteIntegerSpec(writer, spec, magnitude, negative);
     }
 }
 
@@ -23,7 +25,7 @@ extend int64 : Debug {
     /// The same digits: a number reads the same whoever is looking.
     ///
     /// https://rux-lang.dev/docs/api/format/int64/format-debug
-    func FormatDebug(self: *int64, writer: Writer) -> TextError {
-        return self.Format(writer);
+    func FormatDebug(self: *int64, writer: Writer, spec: FormatSpec) -> TextError {
+        return self.Format(writer, spec);
     }
 }
