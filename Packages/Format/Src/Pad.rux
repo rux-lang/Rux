@@ -56,13 +56,119 @@ func WriteAligned(writer: Writer, spec: FormatSpec, rendered: Slice<char8>, nume
     return TextError::None;
 }
 
+/// How many fill bytes go on each side of a rendering that occupies `occupied` columns.
+///
+/// https://rux-lang.dev/docs/api/format/padding-around
+func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: *var uint, after: *var uint) {
+    *before = 0;
+    *after = 0;
+    if spec.width <= occupied {
+        return;
+    }
+    let missing = spec.width - occupied;
+    var align = spec.align;
+    if align == FormatAlign::Default {
+        align = numeric ? FormatAlign::Right : FormatAlign::Left;
+    }
+    if align == FormatAlign::Right {
+        *before = missing;
+    }
+    else if align == FormatAlign::Center {
+        *before = missing / 2;
+    }
+    *after = missing - *before;
+}
+
+/// Writes `count` copies of the spec's fill byte.
+///
+/// https://rux-lang.dev/docs/api/format/write-fill
+func WriteFill(writer: Writer, spec: FormatSpec, count: uint) -> TextError {
+    var written: uint = 0;
+    while written < count {
+        let filled = WriteAscii(writer, spec.fill);
+        if filled.IsError() {
+            return filled;
+        }
+        written = written + 1;
+    }
+    return TextError::None;
+}
+
+/// Writes an integer whose digits are already produced, applying sign, prefix, zero-padding and alignment.
+///
+/// `digits` holds the digits least significant first, which is the order a division loop makes them; `count` says
+/// how many. Zero-padding puts its zeros between the sign and the digits -- `-7` at width four is `-007`, not
+/// `00-7` -- and wins over alignment when both are asked for. Nothing here allocates or copies the digits: each
+/// piece goes to the writer as it is reached, so the widest integer costs no more room than its own digit buffer.
+///
+/// https://rux-lang.dev/docs/api/format/write-integer-digits
+func WriteIntegerDigits(writer: Writer, spec: FormatSpec, digits: Slice<char8>, count: uint,
+                        negative: bool) -> TextError {
+    var lead: uint = 0;
+    if negative || spec.showSign {
+        lead = 1;
+    }
+    if spec.alternate && spec.base != FormatBase::Decimal {
+        lead = lead + 2;
+    }
+    var zeros: uint = 0;
+    if spec.zeroPad && spec.width > lead + count {
+        zeros = spec.width - lead - count;
+    }
+
+    var before: uint = 0;
+    var after: uint = 0;
+    PaddingAround(spec, lead + zeros + count, true, @before, @after);
+    let opened = WriteFill(writer, spec, before);
+    if opened.IsError() {
+        return opened;
+    }
+    if negative {
+        let sign = WriteAscii(writer, c8'-');
+        if sign.IsError() {
+            return sign;
+        }
+    }
+    else if spec.showSign {
+        let sign = WriteAscii(writer, c8'+');
+        if sign.IsError() {
+            return sign;
+        }
+    }
+    if spec.alternate && spec.base != FormatBase::Decimal {
+        let zero = WriteAscii(writer, c8'0');
+        if zero.IsError() {
+            return zero;
+        }
+        let mark = spec.base == FormatBase::Binary ? c8'b' : (spec.base == FormatBase::Octal ? c8'o' : c8'x');
+        let letter = WriteAscii(writer, mark);
+        if letter.IsError() {
+            return letter;
+        }
+    }
+    var padded: uint = 0;
+    while padded < zeros {
+        let zero = WriteAscii(writer, c8'0');
+        if zero.IsError() {
+            return zero;
+        }
+        padded = padded + 1;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        let digit = WriteAscii(writer, digits.data[index]);
+        if digit.IsError() {
+            return digit;
+        }
+    }
+    return WriteFill(writer, spec, after);
+}
+
 /// Writes an integer under the whole of `spec`: base, sign, alternate prefix, zero-padding and alignment.
 ///
 /// `magnitude` is the absolute value and `negative` its sign, kept apart because the most negative value of a
-/// signed width has no positive counterpart to negate into. Zero-padding puts its zeros between the sign and the
-/// digits -- `-7` at width four is `-007`, not `00-7` -- and wins over alignment when both are asked for.
-///
-/// Allocates nothing: the longest rendering is sixty-four binary digits behind a sign and a prefix.
+/// signed width has no positive counterpart to negate into.
 ///
 /// https://rux-lang.dev/docs/api/format/write-integer-spec
 func WriteIntegerSpec(writer: Writer, spec: FormatSpec, magnitude: uint64, negative: bool) -> TextError {
@@ -90,40 +196,7 @@ func WriteIntegerSpec(writer: Writer, spec: FormatSpec, magnitude: uint64, negat
         count = count + 1;
         rest = rest / radix;
     }
-
-    // Assembled front to back: sign, prefix, zeros, digits. Eighty bytes holds the longest possible -- a sign, two
-    // bytes of prefix, and sixty-four binary digits -- with room to spare for zero-padding up to that width.
-    var assembled: char8[160];
-    var length: uint = 0;
-    if negative {
-        assembled[length] = c8'-';
-        length = length + 1;
-    }
-    else if spec.showSign {
-        assembled[length] = c8'+';
-        length = length + 1;
-    }
-    if spec.alternate && spec.base != FormatBase::Decimal {
-        assembled[length] = c8'0';
-        assembled[length + 1] = spec.base == FormatBase::Binary ? c8'b' : (spec.base == FormatBase::Octal ? c8'o' : c8'x');
-        length = length + 2;
-    }
-    if spec.zeroPad && spec.width > length + count && spec.width <= 160 {
-        var zeros = spec.width - length - count;
-        while zeros > 0 {
-            assembled[length] = c8'0';
-            length = length + 1;
-            zeros = zeros - 1;
-        }
-    }
-    var index = count;
-    while index > 0 {
-        index = index - 1;
-        assembled[length] = digits[index];
-        length = length + 1;
-    }
-
-    return WriteAligned(writer, spec, Slice<char8> { data: @assembled[0], length: length }, true);
+    return WriteIntegerDigits(writer, spec, Slice<char8> { data: @digits[0], length: count }, count, negative);
 }
 
 /// Writes one character under `spec`'s width, fill and alignment.
