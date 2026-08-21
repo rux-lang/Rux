@@ -1,7 +1,7 @@
-import Format::{ Format, Stringable, ToString };
+import Format::{ Display, WriteAscii, WriteFormat, Writer };
 import Memory::{ Alloc, Free };
 import Core::{ #target };
-import Text::String;
+import Text::{ String, StringView, TextError };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ StdOut, Write },
@@ -105,124 +105,169 @@ func Print(data: *char8, length: uint) {
     }
 }
 
+/// A writer that sends its bytes to standard output.
+///
+/// Holds nothing, because standard output is not a thing this package owns: every write goes to the same place
+/// however many writers there are. It is still a `Writer` rather than a free function, so that anything formatting
+/// into a builder can format into the console instead without knowing the difference.
+///
+/// https://rux-lang.dev/docs/api/io/console-writer
+struct ConsoleWriter {
+    /// Nothing. The console is where it is.
+    reserved: uint8;
+}
+
+extend ConsoleWriter {
+    /// A writer over standard output.
+    ///
+    /// https://rux-lang.dev/docs/api/io/console-writer/new
+    func New() -> ConsoleWriter {
+        return ConsoleWriter { reserved: 0 };
+    }
+}
+
+extend ConsoleWriter : Writer {
+    /// Writes `bytes` to standard output.
+    ///
+    /// Reports `None` whatever the console did: a write to a closed or full stream is not something a caller
+    /// formatting a number can do anything about, and the alternative is every `Print` in a program returning a
+    /// value nobody reads.
+    ///
+    /// https://rux-lang.dev/docs/api/io/console-writer/write
+    func Write(self: *var ConsoleWriter, bytes: Slice<char8>) -> TextError {
+        Print(bytes.data, bytes.length);
+        return TextError::None;
+    }
+}
+
+/// Writes a value's text to standard output.
+///
+/// Nothing is allocated: the value writes itself straight to the console, where it used to be rendered into a
+/// string first and the string thrown away.
+///
+/// https://rux-lang.dev/docs/api/io/print-value
+func PrintValue(value: Display) {
+    let writer: Writer = ConsoleWriter::New();
+    value.Format(writer);
+}
+
+/// Writes a value's text to standard output, then a newline.
+///
+/// https://rux-lang.dev/docs/api/io/print-value-line
+func PrintValueLine(value: Display) {
+    PrintValue(value);
+    PrintLine();
+}
+
 func Print(value: String) {
     Print(value.data, value.length);
+}
+
+func Print(value: StringView) {
+    let bytes = value.Bytes();
+    Print(bytes.data, bytes.length);
 }
 
 func Print(value: Slice<char8>) {
     Print(value.data, value.length);
 }
 
-func Print(format: Slice<char8>, args: Stringable...) {
-    var text = Format(format, args...);
-    Print(text);
-    text.Free();
+/// Writes `format` to standard output with each `{}` replaced by the next argument.
+///
+/// Allocates nothing: the arguments write themselves to the console as they are reached.
+///
+/// https://rux-lang.dev/docs/api/io/print-format
+func Print(format: Slice<char8>, args: Display...) {
+    let writer: Writer = ConsoleWriter::New();
+    WriteFormat(writer, format, args...);
 }
 
 func Print(value: bool8) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: bool16) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: bool32) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: char8) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: char16) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: char32) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: int8) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: int16) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: int32) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: int64) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: uint8) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: uint16) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: uint32) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: uint64) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: int) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: uint) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: float32) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }
 
 func Print(value: float64) {
-    var text = ToString(value);
-    Print(text);
-    text.Free();
+    let shown: Display = value;
+    PrintValue(shown);
 }

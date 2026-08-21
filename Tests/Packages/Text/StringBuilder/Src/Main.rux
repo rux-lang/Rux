@@ -1,119 +1,88 @@
-import Text::{ String, StringBuilder };
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ String, StringBuilder, StringView, TextError };
 
-// See Tests/Packages/Text/String for why Std is not a dependency and a failed check reports
-// itself through the exit code.
-func Matches(value: String, expected: Slice<char8>) -> bool {
-    var want = String::From(expected);
-    let result = value.Equals(want);
-    want.Free();
-    return result;
-}
+// A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be
+// handed over at the end instead of copied. Both are ownership questions, so that is what is checked: what happens
+// to the block when the builder is done with it, and whether the builder is still usable afterwards.
+//
+// The other half is the invariant. A builder holds well-formed UTF-8 at every moment, not only at the end, which is
+// what lets `View` cost nothing and `IntoString` skip validation. It is kept by refusing anything that is not a
+// whole character rather than by checking afterwards.
 
 func Main() -> int {
-    // A fresh builder holds no block until something is appended.
-    var builder = StringBuilder::New();
-    if builder.Length() != 0 { return 10; }
-    if builder.Capacity() != 0 { return 11; }
-    if !builder.IsEmpty() { return 12; }
-    if builder.Data() != null { return 13; }
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
 
-    // The three Append overloads all write to the same buffer.
-    builder.Append(c8'H');
-    builder.Append("ello");
-    var world = String::From(", World");
-    builder.Append(world);
-    world.Free();
+    var builder = StringBuilder::New(allocator);
+    Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");
+    Assert(builder.Capacity() == 0, "and has taken no room");
 
-    if builder.Length() != 12 { return 20; }
-    if builder.IsEmpty() { return 21; }
+    Assert(builder.AppendAscii(c8'h') == TextError::None, "an ASCII byte is appended");
+    Assert(builder.AppendAscii(c8'i') == TextError::None, "and another");
+    Assert(builder.Length() == 2, "the builder holds both");
+    Assert(builder.Capacity() >= 2, "with room for them");
+    let firstCapacity = builder.Capacity();
 
-    // Growth starts at a 16 byte floor, so 12 bytes fit without a second
-    // allocation.
-    if builder.Capacity() != 16 { return 22; }
+    Assert(builder.AppendScalar(0xE9u32 as char32) == TextError::None, "a two-byte character is appended");
+    Assert(builder.Length() == 4, "taking two bytes");
+    Assert(builder.AppendScalar(0x1F600u32 as char32) == TextError::None, "and a four-byte one");
+    Assert(builder.Length() == 8, "taking four");
+    Assert(builder.View().ScalarCount() == 4, "so four characters sit in eight bytes");
 
-    // ToString copies, so the builder keeps its own block and both have to be
-    // freed.
-    var text = builder.ToString();
-    if !Matches(text, "Hello, World") { return 30; }
-    if text.Data() == builder.Data() { return 31; }
-    if builder.Length() != 12 { return 32; }
-    text.Free();
+    // What is not a whole character is refused, which is what keeps the invariant.
+    Assert(builder.AppendAscii(0xC3u8 as char8) == TextError::InvalidUtf8, "a lone byte above ASCII is refused");
+    // A surrogate half cannot be written as a literal -- the compiler refuses the cast -- so it is reached the way
+    // a program would reach one by accident, through a value that is only known at run time.
+    var surrogate: uint32 = 0xD000;
+    surrogate = surrogate + 0x0800;
+    Assert(builder.AppendScalar(surrogate as char32) == TextError::InvalidUtf8, "and a surrogate half");
+    var broken: char8[2];
+    broken[0] = 0xE2u8 as char8;
+    broken[1] = 0x82u8 as char8;
+    Assert(builder.AppendBytes(broken[0..2]) == TextError::InvalidUtf8, "and a sequence that runs out");
+    Assert(builder.Length() == 8, "and none of them changed what the builder holds");
 
-    // Clear keeps the capacity so the builder can be refilled without
-    // reallocating.
-    let capacity = builder.Capacity();
-    builder.Clear();
-    if !builder.IsEmpty() { return 40; }
-    if builder.Capacity() != capacity { return 41; }
-
-    // Crossing the current capacity doubles it rather than growing by one.
-    var i: uint = 0;
-    while i < 20 {
-        builder.Append(c8'x');
-        i++;
+    // Growth is by doubling, so a run of appends does not reallocate on every one.
+    var index: uint = 0;
+    while index < 200 {
+        Assert(builder.AppendAscii(c8'x') == TextError::None, "there is room for every byte");
+        index = index + 1;
     }
-    if builder.Length() != 20 { return 50; }
-    if builder.Capacity() != 32 { return 51; }
+    Assert(builder.Length() == 208, "the builder holds everything appended");
+    Assert(builder.Capacity() > firstCapacity, "having taken more room to do it");
 
-    // Reserve asks for room on top of what is written, and only ever grows.
-    builder.Reserve(100);
-    if builder.Capacity() < 120 { return 52; }
-    if builder.Length() != 20 { return 53; }
+    // Clearing keeps the room, which is what makes a builder used in a loop allocate once.
+    let kept = builder.Capacity();
+    builder.Clear();
+    Assert(builder.IsEmpty() && builder.Capacity() == kept, "clearing forgets the bytes and keeps the room");
 
-    let grown = builder.Capacity();
-    builder.Reserve(1);
-    if builder.Capacity() != grown { return 54; }
+    Assert(builder.AppendBytes("hello") == TextError::None, "and the builder is usable again");
+    let copied = builder.ToString(@error);
+    Assert(error == TextError::None && copied.Length() == 5, "a copy of what it holds is made");
+    Assert(builder.Length() == 5, "leaving the builder as it was");
 
-    // Shrink hands back the capacity that is not in use.
-    builder.Shrink();
-    if builder.Capacity() != 20 { return 55; }
-    if builder.Length() != 20 { return 56; }
-    builder.Free();
+    // Handing the block over: no copy, and the builder is left owning nothing.
+    let handedFrom = builder.Bytes().data;
+    let taken = builder.IntoString();
+    Assert(taken.Length() == 5, "the string holds what the builder held");
+    Assert(taken.Bytes().data == handedFrom, "in the very block the builder had, uncopied");
+    Assert(builder.IsEmpty() && builder.Capacity() == 0, "and the builder owns nothing afterwards");
 
-    // WithCapacity takes the block up front, so appends up to that size do not
-    // reallocate.
-    var sized = StringBuilder::WithCapacity(64);
-    if sized.Capacity() != 64 { return 60; }
-    if !sized.IsEmpty() { return 61; }
-    if sized.Data() == null { return 62; }
+    Assert(builder.AppendBytes("again") == TextError::None, "a builder that gave its block away still works");
+    Assert(builder.Length() == 5, "and holds what it is given");
 
-    sized.Append("Hello");
-    let block = sized.Data();
-    sized.Append(", World");
-    if sized.Data() != block { return 63; }
-    if sized.Capacity() != 64 { return 64; }
+    // Room asked for up front is room the appends do not have to find.
+    var sized = StringBuilder::WithCapacity(allocator, 64, @error);
+    Assert(error == TextError::None && sized.Capacity() >= 64, "a builder can be sized up front");
+    let sizedCapacity = sized.Capacity();
+    index = 0;
+    while index < 64 {
+        sized.AppendAscii(c8'y');
+        index = index + 1;
+    }
+    Assert(sized.Capacity() == sizedCapacity, "and filling it exactly needs no more room");
 
-    // IntoString hands the block over instead of copying it, and leaves the
-    // builder empty and owning nothing.
-    var moved = sized.IntoString();
-    if !Matches(moved, "Hello, World") { return 70; }
-    if moved.Length() != 12 { return 71; }
-    if sized.Length() != 0 { return 72; }
-    if sized.Capacity() != 0 { return 73; }
-    if sized.Data() != null { return 74; }
-
-    // Only the String owns a block now, so freeing the drained builder is a
-    // no-op and freeing the String is what actually releases the memory.
-    sized.Free();
-    moved.Free();
-
-    // Draining an empty builder yields the empty String and allocates nothing.
-    var blank = StringBuilder::New();
-    var nothing = blank.IntoString();
-    if !nothing.IsEmpty() { return 80; }
-    if nothing.Data() != null { return 81; }
-    nothing.Free();
-    blank.Free();
-
-    // A builder that is freed outright can be filled again from scratch.
-    var reused = StringBuilder::WithCapacity(8);
-    reused.Free();
-    if reused.Capacity() != 0 { return 90; }
-    reused.Append("again");
-    if reused.Length() != 5 { return 91; }
-    var final = reused.IntoString();
-    if !Matches(final, "again") { return 92; }
-    final.Free();
-    reused.Free();
     return 0;
 }

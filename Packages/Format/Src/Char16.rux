@@ -1,23 +1,37 @@
-import Text::{ String, StringBuilder };
+// A `char16` holds one UTF-16 code unit, which is one to three bytes of UTF-8.
+//
+// A code unit that is half of a surrogate pair says nothing on its own: the character it belongs to is spread across
+// two of them, and one of them is all this sees. So it is written as the replacement character rather than as an
+// ill-formed sequence.
 
-// A char16 holds one UTF-16 code unit, which becomes one to three bytes of
-// UTF-8. A code unit that is half of a surrogate pair says nothing on its
-// own -- the character it belongs to is spread across two of them, and this
-// conversion only sees one -- so it comes out as the replacement character
-// rather than as an ill-formed sequence.
-func ToString(value: char16) -> String {
-    var builder = StringBuilder::WithCapacity(3);
-    WriteChar(@builder, value);
-    return builder.IntoString();
-}
+import Text::{ IsScalarValue, TextError };
 
-extend char16 : Stringable {
-    func ToString(self: *char16) -> String {
-        return ToString(*self);
+extend char16 : Display {
+    /// Writes this code unit's character, or the replacement character when it is half of one.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char16/format
+    func Format(self: *char16, writer: Writer) -> TextError {
+        let value = *self as uint32;
+        if !IsScalarValue(value) {
+            return WriteScalar(writer, ReplacementCharacter);
+        }
+        return WriteScalar(writer, value as char32);
     }
 }
 
-// Appends the UTF-8 bytes of a char16 to a builder.
-func WriteChar(builder: *var StringBuilder, value: char16) {
-    WriteUtf8(builder, value as uint32);
+extend char16 : Debug {
+    /// The same character, quoted.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char16/format-debug
+    func FormatDebug(self: *char16, writer: Writer) -> TextError {
+        let opening = WriteAscii(writer, c8'\'');
+        if opening.IsError() {
+            return opening;
+        }
+        let body = self.Format(writer);
+        if body.IsError() {
+            return body;
+        }
+        return WriteAscii(writer, c8'\'');
+    }
 }

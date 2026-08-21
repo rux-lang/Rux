@@ -1,12 +1,23 @@
-import Text::{ String, StringBuilder };
+// A `bool32` is the word `true` or the word `false`.
+//
+// Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
-// As bool16: the same two words, in a wider box.
-func ToString(value: bool32) -> String {
-    return value ? String::From("true") : String::From("false");
+import Text::TextError;
+
+extend bool32 : Display {
+    /// Writes `true` or `false`.
+    ///
+    /// https://rux-lang.dev/docs/api/format/bool32/format
+    func Format(self: *bool32, writer: Writer) -> TextError {
+        return WriteBytes(writer, *self ? "true" : "false");
+    }
 }
 
-extend bool32 : Stringable {
-    func ToString(self: *bool32) -> String {
-        return ToString(*self);
+extend bool32 : Debug {
+    /// The same two words.
+    ///
+    /// https://rux-lang.dev/docs/api/format/bool32/format-debug
+    func FormatDebug(self: *bool32, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
 }

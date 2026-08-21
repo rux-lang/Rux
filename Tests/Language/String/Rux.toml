@@ -8,6 +8,7 @@ Type = "Executable"
 Description = "Language test: String"
 
 [Dependencies]
+Allocator = { Path = "../../../Packages/Allocator" }
 Core = { Path = "../../../Packages/Core" }
 Text = { Path = "../../../Packages/Text" }
 

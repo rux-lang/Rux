@@ -13,7 +13,12 @@ func PrintLine(value: Slice<char8>) {
     PrintLine();
 }
 
-func PrintLine(format: Slice<char8>, args: Stringable...) {
+func PrintLine(value: StringView) {
+    Print(value);
+    PrintLine();
+}
+
+func PrintLine(format: Slice<char8>, args: Display...) {
     Print(format, args...);
     PrintLine();
 }

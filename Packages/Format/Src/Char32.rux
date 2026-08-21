@@ -1,22 +1,36 @@
-import Text::{ String, StringBuilder };
+// A `char32` holds one Unicode scalar value, which is one to four bytes of UTF-8.
+//
+// A `char32` is checked when it is made, so a value that is not a scalar value cannot ordinarily be in one. It is
+// still checked here, because a cast can produce one and the writer's promise is worth more than the check costs.
 
-// A char32 holds one code point, which becomes one to four bytes of UTF-8.
-// A value past U+10FFFF, or one in the surrogate range that UTF-16 reserves
-// and UTF-8 has no use for, is not a code point at all and comes out as the
-// replacement character.
-func ToString(value: char32) -> String {
-    var builder = StringBuilder::WithCapacity(4);
-    WriteChar(@builder, value);
-    return builder.IntoString();
-}
+import Text::{ IsScalarValue, TextError };
 
-extend char32 : Stringable {
-    func ToString(self: *char32) -> String {
-        return ToString(*self);
+extend char32 : Display {
+    /// Writes this character, or the replacement character when the value is not one.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char32/format
+    func Format(self: *char32, writer: Writer) -> TextError {
+        let value = *self as uint32;
+        if !IsScalarValue(value) {
+            return WriteScalar(writer, ReplacementCharacter);
+        }
+        return WriteScalar(writer, value as char32);
     }
 }
 
-// Appends the UTF-8 bytes of a char32 to a builder.
-func WriteChar(builder: *var StringBuilder, value: char32) {
-    WriteUtf8(builder, value as uint32);
+extend char32 : Debug {
+    /// The same character, quoted.
+    ///
+    /// https://rux-lang.dev/docs/api/format/char32/format-debug
+    func FormatDebug(self: *char32, writer: Writer) -> TextError {
+        let opening = WriteAscii(writer, c8'\'');
+        if opening.IsError() {
+            return opening;
+        }
+        let body = self.Format(writer);
+        if body.IsError() {
+            return body;
+        }
+        return WriteAscii(writer, c8'\'');
+    }
 }

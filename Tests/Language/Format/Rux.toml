@@ -8,8 +8,10 @@ Type = "Executable"
 Description = "Language test: FormatTest"
 
 [Dependencies]
+Allocator = { Path = "../../../Packages/Allocator" }
 Core = { Path = "../../../Packages/Core" }
 Format = { Path = "../../../Packages/Format" }
+Text = { Path = "../../../Packages/Text" }
 
 [Build]
 Output = "../../../Bin/Tests/Language"

@@ -1,15 +1,28 @@
-import Text::{ String, StringBuilder };
+// The decimal text of a `uint`.
 
-// The decimal text of a uint, the unsigned integer that is as wide as a
-// pointer. As with int, it is a type of its own and not a name for uint64.
-func ToString(value: uint) -> String {
-    var builder = StringBuilder::WithCapacity(20);
-    WriteUint(@builder, value as uint64);
-    return builder.IntoString();
+// `uint` is a type of its own rather than a name for `uint64`, as `int` is for `int64`.
+
+import Text::TextError;
+
+extend uint : Display {
+    /// Writes this value's digits.
+    ///
+    /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
+    ///
+    /// https://rux-lang.dev/docs/api/format/uint/format
+    func Format(self: *uint, writer: Writer) -> TextError {
+        var storage: char8[20];
+        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 20));
+        WriteUint(@cursor, *self as uint64);
+        return WriteBytes(writer, cursor.Written());
+    }
 }
 
-extend uint : Stringable {
-    func ToString(self: *uint) -> String {
-        return ToString(*self);
+extend uint : Debug {
+    /// The same digits.
+    ///
+    /// https://rux-lang.dev/docs/api/format/uint/format-debug
+    func FormatDebug(self: *uint, writer: Writer) -> TextError {
+        return self.Format(writer);
     }
 }

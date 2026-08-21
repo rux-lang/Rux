@@ -1,0 +1,239 @@
+// Looking through text without copying any of it.
+//
+// Everything here answers about a `StringView` and gives back views, positions or booleans -- never a new string.
+// That is the point: asking whether text starts with something, or where something occurs in it, or what it is
+// without its surrounding spaces, are all questions about bytes that already exist. A design that answered with
+// owning strings would allocate to answer a question, and a caller who only wanted to look would pay for a copy.
+//
+// The search is over bytes, and works out to a search over characters for free: UTF-8 is self-synchronising, so no
+// character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
+// of one. A match on bytes therefore always lands on a character boundary, and there is nothing extra to check.
+//
+// Case is not considered anywhere here. Two characters differing only in case are the same letter to a reader and
+// different bytes to a machine, and which pairs count is a Unicode question with a locale attached. `Transform` has
+// the ASCII-only answer, which is the one that is well defined without tables.
+
+import Core::{ Iterator, Option, Slice };
+
+extend StringView {
+    /// Whether this view begins with `prefix`.
+    ///
+    /// Every view begins with the empty one.
+    ///
+    /// Runs in time proportional to the prefix and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/starts-with
+    func StartsWith(self: *StringView, prefix: StringView) -> bool {
+        if prefix.bytes.length > self.bytes.length {
+            return false;
+        }
+        var index: uint = 0;
+        while index < prefix.bytes.length {
+            if self.bytes.data[index] != prefix.bytes.data[index] {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    /// Whether this view ends with `suffix`.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/ends-with
+    func EndsWith(self: *StringView, suffix: StringView) -> bool {
+        if suffix.bytes.length > self.bytes.length {
+            return false;
+        }
+        let offset = self.bytes.length - suffix.bytes.length;
+        var index: uint = 0;
+        while index < suffix.bytes.length {
+            if self.bytes.data[offset + index] != suffix.bytes.data[index] {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    /// The byte index where `needle` first occurs, or `None`.
+    ///
+    /// The empty needle occurs at the start, which is what makes `IndexOf` agree with `StartsWith` for it.
+    ///
+    /// Runs in time proportional to the product of the lengths in the worst case, which for the short needles this
+    /// is used with is the same as proportional to the text.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/index-of
+    func IndexOf(self: *StringView, needle: StringView) -> Option<uint> {
+        if needle.bytes.length == 0 {
+            return Option::Some<uint>(0);
+        }
+        if needle.bytes.length > self.bytes.length {
+            return Option::None<uint>();
+        }
+        let last = self.bytes.length - needle.bytes.length;
+        var start: uint = 0;
+        while start <= last {
+            var index: uint = 0;
+            var matched = true;
+            while index < needle.bytes.length {
+                if self.bytes.data[start + index] != needle.bytes.data[index] {
+                    matched = false;
+                    index = needle.bytes.length;
+                }
+                else {
+                    index = index + 1;
+                }
+            }
+            if matched {
+                return Option::Some<uint>(start);
+            }
+            start = start + 1;
+        }
+        return Option::None<uint>();
+    }
+
+    /// The byte index where `needle` last occurs, or `None`.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/last-index-of
+    func LastIndexOf(self: *StringView, needle: StringView) -> Option<uint> {
+        if needle.bytes.length == 0 {
+            return Option::Some<uint>(self.bytes.length);
+        }
+        if needle.bytes.length > self.bytes.length {
+            return Option::None<uint>();
+        }
+        var start = self.bytes.length - needle.bytes.length + 1;
+        while start > 0 {
+            start = start - 1;
+            var index: uint = 0;
+            var matched = true;
+            while index < needle.bytes.length {
+                if self.bytes.data[start + index] != needle.bytes.data[index] {
+                    matched = false;
+                    index = needle.bytes.length;
+                }
+                else {
+                    index = index + 1;
+                }
+            }
+            if matched {
+                return Option::Some<uint>(start);
+            }
+        }
+        return Option::None<uint>();
+    }
+
+    /// Whether `needle` occurs anywhere in this view.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/contains
+    func Contains(self: *StringView, needle: StringView) -> bool {
+        return self.IndexOf(needle).IsSome();
+    }
+}
+
+/// Whether `byte` is ASCII whitespace: space, tab, newline, carriage return, form feed or vertical tab.
+///
+/// ASCII only, deliberately. Unicode calls a good many more characters whitespace, and which ones is a question for
+/// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
+///
+/// https://rux-lang.dev/docs/api/text/is-ascii-space
+func IsAsciiSpace(byte: char8) -> bool {
+    let value = byte as uint32;
+    return value == 0x20 || (value >= 0x09 && value <= 0x0D);
+}
+
+extend StringView {
+    /// This view without the ASCII whitespace at its start.
+    ///
+    /// Borrows: what comes back names the same bytes, further in.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/trim-start
+    func TrimStart(self: *StringView) -> StringView {
+        var start: uint = 0;
+        while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
+            start = start + 1;
+        }
+        return self.Part(start, self.bytes.length).ValueOr(StringView::New());
+    }
+
+    /// This view without the ASCII whitespace at its end.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/trim-end
+    func TrimEnd(self: *StringView) -> StringView {
+        var end = self.bytes.length;
+        while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
+            end = end - 1;
+        }
+        return self.Part(0, end).ValueOr(StringView::New());
+    }
+
+    /// This view without the ASCII whitespace at either end.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/trim
+    func Trim(self: *StringView) -> StringView {
+        let front = self.TrimStart();
+        return front.TrimEnd();
+    }
+}
+
+/// A walk over the parts of a view between occurrences of a separator.
+///
+/// Every part is a borrow of the original, so splitting allocates nothing however many parts there are.
+///
+/// https://rux-lang.dev/docs/api/text/split-iterator
+struct SplitIterator {
+    /// What is left to walk.
+    rest: StringView;
+    /// What separates the parts.
+    separator: StringView;
+    /// Whether the walk is over. A walk ends after the part following the last separator, which may be empty, so
+    /// running out of bytes is not by itself the end.
+    finished: bool;
+}
+
+extend SplitIterator {
+    /// The next part, or `None` when the walk is over.
+    ///
+    /// Two adjacent separators give an empty part between them, and a separator at either end gives an empty part
+    /// there -- so the parts always number one more than the separators, and joining them back with the separator
+    /// gives what was split. An empty separator gives the whole view as one part, since anything else would be an
+    /// endless walk.
+    ///
+    /// https://rux-lang.dev/docs/api/text/split-iterator/next
+    func Next(self: *var SplitIterator) -> Option<StringView> {
+        if self.finished {
+            return Option::None<StringView>();
+        }
+        if self.separator.bytes.length == 0 {
+            self.finished = true;
+            return Option::Some<StringView>(self.rest);
+        }
+        let found = self.rest.IndexOf(self.separator);
+        if found.IsNone() {
+            self.finished = true;
+            return Option::Some<StringView>(self.rest);
+        }
+        let at = found.ValueOr(0);
+        let part = self.rest.Part(0, at).ValueOr(StringView::New());
+        let after = at + self.separator.bytes.length;
+        self.rest = self.rest.Part(after, self.rest.bytes.length).ValueOr(StringView::New());
+        return Option::Some<StringView>(part);
+    }
+}
+
+extend SplitIterator : Iterator {}
+
+extend StringView {
+    /// A walk over the parts of this view between occurrences of `separator`.
+    ///
+    /// `self` is borrowed and must outlive the walk, as must `separator`.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/split
+    func Split(self: *StringView, separator: StringView) -> SplitIterator {
+        return SplitIterator {
+            rest: StringView::FromValidated(self.bytes),
+            separator: separator,
+            finished: false
+        };
+    }
+}

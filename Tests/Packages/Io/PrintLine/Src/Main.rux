@@ -1,5 +1,6 @@
+import Allocator::{ Allocator, SystemAllocator };
 import Io::PrintLine;
-import Text::String;
+import Text::{ String, TextError };
 
 func Main() -> int {
     PrintLine();
@@ -42,9 +43,12 @@ func Main() -> int {
     PrintLine(c16'B');
     PrintLine(c32'C');
 
-    var text = String::From("string-value");
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+    let text = String::FromBytes(allocator, "string-value", @error);
+    if error != TextError::None { return 1; }
     PrintLine(text);
-    text.Free();
     PrintLine("slice-value");
     PrintLine("formatted {} {} {{ok}}", 7, 2.5);
     return 0;

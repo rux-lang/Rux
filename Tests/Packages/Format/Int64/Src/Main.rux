@@ -1,20 +1,30 @@
-import Format::{ ToString, ParseError, ParseInt64, TryParseInt64 };
+import Text::StringView;
+import Format::{ ByteCursor, CursorWriter, Display, Writer, ParseError, ParseInt64, TryParseInt64 };
 import Core::Result;
-import Text::String;
+import Core::{ MutableSlice, Slice };
 
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
-func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    var text = actual;
-    var wanted = String::From(expected);
-    let ok = text == wanted;
-    text.Free();
-    wanted.Free();
-
-    if ok {
-        return 0;
+func Check(value: int64, expected: Slice<char8>, code: int) -> int {
+    var storage: char8[64];
+    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
+    let writer: Writer = CursorWriter::Of(@cursor);
+    let shown: Display = value;
+    if shown.Format(writer).IsError() {
+        return code;
     }
-    return code;
+    let actual = cursor.Written();
+    if actual.length != expected.length {
+        return code;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return code;
+        }
+        index = index + 1;
+    }
+    return 0;
 }
 
 func CheckParse(str: Slice<char8>, expected: int64, code: int) -> int {
@@ -60,9 +70,8 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = String::From("-123");
+    var text = StringView::FromBytes("-123").ValueOr(StringView::New());
     let parsed = ParseInt64(text);
-    text.Free();
     let code = match parsed {
         Result::Success(value) => value == -123i64 ? 0 : 120,
         Result::Error(_) => 120
@@ -76,15 +85,13 @@ func CheckParseOverloads() -> int {
     if value != 456i64 { return 124; }
     if TryParseInt64("1", null) { return 125; }
 
-    text = String::From("-789");
+    text = StringView::FromBytes("-789").ValueOr(StringView::New());
     let ok = TryParseInt64(text, @value);
-    text.Free();
     if !ok { return 126; }
     if value != -789i64 { return 127; }
 
-    text = String::From("bad");
+    text = StringView::FromBytes("bad").ValueOr(StringView::New());
     let failed = TryParseInt64(text, @value);
-    text.Free();
     if failed { return 128; }
     if value != -789i64 { return 129; }
     return 0;
@@ -100,15 +107,15 @@ func CheckParsing() -> int {
 
 func Main() -> int {
     let zero: int64 = 0;
-    var code = Check(ToString(zero), "0", 10);
+    var code = Check(zero, "0", 10);
     if code != 0 { return code; }
 
     let negative: int64 = -9876543210;
-    code = Check(ToString(negative), "-9876543210", 11);
+    code = Check(negative, "-9876543210", 11);
     if code != 0 { return code; }
 
     let positive: int64 = 9876543210;
-    code = Check(ToString(positive), "9876543210", 12);
+    code = Check(positive, "9876543210", 12);
     if code != 0 { return code; }
 
     // int64 is the type every signed conversion widens to, so its ends are the
@@ -117,13 +124,13 @@ func Main() -> int {
     // overflow straight back to itself.
     let min: int64 = -9223372036854775807 - 1;
     let max: int64 = 9223372036854775807;
-    code = Check(ToString(min), "-9223372036854775808", 20);
+    code = Check(min, "-9223372036854775808", 20);
     if code != 0 { return code; }
-    code = Check(ToString(max), "9223372036854775807", 21);
+    code = Check(max, "9223372036854775807", 21);
     if code != 0 { return code; }
 
     // The method the Stringable extension provides.
-    code = Check(max.ToString(), "9223372036854775807", 30);
+    code = Check(max, "9223372036854775807", 30);
     if code != 0 { return code; }
 
     code = CheckParsing();

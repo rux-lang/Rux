@@ -1,64 +1,76 @@
-import Text::String;
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ String, StringView, TextError };
 
-// Std is deliberately absent from the dependencies. It still exports a String of
-// its own, and the compiler pools the overloads of two same-named symbols, so
-// Std::String's identically shaped methods win over this package's and the code
-// under test never runs. That rules out Std::Assert, so a failed check reports
-// itself through the exit code instead: each one below is numbered, and `rux
-// test` prints the number of the first that fails.
+// A string owns its bytes and gives them back when it dies, which is the whole of what changed: it used to hold a
+// block from a global allocator and be released by hand, and every release that was forgotten was a leak nothing
+// reported.
+//
+// So the checks here are mostly about ownership -- that a copy is independent, that an early release leaves
+// something usable, that the block a builder hands over is given back to the allocator it came from -- and about
+// the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.
+
 func Main() -> int {
-    // The empty String owns nothing, so it can still be freed like any other.
-    var empty = String::New();
-    if empty.Length() != 0 { return 10; }
-    if !empty.IsEmpty() { return 11; }
-    if empty.Data() != null { return 12; }
-    empty.Free();
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
 
-    let literal: Slice<char8> = "Hello";
-    var hello = String::From(literal);
-    if hello.Length() != 5 { return 20; }
-    if hello.IsEmpty() { return 21; }
+    let empty = String::New(allocator);
+    Assert(empty.IsEmpty() && empty.Length() == 0, "a new string holds nothing");
+    Assert(empty.ScalarCount() == 0, "and no characters");
 
-    // From copies. A String left pointing into the literal would sit on a
-    // read-only page, which is the reason the type is immutable at all.
-    if hello.Data() == literal.data { return 22; }
-    if hello.At(0) != c8'H' { return 23; }
-    if hello.At(4) != c8'o' { return 24; }
+    // Eleven bytes, five characters: ASCII, two-byte, three-byte and four-byte.
+    let text = String::FromBytes(allocator, "hié€😀", @error);
+    Assert(error == TextError::None, "well-formed bytes make a string");
+    Assert(text.Length() == 11, "which spans every byte");
+    Assert(text.ScalarCount() == 5, "and holds five characters, which is not the same number");
 
-    // Reads past the end report the null character rather than running off the
-    // end of the block.
-    if hello.At(5) != c8'\0' { return 25; }
+    // Bytes that are not text make no string, and say why.
+    var broken: char8[3];
+    broken[0] = 0xEDu8 as char8;
+    broken[1] = 0xA0u8 as char8;
+    broken[2] = 0x80u8 as char8;
+    let refused = String::FromBytes(allocator, broken[0..3], @error);
+    Assert(error == TextError::InvalidUtf8, "a surrogate half is refused");
+    Assert(refused.IsEmpty(), "and nothing is built from it");
 
-    let raw: Slice<char8> = "ab";
-    var pair = String::From(raw.data, 2);
-    if pair.Length() != 2 { return 30; }
-    if pair.At(0) != c8'a' { return 31; }
-    if pair.At(1) != c8'b' { return 32; }
-    pair.Free();
+    // A copy is independent: it has its own block, and releasing one leaves the other alone.
+    var copy = text.Clone(@error);
+    Assert(error == TextError::None, "a string can be copied");
+    Assert(copy.Equals(@text), "and the copy holds what the original holds");
+    Assert(copy.Bytes().data != text.Bytes().data, "in a block of its own");
+    copy.Clear();
+    Assert(copy.IsEmpty(), "releasing the copy empties it");
+    Assert(text.Length() == 11, "and leaves the original untouched");
+    copy.Clear();
+    Assert(copy.IsEmpty(), "releasing it twice is not a second release");
 
-    // A zero length allocates nothing.
-    var none = String::From(raw.data, 0);
-    if !none.IsEmpty() { return 40; }
-    if none.Data() != null { return 41; }
-    none.Free();
+    // Cutting is by byte and only on character boundaries.
+    Assert(text.IsBoundary(0) && text.IsBoundary(2) && text.IsBoundary(11), "characters start where they start");
+    Assert(!text.IsBoundary(3) && !text.IsBoundary(9), "and their continuation bytes do not");
+    Assert(text.Part(0, 2).IsSome(), "a cut on two boundaries is allowed");
+    Assert(text.Part(0, 3).IsNone(), "a cut through the middle of a character is refused");
 
-    // Clone gives an independent block, so both copies can be freed.
-    var copy = hello.Clone();
-    if !copy.Equals(hello) { return 50; }
-    if copy.Data() == hello.Data() { return 51; }
-    copy.Free();
+    let front = text.Substring(0, 4, @error);
+    Assert(error == TextError::None, "an owning cut is made");
+    Assert(front.Length() == 4 && front.ScalarCount() == 3, "spanning what lies between the bounds");
+    let refusedCut = text.Substring(0, 3, @error);
+    Assert(error == TextError::NotABoundary, "and a cut off a boundary is refused rather than rounded");
+    Assert(refusedCut.IsEmpty(), "giving back nothing");
 
-    // Cloning the empty String stays empty rather than allocating.
-    var emptyCopy = String::New().Clone();
-    if !emptyCopy.IsEmpty() { return 52; }
-    if emptyCopy.Data() != null { return 53; }
-    emptyCopy.Free();
+    // A view over a string copies nothing and sees the same bytes.
+    let view = text.View();
+    Assert(view.Length() == text.Length(), "a view spans the same bytes");
+    Assert(view.Bytes().data == text.Bytes().data, "without copying any of them");
+    let rebuilt = String::FromView(allocator, view, @error);
+    Assert(error == TextError::None && rebuilt.Equals(@text), "and a string built from it holds the same text");
 
-    // Free releases the block and leaves an empty String behind, so a second
-    // call is a no-op rather than a double free.
-    hello.Free();
-    if !hello.IsEmpty() { return 60; }
-    if hello.Data() != null { return 61; }
-    hello.Free();
+    // Comparison is by bytes, which for UTF-8 is also by code point.
+    let shorter = String::FromBytes(allocator, "hi", @error);
+    Assert(!shorter.Equals(@text), "different text is not equal");
+    Assert(shorter.Compare(@text).IsLess(), "a prefix orders before what extends it");
+    Assert(text.Compare(@shorter).IsGreater(), "and the other way round");
+    Assert(text.Compare(@text).IsEqual(), "text equals itself");
+
     return 0;
 }

@@ -1,75 +1,56 @@
-import Format::{ Format, Stringable };
-import Text::String;
+import Allocator::{ Allocator, SystemAllocator };
+import Core::Slice;
+import Format::{ BuilderWriter, Debug, Display, Format, Writer };
+import Text::{ String, StringBuilder, StringView, TextError };
 
-// Std stays out of the dependencies, and a failed check reports itself through
-// the exit code. See the Int8 test for why.
-func Check(actual: String, expected: Slice<char8>, code: int) -> int {
-    var text = actual;
-    var wanted = String::From(expected);
-    let ok = text == wanted;
-    text.Free();
-    wanted.Free();
+// Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
+// make an empty one visible. Std stays out of the dependencies and a failed check reports through the exit code.
 
-    if ok {
-        return 0;
-    }
-    return code;
+func Matches(actual: StringView, expected: Slice<char8>) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return actual.Equals(@wanted);
 }
 
 func Main() -> int {
-    var hello = String::From("Hello World!");
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
 
-    // A String is already the text it renders into, so the conversion carries
-    // the bytes through unchanged.
-    var code = Check(hello.ToString(), "Hello World!", 10);
-    if code != 0 { return code; }
+    let hello = String::FromBytes(allocator, "Hello World!", @error);
+    if error != TextError::None { return 1; }
 
-    // The path a placeholder takes: an argument reaches Format as a Stringable
-    // and as nothing else, so this is what the extension is for.
-    code = Check(Format("{}", hello), "Hello World!", 11);
-    if code != 0 { return code; }
-    code = Check(Format("<{}>", hello), "<Hello World!>", 12);
-    if code != 0 { return code; }
+    // Through a placeholder, which is the path an argument takes.
+    let alone = Format(allocator, "{}", @error, hello.View());
+    if error != TextError::None { return 2; }
+    if !Matches(alone.View(), "Hello World!") { return 10; }
 
-    // A String argument sits alongside any other Stringable, and the same one
-    // may fill more than one placeholder.
-    code = Check(Format("{} {} {}", hello, 42, true), "Hello World! 42 true", 13);
-    if code != 0 { return code; }
-    code = Check(Format("{}{}", hello, hello), "Hello World!Hello World!", 14);
-    if code != 0 { return code; }
+    let wrapped = Format(allocator, "<{}>", @error, hello.View());
+    if error != TextError::None || !Matches(wrapped.View(), "<Hello World!>") { return 11; }
 
-    // The conversion is a copy rather than a handoff of the receiver's block.
-    // Format frees the String an argument renders itself into, so a shared
-    // block would leave the caller holding freed memory.
-    var copy = hello.ToString();
-    let separate = copy.Data() != hello.Data();
-    copy.Free();
-    if !separate { return 20; }
+    // Alongside arguments of other types, and twice from one value.
+    let mixed = Format(allocator, "{} {} {}", @error, hello.View(), 42, true);
+    if error != TextError::None || !Matches(mixed.View(), "Hello World! 42 true") { return 12; }
+    let doubled = Format(allocator, "{}{}", @error, hello.View(), hello.View());
+    if error != TextError::None || !Matches(doubled.View(), "Hello World!Hello World!") { return 13; }
 
-    // Which is what leaves the receiver intact after the calls above, each of
-    // which freed a String this one rendered.
-    code = Check(hello.Clone(), "Hello World!", 21);
-    if code != 0 { return code; }
+    // The receiver is untouched by having been rendered, however many times.
+    if hello.Length() != 12 { return 14; }
 
-    // The empty String owns no block, and renders as the empty text without
-    // allocating one.
-    var empty = String::New();
-    var rendered = empty.ToString();
-    let length = rendered.Length();
-    let data = rendered.Data();
-    rendered.Free();
-    if length != 0 || data != null { return 30; }
-    code = Check(Format("[{}]", empty), "[]", 31);
-    if code != 0 { return code; }
-    empty.Free();
+    // Debug quotes; Display does not. The difference is what makes an empty string visible.
+    var builder = StringBuilder::New(allocator);
+    let writer: Writer = BuilderWriter::Of(@builder);
+    let empty = String::New(allocator);
+    let shownPlain: Display = empty.View();
+    if shownPlain.Format(writer) != TextError::None { return 20; }
+    if builder.Length() != 0 { return 21; }
+    let shownDebug: Debug = empty.View();
+    if shownDebug.FormatDebug(writer) != TextError::None { return 22; }
+    if !Matches(builder.View(), "\"\"") { return 23; }
 
-    // A String holding a placeholder is an argument, not a format: what it
-    // holds is copied through rather than read for braces of its own.
-    var braces = String::From("{} {{");
-    code = Check(Format("{}", braces), "{} {{", 40);
-    if code != 0 { return code; }
-    braces.Free();
+    builder.Clear();
+    let shownHello: Debug = hello.View();
+    if shownHello.FormatDebug(writer) != TextError::None { return 24; }
+    if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
-    hello.Free();
     return 0;
 }

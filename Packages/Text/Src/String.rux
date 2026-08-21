@@ -1,291 +1,247 @@
-import Memory::{ Alloc, Equal, Copy, Free };
+// Text that owns the bytes it holds.
+//
+// A `String` owns one block, knows the allocator to give it back to, and never writes to it again. Every operation
+// that produces different text produces a different `String`, and leaves the receiver as it was.
+//
+// Immutability is not a preference here, it is what makes the type safe to hand around: a `String` may be built over
+// bytes that came from a literal, and a literal lives on a read-only page. A type that promised mutation would have
+// to copy defensively on every write or fault on some of them. `StringBuilder` is where text is assembled; `String`
+// is what assembling it produces.
+//
+// It owns, so it is move-only and gives its block back when it dies. That is the difference from `StringView`, which
+// borrows and copies nothing: a view is what to pass to something that only reads, and a `String` is what to keep.
+// `View` turns one into the other for free.
+//
+// Every `String` this package produces holds well-formed UTF-8, checked once where the bytes enter. Everything
+// downstream may rely on that, which is what makes cutting and indexing cheap.
 
-// A String owns the heap block behind `data` and never writes to it again:
-// every transform below returns a fresh String and leaves the receiver
-// untouched. Immutability is what makes the value semantics safe, since a
-// literal-backed buffer would otherwise be written through a read-only page.
-// Assignment copies the struct, not the block, so two Strings can name the
-// same allocation. Clone when both have to be freed; Free exactly once.
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::{ Drop, Option, Ordering, Slice };
+import Memory::Copy;
+
+/// Text that owns its bytes.
+///
+/// Move-only: it owns the block behind `data` and gives it back when it dies.
+///
+/// https://rux-lang.dev/docs/api/text/string
 struct String {
-    data: *char8;
+    /// The bytes, or null for text of no length.
+    data: *var char8;
+    /// How many bytes there are. Not how many characters.
     length: uint;
+    /// How large the block is. An allocator is given back the layout it handed out, and a string built by handing
+    /// a builder's block over gets one with room to spare, so what was allocated and what is used are not always
+    /// the same number.
+    capacity: uint;
+    /// Where the block came from, and where it goes back to.
+    allocator: Allocator;
 }
 
 extend String {
-    // The empty String. It owns no block, so this allocates nothing, and
-    // every operation below treats it as a String of length zero rather than
-    // as a missing value.
-    func New() -> String {
-        return String { data: null, length: 0 };
+    /// Text of no length, which has allocated nothing.
+    ///
+    /// `allocator` is borrowed for the call and kept, so an empty string can still grow into one that allocates.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/new
+    func New(allocator: Allocator) -> String {
+        return String { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    // The raw entry point: the caller vouches that `length` bytes are really
-    // there. The bytes are copied, so the block behind `str` is the caller's
-    // to keep or release, and the String that comes back owns a block of its
-    // own. A length of zero allocates nothing.
-    func From(str: *char8, length: uint) -> String {
-        if length == 0 {
-            return String::New();
+    /// A copy of bytes the caller vouches are UTF-8.
+    ///
+    /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already
+    /// guarantees it -- another string, a view, this package's own output.
+    ///
+    /// `error` receives `OutOfMemory` when the copy cannot be made, and `None` when the string was built.
+    ///
+    /// # Safety
+    ///
+    /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
+    /// answers rather than errors.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/from-validated
+    func FromValidated(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+        *error = TextError::None;
+        if bytes.length == 0 {
+            return String::New(allocator);
         }
 
-        let ptr = Alloc(length) as *var char8;
-        Copy(ptr, str, length);
-        return String { data: ptr, length: length };
+        let layout = Layout::New(bytes.length, 1);
+        if layout.IsNone() {
+            *error = TextError::LengthOverflow;
+            return String::New(allocator);
+        }
+
+        var block: *var opaque = null;
+        var borrowed = allocator;
+        let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: bytes.length, alignment: 1 }), @block);
+        if allocated != AllocError::None {
+            *error = FromAllocError(allocated);
+            return String::New(allocator);
+        }
+
+        Copy(block, bytes.data as *opaque, bytes.length);
+        return String {
+            data: block as *var char8,
+            length: bytes.length,
+            capacity: bytes.length,
+            allocator: allocator
+        };
     }
 
-    // Copies the bytes of a slice, which is how a string literal becomes a
-    // String. The literal itself is left alone on its read-only page.
-    func From(str: Slice<char8>) -> String {
-        return String::From(str.data, str.length);
+    /// A copy of `bytes` as text, or text of no length when they are not UTF-8 or cannot be stored.
+    ///
+    /// `bytes` is borrowed and copied, so what it names stays the caller's. `error` receives `InvalidUtf8` when the
+    /// bytes are not text and `OutOfMemory` when the copy cannot be made.
+    ///
+    /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/from-bytes
+    func FromBytes(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+        var failureIndex: uint = 0;
+        if Validate(bytes, @failureIndex).IsError() {
+            *error = TextError::InvalidUtf8;
+            return String::New(allocator);
+        }
+        return String::FromValidated(allocator, bytes, error);
     }
 
-    // An independent copy, with a block of its own. Assignment shares a
-    // block between two Strings; this is what to reach for when both of them
-    // have to be freed.
-    func Clone(self: *String) -> String {
-        return String::From(self.data, self.length);
+    /// A copy of what `view` spans.
+    ///
+    /// The view was checked when it was made, so this copies without checking again.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/from-view
+    func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+        return String::FromValidated(allocator, view.bytes, error);
     }
+}
 
-    // There are no destructors, so ownership is released by hand. The empty
-    // String holds a null block and Memory::Free ignores null, which makes
-    // this safe to call on any String this package returns. It leaves an
-    // empty String behind, so a second call is a no-op rather than a double
-    // free.
-    func Free(self: *var String) {
-        Free(self.data);
-        self.data = null;
-        self.length = 0;
-    }
-
-    // The block itself, for handing the bytes to something that reads them
-    // directly. It stays the String's to free, and it carries no terminator:
-    // pair it with Length rather than scanning for a null.
-    func Data(self: *String) -> *char8 {
-        return self.data;
-    }
-
-    // The number of bytes, which for UTF-8 content is not the number of
-    // characters.
+extend String {
+    /// How many bytes the text spans.
+    ///
+    /// Not how many characters: that is `ScalarCount`, and it costs a pass.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/length
     func Length(self: *String) -> uint {
         return self.length;
     }
 
-    // Whether the String holds no bytes. True of String::New and of anything
-    // that has been freed.
+    /// Whether the text spans no bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/is-empty
     func IsEmpty(self: *String) -> bool {
         return self.length == 0;
     }
 
-    // The byte at an index. Out of range reads report the null character
-    // rather than running off the end of the block.
-    func At(self: *String, index: uint) -> char8 {
-        if index >= self.length {
-            return c8'\0';
-        }
-        return self.data[index];
+    /// The bytes themselves, borrowed.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/bytes
+    func Bytes(self: *String) -> Slice<char8> {
+        return Slice<char8> { data: self.data, length: self.length };
     }
 
-    // Compares contents, not addresses: two Strings holding the same bytes in
-    // separate blocks are equal, and so are two empty Strings.
-    func Equals(self: *String, other: String) -> bool {
-        if self.length != other.length {
-            return false;
-        }
-        if self.length == 0 {
-            return true;
-        }
-        // Compare reports the offset of the first difference, so an equal
-        // pair reports the full length.
-        return Equal(self.data, other.data, self.length);
+    /// A view over this string, which is what to pass to anything that only reads.
+    ///
+    /// Copies nothing. The view borrows this string and must not outlive it.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/view
+    func View(self: *String) -> StringView {
+        return StringView::FromValidated(self.Bytes());
     }
 
-    // Equality by contents. Routes to Equals.
-    func ==(self: *String, other: String) -> bool {
-        return self.Equals(other);
+    /// How many characters the text holds.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/scalar-count
+    func ScalarCount(self: *String) -> uint {
+        return CountScalars(self.Bytes());
     }
 
-    // Inequality by contents. Routes to Equals.
-    func !=(self: *String, other: String) -> bool {
-        return !self.Equals(other);
+    /// Whether `index` is where a character starts, and so a place the text may be cut.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/is-boundary
+    func IsBoundary(self: *String, index: uint) -> bool {
+        return IsBoundary(self.Bytes(), index);
     }
 
-    // Joins two Strings into a new block, leaving both operands as they were.
-    // The result owns that block and has to be freed, which makes `+` in a
-    // loop a chain of allocations: build with a StringBuilder instead.
-    func +(self: *String, other: String) -> String {
-        let length = self.length + other.length;
-        if length == 0 {
-            return String::New();
-        }
-
-        let ptr = Alloc(length) as *var char8;
-        Copy(ptr, self.data, self.length);
-        Copy(ptr + self.length, other.data, other.length);
-        return String { data: ptr, length: length };
+    /// A borrowed view of the part from `start` up to `end`, or `None` when either end is not a boundary.
+    ///
+    /// Borrows rather than copying, since a part of a string is bytes the string already owns. `Substring` is what
+    /// makes an owning copy.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/part
+    func Part(self: *String, start: uint, end: uint) -> Option<StringView> {
+        let whole = self.View();
+        return whole.Part(start, end);
     }
 
-    // Appends a slice, so a literal can be joined on without wrapping it in a
-    // String first. Allocates on the same terms as the overload above.
-    func +(self: *String, other: Slice<char8>) -> String {
-        let length = self.length + other.length;
-        if length == 0 {
-            return String::New();
+    /// An owning copy of the part from `start` up to `end`.
+    ///
+    /// `error` receives `NotABoundary` when either end would cut a character in half.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/substring
+    func Substring(self: *String, start: uint, end: uint, error: *var TextError) -> String {
+        let part = self.Part(start, end);
+        if part.IsNone() {
+            *error = TextError::NotABoundary;
+            return String::New(self.allocator);
         }
-
-        let ptr = Alloc(length) as *var char8;
-        Copy(ptr, self.data, self.length);
-        Copy(ptr + self.length, other.data, other.length);
-        return String { data: ptr, length: length };
+        return String::FromView(self.allocator, part.ValueOr(StringView::New()), error);
     }
 
-    // Whether the String opens with the given bytes. Every String starts with
-    // the empty one, and none starts with a prefix longer than itself.
-    func StartsWith(self: *String, prefix: String) -> bool {
-        if prefix.length > self.length {
-            return false;
-        }
-        if prefix.length == 0 {
-            return true;
-        }
-        return Equal(self.data, prefix.data, prefix.length);
+    /// An independent copy, with a block of its own from the same allocator.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/clone
+    func Clone(self: *String, error: *var TextError) -> String {
+        return String::FromValidated(self.allocator, self.Bytes(), error);
     }
 
-    // Whether the String closes with the given bytes, on the same terms as
-    // StartsWith.
-    func EndsWith(self: *String, suffix: String) -> bool {
-        if suffix.length > self.length {
-            return false;
-        }
-        if suffix.length == 0 {
-            return true;
-        }
-
-        let offset = self.length - suffix.length;
-        return Equal(self.data + offset, suffix.data, suffix.length);
+    /// Whether two strings hold the same bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/equals
+    func Equals(self: *String, other: *String) -> bool {
+        let mine = self.View();
+        let theirs = other.View();
+        return mine.Equals(@theirs);
     }
 
-    // The offset of the first match, or -1 when there is none. The empty
-    // needle matches at the front. The scan is the plain one, so the cost is
-    // the product of the two lengths in the worst case.
-    func IndexOf(self: *String, needle: String) -> int {
-        if needle.length == 0 {
-            return 0;
-        }
-        if needle.length > self.length {
-            return -1;
-        }
-
-        let last = self.length - needle.length;
-        var start: uint = 0;
-        while start <= last {
-            if Equal(self.data + start, needle.data, needle.length) {
-                return start as int;
-            }
-            start++;
-        }
-        return -1;
+    /// How this string orders against `other`, by bytes, which for UTF-8 is also by code point.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/compare
+    func Compare(self: *String, other: *String) -> Ordering {
+        let mine = self.View();
+        let theirs = other.View();
+        return mine.Compare(@theirs);
     }
 
-    // Whether the needle occurs anywhere. Ask IndexOf instead when the
-    // position matters.
-    func Contains(self: *String, needle: String) -> bool {
-        return self.IndexOf(needle) >= 0;
-    }
-
-    // A copy of the bytes in a range, in a block of its own. A range that
-    // runs past the end is clamped to what is there, so the result is never
-    // longer than the receiver, and a start at or past the end yields the
-    // empty String.
-    func Substring(self: *String, start: uint, length: uint) -> String {
-        if start >= self.length {
-            return String::New();
+    /// Gives the block back and leaves text of no length behind.
+    ///
+    /// Rarely needed: a string releases itself when it dies. This is for releasing one early, and is safe to call
+    /// twice because what it leaves behind owns nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/clear
+    func Clear(self: *var String) {
+        if self.data != null {
+            let layout = Layout::New(self.capacity, 1);
+            var borrowed = self.allocator;
+            borrowed.Deallocate(self.data as *var opaque,
+                                layout.ValueOr(Layout { size: self.capacity, alignment: 1 }));
         }
-
-        var count = length;
-        let available = self.length - start;
-        if count > available {
-            count = available;
-        }
-        return String::From(self.data + start, count);
-    }
-
-    // An upper-cased copy, leaving the receiver alone. ASCII only: bytes
-    // outside a-z are copied through untouched, so the multi-byte sequences
-    // of a UTF-8 string survive but do not case fold.
-    func ToUpper(self: *String) -> String {
-        if self.length == 0 {
-            return String::New();
-        }
-
-        let ptr = Alloc(self.length) as *var char8;
-        for i in 0..self.length {
-            let ch = self.data[i];
-            if ch >= c8'a' && ch <= c8'z' {
-                ptr[i] = ((ch as int8) - 32) as char8;
-            } else {
-                ptr[i] = ch;
-            }
-        }
-        return String { data: ptr, length: self.length };
-    }
-
-    // A lower-cased copy, ASCII only, on the same terms as ToUpper.
-    func ToLower(self: *String) -> String {
-        if self.length == 0 {
-            return String::New();
-        }
-
-        let ptr = Alloc(self.length) as *var char8;
-        for i in 0..self.length {
-            let ch = self.data[i];
-            if ch >= c8'A' && ch <= c8'Z' {
-                ptr[i] = ((ch as int8) + 32) as char8;
-            } else {
-                ptr[i] = ch;
-            }
-        }
-        return String { data: ptr, length: self.length };
-    }
-
-    // A copy with the leading and trailing whitespace dropped, leaving the
-    // receiver alone. Whitespace that is all there is trims down to the empty
-    // String. See IsSpace for which bytes count.
-    func Trim(self: *String) -> String {
-        var start: uint = 0;
-        while start < self.length && IsSpace(self.data[start]) {
-            start++;
-        }
-
-        if start == self.length {
-            return String::New();
-        }
-
-        var end = self.length;
-        while end > start && IsSpace(self.data[end - 1]) {
-            end--;
-        }
-        return String::From(self.data + start, end - start);
-    }
-
-    // The contents laid down count times in one block. Repeating nothing, or
-    // repeating zero times, yields the empty String. The block is sized up
-    // front, so this costs one allocation rather than one per round.
-    func Repeat(self: *String, count: uint) -> String {
-        if count == 0 || self.length == 0 {
-            return String::New();
-        }
-
-        var builder = StringBuilder::WithCapacity(self.length * count);
-        var i: uint = 0;
-        while i < count {
-            builder.Append(*self);
-            i++;
-        }
-        return builder.IntoString();
+        self.data = null;
+        self.length = 0;
+        self.capacity = 0;
     }
 }
 
-// The bytes Trim treats as whitespace: space, tab, newline, carriage return.
-func IsSpace(ch: char8) -> bool {
-    return ch == c8' ' || ch == c8'\t' || ch == c8'\n' || ch == c8'\r';
+extend String : Drop {
+    /// Gives the block back.
+    ///
+    /// Runs when the string dies. Never called directly; a string is move-only, so there is exactly one of these per
+    /// string however many times it was passed along.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/drop
+    func Drop(self: *var String) {
+        self.Clear();
+    }
 }

@@ -1,62 +1,85 @@
-import Text::{ String, StringBuilder };
+// Filling placeholders in a run of text.
+//
+// `{}` takes the next argument, in the order they are written; `{{` and `}}` are how a literal brace is spelled.
+// There is nothing else yet: width, alignment, precision and base are a specification inside the braces, which is a
+// separate piece of work and belongs to the placeholder rather than to the value.
+//
+// Arguments arrive as `Display`, so each one writes itself into the builder directly. Nothing is rendered into a
+// string on the way, which is the difference from the old shape: formatting six values allocated six blocks and
+// copied out of each of them, and now it allocates only what the result itself needs.
 
-// Substitution into a format string: each `{}` takes the next argument,
-// rendered through the Stringable implementation its type carries, and
-// everything outside a placeholder is copied through as it stands. The
-// result grows to whatever it needs, so nothing is truncated.
-// A brace is written twice to mean itself -- `{{` for a `{` and `}}` for a
-// `}` -- which is what leaves a literal brace reachable in a string whose
-// single braces are placeholders. There is nothing else inside a `{}`: the
-// width, the padding and the base a printf-style spec would carry have
-// nowhere to go, and a value is rendered the one way its ToString renders
-// it.
-// Nothing about a call is an error. A stray `{` or `}` that opens no
-// placeholder is text and is copied as text, arguments past the last
-// placeholder go unused, and placeholders past the last argument put
-// nothing in their place.
-// The String that comes back is the caller's to free, on the terms Text
-// sets out. One String per argument is allocated along the way, but those
-// are this function's to release: an argument arrives as an interface, and
-// the only thing the interface offers is a ToString that allocates. The
-// Write functions are the way around that for a value whose type is known.
-func Format(format: Slice<char8>, args: Stringable...) -> String {
-    // The literal text, plus a little for each argument. It is a guess, and
-    // too small a one only costs a reallocation, which is what the builder
-    // is there to handle: the short calls that most of them are fill in
-    // without one.
-    var builder = StringBuilder::WithCapacity(format.length + args.length * 8);
-    // The argument the next placeholder takes. Placeholders are filled in
-    // the order they are written, so this only ever moves forward.
+import Allocator::Allocator;
+import Core::Slice;
+import Text::{ String, StringBuilder, TextError };
+
+/// Writes `format` into `writer`, with each `{}` replaced by the next argument.
+///
+/// A placeholder with no argument left is written as nothing rather than refused, so a mismatched call produces
+/// text that shows the mistake instead of failing at the point of printing, which is usually where the mistake can
+/// least be handled. `{{` and `}}` stand for a literal brace.
+///
+/// Reports whatever the writer reported, having written what it managed to first.
+///
+/// https://rux-lang.dev/docs/api/format/write-format
+func WriteFormat(writer: Writer, format: Slice<char8>, args: Display...) -> TextError {
+    // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
+    // ever moves forward.
     var next: uint = 0;
-    var i: uint = 0;
-    while i < format.length {
-        let ch = format[i];
-        let paired = i + 1 < format.length;
-        if ch == c8'{' && paired && format[i + 1] == c8'{' {
-            builder.Append(c8'{');
-            i += 2;
+    var index: uint = 0;
+    while index < format.length {
+        let ch = format[index];
+        let paired = index + 1 < format.length;
+        if ch == c8'{' && paired && format[index + 1] == c8'{' {
+            let written = WriteAscii(writer, c8'{');
+            if written.IsError() {
+                return written;
+            }
+            index += 2;
             continue;
         }
-        if ch == c8'}' && paired && format[i + 1] == c8'}' {
-            builder.Append(c8'}');
-            i += 2;
+        if ch == c8'}' && paired && format[index + 1] == c8'}' {
+            let written = WriteAscii(writer, c8'}');
+            if written.IsError() {
+                return written;
+            }
+            index += 2;
             continue;
         }
-        if ch == c8'{' && paired && format[i + 1] == c8'}' {
+        if ch == c8'{' && paired && format[index + 1] == c8'}' {
             if next < args.length {
-                // The String an argument renders itself into is freed as
-                // soon as its bytes are in the builder, so a call holds one
-                // of them at a time rather than one for every argument.
-                var text = args[next].ToString();
-                builder.Append(text);
-                text.Free();
+                let written = args[next].Format(writer);
+                if written.IsError() {
+                    return written;
+                }
                 next++;
             }
-            i += 2;
+            index += 2;
             continue;
         }
-        builder.Append(ch);
-        i++;
+        let written = WriteAscii(writer, ch);
+        if written.IsError() {
+            return written;
+        }
+        index++;
     }
+    return TextError::None;
+}
+
+/// The text `format` becomes with its placeholders filled, as a string of its own.
+///
+/// `allocator` is what the string is built with and what it will give its block back to. `error` receives what went
+/// wrong, and the string comes back holding whatever was written before that.
+///
+/// https://rux-lang.dev/docs/api/format/format
+func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, args: Display...) -> String {
+    var builder = StringBuilder::New(allocator);
+    // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
+    // builder is there to absorb; the short calls that most of them are fill in without one.
+    *error = builder.Reserve(format.length + args.length * 8);
+    if error.IsError() {
+        return builder.IntoString();
+    }
+    let writer: Writer = BuilderWriter::Of(@builder);
+    *error = WriteFormat(writer, format, args...);
     return builder.IntoString();
 }

@@ -1,22 +1,33 @@
-import Format::{ ToString, IsNan, IsInfinite, IsFinite };
-import Text::String;
+import Core::{ MutableSlice, Slice };
+import Format::{ ByteCursor, CursorWriter, Display, IsFinite, IsInfinite, IsNan, Writer };
 
-// Std stays out of the dependencies, and a failed check reports itself through
-// the exit code. See the Int test for why.
+// Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
+// the overloads of two same-named symbols, so Std's would win over this package's and the code under test would
+// never run. That rules out Std::Assert, so a failed check reports itself through the exit code instead: each one
+// below is numbered, and `rux test` prints the number of the first that fails.
 //
-// Every literal below carries the f32 suffix: an unsuffixed one is a float64,
-// and a float64 does not narrow to a float32 on its own.
+// Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
+// buys: this test needs no allocator at all.
 func Check(value: float32, expected: Slice<char8>, code: int) -> int {
-    var actual = ToString(value);
-    var wanted = String::From(expected);
-    let ok = actual == wanted;
-    actual.Free();
-    wanted.Free();
-
-    if ok {
-        return 0;
+    var storage: char8[64];
+    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
+    let writer: Writer = CursorWriter::Of(@cursor);
+    let shown: Display = value;
+    if shown.Format(writer).IsError() {
+        return code;
     }
-    return code;
+    let actual = cursor.Written();
+    if actual.length != expected.length {
+        return code;
+    }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] {
+            return code;
+        }
+        index = index + 1;
+    }
+    return 0;
 }
 
 func Main() -> int {
@@ -74,16 +85,9 @@ func Main() -> int {
     if IsInfinite(nan) { return 63; }
     if IsFinite(inf) { return 64; }
     if !IsFinite(3.4028235e38f32) { return 65; }
-
-    // The method the Stringable extension provides, which is the same conversion
-    // reached through the interface.
-    let value = 2.5f32;
-    var text = value.ToString();
-    var wanted = String::From("2.5");
-    let ok = text == wanted;
-    text.Free();
-    wanted.Free();
-    if !ok { return 70; }
+    // Reached through the interface rather than through the concrete type, which is how a format call reaches it.
+    let code70 = Check(2.5f32, "2.5", 70);
+    if code70 != 0 { return code70; }
 
     return 0;
 }
