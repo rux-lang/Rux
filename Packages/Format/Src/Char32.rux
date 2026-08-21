@@ -9,12 +9,12 @@ extend char32 : Display {
     /// Writes this character, or the replacement character when the value is not one.
     ///
     /// https://rux-lang.dev/docs/api/format/char32/format
-    func Format(self: *char32, writer: Writer) -> TextError {
+    func Format(self: *char32, writer: Writer, spec: FormatSpec) -> TextError {
         let value = *self as uint32;
         if !IsScalarValue(value) {
-            return WriteScalar(writer, ReplacementCharacter);
+            return FormatScalar(writer, spec, ReplacementCharacter);
         }
-        return WriteScalar(writer, value as char32);
+        return FormatScalar(writer, spec, value as char32);
     }
 }
 
@@ -22,12 +22,12 @@ extend char32 : Debug {
     /// The same character, quoted.
     ///
     /// https://rux-lang.dev/docs/api/format/char32/format-debug
-    func FormatDebug(self: *char32, writer: Writer) -> TextError {
+    func FormatDebug(self: *char32, writer: Writer, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'\'');
         if opening.IsError() {
             return opening;
         }
-        let body = self.Format(writer);
+        let body = self.Format(writer, FormatSpec::Plain());
         if body.IsError() {
             return body;
         }

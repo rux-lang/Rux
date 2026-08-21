@@ -8,9 +8,10 @@
 // Both write into a `Writer` rather than answering with a `String`, which is what makes printing a value allocate
 // nothing. Rendering to a string is then one writer among several.
 //
-// Neither takes a specification. Width, alignment, precision and base belong to the placeholder rather than the
-// value, and are applied by what drives the writer; a type that implemented them itself would have to reimplement
-// them, and would get them subtly different.
+// Both take the placeholder's specification, because it is the value that has to apply it: base and sign need the
+// bits and not the rendered text, and precision means digits to a float and characters to a string. What every
+// type applies the same way -- width, fill, alignment -- is written once in `WriteAligned` and shared. A bare `{}`
+// passes `FormatSpec::Plain`, which asks for nothing.
 
 import Text::TextError;
 
@@ -18,14 +19,14 @@ import Text::TextError;
 ///
 /// https://rux-lang.dev/docs/api/format/display
 interface Display {
-    /// Writes this value's text, reporting what stopped it.
-    func Format(writer: Writer) -> TextError;
+    /// Writes this value's text under `spec`, reporting what stopped it.
+    func Format(writer: Writer, spec: FormatSpec) -> TextError;
 }
 
 /// The text a value has for whoever is inspecting a program.
 ///
 /// https://rux-lang.dev/docs/api/format/debug
 interface Debug {
-    /// Writes this value's inspection text, reporting what stopped it.
-    func FormatDebug(writer: Writer) -> TextError;
+    /// Writes this value's inspection text under `spec`, reporting what stopped it.
+    func FormatDebug(writer: Writer, spec: FormatSpec) -> TextError;
 }

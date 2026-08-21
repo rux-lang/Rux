@@ -1,0 +1,146 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::Slice;
+import Format::Format;
+import Text::{ StringView, TextError };
+
+// The spec grammar, exercised through whole format calls so what is checked is what a caller sees. Each family gets
+// its edges: alignment with and without a named fill, zero-padding around a sign, each base with and without its
+// prefix, precision on text at a multi-byte boundary, and the ill-formed specs that must come through as literal
+// text rather than half-applied.
+
+func Matches(allocator: Allocator, format: Slice<char8>, expected: Slice<char8>) -> bool {
+    var error = TextError::None;
+    let rendered = Format(allocator, format, @error, 0);
+    if error != TextError::None {
+        return false;
+    }
+    let wanted = StringView::FromValidated(expected);
+    let renderedView = rendered.View();
+    return renderedView.Equals(@wanted);
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Width and alignment: numbers sit right by default, text left, and a named fill replaces the space.
+    let right = Format(allocator, "[{:6}]", @error, 42);
+    let wantedRight = StringView::FromValidated("[    42]");
+    var got = right.View();
+    if error != TextError::None || !got.Equals(@wantedRight) { return 10; }
+
+    let text = Format(allocator, "[{:6}]", @error, StringView::FromValidated("ab"));
+    let wantedText = StringView::FromValidated("[ab    ]");
+    got = text.View();
+    if error != TextError::None || !got.Equals(@wantedText) { return 11; }
+
+    let left = Format(allocator, "[{:<6}]", @error, 42);
+    let wantedLeft = StringView::FromValidated("[42    ]");
+    got = left.View();
+    if error != TextError::None || !got.Equals(@wantedLeft) { return 12; }
+
+    let center = Format(allocator, "[{:^7}]", @error, 42);
+    let wantedCenter = StringView::FromValidated("[  42   ]");
+    got = center.View();
+    if error != TextError::None || !got.Equals(@wantedCenter) { return 13; }
+
+    let starred = Format(allocator, "[{:*>6}]", @error, 42);
+    let wantedStars = StringView::FromValidated("[****42]");
+    got = starred.View();
+    if error != TextError::None || !got.Equals(@wantedStars) { return 14; }
+
+    // A width no wider than the value changes nothing.
+    let snug = Format(allocator, "[{:2}]", @error, 12345);
+    let wantedSnug = StringView::FromValidated("[12345]");
+    got = snug.View();
+    if error != TextError::None || !got.Equals(@wantedSnug) { return 15; }
+
+    // Sign and zero-padding: the zeros go inside the number, after its sign.
+    let plus = Format(allocator, "{:+}", @error, 42);
+    let wantedPlus = StringView::FromValidated("+42");
+    got = plus.View();
+    if error != TextError::None || !got.Equals(@wantedPlus) { return 20; }
+
+    let minusPadded = Format(allocator, "{:06}", @error, -42);
+    let wantedMinus = StringView::FromValidated("-00042");
+    got = minusPadded.View();
+    if error != TextError::None || !got.Equals(@wantedMinus) { return 21; }
+
+    let plusPadded = Format(allocator, "{:+06}", @error, 42);
+    let wantedPlusPad = StringView::FromValidated("+00042");
+    got = plusPadded.View();
+    if error != TextError::None || !got.Equals(@wantedPlusPad) { return 22; }
+
+    // The bases, bare and prefixed, and the case of the hex digits.
+    let hex = Format(allocator, "{:x}", @error, 255);
+    let wantedHex = StringView::FromValidated("ff");
+    got = hex.View();
+    if error != TextError::None || !got.Equals(@wantedHex) { return 30; }
+
+    let upperHex = Format(allocator, "{:X}", @error, 255);
+    let wantedUpper = StringView::FromValidated("FF");
+    got = upperHex.View();
+    if error != TextError::None || !got.Equals(@wantedUpper) { return 31; }
+
+    let prefixed = Format(allocator, "{:#x}", @error, 255);
+    let wantedPrefixed = StringView::FromValidated("0xff");
+    got = prefixed.View();
+    if error != TextError::None || !got.Equals(@wantedPrefixed) { return 32; }
+
+    let binary = Format(allocator, "{:#b}", @error, 5);
+    let wantedBinary = StringView::FromValidated("0b101");
+    got = binary.View();
+    if error != TextError::None || !got.Equals(@wantedBinary) { return 33; }
+
+    let octal = Format(allocator, "{:#o}", @error, 8);
+    let wantedOctal = StringView::FromValidated("0o10");
+    got = octal.View();
+    if error != TextError::None || !got.Equals(@wantedOctal) { return 34; }
+
+    // Zero-padded hex with its prefix: the zeros sit between prefix and digits.
+    let padHex = Format(allocator, "{:#06x}", @error, 255);
+    let wantedPadHex = StringView::FromValidated("0x00ff");
+    got = padHex.View();
+    if error != TextError::None || !got.Equals(@wantedPadHex) { return 35; }
+
+    // A negative number in a base renders its magnitude behind its sign.
+    let negHex = Format(allocator, "{:x}", @error, -255);
+    let wantedNegHex = StringView::FromValidated("-ff");
+    got = negHex.View();
+    if error != TextError::None || !got.Equals(@wantedNegHex) { return 36; }
+
+    // Precision keeps characters, and cuts on a character boundary even when the byte count says otherwise.
+    let cut = Format(allocator, "{:.3}", @error, StringView::FromValidated("hello"));
+    let wantedCut = StringView::FromValidated("hel");
+    got = cut.View();
+    if error != TextError::None || !got.Equals(@wantedCut) { return 40; }
+
+    let accented = Format(allocator, "{:.2}", @error, StringView::FromValidated("héllo"));
+    let wantedAccent = StringView::FromValidated("hé");
+    got = accented.View();
+    if error != TextError::None || !got.Equals(@wantedAccent) { return 41; }
+
+    let wideEnough = Format(allocator, "[{:6.2}]", @error, StringView::FromValidated("hello"));
+    let wantedBoth = StringView::FromValidated("[he    ]");
+    got = wideEnough.View();
+    if error != TextError::None || !got.Equals(@wantedBoth) { return 42; }
+
+    // A float under width and sign; its digits are the shortest rendering either way.
+    let floatPad = Format(allocator, "[{:8}]", @error, 2.5);
+    let wantedFloat = StringView::FromValidated("[     2.5]");
+    got = floatPad.View();
+    if error != TextError::None || !got.Equals(@wantedFloat) { return 50; }
+
+    let floatPlus = Format(allocator, "{:+}", @error, 2.5);
+    let wantedFloatPlus = StringView::FromValidated("+2.5");
+    got = floatPlus.View();
+    if error != TextError::None || !got.Equals(@wantedFloatPlus) { return 51; }
+
+    // A spec that does not parse is literal text, mistake and all.
+    if !Matches(allocator, "{:q}", "{:q}") { return 60; }
+    if !Matches(allocator, "{:>>>}", "{:>>>}") { return 61; }
+    if !Matches(allocator, "{:.}", "{:.}") { return 62; }
+
+    return 0;
+}

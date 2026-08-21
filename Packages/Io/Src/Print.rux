@@ -1,4 +1,4 @@
-import Format::{ Display, WriteAscii, WriteFormat, Writer };
+import Format::{ Display, FormatSpec, WriteFormat, Writer };
 import Memory::{ Alloc, Free };
 import Core::{ #target };
 import Text::{ String, StringView, TextError };
@@ -148,7 +148,7 @@ extend ConsoleWriter : Writer {
 /// https://rux-lang.dev/docs/api/io/print-value
 func PrintValue(value: Display) {
     let writer: Writer = ConsoleWriter::New();
-    value.Format(writer);
+    value.Format(writer, FormatSpec::Plain());
 }
 
 /// Writes a value's text to standard output, then a newline.
