@@ -222,3 +222,75 @@ func ScaleByPow10(value: float64, exp: int) -> float64 {
     }
     return result;
 }
+
+// The value with `precision` digits after the point, rounded half away from zero.
+//
+// Only for values whose scaled magnitude fits an integer word: precision formatting is for human-scale numbers,
+// and a value past that renders shortest instead of pretending to a precision the arithmetic cannot honour. The
+// rounding happens once, in the scaled integer, so the carry out of ".995" propagates into the integer part the
+// way arithmetic says it should.
+func WriteFixedPrecision(cursor: *var ByteCursor, value: float64, precision: uint) {
+    var abs = value;
+    if value < 0.0 {
+        cursor.Push(c8'-');
+        abs = -value;
+    }
+
+    let scale = Pow10(precision);
+    let scaled = abs * scale + 0.5;
+    var units = scaled as uint64;
+    var divisor: uint64 = 1;
+    var counted: uint = 0;
+    while counted < precision {
+        divisor = divisor * 10u64;
+        counted = counted + 1;
+    }
+    let whole = units / divisor;
+    let fraction = units % divisor;
+
+    var digits: char8[20];
+    var count: uint = 0;
+    var rest = whole;
+    if rest == 0u64 {
+        digits[0] = c8'0';
+        count = 1;
+    }
+    while rest > 0u64 {
+        digits[count] = (rest % 10u64 + 48u64) as char8;
+        count = count + 1;
+        rest = rest / 10u64;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        cursor.Push(digits[index]);
+    }
+
+    if precision == 0 {
+        return;
+    }
+    cursor.Push(c8'.');
+    var fracDigits: char8[20];
+    var fracCount: uint = 0;
+    var fracRest = fraction;
+    while fracCount < precision {
+        fracDigits[fracCount] = (fracRest % 10u64 + 48u64) as char8;
+        fracCount = fracCount + 1;
+        fracRest = fracRest / 10u64;
+    }
+    index = fracCount;
+    while index > 0 {
+        index = index - 1;
+        cursor.Push(fracDigits[index]);
+    }
+}
+
+// Whether `value` is one precision formatting can honour: finite, and small enough that scaling it by the
+// precision still fits the integer word the rounding happens in.
+func FitsPrecision(value: float64, precision: uint) -> bool {
+    if !IsFinite(value) || precision > 17 {
+        return false;
+    }
+    let abs = value < 0.0 ? -value : value;
+    return abs * Pow10(precision) < 9007199254740992.0;
+}
