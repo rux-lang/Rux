@@ -369,22 +369,12 @@ bool SemanticAnalyzerContext::RejectSelfMove(const Expr &target, const Expr &val
     return true;
 }
 
-namespace {
-/// Whether a type mentions a parameter anywhere, and so cannot say yet whether its values are copied or moved.
-bool MentionsTypeParam(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::TypeParam) {
-        return true;
-    }
-    return std::ranges::any_of(type.inner, [](const TypeRef &inner) { return MentionsTypeParam(inner); });
-}
-} // namespace
-
 void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef &type, const ValueConsumptionKind kind,
                                            const SourceLocation location) {
     if (!trackedFlowReachable) {
         return;
     }
-    if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParam(type) && currentFunctionDecl) {
+    if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
         // Whether handing this value over consumes it depends on what the parameter stands for, which is not known
         // here and is known at every instantiation. Recording the question is what lets each instantiation answer
         // it; without that a generic container kept a copy of what it was given and the caller's value was destroyed

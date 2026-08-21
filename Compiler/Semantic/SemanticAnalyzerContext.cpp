@@ -112,6 +112,61 @@ std::unordered_map<const ForStmt *, ResolvedIteration> SemanticAnalyzerContext::
     return std::move(iterations);
 }
 
+bool SemanticAnalyzerContext::MentionsTypeParameter(const TypeRef &type) const {
+    if (type.kind == TypeRef::Kind::TypeParam) {
+        return true;
+    }
+    if (type.kind == TypeRef::Kind::Named) {
+        if (std::ranges::contains(currentTypeParams, BaseTypeName(type.name))) {
+            return true;
+        }
+        for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
+            if (MentionsTypeParameter(argument)) {
+                return true;
+            }
+        }
+    }
+    return std::ranges::any_of(type.inner, [this](const TypeRef &inner) { return MentionsTypeParameter(inner); });
+}
+
+TypeRef
+SemanticAnalyzerContext::SubstituteTypeParameters(TypeRef type,
+                                                  const std::unordered_map<std::string, TypeRef> &substitutions) const {
+    // An argument spelled inside an instantiation's name is substituted by rebuilding the name around what the
+    // arguments became. Walking only `inner` left `Option<T>` exactly as it was, so every question deferred until
+    // the parameter was known was answered against a type that still mentioned it.
+    if (type.kind == TypeRef::Kind::Named && type.name.find('<') != std::string::npos) {
+        std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+        bool changed = false;
+        for (TypeRef &argument : arguments) {
+            TypeRef substituted = SubstituteTypeParameters(argument, substitutions);
+            changed = changed || substituted.ToString() != argument.ToString();
+            argument = std::move(substituted);
+        }
+        if (changed) {
+            TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
+            rebuilt.isMut = type.isMut;
+            return rebuilt;
+        }
+        return type;
+    }
+    if (type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::TypeParam) {
+        if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
+            TypeRef substituted = it->second;
+            // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to carry
+            // that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only pointer the
+            // moment a type argument arrived -- silently, because the two render identically.
+            substituted.isMut = type.isMut;
+            return substituted;
+        }
+        return type;
+    }
+    for (TypeRef &inner : type.inner) {
+        inner = SubstituteTypeParameters(std::move(inner), substitutions);
+    }
+    return type;
+}
+
 std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropGluePlans() {
     return std::move(dropGluePlans);
 }
