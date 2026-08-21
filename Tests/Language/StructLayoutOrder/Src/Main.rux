@@ -1,0 +1,23 @@
+import Core::{ Assert, Slice };
+
+// A struct whose field types are declared in a later file of the same package is still laid out from its
+// declarations, not from a one-word guess per unknown field.
+
+func Main() -> int {
+    Assert(sizeof(Wide) == 16u, "the field type is two words");
+    Assert(sizeof(Walk) == 40u, "and the struct holding two of them and a flag is laid out from that");
+
+    let text: Slice<char8> = "one,two,,three";
+    let comma: Slice<char8> = ",";
+    let walk = Walk {
+        first: Wide { data: text.data, length: text.length },
+        second: Wide { data: comma.data, length: comma.length },
+        finished: false
+    };
+    Assert(walk.first.length == 14, "the first field reads back what was stored");
+    Assert(walk.second.length == 1, "and so does the one behind it");
+    Assert(!walk.finished, "and the flag behind both");
+    Assert(walk.first.data[0] == c8'o' && walk.second.data[0] == c8',', "with the pointers still pointing home");
+
+    return 0;
+}

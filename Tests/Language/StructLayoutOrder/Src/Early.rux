@@ -1,0 +1,9 @@
+// This file sorts before Late.rux, so `Walk` reaches layout before `Wide` has been laid out. A single pass in
+// declaration order sized such a field as one word, and everything built from that wrote and read wrong offsets --
+// the shape a package split across files falls into the moment a type is declared in a later file than its user.
+
+struct Walk {
+    first: Wide;
+    second: Wide;
+    finished: bool;
+}

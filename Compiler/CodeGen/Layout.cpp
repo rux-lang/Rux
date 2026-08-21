@@ -82,9 +82,6 @@ int SizeOf(const TypeRef &t) {
         if (baseName == "StringArray" || baseName == "SystemTime") {
             return 16;
         }
-        if (baseName == "StringBuilder") {
-            return 24;
-        }
     }
         if (!t.inner.empty()) {
             return SizeOf(t.inner[0]);
@@ -186,10 +183,6 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = 16;
                 al = 2;
             }
-            else if (baseName == "StringBuilder") {
-                sz = 24;
-                al = 8;
-            }
         }
         if (al > 1) {
             offset = AlignUp(offset, al);
@@ -201,6 +194,41 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
     result.totalSize = AlignUp(offset, maxAlign);
     result.alignment = maxAlign;
     return result;
+}
+
+bool SameLayout(const StructLayout &left, const StructLayout &right) {
+    if (left.totalSize != right.totalSize || left.alignment != right.alignment ||
+        left.fields.size() != right.fields.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < left.fields.size(); ++index) {
+        if (left.fields[index].offset != right.fields[index].offset ||
+            left.fields[index].size != right.fields[index].size) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &layouts,
+                        const std::unordered_set<std::string> &interfaceNames) {
+    // A struct's field may be a struct declared later -- further down the file, or in a later file of the same
+    // package, which is how a package split across files put a type after its user. A single pass in declaration
+    // order sized such a field as a word, and everything laid out from that wrote and read the wrong offsets.
+    // Each pass resolves one more level of nesting, so the loop runs at most as deep as structs nest by value --
+    // and a by-value cycle cannot exist, since a struct cannot contain itself.
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto &s : structs) {
+            StructLayout computed = ComputeStructLayout(s, layouts, interfaceNames);
+            const auto known = layouts.find(s.name);
+            if (known == layouts.end() || !SameLayout(known->second, computed)) {
+                layouts[s.name] = std::move(computed);
+                changed = true;
+            }
+        }
+    }
 }
 
 int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames) {
@@ -238,9 +266,6 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         }
         if (base == "Slice" || base == "StringArray" || base == "SystemTime") {
             return 16;
-        }
-        if (base == "StringBuilder") {
-            return 24;
         }
         // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain
         // struct, whose name is its base name.
