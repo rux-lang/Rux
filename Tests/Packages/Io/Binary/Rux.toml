@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "TextRead"
+Name = "Binary"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Bounded line reading with newline normalization over a buffered byte stream."
+Description = "Endian-aware binary reading and writing at every primitive width."
 
 [Dependencies]
 Allocator = { Path = "../../../../Packages/Allocator" }

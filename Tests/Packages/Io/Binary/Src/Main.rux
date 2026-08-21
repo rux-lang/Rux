@@ -1,0 +1,151 @@
+// The caller names the format's byte order, and the host's own never enters into it: the same value writes to
+// mirrored bytes under the two orders, and each order reads back exactly what it wrote.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
+import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256,
+             ReadUint32, ReadUint512, ReadUint64, ReadUint8 };
+import Io::{ WriteFloat32, WriteFloat64, WriteInt16, WriteInt64, WriteInt8, WriteUint128, WriteUint16,
+             WriteUint256, WriteUint32, WriteUint512, WriteUint64, WriteUint8 };
+
+// A little memory stream: writes append, reads serve from the front.
+struct MemoryState {
+    room: MutableSlice<char8>;
+    length: uint;
+    offset: uint;
+}
+
+struct MemoryHandle {
+    state: *var MemoryState;
+}
+
+extend MemoryHandle : Reader {
+    func Read(self: *var MemoryHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        let state = self.state;
+        var give = state.length - state.offset;
+        if give == 0 {
+            return IoError::Of(IoErrorKind::EndOfStream);
+        }
+        if give > into.length {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = state.room.data[state.offset + index];
+            index = index + 1;
+        }
+        state.offset = state.offset + give;
+        *filled = give;
+        return IoError::Ok();
+    }
+}
+
+extend MemoryHandle : Writer {
+    func Write(self: *var MemoryHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        let state = self.state;
+        var index: uint = 0;
+        while index < bytes.length {
+            state.room.data[state.length + index] = bytes.data[index];
+            index = index + 1;
+        }
+        state.length = state.length + bytes.length;
+        *taken = bytes.length;
+        return IoError::Ok();
+    }
+
+    func Flush(self: *var MemoryHandle) -> IoError {
+        return IoError::Ok();
+    }
+}
+
+func ByteAt(state: *MemoryState, index: uint) -> uint8 {
+    return state.room.data[index] as uint8;
+}
+
+func Main() -> int {
+    // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
+    var goldenStorage: char8[256];
+    var golden = MemoryState { room: MutableSlice::From<char8>(@goldenStorage[0], 256), length: 0, offset: 0 };
+    let goldenSink: Writer = MemoryHandle { state: @golden };
+    Assert(WriteUint32(goldenSink, Endian::Big, 0x12345678u32).IsOk(), "big writes");
+    Assert(WriteUint32(goldenSink, Endian::Little, 0x12345678u32).IsOk(), "and little writes");
+    Assert(ByteAt(@golden, 0) == 0x12u8 && ByteAt(@golden, 1) == 0x34u8 &&
+           ByteAt(@golden, 2) == 0x56u8 && ByteAt(@golden, 3) == 0x78u8,
+           "big-endian puts the most significant byte first");
+    Assert(ByteAt(@golden, 4) == 0x78u8 && ByteAt(@golden, 5) == 0x56u8 &&
+           ByteAt(@golden, 6) == 0x34u8 && ByteAt(@golden, 7) == 0x12u8,
+           "and little-endian mirrors it");
+
+    // The IEEE 754 pattern of 1.0, byte for byte, in network order.
+    var floatsStorage: char8[256];
+    var floats = MemoryState { room: MutableSlice::From<char8>(@floatsStorage[0], 256), length: 0, offset: 0 };
+    let floatSink: Writer = MemoryHandle { state: @floats };
+    Assert(WriteFloat64(floatSink, Endian::Big, 1.0).IsOk(), "the float writes");
+    Assert(ByteAt(@floats, 0) == 0x3Fu8 && ByteAt(@floats, 1) == 0xF0u8 && ByteAt(@floats, 2) == 0u8 &&
+           ByteAt(@floats, 7) == 0u8, "as the bit pattern its specification names");
+
+    // A mixed record round-trips through both orders, each value read back where it was written.
+    var recordStorage: char8[256];
+    var record = MemoryState { room: MutableSlice::From<char8>(@recordStorage[0], 256), length: 0, offset: 0 };
+    let sink: Writer = MemoryHandle { state: @record };
+    let wideValue = (0x0123456789ABCDEFu512 << 64u512) | 0xFEDCBA9876543210u512;
+    let hugeValue = (wideValue << 256u512) | (wideValue << 128u512) | wideValue;
+    var order = Endian::Big;
+    var pass: uint = 0;
+    while pass < 2 {
+        Assert(WriteUint8(sink, order, 0xABu8).IsOk(), "u8 writes");
+        Assert(WriteUint16(sink, order, 0xBEEFu16).IsOk(), "u16 writes");
+        Assert(WriteUint32(sink, order, 0xDEADBEEFu32).IsOk(), "u32 writes");
+        Assert(WriteUint64(sink, order, 0x0123456789ABCDEFu64).IsOk(), "u64 writes");
+        Assert(WriteUint128(sink, order, wideValue as uint128).IsOk(), "u128 writes");
+        Assert(WriteUint256(sink, order, (hugeValue as uint256) | 1u256).IsOk(), "u256 writes");
+        Assert(WriteUint512(sink, order, hugeValue).IsOk(), "u512 writes");
+        Assert(WriteInt8(sink, order, -100i8).IsOk(), "i8 writes");
+        Assert(WriteInt16(sink, order, -32768i16).IsOk(), "the most negative i16 writes");
+        Assert(WriteInt64(sink, order, -1i64).IsOk(), "minus one writes");
+        Assert(WriteFloat32(sink, order, -2.5f32).IsOk(), "f32 writes");
+        Assert(WriteFloat64(sink, order, 6.02214076e23).IsOk(), "f64 writes");
+
+        let source: Reader = MemoryHandle { state: @record };
+        var u8Back = 0u8;
+        var u16Back = 0u16;
+        var u32Back = 0u32;
+        var u64Back = 0u64;
+        var u128Back = 0u128;
+        var u256Back = 0u256;
+        var u512Back = 0u512;
+        var i8Back = 0i8;
+        var i16Back = 0i16;
+        var i64Back = 0i64;
+        var f32Back = 0.0f32;
+        var f64Back = 0.0;
+        Assert(ReadUint8(source, order, @u8Back).IsOk() && u8Back == 0xABu8, "u8 returns");
+        Assert(ReadUint16(source, order, @u16Back).IsOk() && u16Back == 0xBEEFu16, "u16 returns");
+        Assert(ReadUint32(source, order, @u32Back).IsOk() && u32Back == 0xDEADBEEFu32, "u32 returns");
+        Assert(ReadUint64(source, order, @u64Back).IsOk() && u64Back == 0x0123456789ABCDEFu64, "u64 returns");
+        Assert(ReadUint128(source, order, @u128Back).IsOk() && u128Back == (wideValue as uint128), "u128 returns");
+        Assert(ReadUint256(source, order, @u256Back).IsOk() && u256Back == ((hugeValue as uint256) | 1u256),
+               "u256 returns");
+        Assert(ReadUint512(source, order, @u512Back).IsOk() && u512Back == hugeValue, "u512 returns");
+        Assert(ReadInt8(source, order, @i8Back).IsOk() && i8Back == -100i8, "i8 returns");
+        Assert(ReadInt16(source, order, @i16Back).IsOk() && i16Back == -32768i16, "the most negative i16 returns");
+        Assert(ReadInt64(source, order, @i64Back).IsOk() && i64Back == -1i64, "minus one returns");
+        Assert(ReadFloat32(source, order, @f32Back).IsOk() && f32Back == -2.5f32, "f32 returns");
+        Assert(ReadFloat64(source, order, @f64Back).IsOk() && f64Back == 6.02214076e23, "f64 returns");
+
+        record.length = 0;
+        record.offset = 0;
+        order = Endian::Little;
+        pass = pass + 1;
+    }
+
+    // A stream two bytes long cannot yield a four-byte value, and says so rather than inventing the rest.
+    var shortStorage: char8[256];
+    var short = MemoryState { room: MutableSlice::From<char8>(@shortStorage[0], 256), length: 2, offset: 0 };
+    let shortSource: Reader = MemoryHandle { state: @short };
+    var lost = 0u32;
+    Assert(ReadUint32(shortSource, Endian::Big, @lost).IsEnd(), "a short stream is the end, not a value");
+
+    return 0;
+}
