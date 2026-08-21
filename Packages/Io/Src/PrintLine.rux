@@ -1,114 +1,143 @@
-func PrintLine() {
-    let newline = c8"\n";
-    Print(newline.data, newline.length);
+// The line-ending variants: the value, then a newline, with the first failure returned.
+
+import Format::Display;
+import Text::{ String, StringView };
+
+/// Writes a newline to standard output.
+///
+/// https://rux-lang.dev/docs/api/io/print-line
+func PrintLine() -> IoError {
+    return PrintBytes(c8"\n");
 }
 
-func PrintLine(value: String) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: String) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: Slice<char8>) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: Slice<char8>) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: StringView) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: StringView) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(format: Slice<char8>, args: Display...) {
-    Print(format, args...);
-    PrintLine();
+func PrintLine(format: Slice<char8>, args: Display...) -> IoError {
+    let first = Print(format, args...);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: bool8) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: bool8) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: bool16) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: bool16) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: bool32) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: bool32) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: char8) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: char8) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: char16) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: char16) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: char32) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: char32) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: int8) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: int8) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: int16) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: int16) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: int32) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: int32) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: int64) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: int64) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: uint8) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: uint8) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: uint16) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: uint16) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: uint32) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: uint32) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: uint64) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: uint64) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: int) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: int) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: uint) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: uint) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: float32) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: float32) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func PrintLine(value: float64) {
-    Print(value);
-    PrintLine();
+func PrintLine(value: float64) -> IoError {
+    let first = Print(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }

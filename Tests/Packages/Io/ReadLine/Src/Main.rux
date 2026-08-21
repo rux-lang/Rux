@@ -1,19 +1,33 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Io::{ Print, PrintLine, ReadLine };
+import Io::{ IoError, Print, PrintLine, ReadLine };
+import Text::StringBuilder;
 
-func EchoLine(allocator: Allocator) {
-    let line = ReadLine(allocator);
-    Print("[");
-    Print(line);
-    PrintLine("]");
-}
+// The suite runs this with nothing on standard input, which is itself the contract worth holding: an ended
+// stream with nothing before it is EndOfStream, not an empty line, so an echo loop stops rather than spins.
 
 func Main() -> int {
     var system = SystemAllocator::New();
     let allocator: Allocator = system;
-    EchoLine(allocator);
-    EchoLine(allocator);
-    EchoLine(allocator);
-    EchoLine(allocator);
+    var count: uint = 0;
+    var reading = true;
+    while reading && count < 8 {
+        var builder = StringBuilder::New(allocator);
+        let outcome = ReadLine(@builder);
+        if outcome.IsEnd() {
+            reading = false;
+            builder.Release();
+        }
+        else {
+            if outcome.IsError() {
+                builder.Release();
+                return 1;
+            }
+            let line = builder.IntoString();
+            Print("[");
+            Print(line);
+            PrintLine("]");
+            count = count + 1;
+        }
+    }
     return 0;
 }

@@ -1,273 +1,212 @@
-import Format::{ Display, FormatSpec, WriteFormat, TextWriter };
-import Memory::{ Alloc, Free };
-import Core::{ #target };
+// Printing, with the failure a caller can act on returned rather than swallowed.
+//
+// Every overload returns the `IoError` of the write it made. Most call sites will keep ignoring it, and that is
+// now their decision rather than this module's: a program logging to a terminal loses nothing by not looking,
+// while one whose output feeds a closed pipe finally has something to look at. The bytes go through the standard
+// output handle, so the console-versus-redirection encoding is decided where it always is, not re-decided here.
+
+import Format::{ Display, FormatSpec, TextWriter, WriteFormat };
 import Text::{ String, StringView, TextError };
 
-when #target.os {
-    .FreeBSD => import FreeBSD::{ StdOut, Write },
-    .Linux => import Linux::{ StdOut, Write },
-    .macOS => import macOS::{ StdOut, Write },
-    .Windows => import Windows::{
-        CodePage,
-        GetConsoleMode,
-        GetStdHandle,
-        MultiByteToWideChar,
-        StdOutputHandle,
-        WriteConsoleW,
-        WriteFile
-    }
+// The one write under everything here.
+func PrintBytes(bytes: Slice<char8>) -> IoError {
+    var out = StandardOut::Acquire();
+    let sink: Writer = out;
+    return WriteAll(sink, bytes);
 }
 
-when #target.os == .Windows {
-    // Write raw bytes to a redirected stdout (a file or pipe), where the UTF-8
-    // encoding of `data` is already exactly what should land on disk.
-    func WriteBytes(handle: *opaque, data: *char8, length: uint) {
-        const MaxWriteLength: uint = 4096;
-        var offset: uint = 0;
-        while offset < length {
-            var written: uint32 = 0;
-            let remaining = length - offset;
-            let count = remaining > MaxWriteLength ? MaxWriteLength : remaining;
-            let ok = WriteFile(
-                handle,
-                (data + offset) as *opaque,
-                count as uint32,
-                @written,
-                null
-            );
-            if !ok || written == 0 { return; }
-            offset += written as uint;
-        }
-    }
-
-    // Write UTF-16 code units to a console. WriteConsoleW hands the characters
-    // to the console as Unicode, so they render correctly no matter what the
-    // console's output code page is.
-    func WriteWide(handle: *opaque, data: *char16, length: uint) {
-        var offset: uint = 0;
-        while offset < length {
-            var written: uint32 = 0;
-            let ok = WriteConsoleW(
-                handle,
-                data + offset,
-                (length - offset) as uint32,
-                @written,
-                null
-            );
-            if !ok || written == 0 { return; }
-            offset += written as uint;
-        }
-    }
-}
-
-func Print(data: *char8, length: uint) {
-    if length == 0 { return; }
-
-    when #target.os == .Windows {
-        let handle = GetStdHandle(StdOutputHandle);
-        // Only a console needs the UTF-16 path. GetConsoleMode succeeds for a
-        // console handle and fails when stdout is redirected to a file or pipe,
-        // where the raw UTF-8 bytes are the correct output. Writing UTF-8 bytes
-        // to a console would instead be decoded with its code page and turn any
-        // non-ASCII text (such as "Привіт світ!") into mojibake.
-        var mode: uint32 = 0;
-        if !GetConsoleMode(handle, @mode) {
-            WriteBytes(handle, data, length);
-            return;
-        }
-        // A UTF-8 sequence never expands to more UTF-16 code units than it has
-        // bytes, so `length` units is a safe upper bound for the buffer.
-        let wide = Alloc(length * 2) as *char16;
-        if wide == null {
-            WriteBytes(handle, data, length);
-            return;
-        }
-        let wideLength = MultiByteToWideChar(CodePage::Utf8 as uint32,
-            0, data, length as int32, wide, length as int32);
-        if wideLength > 0 {
-            WriteWide(handle, wide, wideLength as uint);
-        }
-        Free(wide as *opaque);
-    } else {
-        var offset: uint = 0;
-        while offset < length {
-            let written = Write(
-                StdOut,
-                (data + offset) as *opaque,
-                length - offset
-            );
-            // EINTR means no bytes were written and the operation can be
-            // retried without advancing the buffer.
-            if written == -4 { continue; }
-            if written <= 0 { return; }
-            offset += written as uint;
-        }
-    }
-}
-
-/// A writer that sends its bytes to standard output.
+/// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
 ///
-/// Holds nothing, because standard output is not a thing this package owns: every write goes to the same place
-/// however many writers there are. It is still a `TextWriter` rather than a free function, so that anything formatting
-/// into a builder can format into the console instead without knowing the difference.
+/// The formatting interfaces speak `TextError`, which has no vocabulary for a broken stream; so the writer
+/// reports `None` to the formatter -- the formatting itself did not fail -- while recording the `IoError` in the
+/// slot it was built over and discarding everything after the failure. The caller reads the slot when the value
+/// is done writing itself.
 ///
 /// https://rux-lang.dev/docs/api/io/console-writer
 struct ConsoleWriter {
-    /// Nothing. The console is where it is.
-    reserved: uint8;
+    /// Where the first stream failure is recorded.
+    failure: *var IoError;
 }
 
 extend ConsoleWriter {
-    /// A writer over standard output.
+    /// A writer over standard output, recording into `failure`.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/new
-    func New() -> ConsoleWriter {
-        return ConsoleWriter { reserved: 0 };
+    func New(failure: *var IoError) -> ConsoleWriter {
+        return ConsoleWriter { failure: failure };
     }
 }
 
 extend ConsoleWriter : TextWriter {
-    /// Writes `bytes` to standard output.
-    ///
-    /// Reports `None` whatever the console did: a write to a closed or full stream is not something a caller
-    /// formatting a number can do anything about, and the alternative is every `Print` in a program returning a
-    /// value nobody reads.
+    /// Writes `bytes` to standard output, unless a failure has already been recorded.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
     func Write(self: *var ConsoleWriter, bytes: Slice<char8>) -> TextError {
-        Print(bytes.data, bytes.length);
+        if self.failure.IsError() {
+            return TextError::None;
+        }
+        let outcome = PrintBytes(bytes);
+        if outcome.IsError() {
+            *self.failure = outcome;
+        }
         return TextError::None;
     }
 }
 
+// A formatting failure on a healthy stream, carried in the one error type this surface returns. The raw value
+// is the `TextError`, so nothing is lost to the translation.
+func OfTextFailure(failure: TextError) -> IoError {
+    return IoError { kind: IoErrorKind::InvalidText, raw: failure as int32 };
+}
+
 /// Writes a value's text to standard output.
 ///
-/// Nothing is allocated: the value writes itself straight to the console, where it used to be rendered into a
-/// string first and the string thrown away.
+/// Nothing is allocated: the value writes itself straight to the stream. A stream failure is returned; a
+/// formatting failure on a healthy stream comes back as `InvalidText` with the `TextError` in `raw`.
 ///
 /// https://rux-lang.dev/docs/api/io/print-value
-func PrintValue(value: Display) {
-    let writer: TextWriter = ConsoleWriter::New();
-    value.Format(writer, FormatSpec::Plain());
+func PrintValue(value: Display) -> IoError {
+    var failure = IoError::Ok();
+    let writer: TextWriter = ConsoleWriter::New(@failure);
+    let formatted = value.Format(writer, FormatSpec::Plain());
+    if failure.IsError() {
+        return failure;
+    }
+    if formatted != TextError::None {
+        return OfTextFailure(formatted);
+    }
+    return IoError::Ok();
 }
 
 /// Writes a value's text to standard output, then a newline.
 ///
 /// https://rux-lang.dev/docs/api/io/print-value-line
-func PrintValueLine(value: Display) {
-    PrintValue(value);
-    PrintLine();
+func PrintValueLine(value: Display) -> IoError {
+    let first = PrintValue(value);
+    let second = PrintLine();
+    return first.IsError() ? first : second;
 }
 
-func Print(value: String) {
-    Print(value.data, value.length);
+/// Writes a string to standard output.
+///
+/// https://rux-lang.dev/docs/api/io/print
+func Print(value: String) -> IoError {
+    return PrintBytes(Slice<char8> { data: value.data, length: value.length });
 }
 
-func Print(value: StringView) {
-    let bytes = value.Bytes();
-    Print(bytes.data, bytes.length);
+func Print(value: StringView) -> IoError {
+    return PrintBytes(value.Bytes());
 }
 
-func Print(value: Slice<char8>) {
-    Print(value.data, value.length);
+func Print(value: Slice<char8>) -> IoError {
+    return PrintBytes(value);
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
 ///
-/// Allocates nothing: the arguments write themselves to the console as they are reached.
+/// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
+/// `PrintValue`'s do.
 ///
 /// https://rux-lang.dev/docs/api/io/print-format
-func Print(format: Slice<char8>, args: Display...) {
-    let writer: TextWriter = ConsoleWriter::New();
-    WriteFormat(writer, format, args...);
+func Print(format: Slice<char8>, args: Display...) -> IoError {
+    var failure = IoError::Ok();
+    let writer: TextWriter = ConsoleWriter::New(@failure);
+    let formatted = WriteFormat(writer, format, args...);
+    if failure.IsError() {
+        return failure;
+    }
+    if formatted != TextError::None {
+        return OfTextFailure(formatted);
+    }
+    return IoError::Ok();
 }
 
-func Print(value: bool8) {
+func Print(value: bool8) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: bool16) {
+func Print(value: bool16) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: bool32) {
+func Print(value: bool32) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: char8) {
+func Print(value: char8) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: char16) {
+func Print(value: char16) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: char32) {
+func Print(value: char32) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: int8) {
+func Print(value: int8) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: int16) {
+func Print(value: int16) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: int32) {
+func Print(value: int32) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: int64) {
+func Print(value: int64) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: uint8) {
+func Print(value: uint8) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: uint16) {
+func Print(value: uint16) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: uint32) {
+func Print(value: uint32) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: uint64) {
+func Print(value: uint64) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: int) {
+func Print(value: int) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: uint) {
+func Print(value: uint) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: float32) {
+func Print(value: float32) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
 
-func Print(value: float64) {
+func Print(value: float64) -> IoError {
     let shown: Display = value;
-    PrintValue(shown);
+    return PrintValue(shown);
 }
