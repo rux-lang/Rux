@@ -1,47 +1,48 @@
-import Allocator::Allocator;
-import Core::{ #target };
-import Text::{ String, StringBuilder };
+// Reading a line typed at the process, through the standard input handle.
+//
+// This is the console companion to `ReadTextLine`: the same line contract -- a line feed ends the line, a
+// carriage return immediately before it belongs to the ending, the last line needs no ending -- read byte by
+// byte from standard input, so nothing past the line is taken from a stream that may be shared. The bytes come
+// through `StandardIn`, so typed input on a Windows console arrives as correct UTF-8 rather than code-page text.
 
-when #target.os {
-    .FreeBSD => import FreeBSD::{ Read, StdIn },
-    .Linux => import Linux::{ Read, StdIn },
-    .macOS => import macOS::{ Read, StdIn },
-    .Windows => import Windows::{ GetStdHandle, ReadFile, StdInputHandle }
-}
+import Core::{ MutableSlice };
+import Text::StringBuilder;
 
-func ReadStdinByte(buffer: *char8) -> int64 {
-    when #target.os == .Windows {
-        let handle = GetStdHandle(StdInputHandle);
-        var bytesRead: uint32 = 0;
-        if !ReadFile(handle, buffer, 1, @bytesRead, null) {
-            return -1;
-        }
-        return bytesRead as int64;
-    } else {
-        while true {
-            let result = Read(StdIn, buffer as *var opaque, 1);
-            if result != -4 {
-                return result;
-            }
-        }
-    }
-}
-
-func ReadLine(allocator: Allocator) -> String {
-    var builder = StringBuilder::New(allocator);
+/// Appends the next line of standard input to `builder`, without its ending.
+///
+/// `EndOfStream` is reported only when the input ends with nothing before it; a stream failure is returned as
+/// itself, with whatever was read so far left in the builder. Reads one byte at a time on purpose: standard
+/// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.
+///
+/// https://rux-lang.dev/docs/api/io/read-line
+func ReadLine(builder: *var StringBuilder) -> IoError {
+    var input = StandardIn::Acquire();
     var byte: char8[1];
+    let room = MutableSlice::From<char8>(@byte[0], 1);
+    var sawAnything = false;
     var pendingCarriageReturn = false;
     while true {
-        let count = ReadStdinByte(@byte[0]);
-        if count <= 0 {
-            if pendingCarriageReturn {
-                builder.AppendAscii(c8'\r');
+        var filled: uint = 0;
+        let outcome = input.Read(room, @filled);
+        if outcome.IsError() {
+            if outcome.IsTransient() {
+                continue;
             }
-            return builder.IntoString();
+            if outcome.IsEnd() {
+                if pendingCarriageReturn {
+                    builder.AppendAscii(c8'\r');
+                }
+                return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+            }
+            return outcome;
         }
+        if filled == 0 {
+            return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+        }
+        sawAnything = true;
         let ch = byte[0];
         if ch == c8'\n' {
-            return builder.IntoString();
+            return IoError::Ok();
         }
         if pendingCarriageReturn {
             builder.AppendAscii(c8'\r');
@@ -49,8 +50,10 @@ func ReadLine(allocator: Allocator) -> String {
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
-        } else {
+        }
+        else {
             builder.AppendAscii(ch);
         }
     }
+    return IoError::Ok();
 }
