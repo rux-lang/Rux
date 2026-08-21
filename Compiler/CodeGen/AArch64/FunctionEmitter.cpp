@@ -147,7 +147,7 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
 }
 
 bool AArch64FunctionEmitter::IsRegisterValue(const TypeRef &type) const {
-    return !IsFloat(type) && !IsAggregate(type) && type.kind != TypeRef::Kind::Str;
+    return !IsFloat(type) && !IsAggregate(type);
 }
 
 bool AArch64FunctionEmitter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {
@@ -560,12 +560,6 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     switch (instruction.op) {
     case LirOpcode::Const: {
         if (instruction.dst == LirNoReg) {
-            return true;
-        }
-        if (instruction.type.kind == TypeRef::Kind::Str) {
-            const A64Reg text = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
-            hooks.LoadSymbolAddress(text, hooks.InternStringLiteral(instruction.strArg));
-            hooks.StoreToSlot(text, instruction.dst, instruction.type);
             return true;
         }
         if (IsFloat(instruction.type)) {

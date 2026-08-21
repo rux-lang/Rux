@@ -79,7 +79,7 @@ int SizeOf(const TypeRef &t) {
         if (baseName == "Slice" || baseName.starts_with("Slice<")) {
             return 16;
         }
-        if (baseName == "String" || baseName == "StringArray" || baseName == "SystemTime") {
+        if (baseName == "StringArray" || baseName == "SystemTime") {
             return 16;
         }
         if (baseName == "StringBuilder") {
@@ -178,7 +178,7 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = 16;
                 al = 8;
             }
-            else if (baseName == "String" || baseName == "StringArray") {
+            else if (baseName == "StringArray") {
                 sz = 16;
                 al = 8;
             }
@@ -236,7 +236,7 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         if (interfaceNames.contains(base)) {
             return 16;
         }
-        if (base == "Slice" || base == "String" || base == "StringArray" || base == "SystemTime") {
+        if (base == "Slice" || base == "StringArray" || base == "SystemTime") {
             return 16;
         }
         if (base == "StringBuilder") {

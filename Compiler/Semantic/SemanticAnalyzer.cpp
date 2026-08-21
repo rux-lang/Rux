@@ -307,9 +307,6 @@ private:
         if (str == "opaque") {
             return TypeRef::MakeOpaque();
         }
-        if (str == "String") {
-            return TypeRef::MakeStr();
-        }
         if (const auto primitive = PrimitiveTypeFromName(str)) {
             return *primitive;
         }

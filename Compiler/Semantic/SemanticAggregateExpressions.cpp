@@ -46,7 +46,7 @@ std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) cons
         return BaseTypeName(named->name);
     }
     // Every primitive names its own method set, so a width added to the catalog joins without a case here.
-    if (named->IsPrimitive() || named->kind == TypeRef::Kind::Str) {
+    if (named->IsPrimitive()) {
         return named->ToString();
     }
     return {};

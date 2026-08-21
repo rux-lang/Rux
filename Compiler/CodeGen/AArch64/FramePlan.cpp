@@ -77,7 +77,7 @@ private:
     }
 
     [[nodiscard]] bool IsRegisterValue(const TypeRef &type) const {
-        return !IsFloat(type) && !IsAggregate(type) && type.kind != TypeRef::Kind::Str;
+        return !IsFloat(type) && !IsAggregate(type);
     }
 
     [[nodiscard]] int SlotSize(const TypeRef &type) const {
