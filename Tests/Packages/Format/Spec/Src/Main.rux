@@ -142,5 +142,41 @@ func Main() -> int {
     if !Matches(allocator, "{:>>>}", "{:>>>}") { return 61; }
     if !Matches(allocator, "{:.}", "{:.}") { return 62; }
 
+    // Float precision: digits after the point, rounded half away from zero, carry and all.
+    let twoPlaces = Format(allocator, "{:.2}", @error, 2.5);
+    let wantedTwo = StringView::FromValidated("2.50");
+    got = twoPlaces.View();
+    if error != TextError::None || !got.Equals(@wantedTwo) { return 70; }
+
+    let carried = Format(allocator, "{:.1}", @error, 1.25);
+    let wantedCarried = StringView::FromValidated("1.3");
+    got = carried.View();
+    if error != TextError::None || !got.Equals(@wantedCarried) { return 71; }
+
+    let rounded = Format(allocator, "{:.0}", @error, 2.5);
+    let wantedRounded = StringView::FromValidated("3");
+    got = rounded.View();
+    if error != TextError::None || !got.Equals(@wantedRounded) { return 72; }
+
+    let stretched = Format(allocator, "{:.3}", @error, 0.1);
+    let wantedStretched = StringView::FromValidated("0.100");
+    got = stretched.View();
+    if error != TextError::None || !got.Equals(@wantedStretched) { return 73; }
+
+    let negRounded = Format(allocator, "{:.0}", @error, -2.5);
+    let wantedNeg = StringView::FromValidated("-3");
+    got = negRounded.View();
+    if error != TextError::None || !got.Equals(@wantedNeg) { return 74; }
+
+    let zeroTwo = Format(allocator, "{:.2}", @error, 0.0);
+    let wantedZeroTwo = StringView::FromValidated("0.00");
+    got = zeroTwo.View();
+    if error != TextError::None || !got.Equals(@wantedZeroTwo) { return 75; }
+
+    let trimmed = Format(allocator, "{:.2}", @error, 3.14159);
+    let wantedTrimmed = StringView::FromValidated("3.14");
+    got = trimmed.View();
+    if error != TextError::None || !got.Equals(@wantedTrimmed) { return 76; }
+
     return 0;
 }

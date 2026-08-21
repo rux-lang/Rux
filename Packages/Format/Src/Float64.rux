@@ -41,7 +41,14 @@ extend float64 : Display {
     func Format(self: *float64, writer: Writer, spec: FormatSpec) -> TextError {
         var storage: char8[52];
         var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 50));
-        WriteFloat(@cursor, *self);
+        // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
+        // to scale into a word renders shortest instead of pretending.
+        if spec.hasPrecision && FitsPrecision(*self as float64, spec.precision) {
+            WriteFixedPrecision(@cursor, *self as float64, spec.precision);
+        }
+        else {
+            WriteFloat(@cursor, *self);
+        }
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
         if spec.showSign && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
