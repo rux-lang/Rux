@@ -1,0 +1,140 @@
+// What stands before a path's first real segment.
+//
+// The Unix systems have one answer: nothing, or the root. Windows has a family -- a drive (`C:`), a UNC share
+// (`\server\share`), and the verbatim prefix (`\?\`) that turns parsing off for everything after it -- and which
+// one a path carries changes what "absolute" means for it. `C:name` is neither relative nor absolute but
+// drive-relative, a shape only Windows has.
+//
+// Nothing here folds case. `C:` and `c:` are the same drive to the filesystem and different units to this layer,
+// exactly as two names differing in case are: which spellings the system treats as one is the system's opinion,
+// and a path library that imitates it bakes today's opinion into tomorrow's comparison.
+
+import Core::{ #target, Slice };
+
+/// The kind of prefix a path opens with.
+///
+/// https://rux-lang.dev/docs/api/path/prefix-kind
+enum PrefixKind: int32 {
+    /// No prefix: the path is a plain name, rooted or not.
+    None = 0,
+    /// A drive, `C:`, with or without a root after it.
+    Drive = 1,
+    /// A UNC share, `\server\share`.
+    Share = 2,
+    /// The verbatim prefix `\?\` and everything it qualifies.
+    Verbatim = 3
+}
+
+/// How many units of `path` are prefix, and which kind, reported through `kind`.
+///
+/// Zero and `None` on the Unix systems always: a leading `//server` is just a path there, whatever tools make of
+/// it. On Windows the drive is two units, a share runs through the end of its share name, and the verbatim prefix
+/// covers its four units plus the drive or share inside it.
+///
+/// https://rux-lang.dev/docs/api/path/prefix-length
+func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
+    *kind = PrefixKind::None;
+    when #target.os == .Windows {
+        let units = path.AsView().Units();
+        var start: uint = 0;
+        var verbatim = false;
+
+        // The verbatim opener: two backslashes, a question mark, a backslash. Exactly backslashes -- inside a
+        // verbatim path the forward slash is an ordinary character, which is the whole point of the prefix.
+        if units.length >= 4 && (units.data[0] as uint32) == 0x5C && (units.data[1] as uint32) == 0x5C &&
+           (units.data[2] as uint32) == 0x3F && (units.data[3] as uint32) == 0x5C {
+            verbatim = true;
+            start = 4;
+        }
+
+        // A drive: a letter and a colon.
+        if start + 2 <= units.length && IsDriveLetter(units.data[start]) &&
+           (units.data[start + 1] as uint32) == 0x3A {
+            *kind = verbatim ? PrefixKind::Verbatim : PrefixKind::Drive;
+            return start + 2;
+        }
+
+        // A share: two separators, a server, a separator, a share name. Under the verbatim prefix it is spelled
+        // `UNC\server\share`.
+        if verbatim {
+            if start + 4 <= units.length && (units.data[start] as uint32) == 0x55 &&
+               (units.data[start + 1] as uint32) == 0x4E && (units.data[start + 2] as uint32) == 0x43 &&
+               (units.data[start + 3] as uint32) == 0x5C {
+                *kind = PrefixKind::Verbatim;
+                return ShareEnd(units, start + 4);
+            }
+            *kind = PrefixKind::Verbatim;
+            return start;
+        }
+        if units.length >= 2 && IsSeparator(units.data[0]) && IsSeparator(units.data[1]) &&
+           units.length > 2 && !IsSeparator(units.data[2]) {
+            *kind = PrefixKind::Share;
+            return ShareEnd(units, 2);
+        }
+        return 0;
+    }
+    else {
+        return 0;
+    }
+}
+
+when #target.os == .Windows {
+    // Whether a unit is an ASCII letter, which is all a drive may be named by.
+    func IsDriveLetter(unit: uint16) -> bool {
+        let value = unit as uint32;
+        return (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A);
+    }
+
+    // The end of `server\share` starting at `from`: past the server, its separator, and the share name.
+    func ShareEnd(units: Slice<uint16>, from: uint) -> uint {
+        var at = from;
+        while at < units.length && !IsSeparator(units.data[at]) {
+            at = at + 1;
+        }
+        if at < units.length {
+            at = at + 1;
+            while at < units.length && !IsSeparator(units.data[at]) {
+                at = at + 1;
+            }
+        }
+        return at;
+    }
+}
+
+/// Whether `path` has a root: a separator standing where the segments begin.
+///
+/// https://rux-lang.dev/docs/api/path/has-root
+func HasRoot(path: Path) -> bool {
+    var kind = PrefixKind::None;
+    let prefix = PrefixLength(path, @kind);
+    if kind == PrefixKind::Share {
+        // A share is its own root: there is nothing above `\server\share`.
+        return true;
+    }
+    let units = path.AsView().Units();
+    return prefix < units.length && IsSeparator(units.data[prefix]);
+}
+
+/// Whether `path` names one place regardless of any current directory.
+///
+/// On the Unix systems, rooted is absolute. On Windows a rooted drive (`C:\x`), a share and a verbatim path are
+/// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
+///
+/// https://rux-lang.dev/docs/api/path/is-absolute
+func IsAbsolute(path: Path) -> bool {
+    when #target.os == .Windows {
+        var kind = PrefixKind::None;
+        let prefix = PrefixLength(path, @kind);
+        if kind == PrefixKind::Share || kind == PrefixKind::Verbatim {
+            return true;
+        }
+        if kind == PrefixKind::Drive {
+            let units = path.AsView().Units();
+            return prefix < units.length && IsSeparator(units.data[prefix]);
+        }
+        return false;
+    }
+    else {
+        return HasRoot(path);
+    }
+}
