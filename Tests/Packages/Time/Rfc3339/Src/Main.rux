@@ -1,0 +1,109 @@
+import Core::{ Assert, MutableSlice, Slice };
+import Time::{ Date, DateTime, FormatRfc3339, ParseRfc3339, TimeOfDay, UtcOffset };
+
+// The text boundary of time, both directions: the strict shape parses, every near-miss of it is refused, the
+// formatter never writes what the parser would not read, and the leap second folds exactly as the module says --
+// accepted going in, never produced coming out.
+
+func Parses(text: Slice<char8>) -> bool {
+    var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
+    var offset = UtcOffset::Utc();
+    return ParseRfc3339(text, @dateTime, @offset);
+}
+
+func Renders(dateTime: DateTime, offset: UtcOffset, expected: Slice<char8>) -> bool {
+    var storage: char8[40];
+    let room = MutableSlice::From<char8>(@storage[0], 40);
+    var written: uint = 0;
+    if !FormatRfc3339(dateTime, offset, room, @written) {
+        return false;
+    }
+    if written != expected.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < written {
+        if storage[index] != expected.data[index] {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
+    var offset = UtcOffset::Utc();
+
+    // The strict shape, in its variants.
+    Assert(ParseRfc3339("2024-02-29T12:30:45Z", @dateTime, @offset), "the plain shape parses");
+    Assert(dateTime.date.year == 2024i32 && dateTime.date.month == 2u8 && dateTime.date.day == 29u8,
+           "into the leap day it names");
+    Assert(dateTime.time.hour == 12u8 && dateTime.time.second == 45u8, "and the time of day");
+    Assert(offset.TotalSeconds() == 0i32, "with Z meaning UTC");
+
+    Assert(ParseRfc3339("2024-02-29t12:30:45.5z", @dateTime, @offset), "the lower-case letters parse too");
+    Assert(dateTime.time.nanosecond == 500000000u32, "and one fraction digit means half a second");
+    Assert(ParseRfc3339("2024-02-29 12:30:45.123456789+05:30", @dateTime, @offset), "a space separator parses");
+    Assert(dateTime.time.nanosecond == 123456789u32, "nine fraction digits arrive whole");
+    Assert(offset.TotalSeconds() == 19800i32, "and the offset with them");
+    Assert(ParseRfc3339("1970-01-01T00:00:00-08:00", @dateTime, @offset), "a negative offset parses");
+    Assert(offset.TotalSeconds() == -28800i32, "as minus eight hours");
+    Assert(ParseRfc3339("2024-01-01T00:00:00.0000000005Z", @dateTime, @offset),
+           "fraction digits past the ninth parse");
+    Assert(dateTime.time.nanosecond == 0u32, "and truncate rather than round");
+
+    // The near-misses, each refused for its own reason.
+    Assert(!Parses(""), "nothing is not a moment");
+    Assert(!Parses("2024-02-29T12:30:45"), "a missing offset is refused");
+    Assert(!Parses("2024-02-29T12:30:45Zx"), "and trailing bytes after it");
+    Assert(!Parses("2023-02-29T12:30:45Z"), "a date that does not exist is refused");
+    Assert(!Parses("2024-13-01T12:30:45Z"), "a thirteenth month");
+    Assert(!Parses("2024-02-29T24:00:00Z"), "the twenty-fourth hour");
+    Assert(!Parses("2024-02-29T12:30:45.Z"), "a point with no digits");
+    Assert(!Parses("2024/02/29T12:30:45Z"), "the wrong separators");
+    Assert(!Parses("2024-02-29T12:30:45+5:30"), "a one-digit offset hour");
+    Assert(!Parses("2024-02-29T12:30:45+24:00"), "and an offset no clock has");
+
+    // The leap-second policy, exactly as stated: accepted, folded, never produced.
+    Assert(ParseRfc3339("2016-12-31T23:59:60Z", @dateTime, @offset), "the leap second parses");
+    Assert(dateTime.time.second == 59u8, "folded into second 59");
+    Assert(dateTime.time.nanosecond == 999999999u32, "at its last representable nanosecond");
+    Assert(!Parses("2016-12-31T23:59:61Z"), "and second 61 is refused, having never existed");
+
+    // Formatting, and the round trip.
+    let moment = DateTime {
+        date: Date::New(2024i32, 2u8, 29u8).ValueOr(Date::FromEpochDays(0i64)),
+        time: TimeOfDay::New(12u8, 30u8, 45u8, 0u32).ValueOr(TimeOfDay::Midnight())
+    };
+    Assert(Renders(moment, UtcOffset::Utc(), "2024-02-29T12:30:45Z"), "a whole second renders bare");
+    let fractional = DateTime {
+        date: moment.date,
+        time: TimeOfDay::New(12u8, 30u8, 45u8, 500000000u32).ValueOr(TimeOfDay::Midnight())
+    };
+    Assert(Renders(fractional, UtcOffset::Utc(), "2024-02-29T12:30:45.5Z"), "a fraction trims its zeros");
+    let precise = DateTime {
+        date: moment.date,
+        time: TimeOfDay::New(12u8, 30u8, 45u8, 123456789u32).ValueOr(TimeOfDay::Midnight())
+    };
+    Assert(Renders(precise, UtcOffset::Utc(), "2024-02-29T12:30:45.123456789Z"), "nine digits render whole");
+    let shifted = UtcOffset::Of(-5i32, -30i32).ValueOr(UtcOffset::Utc());
+    Assert(Renders(moment, shifted, "2024-02-29T12:30:45-05:30"), "an offset renders signed");
+
+    var reparsed = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
+    var reparsedOffset = UtcOffset::Utc();
+    var storage: char8[40];
+    let room = MutableSlice::From<char8>(@storage[0], 40);
+    var written: uint = 0;
+    Assert(FormatRfc3339(precise, shifted, room, @written), "the round trip renders");
+    Assert(ParseRfc3339(Slice<char8> { data: @storage[0], length: written }, @reparsed, @reparsedOffset),
+           "and parses back");
+    Assert(reparsed.Equals(precise), "to the same fields");
+    Assert(reparsedOffset.TotalSeconds() == shifted.TotalSeconds(), "and the same offset");
+
+    // A year the four digits cannot spell refuses rather than truncating.
+    let wide = DateTime { date: Date::FromEpochDays(4000000i64), time: TimeOfDay::Midnight() };
+    Assert(!FormatRfc3339(wide, UtcOffset::Utc(), room, @written), "a five-digit year refuses");
+
+    return 0;
+}
