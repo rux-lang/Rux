@@ -361,7 +361,7 @@ private:
         if (it != physicalRegisters.end()) {
             enc.MovRaxPhysReg(it->second);
             int sz = SizeOfRuntime(t);
-            if (sz > 0 && sz < 8) {
+            if (sz > 0 && sz < 8 && !IsAggregate(t)) {
                 if (t.IsSigned()) {
                     if (sz == 4)
                         enc.MovsxdRaxEax();
@@ -384,6 +384,12 @@ private:
         const int sz = SizeOfRuntime(t);
         const int runtimeSz = SizeOfRuntime(t);
         const int32_t d = Disp(reg);
+        if (IsAggregate(t) && sz > 0 && sz < 8 && sz != 1 && sz != 2 && sz != 4) {
+            // A 3-, 5-, 6- or 7-byte aggregate has no scalar width; its spill slot is padded to a word, so the
+            // whole word is the lossless move. The scalar buckets below would keep one byte of it.
+            enc.MovRaxLoad(d);
+            return;
+        }
         if (runtimeSz == 16) {
             enc.MovRaxLoad(d);
             enc.MovR10Load(d + 8);
@@ -432,7 +438,7 @@ private:
         if (it != physicalRegisters.end()) {
             enc.MovR10PhysReg(it->second);
             int sz = SizeOfRuntime(t);
-            if (sz > 0 && sz < 8) {
+            if (sz > 0 && sz < 8 && !IsAggregate(t)) {
                 if (t.IsSigned()) {
                     if (sz == 4)
                         enc.MovsxdR10r10d();
@@ -454,6 +460,11 @@ private:
         }
         int sz = SizeOfRuntime(t);
         int32_t d = Disp(reg);
+        if (IsAggregate(t) && sz > 0 && sz < 8 && sz != 1 && sz != 2 && sz != 4) {
+            // The odd-width aggregate: the slot is padded to a word, so the word is the lossless move.
+            enc.MovR10Load(d);
+            return;
+        }
         if (IsFloat(t)) {
             if (t.kind == TypeRef::Kind::Float32) {
                 enc.MovssXmm1Load(d);
@@ -510,6 +521,10 @@ private:
         }
         else {
             int ss = (sz > 0) ? sz : 8;
+            if (IsAggregate(t) && ss < 8 && ss != 1 && ss != 2 && ss != 4) {
+                // The odd-width aggregate again: the slot is padded to a word, so store the word.
+                ss = 8;
+            }
             if (ss == 8) {
                 enc.MovRaxStore(d);
             }

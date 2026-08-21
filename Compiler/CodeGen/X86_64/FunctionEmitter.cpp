@@ -1010,7 +1010,10 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             else {
                 encoder.MovR10Load(Disp(pointer));
             }
-            if (IsAggregate(type) && runtimeSize > 8) {
+            if (IsAggregate(type) && (runtimeSize > 8 || (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 &&
+                                                          runtimeSize != 4 && runtimeSize != 8))) {
+                // Larger than a register, or an odd width no scalar move spells (3, 5, 6, 7): copied in chunks,
+                // because a rounded-up load would read past the object and a rounded-down one would lose its tail.
                 CopyAggregateFromR10ToStack(Disp(instruction.dst), runtimeSize);
                 return true;
             }
@@ -1095,7 +1098,9 @@ bool X86_64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         else {
             encoder.MovR11Load(Disp(pointer));
         }
-        if (IsAggregate(type) && runtimeSize > 8) {
+        if (IsAggregate(type) && (runtimeSize > 8 || (runtimeSize > 0 && runtimeSize != 1 && runtimeSize != 2 &&
+                                                      runtimeSize != 4 && runtimeSize != 8))) {
+            // The same odd widths on the way out: chunked, so nothing beyond the object is touched.
             if (IsRegPointerTo(value, type)) {
                 if (const auto physical = physicalRegisters.find(value); physical != physicalRegisters.end()) {
                     encoder.MovR10PhysReg(physical->second);

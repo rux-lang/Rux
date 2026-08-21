@@ -76,6 +76,27 @@ int AssemblyInstructionPrinter::SizeOfRuntime(const TypeRef &type) const {
     return RuntimeSizeOf(type, layouts, interfaceNames);
 }
 
+bool AssemblyInstructionPrinter::IsAggregate(const TypeRef &type) const {
+    if (IsWideInteger(type) || (IsSoftwareFloat(type) && SizeOfRuntime(type) > 8)) {
+        return true;
+    }
+    if (type.IsRange()) {
+        return true;
+    }
+    switch (type.kind) {
+    case TypeRef::Kind::Tuple:
+    case TypeRef::Kind::Array:
+        return true;
+    case TypeRef::Kind::Named: {
+        const std::string base = BaseTypeName(type.name);
+        return base == "Slice" || interfaceNames.contains(base) || layouts.contains(base) ||
+               (!type.inner.empty() && SizeOf(type) > 8);
+    }
+    default:
+        return false;
+    }
+}
+
 bool AssemblyInstructionPrinter::IsWin64AddressParameter(const TypeRef &type) const {
     if (type.kind != TypeRef::Kind::Named) {
         return false;
@@ -113,7 +134,7 @@ void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
     if (physical != framePlan.PhysicalRegisters().end()) {
         modulePrinter.TextInstruction(std::format("{:<8}rax, {}", "mov", PhysicalRegisterName(physical->second)));
         const int size = SizeOfRuntime(type);
-        if (size > 0 && size < 8) {
+        if (size > 0 && size < 8 && !IsAggregate(type)) {
             if (type.IsSigned()) {
                 if (size == 4) {
                     modulePrinter.TextInstruction("movsxd  rax, eax");
@@ -148,7 +169,10 @@ void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
         modulePrinter.TextInstruction(
             std::format("{:<8}xmm0, {} [rbp - {}]", size == 4 ? "movss" : "movsd", PtrSize(size), offset));
     }
-    else if (size == 8 || size == 0) {
+    else if (size == 8 || size == 0 ||
+             (IsAggregate(type) && (size > 0 && size < 8 && size != 1 && size != 2 && size != 4))) {
+        // An odd-width aggregate (3, 5, 6, 7) has no scalar width; its slot is padded to a word, so the whole
+        // word is the lossless move -- the buckets below would keep one byte of it.
         modulePrinter.TextInstruction(std::format("{:<8}rax, qword [rbp - {}]", "mov", offset));
     }
     else if (type.IsSigned()) {
@@ -168,7 +192,7 @@ void AssemblyInstructionPrinter::LoadB(const LirReg reg, const TypeRef &type) {
     if (physical != framePlan.PhysicalRegisters().end()) {
         modulePrinter.TextInstruction(std::format("{:<8}r10, {}", "mov", PhysicalRegisterName(physical->second)));
         const int size = SizeOfRuntime(type);
-        if (size > 0 && size < 8) {
+        if (size > 0 && size < 8 && !IsAggregate(type)) {
             if (type.IsSigned()) {
                 if (size == 4) {
                     modulePrinter.TextInstruction("movsxd  r10, r10d");
@@ -199,7 +223,9 @@ void AssemblyInstructionPrinter::LoadB(const LirReg reg, const TypeRef &type) {
         modulePrinter.TextInstruction(
             std::format("{:<8}xmm1, {} [rbp - {}]", size == 4 ? "movss" : "movsd", PtrSize(size), offset));
     }
-    else if (size == 8 || size == 0) {
+    else if (size == 8 || size == 0 ||
+             (IsAggregate(type) && (size > 0 && size < 8 && size != 1 && size != 2 && size != 4))) {
+        // The odd-width aggregate again: the padded slot word is the lossless move.
         modulePrinter.TextInstruction(std::format("{:<8}r10, qword [rbp - {}]", "mov", offset));
     }
     else if (type.IsSigned()) {
@@ -232,7 +258,10 @@ void AssemblyInstructionPrinter::StoreA(const LirReg reg, const TypeRef &type) {
             std::format("{:<8}{} [rbp - {}], xmm0", size == 4 ? "movss" : "movsd", PtrSize(size), offset));
     }
     else {
-        const int storeSize = size > 0 ? size : 8;
+        // An odd-width aggregate stores its whole padded slot word; see LoadA.
+        const int storeSize =
+            (size > 0 && !(IsAggregate(type) && (size > 0 && size < 8 && size != 1 && size != 2 && size != 4))) ? size
+                                                                                                                : 8;
         modulePrinter.TextInstruction(
             std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(storeSize), offset, GprA(storeSize)));
     }
@@ -731,7 +760,9 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
             // Anything wider than a register is an aggregate: no scalar reaches nine bytes. Copying it a chunk at a
             // time covers every width, where keying on exactly sixteen left a twenty-four byte value copying its
             // first eight bytes and silently dropping the rest.
-            if (size > 8) {
+            if (size > 8 || (IsAggregate(type) && (size > 0 && size < 8 && size != 1 && size != 2 && size != 4))) {
+                // Wider than a register, or an odd width no scalar move spells: chunked, because a rounded-up
+                // load would read past the object and a rounded-down one would lose its tail.
                 CopyAggregateFromR10ToSlot(framePlan.SlotOffsets().at(instruction.dst), size);
                 return true;
             }
@@ -778,8 +809,9 @@ bool AssemblyInstructionPrinter::EmitMemory(const LirInstr &instruction) {
             modulePrinter.TextInstruction(
                 std::format("{:<8}r11, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(pointer)));
         }
-        if (size > 8) {
-            // As in Load above: any width, a chunk at a time, rather than sixteen bytes exactly.
+        if (size > 8 || (IsAggregate(type) && (size > 0 && size < 8 && size != 1 && size != 2 && size != 4))) {
+            // As in Load above: any width, a chunk at a time, rather than sixteen bytes exactly -- and the odd
+            // widths (3, 5, 6, 7), which no scalar store spells without touching what follows the object.
             CopyAggregateFromSlotToR11(framePlan.SlotOffsets().at(value), size);
         }
         else if (IsFloat(type)) {

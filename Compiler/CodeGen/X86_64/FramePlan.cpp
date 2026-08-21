@@ -195,7 +195,13 @@ private:
 
                 plan.registerTypes[instruction.dst] = instruction.type;
                 const int size = RuntimeSize(instruction.type);
-                AllocateSlot(instruction.dst, size > 0 ? size : 8);
+                int slotSize = size > 0 ? size : 8;
+                if (slotSize == 3 || slotSize == 5 || slotSize == 6 || slotSize == 7) {
+                    // An odd-width aggregate is moved slot-to-slot as a whole word, since no scalar move spells
+                    // its width; the slot is padded to the word so that move stays inside it.
+                    slotSize = 8;
+                }
+                AllocateSlot(instruction.dst, slotSize);
             }
         }
     }

@@ -34,6 +34,7 @@ public:
     [[nodiscard]] const X86_64FramePlan &FramePlan() const;
     [[nodiscard]] bool IsWin64Convention(CallingConvention convention) const;
     [[nodiscard]] int SizeOfRuntime(const TypeRef &type) const;
+    [[nodiscard]] bool IsAggregate(const TypeRef &type) const;
     [[nodiscard]] std::string_view PhysicalRegisterName(int index) const;
 
 private:
