@@ -1,0 +1,39 @@
+// The standard streams under the test runner are redirected, which is itself the point: the redirection path is
+// the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Io::{ BufferedWriter, IoError, StandardError, StandardIn, StandardOut, WriteAll, Writer };
+
+func Main() -> int {
+    // Acquisition asks its one question and cannot fail; the values are plain data.
+    var out = StandardOut::Acquire();
+    var errStream = StandardError::Acquire();
+    let stdin = StandardIn::Acquire();
+    Assert(stdin.pendingCount == 0, "nothing is pending before anything is read");
+
+    // A write to standard output takes the bytes and says so.
+    let sink: Writer = out;
+    let line: Slice<char8> = "standard streams under test\n";
+    Assert(WriteAll(sink, line).IsOk(), "the write is taken in full");
+    var taken: uint = 0;
+    Assert(out.Write("", @taken).IsOk() && taken == 0, "an empty write is nothing and succeeds");
+    Assert(out.Flush().IsOk(), "and flush holds nothing back");
+
+    // Standard error is the same contract on the other stream.
+    let reportSink: Writer = errStream;
+    Assert(WriteAll(reportSink, "a report belongs on standard error\n").IsOk(), "stderr takes its bytes");
+
+    // The handle is a plain byte Writer, so the buffered writer stacks on it unchanged.
+    var failure = IoError::Ok();
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var buffered = BufferedWriter::New(allocator, sink, 64, @failure);
+    Assert(failure.IsOk(), "the buffered writer takes its buffer");
+    var part: uint = 0;
+    Assert(buffered.Write("buffered ", @part).IsOk(), "a piece is gathered");
+    Assert(buffered.Write("through the standard stream\n", @part).IsOk(), "and another");
+    Assert(buffered.Flush().IsOk(), "and the flush sends them");
+
+    return 0;
+}
