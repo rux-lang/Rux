@@ -1,0 +1,216 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, CompareInt32, TreeSet };
+import Core::Assert;
+
+// A set whose elements come back in order, and the algebra over it.
+//
+// The sets the algebra runs on are ones whose overlaps can be written down -- the evens, the odds, and everything
+// below six -- so every answer is one a reader can check by eye rather than by trusting the implementation that
+// produced it. The vacuous cases are checked too: the empty set is a subset of everything and disjoint from
+// everything, and a set against its own copy has an empty symmetric difference.
+//
+// The elements arrive in a stride coprime with the count, so nothing about the insertion order helps them come out
+// sorted.
+//
+// Nothing here counts destructions, because a set cannot hold a value that owns anything: the comparison takes its
+// elements by value, so an owning element would be destroyed by the first comparison it took part in. That is a
+// constraint of the callback shape rather than of the tree, and `TreeMap` is where an owning value goes.
+
+// Counts what a range hands back, checking on the way that it is sorted and that both bounds are respected.
+func CountRange(set: *TreeSet<int32>, start: int32, end: int32) -> uint {
+    var walker = set.Range(start, end);
+    var seen: uint = 0;
+    var previous: int32 = -1;
+    var walking = true;
+    while walking {
+        match walker.Next() {
+            .Some(found) => {
+                Assert(found >= start, "a range never hands back an element below its start");
+                Assert(found < end, "nor one at or above its end");
+                Assert(found > previous, "and comes out sorted");
+                previous = found;
+                seen = seen + 1;
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    return seen;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // Fifty elements arriving in a stride coprime with the count.
+    var set = TreeSet::New<int32>(allocator, CompareInt32);
+    var step: int32 = 0;
+    while step < 50 {
+        var added = false;
+        Assert(set.Insert((step * 23) % 50, @added) == CollectionError::None, "there is room for every element");
+        Assert(added, "and every one of them is new");
+        step = step + 1;
+    }
+    Assert(set.Length() == 50, "the set holds every element");
+    Assert(!set.IsEmpty(), "and is not empty");
+
+    var value: int32 = 0;
+    while value < 50 {
+        Assert(set.Contains(value), "every element put in is there");
+        value = value + 1;
+    }
+    Assert(!set.Contains(50), "an element that was never put in is not");
+    Assert(!set.Contains(-1), "on either side of the range");
+
+    var again = false;
+    Assert(set.Insert(21, @again) == CollectionError::None, "an element already there is accepted");
+    Assert(!again, "and reports that it added nothing");
+    Assert(set.Length() == 50, "leaving the set the length it was");
+
+    // The ordered questions, at the edges as well as in the middle.
+    Assert(set.First().ValueOr(-1) == 0, "the first element is the smallest");
+    Assert(set.Last().ValueOr(-1) == 49, "and the last is the largest");
+    Assert(set.Floor(30).ValueOr(-1) == 30, "a floor lands on an exact element");
+    Assert(set.Ceiling(30).ValueOr(-1) == 30, "and so does a ceiling");
+    Assert(set.Floor(100).ValueOr(-1) == 49, "a floor above every element is the largest");
+    Assert(set.Ceiling(-5).ValueOr(-1) == 0, "a ceiling below every element is the smallest");
+    Assert(set.Floor(-5).IsNone(), "there is no floor below every element");
+    Assert(set.Ceiling(100).IsNone(), "and no ceiling above every element");
+
+    Assert(set.Remove(30), "an element in the set is removed");
+    Assert(set.Length() == 49 && !set.Contains(30), "and is gone");
+    Assert(!set.Remove(30), "removing it twice takes nothing the second time");
+    Assert(set.Floor(30).ValueOr(-1) == 29, "the floor of a missing element is the one below it");
+    Assert(set.Ceiling(30).ValueOr(-1) == 31, "and its ceiling is the one above");
+
+    // The walk comes out sorted, whatever order the elements arrived in.
+    var walker = set.Iterate();
+    var seen: uint = 0;
+    var previous: int32 = -1;
+    var walking = true;
+    while walking {
+        match walker.Next() {
+            .Some(found) => {
+                Assert(found > previous, "the walk strictly increases");
+                previous = found;
+                seen = seen + 1;
+            },
+            .None => {
+                walking = false;
+            }
+        }
+    }
+    Assert(seen == 49 && previous == 49, "and reaches every element, ending at the largest");
+
+    // Half-open at both ends, so two ranges meeting at a bound cover everything once.
+    Assert(CountRange(@set, 10, 20) == 10, "a range hands back what lies between its bounds");
+    Assert(CountRange(@set, 0, 25) + CountRange(@set, 25, 50) == 49,
+           "and two ranges meeting at a bound cover the set exactly once");
+    Assert(CountRange(@set, 28, 34) == 5, "a range steps over the element that was removed");
+    Assert(CountRange(@set, 20, 20) == 0, "a range whose bounds are equal is empty");
+    Assert(CountRange(@set, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
+    Assert(CountRange(@set, 47, 100) == 3, "one running past the end stops at the largest element");
+
+    // Three sets whose overlaps can be written down: the evens below twenty, the odds below twenty, and everything
+    // below six.
+    var evens = TreeSet::New<int32>(allocator, CompareInt32);
+    var odds = TreeSet::New<int32>(allocator, CompareInt32);
+    var small = TreeSet::New<int32>(allocator, CompareInt32);
+    value = 0;
+    while value < 20 {
+        var added = false;
+        if value % 2 == 0 {
+            evens.Insert(value, @added);
+        }
+        else {
+            odds.Insert(value, @added);
+        }
+        if value < 6 {
+            small.Insert(value, @added);
+        }
+        value = value + 1;
+    }
+    Assert(evens.Length() == 10 && odds.Length() == 10 && small.Length() == 6, "the three sets are what they claim");
+
+    var empty = TreeSet::New<int32>(allocator, CompareInt32);
+    Assert(empty.IsSubsetOf(@evens), "the empty set is a subset of everything");
+    Assert(empty.IsSubsetOf(@empty), "including itself");
+    Assert(evens.IsSupersetOf(@empty), "and everything is a superset of it");
+    Assert(empty.IsDisjointFrom(@evens) && empty.IsDisjointFrom(@empty), "and it is disjoint from everything");
+    Assert(evens.IsDisjointFrom(@odds), "the evens and the odds share nothing");
+    Assert(!evens.IsDisjointFrom(@small), "the evens and the small numbers do share something");
+    Assert(!evens.IsSubsetOf(@small), "neither of those contains the other");
+    Assert(!small.IsSubsetOf(@evens), "in either direction");
+    Assert(evens.Equals(@evens), "a set equals itself");
+    Assert(!evens.Equals(@odds), "and not one of the same size holding different elements");
+
+    // Intersection allocates nothing and can only make a set smaller.
+    var error = CollectionError::None;
+    var intersection = evens.Clone(@error);
+    Assert(error == CollectionError::None, "a set can be copied");
+    Assert(intersection.Equals(@evens), "and the copy holds what the original does");
+    intersection.IntersectWith(@small);
+    Assert(intersection.Length() == 3, "the intersection is the even numbers below six");
+    Assert(intersection.Contains(0) && intersection.Contains(2) && intersection.Contains(4), "which are 0, 2 and 4");
+    Assert(intersection.First().ValueOr(-1) == 0 && intersection.Last().ValueOr(-1) == 4, "and still in order");
+
+    var difference = evens.Clone(@error);
+    difference.Subtract(@small);
+    Assert(difference.Length() == 7, "subtracting the small numbers leaves the evens from six up");
+    Assert(!difference.Contains(4) && difference.Contains(6), "with six the smallest of them");
+
+    // Union and symmetric difference can grow, so they report.
+    var joined = evens.Clone(@error);
+    Assert(joined.UnionWith(@odds) == CollectionError::None, "a union of two sets that fit is made");
+    Assert(joined.Length() == 20, "and holds every element of both");
+    Assert(joined.First().ValueOr(-1) == 0 && joined.Last().ValueOr(-1) == 19, "in order across both");
+
+    var symmetric = evens.Clone(@error);
+    Assert(symmetric.SymmetricDifferenceWith(@small) == CollectionError::None, "a symmetric difference is made");
+    Assert(symmetric.Length() == 10, "holding what is in exactly one of the two");
+    Assert(!symmetric.Contains(0) && !symmetric.Contains(2) && !symmetric.Contains(4), "not what they share");
+    Assert(symmetric.Contains(1) && symmetric.Contains(3) && symmetric.Contains(5), "the odd small numbers");
+    Assert(symmetric.Contains(6) && symmetric.Contains(18), "and the evens above them");
+
+    var mirror = evens.Clone(@error);
+    Assert(mirror.SymmetricDifferenceWith(@evens) == CollectionError::None, "a set against its own copy is made");
+    Assert(mirror.IsEmpty(), "and comes out empty");
+
+    // The consuming walk hands out ownership one element at a time, in the same order, and a walk stopped
+    // part-way leaves the rest to the iterator's own destruction.
+    var consuming = joined.IntoIterator();
+    var consumed: uint = 0;
+    var last: int32 = -1;
+    var draining = true;
+    while draining {
+        match consuming.Next() {
+            .Some(found) => {
+                Assert(found > last, "the consuming walk is sorted too");
+                last = found;
+                consumed = consumed + 1;
+            },
+            .None => {
+                draining = false;
+            }
+        }
+    }
+    Assert(consumed == 20, "and hands out every element the set held");
+
+    var partial = odds.Clone(@error);
+    var walkedPartly = partial.IntoIterator();
+    var takenSoFar: int32 = 0;
+    while takenSoFar < 4 {
+        match walkedPartly.Next() {
+            .Some(found) => {
+                Assert(found == takenSoFar * 2 + 1, "a partial walk starts at the smallest element");
+            },
+            .None => {
+                Assert(false, "the walk has as many elements as went in");
+            }
+        }
+        takenSoFar = takenSoFar + 1;
+    }
+
+    return 0;
+}

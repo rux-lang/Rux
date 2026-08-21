@@ -171,6 +171,53 @@ extend Tree<K, V> {
         return null;
     }
 
+    /// The node holding the smallest key strictly above `key`, or null when no key is above it.
+    ///
+    /// `key` need not be in the tree. The descent keeps the last node it passed on the high side, which is the
+    /// answer wherever it ends: once it has gone left of a key, nothing further down is larger than that key.
+    ///
+    /// This is what lets a walk survive removing what it is standing on. `Successor` needs its node still linked
+    /// into the tree, and removal relinks nodes around it; asking by key instead needs nothing to have stayed put,
+    /// at the price of a descent per step rather than an edge.
+    ///
+    /// Runs in time proportional to the height and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/tree/above
+    func Above(self: *Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+        var best: *var TreeNode<K, V> = null;
+        var walk = self.root;
+        while walk != null {
+            if compare(key, walk.key).IsLess() {
+                best = walk;
+                walk = walk.left;
+            }
+            else {
+                walk = walk.right;
+            }
+        }
+        return best;
+    }
+
+    /// The node holding the largest key strictly below `key`, or null when no key is below it.
+    ///
+    /// The mirror of `Above`, with the same costs and the same use.
+    ///
+    /// https://rux-lang.dev/docs/api/collections/tree/below
+    func Below(self: *Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+        var best: *var TreeNode<K, V> = null;
+        var walk = self.root;
+        while walk != null {
+            if compare(key, walk.key).IsGreater() {
+                best = walk;
+                walk = walk.right;
+            }
+            else {
+                walk = walk.left;
+            }
+        }
+        return best;
+    }
+
     /// The node holding the smallest key of the subtree at `from`, or null when `from` is null.
     ///
     /// Runs in time proportional to the height and allocates nothing.
