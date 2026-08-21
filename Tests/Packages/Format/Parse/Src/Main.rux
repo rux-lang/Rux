@@ -1,6 +1,6 @@
 import Core::{ Result, Slice };
-import Format::{ ParseBool, ParseChar, ParseError, ParseInt8, ParseInt64, ParseInt128, ParseUint8, ParseUint64,
-                 ParseUint128, ParseUint512 };
+import Format::{ IsInfinite, IsNan, ParseBool, ParseChar, ParseError, ParseFloat32, ParseFloat64, ParseInt8,
+                 ParseInt64, ParseInt128, ParseUint8, ParseUint64, ParseUint128, ParseUint512 };
 
 // One grammar serves every width -- sign, optional base prefix, digits -- and the width's own bound is checked
 // last, so what is tested per width is the bound: the largest value in, one past it refused, and for the signed
@@ -106,6 +106,46 @@ func Main() -> int {
     }
     if ParseChar("ab").IsSuccess() { return 74; }
     if ParseChar("").IsSuccess() { return 75; }
+
+    // Floats: the special spellings formatting writes, the exponent's edges, and the narrower width's bound.
+    match ParseFloat64("NaN") {
+        .Success(value) => { if !IsNan(value) { return 80; } },
+        .Error(_) => { return 81; }
+    }
+    match ParseFloat64("Inf") {
+        .Success(value) => { if !IsInfinite(value) || value < 0.0 { return 82; } },
+        .Error(_) => { return 83; }
+    }
+    match ParseFloat64("-Inf") {
+        .Success(value) => { if !IsInfinite(value) || value > 0.0 { return 84; } },
+        .Error(_) => { return 85; }
+    }
+    if ParseFloat64("Infinity").IsSuccess() { return 86; }
+
+    match ParseFloat64("1.5e300") {
+        .Success(value) => { if value < 1.0e300 { return 87; } },
+        .Error(_) => { return 88; }
+    }
+    if ParseFloat64("1e400").IsSuccess() { return 89; }
+    match ParseFloat64("1e-400") {
+        .Success(value) => { if value != 0.0 { return 90; } },
+        .Error(_) => { return 91; }
+    }
+
+    match ParseFloat32("2.5") {
+        .Success(value) => { if value != 2.5f32 { return 92; } },
+        .Error(_) => { return 93; }
+    }
+    // A value a float64 holds and a float32 does not is the narrow width's overflow, not a quiet infinity.
+    if ParseFloat32("1e39").IsSuccess() { return 94; }
+    match ParseFloat32("1e-39") {
+        .Success(value) => { if value <= 0.0f32 { return 95; } },
+        .Error(_) => { return 96; }
+    }
+    match ParseFloat32("-Inf") {
+        .Success(value) => { if value > -3.0e38f32 { return 97; } },
+        .Error(_) => { return 98; }
+    }
 
     return 0;
 }
