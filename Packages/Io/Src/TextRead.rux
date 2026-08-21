@@ -1,0 +1,205 @@
+// Reading text out of a byte stream, a line at a time.
+//
+// A line ends at a line feed, and a carriage return immediately before it belongs to the ending, not the line --
+// that one rule is the whole of newline normalization, and it makes files from either lineage read the same. A
+// carriage return anywhere else is content: the platform that ended lines with it alone has been gone thirty
+// years, and treating every stray CR as an ending would corrupt honest text to accommodate a ghost.
+//
+// The bound is not advice. A caller reading lines from an untrusted stream names the longest line it will hold,
+// and a longer one is `LimitExceeded` rather than a slow exhaustion of memory: unbounded line reading from a
+// socket is how a peer that never sends a newline takes the process down.
+
+import Core::Slice;
+import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
+
+/// Appends the next line of `reader` to `builder`, without its ending.
+///
+/// A line ends at a line feed; a carriage return immediately before it is part of the ending. The last line of a
+/// stream needs no ending: what stands before the end is a line, and `EndOfStream` is reported only when the
+/// stream ends with nothing before it, so a caller loops until exactly that.
+///
+/// The line must be UTF-8 -- `InvalidText` otherwise, including a sequence cut short by the end of the stream --
+/// and at most `limit` bytes, `LimitExceeded` otherwise. Only validated bytes ever reach the builder, and on
+/// either failure it is cleared and the offending line consumed through its ending, so the caller can report the
+/// line and read on. A scalar value split across the buffer's edge is completed from the next refill, not
+/// condemned: where the buffer happens to end is not a property of the text.
+///
+/// https://rux-lang.dev/docs/api/io/read-text-line
+func ReadTextLine(reader: *var BufferedReader, builder: *var StringBuilder, limit: uint) -> IoError {
+    var appended: uint = 0;
+    var failure = IoErrorKind::None;
+    var carry: char8[4];
+    var carryLength: uint = 0;
+    var pendingCr = false;
+    var sawAnything = false;
+    while true {
+        let filled = reader.Fill();
+        if filled.IsError() {
+            if !filled.IsEnd() {
+                return filled;
+            }
+            // The stream is over. A sequence still waiting for its continuation bytes was cut by the end,
+            // and a carriage return still waiting for a line feed turns out to have been content.
+            if carryLength > 0 && failure == IoErrorKind::None {
+                failure = IoErrorKind::InvalidText;
+            }
+            if pendingCr && failure == IoErrorKind::None {
+                if appended + 1 > limit {
+                    failure = IoErrorKind::LimitExceeded;
+                }
+                else if builder.AppendAscii(c8'\r').IsError() {
+                    failure = IoErrorKind::Other;
+                }
+            }
+            if failure != IoErrorKind::None {
+                builder.Clear();
+                return IoError::Of(failure);
+            }
+            return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+        }
+        sawAnything = true;
+        let held = reader.Buffered();
+
+        if carryLength > 0 && failure == IoErrorKind::None {
+            // A scalar value the previous chunk cut is finished first, from the bytes that just arrived.
+            var joined: char8[8];
+            var at: uint = 0;
+            while at < carryLength {
+                joined[at] = carry[at];
+                at = at + 1;
+            }
+            let borrowed = held.length < 4u ? held.length : 4u;
+            var extra: uint = 0;
+            while extra < borrowed {
+                joined[carryLength + extra] = held.data[extra];
+                extra = extra + 1;
+            }
+            var scalar = 0u32 as char32;
+            var width: uint = 0;
+            let verdict = DecodeAt(joined[0..carryLength + borrowed], 0, @scalar, @width);
+            if verdict == Utf8Error::Truncated && borrowed == held.length {
+                // Still short -- the source is trickling bytes. Take them into the carry and ask again.
+                var taken: uint = 0;
+                while taken < borrowed {
+                    carry[carryLength] = held.data[taken];
+                    carryLength = carryLength + 1;
+                    taken = taken + 1;
+                }
+                reader.Consume(held.length);
+            }
+            else if verdict != Utf8Error::None {
+                failure = IoErrorKind::InvalidText;
+                carryLength = 0;
+            }
+            else {
+                if appended + width > limit {
+                    failure = IoErrorKind::LimitExceeded;
+                }
+                else if builder.AppendValidated(joined[0..width]).IsError() {
+                    failure = IoErrorKind::Other;
+                }
+                else {
+                    appended = appended + width;
+                }
+                reader.Consume(width - carryLength);
+                carryLength = 0;
+            }
+        }
+        else if pendingCr {
+            // The previous chunk ended with a carriage return; whether it was an ending depends on what
+            // arrives next. A line feed finishes the line; anything else makes the return content.
+            pendingCr = false;
+            if held.data[0] == c8'\n' {
+                reader.Consume(1);
+                if failure != IoErrorKind::None {
+                    builder.Clear();
+                    return IoError::Of(failure);
+                }
+                return IoError::Ok();
+            }
+            if failure == IoErrorKind::None {
+                if appended + 1 > limit {
+                    failure = IoErrorKind::LimitExceeded;
+                }
+                else if builder.AppendAscii(c8'\r').IsError() {
+                    failure = IoErrorKind::Other;
+                }
+                else {
+                    appended = appended + 1;
+                }
+            }
+        }
+        else {
+            // Find the ending, if this chunk holds one.
+            var lineEnd = held.length;
+            var sawFeed = false;
+            var index: uint = 0;
+            while index < held.length && !sawFeed {
+                if held.data[index] == c8'\n' {
+                    lineEnd = index;
+                    sawFeed = true;
+                }
+                index = index + 1;
+            }
+            var content = lineEnd;
+            var heldBackCr = false;
+            if content > 0 && held.data[content - 1] == c8'\r' {
+                if sawFeed {
+                    content = content - 1;
+                }
+                else {
+                    // The chunk ends with a return whose fate the next chunk decides.
+                    content = content - 1;
+                    heldBackCr = true;
+                }
+            }
+
+            if failure == IoErrorKind::None {
+                let piece = Slice<char8> { data: held.data, length: content };
+                var probe: uint = 0;
+                let verdict = Validate(piece, @probe);
+                var settled = content;
+                if verdict == Utf8Error::Truncated && !sawFeed && !heldBackCr {
+                    // The chunk ends inside a sequence. The validated prefix is settled; the started
+                    // sequence waits in the carry for the next refill to finish it.
+                    settled = probe;
+                    var stash = probe;
+                    while stash < content {
+                        carry[carryLength] = held.data[stash];
+                        carryLength = carryLength + 1;
+                        stash = stash + 1;
+                    }
+                }
+                else if verdict != Utf8Error::None {
+                    failure = IoErrorKind::InvalidText;
+                }
+
+                if failure == IoErrorKind::None {
+                    let settledPiece = Slice<char8> { data: held.data, length: settled };
+                    if appended + settled > limit {
+                        failure = IoErrorKind::LimitExceeded;
+                    }
+                    else if builder.AppendValidated(settledPiece).IsError() {
+                        failure = IoErrorKind::Other;
+                    }
+                    else {
+                        appended = appended + settled;
+                    }
+                }
+            }
+
+            if heldBackCr {
+                pendingCr = true;
+            }
+            reader.Consume(sawFeed ? lineEnd + 1 : held.length);
+            if sawFeed {
+                if failure != IoErrorKind::None {
+                    builder.Clear();
+                    return IoError::Of(failure);
+                }
+                return IoError::Ok();
+            }
+        }
+    }
+    return IoError::Ok();
+}

@@ -1,0 +1,125 @@
+// A line ends at a line feed, a CR before it belongs to the ending, and the bound is not advice.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ BufferedReader, IoError, IoErrorKind, Reader, ReadTextLine };
+import Text::{ String, StringBuilder, StringView };
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+// A source that serves a fixed byte string in pieces of at most `step` bytes, to force refills mid-line.
+struct ScriptState {
+    bytes: Slice<char8>;
+    offset: uint;
+    step: uint;
+}
+
+struct ScriptHandle {
+    state: *var ScriptState;
+}
+
+extend ScriptHandle : Reader {
+    func Read(self: *var ScriptHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        let state = self.state;
+        let remaining = state.bytes.length - state.offset;
+        if remaining == 0 {
+            return IoError::Of(IoErrorKind::EndOfStream);
+        }
+        var count = remaining < state.step ? remaining : state.step;
+        if into.length < count {
+            count = into.length;
+        }
+        var index: uint = 0;
+        while index < count {
+            into.data[index] = state.bytes.data[state.offset + index];
+            index = index + 1;
+        }
+        state.offset = state.offset + count;
+        *filled = count;
+        return IoError::Ok();
+    }
+}
+
+// Reads one line from `bytes`, served `step` bytes at a time into a 16-byte buffer, and checks the outcome.
+func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: uint,
+                expectedKind: IoErrorKind, expected: Slice<char8>) {
+    var state = ScriptState { bytes: bytes, offset: 0, step: step };
+    let source: Reader = ScriptHandle { state: @state };
+    var error = IoError::Ok();
+    var reader = BufferedReader::New(allocator, source, 16, @error);
+    Assert(error.IsOk(), "the reader takes its buffer");
+    var builder = StringBuilder::New(allocator);
+    let outcome = ReadTextLine(@reader, @builder, limit);
+    Assert(outcome.kind == expectedKind, "the outcome names the reason");
+    let line = builder.IntoString();
+    let want = View(expected);
+    Assert(line.View().Equals(@want), "and the content is the line, no more and no less");
+    reader.Release();
+}
+
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // A plain line, whole and in one piece.
+    CheckBytes(allocator, "alpha\nbeta", 64, 256, IoErrorKind::None, "alpha");
+    // A CRLF ending reads the same as a bare LF: the CR belongs to the ending.
+    CheckBytes(allocator, "alpha\r\nbeta", 64, 256, IoErrorKind::None, "alpha");
+    // A CR anywhere else is content, not an ending.
+    CheckBytes(allocator, "al\rpha\n", 64, 256, IoErrorKind::None, "al\rpha");
+    // The last line of a stream needs no ending.
+    CheckBytes(allocator, "closing", 64, 256, IoErrorKind::None, "closing");
+    // An empty line is a line; an ended stream with nothing before it is not.
+    CheckBytes(allocator, "\nrest", 64, 256, IoErrorKind::None, "");
+    CheckBytes(allocator, "", 64, 256, IoErrorKind::EndOfStream, "");
+    // A line longer than the buffer crosses refills without seams; three bytes a call forces many of them.
+    CheckBytes(allocator, "a long line that dwarfs the sixteen-byte buffer\nnext", 3, 256,
+              IoErrorKind::None, "a long line that dwarfs the sixteen-byte buffer");
+    // A CRLF split across two fills still normalizes: the CR is last in one chunk, the LF first in the next.
+    CheckBytes(allocator, "0123456789abcde\r\ntail", 16, 256, IoErrorKind::None, "0123456789abcde");
+    // The bound is met, the offending line is consumed, and the error names the reason.
+    CheckBytes(allocator, "0123456789\n", 64, 4, IoErrorKind::LimitExceeded, "");
+    // Bytes that are not UTF-8 are refused, and the builder comes back empty.
+    var raw: char8[8];
+    raw[0] = c8'o'; raw[1] = c8'k'; raw[2] = 0xFFu8 as char8;
+    raw[3] = c8'b'; raw[4] = c8'a'; raw[5] = c8'd'; raw[6] = 0x0Au8 as char8;
+    CheckBytes(allocator, raw[0..7], 64, 256, IoErrorKind::InvalidText, "");
+    // A multi-byte scalar split by the buffer's edge is completed, not condemned.
+    CheckBytes(allocator, "0123456789abcde\u{00E9}f\n", 16, 256, IoErrorKind::None, "0123456789abcde\u{00E9}f");
+    // Even served one byte at a time, so every continuation byte arrives in its own conversation.
+    CheckBytes(allocator, "\u{1F600} grin\n", 1, 256, IoErrorKind::None, "\u{1F600} grin");
+    // A sequence cut short by the end of the stream itself is invalid, not silently dropped.
+    raw[0] = c8'a'; raw[1] = 0xC3u8 as char8;
+    CheckBytes(allocator, raw[0..2], 64, 256, IoErrorKind::InvalidText, "");
+
+    // Reading on after a line: the reader's position is exactly past the ending.
+    var state = ScriptState { bytes: "one\ntwo\nthree", offset: 0, step: 64 };
+    let source: Reader = ScriptHandle { state: @state };
+    var error = IoError::Ok();
+    var reader = BufferedReader::New(allocator, source, 16, @error);
+    var builder = StringBuilder::New(allocator);
+    Assert(ReadTextLine(@reader, @builder, 64).IsOk(), "the first line reads");
+    let one = builder.IntoString();
+    let oneExpected = View("one");
+    Assert(one.View().Equals(@oneExpected), "and is the first");
+    var second = StringBuilder::New(allocator);
+    Assert(ReadTextLine(@reader, @second, 64).IsOk(), "the second follows");
+    let two = second.IntoString();
+    let twoExpected = View("two");
+    Assert(two.View().Equals(@twoExpected), "from exactly where the first ended");
+    var third = StringBuilder::New(allocator);
+    Assert(ReadTextLine(@reader, @third, 64).IsOk(), "the unterminated last line is a line");
+    let three = third.IntoString();
+    let threeExpected = View("three");
+    Assert(three.View().Equals(@threeExpected), "with everything before the end");
+    var fourth = StringBuilder::New(allocator);
+    Assert(ReadTextLine(@reader, @fourth, 64).IsEnd(), "and after it, the end");
+    fourth.Release();
+    reader.Release();
+
+    return 0;
+}
