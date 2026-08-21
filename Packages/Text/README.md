@@ -19,6 +19,8 @@ rux add Rux/Text
   moment, and hands its block over through `IntoString` without copying it.
 - **UTF-8** — validation, decoding and encoding by Table 3-7 of the Unicode standard, so overlong forms, surrogate
   halves and values past U+10FFFF are refused structurally.
+- **`CString`** — NUL-checked interop with C: text holding a zero byte is refused rather than truncated on the
+  way out, and bytes from C are bounded and validated on the way in.
 - **Transforms** — `Concat`, `Repeat`, `Replace`, and the ASCII-only case conversions, each allocating exactly once.
 
 ## Example

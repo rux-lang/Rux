@@ -1,0 +1,77 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ CString, StringView, TextError };
+
+// A C string is a pointer and a promise, and both edges of the boundary need a check nothing else needs. Going out,
+// text holding a zero byte is refused rather than truncated -- truncation is how a name that passed a filter and
+// the name C uses part company. Coming in, the terminator says how far to read, a limit says how far to look for
+// it, and the bytes are validated because nothing about C promises text.
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Out: ordinary text picks up its terminator, invisible from the Rux side.
+    let text = StringView::FromValidated("hello");
+    let out = CString::FromView(allocator, text, @error);
+    Assert(out.IsSome() && error == TextError::None, "ordinary text crosses the boundary");
+    var kept = CString::FromView(allocator, text, @error).ValueOr(CString::FromView(allocator,
+        StringView::New(), @error).ValueOr(CString { data: null, length: 0, allocator: allocator }));
+    Assert(kept.Length() == 5, "the length counts the text alone");
+    Assert((kept.Raw()[5] as uint32) == 0, "with the terminator sitting just past it");
+    Assert((kept.Raw()[0] as uint32) == 0x68, "and the text itself unmoved");
+    let roundTrip = kept.View();
+    Assert(roundTrip.Equals(@text), "the view reads back without the terminator");
+
+    // Empty text is one byte of terminator, not a null pointer.
+    let empty = CString::FromView(allocator, StringView::New(), @error);
+    Assert(empty.IsSome() && error == TextError::None, "empty text crosses too");
+
+    // A zero byte in the middle is refused, not truncated.
+    var smuggled: char8[8];
+    smuggled[0] = c8's';
+    smuggled[1] = c8'a';
+    smuggled[2] = c8'f';
+    smuggled[3] = c8'e';
+    smuggled[4] = 0u8 as char8;
+    smuggled[5] = c8'e';
+    smuggled[6] = c8'x';
+    smuggled[7] = c8'e';
+    let hidden = StringView::FromBytes(smuggled[0..8]).ValueOr(StringView::New());
+    Assert(hidden.Length() == 8, "a zero byte is valid UTF-8 and makes a view");
+    let refused = CString::FromView(allocator, hidden, @error);
+    Assert(refused.IsNone(), "but it does not cross the boundary");
+    Assert(error == TextError::InvalidUtf8, "and the refusal says why");
+
+    // In: reading back from a raw pointer, to the terminator and no further.
+    let arrived = CString::FromRaw(allocator, kept.Raw(), 64, @error);
+    Assert(arrived.IsSome() && error == TextError::None, "C text with a terminator in reach comes in");
+    let arrivedText = CString::FromRaw(allocator, kept.Raw(), 64, @error)
+        .ValueOr(CString { data: null, length: 0, allocator: allocator });
+    Assert(arrivedText.Length() == 5, "read to the terminator and no further");
+
+    // A terminator out of reach is a broken promise, and costs the limit rather than a walk off the map.
+    var unterminated: char8[4];
+    unterminated[0] = c8'a';
+    unterminated[1] = c8'b';
+    unterminated[2] = c8'c';
+    unterminated[3] = c8'd';
+    let overrun = CString::FromRaw(allocator, @unterminated[0], 4, @error);
+    Assert(overrun.IsNone() && error == TextError::InvalidUtf8, "no terminator within the limit is refused");
+
+    // Bytes from C that are not text are input, and input is validated.
+    var mangled: char8[4];
+    mangled[0] = 0xEDu8 as char8;
+    mangled[1] = 0xA0u8 as char8;
+    mangled[2] = 0x80u8 as char8;
+    mangled[3] = 0u8 as char8;
+    let rejected = CString::FromRaw(allocator, @mangled[0], 8, @error);
+    Assert(rejected.IsNone() && error == TextError::InvalidUtf8, "a surrogate half from C is refused");
+
+    // Null is C's nothing, and nothing is not text.
+    let missing = CString::FromRaw(allocator, null, 8, @error);
+    Assert(missing.IsNone(), "and a null pointer makes nothing");
+
+    return 0;
+}
