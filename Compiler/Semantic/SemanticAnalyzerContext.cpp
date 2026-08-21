@@ -325,6 +325,7 @@ void SemanticAnalyzerContext::Run() {
     for (const Module *module : modules) {
         CheckModule(*module);
     }
+    QueueDropMethodInstantiations();
     ValidatePendingGenericInstantiations();
     RecordResolvedTypeProperties();
     SynthesizeResolvedDropGlue();

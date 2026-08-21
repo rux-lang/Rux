@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <filesystem>
 #include <utility>
 
@@ -127,9 +128,17 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
 
 /// Whether a destruction plan's type names a real type rather than a shape still waiting for its arguments.
 ///
-/// A type parameter is not concrete, and neither is an instantiation one of whose arguments is still the declaring
-/// type's own parameter -- `Box<T>` written inside `extend Box<T>` reaches here looking exactly like an instantiation.
-bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) const {
+/// A type parameter is not concrete, and neither is an instantiation one of whose arguments is a parameter. Both a
+/// parameter and a declared type arrive here as a bare name, so what tells them apart is whether anything declares
+/// the name: nothing declares a type parameter, and every struct, enum, union, interface and alias is defined in the
+/// global scope by the time this runs.
+///
+/// Asking instead whether the argument matched a parameter of the type being instantiated -- which is what this did
+/// -- catches `Box<T>` written inside `extend Box<T>` and nothing else. A container built on another one passes its
+/// own parameter down, so `Tree<T, Unit>` inside `TreeSet<T>` was judged concrete because `T` is not one of `Tree`'s
+/// parameters, and lowering then built a destructor for a type that cannot exist -- which asks for the size of a
+/// node whose element type is still a parameter, and stops the compiler where there is nothing left to ask.
+bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) {
     if (type.kind == TypeRef::Kind::TypeParam) {
         return false;
     }
@@ -141,18 +150,16 @@ bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) const {
     if (type.kind != TypeRef::Kind::Named) {
         return true;
     }
-    const std::vector<TypeParameter> *declared = AggregateTypeParams(BaseTypeName(type.name));
-    if (declared == nullptr || declared->empty()) {
-        return true;
+    if (type.name.find('<') == std::string::npos) {
+        // A bare name that nothing declares is a parameter. Primitives and the builtin aggregates never reach here
+        // as a named type -- they are recognized while the name is parsed -- so a name is either declared or a
+        // parameter, with nothing in between.
+        const HirSymbol *declared = globalScope.Lookup(type.name);
+        return declared != nullptr && declared->kind == HirSymbol::Kind::Type;
     }
     for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
         if (!DropGlueTypeIsConcrete(argument)) {
             return false;
-        }
-        for (const TypeParameter &parameter : *declared) {
-            if (argument.kind == TypeRef::Kind::Named && argument.name == parameter.name) {
-                return false;
-            }
         }
     }
     return true;

@@ -3407,6 +3407,28 @@ private:
         pendingGenericInstantiations.push_back({&decl, substitutions});
     }
 
+    void QueueDropMethodInstantiations() override {
+        const auto queue = [&](const TypeRef &type) {
+            if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
+                return;
+            }
+            const FuncDecl *destructor = LookupMethod(type, "Drop");
+            if (destructor == nullptr) {
+                return;
+            }
+            QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
+        };
+        for (const auto &[expression, type] : expressionTypes) {
+            queue(type);
+        }
+        for (const auto &[node, type] : typeNodeTypes) {
+            queue(type);
+        }
+        for (const auto &[pattern, type] : patternTypes) {
+            queue(type);
+        }
+    }
+
     void ValidatePendingGenericInstantiations() override {
         std::size_t processed = 0;
         while (processed < pendingGenericInstantiations.size()) {
