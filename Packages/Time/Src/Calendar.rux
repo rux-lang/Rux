@@ -1,0 +1,303 @@
+// The proleptic Gregorian calendar, extended backwards as if it had always been in force.
+//
+// A date is a year, a month and a day that actually exists: February 29th only in a leap year, the 31st only in
+// the months that have one. The conversion to and from a flat day count is the civil-calendar arithmetic that
+// treats March as the first month, which puts the leap day last and turns the month lengths into one formula --
+// the standard trick, worth having exactly once.
+//
+// Leap seconds are deliberately absent from `TimeOfDay`: a second is 0 to 59, and what to do about 23:59:60 is a
+// parsing policy decided where text comes in, not a representation question.
+
+import Core::{ AddChecked, MulChecked, Option, Ordering };
+
+/// A calendar date that exists.
+///
+/// `Copy`. Only constructible through `New`, which is what lets everything downstream assume validity.
+///
+/// https://rux-lang.dev/docs/api/time/date
+struct Date {
+    /// The year, astronomically numbered: year 0 exists and is 1 BCE.
+    year: int32;
+    /// The month, 1 through 12.
+    month: uint8;
+    /// The day, 1 through the month's length.
+    day: uint8;
+}
+
+/// Whether `year` is a leap year: every fourth, except every hundredth, except every four-hundredth.
+///
+/// https://rux-lang.dev/docs/api/time/is-leap-year
+func IsLeapYear(year: int32) -> bool {
+    if year % 4i32 != 0i32 {
+        return false;
+    }
+    if year % 100i32 != 0i32 {
+        return true;
+    }
+    return year % 400i32 == 0i32;
+}
+
+/// How many days `month` holds in `year`.
+///
+/// Zero for a month that does not exist, which is what lets `Date::New` use it as the validator.
+///
+/// https://rux-lang.dev/docs/api/time/days-in-month
+func DaysInMonth(year: int32, month: uint8) -> uint8 {
+    if month == 2u8 {
+        return IsLeapYear(year) ? 29u8 : 28u8;
+    }
+    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 {
+        return 30u8;
+    }
+    if month >= 1u8 && month <= 12u8 {
+        return 31u8;
+    }
+    return 0u8;
+}
+
+extend Date {
+    /// The date, when it exists.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/new
+    func New(year: int32, month: uint8, day: uint8) -> Option<Date> {
+        if day < 1u8 || day > DaysInMonth(year, month) {
+            return Option::None<Date>();
+        }
+        return Option::Some<Date>(Date { year: year, month: month, day: day });
+    }
+
+    /// Days since 1970-01-01, negative before it.
+    ///
+    /// The civil-calendar formula: the year is shifted so March opens it, which puts the leap day at the end where
+    /// it cannot disturb the month arithmetic.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/days-from-epoch
+    func DaysFromEpoch(self: *Date) -> int64 {
+        var year = self.year as int64;
+        if self.month <= 2u8 {
+            year = year - 1i64;
+        }
+        let era = (year >= 0i64 ? year : year - 399i64) / 400i64;
+        let yearOfEra = year - era * 400i64;
+        let shiftedMonth = (self.month as int64) + (self.month > 2u8 ? -3i64 : 9i64);
+        let dayOfYear = (153i64 * shiftedMonth + 2i64) / 5i64 + (self.day as int64) - 1i64;
+        let dayOfEra = yearOfEra * 365i64 + yearOfEra / 4i64 - yearOfEra / 100i64 + dayOfYear;
+        return era * 146097i64 + dayOfEra - 719468i64;
+    }
+
+    /// The date `days` after 1970-01-01, negative before it.
+    ///
+    /// The inverse of `DaysFromEpoch`, exactly: the pair round-trips every day of every representable year.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/from-epoch-days
+    func FromEpochDays(days: int64) -> Date {
+        let shifted = days + 719468i64;
+        let era = (shifted >= 0i64 ? shifted : shifted - 146096i64) / 146097i64;
+        let dayOfEra = shifted - era * 146097i64;
+        let yearOfEra = (dayOfEra - dayOfEra / 1460i64 + dayOfEra / 36524i64 - dayOfEra / 146096i64) / 365i64;
+        let year = yearOfEra + era * 400i64;
+        let dayOfYear = dayOfEra - (365i64 * yearOfEra + yearOfEra / 4i64 - yearOfEra / 100i64);
+        let shiftedMonth = (5i64 * dayOfYear + 2i64) / 153i64;
+        let day = dayOfYear - (153i64 * shiftedMonth + 2i64) / 5i64 + 1i64;
+        let month = shiftedMonth + (shiftedMonth < 10i64 ? 3i64 : -9i64);
+        let finalYear = month <= 2i64 ? year + 1i64 : year;
+        return Date { year: finalYear as int32, month: month as uint8, day: day as uint8 };
+    }
+
+    /// The day of the week, 0 for Sunday through 6 for Saturday.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/day-of-week
+    func DayOfWeek(self: *Date) -> uint8 {
+        let days = self.DaysFromEpoch();
+        // The epoch was a Thursday; the shift keeps the remainder non-negative either side of it.
+        let weekday = (days % 7i64 + 11i64) % 7i64;
+        return weekday as uint8;
+    }
+
+    /// The day of the year, 1 through 365 or 366.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/day-of-year
+    func DayOfYear(self: *Date) -> uint16 {
+        let opening = Date { year: self.year, month: 1, day: 1 };
+        return (self.DaysFromEpoch() - opening.DaysFromEpoch() + 1i64) as uint16;
+    }
+
+    /// Whether two dates are the same day.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/equals
+    func Equals(self: *Date, other: Date) -> bool {
+        return self.year == other.year && self.month == other.month && self.day == other.day;
+    }
+
+    /// How this date orders against `other`.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date/compare
+    func Compare(self: *Date, other: Date) -> Ordering {
+        let mine = self.DaysFromEpoch();
+        let theirs = other.DaysFromEpoch();
+        if mine < theirs {
+            return Ordering::Less;
+        }
+        if mine > theirs {
+            return Ordering::Greater;
+        }
+        return Ordering::Equal;
+    }
+}
+
+/// A time within a day, to the nanosecond.
+///
+/// `Copy`, and only constructible valid. The second stops at 59: leap seconds are a policy for the text boundary,
+/// not a representable value here.
+///
+/// https://rux-lang.dev/docs/api/time/time-of-day
+struct TimeOfDay {
+    /// The hour, 0 through 23.
+    hour: uint8;
+    /// The minute, 0 through 59.
+    minute: uint8;
+    /// The second, 0 through 59.
+    second: uint8;
+    /// The fraction, in nanoseconds.
+    nanosecond: uint32;
+}
+
+extend TimeOfDay {
+    /// The time, when it exists.
+    ///
+    /// https://rux-lang.dev/docs/api/time/time-of-day/new
+    func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> Option<TimeOfDay> {
+        if hour > 23u8 || minute > 59u8 || second > 59u8 || nanosecond > 999999999u32 {
+            return Option::None<TimeOfDay>();
+        }
+        return Option::Some<TimeOfDay>(TimeOfDay {
+            hour: hour,
+            minute: minute,
+            second: second,
+            nanosecond: nanosecond
+        });
+    }
+
+    /// Midnight exactly.
+    ///
+    /// https://rux-lang.dev/docs/api/time/time-of-day/midnight
+    func Midnight() -> TimeOfDay {
+        return TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 };
+    }
+
+    /// The seconds from midnight to this time, ignoring the fraction.
+    ///
+    /// https://rux-lang.dev/docs/api/time/time-of-day/seconds-from-midnight
+    func SecondsFromMidnight(self: *TimeOfDay) -> uint32 {
+        return (self.hour as uint32) * 3600u32 + (self.minute as uint32) * 60u32 + self.second as uint32;
+    }
+}
+
+/// A fixed shift from UTC, in whole minutes.
+///
+/// Fixed is the word doing the work: this names what an offset is at one moment, and never which zone produced it
+/// or when that zone changes its mind. Zone rules are a database with a release cycle, and belong to a later phase.
+///
+/// https://rux-lang.dev/docs/api/time/utc-offset
+struct UtcOffset {
+    /// The shift in seconds east of UTC, negative west, within a day either way.
+    seconds: int32;
+}
+
+extend UtcOffset {
+    /// UTC itself.
+    ///
+    /// https://rux-lang.dev/docs/api/time/utc-offset/utc
+    func Utc() -> UtcOffset {
+        return UtcOffset { seconds: 0 };
+    }
+
+    /// The offset `hours` and `minutes` from UTC, when it is one an offset can be.
+    ///
+    /// The two carry the same sign -- minus five thirty is `Of(-5, -30)` -- and the whole must stay within a day.
+    /// Real offsets stop at eighteen hours, but text may carry any legal-looking one and refusing to represent it
+    /// would turn parsing into policy.
+    ///
+    /// https://rux-lang.dev/docs/api/time/utc-offset/of
+    func Of(hours: int32, minutes: int32) -> Option<UtcOffset> {
+        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 {
+            return Option::None<UtcOffset>();
+        }
+        if hours > 0i32 && minutes < 0i32 {
+            return Option::None<UtcOffset>();
+        }
+        if hours < 0i32 && minutes > 0i32 {
+            return Option::None<UtcOffset>();
+        }
+        return Option::Some<UtcOffset>(UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 });
+    }
+
+    /// The whole seconds east of UTC, negative west.
+    ///
+    /// https://rux-lang.dev/docs/api/time/utc-offset/total-seconds
+    func TotalSeconds(self: *UtcOffset) -> int32 {
+        return self.seconds;
+    }
+}
+
+/// A date and a time of day together, in some understood offset.
+///
+/// `Copy`. What offset the pair is in is the caller's knowledge, carried beside it where it matters -- attaching
+/// one permanently would make every arithmetic answer depend on a field that is usually UTC anyway.
+///
+/// https://rux-lang.dev/docs/api/time/date-time
+struct DateTime {
+    /// The day.
+    date: Date;
+    /// The time within it.
+    time: TimeOfDay;
+}
+
+extend DateTime {
+    /// The moment this date and time name in UTC, shifted by `offset`.
+    ///
+    /// The shift subtracts: half past nine at plus two is half past seven in UTC. The range of a timestamp dwarfs
+    /// the calendar's, so the conversion cannot overflow for any date `Date::New` accepts.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date-time/to-timestamp
+    func ToTimestamp(self: *DateTime, offset: UtcOffset) -> Timestamp {
+        let days = self.date.DaysFromEpoch();
+        let seconds = days * 86400i64 + (self.time.SecondsFromMidnight() as int64) -
+                      (offset.TotalSeconds() as int64);
+        return Timestamp { seconds: seconds, nanoseconds: self.time.nanosecond };
+    }
+
+    /// The date and time `moment` names, shifted into `offset`.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date-time/from-timestamp
+    func FromTimestamp(moment: Timestamp, offset: UtcOffset) -> DateTime {
+        let shifted = moment.UnixSeconds() + (offset.TotalSeconds() as int64);
+        var days = shifted / 86400i64;
+        var secondOfDay = shifted % 86400i64;
+        if secondOfDay < 0i64 {
+            days = days - 1i64;
+            secondOfDay = secondOfDay + 86400i64;
+        }
+        return DateTime {
+            date: Date::FromEpochDays(days),
+            time: TimeOfDay {
+                hour: (secondOfDay / 3600i64) as uint8,
+                minute: (secondOfDay % 3600i64 / 60i64) as uint8,
+                second: (secondOfDay % 60i64) as uint8,
+                nanosecond: moment.SubsecondNanoseconds()
+            }
+        };
+    }
+
+    /// Whether two pairs name the same date and time.
+    ///
+    /// Same field values -- two pairs in different offsets naming one moment are different here, which is what
+    /// carrying the offset beside the pair means.
+    ///
+    /// https://rux-lang.dev/docs/api/time/date-time/equals
+    func Equals(self: *DateTime, other: DateTime) -> bool {
+        return self.date.Equals(other.date) && self.time.hour == other.time.hour &&
+               self.time.minute == other.time.minute && self.time.second == other.time.second &&
+               self.time.nanosecond == other.time.nanosecond;
+    }
+}
