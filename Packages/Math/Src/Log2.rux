@@ -1,3 +1,6 @@
+// **Accuracy: error at most 1 ulp, and exact for an exact power of two.**
+// Sharing the natural logarithm's series and scaling the result would lose
+// that exactness, since the scaling factor is not representable.
 func Log2(x: float64) -> float64 {
     let ivln2Hi = 1.44269504072144627571e+00;
     let ivln2Lo = 1.67517131648865118353e-10;

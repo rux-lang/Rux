@@ -1,0 +1,95 @@
+// The logarithms are checked where they are exact, where they are inverses, and -- for log1p -- where the
+// obvious spelling stops working at all. The exactness claims matter most: Log2 of a power of two and Log10 of
+// a power of ten must be whole numbers, which is precisely what scaling a natural logarithm cannot deliver.
+
+import Core::Assert;
+import Math::{ Abs, E, Exp, Expm1, IsNan, Log, Log10, Log1p, Log2, PositiveInfinity64, QuietNan64,
+               ScaleByPowerOfTwo, SignBit, UlpDistance };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+
+    // The values every logarithm must get exactly right.
+    Assert(Log(1.0) == 0.0, "the natural logarithm of one is exactly zero");
+    Assert(Log2(1.0) == 0.0 && Log10(1.0) == 0.0, "as are the other two");
+    Assert(UlpDistance(Log(E), 1.0) <= 1u64, "the logarithm of e is one");
+    Assert(Log(0.0) == -infinity && Log(-0.0) == -infinity, "the logarithm of either zero is negative infinity");
+    Assert(IsNan(Log(-1.0)), "a negative argument has no real logarithm");
+    Assert(Log(infinity) == infinity, "an infinite argument gives infinity");
+    Assert(IsNan(Log(notANumber)), "and a NaN stays a NaN");
+
+    // Base two, exact on every power of two the type holds -- including the subnormals, where the argument has
+    // fewer significant bits but the answer is still a whole number.
+    var power: int64 = -1074;
+    while power <= 1023i64 {
+        Assert(Log2(ScaleByPowerOfTwo(1.0, power)) == (power as float64),
+               "the base-two logarithm of a power of two is that power exactly");
+        power = power + 1i64;
+    }
+
+    // Base ten, exact on the powers of ten that are exactly representable.
+    var ten = 1.0;
+    var decade: uint = 0;
+    while decade <= 22u {
+        Assert(Log10(ten) == (decade as float64), "the base-ten logarithm of a power of ten is that power");
+        ten = ten * 10.0;
+        decade = decade + 1;
+    }
+
+    // Inverses, across a wide spread of arguments and both directions.
+    var probe: uint = 1;
+    while probe < 300u {
+        let value = (probe as float64) * 0.813;
+        Assert(UlpDistance(Exp(Log(value)), value) <= 4u64, "exp undoes log");
+        Assert(UlpDistance(Log2(ScaleByPowerOfTwo(value, 0i64)) * 0.6931471805599453, Log(value)) <= 8u64,
+               "and the two bases agree up to their scaling factor");
+        probe = probe + 1;
+    }
+
+    // log1p, and the precision it exists to keep. For a tiny argument, 1 + x rounds to exactly 1, so Log(1 + x)
+    // is exactly zero while the true answer is x.
+    Assert(Log1p(0.0) == 0.0 && !SignBit(Log1p(0.0)), "log1p of zero is zero");
+    Assert(SignBit(Log1p(-0.0)), "and of a negative zero keeps its sign");
+    let tiny = ScaleByPowerOfTwo(1.0, -60i64);
+    Assert(Log(1.0 + tiny) == 0.0, "log of one plus a tiny argument loses it entirely");
+    Assert(Log1p(tiny) == tiny, "while log1p returns it unchanged, which is the true answer to full precision");
+    let small = 1.0e-12;
+    Assert(Abs(Log1p(small) / small - 1.0) < 1.0e-11, "the ratio to the argument approaches one as it should");
+
+    // Away from zero it agrees with the naive form, where the sum is harmless.
+    var away: uint = 1;
+    while away < 200u {
+        let value = (away as float64) * 0.53;
+        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8u64,
+               "log1p agrees with the naive form where the naive form is sound");
+        away = away + 1;
+    }
+    // And below zero, down toward the pole.
+    var below: uint = 1;
+    while below < 90u {
+        let value = 0.0 - (below as float64) * 0.011;
+        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8u64, "including for negative arguments");
+        below = below + 1;
+    }
+
+    // The pole and the values past it.
+    Assert(Log1p(-1.0) == -infinity, "log1p at minus one is negative infinity");
+    Assert(IsNan(Log1p(-1.5)), "and below minus one there is no real logarithm");
+    Assert(Log1p(infinity) == infinity, "an infinite argument gives infinity");
+    Assert(IsNan(Log1p(notANumber)), "and a NaN stays a NaN");
+
+    // Expm1 and Log1p are inverses exactly where both are worth having.
+    var pair: uint = 1;
+    while pair < 200u {
+        let value = (pair as float64) * 1.0e-6;
+        Assert(UlpDistance(Log1p(Expm1(value)), value) <= 4u64, "log1p undoes expm1 near zero");
+        pair = pair + 1;
+    }
+
+    // The narrow width.
+    Assert(Log(1.0f32) == 0.0f32 && Log2(8.0f32) == 3.0f32, "the narrow logarithms are exact where they should be");
+    Assert(Log1p(0.0f32) == 0.0f32, "and the narrow log1p of zero is zero");
+
+    return 0;
+}
