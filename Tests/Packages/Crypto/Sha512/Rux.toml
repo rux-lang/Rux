@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Sha512"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: SHA-512, SHA-384 and the two SHA-512 truncations"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
