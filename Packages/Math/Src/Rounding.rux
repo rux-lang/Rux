@@ -1,0 +1,137 @@
+// Rounding, in every direction anyone means by the word.
+//
+// `Floor`, `Ceil`, `Trunc` and `Round` already name four of the five directions, each with its own file. What
+// was missing is the fifth -- ties to even, the default IEEE 754 rounds arithmetic with, and the one that keeps
+// a long sum of rounded values from drifting upward -- and a way to name a direction as a value rather than by
+// choosing a function at the call site.
+//
+// All five agree on everything except the halfway cases, which is exactly why the halfway cases are what the
+// test spends its time on. Every one of them returns a float rather than an integer, because the answer is not
+// always representable as one and quietly saturating would hide that; `ToIntegerChecked` is where the
+// conversion happens, and it reports rather than guesses.
+
+import Core::MaximumOf;
+
+/// Which way a value that falls between two integers should go.
+///
+/// https://rux-lang.dev/docs/api/math/rounding-mode
+enum RoundingMode: int32 {
+    /// Toward zero, discarding the fraction: `Trunc`.
+    TowardZero = 0,
+    /// Downward, toward negative infinity: `Floor`.
+    TowardNegative = 1,
+    /// Upward, toward positive infinity: `Ceil`.
+    TowardPositive = 2,
+    /// To the nearest, with a halfway value going away from zero: `Round`. What most people mean by rounding,
+    /// and what school teaches.
+    ToNearestTiesAway = 3,
+    /// To the nearest, with a halfway value going to the even neighbour. IEEE 754's default, and the one that
+    /// keeps a long run of roundings from drifting: ties away from zero rounds up half the time and down never.
+    ToNearestTiesEven = 4
+}
+
+/// The nearest integer to `value`, with a halfway value going to the even neighbour.
+///
+/// `RoundTiesToEven(2.5)` is 2 and `RoundTiesToEven(3.5)` is 4, where `Round` gives 3 and 4. The sign of a zero
+/// is preserved, and a NaN or infinity passes through unchanged.
+///
+/// https://rux-lang.dev/docs/api/math/round-ties-to-even
+func RoundTiesToEven(value: float64) -> float64 {
+    let whole = Trunc(value);
+    let fraction = value - whole;
+    // Anything but an exact half is decided by which side it falls on; only the halves consult the neighbour.
+    if fraction > 0.5 {
+        return whole + 1.0;
+    }
+    if fraction < -0.5 {
+        return whole - 1.0;
+    }
+    if fraction == 0.5 {
+        // `whole` is an integer, so its own halving tells us whether it is even without any bit inspection.
+        return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole + 1.0;
+    }
+    if fraction == -0.5 {
+        return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole - 1.0;
+    }
+    // Everything else -- including the infinities and NaNs, whose fraction is a NaN and answers false above.
+    return whole;
+}
+
+func RoundTiesToEven(value: float32) -> float32 {
+    // Widening is exact and the answer is an integer a float32 holds whenever the input was one, so the single
+    // narrowing at the end cannot move it.
+    return RoundTiesToEven(value as float64) as float32;
+}
+
+/// `value` rounded to an integer in the named direction.
+///
+/// https://rux-lang.dev/docs/api/math/round-to
+func RoundTo(value: float64, mode: RoundingMode) -> float64 {
+    if mode == RoundingMode::TowardZero {
+        return Trunc(value);
+    }
+    if mode == RoundingMode::TowardNegative {
+        return Floor(value);
+    }
+    if mode == RoundingMode::TowardPositive {
+        return Ceil(value);
+    }
+    if mode == RoundingMode::ToNearestTiesAway {
+        return Round(value);
+    }
+    return RoundTiesToEven(value);
+}
+
+func RoundTo(value: float32, mode: RoundingMode) -> float32 {
+    if mode == RoundingMode::TowardZero {
+        return Trunc(value);
+    }
+    if mode == RoundingMode::TowardNegative {
+        return Floor(value);
+    }
+    if mode == RoundingMode::TowardPositive {
+        return Ceil(value);
+    }
+    if mode == RoundingMode::ToNearestTiesAway {
+        return Round(value);
+    }
+    return RoundTiesToEven(value);
+}
+
+/// `value` rounded in the named direction and converted to an integer, reporting whether it fits.
+///
+/// `sample` is read by value and only its type matters, exactly as `Core`'s `MaximumOf` reads one.
+///
+/// Returns `true` when the rounded value is not representable in the integer type -- because it is a NaN,
+/// an infinity, or simply out of range -- and leaves `result` zero in that case. This is the only place a float
+/// becomes an integer, and it refuses rather than saturating, because a caller who has not thought about the
+/// out-of-range case is better served by a flag than by a plausible wrong number.
+///
+/// https://rux-lang.dev/docs/api/math/to-integer-checked
+func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
+    let zero = sample - sample;
+    *result = zero;
+    if IsNan(value) || IsInfinite(value) {
+        return true;
+    }
+    let rounded = RoundTo(value, mode);
+    let signed = (zero - 1) < zero;
+    // Both bounds are compared in floating point, where the integer limits are exactly representable only up to
+    // 53 bits. Comparing against the next power of two instead is exact at every width: a rounded value is in
+    // range exactly when it is strictly below 2^(bits-1) for a signed type, or below 2^bits for an unsigned one.
+    let bits = sizeof(T) * 8u64;
+    let limit = ScaleByPowerOfTwo(1.0, signed ? (bits as int64) - 1i64 : bits as int64);
+    if rounded >= limit {
+        return true;
+    }
+    if signed {
+        if rounded < 0.0 - limit {
+            return true;
+        }
+    }
+    else if rounded < 0.0 {
+        return true;
+    }
+    *result = rounded as T;
+    return false;
+}

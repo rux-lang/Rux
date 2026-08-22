@@ -1,0 +1,97 @@
+// All five directions agree everywhere except the halfway cases, so the halfway cases are what this spends its
+// time on -- at both signs, since three of the five are not symmetric about zero.
+
+import Core::Assert;
+import Math::{ Ceil, Floor, IsNan, PositiveInfinity64, QuietNan64, Round, RoundingMode, RoundTiesToEven, RoundTo,
+               SignBit, ToIntegerChecked, Trunc };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+
+    // The four existing directions, on the values that separate them.
+    Assert(Trunc(2.7) == 2.0 && Trunc(-2.7) == -2.0, "truncation goes toward zero from both sides");
+    Assert(Floor(2.7) == 2.0 && Floor(-2.7) == -3.0, "the floor goes downward from both");
+    Assert(Ceil(2.7) == 3.0 && Ceil(-2.7) == -2.0, "and the ceiling upward");
+    Assert(Round(2.5) == 3.0 && Round(-2.5) == -3.0, "ties away from zero go outward in both directions");
+
+    // Ties to even, which is where it differs.
+    Assert(RoundTiesToEven(2.5) == 2.0, "a tie at an odd neighbour goes down to the even one");
+    Assert(RoundTiesToEven(3.5) == 4.0, "and a tie at an even neighbour goes up to the other even one");
+    Assert(RoundTiesToEven(-2.5) == -2.0 && RoundTiesToEven(-3.5) == -4.0, "symmetrically below zero");
+    Assert(RoundTiesToEven(0.5) == 0.0 && RoundTiesToEven(1.5) == 2.0, "including the tie next to zero");
+    Assert(RoundTiesToEven(2.4) == 2.0 && RoundTiesToEven(2.6) == 3.0, "anything not a tie is simply nearest");
+    Assert(RoundTiesToEven(-0.5) == 0.0 && SignBit(RoundTiesToEven(-0.5)),
+           "a tie rounding to zero from below keeps its sign");
+
+    // The classic reason ties-to-even exists: a run of ties must not drift.
+    var awayTotal = 0.0;
+    var evenTotal = 0.0;
+    var index: uint = 0;
+    while index < 8u {
+        let value = (index as float64) + 0.5;
+        awayTotal = awayTotal + Round(value);
+        evenTotal = evenTotal + RoundTiesToEven(value);
+        index = index + 1;
+    }
+    // The exact sum of 0.5, 1.5, ... 7.5 is 32.
+    Assert(awayTotal == 36.0, "rounding ties away from zero drifts upward over a run");
+    Assert(evenTotal == 32.0, "while ties to even lands exactly on the true sum");
+
+    // Naming a direction as a value gives the same answers as naming a function.
+    Assert(RoundTo(2.5, RoundingMode::TowardZero) == 2.0, "toward zero matches truncation");
+    Assert(RoundTo(2.5, RoundingMode::TowardNegative) == 2.0, "toward negative matches the floor");
+    Assert(RoundTo(-2.5, RoundingMode::TowardNegative) == -3.0, "on the other side too");
+    Assert(RoundTo(2.1, RoundingMode::TowardPositive) == 3.0, "toward positive matches the ceiling");
+    Assert(RoundTo(2.5, RoundingMode::ToNearestTiesAway) == 3.0, "ties away matches Round");
+    Assert(RoundTo(2.5, RoundingMode::ToNearestTiesEven) == 2.0, "and ties even matches its own");
+
+    // The specials pass through every direction untouched.
+    Assert(IsNan(RoundTiesToEven(notANumber)), "a NaN rounds to a NaN");
+    Assert(RoundTiesToEven(infinity) == infinity, "an infinity rounds to itself");
+    Assert(RoundTo(-infinity, RoundingMode::TowardPositive) == -infinity, "in every direction");
+    Assert(RoundTiesToEven(-0.0) == 0.0 && SignBit(RoundTiesToEven(-0.0)), "and a negative zero keeps its sign");
+
+    // The narrow width answers the same way.
+    Assert(RoundTiesToEven(2.5f32) == 2.0f32 && RoundTiesToEven(3.5f32) == 4.0f32, "float32 ties go to even too");
+
+    // Conversion to an integer, which is where a value can fail to exist.
+    var small: int8 = 0;
+    Assert(!ToIntegerChecked<int8>(2.5, 0i8, RoundingMode::ToNearestTiesEven, @small) && small == 2i8,
+           "a value in range converts under the named mode");
+    Assert(!ToIntegerChecked<int8>(2.5, 0i8, RoundingMode::ToNearestTiesAway, @small) && small == 3i8,
+           "and the mode is honoured");
+    Assert(!ToIntegerChecked<int8>(-128.0, 0i8, RoundingMode::TowardZero, @small) && small == -128i8,
+           "the most negative value is in range");
+    Assert(!ToIntegerChecked<int8>(127.0, 0i8, RoundingMode::TowardZero, @small) && small == 127i8,
+           "and so is the largest");
+    Assert(ToIntegerChecked<int8>(128.0, 0i8, RoundingMode::TowardZero, @small),
+           "one past the largest is refused rather than saturated");
+    Assert(small == 0i8, "and the result is left at zero");
+    Assert(ToIntegerChecked<int8>(-129.0, 0i8, RoundingMode::TowardZero, @small), "as is one below the smallest");
+    Assert(ToIntegerChecked<int8>(notANumber, 0i8, RoundingMode::TowardZero, @small), "a NaN is not an integer");
+    Assert(ToIntegerChecked<int8>(infinity, 0i8, RoundingMode::TowardZero, @small), "and neither is an infinity");
+
+    // Rounding decides whether a value is in range at all: 127.5 is not, until it rounds down.
+    Assert(ToIntegerChecked<int8>(127.5, 0i8, RoundingMode::ToNearestTiesAway, @small),
+           "a value rounding past the maximum is refused");
+    Assert(!ToIntegerChecked<int8>(127.5, 0i8, RoundingMode::TowardZero, @small) && small == 127i8,
+           "while the same value truncating into range is not");
+
+    // Unsigned types reject everything below zero, which a signed one accepts.
+    var byte: uint8 = 0;
+    Assert(!ToIntegerChecked<uint8>(255.0, 0u8, RoundingMode::TowardZero, @byte) && byte == 255u8,
+           "an unsigned maximum converts");
+    Assert(ToIntegerChecked<uint8>(-1.0, 0u8, RoundingMode::TowardZero, @byte), "and a negative value does not");
+    Assert(!ToIntegerChecked<uint8>(-0.4, 0u8, RoundingMode::TowardZero, @byte) && byte == 0u8,
+           "though one that truncates to zero does");
+
+    // A width where the limits are not exactly representable as floats is still bounded correctly.
+    var wide: int64 = 0;
+    Assert(ToIntegerChecked<int64>(9223372036854775808.0, 0i64, RoundingMode::TowardZero, @wide),
+           "two to the sixty-third is one past the signed maximum and is refused");
+    Assert(!ToIntegerChecked<int64>(-9223372036854775808.0, 0i64, RoundingMode::TowardZero, @wide),
+           "while its negation is exactly the minimum and is not");
+
+    return 0;
+}
