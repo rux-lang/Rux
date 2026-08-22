@@ -1,0 +1,84 @@
+// Pow's special cases are a table in the standard, and a table is exactly the sort of thing that is right in
+// nine rows and wrong in the tenth, so every row is written out here -- including the two that surprise
+// everyone: anything to the zeroth power is one even for a NaN, and one to any power is one even for a NaN.
+
+import Core::Assert;
+import Math::{ IsNan, Pow, PowInteger, PositiveInfinity64, QuietNan64, SignBit, UlpDistance };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+
+    // The two rows that beat NaN propagation.
+    Assert(Pow(notANumber, 0.0) == 1.0, "anything to the zeroth power is one, a NaN included");
+    Assert(Pow(1.0, notANumber) == 1.0, "and one to any power is one, a NaN included");
+    Assert(Pow(0.0, 0.0) == 1.0 && Pow(infinity, 0.0) == 1.0, "the same holds for zero and infinity");
+    Assert(Pow(notANumber, -0.0) == 1.0, "a negative zero exponent is still zero");
+
+    // With those aside, a NaN anywhere gives a NaN.
+    Assert(IsNan(Pow(notANumber, 2.0)) && IsNan(Pow(2.0, notANumber)), "a NaN otherwise propagates");
+
+    // Zero bases, where the sign of the zero and the parity of the exponent both matter.
+    Assert(Pow(0.0, 3.0) == 0.0 && !SignBit(Pow(0.0, 3.0)), "a positive zero to a positive power is positive zero");
+    Assert(Pow(-0.0, 3.0) == 0.0 && SignBit(Pow(-0.0, 3.0)),
+           "a negative zero to an odd positive power keeps its sign");
+    Assert(Pow(-0.0, 2.0) == 0.0 && !SignBit(Pow(-0.0, 2.0)), "and to an even one loses it");
+    Assert(Pow(0.0, -3.0) == infinity, "a zero to a negative power is infinite");
+    Assert(Pow(-0.0, -3.0) == -infinity, "signed the same way the zero was, for an odd exponent");
+    Assert(Pow(-0.0, -2.0) == infinity, "and unsigned for an even one");
+
+    // Negative bases: only an integer exponent has a real answer.
+    Assert(Pow(-2.0, 3.0) == -8.0, "a negative base to an odd integer power is negative");
+    Assert(Pow(-2.0, 2.0) == 4.0, "to an even one it is positive");
+    Assert(IsNan(Pow(-2.0, 0.5)), "and to a non-integer power there is no real answer");
+
+    // Infinite exponents, where the base's distance from one decides everything.
+    Assert(Pow(2.0, infinity) == infinity && Pow(2.0, -infinity) == 0.0, "a base above one diverges or vanishes");
+    Assert(Pow(0.5, infinity) == 0.0 && Pow(0.5, -infinity) == infinity, "a base below one does the opposite");
+    Assert(Pow(-1.0, infinity) == 1.0 && Pow(-1.0, -infinity) == 1.0,
+           "and minus one to either infinity is one, since it never leaves the unit circle");
+
+    // Infinite bases.
+    Assert(Pow(infinity, 2.0) == infinity && Pow(infinity, -2.0) == 0.0, "an infinite base diverges or vanishes");
+    Assert(Pow(-infinity, 3.0) == -infinity, "a negative infinity to an odd power stays negative");
+    Assert(Pow(-infinity, 2.0) == infinity, "and to an even one turns positive");
+    Assert(Pow(-infinity, -3.0) == 0.0 && SignBit(Pow(-infinity, -3.0)),
+           "with the sign surviving into the reciprocal");
+
+    // Ordinary values, where accuracy rather than a table is the question.
+    Assert(Pow(2.0, 10.0) == 1024.0, "an exact power comes out exact");
+    Assert(UlpDistance(Pow(2.0, 0.5), 1.4142135623730951) <= 1u64, "and a half power is the square root");
+
+    // Integer powers, which is where exactness is the point.
+    Assert(PowInteger(2.0, 0i64) == 1.0 && PowInteger(0.0, 0i64) == 1.0, "the empty product is one");
+    Assert(PowInteger(notANumber, 0i64) == 1.0, "even for a NaN, as with Pow");
+    Assert(IsNan(PowInteger(notANumber, 2i64)), "which otherwise propagates");
+    Assert(PowInteger(2.0, 10i64) == 1024.0, "a power of two is exact");
+    Assert(PowInteger(-2.0, 3i64) == -8.0 && PowInteger(-2.0, 4i64) == 16.0,
+           "and the sign follows the exponent's parity");
+    Assert(PowInteger(2.0, -3i64) == 0.125, "a negative exponent takes the reciprocal");
+    Assert(PowInteger(10.0, 22i64) == 1.0e22, "the largest exactly representable power of ten is exact");
+
+    // Every power of two the type holds, exactly -- something the logarithm-and-exponential route cannot promise.
+    var power: int64 = -1000;
+    while power <= 1000i64 {
+        Assert(PowInteger(2.0, power) == Pow(2.0, power as float64),
+               "integer and general powers agree on the powers of two");
+        power = power + 1i64;
+    }
+
+    // Where the two differ: a cube of ten is exact one way and not necessarily the other.
+    Assert(PowInteger(10.0, 3i64) == 1000.0, "an integer power of ten is exact");
+    Assert(UlpDistance(Pow(10.0, 3.0), 1000.0) <= 1u64, "while the general power is merely within a ulp");
+
+    // Saturation at both ends.
+    Assert(PowInteger(2.0, 2000i64) == infinity, "a power past the top saturates");
+    Assert(PowInteger(2.0, -2000i64) == 0.0, "and one past the bottom vanishes");
+    Assert(PowInteger(0.0, -1i64) == infinity, "a reciprocal of zero is infinite");
+
+    // The narrow width.
+    Assert(PowInteger(2.0f32, 10i64) == 1024.0f32, "narrow integer powers are exact too");
+    Assert(Pow(2.0f32, 10.0f32) == 1024.0f32, "as is the narrow general power here");
+
+    return 0;
+}

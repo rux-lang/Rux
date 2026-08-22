@@ -1,0 +1,51 @@
+// A power with an integer exponent, by repeated squaring.
+//
+// **Accuracy: error at most one ulp per squaring, so about log2(|n|) ulps in the worst case -- and exactly zero
+// whenever every intermediate is representable.** That exactness is the reason to have this beside `Pow`, which
+// goes through a logarithm and an exponential and so returns 999.9999999999999 for a cube of ten as readily as
+// 1000. A caller raising a value to a whole number almost always wants the exact answer where one exists.
+//
+// The sign rules are decided by the exponent's parity rather than derived from a logarithm, so a negative base
+// is ordinary here where `Pow` has to work to make it meaningful at all.
+
+/// `base` raised to the integer power `exponent`.
+///
+/// A zero exponent gives one for every base, including zero and a NaN, which is the same rule `Pow` follows: the
+/// empty product is one. A negative exponent takes the reciprocal at the end rather than dividing as it goes,
+/// which keeps the intermediates as large as possible and loses the least.
+///
+/// https://rux-lang.dev/docs/api/math/pow-integer
+func PowInteger(base: float64, exponent: int64) -> float64 {
+    if exponent == 0i64 {
+        return 1.0;
+    }
+    if IsNan(base) {
+        return base;
+    }
+    // The magnitude is taken in unsigned form so the most negative exponent has one too.
+    var remaining = exponent < 0i64 ? (0u64 - (exponent as uint64)) : (exponent as uint64);
+    var accumulated = 1.0;
+    var factor = base;
+    while remaining > 0u64 {
+        if (remaining & 1u64) != 0u64 {
+            accumulated = accumulated * factor;
+        }
+        remaining = remaining >> 1u64;
+        if remaining > 0u64 {
+            factor = factor * factor;
+        }
+    }
+    if exponent < 0i64 {
+        return 1.0 / accumulated;
+    }
+    return accumulated;
+}
+
+/// `base` raised to the integer power `exponent`, at the narrow width.
+///
+/// https://rux-lang.dev/docs/api/math/pow-integer-32
+func PowInteger(base: float32, exponent: int64) -> float32 {
+    // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type,
+    // where every intermediate would round.
+    return PowInteger(base as float64, exponent) as float32;
+}

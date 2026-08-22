@@ -171,6 +171,12 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
 //
 // The special cases come first and there are many, because x^y has an answer
 // for almost every pair -- including several where one argument is a NaN.
+// x raised to y.
+// **Accuracy: error at most 1 ulp.** The logarithm and the exponential
+// inside are both carried as unevaluated two-double sums, which is what
+// keeps a power of a power from drifting; an exact answer is still not
+// guaranteed, so `PowInteger` is the one to reach for with a whole
+// exponent.
 func Pow(x: float64, y: float64) -> float64 {
     let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
     let huge = 1.0e300;
