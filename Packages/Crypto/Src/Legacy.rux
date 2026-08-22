@@ -1,0 +1,351 @@
+// MD5 and SHA-1, kept only for the formats and protocols that will not change.
+//
+// **Both are broken and neither should be chosen for anything new.** MD5 collisions can be produced in seconds
+// on a laptop, and have been used to forge certificates; SHA-1 collisions were demonstrated in 2017 and cost far
+// less now. Neither offers collision resistance, so neither can be used for a signature, a content address, a
+// deduplication key, or anything else where two different inputs producing one output is a problem.
+//
+// What they remain usable for is reading what already exists: a legacy file format, a protocol handshake that
+// cannot be renegotiated, a checksum in a system nobody will update. The names carry `Legacy` so that reaching
+// for one is a decision a reader can see, and so that a search for "Sha1" in a codebase finds every place the
+// decision was made.
+//
+// Neither is a `Digest` implementation, deliberately. A generic function taking any digest should not silently
+// accept these, and code that wants one must name it.
+
+import Core::{ MutableSlice, Slice };
+
+/// MD5's round constants: the integer parts of the absolute sines of one through sixty-four, scaled.
+const Md5Constants: uint32[64] = [
+    0xD76AA478u32, 0xE8C7B756u32, 0x242070DBu32, 0xC1BDCEEEu32,
+    0xF57C0FAFu32, 0x4787C62Au32, 0xA8304613u32, 0xFD469501u32,
+    0x698098D8u32, 0x8B44F7AFu32, 0xFFFF5BB1u32, 0x895CD7BEu32,
+    0x6B901122u32, 0xFD987193u32, 0xA679438Eu32, 0x49B40821u32,
+    0xF61E2562u32, 0xC040B340u32, 0x265E5A51u32, 0xE9B6C7AAu32,
+    0xD62F105Du32, 0x02441453u32, 0xD8A1E681u32, 0xE7D3FBC8u32,
+    0x21E1CDE6u32, 0xC33707D6u32, 0xF4D50D87u32, 0x455A14EDu32,
+    0xA9E3E905u32, 0xFCEFA3F8u32, 0x676F02D9u32, 0x8D2A4C8Au32,
+    0xFFFA3942u32, 0x8771F681u32, 0x6D9D6122u32, 0xFDE5380Cu32,
+    0xA4BEEA44u32, 0x4BDECFA9u32, 0xF6BB4B60u32, 0xBEBFBC70u32,
+    0x289B7EC6u32, 0xEAA127FAu32, 0xD4EF3085u32, 0x04881D05u32,
+    0xD9D4D039u32, 0xE6DB99E5u32, 0x1FA27CF8u32, 0xC4AC5665u32,
+    0xF4292244u32, 0x432AFF97u32, 0xAB9423A7u32, 0xFC93A039u32,
+    0x655B59C3u32, 0x8F0CCC92u32, 0xFFEFF47Du32, 0x85845DD1u32,
+    0x6FA87E4Fu32, 0xFE2CE6E0u32, 0xA3014314u32, 0x4E0811A1u32,
+    0xF7537E82u32, 0xBD3AF235u32, 0x2AD7D2BBu32, 0xEB86D391u32
+];
+/// The per-round rotation amounts.
+const Md5Shifts: uint32[64] = [
+    7u32, 12u32, 17u32, 22u32, 7u32, 12u32, 17u32, 22u32,
+    7u32, 12u32, 17u32, 22u32, 7u32, 12u32, 17u32, 22u32,
+    5u32, 9u32, 14u32, 20u32, 5u32, 9u32, 14u32, 20u32,
+    5u32, 9u32, 14u32, 20u32, 5u32, 9u32, 14u32, 20u32,
+    4u32, 11u32, 16u32, 23u32, 4u32, 11u32, 16u32, 23u32,
+    4u32, 11u32, 16u32, 23u32, 4u32, 11u32, 16u32, 23u32,
+    6u32, 10u32, 15u32, 21u32, 6u32, 10u32, 15u32, 21u32,
+    6u32, 10u32, 15u32, 21u32, 6u32, 10u32, 15u32, 21u32
+];
+
+func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
+    return (value << amount) | (value >> (32u32 - amount));
+}
+
+/// An incremental MD5. **Broken; see the note at the top of this file.**
+///
+/// https://rux-lang.dev/docs/api/crypto/legacy-md5
+struct LegacyMd5 {
+    /// The four working words.
+    state: uint32[4];
+    /// Bytes not yet part of a full block.
+    buffer: char8[64];
+    /// How many of them there are.
+    buffered: uint;
+    /// The message length in bytes.
+    length: uint64;
+}
+
+extend LegacyMd5 {
+    /// An MD5 state.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/new
+    func New() -> LegacyMd5 {
+        var digest: LegacyMd5;
+        digest.state[0] = 0x67452301u32;
+        digest.state[1] = 0xEFCDAB89u32;
+        digest.state[2] = 0x98BADCFEu32;
+        digest.state[3] = 0x10325476u32;
+        digest.buffered = 0;
+        digest.length = 0;
+        return digest;
+    }
+
+    func Compress(self: *var LegacyMd5, block: *char8) {
+        // MD5 reads its words little-endian, where the SHA family reads big-endian.
+        var words: uint32[16];
+        var index: uint = 0;
+        while index < 16u {
+            var word = 0u32;
+            var part: uint = 0;
+            while part < 4u {
+                word = word | ((block[index * 4u + part] as uint8 as uint32) << ((part * 8u) as uint32));
+                part = part + 1;
+            }
+            words[index] = word;
+            index = index + 1;
+        }
+
+        var a = self.state[0];
+        var b = self.state[1];
+        var c = self.state[2];
+        var d = self.state[3];
+
+        index = 0;
+        while index < 64u {
+            var mixed = 0u32;
+            var which: uint = 0;
+            if index < 16u {
+                mixed = (b & c) | ((~b) & d);
+                which = index;
+            }
+            else if index < 32u {
+                mixed = (d & b) | ((~d) & c);
+                which = (5u * index + 1u) % 16u;
+            }
+            else if index < 48u {
+                mixed = b ^ c ^ d;
+                which = (3u * index + 5u) % 16u;
+            }
+            else {
+                mixed = c ^ (b | (~d));
+                which = (7u * index) % 16u;
+            }
+            let temp = d;
+            d = c;
+            c = b;
+            let sum = a + mixed + Md5Constants[index] + words[which];
+            b = b + Md5Rotate(sum, Md5Shifts[index]);
+            a = temp;
+            index = index + 1;
+        }
+
+        self.state[0] = self.state[0] + a;
+        self.state[1] = self.state[1] + b;
+        self.state[2] = self.state[2] + c;
+        self.state[3] = self.state[3] + d;
+    }
+
+    /// Adds `bytes` to the message.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/update
+    func Update(self: *var LegacyMd5, bytes: Slice<char8>) {
+        self.length = self.length + (bytes.length as uint64);
+        var index: uint = 0;
+        while index < bytes.length {
+            self.buffer[self.buffered] = bytes.data[index];
+            self.buffered = self.buffered + 1u;
+            if self.buffered == 64u {
+                self.Compress(@self.buffer[0]);
+                self.buffered = 0;
+            }
+            index = index + 1;
+        }
+    }
+
+    /// Writes the sixteen-byte digest into `into`.
+    ///
+    /// The length is appended little-endian, unlike the SHA family's big-endian count.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
+    func Finish(self: *var LegacyMd5, into: MutableSlice<char8>) {
+        let bitLength = self.length * 8u64;
+        self.buffer[self.buffered] = 0x80u8 as char8;
+        self.buffered = self.buffered + 1u;
+        if self.buffered > 56u {
+            while self.buffered < 64u {
+                self.buffer[self.buffered] = 0u8 as char8;
+                self.buffered = self.buffered + 1u;
+            }
+            self.Compress(@self.buffer[0]);
+            self.buffered = 0;
+        }
+        while self.buffered < 56u {
+            self.buffer[self.buffered] = 0u8 as char8;
+            self.buffered = self.buffered + 1u;
+        }
+        var shift: uint = 0;
+        while shift < 8u {
+            self.buffer[56u + shift] = ((bitLength >> ((shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            shift = shift + 1;
+        }
+        self.Compress(@self.buffer[0]);
+
+        var index: uint = 0;
+        while index < 16u && index < into.length {
+            let word = self.state[index / 4u];
+            into.data[index] = ((word >> (((index % 4u) * 8u) as uint32)) & 0xFFu32) as uint8 as char8;
+            index = index + 1;
+        }
+        self.buffered = 0;
+    }
+}
+
+/// The MD5 digest of `bytes`. **Broken; see the note at the top of this file.**
+///
+/// https://rux-lang.dev/docs/api/crypto/legacy-md5-of
+func LegacyMd5Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var digest = LegacyMd5::New();
+    digest.Update(bytes);
+    digest.Finish(into);
+}
+
+/// An incremental SHA-1. **Broken for collision resistance; see the note at the top of this file.**
+///
+/// https://rux-lang.dev/docs/api/crypto/legacy-sha1
+struct LegacySha1 {
+    /// The five working words.
+    state: uint32[5];
+    /// Bytes not yet part of a full block.
+    buffer: char8[64];
+    /// How many of them there are.
+    buffered: uint;
+    /// The message length in bytes.
+    length: uint64;
+}
+
+extend LegacySha1 {
+    /// A SHA-1 state.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/new
+    func New() -> LegacySha1 {
+        var digest: LegacySha1;
+        digest.state[0] = 0x67452301u32;
+        digest.state[1] = 0xEFCDAB89u32;
+        digest.state[2] = 0x98BADCFEu32;
+        digest.state[3] = 0x10325476u32;
+        digest.state[4] = 0xC3D2E1F0u32;
+        digest.buffered = 0;
+        digest.length = 0;
+        return digest;
+    }
+
+    func Compress(self: *var LegacySha1, block: *char8) {
+        var schedule: uint32[80];
+        var index: uint = 0;
+        while index < 16u {
+            schedule[index] = ((block[index * 4u] as uint8 as uint32) << 24u32) |
+                              ((block[index * 4u + 1u] as uint8 as uint32) << 16u32) |
+                              ((block[index * 4u + 2u] as uint8 as uint32) << 8u32) |
+                              (block[index * 4u + 3u] as uint8 as uint32);
+            index = index + 1;
+        }
+        while index < 80u {
+            let mixed = schedule[index - 3u] ^ schedule[index - 8u] ^ schedule[index - 14u] ^ schedule[index - 16u];
+            // The rotation here is the one difference from SHA-0, and the only reason SHA-1 outlived it.
+            schedule[index] = Md5Rotate(mixed, 1u32);
+            index = index + 1;
+        }
+
+        var a = self.state[0];
+        var b = self.state[1];
+        var c = self.state[2];
+        var d = self.state[3];
+        var e = self.state[4];
+
+        index = 0;
+        while index < 80u {
+            var mixed = 0u32;
+            var constant = 0u32;
+            if index < 20u {
+                mixed = (b & c) | ((~b) & d);
+                constant = 0x5A827999u32;
+            }
+            else if index < 40u {
+                mixed = b ^ c ^ d;
+                constant = 0x6ED9EBA1u32;
+            }
+            else if index < 60u {
+                mixed = (b & c) | (b & d) | (c & d);
+                constant = 0x8F1BBCDCu32;
+            }
+            else {
+                mixed = b ^ c ^ d;
+                constant = 0xCA62C1D6u32;
+            }
+            let temp = Md5Rotate(a, 5u32) + mixed + e + constant + schedule[index];
+            e = d;
+            d = c;
+            c = Md5Rotate(b, 30u32);
+            b = a;
+            a = temp;
+            index = index + 1;
+        }
+
+        self.state[0] = self.state[0] + a;
+        self.state[1] = self.state[1] + b;
+        self.state[2] = self.state[2] + c;
+        self.state[3] = self.state[3] + d;
+        self.state[4] = self.state[4] + e;
+    }
+
+    /// Adds `bytes` to the message.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
+    func Update(self: *var LegacySha1, bytes: Slice<char8>) {
+        self.length = self.length + (bytes.length as uint64);
+        var index: uint = 0;
+        while index < bytes.length {
+            self.buffer[self.buffered] = bytes.data[index];
+            self.buffered = self.buffered + 1u;
+            if self.buffered == 64u {
+                self.Compress(@self.buffer[0]);
+                self.buffered = 0;
+            }
+            index = index + 1;
+        }
+    }
+
+    /// Writes the twenty-byte digest into `into`.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
+    func Finish(self: *var LegacySha1, into: MutableSlice<char8>) {
+        let bitLength = self.length * 8u64;
+        self.buffer[self.buffered] = 0x80u8 as char8;
+        self.buffered = self.buffered + 1u;
+        if self.buffered > 56u {
+            while self.buffered < 64u {
+                self.buffer[self.buffered] = 0u8 as char8;
+                self.buffered = self.buffered + 1u;
+            }
+            self.Compress(@self.buffer[0]);
+            self.buffered = 0;
+        }
+        while self.buffered < 56u {
+            self.buffer[self.buffered] = 0u8 as char8;
+            self.buffered = self.buffered + 1u;
+        }
+        var shift: uint = 0;
+        while shift < 8u {
+            self.buffer[56u + shift] = ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            shift = shift + 1;
+        }
+        self.Compress(@self.buffer[0]);
+
+        var index: uint = 0;
+        while index < 20u && index < into.length {
+            let word = self.state[index / 4u];
+            let byteShift = ((3u - (index % 4u)) * 8u) as uint32;
+            into.data[index] = ((word >> byteShift) & 0xFFu32) as uint8 as char8;
+            index = index + 1;
+        }
+        self.buffered = 0;
+    }
+}
+
+/// The SHA-1 digest of `bytes`. **Broken for collision resistance; see the note at the top of this file.**
+///
+/// https://rux-lang.dev/docs/api/crypto/legacy-sha1-of
+func LegacySha1Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var digest = LegacySha1::New();
+    digest.Update(bytes);
+    digest.Finish(into);
+}
