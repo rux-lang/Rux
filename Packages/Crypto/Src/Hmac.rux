@@ -1,0 +1,132 @@
+// HMAC: a message authentication code built from any digest that has a block size.
+//
+// The construction exists because the obvious thing does not work. Hashing a key followed by a message is not a
+// MAC for any Merkle-Damgard hash -- SHA-1, SHA-2, MD5 -- because such a hash's output *is* its internal state,
+// so anyone holding a tag can continue hashing from it and produce a valid tag for a longer message without ever
+// learning the key. HMAC's nesting is what closes that: the outer hash sees only a fixed-length input, so its
+// state is never exposed in a form that can be extended.
+//
+// The two pads are what make the inner and outer hashes use different keys, and they are different in every bit
+// pair, which is what keeps the two derived keys from being related in a way that helps an attacker.
+//
+// Not needed for BLAKE3 or SHA-3, which resist length extension and can be keyed directly -- but supported for
+// them anyway, since a protocol that specifies HMAC specifies HMAC.
+
+import Core::{ MutableSlice, Slice };
+
+/// The byte repeated to make the inner key.
+const HmacInnerPad: uint8 = 0x36;
+/// The byte repeated to make the outer key, which differs from the inner one in every bit pair.
+const HmacOuterPad: uint8 = 0x5C;
+
+/// The longest block any supported digest uses, which is what the padded key buffers are sized to.
+///
+/// SHAKE128's rate is the largest at a hundred and sixty eight bytes; SHA-512's block is a hundred and twenty
+/// eight and SHA-256's sixty four. The buffers below are written as that literal because an array length must
+/// be a compile-time integer and a constant does not satisfy that yet.
+///
+/// https://rux-lang.dev/docs/api/crypto/hmac-maximum-block
+const HmacMaximumBlock: uint = 168;
+
+/// An incremental HMAC over any digest.
+///
+/// `prototype` supplies both the algorithm and its parameters; it is copied rather than consumed, so one
+/// prototype can start any number of authentications.
+///
+/// https://rux-lang.dev/docs/api/crypto/hmac
+struct Hmac<D> {
+    /// The inner hash, which sees the padded key followed by the message.
+    inner: D;
+    /// The outer hash, which sees the padded key followed by the inner digest.
+    outer: D;
+    /// How many bytes the digest writes.
+    digestLength: uint;
+}
+
+extend Hmac<D> {
+    /// An HMAC keyed with `key`.
+    ///
+    /// A key longer than the digest's block is replaced by its own digest, which is what the specification says
+    /// and is worth knowing: two keys differing only past the block length authenticate identically, because
+    /// they are the same key after this step. A shorter key is padded with zeros.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/hmac/new
+    func New<D: Digest>(prototype: D, key: Slice<char8>) -> Hmac<D> {
+        var probe = prototype;
+        let blockLength = probe.BlockLength();
+        let digestLength = probe.DigestLength();
+
+        var shortened: char8[168];
+        var keyLength = key.length;
+        if keyLength > blockLength {
+            var hasher = prototype;
+            hasher.Update(key);
+            hasher.Finish(MutableSlice::From<char8>(@shortened[0], digestLength));
+            keyLength = digestLength;
+        }
+        else {
+            var index: uint = 0;
+            while index < keyLength {
+                shortened[index] = key.data[index];
+                index = index + 1;
+            }
+        }
+        // Everything past the key is zero, which is what pads it to a whole block.
+        var index = keyLength;
+        while index < blockLength {
+            shortened[index] = 0u8 as char8;
+            index = index + 1;
+        }
+
+        var padded: char8[168];
+        var state = Hmac<D> { inner: prototype, outer: prototype, digestLength: digestLength };
+
+        index = 0;
+        while index < blockLength {
+            padded[index] = ((shortened[index] as uint8) ^ HmacInnerPad) as char8;
+            index = index + 1;
+        }
+        state.inner.Update(Slice<char8> { data: @padded[0], length: blockLength });
+
+        index = 0;
+        while index < blockLength {
+            padded[index] = ((shortened[index] as uint8) ^ HmacOuterPad) as char8;
+            index = index + 1;
+        }
+        state.outer.Update(Slice<char8> { data: @padded[0], length: blockLength });
+        return state;
+    }
+
+    /// Adds `bytes` to the message being authenticated.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/hmac/update
+    func Update<D: Digest>(self: *var Hmac<D>, bytes: Slice<char8>) {
+        self.inner.Update(bytes);
+    }
+
+    /// Writes the authentication tag into `into`.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/hmac/finish
+    func Finish<D: Digest>(self: *var Hmac<D>, into: MutableSlice<char8>) {
+        var innerDigest: char8[64];
+        self.inner.Finish(MutableSlice::From<char8>(@innerDigest[0], self.digestLength));
+        self.outer.Update(Slice<char8> { data: @innerDigest[0], length: self.digestLength });
+        self.outer.Finish(into);
+    }
+
+    /// How many bytes `Finish` writes: the underlying digest's length.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/hmac/tag-length
+    func TagLength<D: Digest>(self: *Hmac<D>) -> uint {
+        return self.digestLength;
+    }
+}
+
+/// The HMAC of `message` under `key`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/hmac-of
+func HmacOf<D: Digest>(prototype: D, key: Slice<char8>, message: Slice<char8>, into: MutableSlice<char8>) {
+    var state = Hmac::New<D>(prototype, key);
+    state.Update(message);
+    state.Finish(into);
+}
