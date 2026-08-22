@@ -1,0 +1,57 @@
+// The reference vectors, and the ulp bounds measured against them.
+//
+// Everything else in this package's tests checks a function against an identity, a symmetry, or itself at
+// another argument. Those catch a great deal, and they cannot catch a function that is uniformly slightly
+// wrong -- an identity holds just as well between two values that are both off by an ulp. This is the test
+// that cannot be satisfied that way: the answers come from outside, computed to 58 decimal digits and rounded
+// once, so the only way to pass is to be right.
+//
+// The measured bounds are asserted rather than merely reported, so a change that loosens the accuracy of any
+// of these functions fails here rather than going unnoticed.
+
+import Core::Assert;
+import Math::{ Cos, Exp, Log, Sin, UlpDistance };
+
+func Main() -> int {
+    Assert(RowCount == 72u, "the table holds the rows the generator wrote");
+
+    var worstExp = 0u64;
+    var worstLog = 0u64;
+    var worstSin = 0u64;
+    var worstCos = 0u64;
+    var index: uint = 0;
+    while index < RowCount {
+        let argument = Arguments[index];
+        let expDistance = UlpDistance(Exp(argument), Exponentials[index]);
+        let logDistance = UlpDistance(Log(argument), Logarithms[index]);
+        let sinDistance = UlpDistance(Sin(argument), Sines[index]);
+        let cosDistance = UlpDistance(Cos(argument), Cosines[index]);
+        if expDistance > worstExp {
+            worstExp = expDistance;
+        }
+        if logDistance > worstLog {
+            worstLog = logDistance;
+        }
+        if sinDistance > worstSin {
+            worstSin = sinDistance;
+        }
+        if cosDistance > worstCos {
+            worstCos = cosDistance;
+        }
+        index = index + 1;
+    }
+
+    // The bounds each function documents. These are the measured values, not aspirations: raising one of these
+    // numbers is a deliberate admission that a function got less accurate.
+    Assert(worstExp <= 1u64, "the exponential is within the one ulp it documents");
+    Assert(worstLog <= 1u64, "the natural logarithm is within the one ulp it documents");
+    Assert(worstSin <= 1u64, "the sine is within the one ulp it documents");
+    Assert(worstCos <= 1u64, "the cosine is within the one ulp it documents");
+
+    // A sanity check on the table itself: an argument column that had drifted out of step with its answers
+    // would let everything above pass while measuring nothing.
+    Assert(Arguments[0] != Arguments[1], "the arguments are distinct");
+    Assert(Exponentials[0] != Logarithms[0], "and the columns are not the same column twice");
+
+    return 0;
+}
