@@ -1,0 +1,67 @@
+// The angle of the point (x, y), which is what an inverse tangent is usually actually wanted for.
+//
+// `ArcTan(y / x)` cannot answer this and no accuracy improves it: the division throws away which quadrant the
+// point is in, so (-1, -1) and (1, 1) become the same argument and the same answer, and a point on the vertical
+// axis divides by zero. Taking the two coordinates separately keeps the quadrant, gives the full turn rather
+// than half of it, and has an answer everywhere except the origin -- where, by the convention every
+// implementation follows, it returns zero rather than refusing.
+//
+// **Accuracy: error at most 2 ulps.** One from the inverse tangent, and one from the quadrant correction, which
+// is done against Pi carried in two parts so the subtraction near the negative axis does not lose the answer.
+
+/// The angle from the positive x axis to the point `(x, y)`, in radians, in `(-Pi, Pi]`.
+///
+/// The sign of `y` decides the sign of the result, including when `y` is a zero -- which is what makes the
+/// function continuous as a point crosses the negative x axis from below, and why a signed zero matters here
+/// more than almost anywhere else.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tan2
+func ArcTan2(y: float64, x: float64) -> float64 {
+    // Pi in two parts, so the corrections below keep their low bits.
+    let piHi = 3.141592653589793;
+    let piLo = 1.2246467991473532e-16;
+    let halfPi = 1.5707963267948966;
+    let quarterPi = 0.7853981633974483;
+
+    if IsNan(x) || IsNan(y) {
+        return x + y;
+    }
+
+    let yNegative = SignBit(y);
+
+    // Both infinite: the answer is one of the four diagonals, and the ordinary route would form Inf/Inf.
+    if IsInfinite(x) && IsInfinite(y) {
+        let angle = SignBit(x) ? quarterPi + halfPi : quarterPi;
+        return yNegative ? -angle : angle;
+    }
+    // A vertical direction: x finite (or zero) and y infinite, or x zero and y nonzero.
+    if IsInfinite(y) || (IsZero(x) && !IsZero(y)) {
+        return yNegative ? -halfPi : halfPi;
+    }
+    // A horizontal direction: y zero, or x infinite with y finite.
+    if IsZero(y) || IsInfinite(x) {
+        if SignBit(x) {
+            // Pointing along the negative axis, which is a half turn on whichever side y sits.
+            return yNegative ? -piHi : piHi;
+        }
+        // Pointing along the positive axis, including the origin: zero, signed like y.
+        return yNegative ? -0.0 : 0.0;
+    }
+
+    // The ordinary case. The ratio's magnitude is what the inverse tangent takes; the signs decide the quadrant.
+    let ratio = Abs(y / x);
+    var angle = ArcTan(ratio);
+    if SignBit(x) {
+        // Reflecting across the vertical axis. Subtracting the low part of Pi first keeps the bits that the
+        // subtraction from the high part would otherwise cancel away.
+        angle = (piHi - (angle - piLo));
+    }
+    return yNegative ? -angle : angle;
+}
+
+/// The angle to the point `(x, y)`, at the narrow width.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tan2-32
+func ArcTan2(y: float32, x: float32) -> float32 {
+    return ArcTan2(y as float64, x as float64) as float32;
+}

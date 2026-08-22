@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "InverseTrig"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Math: inverse sine, cosine, tangent, cotangent and the two-argument arc tangent"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Math = { Path = "../../../../Packages/Math" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Math"
