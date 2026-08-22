@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Parser"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Json: strict RFC 8259 parsing, duplicate-name rejection and the limits"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Collections = { Path = "../../../../Packages/Collections" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Json = { Path = "../../../../Packages/Json" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Json"
