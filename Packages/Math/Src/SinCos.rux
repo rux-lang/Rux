@@ -1,0 +1,82 @@
+// Sine and cosine of the same angle, from one reduction.
+//
+// **Accuracy: error at most 1 ulp in each, the same as computing them separately.** The reason to have this is
+// not accuracy but work: the argument reduction is by far the expensive part of either function, and a rotation,
+// a polar conversion or a complex exponential needs both values of the same angle. Doing the reduction once
+// halves the cost, and it also guarantees the two results describe the *same* angle, which two independent
+// reductions of the same argument do anyway but only because they are deterministic.
+
+/// The sine and cosine of `angle`, in radians.
+///
+/// `sine` and `cosine` both receive their value. Equivalent to calling `Sin` and `Cos` separately, at roughly
+/// half the cost.
+///
+/// https://rux-lang.dev/docs/api/math/sin-cos
+func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
+    // NaN propagates into both.
+    if angle != angle {
+        *sine = angle;
+        *cosine = angle;
+        return;
+    }
+    var zero = 0.0;
+    // Neither has a limit at infinity.
+    if angle - angle != 0.0 {
+        *sine = zero / zero;
+        *cosine = zero / zero;
+        return;
+    }
+    // Below 2^-27 the sine is the angle -- which also keeps the sign of a zero -- and the cosine is one, since
+    // the quadratic term is under half an ulp.
+    if angle < 7.450580596923828e-9 && angle > -7.450580596923828e-9 {
+        *sine = angle;
+        *cosine = 1.0;
+        return;
+    }
+
+    let negative = angle < 0.0;
+    let magnitude = negative ? -angle : angle;
+
+    var sineOfMagnitude = 0.0;
+    var cosineValue = 0.0;
+    if magnitude <= 0.7853981633974483 {
+        sineOfMagnitude = KernelSin(magnitude, 0.0);
+        cosineValue = KernelCos(magnitude, 0.0);
+    }
+    else {
+        let reduced = RemPio2(magnitude);
+        let kernelSine = KernelSin(reduced.hi, reduced.lo);
+        let kernelCosine = KernelCos(reduced.hi, reduced.lo);
+        if reduced.quadrant == 0i64 {
+            sineOfMagnitude = kernelSine;
+            cosineValue = kernelCosine;
+        }
+        else if reduced.quadrant == 1i64 {
+            sineOfMagnitude = kernelCosine;
+            cosineValue = -kernelSine;
+        }
+        else if reduced.quadrant == 2i64 {
+            sineOfMagnitude = -kernelSine;
+            cosineValue = -kernelCosine;
+        }
+        else {
+            sineOfMagnitude = -kernelCosine;
+            cosineValue = kernelSine;
+        }
+    }
+
+    // Sine is odd and cosine is even, so only one of them notices the sign.
+    *sine = negative ? -sineOfMagnitude : sineOfMagnitude;
+    *cosine = cosineValue;
+}
+
+/// The sine and cosine of `angle`, at the narrow width.
+///
+/// https://rux-lang.dev/docs/api/math/sin-cos-32
+func SinCos(angle: float32, sine: *var float32, cosine: *var float32) {
+    var wideSine = 0.0;
+    var wideCosine = 0.0;
+    SinCos(angle as float64, @wideSine, @wideCosine);
+    *sine = wideSine as float32;
+    *cosine = wideCosine as float32;
+}

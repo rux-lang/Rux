@@ -1,3 +1,4 @@
+// **Accuracy: error at most 1 ulp**, at every argument the type holds.
 func Cos(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if x != x {
