@@ -1,0 +1,150 @@
+// SHAKE128 and SHAKE256: the same sponge, squeezed for as long as the caller wants.
+//
+// A hash gives a fixed number of bytes because that is what a hash is for. An extendable-output function gives
+// as many as asked, from the same absorbed state, as one continuous stream -- so `Read` twice for sixteen bytes
+// gives exactly what `Read` once for thirty-two gives. That property is the whole contract, and it is what makes
+// these usable as key-stream generators and as the expansion step of a key derivation.
+//
+// The number in the name is the security level, not the output length: SHAKE128 offers 128 bits of security
+// however many bytes are taken from it, and taking more does not add any. Nothing enforces that, because there
+// is no length at which it becomes wrong -- only a length past which it stops helping.
+//
+// The domain byte is what separates these from SHA-3. The same state absorbing the same message produces a
+// different stream depending on that one byte, which is what stops a SHAKE output from ever colliding with a
+// SHA-3 digest by construction.
+
+import Core::{ MutableSlice, Slice };
+
+/// An extendable-output function: absorb a message, then read as many bytes as wanted.
+///
+/// https://rux-lang.dev/docs/api/crypto/shake
+struct Shake {
+    /// The sponge state, as twenty-five lanes.
+    lanes: uint64[25];
+    /// How many bytes of the state the message reaches.
+    rate: uint;
+    /// How far into the rate absorption has reached, or -- once reading has begun -- how far into it the
+    /// squeeze has reached.
+    position: uint;
+    /// Whether the padding has been applied and reading has started.
+    reading: bool;
+}
+
+extend Shake {
+    func Start(rate: uint) -> Shake {
+        var state: Shake;
+        var index: uint = 0;
+        while index < 25u {
+            state.lanes[index] = 0u64;
+            index = index + 1;
+        }
+        state.rate = rate;
+        state.position = 0;
+        state.reading = false;
+        return state;
+    }
+
+    /// A SHAKE128 state: 128 bits of security, absorbing 168 bytes at a time.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/shake/new-128
+    func New128() -> Shake {
+        return Shake::Start(168u);
+    }
+
+    /// A SHAKE256 state: 256 bits of security, absorbing 136 bytes at a time.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/shake/new-256
+    func New256() -> Shake {
+        return Shake::Start(136u);
+    }
+
+    /// Absorbs `bytes` into the state.
+    ///
+    /// Absorbing after reading has begun is a caller error: the stream is a function of everything absorbed
+    /// before the first read, and adding to it afterwards would silently change what a caller already has. This
+    /// ignores such a call rather than corrupting the stream.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/shake/update
+    func Update(self: *var Shake, bytes: Slice<char8>) {
+        if self.reading {
+            return;
+        }
+        var index: uint = 0;
+        while index < bytes.length {
+            let lane = self.position / 8u;
+            let shift = ((self.position % 8u) * 8u) as uint64;
+            self.lanes[lane] = self.lanes[lane] ^ ((bytes.data[index] as uint8 as uint64) << shift);
+            self.position = self.position + 1u;
+            if self.position == self.rate {
+                KeccakPermute(@self.lanes[0]);
+                self.position = 0;
+            }
+            index = index + 1;
+        }
+    }
+
+    // Applies the padding and permutes, after which the state is a stream to be read.
+    func BeginReading(self: *var Shake) {
+        // 0x1F is the SHAKE domain separator, where SHA-3 uses 0x06 -- one byte, and the only thing keeping the
+        // two families' outputs apart.
+        let lane = self.position / 8u;
+        let shift = ((self.position % 8u) * 8u) as uint64;
+        self.lanes[lane] = self.lanes[lane] ^ (0x1Fu64 << shift);
+        let lastLane = (self.rate - 1u) / 8u;
+        let lastShift = (((self.rate - 1u) % 8u) * 8u) as uint64;
+        self.lanes[lastLane] = self.lanes[lastLane] ^ (0x80u64 << lastShift);
+        KeccakPermute(@self.lanes[0]);
+        self.position = 0;
+        self.reading = true;
+    }
+
+    /// Fills `into` with the next bytes of the stream.
+    ///
+    /// Reading is continuous: any sequence of reads totalling the same number of bytes gives the same bytes.
+    /// The first read applies the padding, after which `Update` does nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/shake/read
+    func Read(self: *var Shake, into: MutableSlice<char8>) {
+        if !self.reading {
+            self.BeginReading();
+        }
+        var index: uint = 0;
+        while index < into.length {
+            if self.position == self.rate {
+                // The rate is exhausted; permuting again extends the stream.
+                KeccakPermute(@self.lanes[0]);
+                self.position = 0;
+            }
+            let lane = self.lanes[self.position / 8u];
+            let shift = ((self.position % 8u) * 8u) as uint64;
+            into.data[index] = ((lane >> shift) & 0xFFu64) as uint8 as char8;
+            self.position = self.position + 1u;
+            index = index + 1;
+        }
+    }
+
+    /// How many bytes the state absorbs or squeezes before permuting.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/shake/rate
+    func Rate(self: *Shake) -> uint {
+        return self.rate;
+    }
+}
+
+/// `into.length` bytes of SHAKE128 over `bytes`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/shake128-of
+func Shake128Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var state = Shake::New128();
+    state.Update(bytes);
+    state.Read(into);
+}
+
+/// `into.length` bytes of SHAKE256 over `bytes`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/shake256-of
+func Shake256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var state = Shake::New256();
+    state.Update(bytes);
+    state.Read(into);
+}
