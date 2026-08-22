@@ -1,0 +1,224 @@
+// Moving file content and names around: copy, rename, and the two kinds of link.
+//
+// The follow policies are stated rather than inherited. `CopyFile` follows a symbolic link and copies what it
+// points at, because copying the pointer would surprise every caller who asked for the bytes. `CreateHardLink`
+// does not follow: it links the name given, symbolic link and all, because a caller linking a link said so.
+// `DeleteFile` was already documented to remove the name, never the target. `Rename` moves the name whatever it
+// names, atomically within a volume, which is what makes it the publishing step of atomic replacement.
+
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::{ #target, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, WriteAll, Writer };
+import Path::{ OsUnit, Path };
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
+    .Linux => import Linux::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
+    .macOS => import macOS::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
+    .Windows => import Windows::{
+        CopyFileW,
+        CreateHardLinkW,
+        CreateSymbolicLinkW,
+        GetLastError,
+        MOVEFILE_REPLACE_EXISTING,
+        MoveFileExW,
+        SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
+        SYMBOLIC_LINK_FLAG_DIRECTORY
+    }
+}
+
+// Two native paths, or the reason there are not; the second is only converted once the first succeeds.
+func NativePathPair(allocator: Allocator, first: Path, second: Path, firstNative: *var *var OsUnit,
+                    secondNative: *var *var OsUnit) -> IoError {
+    let converted = NativePath(allocator, first, firstNative);
+    if converted.IsError() {
+        return converted;
+    }
+    let again = NativePath(allocator, second, secondNative);
+    if again.IsError() {
+        ReleaseNativePath(allocator, *firstNative, first.name.units.length);
+        return again;
+    }
+    return IoError::Ok();
+}
+
+func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firstNative: *var OsUnit,
+                           secondNative: *var OsUnit) {
+    ReleaseNativePath(allocator, firstNative, first.name.units.length);
+    ReleaseNativePath(allocator, secondNative, second.name.units.length);
+}
+
+/// Renames `from` to `to`, moving it between directories if the paths differ there.
+///
+/// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
+/// gap. Across volumes Windows copies and deletes instead -- not atomic -- and the Unix systems refuse.
+///
+/// https://rux-lang.dev/docs/api/storage/rename
+func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
+    var fromNative: *var OsUnit = null;
+    var toNative: *var OsUnit = null;
+    let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if MoveFileExW(fromNative as *char16, toNative as *char16, MOVEFILE_REPLACE_EXISTING) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = RenameAt(AtFdCwd, fromNative as *char8, AtFdCwd, toNative as *char8);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePathPair(allocator, from, to, fromNative, toNative);
+    return outcome;
+}
+
+/// Creates `link` as a hard link: a second name for the file `existing` names.
+///
+/// The two names are then equals -- neither is "the original" -- and the content lives until the last name is
+/// deleted. A symbolic link at `existing` is not followed: the link is made to the name given. Directories
+/// cannot be hard-linked on any supported system.
+///
+/// https://rux-lang.dev/docs/api/storage/create-hard-link
+func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError {
+    var existingNative: *var OsUnit = null;
+    var linkNative: *var OsUnit = null;
+    let converted = NativePathPair(allocator, existing, link, @existingNative, @linkNative);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if CreateHardLinkW(linkNative as *char16, existingNative as *char16, null) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = LinkAt(AtFdCwd, existingNative as *char8, AtFdCwd, linkNative as *char8, 0);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePathPair(allocator, existing, link, existingNative, linkNative);
+    return outcome;
+}
+
+/// Creates `link` as a symbolic link holding `target` as its text.
+///
+/// The target is stored, not checked: a dangling link is created as readily as a good one. `targetIsDirectory`
+/// matters only on Windows, which types its links; the Unix systems ignore it. Windows also gates creation
+/// behind a privilege unless the machine runs Developer Mode, so `PermissionDenied` here is an environment, not
+/// a bug.
+///
+/// https://rux-lang.dev/docs/api/storage/create-symbolic-link
+func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> IoError {
+    var targetNative: *var OsUnit = null;
+    var linkNative: *var OsUnit = null;
+    let converted = NativePathPair(allocator, target, link, @targetNative, @linkNative);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+        if targetIsDirectory {
+            flags = flags | SYMBOLIC_LINK_FLAG_DIRECTORY;
+        }
+        if CreateSymbolicLinkW(linkNative as *char16, targetNative as *char16, flags) == 0u8 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = SymlinkAt(targetNative as *char8, AtFdCwd, linkNative as *char8);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePathPair(allocator, target, link, targetNative, linkNative);
+    return outcome;
+}
+
+/// Copies the file `from` names to `to`, following a symbolic link to the bytes it points at.
+///
+/// An existing `to` is replaced. The copy is the bytes and nothing else: permissions, timestamps and the rest of
+/// the metadata are the destination's own, fresh -- carrying them is a policy the metadata work owns.
+///
+/// https://rux-lang.dev/docs/api/storage/copy-file
+func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
+    when #target.os == .Windows {
+        var fromNative: *var OsUnit = null;
+        var toNative: *var OsUnit = null;
+        let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
+        if converted.IsError() {
+            return converted;
+        }
+        var outcome = IoError::Ok();
+        if CopyFileW(fromNative as *char16, toNative as *char16, 0) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+        ReleaseNativePathPair(allocator, from, to, fromNative, toNative);
+        return outcome;
+    }
+    else {
+        var error = IoError::Ok();
+        var source = File::Open(allocator, from, OpenOptions::Reading(), @error);
+        if error.IsError() {
+            return error;
+        }
+        var destination = File::Open(allocator, to, OpenOptions::Writing(), @error);
+        if error.IsError() {
+            source.Close();
+            return error;
+        }
+
+        let layout = Layout { size: 65536, alignment: 8 };
+        var borrowed = allocator;
+        var block: *var opaque = null;
+        if borrowed.Allocate(layout, @block) != AllocError::None {
+            source.Close();
+            destination.Close();
+            return IoError::Of(IoErrorKind::Other);
+        }
+        let buffer = MutableSlice<char8> { data: block as *var char8, length: 65536 };
+
+        var outcome = IoError::Ok();
+        var copying = true;
+        while copying {
+            var filled: uint = 0;
+            let readOutcome = source.Read(buffer, @filled);
+            if readOutcome.IsError() {
+                if readOutcome.IsEnd() {
+                    copying = false;
+                }
+                else if !readOutcome.IsTransient() {
+                    outcome = readOutcome;
+                    copying = false;
+                }
+            }
+            else {
+                let piece = Slice<char8> { data: block as *char8, length: filled };
+                let sink: Writer = destination;
+                let wrote = WriteAll(sink, piece);
+                if wrote.IsError() {
+                    outcome = wrote;
+                    copying = false;
+                }
+            }
+        }
+
+        borrowed.Deallocate(block, layout);
+        let closedSource = source.Close();
+        let closedDestination = destination.Close();
+        if outcome.IsOk() && closedSource.IsError() {
+            outcome = closedSource;
+        }
+        if outcome.IsOk() && closedDestination.IsError() {
+            outcome = closedDestination;
+        }
+        return outcome;
+    }
+}

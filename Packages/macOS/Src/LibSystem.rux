@@ -76,6 +76,15 @@ extern {
     // https://keith.github.io/xcode-man-pages/pipe.2.html
     func pipe(descriptors: *var int32) -> int32;
 
+    // Creates a hard link relative to directory descriptors; returns zero, or -1
+    // https://keith.github.io/xcode-man-pages/link.2.html
+    func linkat(oldDirectoryFd: int32, oldPath: *char8, newDirectoryFd: int32, newPath: *char8,
+                flags: int32) -> int32;
+
+    // Creates a symbolic link relative to a directory descriptor; returns zero, or -1
+    // https://keith.github.io/xcode-man-pages/symlink.2.html
+    func symlinkat(target: *char8, newDirectoryFd: int32, linkPath: *char8) -> int32;
+
     // Reads directory entries in the 64-bit-inode layout; returns the bytes filled, zero at the end, or -1
     //
     // The plain readdir symbol on x86-64 resolves to the 32-bit-inode variant with a different record layout, so

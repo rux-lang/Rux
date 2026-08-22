@@ -70,6 +70,25 @@ const FILE_FLAG_DELETE_ON_CLOSE: uint32 = 0x04000000;
 #Allow("naming.const")
 const FILE_FLAG_WRITE_THROUGH: uint32 = 0x80000000;
 
+/// `SYMBOLIC_LINK_FLAG_DIRECTORY`: the link's target is a directory.
+///
+/// Windows types its symbolic links: a link made without this flag misbehaves when its target is a directory,
+/// which no Unix symlink ever asked anyone to know in advance.
+///
+/// https://rux-lang.dev/docs/api/windows/symbolic-link-flag-directory
+#Allow("naming.const")
+const SYMBOLIC_LINK_FLAG_DIRECTORY: uint32 = 0x00000001;
+
+/// `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`: let a Developer Mode machine create the link without the
+/// privilege older systems demand.
+///
+/// Harmless where the privilege is held; without Developer Mode or the privilege the call still fails with
+/// `ERROR_PRIVILEGE_NOT_HELD`.
+///
+/// https://rux-lang.dev/docs/api/windows/symbolic-link-flag-allow-unprivileged-create
+#Allow("naming.const")
+const SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE: uint32 = 0x00000002;
+
 /// `MOVEFILE_REPLACE_EXISTING`: let the move overwrite an existing target.
 ///
 /// https://rux-lang.dev/docs/api/windows/move-file-replace-existing
@@ -105,6 +124,17 @@ extern {
     // Continues a directory enumeration; fails with ERROR_NO_MORE_FILES at its end
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilew
     func FindNextFileW(findFile: *var opaque, findFileData: *var opaque) -> int32;
+
+    // Creates a hard link: a second name for an existing file's contents
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
+    func CreateHardLinkW(fileName: *char16, existingFileName: *char16, securityAttributes: *var opaque) -> int32;
+
+    // Creates a symbolic link; returns a BOOLEAN, so only the low byte is meaningful
+    //
+    // Creation needs SeCreateSymbolicLinkPrivilege or a Developer Mode machine with the allow-unprivileged flag;
+    // without either it fails with ERROR_PRIVILEGE_NOT_HELD.
+    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
+    func CreateSymbolicLinkW(symlinkFileName: *char16, targetFileName: *char16, flags: uint32) -> uint8;
 
     // Deletes a file, taking a UTF-16 path
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew

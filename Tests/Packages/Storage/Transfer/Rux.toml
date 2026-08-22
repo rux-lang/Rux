@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Transfer"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Copy, rename and the two kinds of link, each follow policy proven as stated."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Storage = { Path = "../../../../Packages/Storage" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Storage"
