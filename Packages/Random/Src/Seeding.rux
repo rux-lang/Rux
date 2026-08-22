@@ -1,0 +1,56 @@
+// Seeding from the operating system's entropy, and the global generator that deliberately does not exist.
+//
+// **There is no default generator here, and that is a decision rather than an omission.** A global mutable
+// generator is convenient and costs three things worth more than the convenience. It makes results
+// irreproducible, because any library that draws from it shifts every subsequent draw a caller thought was
+// theirs. It makes correctness depend on threading, because two threads sharing one state either race or
+// serialize, and the fix for either is worse than passing a generator. And it makes seeding a global decision,
+// so a program that wants one deterministic component and one entropy-seeded one cannot have both.
+//
+// A caller who wants one generator for a whole program can make one and pass it. That is one parameter, and it
+// buys reproducibility, thread independence and per-component seeding all at once.
+
+import Entropy::{ EntropyError, NextUint64 };
+
+/// A `Xoshiro256` seeded from the operating system's entropy.
+///
+/// `error` is written with why the entropy could not be obtained, or `None` when it could. On failure the
+/// generator is returned seeded from zero rather than left in an unusable state, so a caller who ignores the
+/// error gets a working -- but entirely predictable -- generator instead of undefined behavior. Anything that
+/// depends on the seed being unpredictable must check.
+///
+/// https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
+func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
+    let seed = NextUint64(error);
+    if *error != EntropyError::None {
+        return Xoshiro256::New(0u64);
+    }
+    return Xoshiro256::New(seed);
+}
+
+/// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
+///
+/// Fails and recovers exactly as `XoshiroFromEntropy` does.
+///
+/// https://rux-lang.dev/docs/api/random/pcg-from-entropy
+func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
+    let seed = NextUint64(error);
+    if *error != EntropyError::None {
+        return Pcg64Dxsm::New(0u64);
+    }
+    return Pcg64Dxsm::New(seed);
+}
+
+/// A `Pcg64Dxsm` seeded from entropy on the stream `stream` selects.
+///
+/// The intended shape for parallel work: every worker calls this with its own index, so the streams are
+/// independent by construction and the whole run is reproducible from the one seed if it is recorded.
+///
+/// https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
+func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
+    let seed = NextUint64(error);
+    if *error != EntropyError::None {
+        return Pcg64Dxsm::WithStream(0u64, stream);
+    }
+    return Pcg64Dxsm::WithStream(seed, stream);
+}

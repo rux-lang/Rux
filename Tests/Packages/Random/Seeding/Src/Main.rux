@@ -1,0 +1,92 @@
+// Two claims are checked here. That entropy seeding actually varies -- a seeding path that quietly failed would
+// hand back the same predictable generator every time, which is the failure worth catching. And that generators
+// are independent values, so drawing from one cannot disturb another; that is the property a global generator
+// would destroy, and the reason this package does not offer one.
+
+import Core::Assert;
+import Entropy::EntropyError;
+import Random::{ PcgFromEntropy, PcgFromEntropyWithStream, Pcg64Dxsm, RandomGenerator, Xoshiro256,
+                 XoshiroFromEntropy };
+
+func Main() -> int {
+    var error = EntropyError::None;
+
+    // Entropy seeding succeeds on a supported system, and different calls give different streams.
+    var first = XoshiroFromEntropy(@error);
+    Assert(error == EntropyError::None, "the system supplies entropy");
+    var second = XoshiroFromEntropy(@error);
+    Assert(error == EntropyError::None, "twice");
+    var agreements: uint = 0;
+    var index: uint = 0;
+    while index < 16u {
+        if first.NextUint64() == second.NextUint64() {
+            agreements = agreements + 1;
+        }
+        index = index + 1;
+    }
+    Assert(agreements == 0u, "two entropy-seeded generators do not produce the same words");
+
+    var pcgFirst = PcgFromEntropy(@error);
+    Assert(error == EntropyError::None, "the other generator seeds from entropy too");
+    var pcgSecond = PcgFromEntropy(@error);
+    agreements = 0;
+    index = 0;
+    while index < 16u {
+        if pcgFirst.NextUint64() == pcgSecond.NextUint64() {
+            agreements = agreements + 1;
+        }
+        index = index + 1;
+    }
+    Assert(agreements == 0u, "and two of those differ as well");
+
+    // The parallel shape: one entropy seed per worker with its own stream.
+    var workerZero = PcgFromEntropyWithStream(0u64, @error);
+    var workerOne = PcgFromEntropyWithStream(1u64, @error);
+    Assert(error == EntropyError::None, "a stream-selected generator seeds from entropy");
+    agreements = 0;
+    index = 0;
+    while index < 16u {
+        if workerZero.NextUint64() == workerOne.NextUint64() {
+            agreements = agreements + 1;
+        }
+        index = index + 1;
+    }
+    Assert(agreements == 0u, "and two workers on different streams do not collide");
+
+    // Independence: generators are values, so drawing from one cannot disturb another. This is what a shared
+    // global generator would take away, and the reason there is not one.
+    var left = Xoshiro256::New(77u64);
+    var right = Xoshiro256::New(77u64);
+    var expected: uint64[8];
+    index = 0;
+    while index < 8u {
+        expected[index] = left.NextUint64();
+        index = index + 1;
+    }
+    // Interleave a great deal of unrelated drawing between the second generator's draws.
+    var noise = Xoshiro256::New(1234u64);
+    var noisePcg = Pcg64Dxsm::New(4321u64);
+    index = 0;
+    while index < 8u {
+        var burst: uint = 0;
+        while burst < 50u {
+            noise.NextUint64();
+            noisePcg.NextUint64();
+            burst = burst + 1;
+        }
+        Assert(right.NextUint64() == expected[index],
+               "a generator's sequence is untouched by every other generator in the program");
+        index = index + 1;
+    }
+
+    // A copy of a generator is a fork of its stream, not a share of it.
+    var original = Xoshiro256::New(555u64);
+    original.NextUint64();
+    var forked = original;
+    let fromOriginal = original.NextUint64();
+    let fromFork = forked.NextUint64();
+    Assert(fromOriginal == fromFork, "a copy continues from where it was copied");
+    Assert(original.NextUint64() == forked.NextUint64(), "and the two then advance independently in step");
+
+    return 0;
+}

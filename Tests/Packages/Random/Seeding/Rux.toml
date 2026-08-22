@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Seeding"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Random: entropy seeding and the absence of shared generator state"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Entropy = { Path = "../../../../Packages/Entropy" }
+Random = { Path = "../../../../Packages/Random" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Random"
