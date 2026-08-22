@@ -1,0 +1,90 @@
+// The two counting distributions, each exact at every parameter.
+//
+// Both have a direct method that is obviously right and obviously unusable past a modest parameter, and both
+// have a reduction that hands the large case to the gamma family. The reductions are Devroye's: they are exact
+// rather than approximate, and they recurse logarithmically rather than looping once per unit of the parameter.
+
+import Math::{ Exp, Floor, Log };
+
+/// The number of successes in `trials` independent trials each succeeding with probability `probability`.
+///
+/// A probability at or below zero gives zero successes and one at or above one gives every trial, matching
+/// `Bernoulli`'s treatment of the same edges. Zero trials give zero.
+///
+/// Small counts are summed directly, which is the definition. Large ones are split by a beta draw: the median
+/// trial's success probability has a beta distribution, and comparing it to `probability` says which side the
+/// answer falls on and leaves a strictly smaller problem. That halves the count each step, so a binomial over a
+/// billion trials costs about thirty draws rather than a billion.
+///
+/// https://rux-lang.dev/docs/api/random/binomial
+func Binomial<G: RandomGenerator>(generator: *var G, trials: uint64, probability: float64) -> uint64 {
+    if trials == 0u64 || !(probability > 0.0) {
+        return 0u64;
+    }
+    if probability >= 1.0 {
+        return trials;
+    }
+    if (trials as float64) <= DirectMethodLimit {
+        var successes = 0u64;
+        var trial = 0u64;
+        while trial < trials {
+            if Bernoulli<G>(generator, probability) {
+                successes = successes + 1u64;
+            }
+            trial = trial + 1u64;
+        }
+        return successes;
+    }
+    // The split: `a` trials on one side, the rest on the other.
+    let a = 1u64 + trials / 2u64;
+    let b = trials + 1u64 - a;
+    let split = Beta<G>(generator, a as float64, b as float64);
+    if split >= probability {
+        return Binomial<G>(generator, a - 1u64, probability / split);
+    }
+    return a + Binomial<G>(generator, b - 1u64, (probability - split) / (1.0 - split));
+}
+
+/// The number of events in one interval when they arrive independently at the given mean rate.
+///
+/// A mean at or below zero gives zero. A small mean uses Knuth's method -- multiply uniforms until the product
+/// falls below `exp(-mean)` -- which costs about `mean` draws and is exact. A large mean would cost too many
+/// draws that way, and the product would underflow to zero before the loop ended, so the mean is consumed in
+/// chunks: a gamma draw of integer shape is the waiting time for that many events, and either it overshoots the
+/// interval, in which case the count is a binomial of what is left, or it fits and the remainder carries on.
+///
+/// https://rux-lang.dev/docs/api/random/poisson
+func Poisson<G: RandomGenerator>(generator: *var G, mean: float64) -> uint64 {
+    if !(mean > 0.0) {
+        return 0u64;
+    }
+    var remaining = mean;
+    var count = 0u64;
+    while remaining > DirectMethodLimit {
+        // Seven eighths of the remaining mean, which keeps the shape large enough for the gamma draw to be
+        // cheap and small enough that the overshoot is common rather than rare.
+        let shape = Floor(0.875 * remaining);
+        let waited = Gamma<G>(generator, shape);
+        if waited > remaining {
+            // The chunk overshot the interval, so what remains inside it is binomially distributed.
+            return count + Binomial<G>(generator, (shape as uint64) - 1u64, remaining / waited);
+        }
+        count = count + (shape as uint64);
+        remaining = remaining - waited;
+    }
+    // Knuth's method on what is left.
+    let limit = Exp(0.0 - remaining);
+    var product = 1.0;
+    var events = 0u64;
+    var counting = true;
+    while counting {
+        product = product * NextFloat64<G>(generator);
+        if product <= limit {
+            counting = false;
+        }
+        else {
+            events = events + 1u64;
+        }
+    }
+    return count + events;
+}
