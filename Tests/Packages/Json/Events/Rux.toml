@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Events"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Json: streaming events without a DOM, in memory proportional to the largest token"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Json = { Path = "../../../../Packages/Json" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Json"
