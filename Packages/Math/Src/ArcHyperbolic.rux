@@ -1,0 +1,118 @@
+// The inverse hyperbolic functions, each written to avoid the cancellation its closed form invites.
+//
+// Every one of them is a logarithm of something built from a square root, and every one of those expressions
+// loses the answer somewhere: `log(x + sqrt(x*x + 1))` cancels for a negative argument and overflows the square
+// root long before the answer would overflow, `log(x + sqrt(x*x - 1))` cancels as the argument approaches one
+// from above, and `0.5 * log((1 + x) / (1 - x))` cancels as the argument approaches zero. So each is split into
+// ranges, with `Log1p` doing the work near zero, where its whole reason for existing applies.
+//
+// **Accuracy: error at most 2 ulps in each** -- one from the logarithm and one from what is fed to it.
+
+/// The inverse hyperbolic sine: the value whose hyperbolic sine is `x`.
+///
+/// Defined for every real argument, odd, and unbounded in both directions. A NaN propagates and an infinity
+/// gives an infinity of the same sign.
+///
+/// https://rux-lang.dev/docs/api/math/arc-sinh
+func ArcSinh(x: float64) -> float64 {
+    let ln2 = 0.6931471805599453;
+    if IsNan(x) || IsInfinite(x) {
+        return x;
+    }
+    let magnitude = Abs(x);
+    var result = 0.0;
+    if magnitude < 3.725290298461914e-9 {
+        // Below 2^-28 the cubic term is under half an ulp, so the answer is the argument -- which also keeps the
+        // sign of a zero, since this function is odd.
+        return x;
+    }
+    if magnitude > 268435456.0 {
+        // Above 2^28 the square root is x to every bit, so the whole expression is log(2x).
+        result = Log(magnitude) + ln2;
+    }
+    else if magnitude > 2.0 {
+        // Written so the large term is formed directly rather than as a difference.
+        result = Log(2.0 * magnitude + 1.0 / (Sqrt(magnitude * magnitude + 1.0) + magnitude));
+    }
+    else {
+        let squared = magnitude * magnitude;
+        result = Log1p(magnitude + squared / (1.0 + Sqrt(1.0 + squared)));
+    }
+    return SignBit(x) ? -result : result;
+}
+
+func ArcSinh(x: float32) -> float32 {
+    return ArcSinh(x as float64) as float32;
+}
+
+/// The inverse hyperbolic cosine: the non-negative value whose hyperbolic cosine is `x`.
+///
+/// Defined only for arguments of one and above; anything below has no real answer and gives a NaN. The result is
+/// never negative, since the hyperbolic cosine is even and this returns the branch above zero.
+///
+/// https://rux-lang.dev/docs/api/math/arc-cosh
+func ArcCosh(x: float64) -> float64 {
+    let ln2 = 0.6931471805599453;
+    if IsNan(x) {
+        return x;
+    }
+    if x < 1.0 {
+        return QuietNan64();
+    }
+    if x == 1.0 {
+        return 0.0;
+    }
+    if IsInfinite(x) {
+        return x;
+    }
+    if x > 268435456.0 {
+        return Log(x) + ln2;
+    }
+    if x > 2.0 {
+        return Log(2.0 * x - 1.0 / (x + Sqrt(x * x - 1.0)));
+    }
+    // Between one and two the difference x - 1 is exact, and phrasing everything in it avoids the cancellation
+    // that x + sqrt(x*x - 1) suffers as x approaches one.
+    let above = x - 1.0;
+    return Log1p(above + Sqrt(2.0 * above + above * above));
+}
+
+func ArcCosh(x: float32) -> float32 {
+    return ArcCosh(x as float64) as float32;
+}
+
+/// The inverse hyperbolic tangent: the value whose hyperbolic tangent is `x`.
+///
+/// Defined strictly inside the unit interval. The endpoints are the poles and give infinities of the matching
+/// sign; anything beyond them has no real answer and gives a NaN.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tanh
+func ArcTanh(x: float64) -> float64 {
+    if IsNan(x) {
+        return x;
+    }
+    let magnitude = Abs(x);
+    if magnitude > 1.0 {
+        return QuietNan64();
+    }
+    if magnitude == 1.0 {
+        return x > 0.0 ? PositiveInfinity64() : -PositiveInfinity64();
+    }
+    if magnitude < 3.725290298461914e-9 {
+        // Below 2^-28, as with the inverse sine, the argument is the answer and its zero keeps its sign.
+        return x;
+    }
+    var result = 0.0;
+    if magnitude < 0.5 {
+        // Doubling inside the logarithm's argument rather than halving outside it keeps the small terms small.
+        result = 0.5 * Log1p(2.0 * magnitude + 2.0 * magnitude * magnitude / (1.0 - magnitude));
+    }
+    else {
+        result = 0.5 * Log1p(2.0 * magnitude / (1.0 - magnitude));
+    }
+    return SignBit(x) ? -result : result;
+}
+
+func ArcTanh(x: float32) -> float32 {
+    return ArcTanh(x as float64) as float32;
+}
