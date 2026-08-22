@@ -1,0 +1,337 @@
+// Temporary files and directories: unguessable names, and cleanup that is not left to chance.
+//
+// The name comes from the entropy source rather than from a counter or the process id, because a predictable
+// name in a shared directory is the whole of the classic temp-file attack: an attacker who can guess the name
+// creates it first, as a symbolic link pointing somewhere it should not, and the program writes through it. The
+// name is also *claimed* rather than merely chosen -- created with `createNew`, which fails rather than opens if
+// anything is already there -- so winning the guess is not enough either. A collision is retried, since with 128
+// bits it means an attacker, not bad luck.
+//
+// Cleanup is deterministic: the handle owns both the file and its name, and dropping it deletes both. That is
+// stronger than the platform conveniences it replaces -- Windows' delete-on-close needs the last handle to go,
+// and the Unix trick of unlinking immediately leaves nothing a caller could pass to another process by name.
+
+import Allocator::Allocator;
+import Core::{ #target, Drop, Slice };
+import Entropy::{ EntropyError, NextUint64 };
+import Io::{ IoError, IoErrorKind };
+import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
+import Text::TextError;
+
+when #target.os == .Windows {
+    import Windows::{ GetLastError, GetTempPathW };
+}
+
+/// How many names are tried before a temporary file gives up.
+///
+/// With 128 bits of name, one collision is already a surprise and three in a row is not chance; failing is the
+/// honest response to an entropy source that has stopped being one.
+///
+/// https://rux-lang.dev/docs/api/storage/temporary-name-attempts
+const TemporaryNameAttempts: uint = 4;
+
+/// The directory the system sets aside for temporary files.
+///
+/// On Windows this is what the platform reports, which consults `TMP`, `TEMP` and `USERPROFILE` in turn. On the
+/// Unix systems it is `/tmp`: reading `TMPDIR` needs environment access this package does not have yet, so a
+/// caller who must honor it passes the directory to the functions below instead.
+///
+/// https://rux-lang.dev/docs/api/storage/temporary-directory
+func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer {
+    *error = IoError::Ok();
+    var textError = TextError::None;
+    when #target.os == .Windows {
+        var units: OsUnit[512];
+        let written = GetTempPathW(512, @units[0] as *var char16);
+        if written == 0u32 {
+            *error = TranslateNative(GetLastError() as int32);
+            return PathBuffer::New(allocator);
+        }
+        if written > 512u32 {
+            *error = IoError::Of(IoErrorKind::LimitExceeded);
+            return PathBuffer::New(allocator);
+        }
+        // The reported path ends in a separator; the buffer holds names, so it is dropped here.
+        var length = written as uint;
+        while length > 1u && IsSeparator(units[length - 1]) {
+            length = length - 1;
+        }
+        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: length });
+        var held = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return held;
+    }
+    else {
+        var name = OsString::FromText(allocator, "/tmp", @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+            return PathBuffer::New(allocator);
+        }
+        var held = PathBuffer::FromPath(allocator, Path::FromView(name.View()), @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return held;
+    }
+}
+
+// Sixteen hex digits of entropy, appended to `prefix`, as one path segment.
+func RandomName(allocator: Allocator, prefix: Slice<char8>, error: *var IoError) -> OsString {
+    *error = IoError::Ok();
+    var entropyError = EntropyError::None;
+    let bits = NextUint64(@entropyError);
+    if entropyError != EntropyError::None {
+        // A name without entropy behind it is not a name this package will hand out.
+        *error = IoError::Of(IoErrorKind::Other);
+        return OsString::New(allocator);
+    }
+    var text: char8[64];
+    var length: uint = 0;
+    while length < prefix.length && length < 40u {
+        text[length] = prefix.data[length];
+        length = length + 1;
+    }
+    var digit: uint = 0;
+    while digit < 16u {
+        let nibble = ((bits >> ((60u64 - 4u64 * digit as uint64))) & 0xFu64) as uint32;
+        text[length] = (nibble < 10u32 ? (0x30u32 + nibble) : (0x57u32 + nibble)) as uint8 as char8;
+        length = length + 1;
+        digit = digit + 1;
+    }
+    var textError = TextError::None;
+    let name = OsString::FromText(allocator, text[0..length], @textError);
+    if textError != TextError::None {
+        *error = IoError::Of(IoErrorKind::Other);
+    }
+    return name;
+}
+
+/// A temporary file that owns both its contents and its name.
+///
+/// Move-only. `Close` deletes the file and reports what the deletion said; `Drop` does the same with the outcome
+/// discarded. `Keep` gives up ownership of the name instead, for the caller who has decided the file should
+/// outlive this value -- which is what a rename into place is built on.
+///
+/// https://rux-lang.dev/docs/api/storage/temporary-file
+struct TemporaryFile {
+    /// The open file.
+    file: File;
+    /// Its full path.
+    path: PathBuffer;
+    /// Whether the name is still this value's to delete.
+    owned: bool;
+}
+
+extend TemporaryFile {
+    /// Creates a new temporary file in `directory`, named from `prefix` and sixteen hex digits of entropy.
+    ///
+    /// The file is opened for reading and writing and is created, never opened: a name that already exists is a
+    /// collision, and the next name is tried.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/create
+    func Create(allocator: Allocator, directory: Path, prefix: Slice<char8>,
+                error: *var IoError) -> TemporaryFile {
+        *error = IoError::Ok();
+        var result = TemporaryFile {
+            file: File { handle: NoFile(), open: false },
+            path: PathBuffer::New(allocator),
+            owned: false
+        };
+        var options = OpenOptions::New();
+        options.read = true;
+        options.write = true;
+        options.createNew = true;
+
+        var attempt: uint = 0;
+        while attempt < TemporaryNameAttempts {
+            var textError = TextError::None;
+            var candidate = PathBuffer::FromPath(allocator, directory, @textError);
+            if textError != TextError::None {
+                *error = IoError::Of(IoErrorKind::Other);
+                candidate.Release();
+                return result;
+            }
+            var name = RandomName(allocator, prefix, error);
+            if error.IsError() {
+                candidate.Release();
+                return result;
+            }
+            textError = candidate.Push(name.View());
+            if textError != TextError::None {
+                *error = IoError::Of(IoErrorKind::Other);
+                candidate.Release();
+                return result;
+            }
+            var opened = File::Open(allocator, candidate.AsPath(), options, error);
+            if error.IsOk() {
+                result.file = opened;
+                result.path = candidate;
+                result.owned = true;
+                return result;
+            }
+            if error.kind != IoErrorKind::AlreadyExists {
+                // Anything but a collision is the caller's problem, not something another name would fix.
+                candidate.Release();
+                return result;
+            }
+            candidate.Release();
+            attempt = attempt + 1;
+        }
+        *error = IoError::Of(IoErrorKind::AlreadyExists);
+        return result;
+    }
+
+    /// The file's path, for handing to something that needs a name.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/path
+    func AsPath(self: *TemporaryFile) -> Path {
+        return self.path.AsPath();
+    }
+
+    /// Closes the file and deletes it, reporting the first thing that went wrong.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/close
+    func Close(self: *var TemporaryFile, allocator: Allocator) -> IoError {
+        var outcome = self.file.Close();
+        if self.owned {
+            self.owned = false;
+            let deleted = DeleteFile(allocator, self.path.AsPath());
+            if outcome.IsOk() {
+                outcome = deleted;
+            }
+        }
+        self.path.Release();
+        return outcome;
+    }
+
+    /// Closes the file and leaves it where it is, giving up the name.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/keep
+    func Keep(self: *var TemporaryFile) -> IoError {
+        self.owned = false;
+        return self.file.Close();
+    }
+}
+
+/// A temporary directory that owns its name.
+///
+/// Move-only, with the same contract as `TemporaryFile`: `Close` removes it and reports, `Drop` removes it
+/// quietly, `Keep` gives up ownership. Removal is of the directory itself and requires it to be empty -- nothing
+/// here deletes a tree, because a temporary directory that silently erased whatever a caller put inside it
+/// would be a worse surprise than a refusal.
+///
+/// https://rux-lang.dev/docs/api/storage/temporary-directory-handle
+struct TemporaryDirectoryHandle {
+    /// The directory's full path.
+    path: PathBuffer;
+    /// Whether the name is still this value's to remove.
+    owned: bool;
+}
+
+extend TemporaryDirectoryHandle {
+    /// Creates a new temporary directory in `directory`, named from `prefix` and sixteen hex digits of entropy.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/create
+    func Create(allocator: Allocator, directory: Path, prefix: Slice<char8>,
+                error: *var IoError) -> TemporaryDirectoryHandle {
+        *error = IoError::Ok();
+        var result = TemporaryDirectoryHandle { path: PathBuffer::New(allocator), owned: false };
+        var attempt: uint = 0;
+        while attempt < TemporaryNameAttempts {
+            var textError = TextError::None;
+            var candidate = PathBuffer::FromPath(allocator, directory, @textError);
+            if textError != TextError::None {
+                *error = IoError::Of(IoErrorKind::Other);
+                candidate.Release();
+                return result;
+            }
+            var name = RandomName(allocator, prefix, error);
+            if error.IsError() {
+                candidate.Release();
+                return result;
+            }
+            textError = candidate.Push(name.View());
+            if textError != TextError::None {
+                *error = IoError::Of(IoErrorKind::Other);
+                candidate.Release();
+                return result;
+            }
+            // MakeDirectory already refuses a name that is taken, which is the claim this needs.
+            let made = MakeDirectory(allocator, candidate.AsPath());
+            if made.IsOk() {
+                result.path = candidate;
+                result.owned = true;
+                return result;
+            }
+            if made.kind != IoErrorKind::AlreadyExists {
+                *error = made;
+                candidate.Release();
+                return result;
+            }
+            candidate.Release();
+            attempt = attempt + 1;
+        }
+        *error = IoError::Of(IoErrorKind::AlreadyExists);
+        return result;
+    }
+
+    /// The directory's path, for building names inside it.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/path
+    func AsPath(self: *TemporaryDirectoryHandle) -> Path {
+        return self.path.AsPath();
+    }
+
+    /// Removes the directory and reports what the removal said.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/close
+    func Close(self: *var TemporaryDirectoryHandle, allocator: Allocator) -> IoError {
+        var outcome = IoError::Ok();
+        if self.owned {
+            self.owned = false;
+            outcome = DeleteDirectory(allocator, self.path.AsPath());
+        }
+        self.path.Release();
+        return outcome;
+    }
+
+    /// Leaves the directory where it is, giving up the name.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/keep
+    func Keep(self: *var TemporaryDirectoryHandle) {
+        self.owned = false;
+    }
+}
+
+extend TemporaryFile : Drop {
+    /// Closes and deletes with the outcome discarded: the safety net, not the contract.
+    ///
+    /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
+    /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
+    /// is the reason the type exists.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/drop
+    func Drop(self: *var TemporaryFile) {
+        self.file.Close();
+        if self.owned {
+            self.owned = false;
+            DeleteFile(self.path.allocator, self.path.AsPath());
+        }
+        self.path.Release();
+    }
+}
+
+extend TemporaryDirectoryHandle : Drop {
+    /// Removes the directory with the outcome discarded: the safety net, not the contract.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/drop
+    func Drop(self: *var TemporaryDirectoryHandle) {
+        if self.owned {
+            self.owned = false;
+            DeleteDirectory(self.path.allocator, self.path.AsPath());
+        }
+        self.path.Release();
+    }
+}

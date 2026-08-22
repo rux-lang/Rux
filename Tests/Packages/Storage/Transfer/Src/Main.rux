@@ -20,7 +20,7 @@ func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Writing(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the file opens for writing");
-    let sink: Writer = file;
+    let sink: Writer = file.Stream();
     Assert(WriteAll(sink, content).IsOk(), "and takes its content");
     Assert(file.Close().IsOk(), "and closes");
 }
@@ -34,7 +34,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
     var size: uint64 = 0;
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "it is exactly as long as expected");
     let room = MutableSlice::From<char8>(@storage[0], expected.length);
-    let source: Reader = file;
+    let source: Reader = file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads whole");
     var index: uint = 0;
     while index < expected.length {

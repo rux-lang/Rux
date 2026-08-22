@@ -19,6 +19,7 @@ ReadmeFile = "README.md"
 [Dependencies]
 Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
+Entropy = { Namespace = "Rux", Version = "0.1.0" }
 FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
 Io = { Namespace = "Rux", Version = "0.1.0" }
 Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }

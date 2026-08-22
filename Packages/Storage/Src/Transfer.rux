@@ -201,7 +201,7 @@ func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
             }
             else {
                 let piece = Slice<char8> { data: block as *char8, length: filled };
-                let sink: Writer = destination;
+                let sink: Writer = destination.Stream();
                 let wrote = WriteAll(sink, piece);
                 if wrote.IsError() {
                     outcome = wrote;
