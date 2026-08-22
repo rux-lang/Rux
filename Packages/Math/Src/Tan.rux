@@ -1,3 +1,6 @@
+// **Accuracy: error at most 1 ulp.** Near an odd multiple of Pi/2 the true
+// value is unbounded, and the answer there is as accurate as the reduced
+// argument allows -- which, the reduction being exact, is fully accurate.
 func Tan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if x != x {

@@ -1,0 +1,86 @@
+// The combined pair has one job beyond the two separate functions -- to return exactly what they would -- so
+// that is what is checked, at every argument the other tests reach. The rest pins the values and symmetries the
+// three functions are defined by.
+
+import Core::Assert;
+import Math::{ Abs, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, Sin, SinCos, SignBit, Tan,
+               UlpDistance };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+    var sine = 0.0;
+    var cosine = 0.0;
+
+    // The values that must be exact, and the sign of a zero that must survive.
+    Assert(Sin(0.0) == 0.0 && !SignBit(Sin(0.0)), "the sine of zero is zero");
+    Assert(Sin(-0.0) == 0.0 && SignBit(Sin(-0.0)), "and of a negative zero keeps its sign, since sine is odd");
+    Assert(Cos(0.0) == 1.0 && Cos(-0.0) == 1.0, "the cosine of either zero is one, since cosine is even");
+    Assert(Tan(0.0) == 0.0 && SignBit(Tan(-0.0)), "and the tangent behaves like the sine");
+
+    // The specials.
+    Assert(IsNan(Sin(notANumber)) && IsNan(Cos(notANumber)) && IsNan(Tan(notANumber)), "a NaN propagates");
+    Assert(IsNan(Sin(infinity)) && IsNan(Cos(infinity)) && IsNan(Tan(infinity)),
+           "and an infinity has no angle, so it gives a NaN rather than a value in range");
+
+    // Symmetries, across a spread of arguments: sine is odd, cosine even, tangent odd.
+    var step: uint = 1;
+    while step < 300u {
+        let angle = (step as float64) * 0.037;
+        Assert(Sin(0.0 - angle) == 0.0 - Sin(angle), "sine is odd");
+        Assert(Cos(0.0 - angle) == Cos(angle), "cosine is even");
+        Assert(Tan(0.0 - angle) == 0.0 - Tan(angle), "and tangent is odd");
+        Assert(Abs(Sin(angle)) <= 1.0 && Abs(Cos(angle)) <= 1.0, "neither leaves its range");
+        step = step + 1;
+    }
+
+    // The quarter-turn values, to the accuracy the arguments themselves allow.
+    Assert(UlpDistance(Sin(Pi * 0.5), 1.0) <= 1u64, "the sine of a quarter turn is one");
+    Assert(Abs(Cos(Pi * 0.5)) < 1.0e-16, "and the cosine there is zero to the precision of the argument");
+    Assert(Abs(Sin(Pi)) < 1.0e-15, "the sine of a half turn is zero to the same standard");
+    Assert(UlpDistance(Cos(Pi), -1.0) <= 1u64, "and the cosine there is minus one");
+    Assert(UlpDistance(Sin(Pi * 0.25), 0.7071067811865476) <= 2u64, "an eighth turn gives the expected root");
+    Assert(UlpDistance(Tan(Pi * 0.25), 1.0) <= 2u64, "and its tangent is one");
+
+    // The combined pair agrees with the separate functions exactly -- bit for bit, not approximately, since it
+    // runs the same kernels on the same reduction.
+    var probe: uint = 0;
+    while probe < 400u {
+        let angle = -60.0 + (probe as float64) * 0.31;
+        SinCos(angle, @sine, @cosine);
+        Assert(sine == Sin(angle), "the combined sine is the separate sine, bit for bit");
+        Assert(cosine == Cos(angle), "and the combined cosine is the separate cosine");
+        probe = probe + 1;
+    }
+
+    // Including at the arguments where the reduction does the most work.
+    var power: int64 = 0;
+    while power <= 1020i64 {
+        let angle = ScaleByPowerOfTwo(1.0, power);
+        SinCos(angle, @sine, @cosine);
+        Assert(sine == Sin(angle) && cosine == Cos(angle), "the pair agrees at every power of two as well");
+        Assert(Abs(sine * sine + cosine * cosine - 1.0) < 1.0e-15, "and the two describe one angle");
+        power = power + 1i64;
+    }
+
+    // And on the specials and the tiny arguments, where the fast paths live.
+    SinCos(0.0, @sine, @cosine);
+    Assert(sine == 0.0 && !SignBit(sine) && cosine == 1.0, "the pair at zero");
+    SinCos(-0.0, @sine, @cosine);
+    Assert(SignBit(sine) && cosine == 1.0, "the pair at a negative zero keeps the sine's sign");
+    let tiny = ScaleByPowerOfTwo(1.0, -40i64);
+    SinCos(tiny, @sine, @cosine);
+    Assert(sine == tiny && cosine == 1.0, "the pair on a tiny argument takes the short path in both");
+    SinCos(notANumber, @sine, @cosine);
+    Assert(IsNan(sine) && IsNan(cosine), "a NaN reaches both results");
+    SinCos(infinity, @sine, @cosine);
+    Assert(IsNan(sine) && IsNan(cosine), "and so does an infinity");
+
+    // The narrow width.
+    var narrowSine = 0.0f32;
+    var narrowCosine = 0.0f32;
+    SinCos(1.0f32, @narrowSine, @narrowCosine);
+    Assert(narrowSine == Sin(1.0f32) && narrowCosine == Cos(1.0f32), "the narrow pair agrees with its parts");
+
+    return 0;
+}
