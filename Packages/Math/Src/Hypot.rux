@@ -5,6 +5,10 @@
 // The trick in the last step is that a*a is re-associated around the high
 // half of a, whose square is exact, so the sum handed to Sqrt has almost
 // twice the precision of a plain x*x + y*y.
+// **Accuracy: error at most 1 ulp.** The scaling below is what earns it: the
+// naive square-and-add overflows for arguments whose square does not fit and
+// underflows to zero for arguments whose square is subnormal, both of which
+// lose the answer entirely rather than merely rounding it.
 func Hypot(x: float64, y: float64) -> float64 {
     var a = Abs(x);
     var b = Abs(y);

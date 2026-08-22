@@ -1,6 +1,11 @@
 import Core::{ #target, #Error };
 
-// Square root, computed by the hardware instruction. Every architecture here
+// Square root, computed by the hardware instruction.
+//
+// **Accuracy: correctly rounded, error at most 0.5 ulp.** Not a claim about
+// this code but about the instruction, which IEEE 754 requires to return the
+// nearest representable value to the true root at every argument.
+// Every architecture here
 // has one that is correctly rounded and already produces the IEEE-754 results
 // for the special cases: Sqrt(NaN) = NaN, Sqrt(+Inf) = +Inf, Sqrt(-0.0) = -0.0,
 // Sqrt(x < 0) = NaN. The argument arrives in the register the result is

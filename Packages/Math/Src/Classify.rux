@@ -379,3 +379,41 @@ func SplitIntegral(value: float32, integral: *var float32) -> float32 {
     *integral = whole as float32;
     return fraction as float32;
 }
+
+/// How many representable values lie between `left` and `right`.
+///
+/// The natural way to state a floating-point error bound: two values are one ulp apart when nothing is
+/// representable between them, and a function accurate to half an ulp returns the nearest representable value to
+/// the true answer. Counting steps rather than subtracting is what makes the measure meaningful near zero, where
+/// the absolute difference between neighbours is vanishingly small, and near the maximum, where it is enormous.
+///
+/// Values of opposite sign are counted through zero, with the two zeros treated as one value -- the step from
+/// the smallest negative subnormal to the smallest positive one is two, not three. A NaN in either argument has
+/// no distance and reports the largest `uint64`, which no real distance can reach.
+///
+/// https://rux-lang.dev/docs/api/math/ulp-distance
+func UlpDistance(left: float64, right: float64) -> uint64 {
+    if IsNan(left) || IsNan(right) {
+        return 18446744073709551615u64;
+    }
+    // Ordering the magnitude bits matches ordering the values, so within one sign the distance is a subtraction.
+    let leftBits = FloatBits(left) & 0x7FFFFFFFFFFFFFFFu64;
+    let rightBits = FloatBits(right) & 0x7FFFFFFFFFFFFFFFu64;
+    if SignBit(left) == SignBit(right) {
+        return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits;
+    }
+    // Opposite signs: cross at zero, which both sides share, so the two halves simply add.
+    return leftBits + rightBits;
+}
+
+func UlpDistance(left: float32, right: float32) -> uint64 {
+    if IsNan(left) || IsNan(right) {
+        return 18446744073709551615u64;
+    }
+    let leftBits = (Float32Bits(left) & 0x7FFFFFFFu32) as uint64;
+    let rightBits = (Float32Bits(right) & 0x7FFFFFFFu32) as uint64;
+    if SignBit(left) == SignBit(right) {
+        return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits;
+    }
+    return leftBits + rightBits;
+}

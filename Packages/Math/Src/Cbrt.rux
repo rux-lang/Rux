@@ -1,3 +1,7 @@
+// **Accuracy: error at most 1 ulp.** The final Newton step is self-correcting,
+// so the answer is within one representable value of the true cube root; it is
+// not correctly rounded, which would need a second step and a rounding test.
+//
 // The real cube root, in three steps: a seed pulled straight out of the
 // exponent that is good to five bits, a polynomial that lifts it to
 // twenty-three, and one Newton step that doubles that to the full
