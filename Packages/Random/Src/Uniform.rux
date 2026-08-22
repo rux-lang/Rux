@@ -1,0 +1,98 @@
+// Uniform values in a range, without the bias the obvious methods introduce.
+//
+// `NextUint64() % bound` is the method everyone reaches for and it is not uniform unless `bound` divides 2^64.
+// With a bound of three, the words 0, 1, 2 map to 0, 1, 2 and so on, but the final partial block leaves one or
+// two extra chances at the low residues -- a bias of about `bound / 2^64`, invisible for small bounds and
+// glaring for bounds near the width. `(NextFloat64() * bound) as uint64` is worse: it rounds, so it is biased
+// even for bounds that divide evenly, and it can return `bound` itself at the top.
+//
+// The method here is Lemire's. Multiply the word by the bound in double width; the high half is already the
+// answer, and the low half says which part of the block it came from. Only when the low half falls inside the
+// first `2^64 mod bound` values is the answer possibly from the short block, and only then is a word rejected
+// and another drawn. The rejection test is exact and the expected number of extra draws is far below one.
+
+import Math::{ IsInfinite, NextDown };
+
+/// A uniform value in `[0, bound)`.
+///
+/// A bound of zero has no values to choose from and gives zero, which is the only answer that is not a lie.
+///
+/// Runs in constant expected time; the loop below runs more than once with probability under `bound / 2^64`.
+///
+/// https://rux-lang.dev/docs/api/random/uniform-below
+func UniformBelow<G: RandomGenerator>(generator: *var G, bound: uint64) -> uint64 {
+    if bound == 0u64 {
+        return 0u64;
+    }
+    var product = (generator.NextUint64() as uint128) * (bound as uint128);
+    var low = product as uint64;
+    if low < bound {
+        // The only region where a short final block could bias the result. The threshold is 2^64 mod bound,
+        // computed without a 2^64 that does not fit: the negation of bound in 64-bit arithmetic is 2^64 - bound.
+        let threshold = (0u64 - bound) % bound;
+        while low < threshold {
+            product = (generator.NextUint64() as uint128) * (bound as uint128);
+            low = product as uint64;
+        }
+    }
+    return (product >> 64u128) as uint64;
+}
+
+/// A uniform value in `[low, high]`, both ends included.
+///
+/// Inclusive because that is what a caller asking for a die roll or a random index into a known last element
+/// means. `low` above `high` is an empty range and gives `low`. The full range of the type is representable:
+/// a span of every value is a bound of 2^64, which does not fit in a `uint64`, and is handled as its own case
+/// rather than by an arithmetic accident.
+///
+/// https://rux-lang.dev/docs/api/random/uniform-in-range
+func UniformInRange<G: RandomGenerator>(generator: *var G, low: uint64, high: uint64) -> uint64 {
+    if high < low {
+        return low;
+    }
+    let span = high - low;
+    if span == 0xFFFFFFFFFFFFFFFFu64 {
+        // Every value is in range, so no reduction is needed and none would fit.
+        return generator.NextUint64();
+    }
+    return low + UniformBelow<G>(generator, span + 1u64);
+}
+
+/// A uniform signed value in `[low, high]`, both ends included.
+///
+/// The span is computed in unsigned arithmetic, so a range crossing zero -- or spanning the whole width, where
+/// the difference of the ends overflows a signed type -- is ordinary rather than a special case.
+///
+/// https://rux-lang.dev/docs/api/random/uniform-in-signed-range
+func UniformInSignedRange<G: RandomGenerator>(generator: *var G, low: int64, high: int64) -> int64 {
+    if high < low {
+        return low;
+    }
+    let span = (high as uint64) - (low as uint64);
+    if span == 0xFFFFFFFFFFFFFFFFu64 {
+        return generator.NextUint64() as int64;
+    }
+    return ((low as uint64) + UniformBelow<G>(generator, span + 1u64)) as int64;
+}
+
+/// A uniform `float64` in `[low, high)`.
+///
+/// The interval is half-open at the top, matching `NextFloat64`. A reversed pair gives `low`, and an interval so
+/// wide that its span overflows to an infinity gives values across the whole of it rather than a NaN.
+///
+/// https://rux-lang.dev/docs/api/random/uniform-float-in-range
+func UniformFloatInRange<G: RandomGenerator>(generator: *var G, low: float64, high: float64) -> float64 {
+    if !(low < high) {
+        return low;
+    }
+    let unit = NextFloat64<G>(generator);
+    let span = high - low;
+    if IsInfinite(span) {
+        // The span overflowed, so the interval is scaled in halves and recombined -- which keeps every value
+        // reachable where `low + unit * span` would have produced a NaN.
+        return low * (1.0 - unit) + high * unit;
+    }
+    let value = low + unit * span;
+    // Rounding can carry the result up to the excluded top; the value just below it is the honest answer.
+    return value < high ? value : NextDown(high);
+}
