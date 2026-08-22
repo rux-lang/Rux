@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Blake3Modes"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: BLAKE3 keyed hashing and key derivation, and the separation between modes"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
