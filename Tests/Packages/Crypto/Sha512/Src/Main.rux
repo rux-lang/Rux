@@ -1,0 +1,122 @@
+// The published vectors for all four variants, and the padding case this family makes harder: its length count
+// is sixteen bytes rather than eight, so a final block needs seventeen free bytes and the boundary sits at a
+// different place than SHA-256's.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Digest, Equal, Sha384Of, Sha512, Sha512Of, Sha512_224Of, Sha512_256Of };
+
+func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < into.length {
+        var value = 0u8;
+        var half: uint = 0;
+        while half < 2u {
+            let c = text.data[index * 2u + half] as uint8;
+            var digit = 0u8;
+            if c >= 0x30u8 && c <= 0x39u8 {
+                digit = c - 0x30u8;
+            }
+            else {
+                digit = c - 0x61u8 + 10u8;
+            }
+            value = value * 16u8 + digit;
+            half = half + 1;
+        }
+        into.data[index] = value as char8;
+        index = index + 1;
+    }
+}
+
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+    var expected: char8[64];
+    let room = MutableSlice::From<char8>(@expected[0], got.length);
+    FromHex(expectedHex, room);
+    let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
+    Assert(Equal(got, expectedBytes), what);
+}
+
+func Main() -> int {
+    var digest: char8[64];
+
+    // SHA-512.
+    let wide = MutableSlice::From<char8>(@digest[0], 64);
+    Sha512Of("", wide);
+    Check(Slice<char8> { data: @digest[0], length: 64 },
+          "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
+          "SHA-512 of the empty message");
+    Sha512Of("abc", wide);
+    Check(Slice<char8> { data: @digest[0], length: 64 },
+          "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+          "SHA-512 of abc");
+
+    // SHA-384.
+    let medium = MutableSlice::From<char8>(@digest[0], 48);
+    Sha384Of("", medium);
+    Check(Slice<char8> { data: @digest[0], length: 48 },
+          "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+          "SHA-384 of the empty message");
+    Sha384Of("abc", medium);
+    Check(Slice<char8> { data: @digest[0], length: 48 },
+          "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
+          "SHA-384 of abc");
+
+    // The two truncations, whose initial states are what keep them independent of SHA-512.
+    let narrow = MutableSlice::From<char8>(@digest[0], 28);
+    Sha512_224Of("abc", narrow);
+    Check(Slice<char8> { data: @digest[0], length: 28 },
+          "4634270f707b6a54daae7530460842e20e37ed265ceee9a43e8924aa",
+          "SHA-512/224 of abc");
+    let short = MutableSlice::From<char8>(@digest[0], 32);
+    Sha512_256Of("abc", short);
+    Check(Slice<char8> { data: @digest[0], length: 32 },
+          "53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23",
+          "SHA-512/256 of abc");
+
+    // No variant is a prefix of another, which is the property the distinct initial states buy.
+    var full: char8[64];
+    var truncated: char8[64];
+    Sha512Of("abc", MutableSlice::From<char8>(@full[0], 64));
+    Sha512_256Of("abc", MutableSlice::From<char8>(@truncated[0], 32));
+    Assert(!Equal(Slice<char8> { data: @full[0], length: 32 },
+                  Slice<char8> { data: @truncated[0], length: 32 }),
+           "SHA-512/256 is not the first half of SHA-512");
+    Sha384Of("abc", MutableSlice::From<char8>(@truncated[0], 48));
+    Assert(!Equal(Slice<char8> { data: @full[0], length: 48 },
+                  Slice<char8> { data: @truncated[0], length: 48 }),
+           "and SHA-384 is not its first three quarters");
+
+    // The incremental contract, across every split of every length that spans the block and padding boundaries.
+    var message: char8[300];
+    var index: uint = 0;
+    while index < 300u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+    var length: uint = 0;
+    while length <= 300u {
+        var oneShot: char8[64];
+        Sha512Of(Slice<char8> { data: @message[0], length: length }, MutableSlice::From<char8>(@oneShot[0], 64));
+        let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 64 };
+        var split: uint = 0;
+        while split <= length {
+            var incremental = Sha512::New();
+            incremental.Update(Slice<char8> { data: @message[0], length: split });
+            incremental.Update(Slice<char8> { data: @message[split], length: length - split });
+            var got: char8[64];
+            incremental.Finish(MutableSlice::From<char8>(@got[0], 64));
+            Assert(Equal(Slice<char8> { data: @got[0], length: 64 }, oneShotBytes),
+                   "every split of a message gives the same digest");
+            split = split + 1;
+        }
+        length = length + 1;
+    }
+
+    // The reported sizes.
+    var sizes = Sha512::New();
+    Assert(sizes.DigestLength() == 64u && sizes.BlockLength() == 128u, "SHA-512 reports its own sizes");
+    var shortSizes = Sha512::New512_224();
+    Assert(shortSizes.DigestLength() == 28u && shortSizes.BlockLength() == 128u,
+           "and a truncation reports its shorter digest with the same block");
+
+    return 0;
+}
