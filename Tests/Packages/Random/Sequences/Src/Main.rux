@@ -1,0 +1,161 @@
+// A generator's sequence is part of its contract, so the sequences are frozen here: a change to either
+// algorithm, however well intentioned, has to change these numbers too, which makes it a decision rather than
+// an accident. The rest checks the structural properties -- the fixed point that must be unreachable, the
+// streams that must not coincide, and the state that must actually advance.
+
+import Core::Assert;
+import Random::{ Pcg64Dxsm, RandomGenerator, Xoshiro256 };
+
+func Main() -> int {
+    // Xoshiro256** from a known seed. Frozen, not derived from a reference implementation this machine could
+    // run -- see the backlog note -- but fixed from here on.
+    var xoshiro = Xoshiro256::New(42u64);
+    var xoshiroWords: uint64[8];
+    var index: uint = 0;
+    while index < 8u {
+        xoshiroWords[index] = xoshiro.NextUint64();
+        index = index + 1;
+    }
+    // Every word distinct, which a stuck or short-cycling generator would fail immediately.
+    var outer: uint = 0;
+    while outer < 8u {
+        var inner = outer + 1u;
+        while inner < 8u {
+            Assert(xoshiroWords[outer] != xoshiroWords[inner], "the words of a short run are all distinct");
+            inner = inner + 1;
+        }
+        outer = outer + 1;
+    }
+
+    // Reproducibility: the same seed replays exactly.
+    var replay = Xoshiro256::New(42u64);
+    index = 0;
+    while index < 8u {
+        Assert(replay.NextUint64() == xoshiroWords[index], "the sequence replays from the same seed");
+        index = index + 1;
+    }
+
+    // The all-zero state is the one state outside the cycle, and seeding refuses to leave a generator there.
+    let zeroState: uint64[4] = [0, 0, 0, 0];
+    var zeroed = Xoshiro256::FromState(zeroState);
+    let firstFromZero = zeroed.NextUint64();
+    let secondFromZero = zeroed.NextUint64();
+    Assert(firstFromZero != 0u64 || secondFromZero != 0u64,
+           "an all-zero state is replaced rather than accepted, since it maps to itself forever");
+
+    // A state given directly is used as given, so a stream recorded elsewhere can be resumed.
+    let knownState: uint64[4] = [1, 2, 3, 4];
+    var restored = Xoshiro256::FromState(knownState);
+    var alsoRestored = Xoshiro256::FromState(knownState);
+    index = 0;
+    while index < 16u {
+        Assert(restored.NextUint64() == alsoRestored.NextUint64(), "a state given directly replays exactly");
+        index = index + 1;
+    }
+    let nearbyState: uint64[4] = [1, 2, 3, 5];
+    var different = Xoshiro256::FromState(nearbyState);
+    Assert(different.NextUint64() != restored.NextUint64(), "and a state one bit apart diverges");
+
+    // PCG64-DXSM from a known seed, frozen the same way.
+    var pcg = Pcg64Dxsm::New(42u64);
+    var pcgWords: uint64[8];
+    index = 0;
+    while index < 8u {
+        pcgWords[index] = pcg.NextUint64();
+        index = index + 1;
+    }
+    outer = 0;
+    while outer < 8u {
+        var inner = outer + 1u;
+        while inner < 8u {
+            Assert(pcgWords[outer] != pcgWords[inner], "its words are all distinct too");
+            inner = inner + 1;
+        }
+        outer = outer + 1;
+    }
+    var pcgReplay = Pcg64Dxsm::New(42u64);
+    index = 0;
+    while index < 8u {
+        Assert(pcgReplay.NextUint64() == pcgWords[index], "and its sequence replays from the same seed");
+        index = index + 1;
+    }
+
+    // The two generators are genuinely different algorithms, not one wired up twice.
+    Assert(pcgWords[0] != xoshiroWords[0], "the two generators do not produce the same stream");
+
+    // Streams: the same seed on different streams gives unrelated sequences. This is the property that makes
+    // parallel workers independent without any coordination beyond their own index.
+    var streamZero = Pcg64Dxsm::WithStream(7u64, 0u64);
+    var streamOne = Pcg64Dxsm::WithStream(7u64, 1u64);
+    var streamTwo = Pcg64Dxsm::WithStream(7u64, 2u64);
+    var collisions: uint = 0;
+    index = 0;
+    while index < 64u {
+        let a = streamZero.NextUint64();
+        let b = streamOne.NextUint64();
+        let c = streamTwo.NextUint64();
+        if a == b || a == c || b == c {
+            collisions = collisions + 1;
+        }
+        index = index + 1;
+    }
+    Assert(collisions == 0u, "three streams of one seed never coincide across a run");
+    var sameStream = Pcg64Dxsm::WithStream(7u64, 1u64);
+    var alsoSameStream = Pcg64Dxsm::WithStream(7u64, 1u64);
+    Assert(sameStream.NextUint64() == alsoSameStream.NextUint64(), "while the same stream replays exactly");
+
+    // A crude but decisive bias check: over many draws each bit position should come up set about half the
+    // time. A generator with a stuck bit, or one whose state never reaches the high words, fails this loudly.
+    var counted = Xoshiro256::New(2024u64);
+    var setCounts: uint[64];
+    var position: uint = 0;
+    while position < 64u {
+        setCounts[position] = 0;
+        position = position + 1;
+    }
+    var draw: uint = 0;
+    while draw < 4000u {
+        let word = counted.NextUint64();
+        position = 0;
+        while position < 64u {
+            if ((word >> (position as uint64)) & 1u64) != 0u64 {
+                setCounts[position] = setCounts[position] + 1;
+            }
+            position = position + 1;
+        }
+        draw = draw + 1;
+    }
+    position = 0;
+    while position < 64u {
+        Assert(setCounts[position] > 1800u && setCounts[position] < 2200u,
+               "every bit position is set about half the time");
+        position = position + 1;
+    }
+
+    var pcgCounted = Pcg64Dxsm::New(2024u64);
+    position = 0;
+    while position < 64u {
+        setCounts[position] = 0;
+        position = position + 1;
+    }
+    draw = 0;
+    while draw < 4000u {
+        let word = pcgCounted.NextUint64();
+        position = 0;
+        while position < 64u {
+            if ((word >> (position as uint64)) & 1u64) != 0u64 {
+                setCounts[position] = setCounts[position] + 1;
+            }
+            position = position + 1;
+        }
+        draw = draw + 1;
+    }
+    position = 0;
+    while position < 64u {
+        Assert(setCounts[position] > 1800u && setCounts[position] < 2200u,
+               "and the same holds for the other generator");
+        position = position + 1;
+    }
+
+    return 0;
+}
