@@ -8,8 +8,8 @@
 // alias declared in another file of the package.
 
 import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, __getdirentries64, close, dup2, fsync, ftruncate,
-                fchmodat, fstat, fstatat, linkat, lseek, mkdirat, openat, pipe, read, renameat, symlinkat,
-                unlinkat, utimensat, write };
+                chdir, fchmodat, fstat, fstatat, getcwd, linkat, lseek, mkdirat, openat, pipe, read, renameat, symlinkat,
+                readlinkat, unlinkat, utimensat, write };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///
@@ -159,6 +159,41 @@ func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileM
 /// https://rux-lang.dev/docs/api/macos/lseek
 func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
     return Normalize(lseek(fd, offset, whence));
+}
+
+/// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
+///
+/// Returns zero, or a negative error number. `ERANGE` where the buffer is too small for the answer.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `size` bytes.
+///
+/// https://rux-lang.dev/docs/api/macos/getcwd
+func Getcwd(buffer: *var char8, size: uint) -> int64 {
+    if getcwd(buffer, size) == null {
+        return 0i64 - (*__error() as int64);
+    }
+    return 0;
+}
+
+/// Makes `path` the process's working directory.
+///
+/// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread.
+///
+/// https://rux-lang.dev/docs/api/macos/chdir
+func Chdir(path: *char8) -> int64 {
+    return Normalize(chdir(path) as int64);
+}
+
+/// Reads the text a symbolic link holds into `buffer`.
+///
+/// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
+/// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit.
+///
+/// https://rux-lang.dev/docs/api/macos/readlink-at
+func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
+    return Normalize(readlinkat(directoryFd, path, buffer, size));
 }
 
 /// `AT_SYMLINK_NOFOLLOW`: act on a symbolic link itself rather than on what it points at.

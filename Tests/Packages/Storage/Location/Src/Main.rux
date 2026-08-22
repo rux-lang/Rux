@@ -1,0 +1,108 @@
+// Absolute is arithmetic and Canonicalize is a question for the filesystem, and the test insists on the
+// difference: the same relative name resolves under both, but only one of them requires the file to be there.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Io::{ IoError, IoErrorKind };
+import Path::{ IsAbsolute, OsString, Path, PathBuffer };
+import Storage::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory,
+                  OpenOptions };
+import Text::TextError;
+
+func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+    var textError = TextError::None;
+    *holder = OsString::FromText(allocator, text, @textError);
+    Assert(textError == TextError::None, "the name converts");
+    return Path::FromView(holder.View());
+}
+
+func Touch(allocator: Allocator, path: Path) {
+    var error = IoError::Ok();
+    var made = File::Open(allocator, path, OpenOptions::Writing(), @error);
+    Assert(made.IsOpen() && error.IsOk(), "a file is made");
+    Assert(made.Close().IsOk(), "and closed");
+}
+
+// Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
+func EndsWith(buffer: *PathBuffer, tail: Slice<char8>) -> bool {
+    let units = buffer.AsPath().name.Units();
+    if units.length < tail.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < tail.length {
+        let mine = units.data[units.length - tail.length + index] as uint32;
+        let theirs = tail.data[index] as uint8 as uint32;
+        // Separators compare equal whichever way they lean, since the system chooses which it writes.
+        let sameSeparator = (mine == 0x5Cu32 || mine == 0x2Fu32) && (theirs == 0x5Cu32 || theirs == 0x2Fu32);
+        if mine != theirs && !sameSeparator {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    // The working directory is absolute, and reading it does not disturb anything.
+    var here = CurrentDirectory(allocator, @error);
+    Assert(error.IsOk(), "the working directory reads");
+    Assert(!here.IsEmpty(), "and is not empty");
+    Assert(IsAbsolute(Path::FromView(here.View())), "and is absolute");
+
+    var dirHolder = OsString::New(allocator);
+    let dir = PathOf(allocator, "Bin/StorageLoc.tmp", @dirHolder);
+    var fileHolder = OsString::New(allocator);
+    let file = PathOf(allocator, "Bin/StorageLoc.tmp/real.txt", @fileHolder);
+    DeleteFile(allocator, file);
+    DeleteDirectory(allocator, dir);
+    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+    Touch(allocator, file);
+
+    // Absolute is arithmetic: it answers for a relative name, and it answers for one that does not exist.
+    var made = Absolute(allocator, file, @error);
+    Assert(error.IsOk(), "a relative path is made absolute");
+    Assert(IsAbsolute(made.AsPath()), "and is absolute");
+    Assert(EndsWith(@made, "StorageLoc.tmp/real.txt"), "ending in what was asked for");
+
+    var absentHolder = OsString::New(allocator);
+    let absent = PathOf(allocator, "Bin/StorageLoc.tmp/never-existed.txt", @absentHolder);
+    var imagined = Absolute(allocator, absent, @error);
+    Assert(error.IsOk(), "a path that does not exist is still made absolute");
+    Assert(EndsWith(@imagined, "never-existed.txt"), "keeping the name it was given");
+
+    // The dot segments are simplified lexically, without asking anything.
+    var noisyHolder = OsString::New(allocator);
+    let noisy = PathOf(allocator, "Bin/./StorageLoc.tmp/../StorageLoc.tmp/real.txt", @noisyHolder);
+    var tidied = Absolute(allocator, noisy, @error);
+    Assert(error.IsOk() && EndsWith(@tidied, "StorageLoc.tmp/real.txt"), "the dot segments simplify away");
+
+    // Canonicalize is a question: it agrees for a file that is there, and refuses for one that is not.
+    var truth = Canonicalize(allocator, file, @error);
+    Assert(error.IsOk(), "an existing file canonicalizes");
+    Assert(IsAbsolute(truth.AsPath()), "to an absolute name");
+    Assert(EndsWith(@truth, "StorageLoc.tmp/real.txt"), "ending in the file's real name");
+
+    var refused = Canonicalize(allocator, absent, @error);
+    Assert(error.kind == IoErrorKind::NotFound,
+           "a name with nothing behind it has no true form -- this is the difference from Absolute");
+    refused.Release();
+
+    // Canonicalizing what is already canonical changes nothing.
+    var again = Canonicalize(allocator, truth.AsPath(), @error);
+    Assert(error.IsOk() && again.Length() == truth.Length(), "canonicalization is settled after one pass");
+
+    made.Release();
+    imagined.Release();
+    tidied.Release();
+    truth.Release();
+    again.Release();
+    Assert(DeleteFile(allocator, file).IsOk(), "the file cleans up");
+    Assert(DeleteDirectory(allocator, dir).IsOk(), "and so does the directory");
+
+    return 0;
+}

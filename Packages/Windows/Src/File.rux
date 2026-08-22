@@ -192,6 +192,15 @@ extern {
     func SetFileTime(file: *var opaque, creationTime: *FileTime, lastAccessTime: *FileTime,
                      lastWriteTime: *FileTime) -> int32;
 
+    // Writes the final, resolved path of an open handle: symbolic links followed, short names expanded, case as
+    // the filesystem stores it
+    //
+    // Returns the length written, without the terminator, or the required length when the buffer is too small,
+    // or zero on failure. VOLUME_NAME_DOS (0) spells the answer with a drive letter where the file has one.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+    func GetFinalPathNameByHandleW(file: *var opaque, filePath: *var char16, filePathLength: uint32,
+                                   flags: uint32) -> uint32;
+
     // Deletes a file, taking a UTF-16 path
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
     func DeleteFileW(fileName: *char16) -> int32;

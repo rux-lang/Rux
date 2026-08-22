@@ -4,7 +4,8 @@
 // count or a small negative error number. A short count is not an error and not an end of file -- a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
-import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysClose, SysDup3, SysFstat,
+import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, SysClose, SysDup3, SysFstat,
+                SysGetcwd, SysReadlinkAt,
                 SysFchmodAt, SysFsync, SysFtruncate, SysGetdents64, SysLinkAt, SysLseek, SysMkdirAt, SysNewFstatAt,
                 SysOpenAt, SysPipe2, SysRead,
                 SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysUtimensAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
@@ -262,6 +263,41 @@ func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: 
 func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
     return Syscall4(SysUtimensAt, SignExtendFd(directoryFd), path as uint64, times as uint64,
                     (flags as int64) as uint64);
+}
+
+/// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
+///
+/// Returns the length written including the terminator, or a negative error number; `ERANGE` where the buffer is
+/// too small for the answer.
+///
+/// # Safety
+///
+/// `buffer` must be writable for `size` bytes.
+///
+/// https://rux-lang.dev/docs/api/linux/getcwd
+func Getcwd(buffer: *var char8, size: uint) -> int64 {
+    return Syscall2(SysGetcwd, buffer as uint64, size as uint64);
+}
+
+/// Makes `path` the process's working directory.
+///
+/// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread,
+/// which is why nothing above this should call it casually.
+///
+/// https://rux-lang.dev/docs/api/linux/chdir
+func Chdir(path: *char8) -> int64 {
+    return Syscall1(SysChdir, path as uint64);
+}
+
+/// Reads the text a symbolic link holds into `buffer`.
+///
+/// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
+/// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit, so a caller that
+/// filled the buffer exactly cannot tell truncation from a perfect fit and should retry with more room.
+///
+/// https://rux-lang.dev/docs/api/linux/readlink-at
+func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
+    return Syscall4(SysReadlinkAt, SignExtendFd(directoryFd), path as uint64, buffer as uint64, size as uint64);
 }
 
 /// Flushes everything written to `fd` through to the storage device.
