@@ -1,0 +1,86 @@
+// The asymmetry of two's complement is behind nearly every edge here: the most negative value of a signed width
+// has no positive counterpart, so its magnitude, its negation, and its greatest common divisor with zero are all
+// unrepresentable. Each of those is checked at the width where it is cheapest to see, and the generic code means
+// what holds for int8 holds for int512.
+
+import Core::{ Assert, MaximumOf, MinimumOf };
+import Math::{ AbsChecked, AbsWrapping, Clamp, GcdChecked, LcmChecked, Maximum, Minimum, PowChecked };
+
+func Main() -> int {
+    // Magnitude, including the one input that has none.
+    var got: int32 = 0;
+    Assert(!AbsChecked<int32>(-5i32, @got) && got == 5i32, "a negative magnitude is positive");
+    Assert(!AbsChecked<int32>(5i32, @got) && got == 5i32, "and a positive one is itself");
+    Assert(!AbsChecked<int32>(0i32, @got) && got == 0i32, "zero is its own magnitude");
+    Assert(AbsChecked<int32>(-2147483648i32, @got), "the most negative value has no representable magnitude");
+    Assert(got == -2147483648i32, "and the wrapped answer is the machine's own");
+    Assert(AbsWrapping<int32>(-2147483648i32) == -2147483648i32, "which is what the wrapping form returns");
+
+    var small: int8 = 0;
+    Assert(AbsChecked<int8>(-128i8, @small), "the same holds at the narrowest width");
+    Assert(!AbsChecked<int8>(-127i8, @small) && small == 127i8, "one above it is fine");
+
+    // An unsigned type is already its own magnitude and can never overflow here.
+    var wide: uint64 = 0;
+    Assert(!AbsChecked<uint64>(18446744073709551615u64, @wide) && wide == 18446744073709551615u64,
+           "an unsigned maximum is its own magnitude");
+
+    // Ordering and clamping.
+    Assert(Minimum<int32>(-3i32, 4i32) == -3i32, "the smaller of two is the smaller");
+    Assert(Maximum<int32>(-3i32, 4i32) == 4i32, "and the larger is the larger");
+    Assert(Minimum<uint8>(0u8, 255u8) == 0u8, "unsigned extremes order correctly");
+    Assert(Maximum<uint8>(0u8, 255u8) == 255u8, "in both directions");
+    Assert(Clamp<int32>(7i32, 0i32, 5i32) == 5i32, "a value above the range comes down to the top");
+    Assert(Clamp<int32>(-7i32, 0i32, 5i32) == 0i32, "one below comes up to the bottom");
+    Assert(Clamp<int32>(3i32, 0i32, 5i32) == 3i32, "and one inside is untouched");
+    Assert(Clamp<int32>(3i32, 5i32, 0i32) == 5i32, "a contradictory pair yields the low bound, as documented");
+
+    // Greatest common divisor, on magnitudes, with the conventional zero cases.
+    var divisor: int32 = 0;
+    Assert(!GcdChecked<int32>(12i32, 18i32, @divisor) && divisor == 6i32, "the usual case");
+    Assert(!GcdChecked<int32>(-12i32, 18i32, @divisor) && divisor == 6i32, "signs do not matter");
+    Assert(!GcdChecked<int32>(-12i32, -18i32, @divisor) && divisor == 6i32, "in either position");
+    Assert(!GcdChecked<int32>(17i32, 5i32, @divisor) && divisor == 1i32, "coprime values share only one");
+    Assert(!GcdChecked<int32>(0i32, 0i32, @divisor) && divisor == 0i32, "zero with zero is zero by convention");
+    Assert(!GcdChecked<int32>(9i32, 0i32, @divisor) && divisor == 9i32, "which keeps Gcd(x, 0) equal to |x|");
+    Assert(!GcdChecked<int32>(0i32, 9i32, @divisor) && divisor == 9i32, "from either side");
+    Assert(GcdChecked<int32>(-2147483648i32, 0i32, @divisor),
+           "and the one divisor too large to express is reported");
+
+    // Least common multiple, and the identity that pins it to the divisor.
+    var multiple: int32 = 0;
+    Assert(!LcmChecked<int32>(4i32, 6i32, @multiple) && multiple == 12i32, "the usual case");
+    Assert(!LcmChecked<int32>(0i32, 5i32, @multiple) && multiple == 0i32, "zero with anything is zero");
+    Assert(!LcmChecked<int32>(-4i32, 6i32, @multiple) && multiple == 12i32, "signs do not matter here either");
+    Assert(!LcmChecked<int32>(21i32, 6i32, @multiple) && multiple == 42i32, "a shared factor is counted once");
+    // Two large coprime values multiply, which is exactly what does not fit.
+    Assert(LcmChecked<int32>(65537i32, 65539i32, @multiple), "a product past the width is reported");
+    // A value whose product would overflow but whose multiple does not: dividing first is what saves it.
+    var lower: int32 = 0;
+    Assert(!LcmChecked<int32>(2000000000i32, 1000000000i32, @lower) && lower == 2000000000i32,
+           "dividing before multiplying keeps a representable answer representable");
+
+    // Checked power.
+    var power: int32 = 0;
+    Assert(!PowChecked<int32>(2i32, 10u, @power) && power == 1024i32, "the usual case");
+    Assert(!PowChecked<int32>(7i32, 0u, @power) && power == 1i32, "anything to the zeroth is one");
+    Assert(!PowChecked<int32>(0i32, 0u, @power) && power == 1i32, "including zero, since the empty product is one");
+    Assert(!PowChecked<int32>(0i32, 5u, @power) && power == 0i32, "zero to anything else is zero");
+    Assert(!PowChecked<int32>(-2i32, 3u, @power) && power == -8i32, "an odd power keeps a negative sign");
+    Assert(!PowChecked<int32>(-2i32, 4u, @power) && power == 16i32, "and an even one loses it");
+    Assert(!PowChecked<int32>(1i32, 1000000u, @power) && power == 1i32, "one stays one however long the exponent");
+    Assert(PowChecked<int32>(2i32, 31u, @power), "a power one past the signed maximum is reported");
+    Assert(!PowChecked<int32>(2i32, 30u, @power) && power == 1073741824i32, "and the one below it is not");
+    var byte: uint8 = 0;
+    Assert(!PowChecked<uint8>(15u8, 2u, @byte) && byte == 225u8, "a square that just fits is not an overflow");
+    Assert(PowChecked<uint8>(16u8, 2u, @byte), "and one that just does not is");
+
+    // The same code at a width nothing else in the suite reaches.
+    var huge: uint512 = 0u512;
+    Assert(!PowChecked<uint512>(2u512, 400u, @huge), "two to the four hundredth fits a 512-bit integer");
+    var back: uint512 = 0u512;
+    Assert(!GcdChecked<uint512>(huge, 1024u512, @back) && back == 1024u512,
+           "and shares its low power of two with a smaller one");
+
+    return 0;
+}
