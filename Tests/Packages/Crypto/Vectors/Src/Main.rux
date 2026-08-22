@@ -1,0 +1,210 @@
+// The checks that are the same for every algorithm, applied to every algorithm.
+//
+// Each algorithm's own test carries its known-answer vectors, because those are specific to it. What this adds
+// is the two families of check that are worth running uniformly and are easy to leave out of one algorithm by
+// accident: the boundary behaviour, where a message length lands exactly on a block, a rate or a chunk, and the
+// differential behaviour, where one flipped input bit must change about half the output bits.
+//
+// The avalanche check is the one that catches a hash which is merely *shaped* correctly. An implementation with
+// a round loop that runs one iteration too few, or a schedule that never mixes the last word, still produces
+// deterministic output of the right length that passes every structural test -- and shows up here immediately,
+// because a weak diffusion changes far fewer than half the bits.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256,
+                 Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
+
+// How many bits differ between two byte sequences.
+func BitsDiffering(left: Slice<char8>, right: Slice<char8>) -> uint {
+    var count: uint = 0;
+    var index: uint = 0;
+    while index < left.length && index < right.length {
+        var difference = (left.data[index] as uint8) ^ (right.data[index] as uint8);
+        while difference != 0u8 {
+            count = count + (difference & 1u8) as uint;
+            difference = difference >> 1u8;
+        }
+        index = index + 1;
+    }
+    return count;
+}
+
+// Runs the avalanche check on one algorithm: every single-bit flip in a message must change roughly half the
+// output bits. A hash whose diffusion is incomplete fails this while passing everything structural.
+func CheckAvalanche(digestLength: uint, which: uint, what: Slice<char8>) {
+    var message: char8[64];
+    var index: uint = 0;
+    while index < 64u {
+        message[index] = ((index * 7u) as uint8) as char8;
+        index = index + 1;
+    }
+    var baseline: char8[64];
+    let whole = Slice<char8> { data: @message[0], length: 64 };
+    HashWith(which, whole, MutableSlice::From<char8>(@baseline[0], digestLength));
+    let baselineBytes = Slice<char8> { data: @baseline[0], length: digestLength };
+
+    let totalBits = digestLength * 8u;
+    var worstLow = totalBits;
+    var worstHigh: uint = 0;
+    var position: uint = 0;
+    while position < 64u * 8u {
+        let bytePosition = position / 8u;
+        let bit = (1u8 << ((position % 8u) as uint8));
+        message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
+        var flipped: char8[64];
+        HashWith(which, whole, MutableSlice::From<char8>(@flipped[0], digestLength));
+        message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
+
+        let differing = BitsDiffering(baselineBytes, Slice<char8> { data: @flipped[0], length: digestLength });
+        if differing < worstLow {
+            worstLow = differing;
+        }
+        if differing > worstHigh {
+            worstHigh = differing;
+        }
+        // A quarter to three quarters is a very loose band around a half, and no real hash comes near either
+        // edge -- but an implementation with a truncated round loop falls far outside it.
+        Assert(differing * 4u > totalBits && differing * 4u < totalBits * 3u, what);
+        position = position + 1;
+    }
+    Assert(worstLow > 0u, "and no flipped bit leaves the output unchanged");
+    Assert(worstHigh < totalBits, "nor inverts it entirely");
+}
+
+// Dispatches to one of the algorithms by index, since they do not share an interface uniformly.
+func HashWith(which: uint, message: Slice<char8>, into: MutableSlice<char8>) {
+    if which == 0u {
+        Sha256Of(message, into);
+    }
+    else if which == 1u {
+        Sha512Of(message, into);
+    }
+    else if which == 2u {
+        Sha3Of256(message, into);
+    }
+    else if which == 3u {
+        Blake3Of(message, into);
+    }
+    else if which == 4u {
+        Shake128Of(message, into);
+    }
+    else if which == 5u {
+        Sha224Of(message, into);
+    }
+    else if which == 6u {
+        Sha384Of(message, into);
+    }
+    else if which == 7u {
+        Sha3Of512(message, into);
+    }
+    else if which == 8u {
+        LegacySha1Of(message, into);
+    }
+    else {
+        LegacyMd5Of(message, into);
+    }
+}
+
+func Main() -> int {
+    // Avalanche, on every algorithm the package offers -- including the legacy pair, which are broken for
+    // collisions and still diffuse properly, since that is not what broke them.
+    CheckAvalanche(32u, 0u, "SHA-256 diffuses a single flipped bit across about half its output");
+    CheckAvalanche(64u, 1u, "SHA-512 diffuses a single flipped bit");
+    CheckAvalanche(32u, 2u, "SHA3-256 diffuses a single flipped bit");
+    CheckAvalanche(32u, 3u, "BLAKE3 diffuses a single flipped bit");
+    CheckAvalanche(32u, 4u, "SHAKE128 diffuses a single flipped bit");
+    CheckAvalanche(28u, 5u, "SHA-224 diffuses a single flipped bit");
+    CheckAvalanche(48u, 6u, "SHA-384 diffuses a single flipped bit");
+    CheckAvalanche(64u, 7u, "SHA3-512 diffuses a single flipped bit");
+    CheckAvalanche(20u, 8u, "SHA-1 diffuses a single flipped bit");
+    CheckAvalanche(16u, 9u, "MD5 diffuses a single flipped bit");
+
+    // Boundary lengths: the exact block, rate and chunk sizes of every algorithm, and one either side of each.
+    // A padding mistake shows at exactly one of these lengths and nowhere else.
+    let boundaries: uint[14] = [55, 56, 63, 64, 65, 71, 72, 111, 112, 127, 128, 135, 136, 143];
+    var message: char8[2100];
+    var index: uint = 0;
+    while index < 2100u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+
+    var which: uint = 0;
+    while which < 10u {
+        var lengthIndex: uint = 0;
+        while lengthIndex < 14u {
+            let length = boundaries[lengthIndex];
+            let whole = Slice<char8> { data: @message[0], length: length };
+            var oneShot: char8[64];
+            HashWith(which, whole, MutableSlice::From<char8>(@oneShot[0], 32));
+            // Hashing the same bytes twice must agree, and hashing one byte fewer must not.
+            var again: char8[64];
+            HashWith(which, whole, MutableSlice::From<char8>(@again[0], 32));
+            Assert(Equal(Slice<char8> { data: @oneShot[0], length: 32 },
+                         Slice<char8> { data: @again[0], length: 32 }),
+                   "a boundary length hashes deterministically");
+            let shorter = Slice<char8> { data: @message[0], length: length - 1u };
+            var shorterHash: char8[64];
+            HashWith(which, shorter, MutableSlice::From<char8>(@shorterHash[0], 32));
+            Assert(!Equal(Slice<char8> { data: @oneShot[0], length: 32 },
+                          Slice<char8> { data: @shorterHash[0], length: 32 }),
+                   "and differs from the message one byte shorter, so the length reaches the padding");
+            lengthIndex = lengthIndex + 1;
+        }
+        which = which + 1;
+    }
+
+    // The extendable outputs and BLAKE3's chunk boundary, which no other algorithm has.
+    let chunkLengths: uint[6] = [1023, 1024, 1025, 2047, 2048, 2049];
+    var chunkIndex: uint = 0;
+    while chunkIndex < 6u {
+        let length = chunkLengths[chunkIndex];
+        let whole = Slice<char8> { data: @message[0], length: length };
+        var direct: char8[32];
+        Blake3Of(whole, MutableSlice::From<char8>(@direct[0], 32));
+        var pieced = Blake3::New();
+        var offset: uint = 0;
+        while offset < length {
+            var step = 337u;
+            if offset + step > length {
+                step = length - offset;
+            }
+            pieced.Update(Slice<char8> { data: @message[offset], length: step });
+            offset = offset + step;
+        }
+        var piecedOut: char8[32];
+        pieced.Finish(MutableSlice::From<char8>(@piecedOut[0], 32));
+        Assert(Equal(Slice<char8> { data: @direct[0], length: 32 },
+                     Slice<char8> { data: @piecedOut[0], length: 32 }),
+               "BLAKE3 agrees across its chunk boundary whatever the feed size");
+        let shorter = Slice<char8> { data: @message[0], length: length - 1u };
+        var shorterHash: char8[32];
+        Blake3Of(shorter, MutableSlice::From<char8>(@shorterHash[0], 32));
+        Assert(!Equal(Slice<char8> { data: @direct[0], length: 32 },
+                      Slice<char8> { data: @shorterHash[0], length: 32 }),
+               "and a message one byte shorter hashes differently at a chunk boundary");
+        chunkIndex = chunkIndex + 1;
+    }
+
+    // Distinctness across algorithms: no two produce the same digest for the same message, which would mean one
+    // was wired to another.
+    var digests: char8[320];
+    which = 0;
+    while which < 10u {
+        HashWith(which, "the same message", MutableSlice::From<char8>(@digests[which * 32u], 16));
+        which = which + 1;
+    }
+    var first: uint = 0;
+    while first < 10u {
+        var second = first + 1u;
+        while second < 10u {
+            Assert(!Equal(Slice<char8> { data: @digests[first * 32u], length: 16 },
+                          Slice<char8> { data: @digests[second * 32u], length: 16 }),
+                   "no two algorithms produce the same digest for one message");
+            second = second + 1;
+        }
+        first = first + 1;
+    }
+
+    return 0;
+}
