@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Generator"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Random: the generator contract, SplitMix64 seeding and stable extraction"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Random = { Path = "../../../../Packages/Random" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Random"

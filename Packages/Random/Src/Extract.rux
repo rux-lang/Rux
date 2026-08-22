@@ -1,0 +1,84 @@
+import Core::MutableSlice;
+
+// Everything that is not a 64-bit word, derived from the stream of 64-bit words.
+//
+// These live here rather than on each generator so that two different generators seeded alike agree on more
+// than their raw output: the same word stream yields the same bytes, the same narrow integers and the same
+// floats, whichever algorithm produced it. A generator that supplied its own byte extraction would be free to
+// disagree, and the disagreement would only show up as an unreproducible result somewhere far away.
+
+/// Fills `into` with random bytes.
+///
+/// The words are consumed least significant byte first, and a partial final word contributes its low bytes and
+/// discards the rest -- so the same `into.length` always consumes the same number of words, and two runs that
+/// fill buffers of the same size stay in step.
+///
+/// https://rux-lang.dev/docs/api/random/fill-bytes
+func FillBytes<G: RandomGenerator>(generator: *var G, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < into.length {
+        var word = generator.NextUint64();
+        var byteIndex: uint = 0;
+        while byteIndex < 8u && index < into.length {
+            into.data[index] = (word & 0xFFu64) as uint8 as char8;
+            word = word >> 8u64;
+            index = index + 1;
+            byteIndex = byteIndex + 1;
+        }
+    }
+}
+
+/// The next 32-bit word: the low half of a 64-bit one.
+///
+/// A whole word is consumed and half of it discarded, which costs nothing and keeps the word stream aligned --
+/// a generator that handed out the halves in turn would produce different sequences depending on how many
+/// narrow draws happened to precede a wide one.
+///
+/// https://rux-lang.dev/docs/api/random/next-uint32
+func NextUint32<G: RandomGenerator>(generator: *var G) -> uint32 {
+    return (generator.NextUint64() & 0xFFFFFFFFu64) as uint32;
+}
+
+/// The next 16-bit word.
+///
+/// https://rux-lang.dev/docs/api/random/next-uint16
+func NextUint16<G: RandomGenerator>(generator: *var G) -> uint16 {
+    return (generator.NextUint64() & 0xFFFFu64) as uint16;
+}
+
+/// The next 8-bit word.
+///
+/// https://rux-lang.dev/docs/api/random/next-uint8
+func NextUint8<G: RandomGenerator>(generator: *var G) -> uint8 {
+    return (generator.NextUint64() & 0xFFu64) as uint8;
+}
+
+/// The next 128-bit word, high half drawn first.
+///
+/// https://rux-lang.dev/docs/api/random/next-uint128
+func NextUint128<G: RandomGenerator>(generator: *var G) -> uint128 {
+    let high = generator.NextUint64() as uint128;
+    let low = generator.NextUint64() as uint128;
+    return (high << 64u128) | low;
+}
+
+/// A `float64` uniformly distributed in `[0, 1)`.
+///
+/// Built from the top 53 bits of a word, which is exactly the number a `float64` can hold without rounding: every
+/// value produced is a multiple of 2^-53, each equally likely, and none is ever exactly one. Dividing a whole
+/// word by 2^64 instead would round -- and rounding upward at the top would produce exactly one, which callers
+/// scaling into an array index do not expect.
+///
+/// https://rux-lang.dev/docs/api/random/next-float64
+func NextFloat64<G: RandomGenerator>(generator: *var G) -> float64 {
+    let bits = generator.NextUint64() >> 11u64;
+    return (bits as float64) * 1.1102230246251565e-16; // 2^-53
+}
+
+/// A `float32` uniformly distributed in `[0, 1)`, from the top 24 bits.
+///
+/// https://rux-lang.dev/docs/api/random/next-float32
+func NextFloat32<G: RandomGenerator>(generator: *var G) -> float32 {
+    let bits = generator.NextUint64() >> 40u64;
+    return ((bits as float64) * 5.960464477539063e-8) as float32; // 2^-24
+}
