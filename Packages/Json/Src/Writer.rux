@@ -1,0 +1,283 @@
+// Writing a value back out, compactly or for a human.
+//
+// Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,
+// the backslash and every control character below space, using the short escapes where they exist and a
+// four-digit form otherwise. The solidus is *not* escaped, though many writers do it -- it is legal either way,
+// and escaping it makes output differ from every other writer's for no benefit.
+//
+// And a non-finite number cannot be written, because JSON has no way to spell one. A writer that emits `NaN` or
+// `Infinity` produces something that is not JSON and that other parsers reject, which turns a computation
+// problem into an interoperation problem somewhere far away. Refusing is the only honest answer; a caller who
+// has a non-finite value has to decide what it means, and only the caller can.
+
+import Core::{ MutableSlice, Slice };
+import Format::TextWriter;
+import Text::TextError;
+
+/// Why writing stopped.
+///
+/// https://rux-lang.dev/docs/api/json/write-error
+enum JsonWriteError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// The writer refused the bytes.
+    Failed = 1,
+    /// A number that JSON cannot spell -- a NaN or an infinity.
+    NonFinite = 2,
+    /// A value nested deeper than the writer will go.
+    TooDeep = 3
+}
+
+/// How a document should be laid out.
+///
+/// https://rux-lang.dev/docs/api/json/json-style
+struct JsonStyle {
+    /// Spaces of indentation per level; zero writes everything on one line.
+    indent: uint;
+    /// Whether a space follows the colon after a member name. Ignored when indenting, which always adds one.
+    spaceAfterColon: bool;
+}
+
+extend JsonStyle {
+    /// The compact style: no whitespace anywhere. What a document on a wire should be.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-style/compact
+    func Compact() -> JsonStyle {
+        return JsonStyle { indent: 0, spaceAfterColon: false };
+    }
+
+    /// The readable style: two spaces per level.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-style/pretty
+    func Pretty() -> JsonStyle {
+        return JsonStyle { indent: 2, spaceAfterColon: true };
+    }
+}
+
+// The sixteen hex digits, lower case, which is what the escape form uses.
+const JsonHexDigits: Slice<char8> = "0123456789abcdef";
+
+/// Writes the escaped form of `text`, including its surrounding quotes.
+///
+/// Escapes exactly what the standard requires: the quote, the backslash, and every control character below
+/// space. Bytes above that pass through unchanged, so a UTF-8 document stays UTF-8 rather than being expanded
+/// into escapes -- which is legal but makes output several times larger for no gain.
+///
+/// https://rux-lang.dev/docs/api/json/write-escaped
+func WriteEscaped(writer: TextWriter, text: Slice<char8>) -> JsonWriteError {
+    var sink = writer;
+    var quote: char8[1];
+    quote[0] = 0x22u8 as char8;
+    if sink.Write(quote[0..1]) != TextError::None {
+        return JsonWriteError::Failed;
+    }
+    var index: uint = 0;
+    var runStart: uint = 0;
+    while index < text.length {
+        let c = text.data[index] as uint8;
+        var escape: char8[6];
+        var escapeLength: uint = 0;
+        if c == 0x22u8 || c == 0x5Cu8 {
+            escape[0] = 0x5Cu8 as char8;
+            escape[1] = c as char8;
+            escapeLength = 2;
+        }
+        else if c == 0x08u8 || c == 0x0Cu8 || c == 0x0Au8 || c == 0x0Du8 || c == 0x09u8 {
+            escape[0] = 0x5Cu8 as char8;
+            var letter = 0u8;
+            if c == 0x08u8 {
+                letter = 0x62u8;
+            }
+            else if c == 0x0Cu8 {
+                letter = 0x66u8;
+            }
+            else if c == 0x0Au8 {
+                letter = 0x6Eu8;
+            }
+            else if c == 0x0Du8 {
+                letter = 0x72u8;
+            }
+            else {
+                letter = 0x74u8;
+            }
+            escape[1] = letter as char8;
+            escapeLength = 2;
+        }
+        else if c < 0x20u8 {
+            // Every other control character has no short form and takes the four-digit one.
+            escape[0] = 0x5Cu8 as char8;
+            escape[1] = 0x75u8 as char8;
+            escape[2] = 0x30u8 as char8;
+            escape[3] = 0x30u8 as char8;
+            escape[4] = JsonHexDigits.data[((c >> 4u8) & 0x0Fu8) as uint];
+            escape[5] = JsonHexDigits.data[(c & 0x0Fu8) as uint];
+            escapeLength = 6;
+        }
+        if escapeLength > 0u {
+            if index > runStart {
+                let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
+                if sink.Write(run) != TextError::None {
+                    return JsonWriteError::Failed;
+                }
+            }
+            if sink.Write(escape[0..escapeLength]) != TextError::None {
+                return JsonWriteError::Failed;
+            }
+            runStart = index + 1u;
+        }
+        index = index + 1u;
+    }
+    if index > runStart {
+        let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
+        if sink.Write(run) != TextError::None {
+            return JsonWriteError::Failed;
+        }
+    }
+    if sink.Write(quote[0..1]) != TextError::None {
+        return JsonWriteError::Failed;
+    }
+    return JsonWriteError::None;
+}
+
+// Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
+// non-finite value gets in is a caller writing one there deliberately -- and this is where it is caught.
+func IsFiniteNumberText(text: Slice<char8>) -> bool {
+    if text.length == 0u {
+        return false;
+    }
+    var index: uint = 0;
+    while index < text.length {
+        let c = text.data[index] as uint8;
+        let allowed = (c >= 0x30u8 && c <= 0x39u8) || c == 0x2Du8 || c == 0x2Bu8 || c == 0x2Eu8 ||
+                      c == 0x65u8 || c == 0x45u8;
+        if !allowed {
+            return false;
+        }
+        index = index + 1u;
+    }
+    return true;
+}
+
+func WriteBytes(writer: TextWriter, bytes: Slice<char8>) -> JsonWriteError {
+    var sink = writer;
+    return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
+}
+
+func WriteNewlineAndIndent(writer: TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
+    if style.indent == 0u {
+        return JsonWriteError::None;
+    }
+    var newline: char8[1];
+    newline[0] = 0x0Au8 as char8;
+    let broke = WriteBytes(writer, newline[0..1]);
+    if broke != JsonWriteError::None {
+        return broke;
+    }
+    var spaces: char8[64];
+    var index: uint = 0;
+    while index < 64u {
+        spaces[index] = 0x20u8 as char8;
+        index = index + 1u;
+    }
+    var remaining = style.indent * level;
+    while remaining > 0u {
+        let step = remaining < 64u ? remaining : 64u;
+        let padded = WriteBytes(writer, spaces[0..step]);
+        if padded != JsonWriteError::None {
+            return padded;
+        }
+        remaining = remaining - step;
+    }
+    return JsonWriteError::None;
+}
+
+/// Writes `value` to `writer` in the given style.
+///
+/// https://rux-lang.dev/docs/api/json/write-value
+func WriteValue(writer: TextWriter, value: *JsonValue, style: JsonStyle) -> JsonWriteError {
+    return WriteAtLevel(writer, value, style, 0u);
+}
+
+func WriteAtLevel(writer: TextWriter, value: *JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
+    if level > 512u {
+        return JsonWriteError::TooDeep;
+    }
+    let kind = value.Kind();
+    if kind == JsonKind::Null {
+        return WriteBytes(writer, "null");
+    }
+    if kind == JsonKind::Boolean {
+        var flag = false;
+        value.AsBoolean(@flag);
+        return WriteBytes(writer, flag ? "true" : "false");
+    }
+    if kind == JsonKind::Number {
+        let text = value.AsNumber().Text().Bytes();
+        if !IsFiniteNumberText(text) {
+            // JSON has no way to spell a NaN or an infinity, so this refuses rather than emitting something
+            // other parsers will reject.
+            return JsonWriteError::NonFinite;
+        }
+        return WriteBytes(writer, text);
+    }
+    if kind == JsonKind::Text {
+        return WriteEscaped(writer, value.AsText().Bytes());
+    }
+
+    let isObject = kind == JsonKind::Object;
+    let opening = isObject ? "{" : "[";
+    let closing = isObject ? "}" : "]";
+    var outcome = WriteBytes(writer, opening);
+    if outcome != JsonWriteError::None {
+        return outcome;
+    }
+    let count = value.Length();
+    if count == 0u {
+        // An empty container stays on one line even when indenting, since a line holding only a bracket says
+        // nothing a reader needs.
+        return WriteBytes(writer, closing);
+    }
+    var index: uint = 0;
+    while index < count {
+        if index > 0u {
+            outcome = WriteBytes(writer, ",");
+            if outcome != JsonWriteError::None {
+                return outcome;
+            }
+        }
+        outcome = WriteNewlineAndIndent(writer, style, level + 1u);
+        if outcome != JsonWriteError::None {
+            return outcome;
+        }
+        if isObject {
+            let member = value.MemberAt(index);
+            outcome = WriteEscaped(writer, member.name.View().Bytes());
+            if outcome != JsonWriteError::None {
+                return outcome;
+            }
+            outcome = WriteBytes(writer, ":");
+            if outcome != JsonWriteError::None {
+                return outcome;
+            }
+            if style.indent > 0u || style.spaceAfterColon {
+                outcome = WriteBytes(writer, " ");
+                if outcome != JsonWriteError::None {
+                    return outcome;
+                }
+            }
+            outcome = WriteAtLevel(writer, @member.value, style, level + 1u);
+        }
+        else {
+            outcome = WriteAtLevel(writer, value.At(index), style, level + 1u);
+        }
+        if outcome != JsonWriteError::None {
+            return outcome;
+        }
+        index = index + 1u;
+    }
+    outcome = WriteNewlineAndIndent(writer, style, level);
+    if outcome != JsonWriteError::None {
+        return outcome;
+    }
+    return WriteBytes(writer, closing);
+}

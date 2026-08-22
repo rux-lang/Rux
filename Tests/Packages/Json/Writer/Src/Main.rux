@@ -1,0 +1,98 @@
+// Writing is checked by round-tripping and by the exact text of the escapes, since an escape that is merely
+// legal rather than conventional makes output differ from every other writer for no benefit.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Format::{ BuilderWriter, TextWriter };
+import Json::{ JsonKind, JsonLexError, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError,
+               Parse, WriteValue };
+import Text::{ String, StringBuilder, StringView, TextError };
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+// Writes a value and returns the text.
+func Written(allocator: Allocator, value: *JsonValue, style: JsonStyle, outcome: *var JsonWriteError) -> String {
+    var builder = StringBuilder::New(allocator);
+    let sink: TextWriter = BuilderWriter::Of(@builder);
+    *outcome = WriteValue(sink, value, style);
+    return builder.IntoString();
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var parsed = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
+    var wrote = JsonWriteError::None;
+
+    // The scalars.
+    var nullValue = Parse(allocator, "null", @parsed);
+    var nullText = Written(allocator, @nullValue, JsonStyle::Compact(), @wrote);
+    let expectNull = View("null");
+    Assert(wrote == JsonWriteError::None && nullText.View().Equals(@expectNull), "null writes as null");
+
+    var number = Parse(allocator, "-1.5e3", @parsed);
+    var numberText = Written(allocator, @number, JsonStyle::Compact(), @wrote);
+    let expectNumber = View("-1.5e3");
+    Assert(numberText.View().Equals(@expectNumber),
+           "a number writes exactly as it was written, since its text was kept");
+
+    // Escapes: the required ones and no others.
+    var escaped = Parse(allocator, "\"a\\nb\\t\"", @parsed);
+    Assert(parsed.error == JsonParseError::None, "a string with escapes parses");
+    var escapedText = Written(allocator, @escaped, JsonStyle::Compact(), @wrote);
+    let expectEscaped = View("\"a\\nb\\t\"");
+    Assert(escapedText.View().Equals(@expectEscaped), "and writes back with the short escapes");
+
+    var solidus = Parse(allocator, "\"a\\/b\"", @parsed);
+    var solidusText = Written(allocator, @solidus, JsonStyle::Compact(), @wrote);
+    let expectSolidus = View("\"a/b\"");
+    Assert(solidusText.View().Equals(@expectSolidus),
+           "a solidus is written unescaped, which is legal and is what every other writer does");
+
+    var control = Parse(allocator, "\"a\\u0001b\"", @parsed);
+    var controlText = Written(allocator, @control, JsonStyle::Compact(), @wrote);
+    let expectControl = View("\"a\\u0001b\"");
+    Assert(controlText.View().Equals(@expectControl),
+           "a control character with no short escape takes the four-digit form");
+
+    // Compact output has no whitespace anywhere.
+    var document = Parse(allocator, "{\"a\":[1,2],\"b\":{\"c\":true}}", @parsed);
+    Assert(parsed.error == JsonParseError::None, "a document parses");
+    var compact = Written(allocator, @document, JsonStyle::Compact(), @wrote);
+    let expectCompact = View("{\"a\":[1,2],\"b\":{\"c\":true}}");
+    Assert(compact.View().Equals(@expectCompact), "and writes back byte for byte in the compact style");
+
+    // Pretty output round-trips to the same value, which is the property that matters -- the exact layout is a
+    // presentation choice and the equality of the values is not.
+    var pretty = Written(allocator, @document, JsonStyle::Pretty(), @wrote);
+    Assert(wrote == JsonWriteError::None, "the pretty style writes");
+    Assert(pretty.Length() > compact.Length(), "producing more bytes, since it adds layout");
+    var reparsed = Parse(allocator, pretty.View().Bytes(), @parsed);
+    Assert(parsed.error == JsonParseError::None, "and parses back");
+    var reflattened = Written(allocator, @reparsed, JsonStyle::Compact(), @wrote);
+    Assert(reflattened.View().Equals(@expectCompact), "to exactly the document it started as");
+
+    // Empty containers stay on one line even when indenting.
+    var empties = Parse(allocator, "{\"a\":[],\"b\":{}}", @parsed);
+    var prettyEmpties = Written(allocator, @empties, JsonStyle::Pretty(), @wrote);
+    let expectEmpties = View("{\n  \"a\": [],\n  \"b\": {}\n}");
+    Assert(prettyEmpties.View().Equals(@expectEmpties),
+           "an empty container is not spread over three lines, since a line holding a bracket says nothing");
+
+    // A non-finite number cannot be written, because JSON cannot spell one.
+    var textError = TextError::None;
+    var notANumber = JsonValue::Number(allocator, "NaN", @textError);
+    var refused = Written(allocator, @notANumber, JsonStyle::Compact(), @wrote);
+    Assert(wrote == JsonWriteError::NonFinite, "a NaN is refused rather than written");
+    var infinite = JsonValue::Number(allocator, "Infinity", @textError);
+    var refusedInfinite = Written(allocator, @infinite, JsonStyle::Compact(), @wrote);
+    Assert(wrote == JsonWriteError::NonFinite, "and so is an infinity");
+    var ordinary = JsonValue::Number(allocator, "1e999", @textError);
+    var written999 = Written(allocator, @ordinary, JsonStyle::Compact(), @wrote);
+    Assert(wrote == JsonWriteError::None,
+           "while an exponent past what a float holds is still a number JSON can spell, and is written");
+
+    return 0;
+}
