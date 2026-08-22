@@ -1,0 +1,78 @@
+// Xoshiro256**, a small fast generator with a 256-bit state.
+//
+// The state is four words and the step is shifts and exclusive-ors, which is why it is fast; the output goes
+// through two multiplications, which is what makes it pass the statistical tests the raw state would fail. Its
+// period is 2^256 - 1, and the all-zero state is the one state outside the cycle -- it maps to itself forever --
+// so seeding refuses to leave it there.
+//
+// Suitable for simulation, shuffling and sampling. **Not suitable for anything that must resist an adversary:**
+// its output reveals its state, and a few consecutive words are enough to predict every word after them.
+
+import Core::MutableSlice;
+
+/// A Xoshiro256** generator.
+///
+/// https://rux-lang.dev/docs/api/random/xoshiro256
+struct Xoshiro256 {
+    /// The four words of state.
+    state: uint64[4];
+}
+
+// A rotation, which the language spells as two shifts.
+func RotateLeft64(value: uint64, amount: uint64) -> uint64 {
+    return (value << amount) | (value >> (64u64 - amount));
+}
+
+extend Xoshiro256 {
+    /// A generator seeded by spreading `seed` through `SplitMix64`.
+    ///
+    /// Every seed is acceptable, zero included: the mixer's output is what fills the state, and it cannot
+    /// produce four zero words from any seed. Seeding by copying the seed into one word and leaving the rest
+    /// zero -- which is what a caller does by hand -- gives a state so close to the fixed point that the first
+    /// several outputs are visibly poor, which is the whole reason this goes through the mixer.
+    ///
+    /// https://rux-lang.dev/docs/api/random/xoshiro256/new
+    func New(seed: uint64) -> Xoshiro256 {
+        var mixer = SplitMix64::New(seed);
+        var generator = Xoshiro256 { state: [0, 0, 0, 0] };
+        var index: uint = 0;
+        while index < 4u {
+            generator.state[index] = mixer.NextUint64();
+            index = index + 1;
+        }
+        return generator;
+    }
+
+    /// A generator from four words of state given directly, for reproducing a stream recorded elsewhere.
+    ///
+    /// An all-zero state is the one state with no future, so it is replaced by the mixer's output for a zero
+    /// seed rather than accepted into a generator that would return zero forever.
+    ///
+    /// https://rux-lang.dev/docs/api/random/xoshiro256/from-state
+    func FromState(words: uint64[4]) -> Xoshiro256 {
+        if words[0] == 0u64 && words[1] == 0u64 && words[2] == 0u64 && words[3] == 0u64 {
+            return Xoshiro256::New(0u64);
+        }
+        return Xoshiro256 { state: words };
+    }
+}
+
+extend Xoshiro256 : RandomGenerator {
+    /// The next word.
+    ///
+    /// The result is computed from the state *before* it advances, which is the published order and the reason
+    /// two implementations agree on the first word rather than being one step apart forever.
+    ///
+    /// https://rux-lang.dev/docs/api/random/xoshiro256/next-uint64
+    func NextUint64(self: *var Xoshiro256) -> uint64 {
+        let result = RotateLeft64(self.state[1] * 5u64, 7u64) * 9u64;
+        let t = self.state[1] << 17u64;
+        self.state[2] = self.state[2] ^ self.state[0];
+        self.state[3] = self.state[3] ^ self.state[1];
+        self.state[1] = self.state[1] ^ self.state[2];
+        self.state[0] = self.state[0] ^ self.state[3];
+        self.state[2] = self.state[2] ^ t;
+        self.state[3] = RotateLeft64(self.state[3], 45u64);
+        return result;
+    }
+}

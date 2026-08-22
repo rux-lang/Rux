@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Sequences"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Random: frozen sequences and the structural properties of both generators"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Random = { Path = "../../../../Packages/Random" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Random"
