@@ -1,0 +1,115 @@
+// What a digest is, and the two operations every user of one gets wrong.
+//
+// A digest is used incrementally far more often than in one call -- a file is hashed as it is read, a message as
+// it is assembled -- so the incremental form is the contract and the one-shot form is written on top of it,
+// rather than the other way round. `Update` may be called any number of times with any split of the same bytes
+// and must produce the same digest, which is a stronger promise than it looks: it is what lets a caller change
+// its buffer size without changing its output.
+//
+// The other two operations are here because they are the ones callers reach for from the standard library and
+// find something subtly unsuitable. Comparing two digests with an ordinary loop returns as soon as it finds a
+// difference, so how long it takes reveals where the difference is -- and an attacker who can time a tag check
+// can find the right tag one byte at a time, which is thousands of guesses instead of astronomically many.
+// Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
+// and it is entitled to remove it.
+
+import Core::{ #target, #Error, MutableSlice, Slice };
+
+/// An incremental digest.
+///
+/// Take one by generic bound rather than as an interface value -- `func Sum<D: Digest>(digest: *var D)` -- since
+/// an interface value holds a copy and would leave the caller's state unchanged.
+///
+/// https://rux-lang.dev/docs/api/crypto/digest
+interface Digest {
+    /// Adds `bytes` to what is being hashed.
+    ///
+    /// Any split of the same byte sequence across any number of calls gives the same digest. An empty slice is
+    /// legal and changes nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/digest/update
+    func Update(self: *var Digest, bytes: Slice<char8>);
+
+    /// Writes the digest into `into` and leaves the state unusable for further updates.
+    ///
+    /// `into` must be at least `DigestLength` bytes; anything beyond that is untouched. Finishing twice is a
+    /// caller error rather than a supported operation -- a digest is a one-shot summary of everything fed to it,
+    /// and an implementation is free to consume its state producing one.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/digest/finish
+    func Finish(self: *var Digest, into: MutableSlice<char8>);
+
+    /// How many bytes `Finish` writes.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/digest/digest-length
+    func DigestLength(self: *Digest) -> uint;
+
+    /// How many bytes the algorithm processes at a time.
+    ///
+    /// Needed by the constructions built on digests -- HMAC pads its key to exactly this -- and by callers
+    /// choosing a buffer size that avoids splitting work.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/digest/block-length
+    func BlockLength(self: *Digest) -> uint;
+}
+
+/// Whether two byte sequences are equal, in time that does not depend on where they differ.
+///
+/// The ordinary comparison returns at the first difference, so its duration reveals the length of the matching
+/// prefix. Against a message authentication tag that is enough to find the correct tag one byte at a time --
+/// a few thousand attempts rather than the number the tag's length suggests. This reads every byte of both
+/// sequences whatever it finds, accumulating differences rather than branching on them.
+///
+/// Sequences of different lengths are unequal, and that answer is immediate: a length is not a secret, and
+/// pretending otherwise would mean reading past one of them.
+///
+/// https://rux-lang.dev/docs/api/crypto/equal
+func Equal(left: Slice<char8>, right: Slice<char8>) -> bool {
+    if left.length != right.length {
+        return false;
+    }
+    var difference = 0u8;
+    var index: uint = 0;
+    while index < left.length {
+        // Or-ing the differences means every byte contributes and none of them can end the loop early.
+        difference = difference | ((left.data[index] as uint8) ^ (right.data[index] as uint8));
+        index = index + 1;
+    }
+    return difference == 0u8;
+}
+
+// A barrier the optimizer cannot see through. It is handed the address, does nothing, and returns -- but since
+// its body is opaque, every store to that memory must be real by the time it is called, and the call itself
+// cannot be removed. The language has no `volatile`, so this is how a write is made observable.
+when #target.arch {
+    .X86_64 => {
+        asm func Retain(address: *var opaque) {
+            ret
+        }
+    },
+    .AArch64 => {
+        asm func Retain(address: *var opaque) {
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture")
+}
+
+/// Overwrites `bytes` with zeros in a way the compiler may not remove.
+///
+/// A plain loop clearing a buffer nothing reads afterwards is dead code, and an optimizer is entitled to delete
+/// it -- which is how a key a program believed it had erased stays in memory, in a core dump, or in a page
+/// written to swap. The barrier below is handed the buffer's address and its body is opaque, so the writes must
+/// have happened before it runs and the call cannot be dropped.
+///
+/// https://rux-lang.dev/docs/api/crypto/wipe
+func Wipe(bytes: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < bytes.length {
+        bytes.data[index] = 0u8 as char8;
+        index = index + 1;
+    }
+    if bytes.length > 0u {
+        Retain(@bytes.data[0] as *var opaque);
+    }
+}

@@ -1,0 +1,21 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Crypto"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Cryptographic hashes, message authentication codes and key derivation"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Crypto", "Hash", "Sha2", "Sha3", "Blake3"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/crypto"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Memory = { Namespace = "Rux", Version = "0.1.0" }
