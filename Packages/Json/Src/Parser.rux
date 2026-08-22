@@ -1,0 +1,431 @@
+// Parsing a document into a value tree.
+//
+// The recursion is bounded by the depth limit rather than by the stack, which is the only way a recursive
+// descent parser can safely read untrusted input: the check happens before the call, so a document designed to
+// exhaust the stack is refused while there is still stack left to refuse it with.
+//
+// Duplicate object names are rejected by default. RFC 8259 says their behaviour is unpredictable and leaves
+// implementations to choose, which means a document with duplicates means different things to different
+// readers -- and that difference has been used to smuggle one value past a validator and a different one to the
+// consumer behind it. Refusing is the only choice that cannot be exploited that way, so it is the default; the
+// alternatives exist because some real documents contain duplicates and someone has to read them.
+
+import Allocator::Allocator;
+import Collections::CollectionError;
+import Core::{ MutableSlice, Slice };
+import Text::{ String, StringBuilder, StringView, TextError };
+
+/// What to do about an object containing the same name twice.
+///
+/// https://rux-lang.dev/docs/api/json/duplicate-key-policy
+enum DuplicateKeyPolicy: int32 {
+    /// Refuse the document. The default, and the only policy that cannot be used to make two readers disagree.
+    Reject = 0,
+    /// Keep the first occurrence and discard the rest.
+    KeepFirst = 1,
+    /// Keep the last occurrence, which is what most JavaScript-derived parsers do.
+    KeepLast = 2,
+    /// Keep every occurrence, in order. The document is preserved exactly, and lookup finds the first.
+    KeepAll = 3
+}
+
+/// Why parsing stopped.
+///
+/// https://rux-lang.dev/docs/api/json/parse-error
+enum JsonParseError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// The lexer refused the input; its reason is reported separately.
+    Lexical = 1,
+    /// A token that cannot appear where it did.
+    Unexpected = 2,
+    /// The document ended in the middle of a value.
+    Truncated = 3,
+    /// Text after the end of the top-level value.
+    TrailingContent = 4,
+    /// An object contained the same name twice, under the rejecting policy.
+    DuplicateName = 5,
+    /// Containers nested deeper than the limit allowed.
+    TooDeep = 6,
+    /// A container held more entries than the limit allowed.
+    TooManyEntries = 7,
+    /// The allocator refused.
+    OutOfMemory = 8,
+    /// A `\u` escape pair that is not a valid surrogate pair, or a lone surrogate.
+    BadSurrogate = 9
+}
+
+/// The outcome of a parse: the value, and why it stopped if it did.
+///
+/// https://rux-lang.dev/docs/api/json/parse-outcome
+struct JsonParseOutcome {
+    /// Why parsing stopped, or `None`.
+    error: JsonParseError;
+    /// The lexer's reason, when `error` is `Lexical`.
+    lexical: JsonLexError;
+    /// Where in the input it stopped.
+    position: uint;
+}
+
+/// A parser over a document.
+///
+/// https://rux-lang.dev/docs/api/json/json-parser
+struct JsonParser {
+    /// Where tokens come from.
+    lexer: JsonLexer;
+    /// Where values are built.
+    allocator: Allocator;
+    /// What to accept.
+    limits: JsonLimits;
+    /// What to do about duplicate names.
+    duplicates: DuplicateKeyPolicy;
+    /// The whole document, which string spans point into.
+    input: Slice<char8>;
+    /// How deep the current value is nested.
+    depth: uint;
+    /// Why parsing stopped.
+    outcome: JsonParseOutcome;
+}
+
+extend JsonParser {
+    /// A parser over `input` under `limits`, rejecting duplicate names.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-parser/new
+    func New(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
+        return JsonParser {
+            lexer: JsonLexer::New(input, limits),
+            allocator: allocator,
+            limits: limits,
+            duplicates: DuplicateKeyPolicy::Reject,
+            input: input,
+            depth: 0,
+            outcome: JsonParseOutcome {
+                error: JsonParseError::None, lexical: JsonLexError::None, position: 0
+            }
+        };
+    }
+
+    /// Chooses what to do about duplicate object names.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy
+    func SetDuplicatePolicy(self: *var JsonParser, policy: DuplicateKeyPolicy) {
+        self.duplicates = policy;
+    }
+
+    /// Why parsing stopped.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-parser/outcome
+    func Outcome(self: *JsonParser) -> JsonParseOutcome {
+        return self.outcome;
+    }
+
+    func Stop(self: *var JsonParser, reason: JsonParseError) -> JsonValue {
+        if self.outcome.error == JsonParseError::None {
+            self.outcome.error = reason;
+            self.outcome.position = self.lexer.Position();
+        }
+        return JsonValue::Null(self.allocator);
+    }
+
+    // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
+    func TakeText(self: *var JsonParser, token: JsonToken, error: *var TextError) -> String {
+        let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
+        if !token.escaped {
+            return String::FromBytes(self.allocator, span, error);
+        }
+        var builder = StringBuilder::New(self.allocator);
+        var index: uint = 0;
+        while index < span.length {
+            let c = span.data[index] as uint8;
+            if c != 0x5Cu8 {
+                *error = builder.AppendBytes(Slice<char8> { data: @span.data[index], length: 1 });
+                index = index + 1;
+                continue;
+            }
+            index = index + 1;
+            let kind = span.data[index] as uint8;
+            index = index + 1;
+            if kind == 0x75u8 {
+                var scalar = HexQuad(span, index);
+                index = index + 4u;
+                if scalar >= 0xD800u32 && scalar <= 0xDBFFu32 {
+                    // A high surrogate must be followed by its low partner; JSON's escapes are UTF-16, so this
+                    // is the one place a JSON string is not simply a sequence of scalar values.
+                    if index + 6u <= span.length && (span.data[index] as uint8) == 0x5Cu8 &&
+                        (span.data[index + 1u] as uint8) == 0x75u8 {
+                        let low = HexQuad(span, index + 2u);
+                        if low >= 0xDC00u32 && low <= 0xDFFFu32 {
+                            scalar = 0x10000u32 + ((scalar - 0xD800u32) << 10u32) + (low - 0xDC00u32);
+                            index = index + 6u;
+                        }
+                    }
+                }
+                *error = builder.AppendScalar(scalar as char32);
+            }
+            else {
+                var replacement = 0u8;
+                if kind == 0x62u8 {
+                    replacement = 0x08u8;
+                }
+                else if kind == 0x66u8 {
+                    replacement = 0x0Cu8;
+                }
+                else if kind == 0x6Eu8 {
+                    replacement = 0x0Au8;
+                }
+                else if kind == 0x72u8 {
+                    replacement = 0x0Du8;
+                }
+                else if kind == 0x74u8 {
+                    replacement = 0x09u8;
+                }
+                else {
+                    // The quote, backslash and solidus all stand for themselves.
+                    replacement = kind;
+                }
+                *error = builder.AppendAscii(replacement as char8);
+            }
+        }
+        return builder.IntoString();
+    }
+}
+
+// Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
+func HexQuad(span: Slice<char8>, at: uint) -> uint32 {
+    var value = 0u32;
+    var index: uint = 0;
+    while index < 4u {
+        let c = span.data[at + index] as uint8;
+        var digit = 0u32;
+        if c >= 0x30u8 && c <= 0x39u8 {
+            digit = (c - 0x30u8) as uint32;
+        }
+        else if c >= 0x61u8 && c <= 0x66u8 {
+            digit = (c - 0x61u8 + 10u8) as uint32;
+        }
+        else {
+            digit = (c - 0x41u8 + 10u8) as uint32;
+        }
+        value = value * 16u32 + digit;
+        index = index + 1;
+    }
+    return value;
+}
+
+extend JsonParser {
+    // One value, whatever kind the next token opens.
+    func ParseValue(self: *var JsonParser, token: JsonToken) -> JsonValue {
+        if token.kind == JsonTokenKind::Error {
+            self.outcome.error = JsonParseError::Lexical;
+            self.outcome.lexical = token.error;
+            self.outcome.position = token.start;
+            return JsonValue::Null(self.allocator);
+        }
+        if token.kind == JsonTokenKind::End {
+            return self.Stop(JsonParseError::Truncated);
+        }
+        if token.kind == JsonTokenKind::Null {
+            return JsonValue::Null(self.allocator);
+        }
+        if token.kind == JsonTokenKind::True {
+            return JsonValue::Boolean(self.allocator, true);
+        }
+        if token.kind == JsonTokenKind::False {
+            return JsonValue::Boolean(self.allocator, false);
+        }
+        if token.kind == JsonTokenKind::Number {
+            var textError = TextError::None;
+            let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
+            var value = JsonValue::Number(self.allocator, span, @textError);
+            if textError != TextError::None {
+                return self.Stop(JsonParseError::OutOfMemory);
+            }
+            return value;
+        }
+        if token.kind == JsonTokenKind::Text {
+            var textError = TextError::None;
+            var held = self.TakeText(token, @textError);
+            if textError != TextError::None {
+                held.Clear();
+                return self.Stop(JsonParseError::OutOfMemory);
+            }
+            var value = JsonValue::Null(self.allocator);
+            value.kind = JsonKind::Text;
+            value.text = held;
+            return value;
+        }
+        if token.kind == JsonTokenKind::ArrayStart {
+            return self.ParseArray();
+        }
+        if token.kind == JsonTokenKind::ObjectStart {
+            return self.ParseObject();
+        }
+        return self.Stop(JsonParseError::Unexpected);
+    }
+
+    func ParseArray(self: *var JsonParser) -> JsonValue {
+        // The depth check happens before descending, so a document built to exhaust the stack is refused while
+        // there is still stack to refuse it with.
+        if self.depth >= self.limits.maximumDepth {
+            return self.Stop(JsonParseError::TooDeep);
+        }
+        self.depth = self.depth + 1u;
+        var array = JsonValue::Array(self.allocator);
+        var token = self.lexer.Next();
+        if token.kind == JsonTokenKind::ArrayEnd {
+            self.depth = self.depth - 1u;
+            return array;
+        }
+        var entries: uint = 0;
+        while true {
+            var element = self.ParseValue(token);
+            if self.outcome.error != JsonParseError::None {
+                return array;
+            }
+            entries = entries + 1u;
+            if entries > self.limits.maximumEntries {
+                return self.Stop(JsonParseError::TooManyEntries);
+            }
+            if !array.Push(element) {
+                return self.Stop(JsonParseError::OutOfMemory);
+            }
+            token = self.lexer.Next();
+            if token.kind == JsonTokenKind::ArrayEnd {
+                self.depth = self.depth - 1u;
+                return array;
+            }
+            if token.kind != JsonTokenKind::Comma {
+                // A trailing comma lands here, since after one the next token is the closing bracket.
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
+                                                                  : JsonParseError::Unexpected);
+            }
+            token = self.lexer.Next();
+        }
+        return array;
+    }
+}
+
+extend JsonParser {
+    func ParseObject(self: *var JsonParser) -> JsonValue {
+        if self.depth >= self.limits.maximumDepth {
+            return self.Stop(JsonParseError::TooDeep);
+        }
+        self.depth = self.depth + 1u;
+        var object = JsonValue::Object(self.allocator);
+        var token = self.lexer.Next();
+        if token.kind == JsonTokenKind::ObjectEnd {
+            self.depth = self.depth - 1u;
+            return object;
+        }
+        var entries: uint = 0;
+        while true {
+            if token.kind == JsonTokenKind::Error {
+                self.outcome.error = JsonParseError::Lexical;
+                self.outcome.lexical = token.error;
+                self.outcome.position = token.start;
+                return object;
+            }
+            if token.kind != JsonTokenKind::Text {
+                // A member name must be a string. An unquoted name is JavaScript, not JSON.
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
+                                                                  : JsonParseError::Unexpected);
+            }
+            var textError = TextError::None;
+            var name = self.TakeText(token, @textError);
+            if textError != TextError::None {
+                name.Clear();
+                return self.Stop(JsonParseError::OutOfMemory);
+            }
+
+            let colon = self.lexer.Next();
+            if colon.kind != JsonTokenKind::Colon {
+                name.Clear();
+                return self.Stop(colon.kind == JsonTokenKind::End ? JsonParseError::Truncated
+                                                                  : JsonParseError::Unexpected);
+            }
+
+            var value = self.ParseValue(self.lexer.Next());
+            if self.outcome.error != JsonParseError::None {
+                name.Clear();
+                return object;
+            }
+
+            let existing = object.Find(name.View());
+            if existing != null {
+                if self.duplicates == DuplicateKeyPolicy::Reject {
+                    name.Clear();
+                    return self.Stop(JsonParseError::DuplicateName);
+                }
+                if self.duplicates == DuplicateKeyPolicy::KeepFirst {
+                    // The first is already in place, so this one is simply not added.
+                    name.Clear();
+                    entries = entries + 1u;
+                    token = self.lexer.Next();
+                    if token.kind == JsonTokenKind::ObjectEnd {
+                        self.depth = self.depth - 1u;
+                        return object;
+                    }
+                    if token.kind != JsonTokenKind::Comma {
+                        return self.Stop(JsonParseError::Unexpected);
+                    }
+                    token = self.lexer.Next();
+                    continue;
+                }
+                if self.duplicates == DuplicateKeyPolicy::KeepLast {
+                    // Removing the earlier one keeps the object a map, which is what this policy is chosen for.
+                    object.RemoveFirst(name.View());
+                }
+            }
+
+            entries = entries + 1u;
+            if entries > self.limits.maximumEntries {
+                name.Clear();
+                return self.Stop(JsonParseError::TooManyEntries);
+            }
+            if !object.Insert(name, value) {
+                return self.Stop(JsonParseError::OutOfMemory);
+            }
+
+            token = self.lexer.Next();
+            if token.kind == JsonTokenKind::ObjectEnd {
+                self.depth = self.depth - 1u;
+                return object;
+            }
+            if token.kind != JsonTokenKind::Comma {
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
+                                                                  : JsonParseError::Unexpected);
+            }
+            token = self.lexer.Next();
+        }
+        return object;
+    }
+
+    /// Parses the whole document and returns its top-level value.
+    ///
+    /// Anything after that value is `TrailingContent` -- a document is one value, and two concatenated ones are
+    /// not a document however well-formed each is.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-parser/parse
+    func Parse(self: *var JsonParser) -> JsonValue {
+        var value = self.ParseValue(self.lexer.Next());
+        if self.outcome.error != JsonParseError::None {
+            return value;
+        }
+        let trailing = self.lexer.Next();
+        if trailing.kind != JsonTokenKind::End {
+            self.outcome.error = JsonParseError::TrailingContent;
+            self.outcome.position = trailing.start;
+        }
+        return value;
+    }
+}
+
+/// Parses `input` into a value, rejecting duplicate names.
+///
+/// https://rux-lang.dev/docs/api/json/parse
+func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOutcome) -> JsonValue {
+    var parser = JsonParser::New(allocator, input, JsonLimits::Default());
+    var value = parser.Parse();
+    *outcome = parser.Outcome();
+    return value;
+}

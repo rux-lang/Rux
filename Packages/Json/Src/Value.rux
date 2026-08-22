@@ -363,3 +363,81 @@ extend JsonValue {
         return @slice.data[index];
     }
 }
+
+extend JsonValue {
+    /// Removes the first member named `name`, if there is one.
+    ///
+    /// Used by the duplicate-name policy that keeps the last occurrence: dropping the earlier one is what keeps
+    /// the object a map rather than a list that happens to repeat itself.
+    ///
+    /// The members after it are popped and pushed back rather than shifted, because shifting would move
+    /// owning values around inside the vector, and a move out of a container is the one thing the ownership
+    /// rules will not allow silently. Duplicates are rare enough that the cost never matters.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-value/remove-first
+    func RemoveFirst(self: *var JsonValue, name: StringView) -> bool {
+        if self.kind != JsonKind::Object {
+            return false;
+        }
+        var target = self.members.Length();
+        let slice = self.members.AsSlice();
+        var index: uint = 0;
+        while index < slice.length {
+            var held = name;
+            if slice.data[index].name.View().Equals(@held) {
+                target = index;
+                index = slice.length;
+            }
+            else {
+                index = index + 1;
+            }
+        }
+        if target >= self.members.Length() {
+            return false;
+        }
+        var tail = Vector::New<JsonMember>(self.allocator);
+        while self.members.Length() > target + 1u {
+            var moved = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+            if !self.members.TryPop(@moved) {
+                break;
+            }
+            tail.Push(moved);
+        }
+        var discarded = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+        self.members.TryPop(@discarded);
+        // `discarded` dies here, taking its name and value with it.
+        while tail.Length() > 0u {
+            var restored = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+            if !tail.TryPop(@restored) {
+                break;
+            }
+            self.members.Push(restored);
+        }
+        return true;
+    }
+}
+
+extend JsonValue : Drop {
+    /// Releases everything this value owns.
+    ///
+    /// Written out rather than left to the compiler, because a value owns its strings and its children own
+    /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
+    /// tree something a reader can check.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-value/drop
+    func Drop(self: *var JsonValue) {
+        self.number.text.Clear();
+        self.text.Clear();
+        self.elements.Clear();
+        self.members.Clear();
+    }
+}
+
+extend JsonMember : Drop {
+    /// Releases the member's name and value.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-member/drop
+    func Drop(self: *var JsonMember) {
+        self.name.Clear();
+    }
+}

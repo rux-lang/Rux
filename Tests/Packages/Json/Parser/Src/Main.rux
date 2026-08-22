@@ -1,0 +1,148 @@
+// Strictness is the point, so most of this is documents that must be refused -- and the ones worth writing down
+// are the ones that are perfectly good JavaScript and are not JSON.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome,
+               JsonParser, JsonValue, Parse };
+import Text::{ StringView, TextError };
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+func Refuses(allocator: Allocator, text: Slice<char8>, expected: JsonParseError, what: Slice<char8>) {
+    var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
+    var value = Parse(allocator, text, @outcome);
+    Assert(outcome.error == expected, what);
+}
+
+func Accepts(allocator: Allocator, text: Slice<char8>, what: Slice<char8>) -> JsonValue {
+    var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
+    var value = Parse(allocator, text, @outcome);
+    Assert(outcome.error == JsonParseError::None, what);
+    return value;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    // The scalars.
+    var nullValue = Accepts(allocator, "null", "null parses");
+    Assert(nullValue.IsNull(), "as null");
+    var trueValue = Accepts(allocator, "true", "true parses");
+    var flag = false;
+    Assert(trueValue.AsBoolean(@flag) && flag, "as true");
+    var number = Accepts(allocator, "-1.5e3", "a number parses");
+    Assert(number.Kind() == JsonKind::Number, "as a number");
+    var text = Accepts(allocator, "\"hello\"", "a string parses");
+    let hello = View("hello");
+    Assert(text.AsText().Equals(@hello), "with its contents");
+
+    // Containers.
+    var array = Accepts(allocator, "[1,2,3]", "an array parses");
+    Assert(array.Kind() == JsonKind::Array && array.Length() == 3u, "with three elements");
+    var empty = Accepts(allocator, "[]", "an empty array parses");
+    Assert(empty.Length() == 0u, "with none");
+    var object = Accepts(allocator, "{\"a\":1,\"b\":2}", "an object parses");
+    Assert(object.Kind() == JsonKind::Object && object.Length() == 2u, "with two members");
+    let a = View("a");
+    Assert(object.Find(a) != null, "which are findable by name");
+    var emptyObject = Accepts(allocator, "{}", "an empty object parses");
+    Assert(emptyObject.Length() == 0u, "with none");
+    var nested = Accepts(allocator, "{\"a\":{\"b\":[1,{\"c\":null}]}}", "a nested document parses");
+    Assert(nested.Length() == 1u, "and holds its structure");
+
+    // Escapes are resolved, including the surrogate pairs JSON inherits from UTF-16.
+    var escaped = Accepts(allocator, "\"a\\nb\"", "a string with escapes parses");
+    Assert(escaped.AsText().Length() == 3u, "and its escapes become the bytes they name");
+    var unicode = Accepts(allocator, "\"\\u0041\"", "a unicode escape parses");
+    Assert(unicode.AsText().Length() == 1u, "into one byte for an ASCII scalar");
+    var astral = Accepts(allocator, "\"\\ud83d\\ude00\"", "a surrogate pair parses");
+    Assert(astral.AsText().Length() == 4u, "into the four UTF-8 bytes of one astral character");
+
+    // The refusals: a document is one value, and these are all JavaScript rather than JSON.
+    Refuses(allocator, "", JsonParseError::Truncated, "an empty document is not a value");
+    Refuses(allocator, "[1,2", JsonParseError::Truncated, "an unclosed array is truncated");
+    Refuses(allocator, "{\"a\":1", JsonParseError::Truncated, "and so is an unclosed object");
+    Refuses(allocator, "[1,]", JsonParseError::Unexpected, "a trailing comma in an array is refused");
+    Refuses(allocator, "{\"a\":1,}", JsonParseError::Unexpected, "and in an object");
+    // An unquoted name never reaches the parser: `a` begins no JSON token, so the lexer refuses it first and
+    // the failure is reported as lexical. That is the more precise answer, not a weaker one.
+    Refuses(allocator, "{a:1}", JsonParseError::Lexical, "an unquoted member name is refused by the lexer");
+    Refuses(allocator, "[1 2]", JsonParseError::Unexpected, "a missing comma is refused");
+    Refuses(allocator, "{\"a\" 1}", JsonParseError::Unexpected, "as is a missing colon");
+    Refuses(allocator, "1 2", JsonParseError::TrailingContent, "two values are not one document");
+    Refuses(allocator, "{} []", JsonParseError::TrailingContent, "however well-formed each is");
+    Refuses(allocator, "[1,2] trailing", JsonParseError::TrailingContent, "and text after a value is refused");
+
+    // Duplicate names are refused by default, because a document containing them means different things to
+    // different readers -- which is the property that gets exploited.
+    Refuses(allocator, "{\"a\":1,\"a\":2}", JsonParseError::DuplicateName, "a duplicate member name is refused");
+
+    // The other policies exist because real documents contain duplicates and someone has to read them.
+    var keepFirstParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    keepFirstParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepFirst);
+    var keptFirst = keepFirstParser.Parse();
+    Assert(keepFirstParser.Outcome().error == JsonParseError::None, "keeping the first accepts the document");
+    Assert(keptFirst.Length() == 1u, "and leaves one member");
+    let nameA = View("a");
+    var firstValue: int64 = 0;
+    Assert(keptFirst.Find(nameA).AsNumber().AsInt64(@firstValue) && firstValue == 1i64,
+           "which holds the first value");
+
+    var keepLastParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    keepLastParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepLast);
+    var keptLast = keepLastParser.Parse();
+    Assert(keepLastParser.Outcome().error == JsonParseError::None, "keeping the last accepts it too");
+    Assert(keptLast.Length() == 1u, "and also leaves one member");
+    var lastValue: int64 = 0;
+    Assert(keptLast.Find(nameA).AsNumber().AsInt64(@lastValue) && lastValue == 2i64,
+           "which holds the last value");
+
+    var keepAllParser = JsonParser::New(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
+    keepAllParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepAll);
+    var keptAll = keepAllParser.Parse();
+    Assert(keepAllParser.Outcome().error == JsonParseError::None, "keeping all accepts it");
+    Assert(keptAll.Length() == 2u, "and keeps both members, so the document is preserved exactly");
+    var foundValue: int64 = 0;
+    Assert(keptAll.Find(nameA).AsNumber().AsInt64(@foundValue) && foundValue == 1i64,
+           "with lookup finding the first, which is what a reader encounters");
+
+    // Insertion order is kept, which is what lets a document be written back recognisably.
+    var ordered = Accepts(allocator, "{\"zeta\":1,\"alpha\":2}", "an object with several members parses");
+    let zeta = View("zeta");
+    let alpha = View("alpha");
+    Assert(ordered.MemberAt(0u).name.View().Equals(@zeta), "the first member is the first written");
+    Assert(ordered.MemberAt(1u).name.View().Equals(@alpha), "and the second the second");
+
+    // The limits, reached through the parser rather than the lexer.
+    var shallow = JsonLimits::Default();
+    shallow.maximumDepth = 3;
+    var deepParser = JsonParser::New(allocator, "[[[[1]]]]", shallow);
+    var deep = deepParser.Parse();
+    Assert(deepParser.Outcome().error == JsonParseError::TooDeep,
+           "nesting past the depth limit is refused before the stack is at risk");
+    var fittingParser = JsonParser::New(allocator, "[[[1]]]", shallow);
+    var fitting = fittingParser.Parse();
+    Assert(fittingParser.Outcome().error == JsonParseError::None, "while nesting that fits is accepted");
+
+    var few = JsonLimits::Default();
+    few.maximumEntries = 2;
+    var manyParser = JsonParser::New(allocator, "[1,2,3]", few);
+    var many = manyParser.Parse();
+    Assert(manyParser.Outcome().error == JsonParseError::TooManyEntries,
+           "a container past the entry limit is refused");
+    var enoughParser = JsonParser::New(allocator, "[1,2]", few);
+    var enough = enoughParser.Parse();
+    Assert(enoughParser.Outcome().error == JsonParseError::None, "and one that fits is not");
+
+    // A lexical failure is reported as such, with the lexer's own reason preserved.
+    var badParser = JsonParser::New(allocator, "[01]", JsonLimits::Default());
+    var bad = badParser.Parse();
+    Assert(badParser.Outcome().error == JsonParseError::Lexical, "a lexical failure is reported as lexical");
+    Assert(badParser.Outcome().lexical == JsonLexError::MalformedNumber, "with the lexer's own reason kept");
+
+    return 0;
+}
