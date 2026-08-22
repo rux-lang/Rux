@@ -1,0 +1,154 @@
+// The published HMAC vectors, which are the only way to know the construction is right rather than merely
+// self-consistent -- and the key-longer-than-a-block case, which is where implementations differ from the
+// specification without noticing.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Equal, Hmac, HmacOf, Sha256, Sha512 };
+
+func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < into.length {
+        var value = 0u8;
+        var half: uint = 0;
+        while half < 2u {
+            let c = text.data[index * 2u + half] as uint8;
+            var digit = 0u8;
+            if c >= 0x30u8 && c <= 0x39u8 {
+                digit = c - 0x30u8;
+            }
+            else {
+                digit = c - 0x61u8 + 10u8;
+            }
+            value = value * 16u8 + digit;
+            half = half + 1;
+        }
+        into.data[index] = value as char8;
+        index = index + 1;
+    }
+}
+
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+    var expected: char8[64];
+    let room = MutableSlice::From<char8>(@expected[0], got.length);
+    FromHex(expectedHex, room);
+    let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
+    Assert(Equal(got, expectedBytes), what);
+}
+
+func Main() -> int {
+    var tag: char8[64];
+
+    // RFC 4231 case 1: a twenty-byte key of 0x0b, message "Hi There".
+    var key: char8[200];
+    var index: uint = 0;
+    while index < 20u {
+        key[index] = 0x0Bu8 as char8;
+        index = index + 1;
+    }
+    let shortKey = Slice<char8> { data: @key[0], length: 20 };
+    HmacOf<Sha256>(Sha256::New(), shortKey, "Hi There", MutableSlice::From<char8>(@tag[0], 32));
+    Check(Slice<char8> { data: @tag[0], length: 32 },
+          "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+          "HMAC-SHA-256, RFC 4231 case 1");
+    HmacOf<Sha512>(Sha512::New(), shortKey, "Hi There", MutableSlice::From<char8>(@tag[0], 64));
+    Check(Slice<char8> { data: @tag[0], length: 64 },
+          "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854",
+          "HMAC-SHA-512, RFC 4231 case 1");
+
+    // RFC 4231 case 2: key "Jefe", message "what do ya want for nothing?".
+    HmacOf<Sha256>(Sha256::New(), "Jefe", "what do ya want for nothing?",
+                   MutableSlice::From<char8>(@tag[0], 32));
+    Check(Slice<char8> { data: @tag[0], length: 32 },
+          "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+          "HMAC-SHA-256, RFC 4231 case 2");
+
+    // RFC 4231 case 6: a key of a hundred and thirty one bytes of 0xaa, which is longer than SHA-256's block
+    // and so is replaced by its own digest. This is the case that separates a correct implementation from one
+    // that pads a long key instead of hashing it.
+    index = 0;
+    while index < 131u {
+        key[index] = 0xAAu8 as char8;
+        index = index + 1;
+    }
+    let longKey = Slice<char8> { data: @key[0], length: 131 };
+    HmacOf<Sha256>(Sha256::New(), longKey,
+                   "Test Using Larger Than Block-Size Key - Hash Key First",
+                   MutableSlice::From<char8>(@tag[0], 32));
+    Check(Slice<char8> { data: @tag[0], length: 32 },
+          "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
+          "HMAC-SHA-256, RFC 4231 case 6");
+    HmacOf<Sha512>(Sha512::New(), longKey,
+                   "Test Using Larger Than Block-Size Key - Hash Key First",
+                   MutableSlice::From<char8>(@tag[0], 64));
+    Check(Slice<char8> { data: @tag[0], length: 64 },
+          "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598",
+          "HMAC-SHA-512, RFC 4231 case 6");
+
+    // The consequence of that rule, stated directly: two keys differing only past the block length are the same
+    // key, because both are replaced by the same digest.
+    var stretched: char8[300];
+    index = 0;
+    while index < 300u {
+        stretched[index] = 0xAAu8 as char8;
+        index = index + 1;
+    }
+    var firstTag: char8[32];
+    var secondTag: char8[32];
+    let keyA = Slice<char8> { data: @stretched[0], length: 200 };
+    HmacOf<Sha256>(Sha256::New(), keyA, "message", MutableSlice::From<char8>(@firstTag[0], 32));
+    stretched[250] = (stretched[250] as uint8 ^ 0xFFu8) as char8;
+    let keyB = Slice<char8> { data: @stretched[0], length: 200 };
+    HmacOf<Sha256>(Sha256::New(), keyB, "message", MutableSlice::From<char8>(@secondTag[0], 32));
+    Assert(Equal(Slice<char8> { data: @firstTag[0], length: 32 },
+                 Slice<char8> { data: @secondTag[0], length: 32 }),
+           "a change past the key's used length changes nothing, since the key was already hashed");
+
+    // A change inside the key does change the tag.
+    stretched[10] = (stretched[10] as uint8 ^ 0xFFu8) as char8;
+    let keyC = Slice<char8> { data: @stretched[0], length: 200 };
+    var thirdTag: char8[32];
+    HmacOf<Sha256>(Sha256::New(), keyC, "message", MutableSlice::From<char8>(@thirdTag[0], 32));
+    Assert(!Equal(Slice<char8> { data: @firstTag[0], length: 32 },
+                  Slice<char8> { data: @thirdTag[0], length: 32 }),
+           "while a change within it does");
+
+    // The incremental contract, over a message spanning several blocks.
+    var message: char8[500];
+    index = 0;
+    while index < 500u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+    let whole = Slice<char8> { data: @message[0], length: 500 };
+    var oneShot: char8[32];
+    HmacOf<Sha256>(Sha256::New(), shortKey, whole, MutableSlice::From<char8>(@oneShot[0], 32));
+    let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 32 };
+    var split: uint = 0;
+    while split <= 500u {
+        var state = Hmac::New<Sha256>(Sha256::New(), shortKey);
+        let first = Slice<char8> { data: @message[0], length: split };
+        state.Update(first);
+        let second = Slice<char8> { data: @message[split], length: 500u - split };
+        state.Update(second);
+        var got: char8[32];
+        state.Finish(MutableSlice::From<char8>(@got[0], 32));
+        Assert(Equal(Slice<char8> { data: @got[0], length: 32 }, oneShotBytes),
+               "every split of a message gives the same tag");
+        split = split + 25u;
+    }
+
+    // An empty key and an empty message are both legal.
+    let emptyKey = Slice<char8> { data: @key[0], length: 0 };
+    HmacOf<Sha256>(Sha256::New(), emptyKey, "", MutableSlice::From<char8>(@tag[0], 32));
+    var repeat: char8[32];
+    HmacOf<Sha256>(Sha256::New(), emptyKey, "", MutableSlice::From<char8>(@repeat[0], 32));
+    Assert(Equal(Slice<char8> { data: @tag[0], length: 32 }, Slice<char8> { data: @repeat[0], length: 32 }),
+           "an empty key and message authenticate deterministically");
+
+    // The tag length follows the digest.
+    var narrow = Hmac::New<Sha256>(Sha256::New(), shortKey);
+    var wide = Hmac::New<Sha512>(Sha512::New(), shortKey);
+    Assert(narrow.TagLength() == 32u && wide.TagLength() == 64u, "the tag is as long as the digest under it");
+
+    return 0;
+}

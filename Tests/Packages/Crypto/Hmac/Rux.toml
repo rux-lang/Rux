@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Hmac"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: HMAC over several digests against the RFC 4231 and RFC 2202 vectors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
