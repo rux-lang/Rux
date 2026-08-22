@@ -1,0 +1,94 @@
+// The comparison and the wipe are the two operations here that have observable behaviour, so they are what this
+// tests. The digest contract itself has nothing to check until an algorithm implements it -- the first is SHA-256
+// in the next task, and its test is where the incremental promise gets exercised against real vectors.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Equal, Wipe };
+
+func Main() -> int {
+    var left: char8[8];
+    var right: char8[8];
+    var index: uint = 0;
+    while index < 8u {
+        left[index] = (index as uint8) as char8;
+        right[index] = (index as uint8) as char8;
+        index = index + 1;
+    }
+    let leftBytes = Slice<char8> { data: @left[0], length: 8 };
+    let rightBytes = Slice<char8> { data: @right[0], length: 8 };
+
+    Assert(Equal(leftBytes, rightBytes), "identical sequences compare equal");
+
+    // A difference anywhere is found, including at the very last byte -- which the early-return comparison also
+    // manages, but only after telling an observer how long the matching prefix was.
+    index = 0;
+    while index < 8u {
+        let held = right[index];
+        right[index] = (0xFFu8) as char8;
+        Assert(!Equal(leftBytes, rightBytes), "a difference at any position is found");
+        right[index] = held;
+        Assert(Equal(leftBytes, rightBytes), "and restoring it makes them equal again");
+        index = index + 1;
+    }
+
+    // Several differences at once, which the accumulating form must not cancel out. Or-ing the differences is
+    // what guarantees that; adding or exclusive-or-ing the whole lot would let two of them annihilate.
+    right[0] = 0xF0u8 as char8;
+    right[3] = 0x0Fu8 as char8;
+    Assert(!Equal(leftBytes, rightBytes), "several differences do not cancel one another out");
+    right[0] = 0u8 as char8;
+    right[3] = 3u8 as char8;
+
+    // Lengths.
+    let shortLeft = Slice<char8> { data: @left[0], length: 4 };
+    Assert(!Equal(shortLeft, rightBytes), "sequences of different lengths are unequal");
+    let emptyLeft = Slice<char8> { data: @left[0], length: 0 };
+    let emptyRight = Slice<char8> { data: @right[0], length: 0 };
+    Assert(Equal(emptyLeft, emptyRight), "two empty sequences are equal");
+    Assert(!Equal(emptyLeft, rightBytes), "and an empty one differs from a non-empty one");
+
+    // The wipe clears every byte and nothing beyond the slice it was given.
+    var secret: char8[16];
+    index = 0;
+    while index < 16u {
+        secret[index] = 0xABu8 as char8;
+        index = index + 1;
+    }
+    let middle = MutableSlice::From<char8>(@secret[4], 8);
+    Wipe(middle);
+    index = 0;
+    while index < 4u {
+        Assert(secret[index] == (0xABu8 as char8), "the bytes before the wiped range are untouched");
+        index = index + 1;
+    }
+    while index < 12u {
+        Assert(secret[index] == (0u8 as char8), "the wiped range is zero");
+        index = index + 1;
+    }
+    while index < 16u {
+        Assert(secret[index] == (0xABu8 as char8), "and the bytes after it are untouched");
+        index = index + 1;
+    }
+
+    // Wiping nothing is legal and does nothing.
+    let none = MutableSlice::From<char8>(@secret[0], 0);
+    Wipe(none);
+    Assert(secret[0] == (0xABu8 as char8), "wiping an empty slice changes nothing");
+
+    // The wipe survives being the last thing to touch a buffer, which is the case an optimizer would remove.
+    var doomed: char8[32];
+    index = 0;
+    while index < 32u {
+        doomed[index] = 0x5Au8 as char8;
+        index = index + 1;
+    }
+    let whole = MutableSlice::From<char8>(@doomed[0], 32);
+    Wipe(whole);
+    index = 0;
+    while index < 32u {
+        Assert(doomed[index] == (0u8 as char8), "a buffer nothing reads afterwards is still actually cleared");
+        index = index + 1;
+    }
+
+    return 0;
+}
