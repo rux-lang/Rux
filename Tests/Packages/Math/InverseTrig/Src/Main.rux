@@ -1,0 +1,105 @@
+// The one-argument inverses are checked against the functions they invert. The two-argument arc tangent is
+// checked against a table, because its whole value is in the quadrant information the one-argument form throws
+// away, and that information lives entirely in special cases -- including the signed zeros, which decide which
+// side of the negative axis a point is on.
+
+import Core::Assert;
+import Math::{ Abs, ArcCos, ArcCot, ArcSin, ArcTan, ArcTan2, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64,
+               SignBit, Sin, Tan, UlpDistance };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+    let halfPi = 1.5707963267948966;
+    let quarterPi = 0.7853981633974483;
+
+    // The one-argument inverses, at the values that must be exact.
+    Assert(ArcSin(0.0) == 0.0 && !SignBit(ArcSin(0.0)), "the inverse sine of zero is zero");
+    Assert(SignBit(ArcSin(-0.0)), "and of a negative zero keeps its sign");
+    Assert(UlpDistance(ArcSin(1.0), halfPi) <= 1u64, "the inverse sine of one is a quarter turn");
+    Assert(UlpDistance(ArcSin(-1.0), -halfPi) <= 1u64, "and of minus one the other way");
+    Assert(IsNan(ArcSin(1.5)) && IsNan(ArcSin(-1.5)), "outside the unit interval there is no angle");
+    Assert(ArcCos(1.0) == 0.0, "the inverse cosine of one is zero");
+    Assert(UlpDistance(ArcCos(0.0), halfPi) <= 1u64, "of zero it is a quarter turn");
+    Assert(UlpDistance(ArcCos(-1.0), Pi) <= 1u64, "and of minus one a half turn");
+    Assert(IsNan(ArcCos(1.5)), "outside the unit interval there is no angle here either");
+    Assert(ArcTan(0.0) == 0.0 && SignBit(ArcTan(-0.0)), "the inverse tangent of zero is zero, signed");
+    Assert(UlpDistance(ArcTan(1.0), quarterPi) <= 1u64, "of one it is an eighth turn");
+    Assert(UlpDistance(ArcTan(infinity), halfPi) <= 1u64, "and it approaches a quarter turn at infinity");
+    Assert(IsNan(ArcSin(notANumber)) && IsNan(ArcCos(notANumber)) && IsNan(ArcTan(notANumber)),
+           "a NaN propagates through all three");
+
+    // Each inverts its own function across the range where that is meaningful.
+    var step: uint = 0;
+    while step <= 200u {
+        let value = -1.0 + (step as float64) * 0.01;
+        // Measured absolutely rather than in ulps, because a round trip through an angle cannot be relatively
+        // accurate near a zero of the outer function: the inverse cosine of zero is the double nearest a quarter
+        // turn, and the cosine of that is 6e-17 rather than 0 -- correct to the last bit, and infinitely far in
+        // ulps from the value it started as.
+        Assert(Abs(Sin(ArcSin(value)) - value) < 1.0e-15, "the sine undoes the inverse sine");
+        Assert(Abs(Cos(ArcCos(value)) - value) < 1.0e-15, "the cosine undoes the inverse cosine");
+        step = step + 1;
+    }
+    var angle: uint = 0;
+    while angle <= 200u {
+        let value = -20.0 + (angle as float64) * 0.2;
+        Assert(Abs(Tan(ArcTan(value)) - value) < 1.0e-14 * (1.0 + Abs(value)),
+               "the tangent undoes the inverse tangent");
+        if Abs(value) > 0.01 {
+            Assert(UlpDistance(ArcCot(value), halfPi - ArcTan(value)) <= 8u64,
+                   "and the inverse cotangent is the complement of the inverse tangent");
+        }
+        angle = angle + 1;
+    }
+
+    // The two-argument form: the four quadrants, which the one-argument form cannot tell apart.
+    Assert(UlpDistance(ArcTan2(1.0, 1.0), quarterPi) <= 2u64, "the first quadrant is an eighth turn");
+    Assert(UlpDistance(ArcTan2(1.0, -1.0), Pi - quarterPi) <= 2u64, "the second is three eighths");
+    Assert(UlpDistance(ArcTan2(-1.0, -1.0), quarterPi - Pi) <= 2u64, "the third is minus three eighths");
+    Assert(UlpDistance(ArcTan2(-1.0, 1.0), -quarterPi) <= 2u64, "and the fourth minus one eighth");
+    Assert(ArcTan(1.0 / 1.0) == ArcTan(-1.0 / -1.0),
+           "which the one-argument form cannot do, since the division loses the quadrant");
+
+    // The axes, where the answers are exact and the signed zeros decide the side.
+    Assert(ArcTan2(0.0, 1.0) == 0.0 && !SignBit(ArcTan2(0.0, 1.0)), "along the positive axis the angle is zero");
+    Assert(ArcTan2(-0.0, 1.0) == 0.0 && SignBit(ArcTan2(-0.0, 1.0)), "signed by y even when y is a zero");
+    Assert(ArcTan2(0.0, -1.0) == Pi, "along the negative axis it is a half turn");
+    Assert(ArcTan2(-0.0, -1.0) == -Pi, "on the other side of that axis, minus a half turn");
+    Assert(ArcTan2(1.0, 0.0) == halfPi, "straight up is a quarter turn");
+    Assert(ArcTan2(-1.0, 0.0) == -halfPi, "and straight down is minus one");
+    Assert(ArcTan2(1.0, -0.0) == halfPi, "which the sign of x does not affect");
+
+    // The origin, where every implementation agrees to answer rather than refuse.
+    Assert(ArcTan2(0.0, 0.0) == 0.0 && !SignBit(ArcTan2(0.0, 0.0)), "the origin gives zero");
+    Assert(SignBit(ArcTan2(-0.0, 0.0)), "signed by y");
+    Assert(ArcTan2(0.0, -0.0) == Pi, "and a negative zero x puts it on the negative axis");
+    Assert(ArcTan2(-0.0, -0.0) == -Pi, "on the appropriate side");
+
+    // Infinities, including the four diagonals that a ratio would turn into a NaN.
+    Assert(ArcTan2(infinity, infinity) == quarterPi, "both infinite along the first diagonal");
+    Assert(ArcTan2(infinity, -infinity) == quarterPi + halfPi, "the second");
+    Assert(ArcTan2(-infinity, -infinity) == -(quarterPi + halfPi), "the third");
+    Assert(ArcTan2(-infinity, infinity) == -quarterPi, "and the fourth");
+    Assert(ArcTan2(infinity, 1.0) == halfPi && ArcTan2(-infinity, 1.0) == -halfPi, "an infinite y is vertical");
+    Assert(ArcTan2(1.0, infinity) == 0.0, "an infinite positive x is horizontal");
+    Assert(ArcTan2(1.0, -infinity) == Pi, "and an infinite negative x is a half turn");
+    Assert(IsNan(ArcTan2(notANumber, 1.0)) && IsNan(ArcTan2(1.0, notANumber)), "a NaN propagates");
+
+    // Away from the axes it agrees with the one-argument form wherever that form is meaningful.
+    var probe: uint = 1;
+    while probe < 200u {
+        let value = (probe as float64) * 0.07;
+        Assert(UlpDistance(ArcTan2(value, 1.0), ArcTan(value)) <= 2u64,
+               "a point with x of one gives the plain inverse tangent");
+        Assert(UlpDistance(ArcTan2(value, 2.0), ArcTan(value * 0.5)) <= 2u64, "and scaling both is the same angle");
+        probe = probe + 1;
+    }
+
+    // The narrow width.
+    Assert(UlpDistance(ArcTan2(1.0f32, 1.0f32) as float64, quarterPi) <= 4294967296u64,
+           "the narrow two-argument form answers in its own precision");
+    Assert(ArcTan2(0.0f32, -1.0f32) > 3.14f32, "and puts a negative axis at a half turn");
+
+    return 0;
+}
