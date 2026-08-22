@@ -1,0 +1,94 @@
+// The gamma family, and the two counting distributions built on it.
+//
+// These are the distributions where the shortest correct method is not obvious, and where the usual shortcuts
+// are wrong in ways that only show up in the tail. Summing `n` Bernoulli draws for a binomial is exact but takes
+// `n` draws, which is unusable for the large `n` that makes a binomial interesting. Multiplying uniforms for a
+// Poisson is exact but takes about `lambda` draws and underflows to a hang for a large mean. And a normal
+// approximation to either is not the distribution at all -- it is a different one that happens to look similar
+// near the middle.
+//
+// So each is exact at every parameter, and each reduces to the gamma distribution when its parameter grows: the
+// binomial through a beta split that halves the problem, and the Poisson through a gamma step that consumes a
+// large chunk of the mean at once. Both are Devroye's constructions, and both recurse only logarithmically.
+
+import Math::{ Exp, Log, Pow, Sqrt };
+
+/// Below this the direct methods are cheaper than the reductions, and above it they stop being practical.
+///
+/// https://rux-lang.dev/docs/api/random/direct-method-limit
+const DirectMethodLimit: float64 = 30.0;
+
+/// A value from the gamma distribution with the given shape and unit scale.
+///
+/// Marsaglia and Tsang's method: a normal draw squeezed through a cube, which accepts on the first attempt more
+/// than ninety-five percent of the time for any shape at or above one. A shape below one is generated from a
+/// shape one larger and scaled down, since the density is unbounded at zero there and the squeeze does not hold.
+///
+/// A shape at or below zero has no distribution and gives zero.
+///
+/// https://rux-lang.dev/docs/api/random/gamma
+func Gamma<G: RandomGenerator>(generator: *var G, shape: float64) -> float64 {
+    if !(shape > 0.0) {
+        return 0.0;
+    }
+    if shape < 1.0 {
+        // Boosting: a gamma of shape a is a gamma of shape a+1 times a uniform to the power 1/a.
+        let boosted = Gamma<G>(generator, shape + 1.0);
+        let unit = NextFloat64<G>(generator);
+        // The draw is taken on 1 - u so an exact zero, whose reciprocal power is an infinity, cannot arise.
+        return boosted * Pow(1.0 - unit, 1.0 / shape);
+    }
+    let d = shape - 1.0 / 3.0;
+    let c = 1.0 / Sqrt(9.0 * d);
+    var accepted = 0.0;
+    var searching = true;
+    while searching {
+        var x = 0.0;
+        var v = 0.0;
+        var inside = false;
+        while !inside {
+            x = Normal<G>(generator);
+            v = 1.0 + c * x;
+            inside = v > 0.0;
+        }
+        v = v * v * v;
+        let u = NextFloat64<G>(generator);
+        let squared = x * x;
+        // The cheap squeeze accepts most draws without a logarithm; the exact test catches the rest.
+        if u < 1.0 - 0.0331 * squared * squared {
+            accepted = d * v;
+            searching = false;
+        }
+        else if Log(1.0 - u) < 0.5 * squared + d * (1.0 - v + Log(v)) {
+            accepted = d * v;
+            searching = false;
+        }
+    }
+    return accepted;
+}
+
+/// A value from the gamma distribution with the given shape and scale.
+///
+/// https://rux-lang.dev/docs/api/random/gamma-with-scale
+func GammaWithScale<G: RandomGenerator>(generator: *var G, shape: float64, scale: float64) -> float64 {
+    if !(scale > 0.0) {
+        return 0.0;
+    }
+    return Gamma<G>(generator, shape) * scale;
+}
+
+/// A value from the beta distribution with the two given shapes, in `[0, 1]`.
+///
+/// Built from two gamma draws, which is the definition rather than an approximation of it. Two shapes that are
+/// both zero leave nothing to divide and give a half.
+///
+/// https://rux-lang.dev/docs/api/random/beta
+func Beta<G: RandomGenerator>(generator: *var G, first: float64, second: float64) -> float64 {
+    let a = Gamma<G>(generator, first);
+    let b = Gamma<G>(generator, second);
+    let total = a + b;
+    if !(total > 0.0) {
+        return 0.5;
+    }
+    return a / total;
+}

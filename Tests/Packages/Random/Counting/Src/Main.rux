@@ -1,0 +1,142 @@
+// Each of these has two methods with a cutoff between them, so each is tested on both sides of its cutoff and
+// the two are required to agree in distribution. That is the check that matters: a reduction which is subtly
+// wrong still produces plausible numbers, and only shows up as a mean or variance that does not match the
+// direct method's.
+
+import Core::Assert;
+import Math::{ Abs, IsFinite, Sqrt };
+import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
+
+func Main() -> int {
+    var generator = Xoshiro256::New(31337u64);
+
+    // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it -- the two
+    // sides of the boosting cutoff.
+    var shapeIndex: uint = 0;
+    let shapes: float64[4] = [0.3, 0.9, 2.5, 12.0];
+    while shapeIndex < 4u {
+        let shape = shapes[shapeIndex];
+        var total = 0.0;
+        var totalSquares = 0.0;
+        var draw: uint = 0;
+        while draw < 60000u {
+            let value = Gamma<Xoshiro256>(@generator, shape);
+            Assert(IsFinite(value) && value >= 0.0, "a gamma draw is finite and non-negative");
+            total = total + value;
+            totalSquares = totalSquares + value * value;
+            draw = draw + 1;
+        }
+        let mean = total / 60000.0;
+        let variance = totalSquares / 60000.0 - mean * mean;
+        Assert(Abs(mean - shape) < 0.05 * shape + 0.02, "the mean of a gamma is its shape");
+        Assert(Abs(variance - shape) < 0.12 * shape + 0.05, "and so is its variance");
+        shapeIndex = shapeIndex + 1;
+    }
+    Assert(Gamma<Xoshiro256>(@generator, 0.0) == 0.0, "a shape of zero has no distribution");
+    Assert(Gamma<Xoshiro256>(@generator, -1.0) == 0.0, "and neither has a negative one");
+    Assert(GammaWithScale<Xoshiro256>(@generator, 2.0, 0.0) == 0.0, "nor has a scale of zero");
+
+    // Scaling multiplies the mean by the scale.
+    var scaledTotal = 0.0;
+    var draw: uint = 0;
+    while draw < 40000u {
+        scaledTotal = scaledTotal + GammaWithScale<Xoshiro256>(@generator, 3.0, 2.0);
+        draw = draw + 1;
+    }
+    Assert(Abs(scaledTotal / 40000.0 - 6.0) < 0.2, "a scaled gamma has mean shape times scale");
+
+    // Beta: mean is a/(a+b), and every draw is inside the unit interval.
+    var betaTotal = 0.0;
+    draw = 0;
+    while draw < 60000u {
+        let value = Beta<Xoshiro256>(@generator, 2.0, 3.0);
+        Assert(value >= 0.0 && value <= 1.0, "a beta draw is in the unit interval");
+        betaTotal = betaTotal + value;
+        draw = draw + 1;
+    }
+    Assert(Abs(betaTotal / 60000.0 - 0.4) < 0.01, "and its mean is the ratio of its shapes");
+
+    // Binomial below the cutoff, where it sums Bernoulli draws directly.
+    var smallTotal = 0.0;
+    var smallSquares = 0.0;
+    draw = 0;
+    while draw < 60000u {
+        let value = Binomial<Xoshiro256>(@generator, 20u64, 0.3) as float64;
+        Assert(value <= 20.0, "a binomial never exceeds its trial count");
+        smallTotal = smallTotal + value;
+        smallSquares = smallSquares + value * value;
+        draw = draw + 1;
+    }
+    var mean = smallTotal / 60000.0;
+    var variance = smallSquares / 60000.0 - mean * mean;
+    Assert(Abs(mean - 6.0) < 0.05, "its mean is trials times probability");
+    Assert(Abs(variance - 4.2) < 0.1, "and its variance is that times one minus the probability");
+
+    // Binomial above the cutoff, where it splits through a beta draw. Same law, different code path.
+    var largeTotal = 0.0;
+    var largeSquares = 0.0;
+    draw = 0;
+    while draw < 40000u {
+        let value = Binomial<Xoshiro256>(@generator, 1000u64, 0.3) as float64;
+        Assert(value <= 1000.0, "the reduced method also respects the trial count");
+        largeTotal = largeTotal + value;
+        largeSquares = largeSquares + value * value;
+        draw = draw + 1;
+    }
+    mean = largeTotal / 40000.0;
+    variance = largeSquares / 40000.0 - mean * mean;
+    Assert(Abs(mean - 300.0) < 2.0, "the reduction gives the same mean the direct method would");
+    Assert(Abs(variance - 210.0) < 12.0, "and the same variance");
+
+    // A count far past anything the direct method could reach, which is the point of the reduction.
+    let huge = Binomial<Xoshiro256>(@generator, 1000000000u64, 0.5);
+    Assert(huge > 499000000u64 && huge < 501000000u64,
+           "a binomial over a billion trials is drawn without a billion draws");
+
+    // The saturating edges.
+    Assert(Binomial<Xoshiro256>(@generator, 0u64, 0.5) == 0u64, "no trials give no successes");
+    Assert(Binomial<Xoshiro256>(@generator, 50u64, 0.0) == 0u64, "a probability of zero gives none");
+    Assert(Binomial<Xoshiro256>(@generator, 50u64, 1.0) == 50u64, "and one of one gives all of them");
+    Assert(Binomial<Xoshiro256>(@generator, 50u64, -0.5) == 0u64, "an out-of-range probability saturates");
+    Assert(Binomial<Xoshiro256>(@generator, 50u64, 2.0) == 50u64, "at both ends");
+
+    // Poisson below the cutoff, where Knuth's method applies: mean and variance are both the parameter.
+    var poissonTotal = 0.0;
+    var poissonSquares = 0.0;
+    draw = 0;
+    while draw < 60000u {
+        let value = Poisson<Xoshiro256>(@generator, 4.0) as float64;
+        poissonTotal = poissonTotal + value;
+        poissonSquares = poissonSquares + value * value;
+        draw = draw + 1;
+    }
+    mean = poissonTotal / 60000.0;
+    variance = poissonSquares / 60000.0 - mean * mean;
+    Assert(Abs(mean - 4.0) < 0.05, "a small Poisson has mean equal to its parameter");
+    Assert(Abs(variance - 4.0) < 0.1, "and variance equal to it as well");
+
+    // Poisson above the cutoff, where the gamma reduction applies.
+    poissonTotal = 0.0;
+    poissonSquares = 0.0;
+    draw = 0;
+    while draw < 40000u {
+        let value = Poisson<Xoshiro256>(@generator, 500.0) as float64;
+        poissonTotal = poissonTotal + value;
+        poissonSquares = poissonSquares + value * value;
+        draw = draw + 1;
+    }
+    mean = poissonTotal / 40000.0;
+    variance = poissonSquares / 40000.0 - mean * mean;
+    Assert(Abs(mean - 500.0) < 2.0, "a large Poisson keeps the same mean through the reduction");
+    Assert(Abs(variance - 500.0) < 20.0, "and the same variance, which a normal approximation would not");
+
+    // A mean large enough that multiplying uniforms would underflow to a hang.
+    let enormous = Poisson<Xoshiro256>(@generator, 1000000.0);
+    Assert(enormous > 995000u64 && enormous < 1005000u64,
+           "a Poisson with a mean of a million is drawn without a million draws");
+
+    Assert(Poisson<Xoshiro256>(@generator, 0.0) == 0u64, "a mean of zero gives no events");
+    Assert(Poisson<Xoshiro256>(@generator, -1.0) == 0u64, "and neither does a negative one");
+
+    return 0;
+}
