@@ -1,0 +1,444 @@
+// BLAKE3: the compression function, the chunk state, and the tree that joins chunks together.
+//
+// BLAKE3 is a tree hash, and that is the whole of what makes it different. A message is cut into chunks of a
+// kibibyte; each chunk is compressed to a chaining value independently, and the chaining values are joined
+// pairwise up a binary tree until one remains. Nothing in that depends on the order the chunks are processed,
+// which is why the algorithm parallelizes -- and it is also why the implementation is more intricate than a
+// sequential hash, since the tree has to be maintained rather than just a running state.
+//
+// The tree is kept as a stack of subtree chaining values, and the trick that keeps it small is arithmetic: after
+// finishing the chunk at index n, the number of subtrees to merge is the number of trailing one bits in n. That
+// single fact replaces any bookkeeping about which subtrees are complete.
+//
+// The flags carry the position information a tree hash needs and a sequential one does not. A chaining value
+// means nothing without knowing whether it came from the start of a chunk, the end of one, a parent node, or the
+// root -- and mixing that into the compression is what stops one part of the tree being substituted for another.
+
+import Core::{ MutableSlice, Slice };
+
+/// Bytes per chunk: the unit each leaf of the tree covers.
+const Blake3ChunkLength: uint = 1024;
+
+/// Bytes per compression: the unit the compression function consumes.
+const Blake3BlockLength: uint = 64;
+
+/// The initial chaining value, which is SHA-256's -- the fractional square roots of the first eight primes.
+const Blake3InitialValue: uint32[8] = [
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+];
+
+/// The message word permutation applied between rounds.
+const Blake3Permutation: uint[16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
+
+/// This block begins a chunk.
+const Blake3ChunkStart: uint32 = 1;
+/// This block ends a chunk.
+const Blake3ChunkEnd: uint32 = 2;
+/// This compression joins two child chaining values rather than covering message bytes.
+const Blake3Parent: uint32 = 4;
+/// This compression produces the final output, which is what stops a subtree standing in for the whole.
+const Blake3Root: uint32 = 8;
+
+func Blake3Rotate(value: uint32, amount: uint32) -> uint32 {
+    return (value >> amount) | (value << (32u32 - amount));
+}
+
+// The mixing function, applied to four words of the state with two message words.
+func Blake3Mix(state: *var uint32, a: uint, b: uint, c: uint, d: uint, first: uint32, second: uint32) {
+    state[a] = state[a] + state[b] + first;
+    state[d] = Blake3Rotate(state[d] ^ state[a], 16u32);
+    state[c] = state[c] + state[d];
+    state[b] = Blake3Rotate(state[b] ^ state[c], 12u32);
+    state[a] = state[a] + state[b] + second;
+    state[d] = Blake3Rotate(state[d] ^ state[a], 8u32);
+    state[c] = state[c] + state[d];
+    state[b] = Blake3Rotate(state[b] ^ state[c], 7u32);
+}
+
+// One round: four column mixes then four diagonal mixes.
+func Blake3Round(state: *var uint32, message: *uint32) {
+    Blake3Mix(state, 0u, 4u, 8u, 12u, message[0], message[1]);
+    Blake3Mix(state, 1u, 5u, 9u, 13u, message[2], message[3]);
+    Blake3Mix(state, 2u, 6u, 10u, 14u, message[4], message[5]);
+    Blake3Mix(state, 3u, 7u, 11u, 15u, message[6], message[7]);
+    Blake3Mix(state, 0u, 5u, 10u, 15u, message[8], message[9]);
+    Blake3Mix(state, 1u, 6u, 11u, 12u, message[10], message[11]);
+    Blake3Mix(state, 2u, 7u, 8u, 13u, message[12], message[13]);
+    Blake3Mix(state, 3u, 4u, 9u, 14u, message[14], message[15]);
+}
+
+/// The compression function: sixteen words of state over seven rounds, producing sixteen words of output.
+///
+/// The first eight output words are the chaining value; all sixteen are used when the output is being extended.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3-compress
+func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, blockLength: uint32, flags: uint32,
+                    into: *var uint32) {
+    var state: uint32[16];
+    var index: uint = 0;
+    while index < 8u {
+        state[index] = chaining[index];
+        index = index + 1;
+    }
+    state[8] = Blake3InitialValue[0];
+    state[9] = Blake3InitialValue[1];
+    state[10] = Blake3InitialValue[2];
+    state[11] = Blake3InitialValue[3];
+    state[12] = (counter & 0xFFFFFFFFu64) as uint32;
+    state[13] = ((counter >> 32u64) & 0xFFFFFFFFu64) as uint32;
+    state[14] = blockLength;
+    state[15] = flags;
+
+    var words: uint32[16];
+    index = 0;
+    while index < 16u {
+        words[index] = message[index];
+        index = index + 1;
+    }
+
+    var round: uint = 0;
+    while round < 7u {
+        Blake3Round(@state[0], @words[0]);
+        if round < 6u {
+            var permuted: uint32[16];
+            index = 0;
+            while index < 16u {
+                permuted[index] = words[Blake3Permutation[index]];
+                index = index + 1;
+            }
+            index = 0;
+            while index < 16u {
+                words[index] = permuted[index];
+                index = index + 1;
+            }
+        }
+        round = round + 1;
+    }
+
+    // The feed-forward: the second half is folded into the first, which is what makes the compression one-way.
+    index = 0;
+    while index < 8u {
+        into[index] = state[index] ^ state[index + 8u];
+        into[index + 8u] = state[index + 8u] ^ chaining[index];
+        index = index + 1;
+    }
+}
+
+/// The state of one chunk being filled.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3-chunk
+struct Blake3Chunk {
+    /// The chaining value carried between the chunk's blocks.
+    chaining: uint32[8];
+    /// Which chunk this is, which the compression mixes in so no chunk can stand in for another.
+    counter: uint64;
+    /// The block being filled.
+    block: char8[64];
+    /// How much of it is filled.
+    blockLength: uint;
+    /// How many blocks have been compressed, which decides whether the start flag still applies.
+    blocksCompressed: uint;
+    /// Flags every compression in this chunk carries.
+    flags: uint32;
+}
+
+extend Blake3Chunk {
+    func New(key: uint32[8], counter: uint64, flags: uint32) -> Blake3Chunk {
+        var chunk: Blake3Chunk;
+        chunk.chaining = key;
+        chunk.counter = counter;
+        chunk.blockLength = 0;
+        chunk.blocksCompressed = 0;
+        chunk.flags = flags;
+        return chunk;
+    }
+
+    // The start flag applies only to the first block of the chunk.
+    func StartFlag(self: *Blake3Chunk) -> uint32 {
+        return self.blocksCompressed == 0u ? Blake3ChunkStart : 0u32;
+    }
+
+    func Length(self: *Blake3Chunk) -> uint {
+        return self.blocksCompressed * Blake3BlockLength + self.blockLength;
+    }
+
+    // Reads the current block as sixteen little-endian words, zero-padded.
+    func BlockWords(self: *Blake3Chunk, words: *var uint32) {
+        var index: uint = 0;
+        while index < 16u {
+            var word = 0u32;
+            var part: uint = 0;
+            while part < 4u {
+                let position = index * 4u + part;
+                let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
+                word = word | ((value as uint32) << ((part * 8u) as uint32));
+                part = part + 1;
+            }
+            words[index] = word;
+            index = index + 1;
+        }
+    }
+
+    /// Adds bytes to the chunk, compressing whole blocks as they complete.
+    ///
+    /// A block is only compressed once the *next* byte arrives, never when it merely becomes full: the last
+    /// block of a chunk carries the end flag, and which block is last is not known until the chunk stops
+    /// growing. Compressing eagerly is the classic way to get the flags wrong.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3-chunk/update
+    func Update(self: *var Blake3Chunk, bytes: Slice<char8>) -> uint {
+        var index: uint = 0;
+        while index < bytes.length && self.Length() < Blake3ChunkLength {
+            if self.blockLength == Blake3BlockLength {
+                var words: uint32[16];
+                self.BlockWords(@words[0]);
+                var output: uint32[16];
+                Blake3Compress(@self.chaining[0], @words[0], self.counter, Blake3BlockLength as uint32,
+                               self.flags | self.StartFlag(), @output[0]);
+                var copy: uint = 0;
+                while copy < 8u {
+                    self.chaining[copy] = output[copy];
+                    copy = copy + 1;
+                }
+                self.blocksCompressed = self.blocksCompressed + 1u;
+                self.blockLength = 0;
+            }
+            self.block[self.blockLength] = bytes.data[index];
+            self.blockLength = self.blockLength + 1u;
+            index = index + 1;
+        }
+        return index;
+    }
+
+    /// The chunk's chaining value, with the end flag applied to its final block.
+    ///
+    /// `extraFlags` carries the root flag when this chunk is the whole message.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3-chunk/output
+    func Output(self: *Blake3Chunk, extraFlags: uint32, into: *var uint32) {
+        var words: uint32[16];
+        var index: uint = 0;
+        while index < 16u {
+            var word = 0u32;
+            var part: uint = 0;
+            while part < 4u {
+                let position = index * 4u + part;
+                let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
+                word = word | ((value as uint32) << ((part * 8u) as uint32));
+                part = part + 1;
+            }
+            words[index] = word;
+            index = index + 1;
+        }
+        Blake3Compress(@self.chaining[0], @words[0], self.counter, self.blockLength as uint32,
+                       self.flags | self.StartFlag() | Blake3ChunkEnd | extraFlags, into);
+    }
+}
+
+/// An incremental BLAKE3 hash.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3
+struct Blake3 {
+    /// The chunk currently being filled.
+    chunk: Blake3Chunk;
+    /// The stack of completed subtree chaining values, deepest last.
+    stack: uint32[512];
+    /// How many subtrees the stack holds.
+    stackDepth: uint;
+    /// The key, which is the initial value for an unkeyed hash.
+    key: uint32[8];
+    /// Flags every compression carries: none for an unkeyed hash.
+    flags: uint32;
+}
+
+extend Blake3 {
+    func Start(key: uint32[8], flags: uint32) -> Blake3 {
+        var hasher: Blake3;
+        hasher.key = key;
+        hasher.flags = flags;
+        hasher.chunk = Blake3Chunk::New(key, 0u64, flags);
+        hasher.stackDepth = 0;
+        return hasher;
+    }
+
+    /// An unkeyed BLAKE3 hash.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/new
+    func New() -> Blake3 {
+        return Blake3::Start(Blake3InitialValue, 0u32);
+    }
+
+    // Joins two child chaining values into their parent.
+    func JoinParent(self: *Blake3, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
+        var words: uint32[16];
+        var index: uint = 0;
+        while index < 8u {
+            words[index] = left[index];
+            words[index + 8u] = right[index];
+            index = index + 1;
+        }
+        // A parent covers no message bytes, so its counter is zero and its length is a whole block.
+        Blake3Compress(@self.key[0], @words[0], 0u64, Blake3BlockLength as uint32,
+                       self.flags | Blake3Parent | extraFlags, into);
+    }
+
+    // Merges the finished chunk into the stack. The number of merges is the number of trailing one bits in the
+    // chunk's index, which is the arithmetic that replaces tracking which subtrees are complete.
+    func PushChunk(self: *var Blake3, chaining: *uint32, chunkIndex: uint64) {
+        var carried: uint32[8];
+        var index: uint = 0;
+        while index < 8u {
+            carried[index] = chaining[index];
+            index = index + 1;
+        }
+        var remaining = chunkIndex;
+        while (remaining & 1u64) != 0u64 {
+            self.stackDepth = self.stackDepth - 1u;
+            var joined: uint32[16];
+            self.JoinParent(@self.stack[self.stackDepth * 8u], @carried[0], 0u32, @joined[0]);
+            index = 0;
+            while index < 8u {
+                carried[index] = joined[index];
+                index = index + 1;
+            }
+            remaining = remaining >> 1u64;
+        }
+        index = 0;
+        while index < 8u {
+            self.stack[self.stackDepth * 8u + index] = carried[index];
+            index = index + 1;
+        }
+        self.stackDepth = self.stackDepth + 1u;
+    }
+}
+
+extend Blake3 : Digest {
+    /// Adds `bytes` to the message.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/update
+    func Update(self: *var Blake3, bytes: Slice<char8>) {
+        var offset: uint = 0;
+        while offset < bytes.length {
+            if self.chunk.Length() == Blake3ChunkLength {
+                // The chunk is full, so it becomes a leaf and the next one starts.
+                var chaining: uint32[16];
+                self.chunk.Output(0u32, @chaining[0]);
+                let finished = self.chunk.counter;
+                self.PushChunk(@chaining[0], finished);
+                self.chunk = Blake3Chunk::New(self.key, finished + 1u64, self.flags);
+            }
+            let rest = Slice<char8> { data: @bytes.data[offset], length: bytes.length - offset };
+            offset = offset + self.chunk.Update(rest);
+        }
+    }
+
+    /// Writes the root output into `into`, which may be any length.
+    ///
+    /// BLAKE3's output is extendable like SHAKE's: the root compression repeats with an increasing counter to
+    /// produce as many bytes as asked. Thirty-two is the usual choice and is what `DigestLength` reports.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/finish
+    func Finish(self: *var Blake3, into: MutableSlice<char8>) {
+        var rootChaining: uint32[8];
+        var rootMessage: uint32[16];
+        var rootCounter = 0u64;
+        var rootLength = 0u32;
+        var rootFlags = 0u32;
+        var index: uint = 0;
+
+        if self.stackDepth == 0u {
+            // One chunk is the whole message, so that chunk's final block is the root compression.
+            index = 0;
+            while index < 8u {
+                rootChaining[index] = self.chunk.chaining[index];
+                index = index + 1;
+            }
+            index = 0;
+            while index < 16u {
+                var word = 0u32;
+                var part: uint = 0;
+                while part < 4u {
+                    let position = index * 4u + part;
+                    let value = position < self.chunk.blockLength ? (self.chunk.block[position] as uint8) : 0u8;
+                    word = word | ((value as uint32) << ((part * 8u) as uint32));
+                    part = part + 1;
+                }
+                rootMessage[index] = word;
+                index = index + 1;
+            }
+            rootCounter = self.chunk.counter;
+            rootLength = self.chunk.blockLength as uint32;
+            rootFlags = self.flags | self.chunk.StartFlag() | Blake3ChunkEnd;
+        }
+        else {
+            // Fold the stack downward, the current chunk entering as the rightmost child, until one join is
+            // left -- that last one is the root, and it is the only compression carrying the root flag.
+            var carried: uint32[16];
+            self.chunk.Output(0u32, @carried[0]);
+            var depth = self.stackDepth;
+            while depth > 1u {
+                depth = depth - 1u;
+                var joined: uint32[16];
+                self.JoinParent(@self.stack[depth * 8u], @carried[0], 0u32, @joined[0]);
+                index = 0;
+                while index < 16u {
+                    carried[index] = joined[index];
+                    index = index + 1;
+                }
+            }
+            index = 0;
+            while index < 8u {
+                rootChaining[index] = self.key[index];
+                rootMessage[index] = self.stack[index];
+                rootMessage[index + 8u] = carried[index];
+                index = index + 1;
+            }
+            rootCounter = 0u64;
+            rootLength = Blake3BlockLength as uint32;
+            rootFlags = self.flags | Blake3Parent;
+        }
+
+        var rootWords: uint32[16];
+        var written: uint = 0;
+        var block = 0u64;
+        while written < into.length {
+            Blake3Compress(@rootChaining[0], @rootMessage[0], rootCounter + block, rootLength,
+                           rootFlags | Blake3Root, @rootWords[0]);
+            index = 0;
+            while index < 16u && written < into.length {
+                var part: uint = 0;
+                while part < 4u && written < into.length {
+                    into.data[written] =
+                        ((rootWords[index] >> ((part * 8u) as uint32)) & 0xFFu32) as uint8 as char8;
+                    written = written + 1u;
+                    part = part + 1;
+                }
+                index = index + 1;
+            }
+            block = block + 1u64;
+        }
+    }
+
+    /// Thirty-two bytes, the conventional length; `Finish` writes any length asked of it.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/digest-length
+    func DigestLength(self: *Blake3) -> uint {
+        return 32u;
+    }
+
+    /// Sixty-four bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/block-length
+    func BlockLength(self: *Blake3) -> uint {
+        return Blake3BlockLength;
+    }
+}
+
+/// The BLAKE3 hash of `bytes`, at whatever length `into` asks for.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3-of
+func Blake3Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var hasher = Blake3::New();
+    hasher.Update(bytes);
+    hasher.Finish(into);
+}

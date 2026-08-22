@@ -1,0 +1,138 @@
+// BLAKE3's tree structure is where its bugs live: the chunk boundary at one kibibyte, the trailing-ones
+// arithmetic that decides how many subtrees to merge, and the flags that distinguish a chunk start from a chunk
+// end from a parent from the root. So the test walks lengths across several chunk boundaries and checks the
+// incremental contract at each, which exercises every one of those.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Blake3, Blake3Of, Digest, Equal };
+
+func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < into.length {
+        var value = 0u8;
+        var half: uint = 0;
+        while half < 2u {
+            let c = text.data[index * 2u + half] as uint8;
+            var digit = 0u8;
+            if c >= 0x30u8 && c <= 0x39u8 {
+                digit = c - 0x30u8;
+            }
+            else {
+                digit = c - 0x61u8 + 10u8;
+            }
+            value = value * 16u8 + digit;
+            half = half + 1;
+        }
+        into.data[index] = value as char8;
+        index = index + 1;
+    }
+}
+
+func Main() -> int {
+    // The published hash of the empty message.
+    var digest: char8[64];
+    Blake3Of("", MutableSlice::From<char8>(@digest[0], 32));
+    var expected: char8[32];
+    FromHex("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+            MutableSlice::From<char8>(@expected[0], 32));
+    Assert(Equal(Slice<char8> { data: @digest[0], length: 32 },
+                 Slice<char8> { data: @expected[0], length: 32 }),
+           "BLAKE3 of the empty message");
+
+    // A message spanning several chunks exercises the tree: the boundary at one kibibyte, the merges the
+    // trailing-ones rule performs, and the root flag that only the final join carries.
+    var message: char8[5000];
+    var index: uint = 0;
+    while index < 5000u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+
+    // Every length around each of the first four chunk boundaries, fed in one call and in two.
+    let boundaries: uint[5] = [0, 1024, 2048, 3072, 4096];
+    var which: uint = 0;
+    while which < 5u {
+        var offset: uint = 0;
+        while offset <= 4u {
+            let base = boundaries[which];
+            if base + offset <= 5000u && base + offset >= 2u {
+                let length = base + offset - 2u;
+                var oneShot: char8[32];
+                let whole = Slice<char8> { data: @message[0], length: length };
+                Blake3Of(whole, MutableSlice::From<char8>(@oneShot[0], 32));
+                let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 32 };
+
+                // A handful of splits rather than all of them, since the lengths here are large.
+                let splits: uint[6] = [0, 1, 63, 64, 1023, 1024];
+                var s: uint = 0;
+                while s < 6u {
+                    let split = splits[s] <= length ? splits[s] : length;
+                    var incremental = Blake3::New();
+                    let first = Slice<char8> { data: @message[0], length: split };
+                    incremental.Update(first);
+                    let second = Slice<char8> { data: @message[split], length: length - split };
+                    incremental.Update(second);
+                    var got: char8[32];
+                    incremental.Finish(MutableSlice::From<char8>(@got[0], 32));
+                    let gotBytes = Slice<char8> { data: @got[0], length: 32 };
+                    Assert(Equal(gotBytes, oneShotBytes),
+                           "every split of a multi-chunk message gives the same hash");
+                    s = s + 1;
+                }
+            }
+            offset = offset + 1;
+        }
+        which = which + 1;
+    }
+
+    // Byte-at-a-time across two chunk boundaries, which drives the chunk state through every flag transition.
+    var byteAtATime = Blake3::New();
+    index = 0;
+    while index < 2500u {
+        let single = Slice<char8> { data: @message[index], length: 1 };
+        byteAtATime.Update(single);
+        index = index + 1;
+    }
+    var incrementalOut: char8[32];
+    byteAtATime.Finish(MutableSlice::From<char8>(@incrementalOut[0], 32));
+    var reference: char8[32];
+    let whole2500 = Slice<char8> { data: @message[0], length: 2500 };
+    Blake3Of(whole2500, MutableSlice::From<char8>(@reference[0], 32));
+    Assert(Equal(Slice<char8> { data: @incrementalOut[0], length: 32 },
+                 Slice<char8> { data: @reference[0], length: 32 }),
+           "a byte-at-a-time hash matches the one-shot hash across chunk boundaries");
+
+    // Distinct messages give distinct hashes, including ones differing only at a chunk boundary -- which is
+    // exactly what a mishandled flag would collapse.
+    var altered: char8[5000];
+    index = 0;
+    while index < 5000u {
+        altered[index] = message[index];
+        index = index + 1;
+    }
+    altered[1023] = (altered[1023] as uint8 ^ 1u8) as char8;
+    var alteredHash: char8[32];
+    let alteredWhole = Slice<char8> { data: @altered[0], length: 2048 };
+    Blake3Of(alteredWhole, MutableSlice::From<char8>(@alteredHash[0], 32));
+    var originalHash: char8[32];
+    let originalWhole = Slice<char8> { data: @message[0], length: 2048 };
+    Blake3Of(originalWhole, MutableSlice::From<char8>(@originalHash[0], 32));
+    Assert(!Equal(Slice<char8> { data: @alteredHash[0], length: 32 },
+                  Slice<char8> { data: @originalHash[0], length: 32 }),
+           "a single flipped bit at a chunk boundary changes the hash");
+
+    // The output extends like SHAKE's: a longer read starts with a shorter one.
+    var longOut: char8[128];
+    let abc = Slice<char8> { data: @message[0], length: 3 };
+    Blake3Of(abc, MutableSlice::From<char8>(@longOut[0], 128));
+    var shortOut: char8[32];
+    Blake3Of(abc, MutableSlice::From<char8>(@shortOut[0], 32));
+    Assert(Equal(Slice<char8> { data: @shortOut[0], length: 32 },
+                 Slice<char8> { data: @longOut[0], length: 32 }),
+           "a short output is the start of a long one");
+
+    var sizes = Blake3::New();
+    Assert(sizes.DigestLength() == 32u && sizes.BlockLength() == 64u, "BLAKE3 reports its conventional sizes");
+
+    return 0;
+}
