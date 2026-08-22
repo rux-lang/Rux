@@ -1,0 +1,111 @@
+// The FIPS 202 vectors for all four sizes, and the incremental contract. The rate differs per size here, unlike
+// SHA-2's fixed block, so a padding mistake can hide at one size and show at another.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Digest, Equal, Sha3, Sha3Of224, Sha3Of256, Sha3Of384, Sha3Of512 };
+
+func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index < into.length {
+        var value = 0u8;
+        var half: uint = 0;
+        while half < 2u {
+            let c = text.data[index * 2u + half] as uint8;
+            var digit = 0u8;
+            if c >= 0x30u8 && c <= 0x39u8 {
+                digit = c - 0x30u8;
+            }
+            else {
+                digit = c - 0x61u8 + 10u8;
+            }
+            value = value * 16u8 + digit;
+            half = half + 1;
+        }
+        into.data[index] = value as char8;
+        index = index + 1;
+    }
+}
+
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+    var expected: char8[64];
+    let room = MutableSlice::From<char8>(@expected[0], got.length);
+    FromHex(expectedHex, room);
+    let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
+    Assert(Equal(got, expectedBytes), what);
+}
+
+func Main() -> int {
+    var digest: char8[64];
+
+    Sha3Of256("", MutableSlice::From<char8>(@digest[0], 32));
+    Check(Slice<char8> { data: @digest[0], length: 32 },
+          "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+          "SHA3-256 of the empty message");
+    Sha3Of256("abc", MutableSlice::From<char8>(@digest[0], 32));
+    Check(Slice<char8> { data: @digest[0], length: 32 },
+          "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532",
+          "SHA3-256 of abc");
+    Sha3Of224("", MutableSlice::From<char8>(@digest[0], 28));
+    Check(Slice<char8> { data: @digest[0], length: 28 },
+          "6b4e03423667dbb73b6e15454f0eb1abd4597f9a1b078e3f5b5a6bc7",
+          "SHA3-224 of the empty message");
+    Sha3Of224("abc", MutableSlice::From<char8>(@digest[0], 28));
+    Check(Slice<char8> { data: @digest[0], length: 28 },
+          "e642824c3f8cf24ad09234ee7d3c766fc9a3a5168d0c94ad73b46fdf",
+          "SHA3-224 of abc");
+    Sha3Of384("", MutableSlice::From<char8>(@digest[0], 48));
+    Check(Slice<char8> { data: @digest[0], length: 48 },
+          "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004",
+          "SHA3-384 of the empty message");
+    Sha3Of384("abc", MutableSlice::From<char8>(@digest[0], 48));
+    Check(Slice<char8> { data: @digest[0], length: 48 },
+          "ec01498288516fc926459f58e2c6ad8df9b473cb0fc08c2596da7cf0e49be4b298d88cea927ac7f539f1edf228376d25",
+          "SHA3-384 of abc");
+    Sha3Of512("", MutableSlice::From<char8>(@digest[0], 64));
+    Check(Slice<char8> { data: @digest[0], length: 64 },
+          "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26",
+          "SHA3-512 of the empty message");
+    Sha3Of512("abc", MutableSlice::From<char8>(@digest[0], 64));
+    Check(Slice<char8> { data: @digest[0], length: 64 },
+          "b751850b1a57168a5693cd924b6b096e08f621827444f70d884f5d0240d2712e10e116e9192af3c91a7ec57647e3934057340b4cf408d5a56592f8274eec53f0",
+          "SHA3-512 of abc");
+
+    // The rate differs by size, so the incremental contract is checked across lengths straddling every rate
+    // boundary, including the one-free-byte padding case.
+    var message: char8[400];
+    var index: uint = 0;
+    while index < 400u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+    var length: uint = 0;
+    while length <= 300u {
+        var oneShot: char8[32];
+        let messageBytes = Slice<char8> { data: @message[0], length: length };
+        Sha3Of256(messageBytes, MutableSlice::From<char8>(@oneShot[0], 32));
+        let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 32 };
+        var split: uint = 0;
+        while split <= length {
+            var incremental = Sha3::New256();
+            let first = Slice<char8> { data: @message[0], length: split };
+            incremental.Update(first);
+            let second = Slice<char8> { data: @message[split], length: length - split };
+            incremental.Update(second);
+            var got: char8[32];
+            incremental.Finish(MutableSlice::From<char8>(@got[0], 32));
+            let gotBytes = Slice<char8> { data: @got[0], length: 32 };
+            Assert(Equal(gotBytes, oneShotBytes), "every split of a message gives the same SHA3-256 digest");
+            split = split + 1;
+        }
+        length = length + 1;
+    }
+
+    // The rates, which are the only structural difference between the four sizes.
+    var narrow = Sha3::New224();
+    var wide = Sha3::New512();
+    Assert(narrow.BlockLength() == 144u, "SHA3-224 absorbs a hundred and forty four bytes at a time");
+    Assert(wide.BlockLength() == 72u, "and SHA3-512 only seventy two, since its capacity is larger");
+    Assert(narrow.DigestLength() == 28u && wide.DigestLength() == 64u, "each reports its own digest length");
+
+    return 0;
+}

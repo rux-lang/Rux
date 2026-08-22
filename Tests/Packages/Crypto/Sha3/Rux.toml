@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Sha3"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: Keccak-f and the four SHA-3 hashes against the FIPS 202 vectors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
