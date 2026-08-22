@@ -1,0 +1,184 @@
+// The text form, parsed strictly and written canonically.
+//
+// RFC 9562 defines exactly one textual representation: thirty-two hexadecimal digits in five hyphen-separated
+// groups of 8-4-4-4-12, optionally prefixed by `urn:uuid:`. Everything else in circulation -- the brace-wrapped
+// form Windows tools print, the hyphen-free form some databases store, upper case mixed with lower -- is
+// something a program chose to accept, not something the standard blesses.
+//
+// This parses strictly on purpose. A lenient parser is pleasant right up to the moment two systems disagree
+// about which strings are UUIDs, and then the disagreement is a security boundary: one accepts a string the
+// other rejects, or worse, two different strings map to one identifier. Accepting exactly one form means two
+// implementations of this cannot drift apart.
+//
+// Case is the one exception, and it is asymmetric by design: both cases are *read*, because the standard says
+// they mean the same thing and rejecting upper case would break interoperation, but only lower case is
+// *written*, because RFC 9562 says output should be lower case and a canonical form that varies is not
+// canonical.
+
+import Core::{ MutableSlice, Slice };
+
+/// How long the canonical text form is: thirty-two digits and four hyphens.
+const UuidTextLength: uint = 36;
+
+/// How long the URN form is: the canonical form after `urn:uuid:`.
+const UuidUrnLength: uint = 45;
+
+/// Why a string could not be read as a UUID.
+///
+/// https://rux-lang.dev/docs/api/uuid/parse-error
+enum UuidParseError: int32 {
+    /// The string is a UUID.
+    None = 0,
+    /// The string is not thirty-six characters, or forty-five with the URN prefix.
+    WrongLength = 1,
+    /// A hyphen is missing, or one appears where a digit belongs.
+    Misplaced = 2,
+    /// A character that is not a hexadecimal digit.
+    NotHexadecimal = 3,
+    /// The `urn:uuid:` prefix is present but misspelled.
+    BadPrefix = 4
+}
+
+// The value of one hexadecimal digit, or sixteen for anything else.
+func HexValue(c: uint8) -> uint8 {
+    if c >= 0x30u8 && c <= 0x39u8 {
+        return c - 0x30u8;
+    }
+    if c >= 0x61u8 && c <= 0x66u8 {
+        return c - 0x61u8 + 10u8;
+    }
+    if c >= 0x41u8 && c <= 0x46u8 {
+        return c - 0x41u8 + 10u8;
+    }
+    return 16u8;
+}
+
+// Where the four hyphens belong in the canonical form.
+func IsHyphenPosition(index: uint) -> bool {
+    return index == 8u || index == 13u || index == 18u || index == 23u;
+}
+
+/// Reads a UUID from its canonical or URN text form.
+///
+/// Both cases are accepted; nothing else is. `error` says why a string was refused, and the returned value is
+/// nil in that case rather than partially filled -- a half-parsed identifier is worse than none.
+///
+/// https://rux-lang.dev/docs/api/uuid/parse
+func Parse(text: Slice<char8>, error: *var UuidParseError) -> Uuid {
+    *error = UuidParseError::None;
+    var start: uint = 0;
+    if text.length == UuidUrnLength {
+        // The prefix is compared case-insensitively, since RFC 8141 says a URN scheme name is not case
+        // sensitive -- which is a different rule from the digits, and both are the standard's.
+        let prefix = "urn:uuid:";
+        var index: uint = 0;
+        while index < 9u {
+            var mine = text.data[index] as uint8;
+            if mine >= 0x41u8 && mine <= 0x5Au8 {
+                mine = mine + 32u8;
+            }
+            if mine != (prefix.data[index] as uint8) {
+                *error = UuidParseError::BadPrefix;
+                return Uuid::Nil();
+            }
+            index = index + 1;
+        }
+        start = 9u;
+    }
+    else if text.length != UuidTextLength {
+        *error = UuidParseError::WrongLength;
+        return Uuid::Nil();
+    }
+
+    var value = Uuid::Nil();
+    var position: uint = 0;
+    var byteIndex: uint = 0;
+    var pending = 0u8;
+    var haveHigh = false;
+    while position < UuidTextLength {
+        let c = text.data[start + position] as uint8;
+        if IsHyphenPosition(position) {
+            if c != 0x2Du8 {
+                *error = UuidParseError::Misplaced;
+                return Uuid::Nil();
+            }
+        }
+        else {
+            let digit = HexValue(c);
+            if digit == 16u8 {
+                // A hyphen where a digit belongs is a misplacement rather than a bad character, which is a more
+                // useful thing to be told.
+                *error = c == 0x2Du8 ? UuidParseError::Misplaced : UuidParseError::NotHexadecimal;
+                return Uuid::Nil();
+            }
+            if haveHigh {
+                value.bytes[byteIndex] = ((pending << 4u8) | digit) as char8;
+                byteIndex = byteIndex + 1u;
+                haveHigh = false;
+            }
+            else {
+                pending = digit;
+                haveHigh = true;
+            }
+        }
+        position = position + 1u;
+    }
+    return value;
+}
+
+/// Writes the canonical text form into `into`, in lower case.
+///
+/// `into` must be at least thirty-six bytes. Lower case because RFC 9562 says so, and because a canonical form
+/// that varies by case is not canonical -- two systems comparing text would disagree about equal UUIDs.
+///
+/// https://rux-lang.dev/docs/api/uuid/format
+func Format(value: *Uuid, into: MutableSlice<char8>) {
+    let digits = "0123456789abcdef";
+    var position: uint = 0;
+    var byteIndex: uint = 0;
+    while position < UuidTextLength && position < into.length {
+        if IsHyphenPosition(position) {
+            into.data[position] = 0x2Du8 as char8;
+        }
+        else {
+            let octet = value.bytes[byteIndex / 2u] as uint8;
+            let nibble = (byteIndex % 2u) == 0u ? (octet >> 4u8) : (octet & 0x0Fu8);
+            into.data[position] = digits.data[nibble as uint];
+            byteIndex = byteIndex + 1u;
+        }
+        position = position + 1u;
+    }
+}
+
+/// Writes the canonical text form into `into`, in upper case.
+///
+/// Offered because some formats demand it; `Format` is what a program should write when it has the choice.
+///
+/// https://rux-lang.dev/docs/api/uuid/format-upper
+func FormatUpper(value: *Uuid, into: MutableSlice<char8>) {
+    Format(value, into);
+    var index: uint = 0;
+    while index < UuidTextLength && index < into.length {
+        let c = into.data[index] as uint8;
+        if c >= 0x61u8 && c <= 0x7Au8 {
+            into.data[index] = (c - 32u8) as char8;
+        }
+        index = index + 1;
+    }
+}
+
+/// Writes the URN form into `into`, which must be at least forty-five bytes.
+///
+/// https://rux-lang.dev/docs/api/uuid/format-urn
+func FormatUrn(value: *Uuid, into: MutableSlice<char8>) {
+    let prefix = "urn:uuid:";
+    var index: uint = 0;
+    while index < 9u && index < into.length {
+        into.data[index] = prefix.data[index];
+        index = index + 1;
+    }
+    if into.length > 9u {
+        let rest = MutableSlice<char8> { data: @into.data[9], length: into.length - 9u };
+        Format(value, rest);
+    }
+}

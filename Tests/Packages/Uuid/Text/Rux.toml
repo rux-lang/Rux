@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Text"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Uuid: strict canonical and URN parsing, and canonical formatting"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Uuid = { Path = "../../../../Packages/Uuid" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Uuid"
