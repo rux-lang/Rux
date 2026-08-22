@@ -3,7 +3,10 @@
 // every bit that mattered. Sinh, Cosh, Tanh and Cotanh are all built on this
 // rather than on Exp for exactly that reason.
 //
-// Internal: not part of the package's surface.
+// **Accuracy: error at most 1 ulp, and the relative error stays that small
+// as the argument approaches zero** -- which is the property Exp(x) - 1 does
+// not have at any accuracy, because the subtraction itself destroys the
+// answer long before the exponential's own error matters.
 func Expm1(x: float64) -> float64 {
     let q1 = -3.33333333333331316428e-02;
     let q2 = 1.58730158725481460165e-03;
@@ -118,4 +121,11 @@ func Expm1(x: float64) -> float64 {
     var y = xx - (e + t2);
     y += 1.0;
     return y * twopk;
+}
+
+// Widening is exact and the wide answer is correct to within a ulp of the wide
+// type, so the single narrowing at the end is the only rounding a float32
+// caller sees.
+func Expm1(x: float32) -> float32 {
+    return Expm1(x as float64) as float32;
 }

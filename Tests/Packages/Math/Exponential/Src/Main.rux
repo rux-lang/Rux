@@ -1,0 +1,87 @@
+// Three things decide whether an exponential is any good: what it does at the boundaries where the answer stops
+// fitting, what the range reduction does to arguments far from zero, and whether expm1 keeps the precision that
+// exp minus one throws away. Each gets its own section.
+
+import Core::Assert;
+import Math::{ Abs, E, Exp, Exp2, Expm1, IsNan, Log, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo,
+               SignBit, UlpDistance };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+
+    // The values that must be exact.
+    Assert(Exp(0.0) == 1.0, "the exponential of zero is exactly one");
+    Assert(Exp(-0.0) == 1.0, "from either zero");
+    Assert(UlpDistance(Exp(1.0), E) <= 1u64, "and the exponential of one is e");
+
+    // Boundaries: overflow to infinity, underflow to zero, and the specials.
+    Assert(Exp(infinity) == infinity, "an infinite argument gives infinity");
+    Assert(Exp(-infinity) == 0.0 && !SignBit(Exp(-infinity)), "and a negative infinite one gives positive zero");
+    Assert(IsNan(Exp(notANumber)), "a NaN stays a NaN");
+    Assert(Exp(1000.0) == infinity, "an argument past the overflow threshold saturates");
+    Assert(Exp(-1000.0) == 0.0, "and one past the underflow threshold vanishes");
+    Assert(Exp(709.0) < infinity && Exp(709.0) > 0.0, "while the largest argument that fits still fits");
+
+    // The range reduction, checked by an identity it cannot satisfy by accident: exp(a) * exp(b) == exp(a + b),
+    // walked across many multiples of ln 2 so every reduction path is taken.
+    var step: uint = 0;
+    while step < 60u {
+        let argument = -30.0 + (step as float64);
+        let doubled = Exp(argument) * Exp(argument);
+        Assert(UlpDistance(doubled, Exp(argument + argument)) <= 4u64,
+               "the exponential of a sum matches the product across the reduction");
+        step = step + 1;
+    }
+
+    // And by round-tripping through the logarithm, which is a different code path entirely.
+    var probe: uint = 1;
+    while probe < 200u {
+        let value = (probe as float64) * 0.37;
+        Assert(UlpDistance(Log(Exp(value)), value) <= 4u64, "the logarithm undoes the exponential");
+        probe = probe + 1;
+    }
+
+    // Base two, which is exact for integer arguments -- the reason it exists rather than being exp(x * ln 2),
+    // since ln 2 is not representable and that product would round before the exponential ever ran.
+    var power: int64 = -1000;
+    while power <= 1000i64 {
+        Assert(Exp2(power as float64) == ScaleByPowerOfTwo(1.0, power), "two to an integer power is exact");
+        power = power + 1i64;
+    }
+    // A half power is the square root of two, which is not representable, so squaring it back rounds twice.
+    Assert(UlpDistance(Exp2(0.5) * Exp2(0.5), 2.0) <= 2u64, "and a half power squares back to within two ulps");
+    Assert(Exp2(1024.0) == infinity, "past the top it saturates");
+    Assert(Exp2(-1075.0) == 0.0, "and past the bottom it vanishes");
+    Assert(IsNan(Exp2(notANumber)), "a NaN stays a NaN here too");
+
+    // expm1, and the precision it exists to keep. For a tiny argument exp(x) is 1 to every bit the type has, so
+    // exp(x) - 1 is exactly zero while the true answer is x -- a total loss, not a rounding.
+    Assert(Expm1(0.0) == 0.0 && !SignBit(Expm1(0.0)), "expm1 of zero is zero");
+    Assert(SignBit(Expm1(-0.0)), "and of a negative zero keeps the sign");
+    let tiny = ScaleByPowerOfTwo(1.0, -60i64);
+    Assert(Exp(tiny) - 1.0 == 0.0, "exp minus one loses a tiny argument entirely");
+    Assert(Expm1(tiny) == tiny, "while expm1 returns it unchanged, which is the true answer to full precision");
+    let small = 1.0e-10;
+    Assert(Abs(Expm1(small) / small - 1.0) < 1.0e-9, "the ratio to the argument approaches one as it should");
+
+    // Away from zero it agrees with exp minus one, where that subtraction is harmless.
+    var away: uint = 1;
+    while away < 100u {
+        let value = (away as float64) * 0.11;
+        Assert(UlpDistance(Expm1(value), Exp(value) - 1.0) <= 8u64,
+               "expm1 agrees with the naive form where the naive form is sound");
+        away = away + 1;
+    }
+
+    Assert(Expm1(infinity) == infinity, "an infinite argument gives infinity");
+    Assert(Expm1(-infinity) == -1.0, "and a negative infinite one gives minus one, its true limit");
+    Assert(IsNan(Expm1(notANumber)), "a NaN stays a NaN");
+
+    // The narrow width answers consistently.
+    Assert(Exp(0.0f32) == 1.0f32, "the narrow exponential of zero is one");
+    Assert(Exp2(10.0f32) == 1024.0f32, "the narrow base-two power is exact");
+    Assert(Expm1(0.0f32) == 0.0f32, "and the narrow expm1 of zero is zero");
+
+    return 0;
+}

@@ -1,3 +1,8 @@
+// Two raised to x.
+//
+// **Accuracy: error at most 1 ulp, and exact for an integer argument in
+// range** -- the whole point of having it separate from Exp(x * ln 2), which
+// is neither, since ln 2 is not representable.
 func Exp2(x: float64) -> float64 {
     if x != x {
         return x;
