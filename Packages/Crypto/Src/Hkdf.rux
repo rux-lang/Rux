@@ -1,0 +1,100 @@
+// HKDF: turning a shared secret into as many keys as a protocol needs.
+//
+// The two steps do different jobs and it matters which is which. Extract takes input keying material that may be
+// biased -- a Diffie-Hellman shared secret is a group element, not a uniform string -- and concentrates whatever
+// entropy it has into one fixed-length pseudorandom key. Expand takes that key and stretches it to any length,
+// separated by an info string so that keys for different purposes are unrelated. Skipping extract because the
+// input "looks random enough" is the common mistake, and it is the step that makes the rest sound.
+//
+// The salt is not a secret and does not need to be unpredictable -- a protocol identifier or a session
+// transcript is ideal. It is what stops two protocols deriving the same keys from the same secret. The info
+// string does the same job one level down, between purposes within one protocol.
+//
+// The length limit is real and not a formality: expand produces at most 255 blocks, because the counter it feeds
+// into each round is a single byte. Asking for more has no answer, so this refuses rather than repeating.
+
+import Core::{ MutableSlice, Slice };
+
+/// The most blocks `Expand` can produce, since its counter is one byte.
+const HkdfMaximumBlocks: uint = 255;
+
+/// Extracts a pseudorandom key from `material`, salted with `salt`.
+///
+/// `into` must be exactly the digest's length. An empty salt is legal and means a string of that many zeros,
+/// which is what the specification says -- so an absent salt is not the same as no salt at all.
+///
+/// https://rux-lang.dev/docs/api/crypto/hkdf-extract
+func HkdfExtract<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, into: MutableSlice<char8>) {
+    var probe = prototype;
+    let digestLength = probe.DigestLength();
+    if salt.length > 0u {
+        HmacOf<D>(prototype, salt, material, into);
+        return;
+    }
+    // An empty salt becomes a block of zeros as long as the digest.
+    var zeros: char8[64];
+    var index: uint = 0;
+    while index < digestLength {
+        zeros[index] = 0u8 as char8;
+        index = index + 1;
+    }
+    let zeroSalt = Slice<char8> { data: @zeros[0], length: digestLength };
+    HmacOf<D>(prototype, zeroSalt, material, into);
+}
+
+/// Expands `key` into `into`, separated by `info`.
+///
+/// Returns `false` when `into` is longer than 255 digests, which is the most the one-byte counter can address;
+/// nothing is written in that case. `info` names what the derived key is for, and two expansions of one key
+/// under different info strings are unrelated.
+///
+/// https://rux-lang.dev/docs/api/crypto/hkdf-expand
+func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char8>,
+                           into: MutableSlice<char8>) -> bool {
+    var probe = prototype;
+    let digestLength = probe.DigestLength();
+    if into.length > HkdfMaximumBlocks * digestLength {
+        return false;
+    }
+    var previous: char8[64];
+    var previousLength: uint = 0;
+    var written: uint = 0;
+    var counter = 1u8;
+    while written < into.length {
+        var round = Hmac::New<D>(prototype, key);
+        if previousLength > 0u {
+            // Every block after the first is chained from the one before it.
+            round.Update(Slice<char8> { data: @previous[0], length: previousLength });
+        }
+        round.Update(info);
+        var counterByte: char8[1];
+        counterByte[0] = counter as char8;
+        round.Update(Slice<char8> { data: @counterByte[0], length: 1 });
+        round.Finish(MutableSlice::From<char8>(@previous[0], digestLength));
+        previousLength = digestLength;
+
+        var index: uint = 0;
+        while index < digestLength && written < into.length {
+            into.data[written] = previous[index];
+            written = written + 1u;
+            index = index + 1;
+        }
+        counter = counter + 1u8;
+    }
+    return true;
+}
+
+/// Extract and expand in one call: the whole of HKDF.
+///
+/// Returns `false` for an output longer than 255 digests, exactly as `HkdfExpand` does.
+///
+/// https://rux-lang.dev/docs/api/crypto/hkdf
+func Hkdf<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, info: Slice<char8>,
+                     into: MutableSlice<char8>) -> bool {
+    var probe = prototype;
+    let digestLength = probe.DigestLength();
+    var key: char8[64];
+    HkdfExtract<D>(prototype, salt, material, MutableSlice::From<char8>(@key[0], digestLength));
+    let keyBytes = Slice<char8> { data: @key[0], length: digestLength };
+    return HkdfExpand<D>(prototype, keyBytes, info, into);
+}
