@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Reduction"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Math: trigonometric argument reduction at arguments where rounding Pi would fail"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Math = { Path = "../../../../Packages/Math" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Math"

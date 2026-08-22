@@ -151,6 +151,23 @@ const TwoOverPi: uint32[40] = [
 // product rounds. Instead the quadrant and the fraction are read straight
 // out of the exact product of x's mantissa with the bits of 2/Pi, so the
 // reduction stays exact for arguments of any size.
+// x reduced modulo Pi/2, as a quadrant and a remainder carried in two parts.
+//
+// **This is exact reduction, not approximate.** The naive method -- subtract a
+// multiple of a rounded Pi/2 -- loses one bit of the remainder for every bit
+// the argument has above the point, so it has nothing left at all somewhere
+// around 2^50, and the sine of a large argument computed that way is not a
+// poor approximation but a different number entirely. Payne and Hanek's method
+// avoids that by never rounding Pi: the 256 bits of 2/Pi in `TwoOverPi` are
+// multiplied by the argument's significand as integers, and only the fractional
+// part of that product -- which is what survives modulo one full turn -- is
+// converted back to floating point.
+//
+// 256 bits is enough for every double: the worst case for double-precision
+// reduction leaves about 60 bits of cancellation, and the window is sized well
+// past that. The remainder comes back as `hi + lo` because near a multiple of
+// Pi/2 the leading part alone cannot hold it, which is exactly the case the
+// whole exercise exists for.
 func RemPio2(x: float64) -> Reduction {
     let bits = FloatBits(x);
     let biased = ((bits >> 52u64) & 0x7FFu64) as int64;

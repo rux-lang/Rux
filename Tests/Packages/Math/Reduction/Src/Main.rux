@@ -1,0 +1,112 @@
+// Argument reduction is the part of the trigonometric functions that is easy to get plausibly wrong: a naive
+// reduction against a rounded Pi/2 loses one bit of the remainder per bit the argument carries above the point,
+// so somewhere past 2^50 it has nothing left and returns a different number rather than a poor approximation.
+// Both tests here would pass trivially against a wrong reduction if they were written the obvious way, so
+// neither is.
+//
+// `sin^2 + cos^2 == 1` is the obvious way, and it is useless: a reduction that produces the wrong remainder
+// produces it for both functions, and the identity holds anyway. What does not survive a wrong reduction is an
+// identity relating *different* arguments, each reduced independently -- so the double-angle formulas are used
+// here, and the sines of near-multiples of Pi, where the answer is almost entirely made of the bits the naive
+// method has thrown away.
+
+import Core::Assert;
+import Math::{ Abs, Cos, IsNan, Pi, ScaleByPowerOfTwo, Sin, Tan, UlpDistance };
+
+// The exact product of two doubles, as a rounded head and the remainder the rounding dropped.
+func ExactProduct(left: float64, right: float64, remainder: *var float64) -> float64 {
+    let split = 134217729.0; // 2^27 + 1
+    let head = left * right;
+    let la = left * split;
+    let leftHigh = la - (la - left);
+    let leftLow = left - leftHigh;
+    let ra = right * split;
+    let rightHigh = ra - (ra - right);
+    let rightLow = right - rightHigh;
+    *remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
+    return head;
+}
+
+func Main() -> int {
+    // Pi to three doubles. Two are not enough here: near a multiple of Pi the two leading terms of the
+    // reference cancel almost completely, so the third term -- utterly negligible before the cancellation --
+    // is a large part of what survives it.
+    let piLow = 1.2246467991473532e-16;
+    let piLow2 = -2.9947698097183397e-33;
+
+    // Near a multiple of Pi the sine is tiny and is made almost entirely of the bits below the argument's last
+    // one. Computing that difference in double-double arithmetic gives the answer independently, and the
+    // reduction has to match it.
+    var multiple: uint = 1;
+    while multiple <= 400u {
+        let count = multiple as float64;
+        var leadRemainder = 0.0;
+        let head = ExactProduct(count, Pi, @leadRemainder);
+        var lowRemainder = 0.0;
+        let lowHead = ExactProduct(count, piLow, @lowRemainder);
+        // count * Pi exactly, as head plus a tail assembled smallest-last. The first addition is exact by
+        // Sterbenz -- the two terms are within a factor of two and cancel -- so nothing is lost before the
+        // corrections go in.
+        let tail = ((leadRemainder + lowHead) + lowRemainder) + count * piLow2;
+        let argument = head;
+        // sin(count*Pi - tail) is -cos(count*Pi) * sin(tail), and sin(tail) is tail to well within a ulp for
+        // something this small. So the answer is -tail for an even multiple and +tail for an odd one.
+        let evenMultiple = (multiple % 2u) == 0u;
+        let expected = evenMultiple ? 0.0 - tail : tail;
+        let got = Sin(argument);
+        // A few ulps, because the reference itself is a double-double product and the sine has its own bound.
+        // A reduction that had dropped the low part would be wrong by a relative amount, not by a few ulps.
+        Assert(UlpDistance(got, expected) <= 32u64,
+               "the sine near a multiple of Pi is made of the bits a rounded reduction discards");
+        multiple = multiple + 1;
+    }
+
+    // The double-angle identities relate two arguments reduced independently, so a reduction that drifts breaks
+    // them. Walking the powers of two from small to enormous takes every path the reduction has.
+    var power: int64 = 0;
+    while power <= 1020i64 {
+        let x = ScaleByPowerOfTwo(1.0, power);
+        let sine = Sin(x);
+        let cosine = Cos(x);
+        let doubled = Sin(x + x);
+        Assert(Abs(doubled - 2.0 * sine * cosine) < 1.0e-13,
+               "the sine of twice an argument matches twice the sine times the cosine");
+        let doubledCosine = Cos(x + x);
+        Assert(Abs(doubledCosine - (1.0 - 2.0 * sine * sine)) < 1.0e-13,
+               "and the cosine of twice an argument matches the half-angle form");
+        power = power + 1i64;
+    }
+
+    // The same across arguments that are not powers of two, including some enormous ones.
+    var step: uint = 1;
+    while step <= 300u {
+        let x = (step as float64) * 1.0e15;
+        let sine = Sin(x);
+        let cosine = Cos(x);
+        Assert(Abs(Sin(x + x) - 2.0 * sine * cosine) < 1.0e-13,
+               "the double-angle identity holds at enormous arguments too");
+        Assert(Abs(sine * sine + cosine * cosine - 1.0) < 1.0e-15,
+               "and the reduced argument is a real angle");
+        step = step + 1;
+    }
+
+    // Tangent agrees with the ratio it is defined as, which is a third independent path through the reduction.
+    var angle: uint = 1;
+    while angle <= 200u {
+        let x = (angle as float64) * 7.0e12;
+        let cosine = Cos(x);
+        if Abs(cosine) > 1.0e-3 {
+            Assert(Abs(Tan(x) - Sin(x) / cosine) < 1.0e-12 * (1.0 + Abs(Tan(x))),
+                   "the tangent matches the ratio of the other two");
+        }
+        angle = angle + 1;
+    }
+
+    // The bounds hold however large the argument: a reduction that overflowed its window would leave them.
+    let enormous = ScaleByPowerOfTwo(1.0, 1023i64);
+    Assert(Sin(enormous) >= -1.0 && Sin(enormous) <= 1.0, "the sine of the largest power of two is in range");
+    Assert(Cos(enormous) >= -1.0 && Cos(enormous) <= 1.0, "and so is the cosine");
+    Assert(!IsNan(Sin(enormous)) && !IsNan(Cos(enormous)), "and neither is a NaN");
+
+    return 0;
+}
