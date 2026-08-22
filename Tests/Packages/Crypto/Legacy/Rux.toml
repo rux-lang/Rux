@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Legacy"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: the legacy MD5 and SHA-1 hashes against their published vectors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
