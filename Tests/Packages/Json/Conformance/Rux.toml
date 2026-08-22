@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Conformance"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Json: malformed input, resource limits, round trips and tree-versus-stream agreement"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+Io = { Path = "../../../../Packages/Io" }
+Json = { Path = "../../../../Packages/Json" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Json"
