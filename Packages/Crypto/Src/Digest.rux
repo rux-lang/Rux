@@ -1,5 +1,11 @@
 // What a digest is, and the two operations every user of one gets wrong.
 //
+// **This package has not been independently reviewed.** Every algorithm matches its published vectors, and that
+// is a weaker statement than it sounds: the failures that matter in cryptographic code -- a comparison that
+// leaks timing, a secret that outlives its use, a construction applied outside the assumptions it was proved
+// under -- all pass vectors without complaint. Until a review by someone who did not write this is recorded,
+// nothing here should be relied on where an adversary is in the picture.
+//
 // A digest is used incrementally far more often than in one call -- a file is hashed as it is read, a message as
 // it is assembled -- so the incremental form is the contract and the one-shot form is written on top of it,
 // rather than the other way round. `Update` may be called any number of times with any split of the same bytes
