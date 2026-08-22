@@ -23,6 +23,20 @@ when #target.arch {
             movq xmm0, rcx
             ret
         }
+
+        // The same pair one width down. `movd` moves the low 32 bits rather
+        // than the low 64, and the narrow width needs its own pair because a
+        // float32's neighbours are not its widened value's neighbours.
+        asm func Float32Bits(x: float32) -> uint32 {
+            movd eax, xmm0
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func Float32FromBits(bits: uint32) -> float32 {
+            movd xmm0, ecx
+            ret
+        }
     },
     .AArch64 => {
         // AAPCS64 is the one convention on every AArch64 target, so neither
@@ -35,6 +49,18 @@ when #target.arch {
 
         asm func FromBits(bits: uint64) -> float64 {
             fmov d0, x0
+            ret
+        }
+
+        // The narrow pair: `s0` and `w0` are the 32-bit halves of the same
+        // registers the wide pair uses.
+        asm func Float32Bits(x: float32) -> uint32 {
+            fmov w0, s0
+            ret
+        }
+
+        asm func Float32FromBits(bits: uint32) -> float32 {
+            fmov s0, w0
             ret
         }
     },

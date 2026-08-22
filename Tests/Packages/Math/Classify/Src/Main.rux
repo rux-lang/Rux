@@ -1,0 +1,113 @@
+// The cases worth writing down are the ones a comparison gets wrong: a NaN, which compares false against
+// everything including itself; a negative zero, which compares equal to positive zero; and the subnormals,
+// which a naive step or scale rounds twice or flattens to zero. Each is checked at both real widths, because a
+// float32 answer computed by widening is right for most of these and wrong for stepping.
+
+import Core::Assert;
+import Math::{ Classify, CopySign, Decompose, ExponentOf, FloatClass, IndeterminateExponent, IsFinite, IsInfinite,
+               IsNan, IsNormal, IsSubnormal, IsZero, NextAfter, NextDown, NextUp, NoExponent, PositiveInfinity32,
+               PositiveInfinity64, QuietNan32, QuietNan64, ScaleByPowerOfTwo, SignBit, SplitIntegral };
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+    let smallestSubnormal = ScaleByPowerOfTwo(1.0, -1074i64);
+    let smallestNormal = ScaleByPowerOfTwo(1.0, -1022i64);
+
+    // The five kinds, each recognised as itself and as nothing else.
+    Assert(Classify(notANumber) == FloatClass::NotANumber, "a NaN classifies as one");
+    Assert(Classify(infinity) == FloatClass::Infinite, "an infinity classifies as one");
+    Assert(Classify(-infinity) == FloatClass::Infinite, "in both directions");
+    Assert(Classify(0.0) == FloatClass::Zero && Classify(-0.0) == FloatClass::Zero, "both zeros are zero");
+    Assert(Classify(smallestSubnormal) == FloatClass::Subnormal, "the smallest value is subnormal");
+    Assert(Classify(smallestNormal) == FloatClass::Normal, "and the one above the subnormals is normal");
+    Assert(Classify(1.0) == FloatClass::Normal, "as is an ordinary value");
+
+    Assert(IsNan(notANumber) && !IsNan(infinity) && !IsNan(0.0), "the NaN predicate answers only for NaNs");
+    Assert(IsInfinite(infinity) && !IsInfinite(notANumber), "and a NaN is not an infinity");
+    Assert(IsFinite(1.0) && !IsFinite(infinity) && !IsFinite(notANumber), "finiteness excludes both");
+    Assert(IsZero(0.0) && IsZero(-0.0) && !IsZero(smallestSubnormal), "zero is zero and nothing else is");
+    Assert(IsSubnormal(smallestSubnormal) && !IsSubnormal(0.0) && !IsSubnormal(smallestNormal),
+           "subnormality excludes zero at one end and the normals at the other");
+    Assert(IsNormal(1.0) && !IsNormal(0.0) && !IsNormal(smallestSubnormal) && !IsNormal(infinity),
+           "and zero is not normal, which is the definition every implementation uses");
+
+    // Sign, where a comparison would lie.
+    Assert(SignBit(-0.0) && !SignBit(0.0), "a negative zero carries its sign where a comparison cannot see it");
+    Assert(SignBit(-notANumber) && !SignBit(notANumber), "and so does a NaN");
+    Assert(SignBit(-1.0) && !SignBit(1.0), "ordinary values agree with the obvious answer");
+    Assert(SignBit(CopySign(1.0, -0.0)), "a sign copied from a negative zero is negative");
+    Assert(!SignBit(CopySign(-1.0, 0.0)), "and one copied from a positive zero is positive");
+    Assert(CopySign(3.0, -2.0) == -3.0, "the magnitude survives the copy");
+    Assert(IsNan(CopySign(notANumber, 1.0)), "and a NaN stays a NaN through it");
+
+    // Stepping: into the subnormals, across zero, and stopping at infinity.
+    Assert(NextDown(smallestNormal) != 0.0 && IsSubnormal(NextDown(smallestNormal)),
+           "stepping below the smallest normal lands in the subnormals, not at zero");
+    Assert(NextDown(smallestSubnormal) == 0.0, "and the last step down reaches zero");
+    Assert(NextUp(0.0) == smallestSubnormal, "the first step up from zero is the smallest subnormal");
+    Assert(SignBit(NextDown(0.0)) && IsSubnormal(NextDown(0.0)),
+           "and stepping down from a positive zero crosses to the negative subnormals");
+    Assert(NextAfter(1.0, 2.0) > 1.0 && NextAfter(NextAfter(1.0, 2.0), 0.0) == 1.0,
+           "a step out and back returns exactly where it started");
+    Assert(NextUp(infinity) == infinity, "there is nothing above infinity");
+    Assert(IsNan(NextAfter(notANumber, 1.0)), "and a NaN steps nowhere");
+    Assert(SignBit(NextAfter(0.0, -1.0)), "the destination decides the sign when the values are equal");
+
+    // The narrow width steps in its own bits, which is where widening would be wrong.
+    let narrowOne = 1.0f32;
+    let narrowNext = NextUp(narrowOne);
+    Assert(narrowNext > narrowOne, "a float32 step moves");
+    Assert((narrowNext as float64) - (narrowOne as float64) > 1.0e-8,
+           "by a float32's own spacing, far larger than a float64's");
+    Assert(NextDown(narrowNext) == narrowOne, "and steps back exactly");
+    // A float32 loses its full significand below two to the minus 126 and runs out entirely below minus 149.
+    Assert(Classify(ScaleByPowerOfTwo(1.0f32, -140i64)) == FloatClass::Subnormal,
+           "the narrow subnormals are reachable by scaling");
+    Assert(ScaleByPowerOfTwo(1.0f32, -150i64) == 0.0f32,
+           "and one step past the last of them rounds to zero rather than wrapping");
+    Assert(IsNan(QuietNan32()) && IsInfinite(PositiveInfinity32()), "the narrow specials are what they claim");
+
+    // Scaling, including the saturating edges.
+    Assert(ScaleByPowerOfTwo(1.5, 3i64) == 12.0, "scaling by a power of two is exact");
+    Assert(ScaleByPowerOfTwo(1.0, 5000i64) == infinity,
+           "an exponent far past the range saturates rather than wrapping");
+    Assert(ScaleByPowerOfTwo(1.0, -5000i64) == 0.0, "and so does one far below it");
+    Assert(IsNan(ScaleByPowerOfTwo(notANumber, 3i64)), "a NaN scales to a NaN");
+    Assert(ScaleByPowerOfTwo(-0.0, 3i64) == 0.0 && SignBit(ScaleByPowerOfTwo(-0.0, 3i64)),
+           "and a signed zero keeps its sign");
+
+    // Exponents, including the two answers that are not exponents.
+    Assert(ExponentOf(1.0) == 0i64, "one lies in the binade starting at two to the zeroth");
+    Assert(ExponentOf(2.0) == 1i64 && ExponentOf(3.999) == 1i64, "and the whole binade shares an exponent");
+    Assert(ExponentOf(0.5) == -1i64, "below one the exponent is negative");
+    Assert(ExponentOf(-8.0) == 3i64, "the sign does not affect it");
+    Assert(ExponentOf(smallestSubnormal) == -1074i64, "the relationship holds into the subnormals");
+    Assert(ExponentOf(0.0) == NoExponent, "zero has no exponent");
+    Assert(ExponentOf(infinity) == IndeterminateExponent && ExponentOf(notANumber) == IndeterminateExponent,
+           "and neither has an infinity nor a NaN");
+
+    // Decomposition, and the identity that defines it.
+    var power: int64 = 0;
+    let fraction = Decompose(12.0, @power);
+    Assert(fraction == 0.75 && power == 4i64, "twelve decomposes to three quarters times sixteen");
+    Assert(ScaleByPowerOfTwo(fraction, power) == 12.0, "and rebuilds exactly");
+    let negativeFraction = Decompose(-12.0, @power);
+    Assert(negativeFraction == -0.75 && power == 4i64, "the sign stays with the fraction");
+    let subnormalFraction = Decompose(smallestSubnormal, @power);
+    Assert(subnormalFraction == 0.5 && power == -1073i64, "a subnormal decomposes without losing precision");
+    Assert(ScaleByPowerOfTwo(subnormalFraction, power) == smallestSubnormal, "and rebuilds exactly too");
+    Assert(Decompose(0.0, @power) == 0.0 && power == 0i64, "zero decomposes to itself");
+
+    // Integral and fractional parts, which must sum back exactly.
+    var whole = 0.0;
+    Assert(SplitIntegral(3.75, @whole) == 0.75 && whole == 3.0, "a positive value splits toward zero");
+    Assert(SplitIntegral(-3.75, @whole) == -0.75 && whole == -3.0, "and a negative one splits the same way");
+    Assert(SplitIntegral(-0.5, @whole) == -0.5 && whole == 0.0 && SignBit(whole),
+           "an integral part of zero keeps the value's sign");
+    let infiniteFraction = SplitIntegral(-infinity, @whole);
+    Assert(whole == -infinity && infiniteFraction == 0.0 && SignBit(infiniteFraction),
+           "an infinity is all integral, with a signed zero left over");
+
+    return 0;
+}
