@@ -1,0 +1,70 @@
+// Sampling from a stream whose length is not known until it ends.
+//
+// The reservoir is the point: a caller that could hold the whole stream would shuffle it and take a prefix
+// instead. This keeps only the sample, so a stream of any length -- a file being read, a query being scanned --
+// costs the memory of the answer rather than the memory of the input.
+
+import Core::MutableSlice;
+
+/// A reservoir sample being built.
+///
+/// Offer every item of the stream in turn and the reservoir ends holding a uniformly chosen subset of whatever
+/// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
+/// size.
+///
+/// https://rux-lang.dev/docs/api/random/reservoir
+struct Reservoir<T> {
+    /// Where the sample is kept; its length is the sample size.
+    room: MutableSlice<T>;
+    /// How many items have been offered so far.
+    seen: uint;
+}
+
+extend Reservoir<T> {
+    /// A reservoir that will fill `room`.
+    ///
+    /// https://rux-lang.dev/docs/api/random/reservoir/new
+    func New(room: MutableSlice<T>) -> Reservoir<T> {
+        return Reservoir<T> { room: room, seen: 0 };
+    }
+
+    /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
+    /// offered.
+    ///
+    /// https://rux-lang.dev/docs/api/random/reservoir/length
+    func Length(self: *Reservoir<T>) -> uint {
+        return self.seen < self.room.length ? self.seen : self.room.length;
+    }
+
+    /// How many items have been offered.
+    ///
+    /// https://rux-lang.dev/docs/api/random/reservoir/seen
+    func Seen(self: *Reservoir<T>) -> uint {
+        return self.seen;
+    }
+}
+
+/// Offers `item` to `reservoir`.
+///
+/// Algorithm R: while the reservoir has room the item is kept outright, and afterwards the item replaces a
+/// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
+/// keeps every subset equally likely at every moment, not merely at the end -- so a stream can be cut short and
+/// the sample is still uniform over what arrived.
+///
+/// https://rux-lang.dev/docs/api/random/offer
+func Offer<G: RandomGenerator, T>(generator: *var G, reservoir: *var Reservoir<T>, item: T) {
+    if reservoir.room.length == 0u {
+        reservoir.seen = reservoir.seen + 1u;
+        return;
+    }
+    if reservoir.seen < reservoir.room.length {
+        reservoir.room.data[reservoir.seen] = item;
+        reservoir.seen = reservoir.seen + 1u;
+        return;
+    }
+    reservoir.seen = reservoir.seen + 1u;
+    let position = UniformBelow<G>(generator, reservoir.seen as uint64) as uint;
+    if position < reservoir.room.length {
+        reservoir.room.data[position] = item;
+    }
+}

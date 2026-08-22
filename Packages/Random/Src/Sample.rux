@@ -1,0 +1,92 @@
+// Choosing from a collection: uniformly, by weight, and from a stream whose length is not known in advance.
+//
+// Each of these has a famous wrong version. A shuffle written as "for each position, swap with a random position
+// anywhere" is not uniform -- it produces n^n equally likely swap sequences over n! permutations, and since n!
+// does not divide n^n some permutations come out more often. Weighted choice written as a linear scan over
+// running totals is correct but reads the weights twice and drifts when they are large. Reservoir sampling done
+// by collecting everything first is not reservoir sampling at all, and defeats the only reason to use it.
+
+import Core::{ MutableSlice, Slice };
+
+/// Shuffles `items` into a uniformly random order.
+///
+/// Fisher and Yates' method, walking from the end and swapping each position with one at or below it. The bound
+/// is what makes it uniform: swapping with a position anywhere in the collection is the version that is subtly
+/// biased, and it is the version almost everyone writes first.
+///
+/// Runs in time proportional to the length and allocates nothing.
+///
+/// https://rux-lang.dev/docs/api/random/shuffle
+func Shuffle<G: RandomGenerator, T>(generator: *var G, items: MutableSlice<T>) {
+    if items.length < 2u {
+        return;
+    }
+    var index = items.length - 1u;
+    while index > 0u {
+        // At or below the current position, never above it.
+        let target = UniformBelow<G>(generator, (index + 1u) as uint64) as uint;
+        if target != index {
+            let held = items.data[index];
+            items.data[index] = items.data[target];
+            items.data[target] = held;
+        }
+        index = index - 1u;
+    }
+}
+
+/// A uniformly chosen index below `count`, or `count` itself when there is nothing to choose from.
+///
+/// Returning the count for an empty collection gives the caller a value that cannot be mistaken for a valid
+/// index, which a zero would be.
+///
+/// https://rux-lang.dev/docs/api/random/choose-index
+func ChooseIndex<G: RandomGenerator>(generator: *var G, count: uint) -> uint {
+    if count == 0u {
+        return 0u;
+    }
+    return UniformBelow<G>(generator, count as uint64) as uint;
+}
+
+/// An index chosen in proportion to `weights`.
+///
+/// A weight of zero is never chosen; negative weights are treated as zero rather than subtracting from the
+/// total, since a negative probability has no meaning and silently reversing a comparison is worse than
+/// ignoring the entry. Weights that are all zero, or an empty slice, give the length -- the same
+/// out-of-range answer `ChooseIndex` gives for an empty collection.
+///
+/// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
+///
+/// https://rux-lang.dev/docs/api/random/weighted-index
+func WeightedIndex<G: RandomGenerator>(generator: *var G, weights: Slice<float64>) -> uint {
+    var total = 0.0;
+    var index: uint = 0;
+    while index < weights.length {
+        if weights.data[index] > 0.0 {
+            total = total + weights.data[index];
+        }
+        index = index + 1;
+    }
+    if !(total > 0.0) {
+        return weights.length;
+    }
+    var target = NextFloat64<G>(generator) * total;
+    index = 0;
+    while index < weights.length {
+        let weight = weights.data[index] > 0.0 ? weights.data[index] : 0.0;
+        if target < weight {
+            return index;
+        }
+        target = target - weight;
+        index = index + 1;
+    }
+    // Only reachable if rounding in the subtraction leaves a residue; the last positive weight is the honest
+    // answer, since that is the interval the draw fell in.
+    index = weights.length;
+    while index > 0u {
+        index = index - 1u;
+        if weights.data[index] > 0.0 {
+            return index;
+        }
+    }
+    return weights.length;
+}
