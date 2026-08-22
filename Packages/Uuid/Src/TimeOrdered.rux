@@ -1,0 +1,133 @@
+// Version 7: a UUID whose leading bits are a timestamp, so sorting the identifiers sorts the events.
+//
+// The reason this version exists is databases. A version 4 UUID as a primary key scatters inserts across the
+// whole of a B-tree, so every insert dirties a different page and the index never stays in cache; a version 7
+// key appends, because its first six bytes are milliseconds since the Unix epoch, big-endian. The remaining
+// bits are random, which is what keeps it unguessable between milliseconds.
+//
+// Within one millisecond the ordering is not guaranteed by the format -- two UUIDs made in the same millisecond
+// have random tails and could sort either way. `MonotonicUuid` fixes that for a caller who needs it, by
+// remembering the last value it produced and stepping the random part forward when the clock has not moved. It
+// is a value the caller owns rather than a global, for the reason the random package gives at length: shared
+// mutable state makes results depend on who else is running.
+
+import Core::{ MutableSlice, Ordering, Slice };
+import Entropy::{ EntropyError, Fill };
+import Time::Timestamp;
+
+/// A version 7 UUID: the current time in its leading bits, entropy in the rest.
+///
+/// `error` reports why entropy was unavailable, and the result is nil in that case rather than a
+/// timestamp-shaped value with no randomness -- which would be guessable and would look fine.
+///
+/// https://rux-lang.dev/docs/api/uuid/time-ordered
+func TimeOrdered(error: *var EntropyError) -> Uuid {
+    let now = Timestamp::Now();
+    let milliseconds = (now.UnixSeconds() as uint64) * 1000u64 + ((now.SubsecondNanoseconds() / 1000000u32) as uint64);
+    return TimeOrderedAt(milliseconds, error);
+}
+
+/// A version 7 UUID for a given millisecond, with entropy in the rest.
+///
+/// For reproducing an identifier from a recorded time, and for testing.
+///
+/// https://rux-lang.dev/docs/api/uuid/time-ordered-at
+func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
+    var bytes: char8[16];
+    *error = Fill(@bytes[0] as *var opaque, 16u);
+    if *error != EntropyError::None {
+        return Uuid::Nil();
+    }
+    var value = Uuid::FromBytes(Slice<char8> { data: @bytes[0], length: 16 });
+    // Six bytes of milliseconds, most significant first -- which is what makes byte order equal time order.
+    var index: uint = 0;
+    while index < 6u {
+        let shift = ((5u - index) * 8u) as uint64;
+        value.bytes[index] = ((milliseconds >> shift) & 0xFFu64) as uint8 as char8;
+        index = index + 1;
+    }
+    value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x70u8) as char8;
+    value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
+    return value;
+}
+
+/// The millisecond a version 7 UUID carries.
+///
+/// Meaningless for any other version, which is why the version should be checked first.
+///
+/// https://rux-lang.dev/docs/api/uuid/millisecond-of
+func MillisecondOf(value: *Uuid) -> uint64 {
+    var milliseconds = 0u64;
+    var index: uint = 0;
+    while index < 6u {
+        milliseconds = (milliseconds << 8u64) | (value.bytes[index] as uint8 as uint64);
+        index = index + 1;
+    }
+    return milliseconds;
+}
+
+/// A generator of version 7 UUIDs that are strictly increasing, even within one millisecond.
+///
+/// The format guarantees ordering only between milliseconds; two UUIDs made in the same one have random tails
+/// and may sort either way. This closes that by remembering the last value it produced: when the clock has not
+/// advanced, it increments the previous UUID instead of drawing a fresh one, so every value it returns is
+/// strictly greater than the last.
+///
+/// A caller owns one of these rather than sharing a global, so two components generating identifiers do not
+/// serialize against each other or interleave into one sequence.
+///
+/// https://rux-lang.dev/docs/api/uuid/monotonic-uuid
+struct MonotonicUuid {
+    /// The last value returned, or nil before the first.
+    previous: Uuid;
+    /// Whether anything has been returned yet.
+    started: bool;
+}
+
+extend MonotonicUuid {
+    /// A generator that has produced nothing yet.
+    ///
+    /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
+    func New() -> MonotonicUuid {
+        return MonotonicUuid { previous: Uuid::Nil(), started: false };
+    }
+
+    /// The next identifier, strictly greater than the one before it.
+    ///
+    /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
+    func Next(self: *var MonotonicUuid, error: *var EntropyError) -> Uuid {
+        let candidate = TimeOrdered(error);
+        if *error != EntropyError::None {
+            return Uuid::Nil();
+        }
+        if !self.started {
+            self.previous = candidate;
+            self.started = true;
+            return candidate;
+        }
+        // A fresh draw is used only if it already sorts above the last one; otherwise the previous value is
+        // stepped, which keeps the sequence strictly increasing whatever the clock did -- including going
+        // backwards, which a clock adjustment can do.
+        if candidate.Compare(@self.previous) == Ordering::Greater {
+            self.previous = candidate;
+            return candidate;
+        }
+        var stepped = self.previous;
+        var index: uint = 16;
+        while index > 6u {
+            index = index - 1u;
+            let byte = stepped.bytes[index] as uint8;
+            if byte != 0xFFu8 {
+                stepped.bytes[index] = (byte + 1u8) as char8;
+                self.previous = stepped;
+                return stepped;
+            }
+            // This byte wrapped, so the carry continues into the one before it. The version and variant bytes
+            // are never touched, so the identifier stays well-formed however far the carry travels.
+            stepped.bytes[index] = 0u8 as char8;
+        }
+        // Every random bit was exhausted within one millisecond, which needs 2^74 identifiers. Returning the
+        // previous value is the only answer that does not lie about being greater.
+        return self.previous;
+    }
+}

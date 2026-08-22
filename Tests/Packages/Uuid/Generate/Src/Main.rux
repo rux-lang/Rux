@@ -1,0 +1,135 @@
+// Two claims worth testing here: that generated identifiers are well-formed and distinct, and that version 7
+// really does sort by time -- which is the entire reason it exists and would be silently lost by any byte
+// reordering.
+
+import Core::{ Assert, Ordering, Slice };
+import Entropy::EntropyError;
+import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered,
+               TimeOrderedAt, Uuid, UuidVariant };
+
+func Main() -> int {
+    var error = EntropyError::None;
+
+    // Version 4: well-formed, and distinct across many draws.
+    var previous = Uuid::Nil();
+    var draw: uint = 0;
+    while draw < 500u {
+        var value = Random(@error);
+        Assert(error == EntropyError::None, "entropy is available");
+        Assert(value.Version() == 4u8, "a random UUID reports version four");
+        Assert(value.Variant() == UuidVariant::Standard, "and the standard variant");
+        Assert(!value.IsNil() && !value.IsMax(), "and is neither sentinel");
+        Assert(!value.Equals(@previous), "and differs from the one before it");
+        previous = value;
+        draw = draw + 1;
+    }
+
+    // The version and variant bits are forced regardless of the input bytes, so a caller-supplied buffer that
+    // happens to carry other values still produces a well-formed version 4 UUID.
+    var raw: char8[16];
+    var index: uint = 0;
+    while index < 16u {
+        raw[index] = 0xFFu8 as char8;
+        index = index + 1;
+    }
+    var forced = RandomFromBytes(Slice<char8> { data: @raw[0], length: 16 });
+    Assert(forced.Version() == 4u8 && forced.Variant() == UuidVariant::Standard,
+           "the version and variant are set whatever the supplied bytes said");
+    index = 0;
+    while index < 16u {
+        raw[index] = 0u8 as char8;
+        index = index + 1;
+    }
+    var forcedZero = RandomFromBytes(Slice<char8> { data: @raw[0], length: 16 });
+    Assert(forcedZero.Version() == 4u8 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
+
+    // Version 7: well-formed, carrying the millisecond it was given.
+    var timed = TimeOrderedAt(1724300000000u64, @error);
+    Assert(error == EntropyError::None, "a timed UUID is generated");
+    Assert(timed.Version() == 7u8, "reporting version seven");
+    Assert(timed.Variant() == UuidVariant::Standard, "and the standard variant");
+    Assert(MillisecondOf(@timed) == 1724300000000u64, "and carrying the millisecond it was made for");
+
+    // The property version 7 exists for: later times sort above earlier ones, by the ordinary byte comparison.
+    var earlier = TimeOrderedAt(1000000000000u64, @error);
+    var later = TimeOrderedAt(1000000000001u64, @error);
+    var muchLater = TimeOrderedAt(2000000000000u64, @error);
+    Assert(earlier.Compare(@later) == Ordering::Less, "one millisecond later sorts higher");
+    Assert(later.Compare(@muchLater) == Ordering::Less, "and much later higher still");
+    Assert(muchLater.Compare(@earlier) == Ordering::Greater, "in both directions");
+
+    // Across a long run of increasing timestamps, the ordering never breaks.
+    var step: uint = 0;
+    var lastTimed = TimeOrderedAt(1u64, @error);
+    while step < 300u {
+        let moment = (2u + step) as uint64;
+        var current = TimeOrderedAt(moment, @error);
+        Assert(lastTimed.Compare(@current) == Ordering::Less, "byte order follows time over a long run");
+        lastTimed = current;
+        step = step + 1;
+    }
+
+    // Two identifiers in the same millisecond are not ordered by the format -- which is what the monotonic
+    // generator exists to fix.
+    var monotonic = MonotonicUuid::New();
+    var lastValue = monotonic.Next(@error);
+    Assert(error == EntropyError::None, "the monotonic generator produces a first value");
+    Assert(lastValue.Version() == 7u8, "which is a version seven UUID");
+    var round: uint = 0;
+    while round < 2000u {
+        var next = monotonic.Next(@error);
+        Assert(error == EntropyError::None, "and keeps producing them");
+        Assert(lastValue.Compare(@next) == Ordering::Less,
+               "each strictly greater than the last, even within one millisecond");
+        Assert(next.Version() == 7u8 && next.Variant() == UuidVariant::Standard,
+               "and every one stays well-formed, however far a carry travelled");
+        lastValue = next;
+        round = round + 1;
+    }
+
+    // Two generators are independent: neither disturbs the other's sequence.
+    var first = MonotonicUuid::New();
+    var second = MonotonicUuid::New();
+    var firstLast = first.Next(@error);
+    var secondLast = second.Next(@error);
+    round = 0;
+    while round < 200u {
+        var firstNext = first.Next(@error);
+        var secondNext = second.Next(@error);
+        Assert(firstLast.Compare(@firstNext) == Ordering::Less, "each generator increases on its own");
+        Assert(secondLast.Compare(@secondNext) == Ordering::Less, "independently of the other");
+        firstLast = firstNext;
+        secondLast = secondNext;
+        round = round + 1;
+    }
+
+    // The GUID conversion swaps the first three fields and is its own inverse.
+    var value = Uuid::Nil();
+    index = 0;
+    while index < 16u {
+        value.bytes[index] = ((index + 1u) as uint8) as char8;
+        index = index + 1;
+    }
+    var swapped = SwapGuidOrder(@value);
+    let swappedBytes = swapped.Bytes();
+    Assert((swappedBytes.data[0] as uint8) == 4u8, "the first field is reversed");
+    Assert((swappedBytes.data[3] as uint8) == 1u8, "end for end");
+    Assert((swappedBytes.data[4] as uint8) == 6u8, "the second field too");
+    Assert((swappedBytes.data[6] as uint8) == 8u8, "and the third");
+    index = 8;
+    while index < 16u {
+        Assert((swappedBytes.data[index] as uint8) == ((index + 1u) as uint8),
+               "while the last eight bytes are a byte array in both layouts and are untouched");
+        index = index + 1;
+    }
+    var restored = SwapGuidOrder(@swapped);
+    Assert(restored.Equals(@value), "and the conversion is its own inverse");
+
+    // The consequence worth knowing: a swapped UUID is well-formed and means something else.
+    var timedSwapped = SwapGuidOrder(@timed);
+    Assert(!timedSwapped.Equals(@timed), "a swapped identifier is a different identifier");
+    Assert(MillisecondOf(@timedSwapped) != MillisecondOf(@timed),
+           "and its timestamp reads as something else entirely, which is why this is never automatic");
+
+    return 0;
+}
