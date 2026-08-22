@@ -87,6 +87,18 @@ extern {
     // https://keith.github.io/xcode-man-pages/symlink.2.html
     func symlinkat(target: *char8, newDirectoryFd: int32, linkPath: *char8) -> int32;
 
+    // Writes the current working directory into a buffer; returns the buffer, or null
+    // https://keith.github.io/xcode-man-pages/getcwd.3.html
+    func getcwd(buffer: *var char8, size: uint) -> *var char8;
+
+    // Makes a path the process's working directory; returns zero, or -1
+    // https://keith.github.io/xcode-man-pages/chdir.2.html
+    func chdir(path: *char8) -> int32;
+
+    // Reads the text a symbolic link holds; returns the byte count, or -1
+    // https://keith.github.io/xcode-man-pages/readlink.2.html
+    func readlinkat(directoryFd: int32, path: *char8, buffer: *var char8, size: uint) -> int64;
+
     // Sets a file's permission bits relative to a directory descriptor; returns zero, or -1
     // https://keith.github.io/xcode-man-pages/chmod.2.html
     func fchmodat(directoryFd: int32, path: *char8, mode: uint16, flags: int32) -> int32;

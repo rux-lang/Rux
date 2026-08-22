@@ -1,0 +1,362 @@
+// Where the process is, and what a path really refers to.
+//
+// Two operations that look alike and are not. `Absolute` is arithmetic: it joins a relative path onto the
+// working directory and simplifies the result lexically, touching no filesystem and answering for a path that
+// does not exist. `Canonicalize` asks the filesystem: every symbolic link is resolved, every component must
+// exist, and the answer is the one true name of an existing file. `Path::Normalize` already documented that its
+// `x/..` simplification is a lie in the presence of symbolic links -- this is where the truth lives, and the
+// difference between the two is the whole reason both are offered.
+//
+// The working directory is process-wide state. Reading it is harmless; setting it reaches into every thread at
+// once and invalidates every relative path any of them was about to use, so `SetCurrentDirectory` exists for the
+// programs that genuinely need it and nothing in this package calls it.
+
+import Allocator::Allocator;
+import Core::{ #target, Slice };
+import Io::{ IoError, IoErrorKind };
+import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer, PreferredSeparator };
+import Path::{ IsAbsolute, Normalize };
+import Text::TextError;
+
+when #target.os {
+    .FreeBSD => import FreeBSD::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
+    .Linux => import Linux::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
+    .macOS => import macOS::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
+    .Windows => import Windows::{
+        CloseHandle,
+        GetCurrentDirectoryW,
+        GetFinalPathNameByHandleW,
+        GetLastError,
+        InvalidHandleValue,
+        SetCurrentDirectoryW
+    }
+}
+
+/// How many symbolic links one canonicalization will follow before giving up.
+///
+/// A link that points at itself, or at a chain that returns to it, would otherwise be followed forever. The
+/// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
+///
+/// https://rux-lang.dev/docs/api/storage/symbolic-link-limit
+const SymbolicLinkLimit: uint = 40;
+
+/// The process's working directory, as an absolute path.
+///
+/// https://rux-lang.dev/docs/api/storage/current-directory
+func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
+    *error = IoError::Ok();
+    var units: OsUnit[4096];
+    when #target.os == .Windows {
+        // The length is reported without the terminator, and a length larger than the buffer means the answer
+        // did not fit rather than that anything failed.
+        let written = GetCurrentDirectoryW(4096, @units[0] as *var char16);
+        if written == 0u32 {
+            *error = TranslateNative(GetLastError() as int32);
+            return OsString::New(allocator);
+        }
+        if written > 4096u32 {
+            *error = IoError::Of(IoErrorKind::LimitExceeded);
+            return OsString::New(allocator);
+        }
+        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        var textError = TextError::None;
+        let held = OsString::FromView(allocator, view, @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return held;
+    }
+    else {
+        let outcome = Getcwd(@units[0], 4096);
+        if outcome < 0 {
+            *error = TranslateNative((0i64 - outcome) as int32);
+            return OsString::New(allocator);
+        }
+        var length: uint = 0;
+        while length < 4096u && units[length] != (0u8 as char8) {
+            length = length + 1;
+        }
+        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: length });
+        var textError = TextError::None;
+        let held = OsString::FromView(allocator, view, @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return held;
+    }
+}
+
+/// Makes `path` the process's working directory.
+///
+/// Process-wide and immediately visible to every thread, which invalidates every relative path any of them was
+/// about to resolve. Nothing in this package calls it.
+///
+/// https://rux-lang.dev/docs/api/storage/set-current-directory
+func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
+    var native: *var OsUnit = null;
+    let converted = NativePath(allocator, path, @native);
+    if converted.IsError() {
+        return converted;
+    }
+    var outcome = IoError::Ok();
+    when #target.os == .Windows {
+        if SetCurrentDirectoryW(native as *char16) == 0 {
+            outcome = TranslateNative(GetLastError() as int32);
+        }
+    }
+    else {
+        let result = Chdir(native as *char8);
+        if result < 0 {
+            outcome = TranslateNative((0i64 - result) as int32);
+        }
+    }
+    ReleaseNativePath(allocator, native, path.name.units.length);
+    return outcome;
+}
+
+/// `path` made absolute against the working directory and simplified lexically.
+///
+/// Arithmetic, not a question for the filesystem: the path need not exist, nothing is opened, and no symbolic
+/// link is resolved -- so a `..` that crosses one is simplified away as though it did not. `Canonicalize` is the
+/// operation that tells the truth about links, at the cost of requiring the file to be there.
+///
+/// https://rux-lang.dev/docs/api/storage/absolute
+func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
+    *error = IoError::Ok();
+    var textError = TextError::None;
+    if IsAbsolute(path) {
+        var simplified = Normalize(allocator, path, @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return simplified;
+    }
+    var here = CurrentDirectory(allocator, error);
+    if error.IsError() {
+        return PathBuffer::New(allocator);
+    }
+    var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()), @textError);
+    if textError == TextError::None {
+        textError = joined.Push(path.name);
+    }
+    if textError != TextError::None {
+        *error = IoError::Of(IoErrorKind::Other);
+        return joined;
+    }
+    var simplified = Normalize(allocator, joined.AsPath(), @textError);
+    if textError != TextError::None {
+        *error = IoError::Of(IoErrorKind::Other);
+    }
+    joined.Release();
+    return simplified;
+}
+
+when #target.os != .Windows {
+    // The text a symbolic link at `path` holds, and whether it was a link at all.
+    //
+    // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
+    // is the answer the walk below asks for at every component.
+    func ReadLinkText(allocator: Allocator, path: Path, target: *var OsString, linked: *var bool) -> IoError {
+        *linked = false;
+        var native: *var OsUnit = null;
+        let converted = NativePath(allocator, path, @native);
+        if converted.IsError() {
+            return converted;
+        }
+        var units: OsUnit[4096];
+        let written = ReadlinkAt(AtFdCwd, native as *char8, @units[0], 4096);
+        ReleaseNativePath(allocator, native, path.name.units.length);
+        if written < 0 {
+            let raw = (0i64 - written) as int32;
+            if raw == 22 {
+                // EINVAL: an ordinary file, which is not a failure of this question.
+                return IoError::Ok();
+            }
+            return TranslateNative(raw);
+        }
+        if written as uint >= 4096u {
+            // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
+            return IoError::Of(IoErrorKind::LimitExceeded);
+        }
+        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        var textError = TextError::None;
+        *target = OsString::FromView(allocator, view, @textError);
+        if textError != TextError::None {
+            return IoError::Of(IoErrorKind::Other);
+        }
+        *linked = true;
+        return IoError::Ok();
+    }
+
+    // Drops the last segment of `buffer`, leaving the root in place.
+    func PopSegment(buffer: *var PathBuffer) {
+        var length = buffer.length;
+        while length > 0 && !IsSeparator(buffer.data[length - 1]) {
+            length = length - 1;
+        }
+        // Keep the root separator itself; anything else loses its trailing one too.
+        while length > 1 && IsSeparator(buffer.data[length - 1]) {
+            length = length - 1;
+        }
+        buffer.length = length;
+    }
+
+    func SegmentIs(segment: OsStringView, length: uint) -> bool {
+        let units = segment.Units();
+        if units.length != length {
+            return false;
+        }
+        var index: uint = 0;
+        while index < length {
+            if units.data[index] != DotUnit() {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    func DotUnit() -> OsUnit {
+        return c8'.';
+    }
+}
+
+when #target.os != .Windows {
+    // Walks `path`, appending each component to `resolved` and following any link it lands on.
+    //
+    // Recursive, because a link's target is itself a path that must be walked the same way -- and bounded by the
+    // follow count rather than by the nesting, since it is the link chain that can loop.
+    func ResolveInto(allocator: Allocator, path: Path, resolved: *var PathBuffer,
+                     followed: *var uint) -> IoError {
+        var textError = TextError::None;
+        if IsAbsolute(path) {
+            // An absolute path abandons whatever was resolved so far and starts again from the root.
+            var root: OsUnit[1];
+            root[0] = PreferredSeparator();
+            resolved.length = 0;
+            textError = resolved.Push(OsStringView::FromUnits(root[0..1]));
+            if textError != TextError::None {
+                return IoError::Of(IoErrorKind::Other);
+            }
+        }
+        var walk = path.Components();
+        var stepping = true;
+        while stepping {
+            let step = walk.Next();
+            if step.IsNone() {
+                stepping = false;
+            }
+            else {
+                let segment = step.ValueOr(OsStringView::New());
+                if segment.IsEmpty() || SegmentIs(segment, 1) {
+                    // The root component and a bare `.` both add nothing.
+                }
+                else if SegmentIs(segment, 2) {
+                    // `..` applies to what the links actually resolved to, which is the whole point of doing
+                    // this against the filesystem rather than lexically.
+                    PopSegment(resolved);
+                }
+                else {
+                    textError = resolved.Push(segment);
+                    if textError != TextError::None {
+                        return IoError::Of(IoErrorKind::Other);
+                    }
+                    var target = OsString::New(allocator);
+                    var linked = false;
+                    let read = ReadLinkText(allocator, resolved.AsPath(), @target, @linked);
+                    if read.IsError() {
+                        return read;
+                    }
+                    if linked {
+                        *followed = *followed + 1;
+                        if *followed > SymbolicLinkLimit {
+                            return IoError::Of(IoErrorKind::LimitExceeded);
+                        }
+                        // The link's own name is replaced by whatever it holds, resolved in turn.
+                        PopSegment(resolved);
+                        let nested = ResolveInto(allocator, Path::FromView(target.View()), resolved, followed);
+                        if nested.IsError() {
+                            return nested;
+                        }
+                    }
+                }
+            }
+        }
+        return IoError::Ok();
+    }
+}
+
+/// The one true name of the existing file `path` refers to.
+///
+/// Every symbolic link is resolved, every `.` and `..` is applied against what those links actually mean, and
+/// the result is absolute. Unlike `Absolute`, the file must exist: this is a question for the filesystem, and a
+/// name with nothing behind it has no true form. A link chain that returns to itself is `LimitExceeded` rather
+/// than a hang.
+///
+/// On Windows the answer arrives in the verbatim form and spelled as the filesystem stores it -- the case the
+/// name actually has, short names expanded -- because that is what the system reports, and rewriting it would be
+/// this package guessing.
+///
+/// https://rux-lang.dev/docs/api/storage/canonicalize
+func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
+    *error = IoError::Ok();
+    when #target.os == .Windows {
+        // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
+        // carries no access rights, which is enough here and works on a file this process may not read.
+        var native: *var OsUnit = null;
+        *error = NativePath(allocator, path, @native);
+        if error.IsError() {
+            return PathBuffer::New(allocator);
+        }
+        let handle = OpenForQuery(native, true);
+        ReleaseNativePath(allocator, native, path.name.units.length);
+        if (handle as uint64) == InvalidHandleValue {
+            *error = TranslateNative(GetLastError() as int32);
+            return PathBuffer::New(allocator);
+        }
+        var units: OsUnit[4096];
+        let written = GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0);
+        CloseHandle(handle);
+        if written == 0u32 {
+            *error = TranslateNative(GetLastError() as int32);
+            return PathBuffer::New(allocator);
+        }
+        if written >= 4096u32 {
+            *error = IoError::Of(IoErrorKind::LimitExceeded);
+            return PathBuffer::New(allocator);
+        }
+        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        var textError = TextError::None;
+        var resolved = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
+        return resolved;
+    }
+    else {
+        // No Unix kernel resolves a whole path for a caller -- `realpath` is library code over `readlink` -- so
+        // the walk is done here, component by component, against what each link actually points at.
+        var started = Absolute(allocator, path, error);
+        if error.IsError() {
+            return started;
+        }
+        var resolved = PathBuffer::New(allocator);
+        var followed: uint = 0;
+        *error = ResolveInto(allocator, started.AsPath(), @resolved, @followed);
+        started.Release();
+        if error.IsError() {
+            resolved.Release();
+            return PathBuffer::New(allocator);
+        }
+        // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
+        // and a missing name answers that with "no".
+        var missing = IoError::Ok();
+        MetadataOf(allocator, resolved.AsPath(), true, @missing);
+        if missing.IsError() {
+            *error = missing;
+            resolved.Release();
+            return PathBuffer::New(allocator);
+        }
+        return resolved;
+    }
+}
