@@ -1,0 +1,147 @@
+// Streaming exists so a large document costs little, so the test that matters is the one measuring cost: a
+// document far larger than the buffer must stream through it without the buffer growing.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, Reader };
+import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
+
+// A reader serving a fixed slice a few bytes at a time, so token boundaries fall inside reads.
+struct SliceState {
+    bytes: Slice<char8>;
+    offset: uint;
+    step: uint;
+}
+
+struct SliceHandle {
+    state: *var SliceState;
+}
+
+extend SliceHandle : Reader {
+    func Read(self: *var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        *filled = 0;
+        let state = self.state;
+        let remaining = state.bytes.length - state.offset;
+        if remaining == 0 {
+            return IoError::Of(IoErrorKind::EndOfStream);
+        }
+        var give = remaining < state.step ? remaining : state.step;
+        if into.length < give {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = state.bytes.data[state.offset + index];
+            index = index + 1;
+        }
+        state.offset = state.offset + give;
+        *filled = give;
+        return IoError::Ok();
+    }
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    // A small document, event by event, served three bytes at a time so every token straddles a read.
+    var state = SliceState { bytes: "{\"name\":42,\"list\":[true,null,\"x\"]}", offset: 0, step: 3 };
+    let handle: Reader = SliceHandle { state: @state };
+    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default(), @error);
+    Assert(error.IsOk(), "the reader starts");
+    Assert(reader.Next() == JsonEvent::ObjectStart, "the object opens");
+    Assert(reader.Depth() == 1u, "and the depth follows");
+    Assert(reader.Next() == JsonEvent::Name, "a member name arrives");
+    Assert(reader.Text().length == 4u, "with its text");
+    Assert(reader.Next() == JsonEvent::Number, "then its value");
+    Assert(reader.Text().length == 2u, "as a number, text intact across the reads");
+    Assert(reader.Next() == JsonEvent::Name, "a second name");
+    Assert(reader.Next() == JsonEvent::ArrayStart, "opening an array");
+    Assert(reader.Depth() == 2u, "nested one deeper");
+    Assert(reader.Next() == JsonEvent::True, "a literal");
+    Assert(reader.Next() == JsonEvent::Null, "another");
+    Assert(reader.Next() == JsonEvent::Text, "and a string");
+    Assert(reader.Next() == JsonEvent::ArrayEnd, "the array closes");
+    Assert(reader.Next() == JsonEvent::ObjectEnd, "the object closes");
+    Assert(reader.Depth() == 0u, "back to the top");
+    Assert(reader.Next() == JsonEvent::End, "and the document ends");
+    Assert(reader.Failure() == JsonParseError::None, "with nothing wrong");
+    reader.Release();
+
+    // The point of streaming: a document far larger than the buffer streams through it. Ten thousand records,
+    // read four bytes at a time, with nothing kept but the current token.
+    var big: char8[120000];
+    var written: uint = 0;
+    big[written] = 0x5Bu8 as char8;
+    written = written + 1u;
+    var record: uint = 0;
+    while record < 10000u {
+        if record > 0u {
+            big[written] = 0x2Cu8 as char8;
+            written = written + 1u;
+        }
+        var digits = record;
+        var scratch: char8[8];
+        var count: uint = 0;
+        if digits == 0u {
+            scratch[0] = 0x30u8 as char8;
+            count = 1;
+        }
+        while digits > 0u {
+            scratch[count] = ((0x30u8 + (digits % 10u) as uint8)) as char8;
+            count = count + 1u;
+            digits = digits / 10u;
+        }
+        while count > 0u {
+            count = count - 1u;
+            big[written] = scratch[count];
+            written = written + 1u;
+        }
+        record = record + 1u;
+    }
+    big[written] = 0x5Du8 as char8;
+    written = written + 1u;
+
+    var bigState = SliceState { bytes: Slice<char8> { data: @big[0], length: written }, offset: 0, step: 4 };
+    let bigHandle: Reader = SliceHandle { state: @bigState };
+    var bigReader = JsonEventReader::New(allocator, bigHandle, JsonLimits::Default(), @error);
+    Assert(error.IsOk(), "the streaming reader starts");
+    Assert(bigReader.Next() == JsonEvent::ArrayStart, "the array opens");
+    var seen: uint = 0;
+    var event = bigReader.Next();
+    while event == JsonEvent::Number {
+        seen = seen + 1u;
+        event = bigReader.Next();
+    }
+    Assert(seen == 10000u, "every record arrives as an event");
+    Assert(event == JsonEvent::ArrayEnd, "and the array closes");
+    Assert(bigReader.Next() == JsonEvent::End, "leaving the document finished");
+    Assert(bigReader.Failure() == JsonParseError::None, "with nothing wrong");
+    bigReader.Release();
+
+    // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
+    var mismatchedState = SliceState { bytes: "{\"a\":1]", offset: 0, step: 16 };
+    let mismatchedHandle: Reader = SliceHandle { state: @mismatchedState };
+    var mismatched = JsonEventReader::New(allocator, mismatchedHandle, JsonLimits::Default(), @error);
+    Assert(mismatched.Next() == JsonEvent::ObjectStart, "the object opens");
+    Assert(mismatched.Next() == JsonEvent::Name, "a name arrives");
+    Assert(mismatched.Next() == JsonEvent::Number, "and a value");
+    Assert(mismatched.Next() == JsonEvent::Error, "and a bracket closing a brace is refused");
+    Assert(mismatched.Failure() == JsonParseError::Unexpected, "as a structural mistake");
+    mismatched.Release();
+
+    // Depth is bounded here as it is in the tree parser.
+    var shallow = JsonLimits::Default();
+    shallow.maximumDepth = 2;
+    var deepState = SliceState { bytes: "[[[1]]]", offset: 0, step: 16 };
+    let deepHandle: Reader = SliceHandle { state: @deepState };
+    var deep = JsonEventReader::New(allocator, deepHandle, shallow, @error);
+    Assert(deep.Next() == JsonEvent::ArrayStart, "the first level opens");
+    Assert(deep.Next() == JsonEvent::ArrayStart, "and the second");
+    Assert(deep.Next() == JsonEvent::Error, "and the third is refused");
+    Assert(deep.Failure() == JsonParseError::TooDeep, "for being too deep");
+    deep.Release();
+
+    return 0;
+}
