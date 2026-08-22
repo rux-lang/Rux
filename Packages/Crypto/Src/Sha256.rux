@@ -1,0 +1,252 @@
+// SHA-256 and SHA-224, from FIPS 180-4.
+//
+// One compression function serves both: they differ only in the initial state and in how much of the final
+// state is kept. That is worth saying plainly, because it is also why SHA-224 is not simply "SHA-256 truncated"
+// -- a different initial state means the two produce unrelated values, so neither can be derived from the other
+// after the fact.
+//
+// The padding is where implementations go wrong, and it is the same shape in every member of the family: a one
+// bit, then zeros, then the message length in bits as a big-endian 64-bit count. The awkward case is a message
+// whose final block leaves fewer than nine bytes free, which needs a whole extra block; the test covers exactly
+// those lengths.
+
+import Core::{ MutableSlice, Slice };
+
+/// The round constants: the first thirty-two bits of the fractional parts of the cube roots of the first
+/// sixty-four primes.
+const Sha256RoundConstants: uint32[64] = [
+    0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
+    0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174,
+    0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA,
+    0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7, 0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967,
+    0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85,
+    0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070,
+    0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
+    0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2
+];
+
+/// SHA-256's initial state: the first thirty-two bits of the fractional parts of the square roots of the first
+/// eight primes.
+const Sha256InitialState: uint32[8] = [
+    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
+];
+
+/// SHA-224's initial state: the second thirty-two bits of the fractional parts of the square roots of the ninth
+/// through sixteenth primes. Different from SHA-256's, which is what keeps the two functions unrelated.
+const Sha224InitialState: uint32[8] = [
+    0xC1059ED8, 0x367CD507, 0x3070DD17, 0xF70E5939, 0xFFC00B31, 0x68581511, 0x64F98FA7, 0xBEFA4FA4
+];
+
+func RotateRight32(value: uint32, amount: uint32) -> uint32 {
+    return (value >> amount) | (value << (32u32 - amount));
+}
+
+/// An incremental SHA-256 or SHA-224.
+///
+/// https://rux-lang.dev/docs/api/crypto/sha256
+struct Sha256 {
+    /// The eight working words.
+    state: uint32[8];
+    /// Bytes not yet part of a full block.
+    buffer: char8[64];
+    /// How many of them there are.
+    buffered: uint;
+    /// The total message length in bytes, which the padding needs in bits.
+    length: uint64;
+    /// How many bytes `Finish` writes: thirty-two for SHA-256, twenty-eight for SHA-224.
+    outputLength: uint;
+}
+
+extend Sha256 {
+    /// A SHA-256 state.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/new
+    func New() -> Sha256 {
+        // The buffer is left as it lies: nothing reads a byte of it that `buffered` has not accounted for.
+        var digest: Sha256;
+        digest.state = Sha256InitialState;
+        digest.buffered = 0;
+        digest.length = 0;
+        digest.outputLength = 32;
+        return digest;
+    }
+
+    /// A SHA-224 state: the same compression function from a different start, keeping seven words of the result.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/new-224
+    func New224() -> Sha256 {
+        var digest: Sha256;
+        digest.state = Sha224InitialState;
+        digest.buffered = 0;
+        digest.length = 0;
+        digest.outputLength = 28;
+        return digest;
+    }
+
+    // One block of sixty-four bytes, mixed into the state.
+    func Compress(self: *var Sha256, block: *char8) {
+        var schedule: uint32[64];
+        var index: uint = 0;
+        while index < 16u {
+            schedule[index] = ((block[index * 4u] as uint8 as uint32) << 24u32) |
+                              ((block[index * 4u + 1u] as uint8 as uint32) << 16u32) |
+                              ((block[index * 4u + 2u] as uint8 as uint32) << 8u32) |
+                              (block[index * 4u + 3u] as uint8 as uint32);
+            index = index + 1;
+        }
+        while index < 64u {
+            let previous = schedule[index - 15u];
+            let recent = schedule[index - 2u];
+            let s0 = RotateRight32(previous, 7u32) ^ RotateRight32(previous, 18u32) ^ (previous >> 3u32);
+            let s1 = RotateRight32(recent, 17u32) ^ RotateRight32(recent, 19u32) ^ (recent >> 10u32);
+            schedule[index] = schedule[index - 16u] + s0 + schedule[index - 7u] + s1;
+            index = index + 1;
+        }
+
+        var a = self.state[0];
+        var b = self.state[1];
+        var c = self.state[2];
+        var d = self.state[3];
+        var e = self.state[4];
+        var f = self.state[5];
+        var g = self.state[6];
+        var h = self.state[7];
+
+        index = 0;
+        while index < 64u {
+            let sigma1 = RotateRight32(e, 6u32) ^ RotateRight32(e, 11u32) ^ RotateRight32(e, 25u32);
+            let choose = (e & f) ^ ((~e) & g);
+            let temp1 = h + sigma1 + choose + Sha256RoundConstants[index] + schedule[index];
+            let sigma0 = RotateRight32(a, 2u32) ^ RotateRight32(a, 13u32) ^ RotateRight32(a, 22u32);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = sigma0 + majority;
+            h = g;
+            g = f;
+            f = e;
+            e = d + temp1;
+            d = c;
+            c = b;
+            b = a;
+            a = temp1 + temp2;
+            index = index + 1;
+        }
+
+        self.state[0] = self.state[0] + a;
+        self.state[1] = self.state[1] + b;
+        self.state[2] = self.state[2] + c;
+        self.state[3] = self.state[3] + d;
+        self.state[4] = self.state[4] + e;
+        self.state[5] = self.state[5] + f;
+        self.state[6] = self.state[6] + g;
+        self.state[7] = self.state[7] + h;
+    }
+}
+
+extend Sha256 : Digest {
+    /// Adds `bytes` to the message.
+    ///
+    /// Any split of the same bytes gives the same digest: whatever does not complete a block is buffered, and
+    /// the buffer is only compressed once it is full.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/update
+    func Update(self: *var Sha256, bytes: Slice<char8>) {
+        self.length = self.length + (bytes.length as uint64);
+        var index: uint = 0;
+        // Finish whatever partial block is already held before taking whole blocks directly.
+        if self.buffered > 0u {
+            while index < bytes.length && self.buffered < 64u {
+                self.buffer[self.buffered] = bytes.data[index];
+                self.buffered = self.buffered + 1u;
+                index = index + 1;
+            }
+            if self.buffered == 64u {
+                self.Compress(@self.buffer[0]);
+                self.buffered = 0;
+            }
+        }
+        while index + 64u <= bytes.length {
+            self.Compress(@bytes.data[index]);
+            index = index + 64u;
+        }
+        while index < bytes.length {
+            self.buffer[self.buffered] = bytes.data[index];
+            self.buffered = self.buffered + 1u;
+            index = index + 1;
+        }
+    }
+
+    /// Writes the digest into `into`.
+    ///
+    /// The padding is a one bit, then zeros, then the message length in bits as a big-endian sixty-four bit
+    /// count. When fewer than nine bytes remain in the final block there is no room for that count, so the
+    /// block is finished with zeros and a whole further block carries it -- the case that separates a correct
+    /// implementation from one that passes the short vectors.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/finish
+    func Finish(self: *var Sha256, into: MutableSlice<char8>) {
+        let bitLength = self.length * 8u64;
+        self.buffer[self.buffered] = 0x80u8 as char8;
+        self.buffered = self.buffered + 1u;
+        if self.buffered > 56u {
+            while self.buffered < 64u {
+                self.buffer[self.buffered] = 0u8 as char8;
+                self.buffered = self.buffered + 1u;
+            }
+            self.Compress(@self.buffer[0]);
+            self.buffered = 0;
+        }
+        while self.buffered < 56u {
+            self.buffer[self.buffered] = 0u8 as char8;
+            self.buffered = self.buffered + 1u;
+        }
+        var shift: uint = 0;
+        while shift < 8u {
+            self.buffer[56u + shift] = ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            shift = shift + 1;
+        }
+        self.Compress(@self.buffer[0]);
+
+        var index: uint = 0;
+        while index < self.outputLength {
+            let word = self.state[index / 4u];
+            let byteShift = (3u - (index % 4u)) * 8u;
+            if index < into.length {
+                into.data[index] = ((word >> (byteShift as uint32)) & 0xFFu32) as uint8 as char8;
+            }
+            index = index + 1;
+        }
+        self.buffered = 0;
+    }
+
+    /// Thirty-two bytes for SHA-256, twenty-eight for SHA-224.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/digest-length
+    func DigestLength(self: *Sha256) -> uint {
+        return self.outputLength;
+    }
+
+    /// Sixty-four bytes, for both.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/sha256/block-length
+    func BlockLength(self: *Sha256) -> uint {
+        return 64u;
+    }
+}
+
+/// The SHA-256 digest of `bytes`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/sha256-of
+func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var digest = Sha256::New();
+    digest.Update(bytes);
+    digest.Finish(into);
+}
+
+/// The SHA-224 digest of `bytes`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/sha224-of
+func Sha224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var digest = Sha256::New224();
+    digest.Update(bytes);
+    digest.Finish(into);
+}

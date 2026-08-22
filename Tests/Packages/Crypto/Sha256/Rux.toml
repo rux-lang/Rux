@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Sha256"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: SHA-256 and SHA-224 against the FIPS 180-4 vectors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
