@@ -1,0 +1,91 @@
+// BLAKE3's other two modes, which are the same tree with a different starting key and a different flag.
+//
+// The point of having modes at all is domain separation. The same bytes hashed unkeyed, hashed with a key, and
+// used as key material produce three unrelated outputs, and no amount of work with one mode says anything about
+// another. That is what lets one algorithm serve as a hash, as a message authentication code, and as a key
+// derivation function without the three interfering -- which is otherwise the sort of thing that turns a
+// perfectly good hash into a vulnerability when someone uses it for two purposes at once.
+//
+// Keyed hashing is a MAC, and a proper one: BLAKE3 is not vulnerable to length extension, so unlike SHA-2 it can
+// be keyed by simply starting from the key rather than needing HMAC's nested construction.
+
+import Core::{ MutableSlice, Slice };
+
+/// This hash is keyed.
+const Blake3KeyedHash: uint32 = 16;
+/// This hash is deriving a context key from a context string.
+const Blake3DeriveKeyContext: uint32 = 32;
+/// This hash is deriving output from key material under a context key.
+const Blake3DeriveKeyMaterial: uint32 = 64;
+
+// The thirty-two byte key, read as eight little-endian words.
+func Blake3KeyWords(key: Slice<char8>, words: *var uint32) {
+    var index: uint = 0;
+    while index < 8u {
+        var word = 0u32;
+        var part: uint = 0;
+        while part < 4u {
+            let position = index * 4u + part;
+            let value = position < key.length ? (key.data[position] as uint8) : 0u8;
+            word = word | ((value as uint32) << ((part * 8u) as uint32));
+            part = part + 1;
+        }
+        words[index] = word;
+        index = index + 1;
+    }
+}
+
+extend Blake3 {
+    /// A keyed BLAKE3 hash: a message authentication code.
+    ///
+    /// `key` must be exactly thirty-two bytes; a shorter one is padded with zeros, which is a caller error
+    /// rather than a supported shortening -- a key with less entropy than the algorithm expects is weaker than
+    /// it looks, and padding it hides that rather than fixing it.
+    ///
+    /// Unlike SHA-2, this needs no nested construction: BLAKE3 resists length extension, so starting the tree
+    /// from the key is a sound MAC on its own.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/new-keyed
+    func NewKeyed(key: Slice<char8>) -> Blake3 {
+        var words: uint32[8];
+        Blake3KeyWords(key, @words[0]);
+        return Blake3::Start(words, Blake3KeyedHash);
+    }
+
+    /// A BLAKE3 state deriving output under `context`.
+    ///
+    /// The context string names what the derived key is *for*, and it is hashed separately from the key
+    /// material so that two derivations from the same material under different contexts are unrelated. It
+    /// should be a hard-coded, globally unique string -- an application name, a purpose, and a date -- and it
+    /// must not be a variable, since two callers who accidentally share one lose the separation entirely.
+    ///
+    /// https://rux-lang.dev/docs/api/crypto/blake3/new-derive-key
+    func NewDeriveKey(context: Slice<char8>) -> Blake3 {
+        // The first stage hashes the context under the unkeyed initial value, producing the key for the second.
+        var contextHasher = Blake3::Start(Blake3InitialValue, Blake3DeriveKeyContext);
+        contextHasher.Update(context);
+        var contextKey: char8[32];
+        contextHasher.Finish(MutableSlice::From<char8>(@contextKey[0], 32));
+        var words: uint32[8];
+        Blake3KeyWords(Slice<char8> { data: @contextKey[0], length: 32 }, @words[0]);
+        return Blake3::Start(words, Blake3DeriveKeyMaterial);
+    }
+}
+
+/// The keyed BLAKE3 hash of `bytes` under `key`, in one call.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3-keyed-of
+func Blake3KeyedOf(key: Slice<char8>, bytes: Slice<char8>, into: MutableSlice<char8>) {
+    var hasher = Blake3::NewKeyed(key);
+    hasher.Update(bytes);
+    hasher.Finish(into);
+}
+
+/// A key derived from `material` under `context`, at whatever length `into` asks for.
+///
+/// https://rux-lang.dev/docs/api/crypto/blake3-derive-key
+func Blake3DeriveKey(context: Slice<char8>, material: Slice<char8>, into: MutableSlice<char8>) {
+    var hasher = Blake3::NewDeriveKey(context);
+    hasher.Update(material);
+    hasher.Finish(into);
+}
