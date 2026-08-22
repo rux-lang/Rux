@@ -1,0 +1,127 @@
+// The phase gate's name question: a filesystem's names are not text the program chose, and everything here has
+// to carry them unchanged. Each name is created, found again by enumeration, reopened by the name enumeration
+// handed back, and deleted -- so a lossy step anywhere in that circle shows up as a name that cannot be found.
+//
+// On Windows the hard cases are Unicode: characters outside any ANSI code page, and astral-plane characters
+// that occupy a surrogate pair, where a byte-oriented shortcut would split one character in half. On the Unix
+// systems the hard case is that a name need not be text at all, so one is built from bytes that are not valid
+// UTF-8 and required to round-trip anyway.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Io::{ IoError, IoErrorKind };
+import Core::{ #target };
+import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
+import Storage::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
+import Text::TextError;
+
+func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+    var textError = TextError::None;
+    *holder = OsString::FromText(allocator, text, @textError);
+    Assert(textError == TextError::None, "the name converts");
+    return Path::FromView(holder.View());
+}
+
+// Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
+// and deletes it. Anything lossy in that circle breaks one of the steps.
+func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: Slice<char8>) {
+    var error = IoError::Ok();
+    var textError = TextError::None;
+    var full = PathBuffer::FromPath(allocator, directory, @textError);
+    Assert(textError == TextError::None, "the directory copies");
+    Assert(full.Push(name) == TextError::None, "and the name appends");
+
+    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing(), @error);
+    Assert(made.IsOpen() && error.IsOk(), what);
+    Assert(made.Close().IsOk(), "and closes");
+
+    // Enumeration must report the name the way it was written.
+    var walk = ReadDirectory(allocator, directory, @error);
+    Assert(error.IsOk(), "the directory opens for reading");
+    var found = false;
+    var reported = OsString::New(allocator);
+    var entry = OsString::New(allocator);
+    while walk.Next(@entry, @error) {
+        let view = entry.View();
+        if view.Equals(@name) {
+            found = true;
+            reported = OsString::FromView(allocator, view, @textError);
+            Assert(textError == TextError::None, "and the reported name copies");
+        }
+        entry.Clear();
+    }
+    Assert(error.IsOk(), "the enumeration ends rather than fails");
+    Assert(found, "the name reads back exactly as it was written");
+    walk.Release();
+
+    // Reopening under the reported name proves the round trip is usable, not merely equal.
+    var reopenPath = PathBuffer::FromPath(allocator, directory, @textError);
+    Assert(reopenPath.Push(reported.View()) == TextError::None, "the reported name appends");
+    var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading(), @error);
+    Assert(reopened.IsOpen() && error.IsOk(), "and opens the same file");
+    Assert(reopened.Close().IsOk(), "which closes");
+
+    Assert(DeleteFile(allocator, full.AsPath()).IsOk(), "and deletes under the original name");
+    full.Release();
+    reopenPath.Release();
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    var dirHolder = OsString::New(allocator);
+    let dir = PathOf(allocator, "Bin/StorageNames.tmp", @dirHolder);
+    DeleteDirectory(allocator, dir);
+    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+
+    // Characters no ANSI code page holds, which is what a lossy conversion loses first.
+    var cyrillicHolder = OsString::New(allocator);
+    let cyrillic = PathOf(allocator, "Привіт.txt", @cyrillicHolder);
+    RoundTrip(allocator, dir, cyrillic.name, "a Cyrillic name is created");
+
+    var mixedHolder = OsString::New(allocator);
+    let mixed = PathOf(allocator, "café-日本語.txt", @mixedHolder);
+    RoundTrip(allocator, dir, mixed.name, "a name mixing scripts is created");
+
+    // An astral-plane character: one character, two UTF-16 code units, four UTF-8 bytes. A conversion that
+    // walks units rather than characters cuts it in half here and nowhere else.
+    var astralHolder = OsString::New(allocator);
+    let astral = PathOf(allocator, "emoji-😀.txt", @astralHolder);
+    RoundTrip(allocator, dir, astral.name, "an astral-plane name is created");
+
+    // A base character followed by a combining mark: two characters that render as one, and which the
+    // filesystem must not silently normalize into the single precomposed character.
+    var combiningHolder = OsString::New(allocator);
+    let combining = PathOf(allocator, "café.txt", @combiningHolder);
+    RoundTripCombining(allocator, dir, combining.name);
+
+    when #target.os != .Windows {
+        // A Unix name need not be text. This one is not: 0xFF can begin no UTF-8 sequence.
+        var raw: OsUnit[10];
+        raw[0] = c8'b';
+        raw[1] = 0xFFu8 as char8;
+        raw[2] = 0xFEu8 as char8;
+        raw[3] = c8'.';
+        raw[4] = c8'b';
+        raw[5] = c8'i';
+        raw[6] = c8'n';
+        let hostile = OsStringView::FromUnits(raw[0..7]);
+        RoundTrip(allocator, dir, hostile, "a name that is not UTF-8 at all is created");
+
+        // And its text conversion must fail rather than invent replacement characters.
+        var textError = TextError::None;
+        let asText = hostile.ToText(allocator, @textError);
+        Assert(asText.IsNone(), "and refuses to become text rather than being mangled into it");
+    }
+
+    Assert(DeleteDirectory(allocator, dir).IsOk(), "the scratch directory cleans up");
+    return 0;
+}
+
+// The combining-mark case, kept apart so its comment stays with it: the name is written decomposed and must
+// come back decomposed, not folded into the precomposed character that renders identically.
+func RoundTripCombining(allocator: Allocator, directory: Path, name: OsStringView) {
+    RoundTrip(allocator, directory, name, "a decomposed name is created");
+}

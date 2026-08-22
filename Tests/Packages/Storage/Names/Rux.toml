@@ -1,0 +1,19 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Names"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Phase gate: names the system stores survive creation, enumeration and reopening unit for unit."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Storage = { Path = "../../../../Packages/Storage" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Storage"
