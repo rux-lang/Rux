@@ -3,7 +3,7 @@
 // different place than SHA-256's.
 
 import Core::{ Assert, MutableSlice, Slice };
-import Crypto::{ Digest, Equal, Sha384Of, Sha512, Sha512Of, Sha512_224Of, Sha512_256Of };
+import Crypto::{ Digest, Equal, Sha384Of, Sha512, Sha512Of, Sha512Trunc224Of, Sha512Trunc256Of };
 
 func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     var index: uint = 0;
@@ -62,12 +62,12 @@ func Main() -> int {
 
     // The two truncations, whose initial states are what keep them independent of SHA-512.
     let narrow = MutableSlice::From<char8>(@digest[0], 28);
-    Sha512_224Of("abc", narrow);
+    Sha512Trunc224Of("abc", narrow);
     Check(Slice<char8> { data: @digest[0], length: 28 },
           "4634270f707b6a54daae7530460842e20e37ed265ceee9a43e8924aa",
           "SHA-512/224 of abc");
     let short = MutableSlice::From<char8>(@digest[0], 32);
-    Sha512_256Of("abc", short);
+    Sha512Trunc256Of("abc", short);
     Check(Slice<char8> { data: @digest[0], length: 32 },
           "53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23",
           "SHA-512/256 of abc");
@@ -76,7 +76,7 @@ func Main() -> int {
     var full: char8[64];
     var truncated: char8[64];
     Sha512Of("abc", MutableSlice::From<char8>(@full[0], 64));
-    Sha512_256Of("abc", MutableSlice::From<char8>(@truncated[0], 32));
+    Sha512Trunc256Of("abc", MutableSlice::From<char8>(@truncated[0], 32));
     Assert(!Equal(Slice<char8> { data: @full[0], length: 32 },
                   Slice<char8> { data: @truncated[0], length: 32 }),
            "SHA-512/256 is not the first half of SHA-512");
@@ -114,7 +114,7 @@ func Main() -> int {
     // The reported sizes.
     var sizes = Sha512::New();
     Assert(sizes.DigestLength() == 64u && sizes.BlockLength() == 128u, "SHA-512 reports its own sizes");
-    var shortSizes = Sha512::New512_224();
+    var shortSizes = Sha512::NewTrunc224();
     Assert(shortSizes.DigestLength() == 28u && shortSizes.BlockLength() == 128u,
            "and a truncation reports its shorter digest with the same block");
 
