@@ -1,0 +1,126 @@
+// An accuracy claim is only worth writing down if something checks it, so the bounds documented at Sqrt, Cbrt
+// and Hypot are measured here in the unit they are stated in: representable values apart, not absolute
+// difference, since a fixed absolute tolerance is meaninglessly loose near zero and impossibly tight near the
+// maximum.
+//
+// Correct rounding is checked without a higher-precision reference by bracketing: the true root of x lies
+// between two adjacent floats, and squaring each neighbour with exact arithmetic says which side it falls on.
+// Dekker's splitting makes that product exact -- a double's square needs 106 bits, and a pair of doubles holds
+// them.
+
+import Core::Assert;
+import Math::{ Abs, Cbrt, Hypot, IsInfinite, IsNan, NextDown, NextUp, PositiveInfinity64, QuietNan64,
+               ScaleByPowerOfTwo, SignBit, Sqrt, UlpDistance };
+
+// Splits a double into two halves whose product with anything is exact. The constant is 2^27 + 1.
+func SplitHigh(value: float64) -> float64 {
+    let scaled = value * 134217729.0;
+    return scaled - (scaled - value);
+}
+
+// The exact product of two doubles, as a rounded head and the remainder the rounding dropped.
+func ExactProduct(left: float64, right: float64, remainder: *var float64) -> float64 {
+    let head = left * right;
+    let leftHigh = SplitHigh(left);
+    let leftLow = left - leftHigh;
+    let rightHigh = SplitHigh(right);
+    let rightLow = right - rightHigh;
+    *remainder = ((leftHigh * rightHigh - head) + leftHigh * rightLow + leftLow * rightHigh) + leftLow * rightLow;
+    return head;
+}
+
+// Whether `root` is the representable value nearest the true square root of `value`.
+//
+// The squares of `root` and of the neighbour on each side bracket `value`; the nearest root is the one whose
+// square is closest, measured exactly.
+func IsCorrectlyRoundedRoot(value: float64, root: float64) -> bool {
+    var remainder = 0.0;
+    let squared = ExactProduct(root, root, @remainder);
+    // The exact error of root^2 against value, as a head and a tail, which together are exact.
+    let error = (squared - value) + remainder;
+    var neighbourRemainder = 0.0;
+    let below = NextDown(root);
+    let above = NextUp(root);
+    let belowSquared = ExactProduct(below, below, @neighbourRemainder);
+    let belowError = (belowSquared - value) + neighbourRemainder;
+    let aboveSquared = ExactProduct(above, above, @neighbourRemainder);
+    let aboveError = (aboveSquared - value) + neighbourRemainder;
+    return Abs(error) <= Abs(belowError) && Abs(error) <= Abs(aboveError);
+}
+
+func Main() -> int {
+    let infinity = PositiveInfinity64();
+    let notANumber = QuietNan64();
+
+    // Square root: exact where the answer is exact, and correctly rounded where it is not.
+    Assert(Sqrt(0.0) == 0.0 && !SignBit(Sqrt(0.0)), "the root of zero is zero");
+    Assert(Sqrt(-0.0) == 0.0 && SignBit(Sqrt(-0.0)), "and a negative zero keeps its sign, as IEEE 754 requires");
+    Assert(Sqrt(1.0) == 1.0 && Sqrt(4.0) == 2.0 && Sqrt(2.25) == 1.5, "exact roots come out exact");
+    Assert(IsNan(Sqrt(-1.0)), "a negative argument has no real root");
+    Assert(Sqrt(infinity) == infinity, "an infinite argument has an infinite root");
+    Assert(IsNan(Sqrt(notANumber)), "and a NaN stays a NaN");
+
+    // Every perfect square up to a thousand comes back exactly, which no approximation would manage.
+    var index: uint = 1;
+    while index <= 1000u {
+        let whole = index as float64;
+        Assert(Sqrt(whole * whole) == whole, "the root of a perfect square is the whole number");
+        index = index + 1;
+    }
+
+    // And correct rounding across a spread of arguments that are not perfect squares.
+    var probe: uint = 2;
+    while probe < 400u {
+        let value = (probe as float64) * 1.7320508075688772;
+        Assert(IsCorrectlyRoundedRoot(value, Sqrt(value)), "the root is the nearest representable value");
+        probe = probe + 1;
+    }
+    // Including at the extremes of the exponent range, where the scaling would show.
+    Assert(IsCorrectlyRoundedRoot(ScaleByPowerOfTwo(1.3, -1000i64), Sqrt(ScaleByPowerOfTwo(1.3, -1000i64))),
+           "a tiny argument roots correctly");
+    Assert(IsCorrectlyRoundedRoot(ScaleByPowerOfTwo(1.3, 1000i64), Sqrt(ScaleByPowerOfTwo(1.3, 1000i64))),
+           "and so does an enormous one");
+
+    // Cube root: exact cubes, the sign it must keep, and its one-ulp bound.
+    Assert(Cbrt(0.0) == 0.0 && Cbrt(1.0) == 1.0 && Cbrt(8.0) == 2.0 && Cbrt(27.0) == 3.0, "exact cubes are exact");
+    Assert(Cbrt(-8.0) == -2.0, "a negative argument has a real cube root, unlike the square root");
+    Assert(SignBit(Cbrt(-0.0)), "and a negative zero keeps its sign");
+    Assert(Cbrt(infinity) == infinity && Cbrt(-infinity) == -infinity, "infinities pass through");
+    Assert(IsNan(Cbrt(notANumber)), "and so does a NaN");
+
+    var cube: uint = 1;
+    while cube <= 200u {
+        let whole = cube as float64;
+        Assert(Cbrt(whole * whole * whole) == whole, "the cube root of a perfect cube is the whole number");
+        cube = cube + 1;
+    }
+
+    // The documented bound, measured: cubing the answer must land within a few ulps of the argument, which is
+    // what a one-ulp root gives after the cubing's own rounding.
+    var sample: uint = 2;
+    while sample < 300u {
+        let value = (sample as float64) * 2.7182818284590452;
+        let root = Cbrt(value);
+        Assert(UlpDistance(root * root * root, value) <= 4u64, "the cube root is within its documented bound");
+        sample = sample + 1;
+    }
+
+    // Hypot: exact for the triples that are exact, and correct where squaring alone would overflow or vanish.
+    Assert(Hypot(3.0, 4.0) == 5.0 && Hypot(5.0, 12.0) == 13.0, "the classic triples are exact");
+    Assert(Hypot(0.0, 0.0) == 0.0, "two zeros give zero");
+    Assert(Hypot(-3.0, -4.0) == 5.0, "signs do not matter");
+    Assert(Hypot(infinity, notANumber) == infinity,
+           "an infinity wins over a NaN, since the length is infinite whatever the other side is");
+    Assert(IsNan(Hypot(notANumber, 1.0)), "but a NaN otherwise propagates");
+
+    // The whole reason for the scaling: these arguments square to values the type cannot hold.
+    let huge = ScaleByPowerOfTwo(3.0, 1000i64);
+    Assert(UlpDistance(Hypot(huge, ScaleByPowerOfTwo(4.0, 1000i64)), ScaleByPowerOfTwo(5.0, 1000i64)) <= 1u64,
+           "a triple whose squares overflow still gives the right length");
+    let tiny = ScaleByPowerOfTwo(3.0, -1000i64);
+    Assert(UlpDistance(Hypot(tiny, ScaleByPowerOfTwo(4.0, -1000i64)), ScaleByPowerOfTwo(5.0, -1000i64)) <= 1u64,
+           "and so does one whose squares underflow to zero");
+    Assert(IsInfinite(Hypot(infinity, 1.0)), "an infinite side gives an infinite length");
+
+    return 0;
+}
