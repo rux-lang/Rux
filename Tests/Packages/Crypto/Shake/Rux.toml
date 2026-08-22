@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Shake"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: SHAKE128 and SHAKE256 vectors and the continuity of their streams"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
