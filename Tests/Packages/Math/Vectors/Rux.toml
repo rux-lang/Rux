@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Vectors"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Math: the committed reference vectors and the ulp bounds measured against them"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Math = { Path = "../../../../Packages/Math" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Math"

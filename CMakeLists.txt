@@ -32,6 +32,9 @@ add_subdirectory(Compiler)
 # Its output is committed, so nothing in an ordinary build depends on it.
 add_subdirectory(Tools/UnicodeGen)
 
+# The math reference generator, run by hand when a boundary vector set needs regenerating.
+add_subdirectory(Tools/MathVectors)
+
 if (RUX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests/Unit)
