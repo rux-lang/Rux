@@ -1,0 +1,422 @@
+// Turning JSON text into tokens, under limits a caller sets.
+//
+// The limits are the point of having a separate lexing stage at all. JSON is a recursive format read from
+// untrusted input more often than almost anything else, and every one of its failure modes is a resource
+// exhaustion rather than a parse error: a document of ten thousand open brackets exhausts a recursive parser's
+// stack before any bracket closes, a string with no closing quote consumes a whole file, and an array of a
+// hundred million elements exhausts memory while remaining perfectly well-formed. None of those is malformed
+// JSON. All of them are refusals a caller has to be able to configure, so the limits live in a value passed in
+// rather than in constants compiled here.
+//
+// The lexer never allocates. A string token points into the input and reports whether it needs unescaping, so a
+// document whose strings hold no escapes -- which is most of them -- is parsed without copying any of them.
+
+import Core::{ Slice };
+
+/// What kind of token this is.
+///
+/// https://rux-lang.dev/docs/api/json/token-kind
+enum JsonTokenKind: int32 {
+    /// The input is exhausted.
+    End = 0,
+    /// `{`
+    ObjectStart = 1,
+    /// `}`
+    ObjectEnd = 2,
+    /// `[`
+    ArrayStart = 3,
+    /// `]`
+    ArrayEnd = 4,
+    /// `:`
+    Colon = 5,
+    /// `,`
+    Comma = 6,
+    /// A string, whose span excludes the quotes.
+    Text = 7,
+    /// A number, whose span is its whole text.
+    Number = 8,
+    /// `true`
+    True = 9,
+    /// `false`
+    False = 10,
+    /// `null`
+    Null = 11,
+    /// Something that is not JSON, or a limit that was reached.
+    Error = 12
+}
+
+/// Why lexing stopped.
+///
+/// https://rux-lang.dev/docs/api/json/lex-error
+enum JsonLexError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// A byte that begins no token.
+    UnexpectedByte = 1,
+    /// A string that the input ended before closing.
+    UnterminatedText = 2,
+    /// An escape sequence JSON does not define.
+    BadEscape = 3,
+    /// A `\u` escape that is not four hexadecimal digits.
+    BadUnicodeEscape = 4,
+    /// A number whose shape JSON's grammar does not allow.
+    MalformedNumber = 5,
+    /// Bytes that are not well-formed UTF-8.
+    InvalidUtf8 = 6,
+    /// A control character appearing unescaped inside a string, which JSON forbids.
+    UnescapedControl = 7,
+    /// The document is longer than the configured limit.
+    TooManyBytes = 8,
+    /// A string is longer than the configured limit.
+    TextTooLong = 9,
+    /// Containers are nested deeper than the configured limit.
+    TooDeep = 10,
+    /// A container holds more entries than the configured limit.
+    TooManyEntries = 11
+}
+
+/// What a caller will accept from a document.
+///
+/// Every field is a refusal a caller might need to make against untrusted input, and every default is generous
+/// enough for ordinary documents and far short of what exhausts a machine.
+///
+/// https://rux-lang.dev/docs/api/json/json-limits
+struct JsonLimits {
+    /// The longest document, in bytes.
+    maximumBytes: uint;
+    /// The longest single string, in bytes.
+    maximumTextBytes: uint;
+    /// How deeply containers may nest. This is the one that protects a recursive parser's stack.
+    maximumDepth: uint;
+    /// How many elements or members one container may hold.
+    maximumEntries: uint;
+}
+
+extend JsonLimits {
+    /// Limits generous enough for ordinary documents: sixty-four mebibytes, sixteen mebibyte strings, a hundred
+    /// and twenty-eight levels of nesting, and a million entries per container.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-limits/default
+    func Default() -> JsonLimits {
+        return JsonLimits {
+            maximumBytes: 67108864,
+            maximumTextBytes: 16777216,
+            maximumDepth: 128,
+            maximumEntries: 1000000
+        };
+    }
+
+    /// No limits at all, for input that is already trusted.
+    ///
+    /// Named so that choosing it is visible: a document read from the network should never use this, and a
+    /// reviewer should be able to find every place that did.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-limits/unlimited
+    func Unlimited() -> JsonLimits {
+        return JsonLimits {
+            maximumBytes: 0xFFFFFFFFFFFFFFFF,
+            maximumTextBytes: 0xFFFFFFFFFFFFFFFF,
+            maximumDepth: 0xFFFFFFFFFFFFFFFF,
+            maximumEntries: 0xFFFFFFFFFFFFFFFF
+        };
+    }
+}
+
+/// One token, and where in the input it came from.
+///
+/// https://rux-lang.dev/docs/api/json/json-token
+struct JsonToken {
+    /// What kind of token this is.
+    kind: JsonTokenKind;
+    /// Where its text starts, as a byte offset into the input.
+    start: uint;
+    /// Where its text ends.
+    end: uint;
+    /// For a string, whether it contains any escape that must be resolved. A string without one can be used
+    /// directly from the input, which is what keeps ordinary documents free of copying.
+    escaped: bool;
+    /// Why lexing stopped, when the kind is `Error`.
+    error: JsonLexError;
+}
+
+/// A JSON lexer over a byte slice.
+///
+/// https://rux-lang.dev/docs/api/json/json-lexer
+struct JsonLexer {
+    /// The document.
+    input: Slice<char8>;
+    /// How far reading has reached.
+    position: uint;
+    /// What the caller will accept.
+    limits: JsonLimits;
+}
+
+extend JsonLexer {
+    /// A lexer over `input` under `limits`.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-lexer/new
+    func New(input: Slice<char8>, limits: JsonLimits) -> JsonLexer {
+        return JsonLexer { input: input, position: 0, limits: limits };
+    }
+
+    /// Where reading has reached, as a byte offset.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-lexer/position
+    func Position(self: *JsonLexer) -> uint {
+        return self.position;
+    }
+
+    func Fail(self: *JsonLexer, reason: JsonLexError) -> JsonToken {
+        return JsonToken {
+            kind: JsonTokenKind::Error, start: self.position, end: self.position, escaped: false, error: reason
+        };
+    }
+
+    func Simple(self: *var JsonLexer, kind: JsonTokenKind) -> JsonToken {
+        let start = self.position;
+        self.position = self.position + 1u;
+        return JsonToken { kind: kind, start: start, end: self.position, escaped: false, error: JsonLexError::None };
+    }
+
+    // JSON's whitespace is exactly four bytes: space, tab, carriage return and line feed. Anything else that
+    // looks like whitespace -- a form feed, a vertical tab, a Unicode space -- is not, and letting one through
+    // would accept documents other parsers reject.
+    func SkipWhitespace(self: *var JsonLexer) {
+        while self.position < self.input.length {
+            let c = self.input.data[self.position] as uint8;
+            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 {
+                return;
+            }
+            self.position = self.position + 1u;
+        }
+    }
+
+    func MatchesWord(self: *JsonLexer, word: Slice<char8>) -> bool {
+        if self.position + word.length > self.input.length {
+            return false;
+        }
+        var index: uint = 0;
+        while index < word.length {
+            if self.input.data[self.position + index] != word.data[index] {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+}
+
+extend JsonLexer {
+    // A string, from its opening quote to its closing one. The span excludes both quotes.
+    func LexText(self: *var JsonLexer) -> JsonToken {
+        let opening = self.position;
+        self.position = self.position + 1u;
+        let start = self.position;
+        var escaped = false;
+        while self.position < self.input.length {
+            let c = self.input.data[self.position] as uint8;
+            if c == 0x22u8 {
+                let end = self.position;
+                if end - start > self.limits.maximumTextBytes {
+                    return self.Fail(JsonLexError::TextTooLong);
+                }
+                self.position = self.position + 1u;
+                return JsonToken {
+                    kind: JsonTokenKind::Text, start: start, end: end, escaped: escaped,
+                    error: JsonLexError::None
+                };
+            }
+            if c < 0x20u8 {
+                // JSON forbids a raw control character in a string; it must be escaped. Accepting one would let
+                // a document carry a byte that other parsers reject.
+                self.position = opening;
+                return self.Fail(JsonLexError::UnescapedControl);
+            }
+            if c == 0x5Cu8 {
+                escaped = true;
+                self.position = self.position + 1u;
+                if self.position >= self.input.length {
+                    self.position = opening;
+                    return self.Fail(JsonLexError::UnterminatedText);
+                }
+                let kind = self.input.data[self.position] as uint8;
+                if kind == 0x75u8 {
+                    if self.position + 4u >= self.input.length {
+                        self.position = opening;
+                        return self.Fail(JsonLexError::BadUnicodeEscape);
+                    }
+                    var digit: uint = 1;
+                    while digit <= 4u {
+                        let h = self.input.data[self.position + digit] as uint8;
+                        let isDigit = (h >= 0x30u8 && h <= 0x39u8) || (h >= 0x61u8 && h <= 0x66u8) ||
+                                      (h >= 0x41u8 && h <= 0x46u8);
+                        if !isDigit {
+                            self.position = opening;
+                            return self.Fail(JsonLexError::BadUnicodeEscape);
+                        }
+                        digit = digit + 1;
+                    }
+                    self.position = self.position + 4u;
+                }
+                else if kind != 0x22u8 && kind != 0x5Cu8 && kind != 0x2Fu8 && kind != 0x62u8 &&
+                        kind != 0x66u8 && kind != 0x6Eu8 && kind != 0x72u8 && kind != 0x74u8 {
+                    // The eight escapes JSON defines and no others -- notably not the hex, octal or
+                    // line-continuation escapes that appear in JavaScript.
+                    self.position = opening;
+                    return self.Fail(JsonLexError::BadEscape);
+                }
+            }
+            self.position = self.position + 1u;
+        }
+        self.position = opening;
+        return self.Fail(JsonLexError::UnterminatedText);
+    }
+}
+
+extend JsonLexer {
+    // A number. JSON's grammar is precise here: an optional minus, an integer part with no leading zero, an
+    // optional fraction with at least one digit, and an optional exponent with at least one digit. A leading
+    // plus, a leading zero, a bare `.5`, a trailing `1.` and hexadecimal are all JavaScript and none are JSON.
+    func LexNumber(self: *var JsonLexer) -> JsonToken {
+        let start = self.position;
+        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2Du8 {
+            self.position = self.position + 1u;
+        }
+        if self.position >= self.input.length {
+            self.position = start;
+            return self.Fail(JsonLexError::MalformedNumber);
+        }
+        let first = self.input.data[self.position] as uint8;
+        if first == 0x30u8 {
+            self.position = self.position + 1u;
+            // A digit after a leading zero is forbidden, which rejects `01` and anything octal-looking.
+            if self.position < self.input.length {
+                let next = self.input.data[self.position] as uint8;
+                if next >= 0x30u8 && next <= 0x39u8 {
+                    self.position = start;
+                    return self.Fail(JsonLexError::MalformedNumber);
+                }
+            }
+        }
+        else if first >= 0x31u8 && first <= 0x39u8 {
+            while self.position < self.input.length {
+                let d = self.input.data[self.position] as uint8;
+                if d < 0x30u8 || d > 0x39u8 {
+                    break;
+                }
+                self.position = self.position + 1u;
+            }
+        }
+        else {
+            self.position = start;
+            return self.Fail(JsonLexError::MalformedNumber);
+        }
+
+        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2Eu8 {
+            self.position = self.position + 1u;
+            var digits: uint = 0;
+            while self.position < self.input.length {
+                let d = self.input.data[self.position] as uint8;
+                if d < 0x30u8 || d > 0x39u8 {
+                    break;
+                }
+                digits = digits + 1u;
+                self.position = self.position + 1u;
+            }
+            if digits == 0u {
+                self.position = start;
+                return self.Fail(JsonLexError::MalformedNumber);
+            }
+        }
+
+        if self.position < self.input.length {
+            let e = self.input.data[self.position] as uint8;
+            if e == 0x65u8 || e == 0x45u8 {
+                self.position = self.position + 1u;
+                if self.position < self.input.length {
+                    let sign = self.input.data[self.position] as uint8;
+                    if sign == 0x2Bu8 || sign == 0x2Du8 {
+                        self.position = self.position + 1u;
+                    }
+                }
+                var digits: uint = 0;
+                while self.position < self.input.length {
+                    let d = self.input.data[self.position] as uint8;
+                    if d < 0x30u8 || d > 0x39u8 {
+                        break;
+                    }
+                    digits = digits + 1u;
+                    self.position = self.position + 1u;
+                }
+                if digits == 0u {
+                    self.position = start;
+                    return self.Fail(JsonLexError::MalformedNumber);
+                }
+            }
+        }
+        return JsonToken {
+            kind: JsonTokenKind::Number, start: start, end: self.position, escaped: false,
+            error: JsonLexError::None
+        };
+    }
+}
+
+extend JsonLexer {
+    /// The next token.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-lexer/next
+    func Next(self: *var JsonLexer) -> JsonToken {
+        if self.input.length > self.limits.maximumBytes {
+            return self.Fail(JsonLexError::TooManyBytes);
+        }
+        self.SkipWhitespace();
+        if self.position >= self.input.length {
+            return JsonToken {
+                kind: JsonTokenKind::End, start: self.position, end: self.position, escaped: false,
+                error: JsonLexError::None
+            };
+        }
+        let c = self.input.data[self.position] as uint8;
+        if c == 0x7Bu8 {
+            return self.Simple(JsonTokenKind::ObjectStart);
+        }
+        if c == 0x7Du8 {
+            return self.Simple(JsonTokenKind::ObjectEnd);
+        }
+        if c == 0x5Bu8 {
+            return self.Simple(JsonTokenKind::ArrayStart);
+        }
+        if c == 0x5Du8 {
+            return self.Simple(JsonTokenKind::ArrayEnd);
+        }
+        if c == 0x3Au8 {
+            return self.Simple(JsonTokenKind::Colon);
+        }
+        if c == 0x2Cu8 {
+            return self.Simple(JsonTokenKind::Comma);
+        }
+        if c == 0x22u8 {
+            return self.LexText();
+        }
+        if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) {
+            return self.LexNumber();
+        }
+        if self.MatchesWord("true") {
+            return self.Word(JsonTokenKind::True, 4u);
+        }
+        if self.MatchesWord("false") {
+            return self.Word(JsonTokenKind::False, 5u);
+        }
+        if self.MatchesWord("null") {
+            return self.Word(JsonTokenKind::Null, 4u);
+        }
+        return self.Fail(JsonLexError::UnexpectedByte);
+    }
+
+    func Word(self: *var JsonLexer, kind: JsonTokenKind, length: uint) -> JsonToken {
+        let start = self.position;
+        self.position = self.position + length;
+        return JsonToken { kind: kind, start: start, end: self.position, escaped: false,
+                           error: JsonLexError::None };
+    }
+}
