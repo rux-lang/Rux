@@ -1,0 +1,147 @@
+// The published vectors, and the incremental promise. A hash that passes only the one-shot vectors can still be
+// wrong about buffering, and a hash that passes short messages can still be wrong about the padding block --
+// so every message length from zero to two hundred is fed in every possible split against the one-shot answer.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
+
+// Parses a hex string into bytes, so the vectors below read as they are published.
+func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+    var index: uint = 0;
+    while index * 2u + 1u < text.length + 1u && index < into.length {
+        var value = 0u8;
+        var half: uint = 0;
+        while half < 2u {
+            let c = text.data[index * 2u + half] as uint8;
+            var digit = 0u8;
+            if c >= 0x30u8 && c <= 0x39u8 {
+                digit = c - 0x30u8;
+            }
+            else {
+                digit = c - 0x61u8 + 10u8;
+            }
+            value = value * 16u8 + digit;
+            half = half + 1;
+        }
+        into.data[index] = value as char8;
+        index = index + 1;
+    }
+}
+
+func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, what: Slice<char8>) {
+    var expected: char8[32];
+    let expectedRoom = MutableSlice::From<char8>(@expected[0], wide ? 32u : 28u);
+    FromHex(expectedHex, expectedRoom);
+    var got: char8[32];
+    let gotRoom = MutableSlice::From<char8>(@got[0], wide ? 32u : 28u);
+    if wide {
+        Sha256Of(message, gotRoom);
+    }
+    else {
+        Sha224Of(message, gotRoom);
+    }
+    let gotBytes = Slice<char8> { data: @got[0], length: wide ? 32u : 28u };
+    let expectedBytes = Slice<char8> { data: @expected[0], length: wide ? 32u : 28u };
+    Assert(Equal(gotBytes, expectedBytes), what);
+}
+
+func Main() -> int {
+    // The FIPS 180-4 examples.
+    CheckDigest("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true,
+                "SHA-256 of the empty message");
+    CheckDigest("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", true,
+                "SHA-256 of abc");
+    CheckDigest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", true,
+                "SHA-256 of the two-block example");
+    CheckDigest("", "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f", false,
+                "SHA-224 of the empty message");
+    CheckDigest("abc", "23097d223405d8228642a477bda255b32aadbce4bda0b3f7e36c9da7", false,
+                "SHA-224 of abc");
+    CheckDigest("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                "75388b16512776cc5dba5da1fd890150b0c6455cb4f58b1952522525", false,
+                "SHA-224 of the two-block example");
+
+    // The two functions are unrelated: SHA-224 is not SHA-256 cut short, because the initial states differ.
+    var wideDigest: char8[32];
+    var narrowDigest: char8[32];
+    let wideRoom = MutableSlice::From<char8>(@wideDigest[0], 32);
+    let narrowRoom = MutableSlice::From<char8>(@narrowDigest[0], 28);
+    Sha256Of("abc", wideRoom);
+    Sha224Of("abc", narrowRoom);
+    let widePrefix = Slice<char8> { data: @wideDigest[0], length: 28 };
+    let narrowBytes = Slice<char8> { data: @narrowDigest[0], length: 28 };
+    Assert(!Equal(widePrefix, narrowBytes), "SHA-224 is not the first bytes of SHA-256");
+
+    // The incremental promise: every split of every length up to two hundred agrees with the one-shot answer.
+    var message: char8[200];
+    var index: uint = 0;
+    while index < 200u {
+        message[index] = ((index % 251u) as uint8) as char8;
+        index = index + 1;
+    }
+    var length: uint = 0;
+    while length <= 200u {
+        let whole = Slice<char8> { data: @message[0], length: length };
+        var oneShot: char8[32];
+        let oneShotRoom = MutableSlice::From<char8>(@oneShot[0], 32);
+        Sha256Of(whole, oneShotRoom);
+        let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 32 };
+
+        var split: uint = 0;
+        while split <= length {
+            var digest = Sha256::New();
+            let first = Slice<char8> { data: @message[0], length: split };
+            digest.Update(first);
+            let second = Slice<char8> { data: @message[split], length: length - split };
+            digest.Update(second);
+            var got: char8[32];
+            let gotRoom = MutableSlice::From<char8>(@got[0], 32);
+            digest.Finish(gotRoom);
+            let gotBytes = Slice<char8> { data: @got[0], length: 32 };
+            Assert(Equal(gotBytes, oneShotBytes), "every split of a message gives the same digest");
+            split = split + 1;
+        }
+        length = length + 1;
+    }
+
+    // Feeding one byte at a time, which exercises the buffering path on every block boundary.
+    var byteAtATime = Sha256::New();
+    index = 0;
+    while index < 200u {
+        let single = Slice<char8> { data: @message[index], length: 1 };
+        byteAtATime.Update(single);
+        index = index + 1;
+    }
+    var incremental: char8[32];
+    let incrementalRoom = MutableSlice::From<char8>(@incremental[0], 32);
+    byteAtATime.Finish(incrementalRoom);
+    var reference: char8[32];
+    let referenceRoom = MutableSlice::From<char8>(@reference[0], 32);
+    Sha256Of(Slice<char8> { data: @message[0], length: 200 }, referenceRoom);
+    Assert(Equal(Slice<char8> { data: @incremental[0], length: 32 },
+                 Slice<char8> { data: @reference[0], length: 32 }),
+           "a byte-at-a-time digest matches the one-shot digest");
+
+    // An empty update changes nothing.
+    var withEmpties = Sha256::New();
+    withEmpties.Update("");
+    withEmpties.Update("abc");
+    withEmpties.Update("");
+    var emptied: char8[32];
+    let emptiedRoom = MutableSlice::From<char8>(@emptied[0], 32);
+    withEmpties.Finish(emptiedRoom);
+    var plain: char8[32];
+    let plainRoom = MutableSlice::From<char8>(@plain[0], 32);
+    Sha256Of("abc", plainRoom);
+    Assert(Equal(Slice<char8> { data: @emptied[0], length: 32 }, Slice<char8> { data: @plain[0], length: 32 }),
+           "empty updates change nothing");
+
+    // The reported lengths.
+    var lengths = Sha256::New();
+    Assert(lengths.DigestLength() == 32u && lengths.BlockLength() == 64u, "SHA-256 reports its own sizes");
+    var narrowLengths = Sha256::New224();
+    Assert(narrowLengths.DigestLength() == 28u, "and SHA-224 reports its shorter digest");
+
+    return 0;
+}
