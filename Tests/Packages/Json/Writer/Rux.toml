@@ -1,0 +1,18 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Writer"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Json: compact and pretty writing, exact escaping and non-finite rejection"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+Json = { Path = "../../../../Packages/Json" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Json"
