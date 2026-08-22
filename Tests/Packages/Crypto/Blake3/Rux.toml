@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Blake3"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Crypto: BLAKE3 compression, chunk boundaries and tree reduction"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Crypto"
