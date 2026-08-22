@@ -34,6 +34,9 @@ when #target.arch {
         const SysOpenAt: uint64 = 257;
         const SysGetdents64: uint64 = 217;
         const SysLinkAt: uint64 = 265;
+        const SysNewFstatAt: uint64 = 262;
+        const SysFchmodAt: uint64 = 268;
+        const SysUtimensAt: uint64 = 280;
         const SysSymlinkAt: uint64 = 266;
         const SysLseek: uint64 = 8;
         const SysFsync: uint64 = 74;
@@ -64,6 +67,9 @@ when #target.arch {
         const SysOpenAt: uint64 = 56;
         const SysGetdents64: uint64 = 61;
         const SysLinkAt: uint64 = 37;
+        const SysNewFstatAt: uint64 = 79;
+        const SysFchmodAt: uint64 = 53;
+        const SysUtimensAt: uint64 = 88;
         const SysSymlinkAt: uint64 = 36;
         const SysLseek: uint64 = 62;
         const SysFsync: uint64 = 82;
