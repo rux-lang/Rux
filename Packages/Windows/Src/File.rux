@@ -201,6 +201,14 @@ extern {
     func GetFinalPathNameByHandleW(file: *var opaque, filePath: *var char16, filePathLength: uint32,
                                    flags: uint32) -> uint32;
 
+    // Writes the path of the directory designated for temporary files
+    //
+    // Returns the length written without the terminator, or the required length when the buffer is too small, or
+    // zero on failure. The answer always ends in a backslash. Consults TMP, then TEMP, then USERPROFILE, then the
+    // Windows directory, so it answers even where none of those are set.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
+    func GetTempPathW(bufferLength: uint32, buffer: *var char16) -> uint32;
+
     // Deletes a file, taking a UTF-16 path
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
     func DeleteFileW(fileName: *char16) -> int32;

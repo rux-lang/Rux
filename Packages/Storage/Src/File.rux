@@ -305,13 +305,6 @@ extend File {
             return IoError::Ok();
         }
     }
-
-    /// Closes with the outcome discarded: the safety net, not the contract.
-    ///
-    /// https://rux-lang.dev/docs/api/storage/file/drop
-    func Drop(self: *var File) {
-        self.Close();
-    }
 }
 
 // The value of a handle that is not one.
@@ -321,5 +314,14 @@ func NoFile() -> RawFile {
     }
     else {
         return -1;
+    }
+}
+
+extend File : Drop {
+    /// Closes with the outcome discarded: the safety net, not the contract.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/drop
+    func Drop(self: *var File) {
+        self.Close();
     }
 }

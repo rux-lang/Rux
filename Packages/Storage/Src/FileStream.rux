@@ -32,7 +32,7 @@ func ClosedFile() -> IoError {
     return IoError::Of(IoErrorKind::InvalidHandle);
 }
 
-extend File : Reader {
+extend File {
     /// Reads what one attempt yields into `into`; a short count is not an error and the end is `EndOfStream`.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/read
@@ -75,7 +75,7 @@ extend File : Reader {
     }
 }
 
-extend File : Writer {
+extend File {
     /// Writes what one attempt takes of `bytes`; a short count means call again, which `WriteAll` does.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/write
@@ -117,7 +117,7 @@ extend File : Writer {
     }
 }
 
-extend File : Seeker {
+extend File {
     /// Moves the position `offset` bytes from `origin` and reports where it landed.
     ///
     /// A position before the start of the file is refused by the platform; one past the end is allowed, and a
@@ -257,5 +257,60 @@ extend File {
             }
             return IoError::Ok();
         }
+    }
+}
+
+/// A borrow of an open file that speaks the stream interfaces.
+///
+/// `File` deliberately does not implement `Reader`, `Writer` or `Seeker` itself: coercing a move-only value into
+/// an interface moves it, so a file handed to `WriteAll` that way would leave its owner unable to close it. The
+/// handle is a pointer, so coercing it copies a pointer and the file stays where its owner put it.
+///
+/// https://rux-lang.dev/docs/api/storage/file-stream
+struct FileStream {
+    /// The file being borrowed.
+    file: *var File;
+}
+
+extend File {
+    /// A borrow of this file that can be passed to anything expecting a stream.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/stream
+    func Stream(self: *var File) -> FileStream {
+        return FileStream { file: self };
+    }
+}
+
+extend FileStream : Reader {
+    /// Reads through the borrowed file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file-stream/read
+    func Read(self: *var FileStream, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+        return self.file.Read(into, filled);
+    }
+}
+
+extend FileStream : Writer {
+    /// Writes through the borrowed file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file-stream/write
+    func Write(self: *var FileStream, bytes: Slice<char8>, taken: *var uint) -> IoError {
+        return self.file.Write(bytes, taken);
+    }
+
+    /// Flushes the borrowed file, which holds nothing back.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file-stream/flush
+    func Flush(self: *var FileStream) -> IoError {
+        return self.file.Flush();
+    }
+}
+
+extend FileStream : Seeker {
+    /// Seeks the borrowed file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file-stream/seek
+    func Seek(self: *var FileStream, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
+        return self.file.Seek(origin, offset, position);
     }
 }

@@ -36,7 +36,7 @@ func Main() -> int {
     // A file of known length reports that length and calls itself a file.
     var written = File::Open(allocator, file, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the file opens for writing");
-    let sink: Writer = written;
+    let sink: Writer = written.Stream();
     Assert(WriteAll(sink, "0123456789").IsOk(), "ten bytes are written");
     let openMetadata = written.Metadata(@error);
     Assert(error.IsOk(), "the open handle describes itself");

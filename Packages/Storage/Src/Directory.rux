@@ -366,13 +366,6 @@ extend DirectoryIterator {
             self.capacity = 0;
         }
     }
-
-    /// `Release`, as the safety net.
-    ///
-    /// https://rux-lang.dev/docs/api/storage/directory-iterator/drop
-    func Drop(self: *var DirectoryIterator) {
-        self.Release();
-    }
 }
 
 func IsDotEntry8(name: *char8, length: uint) -> bool {
@@ -387,4 +380,13 @@ func IsDotEntry16(name: *uint16, length: uint) -> bool {
         return name[0] == 0x2Eu16;
     }
     return length == 2 && name[0] == 0x2Eu16 && name[1] == 0x2Eu16;
+}
+
+extend DirectoryIterator : Drop {
+    /// `Release`, as the safety net.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/directory-iterator/drop
+    func Drop(self: *var DirectoryIterator) {
+        self.Release();
+    }
 }
