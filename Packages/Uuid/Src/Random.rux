@@ -1,0 +1,73 @@
+// Random UUIDs, and the byte-order conversion that catches everyone.
+//
+// A version 4 UUID is 122 bits of entropy with six bits spent on saying so: four for the version and two for
+// the variant. Those six are not wasted -- they are what lets a reader tell a random UUID from a time-based one
+// without being told, and what keeps the two spaces from overlapping -- but they do mean a version 4 UUID has
+// slightly less entropy than its size suggests, which matters only if someone is counting.
+//
+// The GUID conversion is here because it is the single most common way UUIDs go wrong across a platform
+// boundary. Microsoft's GUID is the same sixteen bytes with the first three fields stored little-endian, so a
+// UUID written by a Windows API and read as a UUID -- or the reverse -- produces a value that is well-formed,
+// looks plausible, has the wrong version nibble in a place nobody checks, and refers to nothing. The conversion
+// is therefore a named function that must be called deliberately, never something applied automatically.
+
+import Core::{ MutableSlice, Slice };
+import Entropy::{ EntropyError, Fill };
+
+/// A version 4 UUID drawn from the operating system's entropy.
+///
+/// `error` says why entropy was unavailable, and the result is nil in that case -- deliberately not a
+/// zero-filled UUID with the version bits set, which would be a valid-looking identifier that is entirely
+/// predictable. A caller that ignores the error gets something obviously wrong rather than something subtly
+/// wrong.
+///
+/// https://rux-lang.dev/docs/api/uuid/random
+func Random(error: *var EntropyError) -> Uuid {
+    var bytes: char8[16];
+    *error = Fill(@bytes[0] as *var opaque, 16u);
+    if *error != EntropyError::None {
+        return Uuid::Nil();
+    }
+    var value = Uuid::FromBytes(Slice<char8> { data: @bytes[0], length: 16 });
+    // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
+    value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
+    value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
+    return value;
+}
+
+/// A version 4 UUID built from sixteen bytes the caller supplies.
+///
+/// For reproducing a UUID from a recorded seed, or for drawing from a generator other than the system's. The
+/// version and variant bits are set regardless of what the bytes say, so the result is always a well-formed
+/// version 4 UUID.
+///
+/// https://rux-lang.dev/docs/api/uuid/random-from-bytes
+func RandomFromBytes(bytes: Slice<char8>) -> Uuid {
+    var value = Uuid::FromBytes(bytes);
+    value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
+    value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
+    return value;
+}
+
+/// The same identifier with its first three fields byte-swapped, which is how Windows stores a GUID.
+///
+/// The conversion is its own inverse, so one function serves both directions: a UUID becomes the GUID bytes a
+/// Windows API expects, and GUID bytes read from one become the UUID they represent. It must be called
+/// deliberately -- applying it by accident, or failing to apply it when crossing the boundary, both produce a
+/// well-formed identifier that refers to something else entirely.
+///
+/// https://rux-lang.dev/docs/api/uuid/swap-guid-order
+func SwapGuidOrder(value: *Uuid) -> Uuid {
+    var swapped = *value;
+    // The first field is four bytes, the next two are two bytes each; the remaining eight are a byte array in
+    // both layouts and are left alone.
+    swapped.bytes[0] = value.bytes[3];
+    swapped.bytes[1] = value.bytes[2];
+    swapped.bytes[2] = value.bytes[1];
+    swapped.bytes[3] = value.bytes[0];
+    swapped.bytes[4] = value.bytes[5];
+    swapped.bytes[5] = value.bytes[4];
+    swapped.bytes[6] = value.bytes[7];
+    swapped.bytes[7] = value.bytes[6];
+    return swapped;
+}

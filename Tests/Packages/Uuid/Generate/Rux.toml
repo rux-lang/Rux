@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Generate"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Uuid: version 4 and version 7 generation, monotonicity and GUID byte order"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Entropy = { Path = "../../../../Packages/Entropy" }
+Uuid = { Path = "../../../../Packages/Uuid" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Uuid"

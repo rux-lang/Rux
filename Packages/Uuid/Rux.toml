@@ -18,3 +18,5 @@ ReadmeFile = "README.md"
 
 [Dependencies]
 Core = { Namespace = "Rux", Version = "0.1.0" }
+Entropy = { Namespace = "Rux", Version = "0.1.0" }
+Time = { Namespace = "Rux", Version = "0.1.0" }
