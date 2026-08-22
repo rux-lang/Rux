@@ -5,8 +5,9 @@
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
 import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysClose, SysDup3, SysFstat,
-                SysFsync, SysFtruncate, SysGetdents64, SysLinkAt, SysLseek, SysMkdirAt, SysOpenAt, SysPipe2, SysRead,
-                SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
+                SysFchmodAt, SysFsync, SysFtruncate, SysGetdents64, SysLinkAt, SysLseek, SysMkdirAt, SysNewFstatAt,
+                SysOpenAt, SysPipe2, SysRead,
+                SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysUtimensAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
                 Syscall5 };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
@@ -217,6 +218,50 @@ const FollowSymlinks: int32 = 0x0400;
 /// https://rux-lang.dev/docs/api/linux/symlinkat
 func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
     return Syscall3(SysSymlinkAt, target as uint64, SignExtendFd(newDirectoryFd), linkPath as uint64);
+}
+
+/// `AT_SYMLINK_NOFOLLOW`: act on a symbolic link itself rather than on what it points at.
+///
+/// https://rux-lang.dev/docs/api/linux/symlink-no-follow
+const SymlinkNoFollow: int32 = 0x0100;
+
+/// Fills `statBuffer` with what the kernel knows about the file `path` names.
+///
+/// `directoryFd` is `AtFdCwd` for an ordinary path. `flags` is zero to follow a symbolic link at the end of the
+/// path, or `SymlinkNoFollow` to describe the link itself. Returns zero, or a negative error number.
+///
+/// # Safety
+///
+/// `statBuffer` must be writable for the whole of the architecture's `struct stat`, whose layout this package
+/// does not model: 144 bytes on x86-64 and 128 on AArch64, with the fields at different offsets in each.
+///
+/// https://rux-lang.dev/docs/api/linux/new-fstat-at
+func NewFstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque, flags: int32) -> int64 {
+    return Syscall4(SysNewFstatAt, SignExtendFd(directoryFd), path as uint64, statBuffer as uint64,
+                    (flags as int64) as uint64);
+}
+
+/// Sets the permission bits of the file `path` names.
+///
+/// `directoryFd` is `AtFdCwd` for an ordinary path. Returns zero, or a negative error number. Linux does not
+/// support `SymlinkNoFollow` here and reports `EOPNOTSUPP` for it: a symbolic link's own bits mean nothing.
+///
+/// https://rux-lang.dev/docs/api/linux/fchmod-at
+func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: int32) -> int64 {
+    return Syscall4(SysFchmodAt, SignExtendFd(directoryFd), path as uint64, (mode as int64) as uint64,
+                    (flags as int64) as uint64);
+}
+
+/// Sets the access and modification times of the file `path` names.
+///
+/// `times` is borrowed and holds two `timespec` values -- access first, then modification -- each a whole-second
+/// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
+/// `SymlinkNoFollow`. Returns zero, or a negative error number.
+///
+/// https://rux-lang.dev/docs/api/linux/utimens-at
+func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
+    return Syscall4(SysUtimensAt, SignExtendFd(directoryFd), path as uint64, times as uint64,
+                    (flags as int64) as uint64);
 }
 
 /// Flushes everything written to `fd` through to the storage device.

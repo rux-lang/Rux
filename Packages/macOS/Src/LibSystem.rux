@@ -1,3 +1,5 @@
+import Core::{ #target };
+
 // The Darwin ABI: libSystem's own entry points, under the symbols it exports.
 //
 // **Apple does not support calling the kernel directly.** The trap numbers are private, they have changed between
@@ -85,6 +87,14 @@ extern {
     // https://keith.github.io/xcode-man-pages/symlink.2.html
     func symlinkat(target: *char8, newDirectoryFd: int32, linkPath: *char8) -> int32;
 
+    // Sets a file's permission bits relative to a directory descriptor; returns zero, or -1
+    // https://keith.github.io/xcode-man-pages/chmod.2.html
+    func fchmodat(directoryFd: int32, path: *char8, mode: uint16, flags: int32) -> int32;
+
+    // Sets a file's access and modification times relative to a directory descriptor; returns zero, or -1
+    // https://keith.github.io/xcode-man-pages/utimensat.2.html
+    func utimensat(directoryFd: int32, path: *char8, times: *opaque, flags: int32) -> int32;
+
     // Reads directory entries in the 64-bit-inode layout; returns the bytes filled, zero at the end, or -1
     //
     // The plain readdir symbol on x86-64 resolves to the 32-bit-inode variant with a different record layout, so
@@ -163,4 +173,28 @@ extern {
     // Reports the most recent loader error and clears it, or returns null
     // https://keith.github.io/xcode-man-pages/dlerror.3.html
     func dlerror() -> *char8;
+}
+
+// `fstatat` is the one entry point whose symbol depends on the architecture. Darwin grew a 64-bit `ino_t` after
+// x86-64 shipped, so on that architecture the modern layout lives behind a decorated symbol and the plain name
+// still answers with the older, narrower `struct stat`; Apple Silicon, which has never had the old layout, exports
+// only the plain name. Binding the wrong one does not fail to link -- it fills a differently shaped buffer -- so
+// the architecture picks the symbol here, once, and everything above reads one layout.
+when #target.arch {
+    .X86_64 => {
+        #Library("libSystem.B.dylib")
+        #Symbol("fstatat$INODE64")
+        extern func fstatat(directoryFd: int32, path: *char8, statBuffer: *var opaque, flags: int32) -> int32;
+
+        #Library("libSystem.B.dylib")
+        #Symbol("fstat$INODE64")
+        extern func fstat(fd: int32, statBuffer: *var opaque) -> int32;
+    },
+    else => {
+        #Library("libSystem.B.dylib")
+        extern func fstatat(directoryFd: int32, path: *char8, statBuffer: *var opaque, flags: int32) -> int32;
+
+        #Library("libSystem.B.dylib")
+        extern func fstat(fd: int32, statBuffer: *var opaque) -> int32;
+    }
 }

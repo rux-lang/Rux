@@ -8,7 +8,7 @@
 // A failing call here reports `InvalidHandleValue` where it returns a handle and zero where it returns a `Bool`,
 // with the reason in `GetLastError`.
 
-import Windows::{ Bool, Dword, Handle };
+import Windows::{ Bool, Dword, FileTime, Handle };
 
 /// `GENERIC_READ`: the handle may read.
 ///
@@ -57,6 +57,47 @@ const FILE_SHARE_DELETE: uint32 = 0x00000004;
 /// https://rux-lang.dev/docs/api/windows/file-attribute-normal
 #Allow("naming.const")
 const FILE_ATTRIBUTE_NORMAL: uint32 = 0x00000080;
+
+/// `FILE_ATTRIBUTE_READONLY`: the file may not be opened for writing or deleted.
+///
+/// The whole of Windows' permission model as this package uses it: there are ACLs underneath, but nothing in the
+/// portable surface can express them, and this bit is what `chmod` maps onto.
+///
+/// https://rux-lang.dev/docs/api/windows/file-attribute-readonly
+#Allow("naming.const")
+const FILE_ATTRIBUTE_READONLY: uint32 = 0x00000001;
+
+/// `FILE_ATTRIBUTE_DIRECTORY`: the name is a directory.
+///
+/// https://rux-lang.dev/docs/api/windows/file-attribute-directory
+#Allow("naming.const")
+const FILE_ATTRIBUTE_DIRECTORY: uint32 = 0x00000010;
+
+/// `FILE_ATTRIBUTE_REPARSE_POINT`: the name carries a reparse point, which is what a symbolic link is.
+///
+/// https://rux-lang.dev/docs/api/windows/file-attribute-reparse-point
+#Allow("naming.const")
+const FILE_ATTRIBUTE_REPARSE_POINT: uint32 = 0x00000400;
+
+/// `INVALID_FILE_ATTRIBUTES`: what `GetFileAttributesW` returns when it could not answer.
+///
+/// https://rux-lang.dev/docs/api/windows/invalid-file-attributes
+#Allow("naming.const")
+const INVALID_FILE_ATTRIBUTES: uint32 = 0xFFFFFFFF;
+
+/// `FILE_FLAG_BACKUP_SEMANTICS`: let `CreateFileW` open a directory.
+///
+/// Without it a directory cannot be opened at all, which makes this the flag every metadata query needs.
+///
+/// https://rux-lang.dev/docs/api/windows/file-flag-backup-semantics
+#Allow("naming.const")
+const FILE_FLAG_BACKUP_SEMANTICS: uint32 = 0x02000000;
+
+/// `FILE_FLAG_OPEN_REPARSE_POINT`: open the symbolic link itself rather than what it points at.
+///
+/// https://rux-lang.dev/docs/api/windows/file-flag-open-reparse-point
+#Allow("naming.const")
+const FILE_FLAG_OPEN_REPARSE_POINT: uint32 = 0x00200000;
 
 /// `FILE_FLAG_DELETE_ON_CLOSE`: remove the file when its last handle closes.
 ///
@@ -135,6 +176,21 @@ extern {
     // without either it fails with ERROR_PRIVILEGE_NOT_HELD.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
     func CreateSymbolicLinkW(symlinkFileName: *char16, targetFileName: *char16, flags: uint32) -> uint8;
+
+    // Fills a BY_HANDLE_FILE_INFORMATION record for an open handle
+    //
+    // The record is 52 bytes: attributes at offset 0 (4 bytes), the creation, last-access and last-write
+    // FILETIMEs at 4, 12 and 20 (8 bytes each), the volume serial number at 28, the size's high and low halves
+    // at 32 and 36, the link count at 40, and the file index's halves at 44 and 48.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle
+    func GetFileInformationByHandle(file: *var opaque, fileInformation: *var opaque) -> int32;
+
+    // Sets the creation, last-access and last-write times of an open handle
+    //
+    // Each pointer may be null to leave that time alone.
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime
+    func SetFileTime(file: *var opaque, creationTime: *FileTime, lastAccessTime: *FileTime,
+                     lastWriteTime: *FileTime) -> int32;
 
     // Deletes a file, taking a UTF-16 path
     // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew

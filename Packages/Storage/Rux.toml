@@ -26,4 +26,5 @@ macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
 Path = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
+Time = { Namespace = "Rux", Version = "0.1.0" }
 Windows = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Windows"] }

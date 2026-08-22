@@ -1,0 +1,20 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Metadata"
+Version = "0.1.0"
+Type = "Executable"
+Description = "File kinds, sizes, timestamps and permissions, with platform capability reported rather than assumed."
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Io = { Path = "../../../../Packages/Io" }
+Path = { Path = "../../../../Packages/Path" }
+Storage = { Path = "../../../../Packages/Storage" }
+Text = { Path = "../../../../Packages/Text" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Storage"
