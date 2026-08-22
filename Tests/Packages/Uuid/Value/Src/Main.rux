@@ -1,0 +1,110 @@
+// The value type's job is to be sixteen bytes that never get reordered, so the ordering test is the important
+// one: it must follow the bytes exactly, since that is what makes a version 7 UUID sort chronologically.
+
+import Core::{ Assert, Ordering, Slice };
+import Uuid::{ Uuid, UuidVariant };
+
+func Main() -> int {
+    // The two defined sentinels.
+    var nil = Uuid::Nil();
+    var max = Uuid::Max();
+    Assert(nil.IsNil() && !nil.IsMax(), "the nil UUID is nil and not max");
+    Assert(max.IsMax() && !max.IsNil(), "and the max UUID the other way round");
+    Assert(!nil.Equals(@max), "they are not equal");
+    Assert(nil.Compare(@max) == Ordering::Less, "and nil sorts below max");
+
+    // Round-tripping bytes.
+    var raw: char8[16];
+    var index: uint = 0;
+    while index < 16u {
+        raw[index] = ((index * 17u) as uint8) as char8;
+        index = index + 1;
+    }
+    let rawBytes = Slice<char8> { data: @raw[0], length: 16 };
+    var value = Uuid::FromBytes(rawBytes);
+    let readBack = value.Bytes();
+    index = 0;
+    while index < 16u {
+        Assert(readBack.data[index] == raw[index], "the bytes come back in the order they went in");
+        index = index + 1;
+    }
+    Assert(!value.IsNil() && !value.IsMax(), "and an ordinary value is neither sentinel");
+
+    // A short slice leaves the rest zero rather than reading past it.
+    let shortBytes = Slice<char8> { data: @raw[0], length: 4 };
+    var partial = Uuid::FromBytes(shortBytes);
+    let partialBytes = partial.Bytes();
+    Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");
+    Assert((partialBytes.data[4] as uint8) == 0u8, "and the rest are zero");
+
+    // Ordering follows the bytes, most significant first -- which is what makes a time-ordered UUID sort by
+    // time. A comparison that started anywhere else would pass an equality test and fail this.
+    var lower = Uuid::Nil();
+    var higher = Uuid::Nil();
+    higher.bytes[0] = 1u8 as char8;
+    Assert(lower.Compare(@higher) == Ordering::Less, "a difference in the first byte decides the order");
+    var lateDifference = Uuid::Nil();
+    lateDifference.bytes[15] = 1u8 as char8;
+    Assert(lower.Compare(@lateDifference) == Ordering::Less, "as does one in the last");
+    Assert(higher.Compare(@lateDifference) == Ordering::Greater,
+           "and the earlier byte outweighs the later one, which is what byte order means");
+    Assert(lower.Compare(@lower) == Ordering::Equal, "a value equals itself");
+
+    // Every byte position affects the order, so none is being skipped.
+    index = 0;
+    while index < 16u {
+        var stepped = Uuid::Nil();
+        stepped.bytes[index] = 1u8 as char8;
+        Assert(stepped.Compare(@nil) == Ordering::Greater, "every byte position participates in the ordering");
+        Assert(!stepped.Equals(@nil), "and in equality");
+        index = index + 1;
+    }
+
+    // Hashing spreads: sixteen values differing in one byte each must give sixteen distinct hashes.
+    var hashes: uint64[16];
+    index = 0;
+    while index < 16u {
+        var stepped = Uuid::Nil();
+        stepped.bytes[index] = 0xABu8 as char8;
+        hashes[index] = stepped.Hash();
+        index = index + 1;
+    }
+    var first: uint = 0;
+    while first < 16u {
+        var second = first + 1u;
+        while second < 16u {
+            Assert(hashes[first] != hashes[second], "values differing in one byte hash differently");
+            second = second + 1;
+        }
+        first = first + 1;
+    }
+    Assert(nil.Hash() == Uuid::Nil().Hash(), "and equal values hash equally");
+
+    // Version and variant, read from the two bytes that carry them.
+    var structured = Uuid::Nil();
+    structured.bytes[6] = 0x4Fu8 as char8;
+    structured.bytes[8] = 0xA0u8 as char8;
+    Assert(structured.Version() == 4u8, "the version comes from the high nibble of the seventh byte");
+    Assert(structured.Variant() == UuidVariant::Standard, "and the variant from the high bits of the ninth");
+
+    structured.bytes[6] = 0x7Cu8 as char8;
+    Assert(structured.Version() == 7u8, "a version 7 UUID reports seven");
+
+    // The variant encoding is variable-length, so each of its four cases has its own bit pattern.
+    structured.bytes[8] = 0x00u8 as char8;
+    Assert(structured.Variant() == UuidVariant::NetworkComputingSystem, "a leading zero is the oldest layout");
+    structured.bytes[8] = 0xBFu8 as char8;
+    Assert(structured.Variant() == UuidVariant::Standard, "ten is the standard one, across its whole range");
+    structured.bytes[8] = 0xC0u8 as char8;
+    Assert(structured.Variant() == UuidVariant::Microsoft, "one-one-zero is Microsoft's");
+    structured.bytes[8] = 0xE0u8 as char8;
+    Assert(structured.Variant() == UuidVariant::Future, "and one-one-one is reserved");
+
+    // The nil UUID's variant is the oldest layout rather than the standard one, which surprises people and is
+    // what the standard says: its bits are all zero, including the variant bits.
+    Assert(nil.Variant() == UuidVariant::NetworkComputingSystem,
+           "the nil UUID reads as the oldest variant, since all its bits are zero");
+    Assert(max.Variant() == UuidVariant::Future, "and the max UUID as the reserved one");
+
+    return 0;
+}

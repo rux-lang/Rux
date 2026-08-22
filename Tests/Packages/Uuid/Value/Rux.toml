@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Value"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Uuid: the value type, its sentinels, ordering, hashing and field inspection"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Uuid = { Path = "../../../../Packages/Uuid" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Uuid"
