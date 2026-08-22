@@ -429,3 +429,19 @@ func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOut
     *outcome = parser.Outcome();
     return value;
 }
+
+/// Parses `input` under chosen limits and a chosen duplicate-name policy.
+///
+/// The long form of `Parse`, for a caller who needs something other than the defaults. The policy is a
+/// parameter rather than a mutable setting on a shared parser, so two documents read under different policies
+/// in the same program cannot influence one another.
+///
+/// https://rux-lang.dev/docs/api/json/parse-with
+func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits, duplicates: DuplicateKeyPolicy,
+               outcome: *var JsonParseOutcome) -> JsonValue {
+    var parser = JsonParser::New(allocator, input, limits);
+    parser.SetDuplicatePolicy(duplicates);
+    var value = parser.Parse();
+    *outcome = parser.Outcome();
+    return value;
+}

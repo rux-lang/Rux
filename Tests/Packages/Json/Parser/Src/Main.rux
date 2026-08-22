@@ -4,7 +4,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
 import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome,
-               JsonParser, JsonValue, Parse };
+               JsonParser, JsonValue, Parse, ParseWith };
 import Text::{ StringView, TextError };
 
 func View(bytes: Slice<char8>) -> StringView {
@@ -143,6 +143,26 @@ func Main() -> int {
     var bad = badParser.Parse();
     Assert(badParser.Outcome().error == JsonParseError::Lexical, "a lexical failure is reported as lexical");
     Assert(badParser.Outcome().lexical == JsonLexError::MalformedNumber, "with the lexer's own reason kept");
+
+    // The same choices through the one-call form, which is what most callers will reach for.
+    var directOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
+    var directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll,
+                              @directOutcome);
+    Assert(directOutcome.error == JsonParseError::None && directAll.Length() == 2u,
+           "the one-call form honours a chosen policy");
+    var directReject = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject,
+                                 @directOutcome);
+    Assert(directOutcome.error == JsonParseError::DuplicateName,
+           "and refuses under the default one, so the choice is per call rather than per program");
+
+    // Insertion order survives everything, including a document whose names are already sorted the other way.
+    var reversed = Accepts(allocator, "{\"three\":3,\"two\":2,\"one\":1}", "a reverse-sorted object parses");
+    let three = View("three");
+    let two = View("two");
+    let one = View("one");
+    Assert(reversed.MemberAt(0u).name.View().Equals(@three), "with its first member first");
+    Assert(reversed.MemberAt(1u).name.View().Equals(@two), "its second second");
+    Assert(reversed.MemberAt(2u).name.View().Equals(@one), "and its third third");
 
     return 0;
 }
