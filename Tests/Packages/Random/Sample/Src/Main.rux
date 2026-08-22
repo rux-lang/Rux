@@ -1,0 +1,203 @@
+// Uniformity is the claim in every case here, and uniformity is exactly what a handful of runs cannot show. So
+// the shuffle is measured by counting where each element lands over many runs -- which is what catches the
+// famously biased variant, since that one still produces every permutation, just not equally often.
+
+import Core::{ Assert, MutableSlice, Slice };
+import Math::Abs;
+import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
+
+func Main() -> int {
+    var generator = Xoshiro256::New(8675309u64);
+
+    // A shuffle is a permutation: every element still present, exactly once.
+    var items: uint64[16];
+    var index: uint = 0;
+    while index < 16u {
+        items[index] = index as uint64;
+        index = index + 1;
+    }
+    let room = MutableSlice::From<uint64>(@items[0], 16);
+    var run: uint = 0;
+    while run < 200u {
+        Shuffle<Xoshiro256, uint64>(@generator, room);
+        var seen: bool[16];
+        index = 0;
+        while index < 16u {
+            seen[index] = false;
+            index = index + 1;
+        }
+        index = 0;
+        while index < 16u {
+            let value = items[index] as uint;
+            Assert(value < 16u, "a shuffled element is still one of the originals");
+            Assert(!seen[value], "and appears exactly once");
+            seen[value] = true;
+            index = index + 1;
+        }
+        run = run + 1;
+    }
+
+    // Uniformity: over many shuffles each element should land in each position about equally often. The biased
+    // variant -- swapping with any position rather than one at or below -- fails this and passes everything
+    // above it.
+    var landings: uint[64];
+    index = 0;
+    while index < 64u {
+        landings[index] = 0;
+        index = index + 1;
+    }
+    var small: uint64[8];
+    let smallRoom = MutableSlice::From<uint64>(@small[0], 8);
+    run = 0;
+    while run < 40000u {
+        index = 0;
+        while index < 8u {
+            small[index] = index as uint64;
+            index = index + 1;
+        }
+        Shuffle<Xoshiro256, uint64>(@generator, smallRoom);
+        index = 0;
+        while index < 8u {
+            let value = small[index] as uint;
+            landings[value * 8u + index] = landings[value * 8u + index] + 1;
+            index = index + 1;
+        }
+        run = run + 1;
+    }
+    index = 0;
+    while index < 64u {
+        // Five thousand expected in each cell of the eight-by-eight table.
+        Assert(landings[index] > 4700u && landings[index] < 5300u,
+               "every element lands in every position about equally often");
+        index = index + 1;
+    }
+
+    // The degenerate lengths.
+    let emptyRoom = MutableSlice::From<uint64>(@items[0], 0);
+    Shuffle<Xoshiro256, uint64>(@generator, emptyRoom);
+    let singleRoom = MutableSlice::From<uint64>(@items[0], 1);
+    let held = items[0];
+    Shuffle<Xoshiro256, uint64>(@generator, singleRoom);
+    Assert(items[0] == held, "shuffling one element changes nothing");
+
+    // Choosing an index: in range, every value reachable, and an empty collection answers out of range.
+    var chosen: uint[5];
+    index = 0;
+    while index < 5u {
+        chosen[index] = 0;
+        index = index + 1;
+    }
+    run = 0;
+    while run < 50000u {
+        let value = ChooseIndex<Xoshiro256>(@generator, 5u);
+        Assert(value < 5u, "a chosen index is in range");
+        chosen[value] = chosen[value] + 1;
+        run = run + 1;
+    }
+    index = 0;
+    while index < 5u {
+        Assert(chosen[index] > 9500u && chosen[index] < 10500u, "and every index comes up about equally often");
+        index = index + 1;
+    }
+    Assert(ChooseIndex<Xoshiro256>(@generator, 0u) == 0u, "an empty collection has no index to choose");
+
+    // Weighted choice: the proportions come out as given, a zero weight is never chosen, and a negative one is
+    // ignored rather than subtracted.
+    var weights: float64[4];
+    weights[0] = 1.0;
+    weights[1] = 0.0;
+    weights[2] = 3.0;
+    weights[3] = -2.0;
+    let weightSlice = Slice<float64> { data: @weights[0], length: 4 };
+    var picks: uint[4];
+    index = 0;
+    while index < 4u {
+        picks[index] = 0;
+        index = index + 1;
+    }
+    run = 0;
+    while run < 40000u {
+        let value = WeightedIndex<Xoshiro256>(@generator, weightSlice);
+        Assert(value < 4u, "a weighted choice is in range");
+        picks[value] = picks[value] + 1;
+        run = run + 1;
+    }
+    Assert(picks[1] == 0u, "a zero weight is never chosen");
+    Assert(picks[3] == 0u, "and neither is a negative one");
+    Assert(picks[0] > 9500u && picks[0] < 10500u, "a weight of one in four takes a quarter");
+    Assert(picks[2] > 29500u && picks[2] < 30500u, "and a weight of three in four takes the rest");
+
+    // All-zero weights and an empty slice both answer out of range.
+    var zeros: float64[3];
+    zeros[0] = 0.0;
+    zeros[1] = 0.0;
+    zeros[2] = 0.0;
+    let zeroSlice = Slice<float64> { data: @zeros[0], length: 3 };
+    Assert(WeightedIndex<Xoshiro256>(@generator, zeroSlice) == 3u,
+           "weights that are all zero leave nothing to choose");
+    let emptySlice = Slice<float64> { data: @zeros[0], length: 0 };
+    Assert(WeightedIndex<Xoshiro256>(@generator, emptySlice) == 0u, "and neither does an empty slice");
+
+    // Reservoir sampling: the sample is drawn from the stream, distinct, and uniform over it.
+    var reservoirCounts: uint[20];
+    index = 0;
+    while index < 20u {
+        reservoirCounts[index] = 0;
+        index = index + 1;
+    }
+    run = 0;
+    while run < 20000u {
+        var sample: uint64[4];
+        let sampleRoom = MutableSlice::From<uint64>(@sample[0], 4);
+        var reservoir = Reservoir::New<uint64>(sampleRoom);
+        index = 0;
+        while index < 20u {
+            Offer<Xoshiro256, uint64>(@generator, @reservoir, index as uint64);
+            index = index + 1;
+        }
+        Assert(reservoir.Seen() == 20u, "the reservoir counts everything offered");
+        Assert(reservoir.Length() == 4u, "and holds its sample size once the stream is longer than it");
+        index = 0;
+        while index < 4u {
+            let value = sample[index] as uint;
+            Assert(value < 20u, "every sampled value came from the stream");
+            reservoirCounts[value] = reservoirCounts[value] + 1;
+            var other = index + 1u;
+            while other < 4u {
+                Assert(sample[index] != sample[other], "and the sample holds no duplicates");
+                other = other + 1;
+            }
+            index = index + 1;
+        }
+        run = run + 1;
+    }
+    index = 0;
+    while index < 20u {
+        // Four of twenty, twenty thousand times: four thousand expected each.
+        Assert(reservoirCounts[index] > 3750u && reservoirCounts[index] < 4250u,
+               "and every item of the stream is equally likely to be in it");
+        index = index + 1;
+    }
+
+    // A stream shorter than the reservoir is kept whole.
+    var shortSample: uint64[6];
+    let shortRoom = MutableSlice::From<uint64>(@shortSample[0], 6);
+    var shortReservoir = Reservoir::New<uint64>(shortRoom);
+    index = 0;
+    while index < 3u {
+        Offer<Xoshiro256, uint64>(@generator, @shortReservoir, (100u + index) as uint64);
+        index = index + 1;
+    }
+    Assert(shortReservoir.Length() == 3u, "a short stream fills the reservoir only as far as it goes");
+    Assert(shortSample[0] == 100u64 && shortSample[1] == 101u64 && shortSample[2] == 102u64,
+           "and is kept in the order it arrived, since nothing had to be displaced");
+
+    // A reservoir with no room accepts the stream and keeps nothing.
+    let noRoom = MutableSlice::From<uint64>(@shortSample[0], 0);
+    var emptyReservoir = Reservoir::New<uint64>(noRoom);
+    Offer<Xoshiro256, uint64>(@generator, @emptyReservoir, 7u64);
+    Assert(emptyReservoir.Length() == 0u && emptyReservoir.Seen() == 1u,
+           "a reservoir with no room still counts what it was offered");
+
+    return 0;
+}
