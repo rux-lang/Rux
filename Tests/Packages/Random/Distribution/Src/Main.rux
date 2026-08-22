@@ -1,0 +1,128 @@
+// A distribution is checked by its moments -- a sample large enough for the mean and variance to settle close to
+// the true values -- and by the edges, where a transform that is fine in real arithmetic goes wrong. The edges
+// are the part worth writing tests for: the moments would pass for several subtly wrong implementations, and
+// the edges would not.
+
+import Core::Assert;
+import Math::{ Abs, IsFinite, IsNan, Sqrt };
+import Random::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair, NormalWith, RandomGenerator,
+                 Xoshiro256 };
+
+func Main() -> int {
+    var generator = Xoshiro256::New(20240822u64);
+
+    // Bernoulli: the rate comes out right, and the two saturating ends are absolute rather than merely likely.
+    var heads: uint = 0;
+    var draw: uint = 0;
+    while draw < 40000u {
+        if Bernoulli<Xoshiro256>(@generator, 0.25) {
+            heads = heads + 1;
+        }
+        draw = draw + 1;
+    }
+    Assert(heads > 9600u && heads < 10400u, "a quarter-probability coin comes up true about a quarter of the time");
+    draw = 0;
+    while draw < 1000u {
+        Assert(!Bernoulli<Xoshiro256>(@generator, 0.0), "a probability of zero never comes up true");
+        Assert(Bernoulli<Xoshiro256>(@generator, 1.0), "and one of one always does");
+        Assert(!Bernoulli<Xoshiro256>(@generator, -0.5), "a probability below zero behaves like zero");
+        Assert(Bernoulli<Xoshiro256>(@generator, 1.5), "and one above one like one");
+        draw = draw + 1;
+    }
+
+    // Exponential: mean and standard deviation are both one, and every value is finite and non-negative. The
+    // finiteness is the real check -- the naive transform produces an infinity when the uniform draw is zero,
+    // and over this many draws that happens.
+    var total = 0.0;
+    var totalSquares = 0.0;
+    var smallest = 1.0e300;
+    draw = 0;
+    while draw < 200000u {
+        let value = Exponential<Xoshiro256>(@generator);
+        Assert(IsFinite(value), "an exponential draw is always finite, however the uniform draw landed");
+        Assert(value >= 0.0, "and never negative");
+        if value < smallest {
+            smallest = value;
+        }
+        total = total + value;
+        totalSquares = totalSquares + value * value;
+        draw = draw + 1;
+    }
+    let count = 200000.0;
+    let mean = total / count;
+    let variance = totalSquares / count - mean * mean;
+    Assert(Abs(mean - 1.0) < 0.02, "the mean of a rate-one exponential is one");
+    Assert(Abs(variance - 1.0) < 0.05, "and so is its variance");
+    Assert(smallest < 0.001, "small values occur, so the distribution is not shifted away from zero");
+
+    // Scaling by a rate scales the mean the other way, and a rate that makes no sense gives zero.
+    total = 0.0;
+    draw = 0;
+    while draw < 100000u {
+        total = total + ExponentialWithRate<Xoshiro256>(@generator, 4.0);
+        draw = draw + 1;
+    }
+    Assert(Abs(total / 100000.0 - 0.25) < 0.01, "a rate of four gives a mean of a quarter");
+    Assert(ExponentialWithRate<Xoshiro256>(@generator, 0.0) == 0.0, "a rate of zero has no distribution");
+    Assert(ExponentialWithRate<Xoshiro256>(@generator, -1.0) == 0.0, "and neither has a negative one");
+
+    // Normal: mean zero, variance one, symmetric, and always finite.
+    total = 0.0;
+    totalSquares = 0.0;
+    var aboveZero: uint = 0;
+    var beyondTwo: uint = 0;
+    draw = 0;
+    while draw < 200000u {
+        let value = Normal<Xoshiro256>(@generator);
+        Assert(IsFinite(value), "a normal draw is always finite");
+        total = total + value;
+        totalSquares = totalSquares + value * value;
+        if value > 0.0 {
+            aboveZero = aboveZero + 1;
+        }
+        if Abs(value) > 2.0 {
+            beyondTwo = beyondTwo + 1;
+        }
+        draw = draw + 1;
+    }
+    let normalMean = total / count;
+    let normalVariance = totalSquares / count - normalMean * normalMean;
+    Assert(Abs(normalMean) < 0.02, "the standard normal has mean zero");
+    Assert(Abs(normalVariance - 1.0) < 0.03, "and variance one");
+    Assert(aboveZero > 98000u && aboveZero < 102000u, "it is symmetric about zero");
+    // The true proportion beyond two standard deviations is about 4.55 percent.
+    Assert(beyondTwo > 8300u && beyondTwo < 9900u, "and its tails have about the weight they should");
+
+    // The pair gives two usable values, not one value twice.
+    var first = 0.0;
+    var second = 0.0;
+    var differed: uint = 0;
+    draw = 0;
+    while draw < 1000u {
+        NormalPair<Xoshiro256>(@generator, @first, @second);
+        Assert(IsFinite(first) && IsFinite(second), "both values of a pair are finite");
+        if first != second {
+            differed = differed + 1;
+        }
+        draw = draw + 1;
+    }
+    Assert(differed == 1000u, "and the two are independent draws rather than the same one returned twice");
+
+    // Shifting and scaling.
+    total = 0.0;
+    totalSquares = 0.0;
+    draw = 0;
+    while draw < 100000u {
+        let value = NormalWith<Xoshiro256>(@generator, 5.0, 2.0);
+        total = total + value;
+        totalSquares = totalSquares + value * value;
+        draw = draw + 1;
+    }
+    let shiftedMean = total / 100000.0;
+    let shiftedVariance = totalSquares / 100000.0 - shiftedMean * shiftedMean;
+    Assert(Abs(shiftedMean - 5.0) < 0.05, "a shifted normal has the mean it was given");
+    Assert(Abs(Sqrt(shiftedVariance) - 2.0) < 0.05, "and the standard deviation it was given");
+    Assert(NormalWith<Xoshiro256>(@generator, 3.0, 0.0) == 3.0, "a zero deviation gives the mean exactly");
+
+    return 0;
+}
