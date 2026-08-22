@@ -1,0 +1,119 @@
+// The promise is that the target holds the old contents until it holds the new ones, and never anything in
+// between -- so the test reads the target part-way through a replacement and demands the old bytes, then
+// abandons a replacement and demands them still, then commits one and demands the new bytes exactly.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
+import Path::{ OsString, Path, PathBuffer };
+import Storage::{ AtomicWrite, DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, MetadataOf,
+                  OpenOptions, ReadDirectory, WriteAtomically };
+import Text::TextError;
+
+func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+    var textError = TextError::None;
+    *holder = OsString::FromText(allocator, text, @textError);
+    Assert(textError == TextError::None, "the name converts");
+    return Path::FromView(holder.View());
+}
+
+// Reads the whole file and checks it against `expected`, length included.
+func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
+    var error = IoError::Ok();
+    var file = File::Open(allocator, path, OpenOptions::Reading(), @error);
+    Assert(file.IsOpen() && error.IsOk(), "the target opens for reading");
+    var size: uint64 = 0;
+    Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "and is exactly as long as expected");
+    var storage: char8[64];
+    let room = MutableSlice::From<char8>(@storage[0], expected.length);
+    let source: Reader = file.Stream();
+    Assert(ReadExact(source, room).IsOk(), "and reads whole");
+    var index: uint = 0;
+    while index < expected.length {
+        Assert(storage[index] == expected.data[index], "byte for byte");
+        index = index + 1;
+    }
+    Assert(file.Close().IsOk(), "and closes");
+}
+
+// How many entries the directory holds, which is how a leftover partial file is caught.
+func CountEntries(allocator: Allocator, directory: Path) -> uint {
+    var error = IoError::Ok();
+    var walk = ReadDirectory(allocator, directory, @error);
+    Assert(error.IsOk(), "the directory opens for counting");
+    var count: uint = 0;
+    var name = OsString::New(allocator);
+    while walk.Next(@name, @error) {
+        count = count + 1;
+        name.Clear();
+    }
+    Assert(error.IsOk(), "and the count ends rather than fails");
+    walk.Release();
+    return count;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = IoError::Ok();
+
+    var dirHolder = OsString::New(allocator);
+    let dir = PathOf(allocator, "Bin/StorageAtomic.tmp", @dirHolder);
+    var targetHolder = OsString::New(allocator);
+    let target = PathOf(allocator, "Bin/StorageAtomic.tmp/settled.txt", @targetHolder);
+
+    DeleteFile(allocator, target);
+    DeleteDirectory(allocator, dir);
+    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+
+    // A target that does not exist yet is created by the replacement.
+    Assert(WriteAtomically(allocator, target, "first contents").IsOk(), "the first write lands");
+    CheckWhole(allocator, target, "first contents");
+    Assert(CountEntries(allocator, dir) == 1, "and leaves exactly one file behind");
+
+    // Part-way through a replacement, the target still holds the old contents.
+    var replacement = AtomicWrite::Begin(allocator, target, @error);
+    Assert(error.IsOk(), "a replacement begins");
+    let sink: Writer = replacement.Stream();
+    Assert(WriteAll(sink, "second contents, longer").IsOk(), "and takes the new contents");
+    CheckWhole(allocator, target, "first contents");
+    Assert(CountEntries(allocator, dir) == 2, "with the partial file alongside, not on top");
+
+    // Committing swaps them in one step.
+    Assert(replacement.Commit(allocator).IsOk(), "the commit lands");
+    CheckWhole(allocator, target, "second contents, longer");
+    Assert(CountEntries(allocator, dir) == 1, "and the partial file is gone");
+    replacement.Release();
+
+    // Abandoning leaves the target exactly as it was, and cleans up after itself.
+    var discarded = AtomicWrite::Begin(allocator, target, @error);
+    Assert(error.IsOk(), "a second replacement begins");
+    let discardedSink: Writer = discarded.Stream();
+    Assert(WriteAll(discardedSink, "never published").IsOk(), "and takes contents");
+    Assert(discarded.Abandon(allocator).IsOk(), "abandoning reports success");
+    CheckWhole(allocator, target, "second contents, longer");
+    Assert(CountEntries(allocator, dir) == 1, "and leaves nothing behind");
+    discarded.Release();
+
+    // A replacement dropped without a decision behaves like an abandoned one: the reason the type exists.
+    Dropped(allocator, target);
+    CheckWhole(allocator, target, "second contents, longer");
+    Assert(CountEntries(allocator, dir) == 1, "an undecided replacement leaves no partial file");
+
+    // Replacing with something shorter really shortens it, rather than leaving a tail of the old file.
+    Assert(WriteAtomically(allocator, target, "short").IsOk(), "a shorter write lands");
+    CheckWhole(allocator, target, "short");
+
+    Assert(DeleteFile(allocator, target).IsOk(), "the target cleans up");
+    Assert(DeleteDirectory(allocator, dir).IsOk(), "and so does the directory");
+    return 0;
+}
+
+// Begins a replacement, writes to it, and lets it fall out of scope undecided.
+func Dropped(allocator: Allocator, target: Path) {
+    var error = IoError::Ok();
+    var replacement = AtomicWrite::Begin(allocator, target, @error);
+    Assert(error.IsOk(), "the undecided replacement begins");
+    let sink: Writer = replacement.Stream();
+    Assert(WriteAll(sink, "abandoned by scope").IsOk(), "and takes contents");
+}

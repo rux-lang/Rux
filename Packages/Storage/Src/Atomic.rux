@@ -1,0 +1,211 @@
+// Publishing a file under its final name without ever showing a reader a half-written one.
+//
+// The rule every reliable writer follows: write the new contents somewhere else, force them to the device, then
+// move the finished file onto the final name in one step the filesystem cannot interrupt. A reader opening the
+// name at any moment sees the old file or the new one, never a truncated one and never a missing one -- which is
+// what writing in place cannot promise, since a crash between truncating and finishing leaves exactly the
+// half-written file the whole exercise is meant to avoid.
+//
+// Two details are not optional. The temporary must live in the **same directory** as the target, because a
+// rename is atomic only within a volume and a temporary directory is frequently on a different one -- get that
+// wrong and the "atomic" publish silently becomes a copy-and-delete. And the contents must be synced **before**
+// the rename, not after: a rename that reaches the disk ahead of the data it names leaves the final name
+// pointing at a file whose contents never arrived.
+//
+// What is not promised is that the directory entry itself survives a crash. That needs the containing directory
+// synced too, which needs a directory opened as a file -- ordinary on the Unix systems, not a thing Windows
+// does. Rather than offer durability on one platform and pretend on another, this stops at the atomicity every
+// supported system gives, and says so.
+
+import Allocator::Allocator;
+import Core::{ Drop, Slice };
+import Io::{ IoError, IoErrorKind, WriteAll, Writer };
+import Path::{ OsStringView, OsUnit, Path, PathBuffer };
+import Text::TextError;
+
+// The `.` that names the working directory, in whatever unit the platform's paths are made of.
+func DotSegmentUnit() -> OsUnit {
+    return 0x2Eu8 as OsUnit;
+}
+
+/// A file being written to replace `target`, which appears under that name only when it is complete.
+///
+/// Move-only. `Commit` syncs the contents and moves them onto the target; `Abandon`, or dropping the value,
+/// deletes the partial file and leaves the target as it was. An early return therefore leaves the old contents
+/// in place, which is the behavior that makes this worth using.
+///
+/// https://rux-lang.dev/docs/api/storage/atomic-write
+struct AtomicWrite {
+    /// The partial file, in the target's own directory.
+    scratch: TemporaryFile;
+    /// Where it is going.
+    target: PathBuffer;
+    /// Whether the replacement is still owed.
+    pending: bool;
+}
+
+extend AtomicWrite {
+    /// Begins replacing `target`.
+    ///
+    /// The temporary is created in the target's own directory, which is what keeps the final rename atomic. The
+    /// target need not exist; if it does, it is untouched until `Commit`.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/begin
+    func Begin(allocator: Allocator, target: Path, error: *var IoError) -> AtomicWrite {
+        *error = IoError::Ok();
+        var textError = TextError::None;
+        var result = AtomicWrite {
+            scratch: TemporaryFile {
+                file: File { handle: NoFile(), open: false },
+                path: PathBuffer::New(allocator),
+                owned: false
+            },
+            target: PathBuffer::New(allocator),
+            pending: false
+        };
+
+        // A target with no parent is a bare name in the working directory, whose parent is that directory.
+        let parent = target.Parent();
+        var directory = PathBuffer::New(allocator);
+        if parent.IsSome() {
+            directory = PathBuffer::FromPath(allocator, parent.ValueOr(Path::New()), @textError);
+        }
+        else {
+            var here: OsUnit[1];
+            here[0] = DotSegmentUnit();
+            directory = PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(here[0..1])),
+                                             @textError);
+        }
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+            directory.Release();
+            return result;
+        }
+
+        var held = PathBuffer::FromPath(allocator, target, @textError);
+        if textError != TextError::None {
+            *error = IoError::Of(IoErrorKind::Other);
+            directory.Release();
+            held.Release();
+            return result;
+        }
+        var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-", error);
+        directory.Release();
+        if error.IsError() {
+            held.Release();
+            return result;
+        }
+        result.scratch = scratch;
+        result.target = held;
+        result.pending = true;
+        return result;
+    }
+
+    /// A writer over the partial file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/stream
+    func Stream(self: *var AtomicWrite) -> FileStream {
+        return self.scratch.file.Stream();
+    }
+
+    /// The name the finished file will take.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/target
+    func Target(self: *AtomicWrite) -> Path {
+        return self.target.AsPath();
+    }
+}
+
+extend AtomicWrite {
+    /// Forces the contents to the device and moves them onto the target.
+    ///
+    /// The sync happens **before** the rename, so the final name can never point at contents that never
+    /// arrived. Afterwards the target holds the new file and the temporary is gone; a reader that opened the
+    /// name at any moment saw the old file or the new one.
+    ///
+    /// What this does not promise is that the directory entry survives a crash: that needs the containing
+    /// directory synced too, which Windows does not offer, so the guarantee stops at atomicity on every system
+    /// rather than being durable on some and pretending on the rest.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/commit
+    func Commit(self: *var AtomicWrite, allocator: Allocator) -> IoError {
+        if !self.pending {
+            return IoError::Of(IoErrorKind::InvalidInput);
+        }
+        let synced = self.scratch.file.Sync();
+        if synced.IsError() {
+            return synced;
+        }
+        // The handle must close before the rename: Windows will not move a file that is open without sharing
+        // rights it was not necessarily given, and closing is where a delayed write failure finally reports.
+        let closed = self.scratch.file.Close();
+        if closed.IsError() {
+            return closed;
+        }
+        let moved = Rename(allocator, self.scratch.AsPath(), self.target.AsPath());
+        if moved.IsError() {
+            // The temporary is still ours to clean up, and the target still holds whatever it held.
+            return moved;
+        }
+        // The name now belongs to the target, so the temporary must not delete it.
+        self.scratch.owned = false;
+        self.pending = false;
+        return IoError::Ok();
+    }
+
+    /// Throws the partial file away and leaves the target as it was.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/abandon
+    func Abandon(self: *var AtomicWrite, allocator: Allocator) -> IoError {
+        if !self.pending {
+            return IoError::Ok();
+        }
+        self.pending = false;
+        return self.scratch.Close(allocator);
+    }
+
+    /// Gives the buffers back. The temporary's own drop removes any partial file.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/release
+    func Release(self: *var AtomicWrite) {
+        self.pending = false;
+        self.target.Release();
+    }
+}
+
+extend AtomicWrite : Drop {
+    /// Discards an uncommitted replacement, leaving the target untouched.
+    ///
+    /// This is the property that makes the type worth using: an early return or a failure part-way through
+    /// writing leaves the old contents exactly where they were, with no partial file left behind.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/atomic-write/drop
+    func Drop(self: *var AtomicWrite) {
+        self.pending = false;
+        self.target.Release();
+    }
+}
+
+/// Replaces `target` with `contents`, atomically.
+///
+/// The one-shot form of the type above, for the common case where the whole file is already in hand.
+///
+/// https://rux-lang.dev/docs/api/storage/write-atomically
+func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>) -> IoError {
+    var error = IoError::Ok();
+    var replacement = AtomicWrite::Begin(allocator, target, @error);
+    if error.IsError() {
+        return error;
+    }
+    let sink: Writer = replacement.Stream();
+    let wrote = WriteAll(sink, contents);
+    if wrote.IsError() {
+        replacement.Abandon(allocator);
+        return wrote;
+    }
+    let committed = replacement.Commit(allocator);
+    if committed.IsError() {
+        replacement.Abandon(allocator);
+    }
+    return committed;
+}
