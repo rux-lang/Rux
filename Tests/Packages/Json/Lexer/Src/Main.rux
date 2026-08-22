@@ -1,0 +1,113 @@
+// Most of this is refusals, because JSON's grammar is much narrower than JavaScript's and the difference is
+// exactly where a lenient lexer lets through documents other parsers reject. Every rejected form here is one
+// that a JavaScript engine would accept.
+
+import Core::{ Assert, Slice };
+import Json::{ JsonLexError, JsonLexer, JsonLimits, JsonTokenKind };
+
+func FirstToken(text: Slice<char8>) -> JsonTokenKind {
+    var lexer = JsonLexer::New(text, JsonLimits::Default());
+    return lexer.Next().kind;
+}
+
+func FirstError(text: Slice<char8>) -> JsonLexError {
+    var lexer = JsonLexer::New(text, JsonLimits::Default());
+    return lexer.Next().error;
+}
+
+func Main() -> int {
+    // The structural tokens.
+    Assert(FirstToken("{") == JsonTokenKind::ObjectStart, "an opening brace");
+    Assert(FirstToken("}") == JsonTokenKind::ObjectEnd, "a closing brace");
+    Assert(FirstToken("[") == JsonTokenKind::ArrayStart, "an opening bracket");
+    Assert(FirstToken("]") == JsonTokenKind::ArrayEnd, "a closing bracket");
+    Assert(FirstToken(":") == JsonTokenKind::Colon, "a colon");
+    Assert(FirstToken(",") == JsonTokenKind::Comma, "a comma");
+    Assert(FirstToken("") == JsonTokenKind::End, "and the end of input");
+
+    // The three literals, and nothing that merely resembles them.
+    Assert(FirstToken("true") == JsonTokenKind::True, "true");
+    Assert(FirstToken("false") == JsonTokenKind::False, "false");
+    Assert(FirstToken("null") == JsonTokenKind::Null, "null");
+    Assert(FirstToken("True") == JsonTokenKind::Error, "capitalised True is not a literal");
+    Assert(FirstToken("NULL") == JsonTokenKind::Error, "nor is uppercase NULL");
+    Assert(FirstToken("undefined") == JsonTokenKind::Error, "and undefined is not JSON at all");
+
+    // Whitespace is exactly four bytes; anything else that looks like it is not.
+    var lexer = JsonLexer::New(" \t\r\n{", JsonLimits::Default());
+    Assert(lexer.Next().kind == JsonTokenKind::ObjectStart, "the four whitespace bytes are skipped");
+    Assert(FirstToken("\u{000C}{") == JsonTokenKind::Error, "a form feed is not JSON whitespace");
+
+    // Numbers: the grammar's exact shape.
+    Assert(FirstToken("0") == JsonTokenKind::Number, "zero");
+    Assert(FirstToken("-0") == JsonTokenKind::Number, "negative zero");
+    Assert(FirstToken("123") == JsonTokenKind::Number, "an integer");
+    Assert(FirstToken("-1.5") == JsonTokenKind::Number, "a negative fraction");
+    Assert(FirstToken("1e10") == JsonTokenKind::Number, "an exponent");
+    Assert(FirstToken("1E+10") == JsonTokenKind::Number, "with a sign and a capital E");
+    Assert(FirstToken("1.5e-7") == JsonTokenKind::Number, "and all three parts together");
+
+    // The forms JavaScript accepts and JSON does not.
+    Assert(FirstError("01") == JsonLexError::MalformedNumber, "a leading zero is refused");
+    Assert(FirstError("+1") == JsonLexError::UnexpectedByte, "a leading plus is refused");
+    Assert(FirstError(".5") == JsonLexError::UnexpectedByte, "a bare fraction is refused");
+    Assert(FirstError("1.") == JsonLexError::MalformedNumber, "a trailing point is refused");
+    Assert(FirstError("1e") == JsonLexError::MalformedNumber, "an exponent with no digits is refused");
+    Assert(FirstError("1e+") == JsonLexError::MalformedNumber, "even with a sign");
+    Assert(FirstError("-") == JsonLexError::MalformedNumber, "a lone minus is refused");
+    Assert(FirstError("Infinity") == JsonLexError::UnexpectedByte, "and so are the non-finite literals");
+    Assert(FirstError("NaN") == JsonLexError::UnexpectedByte, "both of them");
+
+    // Strings, and the escapes JSON defines.
+    var stringLexer = JsonLexer::New("\"plain\"", JsonLimits::Default());
+    let plain = stringLexer.Next();
+    Assert(plain.kind == JsonTokenKind::Text, "a string lexes");
+    Assert(plain.start == 1u && plain.end == 6u, "with a span excluding the quotes");
+    Assert(!plain.escaped, "and is marked as needing no unescaping, so it can be used in place");
+
+    var escapedLexer = JsonLexer::New("\"a\\nb\"", JsonLimits::Default());
+    let escaped = escapedLexer.Next();
+    Assert(escaped.kind == JsonTokenKind::Text && escaped.escaped,
+           "a string with an escape is marked as needing one");
+
+    Assert(FirstToken("\"\\u0041\"") == JsonTokenKind::Text, "a four-digit unicode escape is accepted");
+    Assert(FirstError("\"\\u00\"") == JsonLexError::BadUnicodeEscape, "a short one is refused");
+    Assert(FirstError("\"\\u00GG\"") == JsonLexError::BadUnicodeEscape, "and so is a non-hex one");
+    Assert(FirstError("\"\\x41\"") == JsonLexError::BadEscape, "a hex escape is JavaScript, not JSON");
+    Assert(FirstError("\"\\'\"") == JsonLexError::BadEscape, "as is an escaped apostrophe");
+    Assert(FirstError("\"unterminated") == JsonLexError::UnterminatedText, "a string must close");
+    Assert(FirstError("\"raw\u{0001}control\"") == JsonLexError::UnescapedControl,
+           "and a raw control character inside one is refused");
+
+    // A sequence of tokens comes out in order.
+    var document = JsonLexer::New("{\"a\":[1,true]}", JsonLimits::Default());
+    Assert(document.Next().kind == JsonTokenKind::ObjectStart, "the document opens");
+    Assert(document.Next().kind == JsonTokenKind::Text, "a name");
+    Assert(document.Next().kind == JsonTokenKind::Colon, "a colon");
+    Assert(document.Next().kind == JsonTokenKind::ArrayStart, "an array");
+    Assert(document.Next().kind == JsonTokenKind::Number, "a number");
+    Assert(document.Next().kind == JsonTokenKind::Comma, "a comma");
+    Assert(document.Next().kind == JsonTokenKind::True, "a literal");
+    Assert(document.Next().kind == JsonTokenKind::ArrayEnd, "the array closes");
+    Assert(document.Next().kind == JsonTokenKind::ObjectEnd, "the object closes");
+    Assert(document.Next().kind == JsonTokenKind::End, "and the input is exhausted");
+
+    // The limits, each refused with its own reason.
+    var tight = JsonLimits::Default();
+    tight.maximumBytes = 4;
+    var tooLong = JsonLexer::New("{\"aaaa\":1}", tight);
+    Assert(tooLong.Next().error == JsonLexError::TooManyBytes, "a document past the byte limit is refused");
+
+    var shortText = JsonLimits::Default();
+    shortText.maximumTextBytes = 3;
+    var longString = JsonLexer::New("\"abcdef\"", shortText);
+    Assert(longString.Next().error == JsonLexError::TextTooLong, "and a string past the string limit");
+    var fittingString = JsonLexer::New("\"abc\"", shortText);
+    Assert(fittingString.Next().kind == JsonTokenKind::Text, "while one that fits is not");
+
+    // Unlimited accepts what the defaults would refuse, which is what makes choosing it a visible decision.
+    var unbounded = JsonLexer::New("\"abcdef\"", JsonLimits::Unlimited());
+    Assert(unbounded.Next().kind == JsonTokenKind::Text, "unlimited limits accept a long string");
+
+    return 0;
+}

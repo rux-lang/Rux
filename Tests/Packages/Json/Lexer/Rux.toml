@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Lexer"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Json: tokenizing, the grammar's exact number and string rules, and the limits"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Json = { Path = "../../../../Packages/Json" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Json"
