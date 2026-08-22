@@ -82,6 +82,15 @@ const ERROR_INVALID_PARAMETER: uint32 = 87;
 #Allow("naming.const")
 const ERROR_DISK_FULL: uint32 = 112;
 
+/// `ERROR_PRIVILEGE_NOT_HELD`: the account lacks a privilege the operation requires.
+///
+/// What refuses `CreateSymbolicLinkW` on a machine without Developer Mode, where creating a symbolic link needs
+/// `SeCreateSymbolicLinkPrivilege` -- a restriction no other supported system places on the same operation.
+///
+/// https://rux-lang.dev/docs/api/windows/error-privilege-not-held
+#Allow("naming.const")
+const ERROR_PRIVILEGE_NOT_HELD: uint32 = 1314;
+
 /// `ERROR_NO_MORE_FILES`: a directory enumeration has handed over its last entry.
 ///
 /// Reported by `FindNextFileW` at the end of an enumeration, where nothing has gone wrong at all -- the caller

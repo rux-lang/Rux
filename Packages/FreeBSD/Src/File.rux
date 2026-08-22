@@ -7,8 +7,9 @@
 // type alias declared in another file of the package.
 
 import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysClose, SysDup2, SysFstat,
-                  SysFsync, SysFtruncate, SysGetdirentries, SysLseek, SysMkdirAt, SysOpenAt, SysPipe2, SysRead,
-                  SysRenameAt, SysUnlinkAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4 };
+                  SysFsync, SysFtruncate, SysGetdirentries, SysLinkAt, SysLseek, SysMkdirAt, SysOpenAt, SysPipe2, SysRead,
+                  SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
+                  Syscall5 };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///
@@ -164,6 +165,33 @@ func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileM
 /// https://rux-lang.dev/docs/api/freebsd/lseek
 func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
     return Syscall3(SysLseek, SignExtendFd(fd), offset as uint64, (whence as int64) as uint64);
+}
+
+/// Creates a hard link: `newPath` becomes a second name for the file `oldPath` names.
+///
+/// Returns zero, or a negative error number. `flags` is zero to leave a symbolic link at `oldPath` unfollowed,
+/// or `FollowSymlinks` to link what it points at.
+///
+/// https://rux-lang.dev/docs/api/freebsd/linkat
+func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor, newPath: *char8,
+            flags: int32) -> int64 {
+    return Syscall5(SysLinkAt, SignExtendFd(oldDirectoryFd), oldPath as uint64, SignExtendFd(newDirectoryFd),
+                    newPath as uint64, (flags as int64) as uint64);
+}
+
+/// `AT_SYMLINK_FOLLOW`: make `LinkAt` link a symbolic link's target rather than the link.
+///
+/// https://rux-lang.dev/docs/api/freebsd/follow-symlinks
+const FollowSymlinks: int32 = 0x0400;
+
+/// Creates a symbolic link at `linkPath` holding `target` as its text.
+///
+/// Returns zero, or a negative error number. The target is stored, not checked: a dangling link is created as
+/// readily as a good one, which is a property callers rely on.
+///
+/// https://rux-lang.dev/docs/api/freebsd/symlinkat
+func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
+    return Syscall3(SysSymlinkAt, target as uint64, SignExtendFd(newDirectoryFd), linkPath as uint64);
 }
 
 /// Reads directory entries from `fd` into `buffer`, and returns the bytes filled, zero at the end, or a negative

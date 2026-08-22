@@ -1,0 +1,120 @@
+// A copy is the bytes and not an alias, a rename is the same name moved, a hard link is a second equal name,
+// and a symbolic link is a stored pointer -- each proven by mutating one side and watching the other.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Io::{ IoError, IoErrorKind, Reader, ReadExact, WriteAll, Writer };
+import Path::{ OsString, Path };
+import Storage::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory,
+                  OpenOptions, Rename };
+import Text::TextError;
+
+func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+    var textError = TextError::None;
+    *holder = OsString::FromText(allocator, text, @textError);
+    Assert(textError == TextError::None, "the name converts");
+    return Path::FromView(holder.View());
+}
+
+func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
+    var error = IoError::Ok();
+    var file = File::Open(allocator, path, OpenOptions::Writing(), @error);
+    Assert(file.IsOpen() && error.IsOk(), "the file opens for writing");
+    let sink: Writer = file;
+    Assert(WriteAll(sink, content).IsOk(), "and takes its content");
+    Assert(file.Close().IsOk(), "and closes");
+}
+
+// Reads the whole file and checks it equals `expected`, byte for byte, length included.
+func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
+    var error = IoError::Ok();
+    var file = File::Open(allocator, path, OpenOptions::Reading(), @error);
+    Assert(file.IsOpen() && error.IsOk(), "the file opens for reading");
+    var storage: char8[64];
+    var size: uint64 = 0;
+    Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "it is exactly as long as expected");
+    let room = MutableSlice::From<char8>(@storage[0], expected.length);
+    let source: Reader = file;
+    Assert(ReadExact(source, room).IsOk(), "and reads whole");
+    var index: uint = 0;
+    while index < expected.length {
+        Assert(storage[index] == expected.data[index], "byte for byte");
+        index = index + 1;
+    }
+    Assert(file.Close().IsOk(), "and closes");
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+
+    var dirHolder = OsString::New(allocator);
+    let dir = PathOf(allocator, "Bin/StorageXfer.tmp", @dirHolder);
+    var aHolder = OsString::New(allocator);
+    let a = PathOf(allocator, "Bin/StorageXfer.tmp/a.txt", @aHolder);
+    var bHolder = OsString::New(allocator);
+    let b = PathOf(allocator, "Bin/StorageXfer.tmp/b.txt", @bHolder);
+    var cHolder = OsString::New(allocator);
+    let c = PathOf(allocator, "Bin/StorageXfer.tmp/c.txt", @cHolder);
+    var dHolder = OsString::New(allocator);
+    let d = PathOf(allocator, "Bin/StorageXfer.tmp/d.txt", @dHolder);
+    var hHolder = OsString::New(allocator);
+    let h = PathOf(allocator, "Bin/StorageXfer.tmp/h.txt", @hHolder);
+    var sHolder = OsString::New(allocator);
+    let s = PathOf(allocator, "Bin/StorageXfer.tmp/s.txt", @sHolder);
+
+    // Fresh ground.
+    DeleteFile(allocator, a);
+    DeleteFile(allocator, b);
+    DeleteFile(allocator, c);
+    DeleteFile(allocator, d);
+    DeleteFile(allocator, h);
+    DeleteFile(allocator, s);
+    DeleteDirectory(allocator, dir);
+    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+
+    // A copy is the bytes, not an alias: mutate the original and the copy stands still.
+    WriteWhole(allocator, a, "the original bytes");
+    Assert(CopyFile(allocator, a, b).IsOk(), "the copy lands");
+    CheckWhole(allocator, b, "the original bytes");
+    WriteWhole(allocator, a, "changed afterwards");
+    CheckWhole(allocator, b, "the original bytes");
+
+    // A rename is the same content under a new name, the old name gone.
+    Assert(Rename(allocator, b, c).IsOk(), "the rename lands");
+    CheckWhole(allocator, c, "the original bytes");
+    var error = IoError::Ok();
+    var missing = File::Open(allocator, b, OpenOptions::Reading(), @error);
+    Assert(!missing.IsOpen() && error.kind == IoErrorKind::NotFound, "the old name is gone");
+
+    // Renaming onto an existing name replaces it.
+    WriteWhole(allocator, d, "doomed");
+    Assert(Rename(allocator, c, d).IsOk(), "the rename replaces");
+    CheckWhole(allocator, d, "the original bytes");
+
+    // A hard link is a second equal name: delete the first and the content lives under the second.
+    Assert(CreateHardLink(allocator, a, h).IsOk(), "the hard link lands");
+    Assert(DeleteFile(allocator, a).IsOk(), "the first name deletes");
+    CheckWhole(allocator, h, "changed afterwards");
+
+    // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
+    // PermissionDenied here is an environment, not a defect -- the rest is skipped, not faked.
+    var linkNameHolder = OsString::New(allocator);
+    let linkTarget = PathOf(allocator, "h.txt", @linkNameHolder);
+    let linked = CreateSymbolicLink(allocator, linkTarget, s, false);
+    if linked.IsOk() {
+        CheckWhole(allocator, s, "changed afterwards");
+        Assert(DeleteFile(allocator, s).IsOk(), "the link deletes as itself");
+        CheckWhole(allocator, h, "changed afterwards");
+    }
+    else {
+        Assert(linked.kind == IoErrorKind::PermissionDenied, "only the privilege gate excuses a failed link");
+    }
+
+    // Clean ground behind us.
+    Assert(DeleteFile(allocator, d).IsOk(), "d cleans up");
+    Assert(DeleteFile(allocator, h).IsOk(), "h cleans up");
+    Assert(DeleteDirectory(allocator, dir).IsOk(), "the scratch directory cleans up");
+
+    return 0;
+}
