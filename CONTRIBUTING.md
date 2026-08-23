@@ -41,17 +41,19 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 For anything beyond the quick start, see the detailed guides:
 
-| Guide                                         | What it covers                                                  |
-| --------------------------------------------- | --------------------------------------------------------------- |
-| [Development Workflow](Docs/Workflow.md)      | Day-to-day loop: build, change, test, format, commit            |
-| [Compiler Architecture](Docs/Architecture.md) | Component ownership, dependency direction, compilation pipeline |
-| [Package Builds](Docs/Builds.md)              | Profiles, targets, artifact paths, and the 16-cell build matrix |
-| [Rux.toml Manifest](Docs/Manifest.md)         | Versioned package, workspace and dependency contract            |
-| [First-Party Packages](Docs/Packages.md)      | Package status, layout, dependencies, and centralized tests     |
-| [Branch Architecture](Docs/Branches.md)       | What `main` and `dev` are for, naming, protection rules         |
-| [Pull Request Lifecycle](Docs/PullRequest.md) | From opening a PR to merge: review, CI gates, etiquette         |
-| [CI/CD Flow](Docs/CI-CD.md)                   | The per-OS build/test workflows that run on every push and PR   |
-| [Release Pipeline](Docs/Release.md)           | How a tag becomes a published, multi-platform release           |
+| Guide                                             | What it covers                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------- |
+| [Development Workflow](Docs/Workflow.md)          | Day-to-day loop: build, change, test, format, commit            |
+| [Compiler Architecture](Docs/Architecture.md)     | Component ownership, dependency direction, compilation pipeline |
+| [Package Builds](Docs/Builds.md)                  | Profiles, targets, artifact paths, and the 16-cell build matrix |
+| [Rux.toml Manifest](Docs/Manifest.md)             | Versioned package, workspace and dependency contract            |
+| [First-Party Packages](Docs/Packages.md)          | Package status, layout, dependencies, and centralized tests     |
+| [Known Compiler Defects](Docs/CompilerDefects.md) | Defects that shape how the first-party packages are written     |
+| [Cryptographic Review](Docs/CryptoReview.md)      | What an independent reviewer of `Rux/Crypto` needs first        |
+| [Branch Architecture](Docs/Branches.md)           | What `main` and `dev` are for, naming, protection rules         |
+| [Pull Request Lifecycle](Docs/PullRequest.md)     | From opening a PR to merge: review, CI gates, etiquette         |
+| [CI/CD Flow](Docs/CI-CD.md)                       | The per-OS build/test workflows that run on every push and PR   |
+| [Release Pipeline](Docs/Release.md)               | How a tag becomes a published, multi-platform release           |
 
 ## Code Style
 

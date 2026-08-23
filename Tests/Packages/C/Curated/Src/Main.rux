@@ -77,7 +77,9 @@ func Main() -> int {
     Assert(EXIT_FAILURE != EXIT_SUCCESS, "and failure is not");
 
     // EOF and the seek origins, checked against what they describe rather than pinned.
-    let path = "Temp/c-curated-test.tmp";
+    // Beside the test rather than under Temp/, which is a build output that need not exist; the file is removed
+    // below, and the name says whose it is if a crash ever leaves one behind.
+    let path = "c-curated-seek-test.tmp";
     let sink = fopen(path.data, "wb".data);
     Assert(sink != null, "the temporary file opens for writing");
     Assert(fwrite("abcd".data as *opaque, 1u64, 4u64, sink) == 4u64, "four bytes are written");

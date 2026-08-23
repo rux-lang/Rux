@@ -25,7 +25,7 @@
 //
 // The two are separate names rather than overloads of one. Rux resolves an untyped integer literal against a single
 // candidate but not against an overload set, so adding an overload would have made every existing call stop
-// compiling. See BACKLOG.md.
+// compiling. See Docs/CompilerDefects.md.
 //
 // The `By` machinery below mirrors the operator-based helpers rather than sharing them. A generic function cannot be
 // used as a value in Rux, so the operator forms cannot pass `<` as a comparator into one shared implementation, and
