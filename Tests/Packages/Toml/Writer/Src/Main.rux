@@ -153,5 +153,17 @@ func Main() -> int {
     Assert(wholeTwice.length == 53u, "to the same length");
     Assert(Same(wholeOnce, wholeTwice), "and the same bytes");
 
+    // The loss the README describes, pinned here so the documentation cannot drift away from the code.
+    var commented = TomlParse(allocator, "# leading comment\na = 1 # trailing\n\n\nb = 2", @outcome);
+    Assert(outcome.error == TomlParseError::None, "a commented document parses");
+    let plain = Render(@commented, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(plain, "a = 1\nb = 2\n"), "and comes back without its comments or its blank lines");
+
+    var spelled = TomlParse(allocator, "a = 0xFF\nb = 1e3\nc = 'literal'", @outcome);
+    Assert(outcome.error == TomlParseError::None, "a document of alternative spellings parses");
+    let canonical = Render(@spelled, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(canonical, "a = 255\nb = 1000.0\nc = \"literal\"\n"),
+           "and comes back in one spelling each, because the tree holds values and not the text of them");
+
     return 0;
 }

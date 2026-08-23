@@ -9,6 +9,12 @@
 // The recursion of inline tables and arrays is bounded by the depth limit rather than by the stack, checked
 // before descending, so a document built to exhaust the stack is refused while there is still stack to refuse
 // it with.
+//
+// What this produces is a tree of values and nothing else. Comments are skipped by the lexer and never arrive
+// here, so no amount of care further down could keep them; the same goes for blank lines, for indentation, and
+// for whether a number was written in hexadecimal. Reading a document and writing it back gives an equivalent
+// document, not the same file, and this package is not the one to reach for when the file belongs to someone
+// else.
 
 import Allocator::Allocator;
 import Collections::{ CollectionError, Vector };
@@ -667,6 +673,10 @@ extend TomlParser {
     /// On failure the table holds whatever had been read before the refusal, and `Outcome` says what stopped it
     /// and where. A partial document is not a usable one; it is returned rather than discarded so a caller can
     /// show what was understood before the line that was not.
+    ///
+    /// What comes back is the values and nothing else. Comments never reach the parser, and neither does the
+    /// blank line someone put between two sections or the fact that a number was written in hexadecimal. This
+    /// reads configuration; it does not edit files.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/parse
     func Parse(self: *var TomlParser) -> TomlValue {
