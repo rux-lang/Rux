@@ -164,5 +164,11 @@ func Main() -> int {
     Assert(reversed.MemberAt(1u).name.View().Equals(@two), "its second second");
     Assert(reversed.MemberAt(2u).name.View().Equals(@one), "and its third third");
 
+
+    // A string carrying an escape and a raw character outside ASCII: the two together are what caught a
+    // builder being fed one byte at a time, which refused half of a multi-byte scalar and dropped it.
+    var accented = Accepts(allocator, "\"caf\u{E9}\\ttab\"",
+                           "a string with an escape and an accent");
+    Assert(accented.AsText().Length() == 9u, "keeps the accent as well as the escape");
     return 0;
 }

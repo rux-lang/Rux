@@ -305,20 +305,31 @@ extend TomlLexer {
             let isWord = (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) ||
                          (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8;
             if isWord {
-                if !(c >= 0x30u8 && c <= 0x39u8) {
+                // An underscore between digits is a separator inside a number, so it does not end the run of
+                // digits a decimal point may follow -- otherwise `224_617.445` would lex as two tokens and a
+                // dot. One at the very start begins a bare key instead, and does end it.
+                let digit = c >= 0x30u8 && c <= 0x39u8;
+                let separator = c == 0x5Fu8 && index != start && allDigits;
+                if !digit && !separator {
                     allDigits = false;
                 }
                 index = index + 1u;
                 continue;
             }
+            // A sign at the very start belongs to the number, so it does not stop the run of digits that a
+            // decimal point is allowed to follow: without this, `-0.01` would lex as `-0`, a dot and `01`.
             if c == 0x2Du8 {
-                sawDash = true;
-                allDigits = false;
+                if index != start {
+                    sawDash = true;
+                    allDigits = false;
+                }
                 index = index + 1u;
                 continue;
             }
             if c == 0x2Bu8 {
-                allDigits = false;
+                if index != start {
+                    allDigits = false;
+                }
                 index = index + 1u;
                 continue;
             }
@@ -328,9 +339,10 @@ extend TomlLexer {
                 index = index + 1u;
                 continue;
             }
-            // A dot continues the token only when it looks like part of a number; otherwise it is the dotted-key
-            // separator and belongs to the parser.
-            if c == 0x2Eu8 && allDigits && !sawColon {
+            // A dot continues the token only when it looks like part of a number or the fraction of a time;
+            // otherwise it is the dotted-key separator and belongs to the parser. A colon can only have come
+            // from a time, since a colon in a key means the key was quoted and did not reach here.
+            if c == 0x2Eu8 && (allDigits || sawColon) {
                 sawDot = true;
                 allDigits = false;
                 index = index + 1u;
@@ -539,9 +551,16 @@ func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm
     while index < span.length {
         let c = span.data[index] as uint8;
         if c != 0x5Cu8 {
-            let one = Slice<char8> { data: @span.data[index], length: 1 };
-            *error = builder.AppendBytes(one);
-            index = index + 1u;
+            // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte scalar
+            // across two appends, and a builder that validates what it is given refuses half of one -- so an
+            // accented letter beside an escape would quietly disappear.
+            var run = index;
+            while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
+                run = run + 1u;
+            }
+            let piece = Slice<char8> { data: @span.data[index], length: run - index };
+            *error = builder.AppendBytes(piece);
+            index = run;
             continue;
         }
         index = index + 1u;

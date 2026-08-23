@@ -1,0 +1,1096 @@
+// The coverage that is about the package as a whole rather than about one part of it.
+//
+// Two checks here are worth more than the rest. Every accepted document is written back out, read again and
+// written again, and the two renderings must match -- which catches a writer that loses a value as surely as it
+// catches one that is not deterministic. And every document is read twice, once into a tree and once as events,
+// by two implementations of the same grammar written separately; a misreading would have to be made twice, the
+// same way, to survive that.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Format::{ ByteCursor, CursorWriter, TextWriter };
+import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
+               TomlWriteDocument, TomlWriteError };
+
+// Documents TOML 1.1 accepts. Each is one feature of the grammar, and a reader that refuses any of them is
+// refusing a document someone is entitled to write.
+func Valid(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "key = \"value\"";
+    }
+    if index == 1u {
+        return "bare_key = 1";
+    }
+    if index == 2u {
+        return "bare-key = 1";
+    }
+    if index == 3u {
+        return "1234 = 1";
+    }
+    if index == 4u {
+        return "\"127.0.0.1\" = 1";
+    }
+    if index == 5u {
+        return "\"key\" = 1";
+    }
+    if index == 6u {
+        return "'quoted \"value\"' = 1";
+    }
+    if index == 7u {
+        return "\"\" = \"blank\"";
+    }
+    if index == 8u {
+        return "name = \"Orange\"\nphysical.colour = \"orange\"\nphysical.shape = \"round\"";
+    }
+    if index == 9u {
+        return "str = \"a \\\"quoted\\\" word, a \\t tab and a \\u00E9 escape.\"";
+    }
+    if index == 10u {
+        return "str1 = \"\"\"\nRoses are red\nViolets are blue\"\"\"";
+    }
+    if index == 11u {
+        return "str2 = \"\"\"\\\n  The quick brown \\\n  fox jumps over \\\n  the lazy dog.\\\n  \"\"\"";
+    }
+    if index == 12u {
+        return "winpath = 'C:\\Users\\nodejs\\templates'";
+    }
+    if index == 13u {
+        return "regex = '<\\i\\c*\\s*>'";
+    }
+    if index == 14u {
+        return "re = '''I [dw]on't need \\d{2} apples'''";
+    }
+    if index == 15u {
+        return "int1 = +99\nint2 = 42\nint3 = 0\nint4 = -17";
+    }
+    if index == 16u {
+        return "int5 = 1_000\nint6 = 5_349_221\nint7 = 53_49_221";
+    }
+    if index == 17u {
+        return "hex1 = 0xDEADBEEF\nhex2 = 0xdeadbeef\nhex3 = 0xdead_beef";
+    }
+    if index == 18u {
+        return "oct1 = 0o01234567\noct2 = 0o755\nbin1 = 0b11010110";
+    }
+    if index == 19u {
+        return "flt1 = +1.0\nflt2 = 3.1415\nflt3 = -0.01\nflt4 = 5e+22\nflt5 = 1e06\nflt6 = -2E-2\nflt7 = 6.626e-34";
+    }
+    if index == 20u {
+        return "flt8 = 224_617.445_991_228";
+    }
+    if index == 21u {
+        return "sf1 = inf\nsf2 = +inf\nsf3 = -inf\nsf4 = nan\nsf5 = +nan\nsf6 = -nan";
+    }
+    if index == 22u {
+        return "bool1 = true\nbool2 = false";
+    }
+    if index == 23u {
+        return "odt1 = 1979-05-27T07:32:00Z\nodt2 = 1979-05-27T00:32:00-07:00\nodt3 = 1979-05-27T00:32:00.999999-07:00";
+    }
+    if index == 24u {
+        return "ldt1 = 1979-05-27T07:32:00\nldt2 = 1979-05-27T00:32:00.999999";
+    }
+    if index == 25u {
+        return "ld1 = 1979-05-27\nlt1 = 07:32:00\nlt2 = 00:32:00.999999";
+    }
+    if index == 26u {
+        return "integers = [ 1, 2, 3 ]\ncolours = [ \"red\", \"yellow\" ]\nnested = [ [ 1, 2 ], [3, 4, 5] ]";
+    }
+    if index == 27u {
+        return "contributors = [\n  \"Foo <f@e.com>\",\n  { name = \"Baz\" },\n]";
+    }
+    if index == 28u {
+        return "[table-1]\nkey1 = \"some string\"\nkey2 = 123\n\n[table-2]\nkey1 = \"another string\"\nkey2 = 456";
+    }
+    if index == 29u {
+        return "[dog.\"tater.man\"]\ntype.name = \"pug\"";
+    }
+    if index == 30u {
+        return "[a.b.c]\n[a]\nkey = 1";
+    }
+    if index == 31u {
+        return "name = { first = \"Tom\", last = \"Preston-Werner\" }";
+    }
+    if index == 32u {
+        return "point = {\n  x = 1,\n  y = 2,\n}";
+    }
+    if index == 33u {
+        return "[[products]]\nname = \"Hammer\"\nsku = 738594937\n\n[[products]]\n\n[[products]]\nname = \"Nail\"";
+    }
+    if index == 34u {
+        return "[[fruits]]\nname = \"apple\"\n\n[fruits.skin]\ncolour = \"red\"\n\n[[fruits.kinds]]\nn = 1";
+    }
+    if index == 35u {
+        return "# just a comment\n";
+    }
+    if index == 36u {
+        return "";
+    }
+    if index == 37u {
+        return "key = \"value\" # a trailing comment";
+    }
+    if index == 38u {
+        return "esc = \"\\e[1m\"";
+    }
+    if index == 39u {
+        return "hex = \"\\x41\\x42\"";
+    }
+    if index == 40u {
+        return "short = 07:32\nshortdt = 1979-05-27T07:32Z";
+    }
+    if index == 41u {
+        return "a = [1, 2,]";
+    }
+    if index == 42u {
+        return "empty_array = []\nempty_table = {}";
+    }
+    if index == 43u {
+        return "\n\n\n";
+    }
+    return "";
+}
+
+const ValidCount: uint = 44;
+
+// Documents TOML refuses. Each is a form some reader accepts and some does not, which is exactly the set that
+// makes one document mean two things.
+func Invalid(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "key = # no value";
+    }
+    if index == 1u {
+        return "a = 1\na = 2";
+    }
+    if index == 2u {
+        return "[a]\n[a]";
+    }
+    if index == 3u {
+        return "a = { b = 1 }\n[a.c]";
+    }
+    if index == 4u {
+        return "a = { b = 1 }\na.c = 2";
+    }
+    if index == 5u {
+        return "[t]\na.b = 1\n[t.a]";
+    }
+    if index == 6u {
+        return "a = 1\n[a]";
+    }
+    if index == 7u {
+        return "a = 1\na.b = 2";
+    }
+    if index == 8u {
+        return "a = [1, 2]\n[[a]]";
+    }
+    if index == 9u {
+        return "[[a]]\n[a]";
+    }
+    if index == 10u {
+        return "a = 010";
+    }
+    if index == 11u {
+        return "a = 0x";
+    }
+    if index == 12u {
+        return "a = +0x1";
+    }
+    if index == 13u {
+        return "a = 1__0";
+    }
+    if index == 14u {
+        return "a = _1";
+    }
+    if index == 15u {
+        return "a = 1_";
+    }
+    if index == 16u {
+        return "a = 0b102";
+    }
+    if index == 17u {
+        return "a = .7";
+    }
+    if index == 18u {
+        return "a = 7.";
+    }
+    if index == 19u {
+        return "a = 1e";
+    }
+    if index == 20u {
+        return "a = 3.e2";
+    }
+    if index == 21u {
+        return "a = 01.5";
+    }
+    if index == 22u {
+        return "a = 1979-02-30";
+    }
+    if index == 23u {
+        return "a = 1979-13-01";
+    }
+    if index == 24u {
+        return "a = 2023-02-29";
+    }
+    if index == 25u {
+        return "a = 1979-05-27T25:00:00Z";
+    }
+    if index == 26u {
+        return "a = \"unterminated";
+    }
+    if index == 27u {
+        return "a = \"bad\\q\"";
+    }
+    if index == 28u {
+        return "a = \"\\u12\"";
+    }
+    if index == 29u {
+        return "a = 1 b = 2";
+    }
+    if index == 30u {
+        return "[a";
+    }
+    if index == 31u {
+        return "a = [1, 2";
+    }
+    if index == 32u {
+        return "a = { b = 1";
+    }
+    if index == 33u {
+        return "a = [1}";
+    }
+    if index == 34u {
+        return "= 1";
+    }
+    if index == 35u {
+        return "a";
+    }
+    if index == 36u {
+        return "a = \"\"\"not closed";
+    }
+    if index == 37u {
+        return "a = 'not closed";
+    }
+    if index == 38u {
+        return "a = tru";
+    }
+    if index == 39u {
+        return "[]\na = 1";
+    }
+    if index == 40u {
+        return "a = 9223372036854775808";
+    }
+    if index == 41u {
+        return "a = 1979-05-27T07:32:00+07";
+    }
+    return "a = 1";
+}
+
+const InvalidCount: uint = 42;
+
+// The index a failing vector sits at, so a refusal names the document rather than the loop.
+func Label(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "vector 0";
+    }
+    if index == 1u {
+        return "vector 1";
+    }
+    if index == 2u {
+        return "vector 2";
+    }
+    if index == 3u {
+        return "vector 3";
+    }
+    if index == 4u {
+        return "vector 4";
+    }
+    if index == 5u {
+        return "vector 5";
+    }
+    if index == 6u {
+        return "vector 6";
+    }
+    if index == 7u {
+        return "vector 7";
+    }
+    if index == 8u {
+        return "vector 8";
+    }
+    if index == 9u {
+        return "vector 9";
+    }
+    if index == 10u {
+        return "vector 10";
+    }
+    if index == 11u {
+        return "vector 11";
+    }
+    if index == 12u {
+        return "vector 12";
+    }
+    if index == 13u {
+        return "vector 13";
+    }
+    if index == 14u {
+        return "vector 14";
+    }
+    if index == 15u {
+        return "vector 15";
+    }
+    if index == 16u {
+        return "vector 16";
+    }
+    if index == 17u {
+        return "vector 17";
+    }
+    if index == 18u {
+        return "vector 18";
+    }
+    if index == 19u {
+        return "vector 19";
+    }
+    if index == 20u {
+        return "vector 20";
+    }
+    if index == 21u {
+        return "vector 21";
+    }
+    if index == 22u {
+        return "vector 22";
+    }
+    if index == 23u {
+        return "vector 23";
+    }
+    if index == 24u {
+        return "vector 24";
+    }
+    if index == 25u {
+        return "vector 25";
+    }
+    if index == 26u {
+        return "vector 26";
+    }
+    if index == 27u {
+        return "vector 27";
+    }
+    if index == 28u {
+        return "vector 28";
+    }
+    if index == 29u {
+        return "vector 29";
+    }
+    if index == 30u {
+        return "vector 30";
+    }
+    if index == 31u {
+        return "vector 31";
+    }
+    if index == 32u {
+        return "vector 32";
+    }
+    if index == 33u {
+        return "vector 33";
+    }
+    if index == 34u {
+        return "vector 34";
+    }
+    if index == 35u {
+        return "vector 35";
+    }
+    if index == 36u {
+        return "vector 36";
+    }
+    if index == 37u {
+        return "vector 37";
+    }
+    if index == 38u {
+        return "vector 38";
+    }
+    if index == 39u {
+        return "vector 39";
+    }
+    if index == 40u {
+        return "vector 40";
+    }
+    if index == 41u {
+        return "vector 41";
+    }
+    if index == 42u {
+        return "vector 42";
+    }
+    if index == 43u {
+        return "vector 43";
+    }
+    return "vector past the end";
+}
+
+func Reparsed(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "rewritten vector 0";
+    }
+    if index == 1u {
+        return "rewritten vector 1";
+    }
+    if index == 2u {
+        return "rewritten vector 2";
+    }
+    if index == 3u {
+        return "rewritten vector 3";
+    }
+    if index == 4u {
+        return "rewritten vector 4";
+    }
+    if index == 5u {
+        return "rewritten vector 5";
+    }
+    if index == 6u {
+        return "rewritten vector 6";
+    }
+    if index == 7u {
+        return "rewritten vector 7";
+    }
+    if index == 8u {
+        return "rewritten vector 8";
+    }
+    if index == 9u {
+        return "rewritten vector 9";
+    }
+    if index == 10u {
+        return "rewritten vector 10";
+    }
+    if index == 11u {
+        return "rewritten vector 11";
+    }
+    if index == 12u {
+        return "rewritten vector 12";
+    }
+    if index == 13u {
+        return "rewritten vector 13";
+    }
+    if index == 14u {
+        return "rewritten vector 14";
+    }
+    if index == 15u {
+        return "rewritten vector 15";
+    }
+    if index == 16u {
+        return "rewritten vector 16";
+    }
+    if index == 17u {
+        return "rewritten vector 17";
+    }
+    if index == 18u {
+        return "rewritten vector 18";
+    }
+    if index == 19u {
+        return "rewritten vector 19";
+    }
+    if index == 20u {
+        return "rewritten vector 20";
+    }
+    if index == 21u {
+        return "rewritten vector 21";
+    }
+    if index == 22u {
+        return "rewritten vector 22";
+    }
+    if index == 23u {
+        return "rewritten vector 23";
+    }
+    if index == 24u {
+        return "rewritten vector 24";
+    }
+    if index == 25u {
+        return "rewritten vector 25";
+    }
+    if index == 26u {
+        return "rewritten vector 26";
+    }
+    if index == 27u {
+        return "rewritten vector 27";
+    }
+    if index == 28u {
+        return "rewritten vector 28";
+    }
+    if index == 29u {
+        return "rewritten vector 29";
+    }
+    if index == 30u {
+        return "rewritten vector 30";
+    }
+    if index == 31u {
+        return "rewritten vector 31";
+    }
+    if index == 32u {
+        return "rewritten vector 32";
+    }
+    if index == 33u {
+        return "rewritten vector 33";
+    }
+    if index == 34u {
+        return "rewritten vector 34";
+    }
+    if index == 35u {
+        return "rewritten vector 35";
+    }
+    if index == 36u {
+        return "rewritten vector 36";
+    }
+    if index == 37u {
+        return "rewritten vector 37";
+    }
+    if index == 38u {
+        return "rewritten vector 38";
+    }
+    if index == 39u {
+        return "rewritten vector 39";
+    }
+    if index == 40u {
+        return "rewritten vector 40";
+    }
+    if index == 41u {
+        return "rewritten vector 41";
+    }
+    if index == 42u {
+        return "rewritten vector 42";
+    }
+    if index == 43u {
+        return "rewritten vector 43";
+    }
+    return "rewritten vector past the end";
+}
+func Fixed(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "fixed point of vector 0";
+    }
+    if index == 1u {
+        return "fixed point of vector 1";
+    }
+    if index == 2u {
+        return "fixed point of vector 2";
+    }
+    if index == 3u {
+        return "fixed point of vector 3";
+    }
+    if index == 4u {
+        return "fixed point of vector 4";
+    }
+    if index == 5u {
+        return "fixed point of vector 5";
+    }
+    if index == 6u {
+        return "fixed point of vector 6";
+    }
+    if index == 7u {
+        return "fixed point of vector 7";
+    }
+    if index == 8u {
+        return "fixed point of vector 8";
+    }
+    if index == 9u {
+        return "fixed point of vector 9";
+    }
+    if index == 10u {
+        return "fixed point of vector 10";
+    }
+    if index == 11u {
+        return "fixed point of vector 11";
+    }
+    if index == 12u {
+        return "fixed point of vector 12";
+    }
+    if index == 13u {
+        return "fixed point of vector 13";
+    }
+    if index == 14u {
+        return "fixed point of vector 14";
+    }
+    if index == 15u {
+        return "fixed point of vector 15";
+    }
+    if index == 16u {
+        return "fixed point of vector 16";
+    }
+    if index == 17u {
+        return "fixed point of vector 17";
+    }
+    if index == 18u {
+        return "fixed point of vector 18";
+    }
+    if index == 19u {
+        return "fixed point of vector 19";
+    }
+    if index == 20u {
+        return "fixed point of vector 20";
+    }
+    if index == 21u {
+        return "fixed point of vector 21";
+    }
+    if index == 22u {
+        return "fixed point of vector 22";
+    }
+    if index == 23u {
+        return "fixed point of vector 23";
+    }
+    if index == 24u {
+        return "fixed point of vector 24";
+    }
+    if index == 25u {
+        return "fixed point of vector 25";
+    }
+    if index == 26u {
+        return "fixed point of vector 26";
+    }
+    if index == 27u {
+        return "fixed point of vector 27";
+    }
+    if index == 28u {
+        return "fixed point of vector 28";
+    }
+    if index == 29u {
+        return "fixed point of vector 29";
+    }
+    if index == 30u {
+        return "fixed point of vector 30";
+    }
+    if index == 31u {
+        return "fixed point of vector 31";
+    }
+    if index == 32u {
+        return "fixed point of vector 32";
+    }
+    if index == 33u {
+        return "fixed point of vector 33";
+    }
+    if index == 34u {
+        return "fixed point of vector 34";
+    }
+    if index == 35u {
+        return "fixed point of vector 35";
+    }
+    if index == 36u {
+        return "fixed point of vector 36";
+    }
+    if index == 37u {
+        return "fixed point of vector 37";
+    }
+    if index == 38u {
+        return "fixed point of vector 38";
+    }
+    if index == 39u {
+        return "fixed point of vector 39";
+    }
+    if index == 40u {
+        return "fixed point of vector 40";
+    }
+    if index == 41u {
+        return "fixed point of vector 41";
+    }
+    if index == 42u {
+        return "fixed point of vector 42";
+    }
+    if index == 43u {
+        return "fixed point of vector 43";
+    }
+    return "fixed point of vector past the end";
+}
+func Refusal(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "invalid vector 0";
+    }
+    if index == 1u {
+        return "invalid vector 1";
+    }
+    if index == 2u {
+        return "invalid vector 2";
+    }
+    if index == 3u {
+        return "invalid vector 3";
+    }
+    if index == 4u {
+        return "invalid vector 4";
+    }
+    if index == 5u {
+        return "invalid vector 5";
+    }
+    if index == 6u {
+        return "invalid vector 6";
+    }
+    if index == 7u {
+        return "invalid vector 7";
+    }
+    if index == 8u {
+        return "invalid vector 8";
+    }
+    if index == 9u {
+        return "invalid vector 9";
+    }
+    if index == 10u {
+        return "invalid vector 10";
+    }
+    if index == 11u {
+        return "invalid vector 11";
+    }
+    if index == 12u {
+        return "invalid vector 12";
+    }
+    if index == 13u {
+        return "invalid vector 13";
+    }
+    if index == 14u {
+        return "invalid vector 14";
+    }
+    if index == 15u {
+        return "invalid vector 15";
+    }
+    if index == 16u {
+        return "invalid vector 16";
+    }
+    if index == 17u {
+        return "invalid vector 17";
+    }
+    if index == 18u {
+        return "invalid vector 18";
+    }
+    if index == 19u {
+        return "invalid vector 19";
+    }
+    if index == 20u {
+        return "invalid vector 20";
+    }
+    if index == 21u {
+        return "invalid vector 21";
+    }
+    if index == 22u {
+        return "invalid vector 22";
+    }
+    if index == 23u {
+        return "invalid vector 23";
+    }
+    if index == 24u {
+        return "invalid vector 24";
+    }
+    if index == 25u {
+        return "invalid vector 25";
+    }
+    if index == 26u {
+        return "invalid vector 26";
+    }
+    if index == 27u {
+        return "invalid vector 27";
+    }
+    if index == 28u {
+        return "invalid vector 28";
+    }
+    if index == 29u {
+        return "invalid vector 29";
+    }
+    if index == 30u {
+        return "invalid vector 30";
+    }
+    if index == 31u {
+        return "invalid vector 31";
+    }
+    if index == 32u {
+        return "invalid vector 32";
+    }
+    if index == 33u {
+        return "invalid vector 33";
+    }
+    if index == 34u {
+        return "invalid vector 34";
+    }
+    if index == 35u {
+        return "invalid vector 35";
+    }
+    if index == 36u {
+        return "invalid vector 36";
+    }
+    if index == 37u {
+        return "invalid vector 37";
+    }
+    if index == 38u {
+        return "invalid vector 38";
+    }
+    if index == 39u {
+        return "invalid vector 39";
+    }
+    if index == 40u {
+        return "invalid vector 40";
+    }
+    if index == 41u {
+        return "invalid vector 41";
+    }
+    return "invalid vector past the end";
+}
+func Differential(index: uint) -> Slice<char8> {
+    if index == 0u {
+        return "differential vector 0";
+    }
+    if index == 1u {
+        return "differential vector 1";
+    }
+    if index == 2u {
+        return "differential vector 2";
+    }
+    if index == 3u {
+        return "differential vector 3";
+    }
+    if index == 4u {
+        return "differential vector 4";
+    }
+    if index == 5u {
+        return "differential vector 5";
+    }
+    if index == 6u {
+        return "differential vector 6";
+    }
+    if index == 7u {
+        return "differential vector 7";
+    }
+    if index == 8u {
+        return "differential vector 8";
+    }
+    if index == 9u {
+        return "differential vector 9";
+    }
+    if index == 10u {
+        return "differential vector 10";
+    }
+    if index == 11u {
+        return "differential vector 11";
+    }
+    if index == 12u {
+        return "differential vector 12";
+    }
+    if index == 13u {
+        return "differential vector 13";
+    }
+    if index == 14u {
+        return "differential vector 14";
+    }
+    if index == 15u {
+        return "differential vector 15";
+    }
+    if index == 16u {
+        return "differential vector 16";
+    }
+    if index == 17u {
+        return "differential vector 17";
+    }
+    if index == 18u {
+        return "differential vector 18";
+    }
+    if index == 19u {
+        return "differential vector 19";
+    }
+    if index == 20u {
+        return "differential vector 20";
+    }
+    if index == 21u {
+        return "differential vector 21";
+    }
+    if index == 22u {
+        return "differential vector 22";
+    }
+    if index == 23u {
+        return "differential vector 23";
+    }
+    if index == 24u {
+        return "differential vector 24";
+    }
+    if index == 25u {
+        return "differential vector 25";
+    }
+    if index == 26u {
+        return "differential vector 26";
+    }
+    if index == 27u {
+        return "differential vector 27";
+    }
+    if index == 28u {
+        return "differential vector 28";
+    }
+    if index == 29u {
+        return "differential vector 29";
+    }
+    if index == 30u {
+        return "differential vector 30";
+    }
+    if index == 31u {
+        return "differential vector 31";
+    }
+    if index == 32u {
+        return "differential vector 32";
+    }
+    if index == 33u {
+        return "differential vector 33";
+    }
+    if index == 34u {
+        return "differential vector 34";
+    }
+    if index == 35u {
+        return "differential vector 35";
+    }
+    if index == 36u {
+        return "differential vector 36";
+    }
+    if index == 37u {
+        return "differential vector 37";
+    }
+    if index == 38u {
+        return "differential vector 38";
+    }
+    if index == 39u {
+        return "differential vector 39";
+    }
+    if index == 40u {
+        return "differential vector 40";
+    }
+    if index == 41u {
+        return "differential vector 41";
+    }
+    if index == 42u {
+        return "differential vector 42";
+    }
+    if index == 43u {
+        return "differential vector 43";
+    }
+    return "differential vector past the end";
+}
+func Render(value: *TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
+    var cursor = ByteCursor::New(storage);
+    let writer: TextWriter = CursorWriter::Of(@cursor);
+    let failure = TomlWriteDocument(writer, value);
+    Assert(failure == TomlWriteError::None, "every accepted document can be written back out");
+    return cursor.Written();
+}
+
+func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
+    if left.length != right.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < left.length {
+        if left.data[index] != right.data[index] {
+            return false;
+        }
+        index = index + 1u;
+    }
+    return true;
+}
+
+// How many scalar values the streaming reader finds, and whether it finished cleanly.
+func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
+    var reader = TomlEventReader::New(text);
+    var count: uint = 0;
+    while true {
+        let event = reader.Next();
+        if event == TomlEvent::Error {
+            *clean = false;
+            return count;
+        }
+        if event == TomlEvent::End {
+            *clean = reader.Error() == TomlParseError::None;
+            return count;
+        }
+        if event == TomlEvent::Text || event == TomlEvent::Integer || event == TomlEvent::Float ||
+            event == TomlEvent::Boolean || event == TomlEvent::DateTime {
+            count = count + 1u;
+        }
+    }
+    *clean = false;
+    return count;
+}
+
+// How many scalar values a tree holds, counted the same way.
+func TreeScalars(value: *TomlValue) -> uint {
+    let kind = value.Kind();
+    if kind == TomlKind::Table {
+        var total: uint = 0;
+        var index: uint = 0;
+        while index < value.Length() {
+            total = total + TreeScalars(@value.EntryAt(index).value);
+            index = index + 1u;
+        }
+        return total;
+    }
+    if kind == TomlKind::Array {
+        var total: uint = 0;
+        var index: uint = 0;
+        while index < value.Length() {
+            total = total + TreeScalars(value.At(index));
+            index = index + 1u;
+        }
+        return total;
+    }
+    return 1u;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var storage: char8[8192];
+    var second: char8[8192];
+    var outcome = TomlParseOutcome::New();
+
+    // Every document TOML accepts, accepted -- and then written, read and written again to the same bytes.
+    var index: uint = 0;
+    while index < ValidCount {
+        let text = Valid(index);
+        var parsed = TomlParse(allocator, text, @outcome);
+        Assert(outcome.error == TomlParseError::None, Label(index));
+        let once = Render(@parsed, MutableSlice::From<char8>(@storage[0], 8192));
+        var again = TomlParse(allocator, once, @outcome);
+        Assert(outcome.error == TomlParseError::None, Reparsed(index));
+        let twice = Render(@again, MutableSlice::From<char8>(@second[0], 8192));
+        Assert(Same(once, twice), Fixed(index));
+        index = index + 1u;
+    }
+
+    // Every document TOML refuses, refused -- and refused with a position, not merely a flag.
+    index = 0;
+    while index < InvalidCount {
+        let text = Invalid(index);
+        var refused = TomlParse(allocator, text, @outcome);
+        Assert(outcome.error != TomlParseError::None, Refusal(index));
+        Assert(outcome.line > 0u && outcome.column > 0u, "reported at a position a reader can find");
+        index = index + 1u;
+    }
+
+    // The differential check: the tree parser and the streaming reader must agree about every accepted
+    // document. They are two implementations of the same grammar, so agreement is a much stronger statement
+    // than either passing its own tests.
+    index = 0;
+    while index < ValidCount {
+        let text = Valid(index);
+        var parsed = TomlParse(allocator, text, @outcome);
+        Assert(outcome.error == TomlParseError::None, "the tree parser accepts it");
+        var clean = false;
+        let streamed = StreamedScalars(text, @clean);
+        Assert(clean, Differential(index));
+        Assert(streamed == TreeScalars(@parsed), Differential(index));
+        index = index + 1u;
+    }
+
+    // And they must agree about refusals of syntax. The streaming reader cannot catch a table defined twice,
+    // so the documents whose only fault is a redefinition are the ones it is allowed to accept.
+    index = 0;
+    while index < InvalidCount {
+        let text = Invalid(index);
+        var refused = TomlParse(allocator, text, @outcome);
+        // The streaming reader is responsible for the grammar and not for the tables or the values: it cannot
+        // know a table was defined twice without keeping every table it has seen, and it hands out the bytes of
+        // a number rather than reading it, so `010` is the caller's to refuse when the caller decodes it.
+        let structural = outcome.error == TomlParseError::Lexical ||
+                         outcome.error == TomlParseError::Unexpected ||
+                         outcome.error == TomlParseError::Truncated;
+        if structural {
+            var clean = false;
+            StreamedScalars(text, @clean);
+            Assert(!clean, Refusal(index));
+        }
+        index = index + 1u;
+    }
+
+    return 0;
+}

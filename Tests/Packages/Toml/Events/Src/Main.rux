@@ -106,6 +106,7 @@ func Main() -> int {
     Assert(FailsWith("a = { b = 1") == TomlParseError::Truncated, "an inline table left open");
     Assert(FailsWith("a = [1}") == TomlParseError::Unexpected, "a brace closing a bracket");
     Assert(FailsWith("[a\nx = 1") == TomlParseError::Unexpected, "a header with no closing bracket");
+    Assert(FailsWith("[]\nx = 1") == TomlParseError::Unexpected, "a header that names nothing");
     Assert(FailsWith("a 1") == TomlParseError::Unexpected, "a pair with no equals sign");
     Assert(FailsWith("a = \"unterminated") == TomlParseError::Lexical,
            "and a string the lexer refused, reported as the lexer's own");
