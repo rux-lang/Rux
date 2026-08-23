@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -881,6 +883,76 @@ TEST_CASE("first-party packages are publishable under the Rux namespace") {
     }
 
     CHECK_MESSAGE(packageCount > 0, "no first-party packages found below ", packagesRoot.string());
+}
+
+TEST_CASE("the first-party dependency graph is acyclic and resolves inside the workspace") {
+    // Every package resolves from the workspace with no registry and no cache, which is what lets the suite run
+    // with no network. That only holds while the graph closes over the workspace and has no cycle in it: a cycle
+    // has no build order at all, and a requirement no member satisfies would send the resolver to a registry.
+    const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
+    std::map<std::string, SemanticVersion> versions;
+    std::map<std::string, std::vector<std::string>> graph;
+
+    for (const auto &entry : std::filesystem::directory_iterator(packagesRoot)) {
+        const auto path = entry.path() / "Rux.toml";
+        if (!entry.is_directory() || !std::filesystem::is_regular_file(path)) {
+            continue;
+        }
+        const auto result = Manifest::Load(path);
+        REQUIRE_MESSAGE(result.Ok(), "invalid package manifest: ", path.string());
+        const Manifest &manifest = *result.manifest;
+        const std::string name = manifest.package.name.Text();
+        versions.emplace(name, manifest.package.version);
+        auto &edges = graph[name];
+        for (const auto &dependency : manifest.dependencies) {
+            edges.push_back(dependency.package.Text());
+        }
+        std::ranges::sort(edges);
+    }
+    REQUIRE_FALSE(graph.empty());
+
+    for (const auto &entry : std::filesystem::directory_iterator(packagesRoot)) {
+        const auto path = entry.path() / "Rux.toml";
+        if (!entry.is_directory() || !std::filesystem::is_regular_file(path)) {
+            continue;
+        }
+        const auto result = Manifest::Load(path);
+        REQUIRE(result.Ok());
+        for (const auto &dependency : result.manifest->dependencies) {
+            const auto *registry = dependency.Registry();
+            REQUIRE_MESSAGE(registry != nullptr, "first-party dependency must be a registry entry: ", path.string());
+            const auto target = versions.find(dependency.package.Text());
+            REQUIRE_MESSAGE(target != versions.end(), "dependency names no workspace member: ", path.string(), " -> ",
+                            dependency.package.Text());
+            CHECK_MESSAGE(registry->version.Matches(target->second),
+                          "requirement no workspace member satisfies: ", path.string(), " -> ",
+                          dependency.package.Text(), " ", registry->version.Text(), " against ", target->second.Text());
+        }
+    }
+
+    // Depth-first, marking the path being explored: reaching a package already on the path is a cycle.
+    std::set<std::string> finished;
+    std::set<std::string> exploring;
+    std::vector<std::string> order;
+    const auto Visit = [&](this const auto &self, const std::string &package) -> void {
+        if (finished.contains(package)) {
+            return;
+        }
+        REQUIRE_MESSAGE(!exploring.contains(package), "dependency cycle reaches ", package);
+        exploring.insert(package);
+        for (const auto &dependency : graph[package]) {
+            self(dependency);
+        }
+        exploring.erase(package);
+        finished.insert(package);
+        order.push_back(package);
+    };
+    for (const auto &[package, _] : graph) {
+        Visit(package);
+    }
+    CHECK(order.size() == graph.size());
+    // The order a build would take exists, and Core is at the bottom of it.
+    CHECK(order.front() == "Core");
 }
 
 TEST_CASE("repository Rux tests use canonical local manifests") {
