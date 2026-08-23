@@ -1,0 +1,180 @@
+// TOML's lexical surface is mostly strings and numbers, and that is where implementations disagree. The four
+// string forms differ in whether escapes are honoured and whether a newline may appear raw; a lexer that treats
+// them alike turns a Windows path into a string with a tab in it. Numbers and date-times share a prefix, so
+// the classification of `1979` against `1979-05-27` is checked here rather than assumed.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ String, TextError };
+import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
+
+func FirstToken(text: Slice<char8>) -> TomlToken {
+    var lexer = TomlLexer::New(text);
+    return lexer.Next();
+}
+
+func FirstKind(text: Slice<char8>) -> TomlTokenKind {
+    return FirstToken(text).kind;
+}
+
+func FirstError(text: Slice<char8>) -> TomlLexError {
+    return FirstToken(text).error;
+}
+
+// The decoded content of the first token, which must be a text token.
+func FirstText(text: Slice<char8>) -> String {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var lexer = TomlLexer::New(text);
+    let token = lexer.Next();
+    var error = TextError::None;
+    var bad = false;
+    let span = lexer.TextOf(@token);
+    return TomlDecodeText(allocator, span, token.form, @error, @bad);
+}
+
+func Same(value: *String, expected: Slice<char8>) -> bool {
+    let bytes = value.Bytes();
+    if bytes.length != expected.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < bytes.length {
+        if bytes.data[index] != expected.data[index] {
+            return false;
+        }
+        index = index + 1u;
+    }
+    return true;
+}
+
+func Main() -> int {
+    // The punctuation TOML's grammar is built from.
+    Assert(FirstKind("=") == TomlTokenKind::Equals, "an equals sign");
+    Assert(FirstKind(".") == TomlTokenKind::Dot, "a dot, which separates dotted keys");
+    Assert(FirstKind(",") == TomlTokenKind::Comma, "a comma");
+    Assert(FirstKind("[") == TomlTokenKind::LeftBracket, "an opening bracket");
+    Assert(FirstKind("]") == TomlTokenKind::RightBracket, "a closing bracket");
+    Assert(FirstKind("{") == TomlTokenKind::LeftBrace, "an opening brace");
+    Assert(FirstKind("}") == TomlTokenKind::RightBrace, "a closing brace");
+    Assert(FirstKind("") == TomlTokenKind::End, "and the end of input");
+
+    // A newline is a token, because TOML uses it to end a key-value pair.
+    Assert(FirstKind("\n\n") == TomlTokenKind::Newline, "a newline is significant");
+    Assert(FirstKind("\r\n") == TomlTokenKind::Newline, "and so is a carriage return pair");
+
+    // A comment is not a token at all; it is skipped like the whitespace around it.
+    var comments = TomlLexer::New("# a comment\nkey");
+    Assert(comments.Next().kind == TomlTokenKind::Newline, "a comment runs to the end of its line");
+    Assert(comments.Next().kind == TomlTokenKind::BareKey, "and the key after it survives");
+
+    // Bare keys admit letters, digits, underscores and hyphens -- and nothing else.
+    Assert(FirstKind("key") == TomlTokenKind::BareKey, "a bare key");
+    Assert(FirstKind("bare-key_2") == TomlTokenKind::BareKey, "hyphens and underscores are part of one");
+    Assert(FirstKind("!") == TomlTokenKind::Error, "an exclamation mark begins nothing");
+    Assert(FirstError("!") == TomlLexError::UnexpectedByte, "which is an unexpected byte");
+
+    // The two keywords, and nothing that merely resembles them.
+    Assert(FirstKind("true") == TomlTokenKind::Boolean, "true");
+    Assert(FirstKind("false") == TomlTokenKind::Boolean, "false");
+    Assert(FirstKind("True") == TomlTokenKind::BareKey, "capitalised True is a key, not a boolean");
+
+    // Integers in the four bases TOML defines, underscores and all.
+    Assert(FirstKind("42") == TomlTokenKind::Integer, "a decimal integer");
+    Assert(FirstKind("-17") == TomlTokenKind::Integer, "a negative one");
+    Assert(FirstKind("+99") == TomlTokenKind::Integer, "an explicitly positive one");
+    Assert(FirstKind("1_000_000") == TomlTokenKind::Integer, "underscores are part of the number");
+    Assert(FirstKind("0xDEAD_beef") == TomlTokenKind::Integer, "hexadecimal");
+    Assert(FirstKind("0o755") == TomlTokenKind::Integer, "octal");
+    Assert(FirstKind("0b1101") == TomlTokenKind::Integer, "and binary");
+
+    // Floats, including the three spellings JSON cannot manage.
+    Assert(FirstKind("3.14") == TomlTokenKind::Float, "a fractional float");
+    Assert(FirstKind("5e+22") == TomlTokenKind::Float, "an exponent makes one too");
+    Assert(FirstKind("6.626e-34") == TomlTokenKind::Float, "and both together");
+    Assert(FirstKind("inf") == TomlTokenKind::Float, "infinity is a float TOML can write");
+    Assert(FirstKind("-inf") == TomlTokenKind::Float, "in both directions");
+    Assert(FirstKind("nan") == TomlTokenKind::Float, "and so is NaN");
+    // `0xe` is hexadecimal fourteen, not an exponent, which is why the base is consulted first.
+    Assert(FirstKind("0xe") == TomlTokenKind::Integer, "a hexadecimal e is a digit, not an exponent");
+
+    // Date-times share their opening digits with integers, so the distinction is made on shape.
+    Assert(FirstKind("1979-05-27") == TomlTokenKind::DateTime, "a local date");
+    Assert(FirstKind("07:32:00") == TomlTokenKind::DateTime, "a local time");
+    Assert(FirstKind("1979-05-27T07:32:00Z") == TomlTokenKind::DateTime, "an offset date-time");
+    Assert(FirstKind("1979-05-27 07:32:00") == TomlTokenKind::DateTime,
+           "and one written with a space, which TOML allows");
+    Assert(FirstKind("1979") == TomlTokenKind::Integer, "a bare year is still an integer");
+
+
+    // The four string forms. A basic string honours escapes; a literal string honours none of them, which is
+    // what makes it right for a Windows path.
+    var basic = FirstToken("\"hello\"");
+    Assert(basic.kind == TomlTokenKind::Text, "a basic string");
+    Assert(basic.form == TomlTextForm::Basic, "in the basic form");
+    Assert(basic.start == 1u && basic.end == 6u, "and its span excludes the quotes");
+
+    var literal = FirstToken("'C:\\windows'");
+    Assert(literal.form == TomlTextForm::Literal, "a literal string");
+    var literalText = FirstText("'C:\\windows'");
+    Assert(Same(@literalText, "C:\\windows"), "keeps its backslash rather than reading it as an escape");
+
+    var multi = FirstToken("\"\"\"\nfirst\nsecond\"\"\"");
+    Assert(multi.form == TomlTextForm::MultiLineBasic, "a multi-line basic string");
+    var multiText = FirstText("\"\"\"\nfirst\nsecond\"\"\"");
+    Assert(Same(@multiText, "first\nsecond"), "drops the newline that follows its opening delimiter");
+
+    var multiLiteral = FirstToken("'''\na\\tb'''");
+    Assert(multiLiteral.form == TomlTextForm::MultiLineLiteral, "a multi-line literal string");
+    var multiLiteralText = FirstText("'''\na\\tb'''");
+    Assert(Same(@multiLiteralText, "a\\tb"), "and it too takes its backslashes literally");
+
+    // Escapes, including the one TOML 1.1 adds.
+    var escaped = FirstText("\"a\\tb\\nc\"");
+    Assert(Same(@escaped, "a\tb\nc"), "a tab and a newline escape");
+    var quoted = FirstText("\"she\\\"said\\\"\"");
+    Assert(Same(@quoted, "she\"said\""), "an escaped quote does not close the string");
+    var unicode = FirstText("\"\\u00E9\"");
+    Assert(Same(@unicode, "\u{E9}"), "a short unicode escape names a scalar value");
+    var astral = FirstText("\"\\U0001F600\"");
+    Assert(Same(@astral, "\u{1F600}"), "and a long one names a scalar above the basic plane");
+    var escape = FirstText("\"\\e\"");
+    Assert(Same(@escape, "\u{1B}"), "TOML 1.1 spells the escape character");
+
+    // A line-ending backslash in a multi-line string swallows the wrapping it was used to introduce.
+    var folded = FirstText("\"\"\"\na\\ \n   b\"\"\"");
+    Assert(Same(@folded, "ab"), "a line-ending backslash folds away the whitespace after it");
+
+    // Refusals: the forms a lenient lexer would let through.
+    Assert(FirstError("\"unterminated\n") == TomlLexError::NewlineInText,
+           "a raw newline inside a single-line string is refused where it appears");
+    Assert(FirstError("\"unterminated") == TomlLexError::UnterminatedText, "an unclosed string is refused");
+    Assert(FirstError("\"bad\\q\"") == TomlLexError::BadEscape, "an escape TOML does not define");
+    Assert(FirstError("\"\\u12\"") == TomlLexError::BadUnicodeEscape, "a short unicode escape");
+    Assert(FirstError("\"a\u{1}b\"") == TomlLexError::UnescapedControl, "and a raw control character");
+
+    // A surrogate is not a scalar value, so no escape names one.
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var surrogateLexer = TomlLexer::New("\"\\uD800\"");
+    let surrogate = surrogateLexer.Next();
+    var surrogateError = TextError::None;
+    var surrogateBad = false;
+    let surrogateSpan = surrogateLexer.TextOf(@surrogate);
+    var surrogateText = TomlDecodeText(allocator, surrogateSpan, surrogate.form, @surrogateError,
+                                       @surrogateBad);
+    Assert(surrogateBad, "an escaped surrogate names no scalar value");
+
+    // Spans and positions, because a configuration error that cannot point at itself costs more than the parse.
+    var document = TomlLexer::New("alpha = 1\nbeta = 2");
+    Assert(document.Next().line == 1u, "the first key is on line one");
+    document.Next();
+    document.Next();
+    document.Next();
+    let second = document.Next();
+    Assert(second.kind == TomlTokenKind::BareKey, "the second key follows the newline");
+    Assert(second.line == 2u, "on line two");
+    Assert(second.column == 1u, "at the first column");
+
+    return 0;
+}

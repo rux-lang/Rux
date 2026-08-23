@@ -25,6 +25,7 @@ Packages = [
     "Packages/Storage",
     "Packages/Text",
     "Packages/Time",
+    "Packages/Toml",
     "Packages/Unicode",
     "Packages/Uuid",
     "Packages/Windows",

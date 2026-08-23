@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Lexer"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Toml: tokens, the four string forms, escapes, numbers, date-times and spans"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+Toml = { Path = "../../../../Packages/Toml" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Toml"
