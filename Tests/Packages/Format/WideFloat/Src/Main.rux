@@ -1,0 +1,224 @@
+// The wide widths have no arithmetic yet, so what can be tested is what the package promises: that the text of a
+// bit pattern is the shortest that reads back as the same bits, that a decimal reads to the nearest value with ties
+// to even, and that both agree with the reference the compiler computed independently. The vectors in Vectors.rux
+// carry that reference; the cases here are the ones a reader can check by eye.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Result, Slice };
+import Format::{ ByteCursor, CursorWriter, Display, Float128, Float256, Float512, Float80, FloatLayout,
+                 FormatSpec, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80,
+                 ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
+import Text::TextError;
+
+func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
+    if left.length != right.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < left.length {
+        if left.data[index] != right.data[index] {
+            return false;
+        }
+        index = index + 1u;
+    }
+    return true;
+}
+
+func StartsWith(text: Slice<char8>, prefix: Slice<char8>) -> bool {
+    if text.length < prefix.length {
+        return false;
+    }
+    return Same(Slice<char8> { data: text.data, length: prefix.length }, prefix);
+}
+
+// Renders `bits` under `layout` into `storage` and hands back what was written.
+func Render(bits: uint512, layout: *FloatLayout, spec: FormatSpec, storage: MutableSlice<char8>) -> Slice<char8> {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var cursor = ByteCursor::New(storage);
+    let writer: TextWriter = CursorWriter::Of(@cursor);
+    Assert(WriteWideFloat(allocator, writer, spec, bits, layout) == TextError::None, "rendering succeeds");
+    return cursor.Written();
+}
+
+func Precision(places: uint) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    spec.hasPrecision = true;
+    spec.precision = places;
+    return spec;
+}
+
+// The bits `text` reads to under `layout`, which must read.
+func Bits(text: Slice<char8>, layout: *FloatLayout) -> uint512 {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    let parsed = ParseWideFloat(allocator, text, layout);
+    var failure = ParseError::Empty;
+    Assert(!parsed.TryIntoError(@failure), "a text that should read");
+    return parsed.ValueOr(0u512);
+}
+
+func Refused(text: Slice<char8>, layout: *FloatLayout) -> bool {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    let parsed = ParseWideFloat(allocator, text, layout);
+    var failure = ParseError::Empty;
+    return parsed.TryIntoError(@failure);
+}
+
+func Main() -> int {
+    var storage: char8[8192];
+    let room = MutableSlice::From<char8>(@storage[0], 8192);
+    let plain = FormatSpec::Plain();
+    let b128 = FloatLayout::Binary128();
+    let b80 = FloatLayout::Extended80();
+    let b256 = FloatLayout::Binary256();
+    let b512 = FloatLayout::Binary512();
+
+    // Values a reader can check by eye, from their bits.
+    Assert(Same(Render(0x3FFF0000000000000000000000000000u512, @b128, plain, room), "1.0"), "one");
+    Assert(Same(Render(0xBFFF0000000000000000000000000000u512, @b128, plain, room), "-1.0"), "minus one");
+    Assert(Same(Render(0x3FFE8000000000000000000000000000u512, @b128, plain, room), "0.75"), "three quarters");
+    Assert(Same(Render(0u512, @b128, plain, room), "0.0"), "zero");
+    Assert(Same(Render(1u512 << 127u, @b128, plain, room), "-0.0"), "negative zero keeps its sign");
+    Assert(Same(Render(0x7FFF0000000000000000000000000000u512, @b128, plain, room), "Inf"), "infinity");
+    Assert(Same(Render(0xFFFF0000000000000000000000000000u512, @b128, plain, room), "-Inf"), "negative infinity");
+    Assert(Same(Render(0x7FFF8000000000000000000000000000u512, @b128, plain, room), "NaN"), "not a number");
+    Assert(Same(Render(0x3FFF0000000000000000u512, @b80, plain, room), "NaN"),
+           "an extended value with the integer bit clear is an unnormal, which is not a number");
+    Assert(Same(Render(0x3FFF8000000000000000u512, @b80, plain, room), "1.0"), "one in the extended format");
+    Assert(Same(Render(0x8000000000000000u512, @b80, plain, room), "3.3621031431120935063e-4932"),
+           "an extended pseudo-denormal is the value its bits say");
+
+    // Values from text, back to text: the shortest that reads back, in the narrow spelling.
+    Assert(Same(Render(Bits("0.1", @b128), @b128, plain, room), "0.1"), "a tenth comes back as a tenth");
+    Assert(Same(Render(Bits("1e-5", @b128), @b128, plain, room), "1.0e-05"), "scientific below a ten-thousandth");
+    Assert(Same(Render(Bits("123456789", @b128), @b128, plain, room), "123456789.0"), "fixed with a fraction");
+    Assert(Same(Render(Bits("1e40", @b128), @b128, plain, room), "1.0e+40"),
+           "and scientific past the digits a float128 can fill");
+    Assert(Same(Render(Bits("1e40", @b512), @b512, plain, room), "10000000000000000000000000000000000000000.0"),
+           "while a float512 fills forty digits easily");
+    Assert(Same(Render(Bits("0.1", @b512), @b512, plain, room), "0.1"), "a tenth at the widest width");
+    Assert(Same(Render(Bits("0.1", @b80), @b80, plain, room), "0.1"), "and at the narrowest");
+    Assert(Same(Render(Bits("0.1", @b256), @b256, plain, room), "0.1"), "and in between");
+
+    // Precision: that many digits after the point, rounded to nearest with ties to the even digit.
+    Assert(Same(Render(Bits("0.1", @b128), @b128, Precision(3u), room), "0.100"), "three places");
+    Assert(Same(Render(Bits("2.5", @b128), @b128, Precision(0u), room), "2"), "a tie goes to even");
+    Assert(Same(Render(Bits("3.5", @b128), @b128, Precision(0u), room), "4"), "in both directions");
+    Assert(Same(Render(Bits("0.125", @b128), @b128, Precision(2u), room), "0.12"), "and at any place");
+    Assert(Same(Render(Bits("0.375", @b128), @b128, Precision(2u), room), "0.38"), "while over half rounds up");
+    Assert(Same(Render(Bits("9.999", @b128), @b128, Precision(2u), room), "10.00"), "with the carry running out");
+    Assert(Same(Render(Bits("0.0004", @b128), @b128, Precision(3u), room), "0.000"), "below half a place is zero");
+    Assert(Same(Render(Bits("0.0006", @b128), @b128, Precision(3u), room), "0.001"), "and above it is one");
+    Assert(Same(Render(0u512, @b128, Precision(2u), room), "0.00"), "zero to two places");
+    var signed = FormatSpec::Plain();
+    signed.showSign = true;
+    Assert(Same(Render(Bits("1", @b128), @b128, signed, room), "+1.0"), "an asked-for sign");
+
+    // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of
+    // them, and writing them exactly is what the allocator is for.
+    let largest = Render(Bits("1.189731495357231765085759326628007e4932", @b128), @b128, Precision(1u), room);
+    Assert(largest.length == 4935u, "the largest float128 to one place is 4933 digits, a point and one more");
+    Assert(StartsWith(largest, "11897314953572317650857593266280070"), "beginning with the digits it has");
+
+    // The reference vectors: every bit pattern renders to exactly the text the compiler computed, and every text
+    // reads back to exactly the bits it came from.
+    var index: uint = 0;
+    while index < FormatCount80() {
+        let bits = FormatBits80(index) as uint512;
+        // The expected text is the message, so a failure names the vector rather than the loop.
+        Assert(Same(Render(bits, @b80, plain, room), FormatText80(index)), FormatText80(index));
+        if UnpackWide(bits, @b80).class != WideClass::NaN {
+            Assert(Bits(FormatText80(index), @b80) == bits, "and reads back");
+        }
+        index = index + 1u;
+    }
+    index = 0;
+    while index < FormatCount128() {
+        let bits = FormatBits128(index) as uint512;
+        // The expected text is the message, so a failure names the vector rather than the loop.
+        Assert(Same(Render(bits, @b128, plain, room), FormatText128(index)), FormatText128(index));
+        if UnpackWide(bits, @b128).class != WideClass::NaN {
+            Assert(Bits(FormatText128(index), @b128) == bits, "and reads back");
+        }
+        index = index + 1u;
+    }
+    index = 0;
+    while index < FormatCount256() {
+        let bits = FormatBits256(index) as uint512;
+        // The expected text is the message, so a failure names the vector rather than the loop.
+        Assert(Same(Render(bits, @b256, plain, room), FormatText256(index)), FormatText256(index));
+        if UnpackWide(bits, @b256).class != WideClass::NaN {
+            Assert(Bits(FormatText256(index), @b256) == bits, "and reads back");
+        }
+        index = index + 1u;
+    }
+    index = 0;
+    while index < FormatCount512() {
+        let bits = FormatBits512(index);
+        // The expected text is the message, so a failure names the vector rather than the loop.
+        Assert(Same(Render(bits, @b512, plain, room), FormatText512(index)), FormatText512(index));
+        if UnpackWide(bits, @b512).class != WideClass::NaN {
+            Assert(Bits(FormatText512(index), @b512) == bits, "and reads back");
+        }
+        index = index + 1u;
+    }
+
+    // Exactly halfway between two neighbours reads to the even one.
+    index = 0;
+    while index < HalfwayCount80() {
+        Assert(Bits(HalfwayText80(index), @b80) == HalfwayBits80(index) as uint512, "a float80 halfway case");
+        index = index + 1u;
+    }
+    index = 0;
+    while index < HalfwayCount128() {
+        Assert(Bits(HalfwayText128(index), @b128) == HalfwayBits128(index) as uint512, "a float128 halfway case");
+        index = index + 1u;
+    }
+    index = 0;
+    while index < HalfwayCount256() {
+        Assert(Bits(HalfwayText256(index), @b256) == HalfwayBits256(index) as uint512, "a float256 halfway case");
+        index = index + 1u;
+    }
+    index = 0;
+    while index < HalfwayCount512() {
+        Assert(Bits(HalfwayText512(index), @b512) == HalfwayBits512(index), "a float512 halfway case");
+        index = index + 1u;
+    }
+
+    // What reading refuses, and what it rounds away.
+    Assert(Refused("", @b128), "nothing is not a number");
+    Assert(Refused("abc", @b128), "nor are letters");
+    Assert(Refused("1.2.3", @b128), "nor two points");
+    Assert(Refused("1e", @b128), "nor an exponent with no digits");
+    Assert(Refused("1e5000", @b128), "past the largest float128 is overflow, not infinity");
+    Assert(Refused("1e5000", @b80), "and the same for float80");
+    Assert(Refused("1e80000", @b256), "and float256");
+    Assert(Refused("1e2000000", @b512), "and float512");
+    Assert(Bits("1e-9999", @b128) == 0u512, "below the smallest subnormal reads as zero");
+    Assert(Bits("-1e-9999", @b128) == (1u512 << 127u), "with its sign kept");
+    Assert(Bits("NaN", @b128) == 0x7FFF8000000000000000000000000000u512, "NaN as formatting spells it");
+    Assert(Bits("-Inf", @b128) == 0xFFFF0000000000000000000000000000u512, "and the infinities");
+
+    // The interface path, which chooses its own allocator.
+    var cursor = ByteCursor::New(room);
+    let writer: TextWriter = CursorWriter::Of(@cursor);
+    let shown: Display = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
+    Assert(shown.Format(writer, plain) == TextError::None, "Display renders");
+    Assert(Same(cursor.Written(), "1.0"), "to the same text");
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    let typed = ParseFloat256(allocator, "2.5");
+    var failure = ParseError::Empty;
+    Assert(!typed.TryIntoError(@failure), "the typed entry point reads");
+    let value = typed.ValueOr(Float256::FromBits(0u256));
+    Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
+    let tiny = ParseFloat80(allocator, "1e-4940").ValueOr(Float80::FromBits(0u128));
+    Assert(tiny.IsFinite() && tiny.Bits() != 0u128, "a float80 subnormal reads as itself");
+    let widest = ParseFloat512(allocator, "Inf").ValueOr(Float512::FromBits(0u512));
+    Assert(widest.IsInfinite(), "and the widest width reads an infinity");
+    let narrow = ParseFloat128(allocator, "1e5000");
+    Assert(narrow.TryIntoError(@failure) && failure == ParseError::Overflow, "with overflow named as such");
+    return 0;
+}

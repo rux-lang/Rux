@@ -17,6 +17,7 @@ rux add Rux/Format
 - **Parsing** — `ParseInt64` and `ParseFloat64`, plus the non-trapping `TryParseInt64` and `TryParseFloat64`, which report failure through `ParseError`.
 - **`ReplacementCharacter`** — what is written in place of anything that is not a whole character.
 - **Float support** — `IsFinite`, `IsInfinite`, `IsNan`, `Pow10`, and `ScaleByPow10`, so decimal conversion stays exact where it can be.
+- **The wide widths** — `Float80`, `Float128`, `Float256` and `Float512`, held as their bits. The language has no arithmetic at these widths yet, so a value is made from bits or read from text, answers `IsNan`, `IsInfinite`, `IsFinite` and `IsNegative`, and renders through `Display` as the shortest decimal that reads back to exactly the same bits — found with exact big-integer arithmetic (`BigNat`), which is why these, unlike the narrow widths, take an allocator. `ParseFloat80` through `ParseFloat512` read decimal text to the nearest value with ties to even, and every rendering and reading is held to reference vectors the compiler's own exact float arithmetic produced independently.
 
 ## Example
 

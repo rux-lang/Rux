@@ -1,0 +1,133 @@
+// Rendering a wide float the way `float64` renders, at any width.
+//
+// The spelling is the narrow one exactly: `NaN`, `Inf`, a signed zero as `0.0`, fixed notation while the exponent
+// stays within what the digits can fill and scientific past it, and `{:.N}` as that many digits after the point.
+// A reader who knows what a `float64` looks like in text knows what these look like, which is the whole of the
+// design.
+//
+// What differs is that the digits come from exact integer arithmetic rather than from a scaled double, so they
+// are the shortest that read back as the same bits at every width -- and that the arithmetic needs an allocator,
+// because the numbers it works on are as large as the exponent makes them.
+
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::{ MutableSlice, Slice };
+import Text::TextError;
+
+/// Writes `bits`, read under `layout`, as text under `spec`.
+///
+/// https://rux-lang.dev/docs/api/format/write-wide-float
+func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, bits: uint512,
+                    layout: *FloatLayout) -> TextError {
+    let value = UnpackWide(bits, layout);
+    if value.class == WideClass::NaN {
+        return WriteAligned(writer, spec, "NaN", true);
+    }
+    if value.class == WideClass::Infinity {
+        return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true);
+    }
+    if spec.hasPrecision {
+        return WriteWidePrecision(allocator, writer, spec, @value, layout);
+    }
+    var storage: char8[256];
+    var digits: char8[160];
+    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 254));
+    if value.class == WideClass::Zero {
+        if value.negative {
+            cursor.Push(c8'-');
+        }
+        cursor.PushBytes("0.0");
+    }
+    else {
+        var count: uint = 0;
+        var exponent10: int = 0;
+        let room = MutableSlice::From<char8>(@digits[0], 160);
+        if !ShortestWideDigits(allocator, @value, layout, room, @count, @exponent10) {
+            return TextError::OutOfMemory;
+        }
+        if value.negative {
+            cursor.Push(c8'-');
+        }
+        let produced = Slice<char8> { data: @digits[0], length: count };
+        if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
+            WriteScientific(@cursor, produced, count, exponent10);
+        }
+        else {
+            WriteFixed(@cursor, produced, count, exponent10);
+        }
+    }
+    var rendered = cursor.Written();
+    if spec.showSign && rendered.length > 0u && rendered.data[0] != c8'-' {
+        storage[1] = c8'+';
+        rendered = Slice<char8> { data: @storage[1], length: rendered.length + 1u };
+    }
+    return WriteAligned(writer, spec, rendered, true);
+}
+
+// Fixed notation with exactly `spec.precision` digits after the point. The text can be as long as the exponent is
+// large, so it is built in storage from the allocator rather than on the stack.
+func WriteWidePrecision(allocator: Allocator, writer: TextWriter, spec: FormatSpec, value: *UnpackedWide,
+                        layout: *FloatLayout) -> TextError {
+    let fraction = spec.precision;
+    let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
+    let digitRoom = integerRoom + fraction + 4u;
+    let textRoom = digitRoom + fraction + 8u;
+    let empty = Layout { size: 0, alignment: 1 };
+    let blockLayout = Layout::New(digitRoom + textRoom, 1u).ValueOr(empty);
+    if blockLayout.size == 0u {
+        return TextError::LengthOverflow;
+    }
+    var block: *var opaque = null;
+    if allocator.Allocate(blockLayout, @block) != AllocError::None {
+        return TextError::OutOfMemory;
+    }
+    let digits = block as *var char8;
+    let text = digits + digitRoom;
+    var count: uint = 0;
+    var exponent10: int = 0;
+    var failure = TextError::None;
+    if value.class != WideClass::Zero {
+        let room = MutableSlice<char8> { data: digits, length: digitRoom };
+        if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10) {
+            failure = TextError::OutOfMemory;
+        }
+    }
+    if failure == TextError::None {
+        var cursor = ByteCursor::New(MutableSlice<char8> { data: text + 1u, length: textRoom - 1u });
+        if value.negative && value.class != WideClass::Zero {
+            cursor.Push(c8'-');
+        }
+        // The digits before the point, or a lone zero when there are none.
+        if count == 0u || exponent10 < 0 {
+            cursor.Push(c8'0');
+        }
+        else {
+            var index: uint = 0;
+            while index <= exponent10 as uint {
+                cursor.Push(index < count ? digits[index] : c8'0');
+                index = index + 1u;
+            }
+        }
+        if fraction > 0u {
+            cursor.Push(c8'.');
+            var place: uint = 0;
+            while place < fraction {
+                let position = exponent10 + 1 + place as int;
+                if count == 0u || position < 0 || position >= count as int {
+                    cursor.Push(c8'0');
+                }
+                else {
+                    cursor.Push(digits[position as uint]);
+                }
+                place = place + 1u;
+            }
+        }
+        var rendered = cursor.Written();
+        if spec.showSign && rendered.length > 0u && rendered.data[0] != c8'-' {
+            text[0] = c8'+';
+            rendered = Slice<char8> { data: text, length: rendered.length + 1u };
+        }
+        failure = cursor.Overran() ? TextError::LengthOverflow : WriteAligned(writer, spec, rendered, true);
+    }
+    allocator.Deallocate(block, blockLayout);
+    return failure;
+}

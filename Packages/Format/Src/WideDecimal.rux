@@ -1,0 +1,275 @@
+// Decimal digits for a wide float, exactly.
+//
+// The shortest rendering that reads back as the same value is found the way Steele and White, and then Burger and
+// Dybvig, described it: keep the exact value as a ratio of big integers, keep the exact distance to each
+// neighbouring float beside it, and generate digits until the digits so far sit closer to the value than to either
+// neighbour. Nothing is approximated, which is why it is correct at every width the same way, and why the numbers
+// involved are as large as the exponent makes them.
+//
+// Fixed precision is the same machinery stopped at a chosen digit, with the remainder rounded to nearest and ties
+// to the even digit.
+
+import Allocator::Allocator;
+import Core::{ MutableSlice, Slice };
+
+// The digits of `value`, as few as read back to the same bits, written into `digits`. `exponent10` receives the
+// power of ten of the first digit, so the value is d.ddd times ten to it. Reports `false` when the allocator refuses
+// or the digits do not fit, and never partially writes either way.
+func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatLayout, digits: MutableSlice<char8>,
+                        count: *var uint, exponent10: *var int) -> bool {
+    let f = value.significand;
+    let e = value.exponent;
+    let leading = 1u512 << (layout.precision - 1u);
+    // A value at the bottom of its binade has a closer neighbour below than above, so the two margins differ; the
+    // doubling keeps every quantity an integer.
+    let lonely = f == leading && e > layout.MinimumExponent();
+    let even = (f & 1u512) == 0u512;
+
+    var r = BigNat::New(allocator);
+    var s = BigNat::New(allocator);
+    var high = BigNat::New(allocator);
+    var low = BigNat::New(allocator);
+    var tmp = BigNat::New(allocator);
+    var base = BigNat::New(allocator);
+    var scratch = BigNat::New(allocator);
+    if !r.SetWide(f) || !high.SetSmall(1u64) || !low.SetSmall(1u64) {
+        return false;
+    }
+    if e >= 0 {
+        let shift = e as uint;
+        if !r.ShiftLeft(shift + (lonely ? 2u : 1u)) || !s.SetSmall(lonely ? 4u64 : 2u64) ||
+            !high.ShiftLeft(shift + (lonely ? 1u : 0u)) || !low.ShiftLeft(shift) {
+            return false;
+        }
+    }
+    else {
+        let shift = (0 - e) as uint;
+        if !r.ShiftLeft(lonely ? 2u : 1u) || !s.SetSmall(1u64) || !s.ShiftLeft(shift + (lonely ? 2u : 1u)) {
+            return false;
+        }
+        if lonely && !high.ShiftLeft(1u) {
+            return false;
+        }
+    }
+
+    // Where the first digit goes, estimated from the bit length and corrected below in whichever direction the
+    // estimate missed.
+    let magnitude = (e as int64) + (BitLengthOf(f) as int64) - 1i64;
+    var k = ((magnitude * 30103i64) / 100000i64) as int + 1;
+    if magnitude < 0i64 {
+        k = k - 1;
+    }
+    if k >= 0 {
+        if !SetPowerOfTen(@tmp, k as uint, @base, @scratch) || !scratch.SetProduct(@s, @tmp) || !s.Assign(@scratch) {
+            return false;
+        }
+    }
+    else {
+        if !SetPowerOfTen(@tmp, (0 - k) as uint, @base, @scratch) || !scratch.SetProduct(@r, @tmp) ||
+            !r.Assign(@scratch) || !scratch.SetProduct(@high, @tmp) || !high.Assign(@scratch) ||
+            !scratch.SetProduct(@low, @tmp) || !low.Assign(@scratch) {
+            return false;
+        }
+    }
+    // Too low: the upper edge of the rounding interval reaches the next power of ten.
+    while true {
+        if !tmp.Assign(@r) || !tmp.Add(@high) {
+            return false;
+        }
+        let reaches = even ? tmp.Compare(@s) >= 0i32 : tmp.Compare(@s) > 0i32;
+        if !reaches {
+            break;
+        }
+        if !s.MultiplySmall(10u64) {
+            return false;
+        }
+        k = k + 1;
+    }
+    // Too high: even the upper edge falls short of the previous power of ten, so the first digit would be zero.
+    while true {
+        if !tmp.Assign(@r) || !tmp.Add(@high) || !tmp.MultiplySmall(10u64) {
+            return false;
+        }
+        let short = even ? tmp.Compare(@s) < 0i32 : tmp.Compare(@s) <= 0i32;
+        if !short {
+            break;
+        }
+        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) {
+            return false;
+        }
+        k = k - 1;
+    }
+
+    var produced: uint = 0;
+    while true {
+        if produced >= digits.length {
+            return false;
+        }
+        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) {
+            return false;
+        }
+        var digit = r.TakeDigit(@s);
+        let withinLow = even ? r.Compare(@low) <= 0i32 : r.Compare(@low) < 0i32;
+        if !tmp.Assign(@r) || !tmp.Add(@high) {
+            return false;
+        }
+        let withinHigh = even ? tmp.Compare(@s) >= 0i32 : tmp.Compare(@s) > 0i32;
+        if withinLow && withinHigh {
+            // Both the digit and the one above read back correctly; the closer one wins, and a dead heat goes
+            // to the even digit so that the choice is at least a rule.
+            if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+                return false;
+            }
+            let order = tmp.Compare(@s);
+            if order > 0i32 || (order == 0i32 && (digit & 1u) == 1u) {
+                digit = digit + 1u;
+            }
+        }
+        else if withinHigh {
+            digit = digit + 1u;
+        }
+        digits.data[produced] = (digit as uint8 + 0x30u8) as char8;
+        produced = produced + 1u;
+        if withinLow || withinHigh {
+            break;
+        }
+    }
+    *count = produced;
+    *exponent10 = k - 1;
+    return true;
+}
+
+// How many bits a 512-bit value needs.
+func BitLengthOf(value: uint512) -> uint {
+    var rest = value;
+    var bits: uint = 0;
+    while rest != 0u512 {
+        rest = rest >> 1u;
+        bits = bits + 1u;
+    }
+    return bits;
+}
+
+// The digits of `value` rounded to `fraction` places after the point, integer digits first. `exponent10` receives
+// the power of ten of the first digit as for the shortest form; a value that rounds all the way to zero reports
+// no digits at all. Reports `false` when the allocator refuses or the digits do not fit.
+func FixedWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatLayout, fraction: uint,
+                     digits: MutableSlice<char8>, count: *var uint, exponent10: *var int) -> bool {
+    var r = BigNat::New(allocator);
+    var s = BigNat::New(allocator);
+    var tmp = BigNat::New(allocator);
+    var base = BigNat::New(allocator);
+    var scratch = BigNat::New(allocator);
+    if !r.SetWide(value.significand) || !s.SetSmall(1u64) {
+        return false;
+    }
+    if value.exponent >= 0 {
+        if !r.ShiftLeft(value.exponent as uint) {
+            return false;
+        }
+    }
+    else if !s.ShiftLeft((0 - value.exponent) as uint) {
+        return false;
+    }
+    let magnitude = (value.exponent as int64) + (BitLengthOf(value.significand) as int64) - 1i64;
+    var k = ((magnitude * 30103i64) / 100000i64) as int + 1;
+    if magnitude < 0i64 {
+        k = k - 1;
+    }
+    if k >= 0 {
+        if !SetPowerOfTen(@tmp, k as uint, @base, @scratch) || !scratch.SetProduct(@s, @tmp) || !s.Assign(@scratch) {
+            return false;
+        }
+    }
+    else if !SetPowerOfTen(@tmp, (0 - k) as uint, @base, @scratch) || !scratch.SetProduct(@r, @tmp) ||
+             !r.Assign(@scratch) {
+        return false;
+    }
+    // Settle on r/s in [1/10, 1), so that the value is 0.d1d2... times ten to the k.
+    while r.Compare(@s) >= 0i32 {
+        if !s.MultiplySmall(10u64) {
+            return false;
+        }
+        k = k + 1;
+    }
+    while true {
+        if !tmp.Assign(@r) || !tmp.MultiplySmall(10u64) {
+            return false;
+        }
+        if tmp.Compare(@s) >= 0i32 {
+            break;
+        }
+        if !r.MultiplySmall(10u64) {
+            return false;
+        }
+        k = k - 1;
+    }
+
+    let wanted = k + fraction as int;
+    *exponent10 = k - 1;
+    if wanted < 0 {
+        // Below half a unit in the last place asked for, so every digit is a zero.
+        *count = 0;
+        return true;
+    }
+    if wanted == 0 {
+        // Between a tenth and one unit in the last place: it is that unit, or nothing.
+        if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+            return false;
+        }
+        if tmp.Compare(@s) > 0i32 {
+            digits.data[0] = c8'1';
+            *count = 1;
+            *exponent10 = 0 - fraction as int;
+            return true;
+        }
+        *count = 0;
+        return true;
+    }
+    let needed = wanted as uint;
+    if needed + 1u > digits.length {
+        return false;
+    }
+    var produced: uint = 0;
+    while produced < needed {
+        if !r.MultiplySmall(10u64) {
+            return false;
+        }
+        digits.data[produced] = (r.TakeDigit(@s) as uint8 + 0x30u8) as char8;
+        produced = produced + 1u;
+    }
+    // What is left decides the last digit: over half rounds up, under half rounds down, and exactly half goes to
+    // the even digit.
+    if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+        return false;
+    }
+    let order = tmp.Compare(@s);
+    let lastOdd = ((digits.data[needed - 1u] as uint8) & 1u8) == 1u8;
+    if order > 0i32 || (order == 0i32 && lastOdd) {
+        var index = needed;
+        var carried = true;
+        while carried && index > 0u {
+            index = index - 1u;
+            if digits.data[index] == c8'9' {
+                digits.data[index] = c8'0';
+            }
+            else {
+                digits.data[index] = ((digits.data[index] as uint8) + 1u8) as char8;
+                carried = false;
+            }
+        }
+        if carried {
+            // The carry ran off the front: the value became the next power of ten, one digit longer.
+            var shift = needed;
+            while shift > 0u {
+                digits.data[shift] = digits.data[shift - 1u];
+                shift = shift - 1u;
+            }
+            digits.data[0] = c8'1';
+            produced = produced + 1u;
+            *exponent10 = k;
+        }
+    }
+    *count = produced;
+    return true;
+}

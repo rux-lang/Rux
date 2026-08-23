@@ -159,10 +159,12 @@ func WriteScientific(cursor: *var ByteCursor, digits: Slice<char8>, count: uint,
     }
 
     // The digits come out least significant first and go back reversed.
-    // Three of them are enough, since the exponent of a float64 reaches 308,
-    // and it never reaches zero: this notation is only chosen for a value
+    // A float64's exponent stops at three digits, but the wide widths share
+    // this writer and a float512's reaches 1262611: seven digits, and a
+    // buffer that held three wrote its fourth past the end. The exponent
+    // never reaches zero, since this notation is only chosen for a value
     // whose exponent falls outside [-4, significant).
-    var expDigits: char8[4];
+    var expDigits: char8[8];
     var length: uint = 0;
     var rest = exp as uint;
     while rest > 0 {
