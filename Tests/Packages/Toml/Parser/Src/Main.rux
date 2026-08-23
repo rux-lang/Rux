@@ -1,0 +1,128 @@
+// A TOML parser is mostly bookkeeping about tables, so most of this is about the ways a document may not define
+// one twice. The three rules have three reasons -- a header redefines, an inline table is closed by its brace, a
+// dotted key is closed by its line -- and a parser that reported them all as "duplicate key" would leave the
+// writer to work out which of the three they had broken.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ String, StringView, TextError };
+import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue };
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+func Accepts(allocator: Allocator, text: Slice<char8>, note: Slice<char8>) -> TomlValue {
+    var outcome = TomlParseOutcome::New();
+    var value = TomlParse(allocator, text, @outcome);
+    Assert(outcome.error == TomlParseError::None, note);
+    return value;
+}
+
+func Refuses(allocator: Allocator, text: Slice<char8>) -> TomlParseError {
+    var outcome = TomlParseOutcome::New();
+    var value = TomlParse(allocator, text, @outcome);
+    return outcome.error;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    // The ordinary shapes, which have to work before the refusals mean anything.
+    var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");
+    Assert(simple.Find(View("title")).AsText().Length() == 4u, "the string is there");
+    var counted = 0i64;
+    Assert(simple.Find(View("count")).AsInteger(@counted) && counted == 3i64, "and so is the integer");
+
+    // A table header puts the lines after it somewhere else.
+    var tabled = Accepts(allocator, "[server]\nhost = \"local\"\nport = 80", "a table header");
+    Assert(tabled.Find(View("server")).Kind() == TomlKind::Table, "makes a table");
+    Assert(tabled.Find(View("server")).Find(View("port")) != null, "which the lines after it go into");
+    Assert(tabled.Find(View("port")) == null, "and not the root");
+
+    // A dotted header creates the tables it passes through.
+    var nested = Accepts(allocator, "[a.b.c]\nx = 1", "a dotted header");
+    Assert(nested.Find(View("a")).Find(View("b")).Find(View("c")).Find(View("x")) != null,
+           "creates every table on the way down");
+
+    // A dotted key does the same inside one line.
+    var dotted = Accepts(allocator, "fruit.apple.colour = \"red\"\nfruit.apple.taste = \"sweet\"",
+                         "dotted keys");
+    Assert(dotted.Find(View("fruit")).Find(View("apple")).Length() == 2u,
+           "and two of them may build the same table");
+
+    // Inline tables and arrays.
+    var inline = Accepts(allocator, "point = { x = 1, y = 2 }", "an inline table");
+    Assert(inline.Find(View("point")).Length() == 2u, "holds its entries");
+    var array = Accepts(allocator, "ports = [ 8001, 8002,\n  8003 ]", "an array");
+    Assert(array.Find(View("ports")).Length() == 3u, "spanning lines, with the newlines ignored inside it");
+    var mixed = Accepts(allocator, "values = [ 1, \"two\", 3.0, true ]", "an array of mixed kinds");
+    Assert(mixed.Find(View("values")).At(1u).Kind() == TomlKind::Text, "which TOML permits, unlike its ancestors");
+
+    // TOML 1.1 allows a newline and a trailing comma inside an inline table, which 1.0 did not.
+    var spread = Accepts(allocator, "point = {\n  x = 1,\n  y = 2,\n}",
+                         "an inline table spread over lines, which is TOML 1.1");
+    Assert(spread.Find(View("point")).Length() == 2u, "and holds what it was given");
+
+    // An array of tables appends an element per header.
+    var products = Accepts(allocator,
+                           "[[product]]\nname = \"hammer\"\n[[product]]\nname = \"nail\"",
+                           "an array of tables");
+    Assert(products.Find(View("product")).Kind() == TomlKind::Array, "is an array");
+    Assert(products.Find(View("product")).Length() == 2u, "with one element per header");
+    Assert(products.Find(View("product")).At(1u).Find(View("name")).AsText().Length() == 4u,
+           "each holding the lines that followed it");
+
+    // A header may descend through the most recent element of an array of tables.
+    var deep = Accepts(allocator, "[[fruit]]\nname = \"apple\"\n[fruit.variety]\nname = \"red\"",
+                       "a header under an array of tables");
+    Assert(deep.Find(View("fruit")).At(0u).Find(View("variety")).Find(View("name")) != null,
+           "belongs to the element still being written");
+
+    // The three ways of defining a table twice, each reported as itself.
+    Assert(Refuses(allocator, "[a]\n[a]") == TomlParseError::RedefinedTable,
+           "a header that defines a table already defined by one");
+    Assert(Refuses(allocator, "[a.b]\n[a]") == TomlParseError::None,
+           "while defining a super-table afterwards is allowed, since it was only implied");
+    Assert(Refuses(allocator, "a = { x = 1 }\n[a.b]") == TomlParseError::ExtendedInlineTable,
+           "an inline table is closed by its brace");
+    Assert(Refuses(allocator, "a = { x = 1 }\na.y = 2") == TomlParseError::ExtendedInlineTable,
+           "by a dotted key as well as by a header");
+    Assert(Refuses(allocator, "[t]\na.b = 1\n[t.a]") == TomlParseError::ExtendedDottedTable,
+           "and a dotted key's table is closed by its line");
+
+    // A key given a value twice, and a path through something that is not a table.
+    Assert(Refuses(allocator, "a = 1\na = 2") == TomlParseError::DuplicateKey, "a key defined twice");
+    Assert(Refuses(allocator, "a = 1\na.b = 2") == TomlParseError::NotATable,
+           "a dotted key running through an integer");
+    Assert(Refuses(allocator, "a = 1\n[a]") == TomlParseError::NotATable,
+           "and a header naming one");
+
+    // The two array spellings are not interchangeable.
+    Assert(Refuses(allocator, "a = [1, 2]\n[[a]]") == TomlParseError::NotATableArray,
+           "a static array is a value, not a place to put tables");
+    Assert(Refuses(allocator, "[[a]]\n[a]") == TomlParseError::NotATable,
+           "and an array of tables is not a table");
+
+    // Ordinary syntax refusals.
+    Assert(Refuses(allocator, "a") == TomlParseError::Unexpected, "a key with no value");
+    Assert(Refuses(allocator, "a =") == TomlParseError::Truncated, "an equals sign with nothing after it");
+    Assert(Refuses(allocator, "= 1") == TomlParseError::Unexpected, "a value with no key");
+    Assert(Refuses(allocator, "a = 1 b = 2") == TomlParseError::Unexpected,
+           "two pairs on one line, which is the shape of a missing newline");
+    Assert(Refuses(allocator, "[a") == TomlParseError::Unexpected, "a header with no closing bracket");
+    Assert(Refuses(allocator, "a = [1, 2") == TomlParseError::Truncated, "an array left open");
+    Assert(Refuses(allocator, "a = { x = 1") == TomlParseError::Truncated, "an inline table left open");
+    Assert(Refuses(allocator, "a = \"unterminated") == TomlParseError::Lexical,
+           "and a string the lexer refused, reported as the lexer's own");
+
+    // A refusal says where it happened, because a configuration error that cannot point at itself costs more
+    // than the parse did.
+    var located = TomlParseOutcome::New();
+    var partial = TomlParse(allocator, "a = 1\nb = 2\na = 3", @located);
+    Assert(located.error == TomlParseError::DuplicateKey, "the duplicate is found");
+    Assert(located.line == 3u, "on the line it is written on");
+    Assert(partial.Find(View("b")) != null, "and what was read before it is still there to show");
+
+    return 0;
+}
