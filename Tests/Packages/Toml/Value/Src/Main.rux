@@ -1,0 +1,120 @@
+// TOML has real types, so the interesting question about a value is not what it can be coerced into but what it
+// refuses to be. An integer is not a float here even when the float is whole, and a local date-time has no
+// offset -- inventing one is how a meeting ends up an hour out.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Slice };
+import Text::{ String, StringView, TextError };
+import Time::{ Date, TimeOfDay, UtcOffset };
+import Toml::{ TomlKind, TomlValue };
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Each kind reports itself, and answers only the accessor that matches.
+    var integer = TomlValue::Integer(allocator, -17i64);
+    Assert(integer.Kind() == TomlKind::Integer, "an integer knows what it is");
+    var readInteger = 0i64;
+    Assert(integer.AsInteger(@readInteger) && readInteger == -17i64, "and gives back what it was made with");
+    var readFloat = 0.0;
+    Assert(!integer.AsFloat(@readFloat), "an integer is not a float, which TOML distinguishes and JSON does not");
+
+    var number = TomlValue::Float(allocator, 1.0);
+    Assert(number.Kind() == TomlKind::Float, "a whole float is still a float");
+    Assert(!number.AsInteger(@readInteger), "and does not answer as an integer");
+
+    var flag = TomlValue::Boolean(allocator, true);
+    var readFlag = false;
+    Assert(flag.AsBoolean(@readFlag) && readFlag, "a boolean");
+    Assert(!integer.AsBoolean(@readFlag), "which an integer is not");
+
+    var text = TomlValue::Text(allocator, "hello", @error);
+    Assert(text.Kind() == TomlKind::Text, "a string");
+    Assert(text.AsText().Length() == 5u, "of the length it was given");
+    Assert(integer.AsText().Length() == 0u, "while a non-string reports an empty view rather than its bytes");
+
+    // The four date-time kinds differ in which parts they have, and that is the whole point of having four.
+    let date = Date::New(1979, 5u8, 27u8).ValueOr(Date { year: 1970, month: 1u8, day: 1u8 });
+    let time = TimeOfDay::New(7u8, 32u8, 0u8, 0u32).ValueOr(
+        TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
+    let offset = UtcOffset::Of(-8i32, 0i32).ValueOr(UtcOffset::Utc());
+
+    var moment = TomlValue::OffsetDateTime(allocator, date, time, offset);
+    var readOffset = UtcOffset::Utc();
+    Assert(moment.AsOffset(@readOffset), "an offset date-time has an offset");
+    Assert(readOffset.TotalSeconds() == -28800i32, "which is the one it was written with");
+
+    var wall = TomlValue::LocalDateTime(allocator, date, time);
+    Assert(!wall.AsOffset(@readOffset), "a local date-time deliberately has none");
+    var readDate = Date { year: 1970, month: 1u8, day: 1u8 };
+    var readTime = TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
+    Assert(wall.AsDate(@readDate) && readDate.day == 27u8, "but it does have a date");
+    Assert(wall.AsTime(@readTime) && readTime.hour == 7u8, "and a time");
+
+    var justDate = TomlValue::LocalDate(allocator, date);
+    Assert(!justDate.AsTime(@readTime), "a local date has no time");
+    var justTime = TomlValue::LocalTime(allocator, time);
+    Assert(!justTime.AsDate(@readDate), "and a local time has no date");
+
+    // A table keeps its entries in the order they arrived, which is what makes a document round-trip
+    // recognisably rather than alphabetically.
+    var table = TomlValue::Table(allocator);
+    var zebra = String::FromBytes(allocator, "zebra", @error);
+    table.Insert(zebra, TomlValue::Integer(allocator, 1i64));
+    var apple = String::FromBytes(allocator, "apple", @error);
+    table.Insert(apple, TomlValue::Integer(allocator, 2i64));
+    var middle = String::FromBytes(allocator, "middle", @error);
+    table.Insert(middle, TomlValue::Integer(allocator, 3i64));
+    Assert(table.Length() == 3u, "a table holds what it was given");
+    Assert(table.EntryAt(0u).key.View().Length() == 5u, "the first entry is the first one added");
+    var firstKey = table.EntryAt(0u).key.View();
+    Assert(firstKey.Bytes().data[0] == c8'z', "which is zebra, not apple");
+    Assert(table.EntryAt(2u).key.View().Bytes().data[0] == c8'm', "and the last is the last added");
+    Assert(table.EntryAt(3u) == null, "past the end there is nothing");
+
+    // Lookup finds by key, and reports absence rather than inventing an empty value.
+    var found = table.Find(View("apple"));
+    Assert(found != null, "a key that is there is found");
+    Assert(found.AsInteger(@readInteger) && readInteger == 2i64, "with the value it was stored with");
+    Assert(table.Find(View("pear")) == null, "and a key that is not there is not");
+
+    // An array keeps its order too, and a borrowed element can be modified in place -- which is how an array of
+    // tables grows a member after its header has already been read.
+    var array = TomlValue::Array(allocator);
+    array.Push(TomlValue::Integer(allocator, 10i64));
+    array.Push(TomlValue::Integer(allocator, 20i64));
+    Assert(array.Length() == 2u, "an array holds what it was given");
+    Assert(array.At(1u).AsInteger(@readInteger) && readInteger == 20i64, "in order");
+    var element = array.AtMutable(0u);
+    element.integer = 11i64;
+    Assert(array.At(0u).AsInteger(@readInteger) && readInteger == 11i64, "and an element can be edited in place");
+
+    // The kinds do not answer each other's questions.
+    Assert(array.Find(View("apple")) == null, "an array has no keys");
+    Assert(table.At(0u) == null, "and a table has no elements");
+    Assert(!table.Push(TomlValue::Integer(allocator, 1i64)), "pushing onto a table is refused");
+    var stray = String::FromBytes(allocator, "stray", @error);
+    Assert(!array.Insert(stray, TomlValue::Integer(allocator, 1i64)), "and inserting into an array is too");
+
+    // Ownership is the whole difficulty of a document tree: a table holding a table holding an array must
+    // release all of it exactly once, and it is released when the outermost value dies at the end of this scope.
+    var outer = TomlValue::Table(allocator);
+    var inner = TomlValue::Table(allocator);
+    var nested = TomlValue::Array(allocator);
+    nested.Push(TomlValue::Text(allocator, "held", @error));
+    nested.Push(TomlValue::Text(allocator, "also held", @error));
+    var nestedKey = String::FromBytes(allocator, "list", @error);
+    inner.Insert(nestedKey, nested);
+    var innerKey = String::FromBytes(allocator, "inner", @error);
+    outer.Insert(innerKey, inner);
+    Assert(outer.Find(View("inner")).Find(View("list")).Length() == 2u,
+           "a nested tree is reachable all the way down");
+
+    return 0;
+}
