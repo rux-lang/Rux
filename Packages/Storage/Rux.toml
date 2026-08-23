@@ -7,9 +7,9 @@ Namespace = "Rux"
 Name = "Storage"
 Version = "0.1.0"
 Type = "SourceLibrary"
-Description = "Files, directories, and filesystem operations"
+Description = "Files, directories and filesystem operations"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["File", "Filesystem", "Directory", "Storage"]
+Keywords = ["Storage", "Filesystem", "File", "Directory", "Atomic"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
@@ -24,7 +24,6 @@ FreeBSD = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["FreeBSD"] }
 Io = { Namespace = "Rux", Version = "0.1.0" }
 Linux = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["Linux"] }
 macOS = { Namespace = "Rux", Version = "0.1.0", TargetOS = ["macOS"] }
-Memory = { Namespace = "Rux", Version = "0.1.0" }
 Path = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Time = { Namespace = "Rux", Version = "0.1.0" }

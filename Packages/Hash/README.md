@@ -89,6 +89,10 @@ it worth naming an algorithm rather than promising only "some hash". `Core::Hash
 answers are not stable across runs, versions or targets, and nothing that outlives the process should be keyed on
 one.
 
+## Documentation
+
+<https://rux-lang.dev/docs/api/hash>
+
 ## License
 
 Licensed under the [MIT License](LICENSE.md).

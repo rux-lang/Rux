@@ -1,8 +1,6 @@
 # Uuid
 
-UUID representation, parsing, formatting, and generation.
-
-> **Not implemented yet.** The package is published so its name and identity are reserved and its place in the standard set is fixed. `Src/Uuid.rux` is a placeholder that declares nothing, so importing from this package is an error rather than a silent no-op.
+UUID representation, parsing, formatting and generation.
 
 ## Installation
 
@@ -10,9 +8,22 @@ UUID representation, parsing, formatting, and generation.
 rux add Rux/Uuid
 ```
 
-## Planned surface
+## What it provides
 
-A 128-bit `Uuid` value with parsing and formatting in the canonical hyphenated form, and generation of the versions worth having: random (v4) and time-ordered (v7).
+- **A 128-bit value** — stored as the sixteen bytes RFC 9562 orders them in, with the version and variant
+  readable from it.
+- **Text** — the canonical hyphenated form and the `urn:uuid:` form, written in lower case because RFC 9562
+  says output should be, and read in either case because input arrives as it arrives.
+- **Version 4** — random, from `Rux/Entropy`, with the version and variant bits forced whatever the source
+  bytes said.
+- **Version 7** — time-ordered, so byte order is time order and a database index built on one does not
+  fragment; with a caller-owned monotonic generator for identifiers minted in the same millisecond.
+- **Windows GUIDs** — an explicit, self-inverse byte-order conversion, because the two layouts disagree about
+  the first three fields and a silent reinterpretation produces a valid-looking UUID with the wrong timestamp.
+
+## Documentation
+
+<https://rux-lang.dev/docs/api/uuid>
 
 ## License
 

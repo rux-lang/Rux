@@ -9,7 +9,7 @@ Version = "0.1.0"
 Type = "SourceLibrary"
 Description = "JSON parsing and serialization"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["Json", "Serialization", "Parsing", "DataFormat"]
+Keywords = ["Json", "Serialization", "Parsing", "DataFormat", "Rfc8259"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
@@ -22,5 +22,4 @@ Collections = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 Io = { Namespace = "Rux", Version = "0.1.0" }
-Memory = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }

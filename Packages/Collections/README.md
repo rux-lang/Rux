@@ -271,6 +271,10 @@ numbers.Truncate(kept);
 - **This is not memory safety.** The package reports allocation failure and checks its arithmetic. Use-after-free, double-free, and dangling views remain possible and undetected, because Rux's ownership model cannot express otherwise.
 - **Constructor out-parameters must not be null.** A `result` pointer is the whole point of the call, unlike the optional out-parameters elsewhere, and it is not checked.
 
+## Documentation
+
+<https://rux-lang.dev/docs/api/collections>
+
 ## License
 
 Licensed under the [MIT License](LICENSE.md).

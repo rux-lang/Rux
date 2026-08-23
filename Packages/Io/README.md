@@ -1,6 +1,6 @@
 # Io
 
-Streams, console I/O, readers, and writers.
+Streams, console I/O, readers and writers.
 
 Console access is written directly against each platform's own primitives, selected at compile time: the `write`/`read` syscalls on Linux, macOS, and the BSDs, and `WriteFile`/`ReadFile` on Windows. There is no C runtime in the path.
 

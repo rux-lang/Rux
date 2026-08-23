@@ -16,6 +16,8 @@
 import Core::{ MutableSlice, Slice };
 
 /// The most blocks `Expand` can produce, since its counter is one byte.
+///
+/// https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
 const HkdfMaximumBlocks: uint = 255;
 
 /// Extracts a pseudorandom key from `material`, salted with `salt`.

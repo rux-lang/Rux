@@ -81,6 +81,10 @@ conclusion as its allocation without the pool recording anything per block.
 `SystemAllocator` is page-granular, so a small allocation costs a whole page. It is the backing store for an arena or
 a pool rather than the allocator a program uses for many small values directly.
 
+## Documentation
+
+<https://rux-lang.dev/docs/api/allocator>
+
 ## License
 
 Licensed under the [MIT License](LICENSE.md).
