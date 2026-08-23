@@ -27,6 +27,21 @@ std::string Read(const std::filesystem::path &path) {
     std::ifstream input(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
+
+ManifestResult Docs(const std::string &name) {
+    return Manifest::Parse("[Manifest]\nVersion = 1\n\n[Package]\nName = \"" + name +
+                               "\"\nVersion = \"0.4.0\"\nType = \"SourceLibrary\"\nDescription = \"Docs test\"\n",
+                           "Rux.toml");
+}
+
+std::filesystem::path FreshRoot(const std::string &name) {
+    const auto root = System::TempDirectory() / name;
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+    REQUIRE_FALSE(ec);
+    return root;
+}
 } // namespace
 
 TEST_CASE("outer documentation comments attach without a blank line") {
@@ -46,46 +61,87 @@ TEST_CASE("a blank line prevents documentation attachment") {
     CHECK(parsed.module.items.front()->documentation.empty());
 }
 
-TEST_CASE("documentation generator escapes content and protects unmanaged directories") {
-    auto parsed = Parse("/// Safe <b>text</b> and [bad](javascript:alert(1)).\n"
-                        "pub struct Public {\n    /// `value` field.\n    pub value: int;\n}\n"
-                        "/// Hidden.\nfunc Private();\n");
-    auto loaded = Manifest::Parse("[Manifest]\nVersion = 1\n\n[Package]\nName = \"DocsTest\"\n"
-                                  "Version = \"0.4.0\"\nType = \"SourceLibrary\"\nDescription = \"Docs test\"\n",
-                                  "Rux.toml");
+TEST_CASE("documentation covers the file-scope surface and honours pub inside a module") {
+    // A file-scope declaration is what another package imports, marker or no marker, so all of them are the
+    // documented surface. Inside a module block the marker means what it says.
+    auto parsed = Parse("/// Safe <b>text</b>.\nstruct Plain {\n    /// A field.\n    value: int;\n}\n"
+                        "/// Also here.\nfunc Bare();\n"
+                        "module Inner {\n    /// Exported.\n    pub func Shown();\n"
+                        "    /// Kept in.\n    func Withheld();\n}\n");
+    auto loaded = Docs("DocsTest");
     REQUIRE(loaded.Ok());
 
-    const auto root = System::TempDirectory() / "rux-documentation-unit";
-    std::error_code ec;
-    std::filesystem::remove_all(root, ec);
-    std::filesystem::create_directories(root, ec);
-    REQUIRE_FALSE(ec);
+    const auto root = FreshRoot("rux-documentation-unit");
     const auto output = root / "site";
-    Diagnostic error;
     const std::array modules{std::move(parsed)};
-    REQUIRE(
-        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = output}, error));
+    auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = output});
+    REQUIRE(generated.ok);
+    CHECK(generated.diagnostics.empty());
     const auto firstHtml = Read(output / "index.html");
     const auto firstSearch = Read(output / "search-index.json");
     CHECK(firstHtml.contains("Safe &lt;b&gt;text&lt;/b&gt;"));
-    CHECK_FALSE(firstHtml.contains("javascript:"));
-    CHECK(firstHtml.contains("Public"));
-    CHECK_FALSE(firstHtml.contains("Private"));
+    CHECK(firstHtml.contains("Plain"));
+    CHECK(firstHtml.contains("Bare"));
+    CHECK(firstHtml.contains("A field."));
+    CHECK(firstHtml.contains("Shown"));
+    CHECK_FALSE(firstHtml.contains("Withheld"));
     CHECK(std::filesystem::exists(output / ".rux-docs"));
 
-    REQUIRE(
-        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = output}, error));
+    // Generating twice over the same directory produces the same bytes.
+    auto again = Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = output});
+    REQUIRE(again.ok);
     CHECK(Read(output / "index.html") == firstHtml);
     CHECK(Read(output / "search-index.json") == firstSearch);
 
     const auto unmanaged = root / "unmanaged";
+    std::error_code ec;
     std::filesystem::create_directories(unmanaged, ec);
     std::ofstream(unmanaged / "keep.txt") << "keep";
-    CHECK_FALSE(
-        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = unmanaged}, error));
-    CHECK(error.message.contains("unmarked"));
-    CHECK(error.help == "choose an empty output directory or remove its contents");
+    auto refused =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = unmanaged});
+    CHECK_FALSE(refused.ok);
+    REQUIRE(refused.diagnostics.size() == 1);
+    CHECK(refused.diagnostics.front().message.contains("unmarked"));
+    CHECK(refused.diagnostics.front().help == "choose an empty output directory or remove its contents");
     CHECK(Read(unmanaged / "keep.txt") == "keep");
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("documentation refuses a link it cannot emit rather than dropping it quietly") {
+    auto parsed = Parse("/// See [bad](javascript:alert(1)).\nfunc Thing();\n");
+    auto loaded = Docs("DocsLinks");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-link-unit");
+    const std::array modules{std::move(parsed)};
+    auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    CHECK_FALSE(generated.ok);
+    REQUIRE(generated.diagnostics.size() == 1);
+    CHECK(generated.diagnostics.front().message.contains("javascript:"));
+    CHECK(generated.diagnostics.front().sourceName == "Src/Api.rux");
+    // Nothing is installed, so a refused run leaves no half-written site behind.
+    std::error_code ec;
+    CHECK_FALSE(std::filesystem::exists(root / "site", ec));
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("documentation refuses two declarations that claim one route") {
+    // The anchor is built from the name folded to lower case, so two declarations differing only in case land on
+    // the same route and every link to the second would reach the first.
+    auto parsed = Parse("/// One.\nfunc Thing();\n/// Two.\nstruct thing {\n    value: int;\n}\n");
+    auto loaded = Docs("DocsRoutes");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-route-unit");
+    const std::array modules{std::move(parsed)};
+    auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    CHECK_FALSE(generated.ok);
+    REQUIRE(generated.diagnostics.size() == 1);
+    CHECK(generated.diagnostics.front().message.contains("both claim the documentation route"));
+    std::error_code ec;
     std::filesystem::remove_all(root, ec);
 }
 
@@ -96,22 +152,21 @@ TEST_CASE("documentation generator reports destination paths and filesystem deta
                                   "Rux.toml");
     REQUIRE(loaded.Ok());
 
-    const auto root = System::TempDirectory() / "rux-documentation-failure-unit";
-    std::error_code ec;
-    std::filesystem::remove_all(root, ec);
-    std::filesystem::create_directories(root, ec);
-    REQUIRE_FALSE(ec);
+    const auto root = FreshRoot("rux-documentation-failure-unit");
     const auto blocked = root / "blocked";
     std::ofstream(blocked) << "not a directory\n";
 
-    Diagnostic error;
     const std::array modules{std::move(parsed)};
-    CHECK_FALSE(Documentation::Generate(*loaded.manifest, modules,
-                                        {.packageRoot = root, .outputDirectory = blocked / "site"}, error));
+    auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = blocked / "site"});
+    CHECK_FALSE(generated.ok);
+    REQUIRE(generated.diagnostics.size() == 1);
+    const auto &error = generated.diagnostics.front();
     CHECK(error.message.contains("could not create temporary documentation directory"));
     CHECK(error.message.contains(blocked.string()));
     REQUIRE(error.notes.size() == 1);
     CHECK(error.notes.front().starts_with("filesystem error "));
     CHECK(error.help == "check that the output directory's parent is writable");
+    std::error_code ec;
     std::filesystem::remove_all(root, ec);
 }

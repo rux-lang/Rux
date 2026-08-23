@@ -306,15 +306,14 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         if (!result.ok)
             return false;
 
-        Diagnostic error;
         const Documentation::GenerateOptions generateOptions{.packageRoot = packageManifestPath.parent_path(),
                                                              .outputDirectory = packageOutput,
                                                              .includePrivate = includePrivate};
-        if (!Documentation::Generate(generatorManifest, result.modules, generateOptions, error)) {
-            diagnostics.Write(RenderDiagnostic(error, diagnostics.Style().enabled), MessageVisibility::Always);
-            return false;
+        auto generated = Documentation::Generate(generatorManifest, result.modules, generateOptions);
+        for (const auto &problem : generated.diagnostics) {
+            diagnostics.Write(RenderDiagnostic(problem, diagnostics.Style().enabled), MessageVisibility::Always);
         }
-        return true;
+        return generated.ok;
     };
 
     if (rootManifest->IsWorkspace()) {
