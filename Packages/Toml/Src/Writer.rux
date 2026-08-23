@@ -11,6 +11,12 @@
 //
 // Tables are written as headers rather than inline, except inside an array where TOML offers no other spelling.
 // A document written, read and written again produces the same bytes the second time.
+//
+// What this cannot do is reproduce a file. The tree has no comments in it, no blank lines, and no memory of
+// whether a number was written in hexadecimal or a string in a literal form, so the output is the writer's
+// layout of the same values rather than the layout it was read from. That is fine for generating configuration
+// and for writing back a file this program owns; running it over a file someone else wrote and hand-formatted
+// will produce a diff of the whole file.
 
 import Core::{ MutableSlice, Slice };
 import Format::{ ByteCursor, CursorWriter, ParseFloat64, TextWriter, WriteDecimal };
@@ -552,7 +558,11 @@ func KeyIntoPath(path: *var TomlPath, name: Slice<char8>) -> TomlWriteError {
 /// Writes `table` as a TOML document.
 ///
 /// The same tree always produces the same bytes, and a document written, read and written again produces the
-/// same bytes the second time -- which is what makes this safe to run over a file in version control.
+/// same bytes the second time -- which is what makes this safe to run repeatedly over a file this program owns.
+///
+/// It is not safe in the sense of preserving one it does not: comments, blank lines, indentation and the
+/// spelling of a number are not in the tree, so they cannot come out of it. The output is these values laid out
+/// by this writer, which is an equivalent document and not the same file.
 ///
 /// https://rux-lang.dev/docs/api/toml/write-document
 func TomlWriteDocument(writer: TextWriter, table: *TomlValue) -> TomlWriteError {
