@@ -1,0 +1,115 @@
+// A writer whose output depends on anything but the tree produces a diff every time it runs, which trains
+// everyone to stop reading the diffs. So what is tested here is sameness: the same tree writes the same bytes,
+// and a document written, read and written again is the same the second time.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, MutableSlice, Slice };
+import Format::{ ByteCursor, CursorWriter, TextWriter };
+import Text::{ StringView, TextError };
+import Time::UtcOffset;
+import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue, TomlWriteDocument,
+               TomlWriteError };
+
+// Renders `value` into `storage` and returns the bytes.
+func Render(value: *TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
+    var cursor = ByteCursor::New(storage);
+    let writer: TextWriter = CursorWriter::Of(@cursor);
+    Assert(TomlWriteDocument(writer, value) == TomlWriteError::None, "writing succeeds");
+    return cursor.Written();
+}
+
+func View(bytes: Slice<char8>) -> StringView {
+    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+}
+
+func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
+    if left.length != right.length {
+        return false;
+    }
+    var index: uint = 0;
+    while index < left.length {
+        if left.data[index] != right.data[index] {
+            return false;
+        }
+        index = index + 1u;
+    }
+    return true;
+}
+
+func Main() -> int {
+    var system = SystemAllocator::New();
+    let allocator: Allocator = system;
+    var storage: char8[4096];
+    var second: char8[4096];
+    // A document written and read and written again is the same the second time, which is the property a file
+    // in version control needs.
+    var outcome = TomlParseOutcome::New();
+    var source = "[server]\nhost = \"local\"\nports = [1, 2]\n\n[[user]]\nname = \"ada\"\n\n[[user]]\nname = \"alan\"";
+    var parsed = TomlParse(allocator, source, @outcome);
+    Assert(outcome.error == TomlParseError::None, "the document parses");
+    let once = Render(@parsed, MutableSlice::From<char8>(@storage[0], 4096));
+
+    var again = TomlParse(allocator, once, @outcome);
+    Assert(outcome.error == TomlParseError::None, "its output parses");
+    let twice = Render(@again, MutableSlice::From<char8>(@second[0], 4096));
+    Assert(Same(once, twice), "and writes the same bytes the second time");
+
+    // Every kind survives the round trip, including the ones a lazier writer would collapse.
+    var kinds = "i = 42\nf = 3.5\nwhole = 1.0\ntiny = 0.1\nbig = 5e+22\nb = true\ns = \"text\"\nd = 1979-05-27\nt = 07:32:00\nw = 1979-05-27T07:32:00\nm = 1979-05-27T07:32:00-08:00";
+    var values = TomlParse(allocator, kinds, @outcome);
+    Assert(outcome.error == TomlParseError::None, "a document of every scalar kind parses");
+    let written = Render(@values, MutableSlice::From<char8>(@storage[0], 4096));
+    var reread = TomlParse(allocator, written, @outcome);
+    Assert(outcome.error == TomlParseError::None, "and its output parses");
+
+    var readInteger = 0i64;
+    Assert(reread.Find(View("i")).AsInteger(@readInteger) && readInteger == 42i64, "the integer survives");
+    var readFloat = 0.0;
+    Assert(reread.Find(View("tiny")).AsFloat(@readFloat) && readFloat == 0.1,
+           "and a float comes back as exactly the same float, not merely a close one");
+    Assert(reread.Find(View("whole")).Kind() == TomlKind::Float,
+           "a whole float keeps its point, or it would read back as an integer");
+    Assert(reread.Find(View("m")).Kind() == TomlKind::OffsetDateTime, "an offset date-time keeps its offset");
+    var readOffset = UtcOffset::Utc();
+    Assert(reread.Find(View("m")).AsOffset(@readOffset) && readOffset.TotalSeconds() == -28800i32,
+           "and the offset is the one it was written with");
+    Assert(reread.Find(View("w")).Kind() == TomlKind::LocalDateTime,
+           "while a local one is not given one it never had");
+
+    // Keys are bare where TOML allows it and quoted where it does not, which is the whole of the choice.
+    var keys = "bare_key = 1\n\"needs quoting\" = 2\n\"\" = 3\n1979 = 4";
+    var keyed = TomlParse(allocator, keys, @outcome);
+    Assert(outcome.error == TomlParseError::None, "keys of every shape parse");
+    let keyText = Render(@keyed, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(keyText, "bare_key = 1\n\"needs quoting\" = 2\n\"\" = 3\n1979 = 4\n"),
+           "and each is written in the shortest valid form");
+
+    // Strings are escaped to exactly what TOML requires: the quote, the backslash and the control characters.
+    var strings = "a = \"tab\\there\"\nb = \"quote\\\"here\"\nc = \"back\\\\slash\"";
+    var stringy = TomlParse(allocator, strings, @outcome);
+    Assert(outcome.error == TomlParseError::None, "strings with escapes parse");
+    let stringText = Render(@stringy, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(stringText, "a = \"tab\\there\"\nb = \"quote\\\"here\"\nc = \"back\\\\slash\"\n"),
+           "and come back escaped the same way");
+
+    // Nesting produces headers, and an inline table read from a document is written as one of them.
+    var nested = TomlParse(allocator, "a = { b = 1, c = { d = 2 } }", @outcome);
+    Assert(outcome.error == TomlParseError::None, "an inline table parses");
+    let nestedText = Render(@nested, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(nestedText, "[a]\nb = 1\n\n[a.c]\nd = 2\n"),
+           "and is written as headers, which is the one spelling that stays readable as it grows");
+
+    // A table inside an array has no header spelling, so it stays inline.
+    var arrayed = TomlParse(allocator, "a = [{ b = 1 }, {}]", @outcome);
+    Assert(outcome.error == TomlParseError::None, "a table inside an array parses");
+    let arrayedText = Render(@arrayed, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(arrayedText, "a = [{ b = 1 }, {}]\n"), "and stays inline, because TOML has no other way");
+
+    // The infinities and NaN are values TOML can spell, so they are written rather than refused.
+    var special = TomlParse(allocator, "a = inf\nb = -inf\nc = nan", @outcome);
+    Assert(outcome.error == TomlParseError::None, "the three named floats parse");
+    let specialText = Render(@special, MutableSlice::From<char8>(@storage[0], 4096));
+    Assert(Same(specialText, "a = inf\nb = -inf\nc = nan\n"), "and are written back as themselves");
+
+    return 0;
+}
