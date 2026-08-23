@@ -1,0 +1,458 @@
+// Reading a document as a stream of events, without building a tree.
+//
+// A tree is convenient and it is also what makes a large document expensive. Streaming trades random access for
+// constant memory: events arrive in document order, once, and the caller keeps only what it wants. A program
+// reading one setting out of a large configuration file never allocates for the rest of it.
+//
+// What a streaming reader cannot do is notice that a table was defined twice, because knowing that requires
+// remembering every table already seen -- which is the tree it was trying not to build. So this checks syntax
+// and structure and nothing else, and a caller that needs TOML's redefinition rules enforced wants the parser.
+// Saying so here is better than a reader that quietly accepts a document the parser would refuse.
+//
+// Text is left as it was written, escapes and all. Resolving them costs an allocation, and a caller skipping a
+// field should not pay for the field it is skipping; `TomlDecodeText` is there for the ones it keeps.
+
+import Core::Slice;
+
+/// What just happened in the document.
+///
+/// https://rux-lang.dev/docs/api/toml/event
+enum TomlEvent: int32 {
+    /// The document is finished.
+    End = 0,
+    /// Something went wrong; the reason is on the reader.
+    Error = 1,
+    /// A `[name]` or `[[name]]` header opened; `IsTableArray` says which, and the key parts follow.
+    HeaderStart = 2,
+    /// The header's key path is complete.
+    HeaderEnd = 3,
+    /// A key-value pair began; the key parts follow, and then the value.
+    KeyStart = 4,
+    /// One part of a key path, whose span is the key as written.
+    KeyPart = 5,
+    /// A string value, still escaped as it was written.
+    Text = 6,
+    /// An integer, as written.
+    Integer = 7,
+    /// A float, as written.
+    Float = 8,
+    /// `true` or `false`.
+    Boolean = 9,
+    /// A date-time in any of the four forms, as written.
+    DateTime = 10,
+    /// An array opened.
+    ArrayStart = 11,
+    /// An array closed.
+    ArrayEnd = 12,
+    /// An inline table opened.
+    InlineTableStart = 13,
+    /// An inline table closed.
+    InlineTableEnd = 14
+}
+
+// What the reader is in the middle of. The states are what let one call to `Next` return exactly one event
+// while consuming the punctuation between them.
+enum TomlEventState: int32 {
+    Document = 0,
+    HeaderKey = 1,
+    PairKey = 2,
+    Value = 3,
+    AfterValue = 4,
+    InlineKey = 5,
+    Finished = 6
+}
+
+/// Reads a document as events, in order, without building a tree.
+///
+/// https://rux-lang.dev/docs/api/toml/event-reader
+struct TomlEventReader {
+    /// Where tokens come from.
+    lexer: TomlLexer;
+    /// The whole document, which spans point into.
+    input: Slice<char8>;
+    /// The token about to be read.
+    ahead: TomlToken;
+    /// The token the current event came from.
+    current: TomlToken;
+    /// What the reader is in the middle of.
+    state: TomlEventState;
+    /// Whether the header being read is a `[[name]]` one.
+    tableArray: bool;
+    /// The open containers, one bit each: set for an inline table, clear for an array.
+    containers: uint64;
+    /// How many of those bits are in use.
+    depth: uint;
+    /// Why reading stopped.
+    error: TomlParseError;
+    /// The lexer's reason, when `error` is `Lexical`.
+    lexical: TomlLexError;
+}
+
+extend TomlEventReader {
+    /// A reader over `input`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/new
+    func New(input: Slice<char8>) -> TomlEventReader {
+        var lexer = TomlLexer::New(input);
+        let first = lexer.Next();
+        return TomlEventReader {
+            lexer: lexer,
+            input: input,
+            ahead: first,
+            current: first,
+            state: TomlEventState::Document,
+            tableArray: false,
+            containers: 0u64,
+            depth: 0,
+            error: TomlParseError::None,
+            lexical: TomlLexError::None
+        };
+    }
+
+    /// Why reading stopped, or `None`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/error
+    func Error(self: *TomlEventReader) -> TomlParseError {
+        return self.error;
+    }
+
+    /// The lexer's reason, when the error is `Lexical`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/lexical-error
+    func LexicalError(self: *TomlEventReader) -> TomlLexError {
+        return self.lexical;
+    }
+
+    /// The bytes the current event's token spans, as written: a string is still escaped and a number is still
+    /// text.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/span
+    func Span(self: *TomlEventReader) -> Slice<char8> {
+        return Slice<char8> {
+            data: self.input.data + self.current.start, length: self.current.end - self.current.start
+        };
+    }
+
+    /// Which string form the current text event was written in, which decoding it needs.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/form
+    func Form(self: *TomlEventReader) -> TomlTextForm {
+        return self.current.form;
+    }
+
+    /// Which line the current event is on, counting from one.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/line
+    func Line(self: *TomlEventReader) -> uint {
+        return self.current.line;
+    }
+
+    /// Which column the current event is at, counting from one, in bytes.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/column
+    func Column(self: *TomlEventReader) -> uint {
+        return self.current.column;
+    }
+
+    /// Whether the header being read was written `[[name]]` rather than `[name]`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
+    func IsTableArray(self: *TomlEventReader) -> bool {
+        return self.tableArray;
+    }
+
+    /// How deep inside arrays and inline tables the reader is.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/depth
+    func Depth(self: *TomlEventReader) -> uint {
+        return self.depth;
+    }
+}
+
+extend TomlEventReader {
+    func Advance(self: *var TomlEventReader) -> TomlToken {
+        let token = self.ahead;
+        if token.kind != TomlTokenKind::End {
+            self.ahead = self.lexer.Next();
+        }
+        return token;
+    }
+
+    func Fail(self: *var TomlEventReader, reason: TomlParseError) -> TomlEvent {
+        if self.error == TomlParseError::None {
+            self.error = reason;
+            self.current = self.ahead;
+            if reason == TomlParseError::Lexical {
+                self.lexical = self.ahead.error;
+            }
+        }
+        self.state = TomlEventState::Finished;
+        return TomlEvent::Error;
+    }
+
+    func SkipNewlines(self: *var TomlEventReader) {
+        while self.ahead.kind == TomlTokenKind::Newline {
+            self.Advance();
+        }
+    }
+
+    // Whether the innermost open container is an inline table. The stack is a single word, one bit per
+    // container, which is also why the depth limit here is sixty-four.
+    func InsideInlineTable(self: *TomlEventReader) -> bool {
+        if self.depth == 0u {
+            return false;
+        }
+        return (self.containers >> ((self.depth - 1u) as uint64) & 1u64) == 1u64;
+    }
+
+    func OpenContainer(self: *var TomlEventReader, inlineTable: bool) -> bool {
+        if self.depth >= 64u {
+            return false;
+        }
+        if inlineTable {
+            self.containers = self.containers | (1u64 << (self.depth as uint64));
+        }
+        else {
+            self.containers = self.containers & ~(1u64 << (self.depth as uint64));
+        }
+        self.depth = self.depth + 1u;
+        return true;
+    }
+
+    func CloseContainer(self: *var TomlEventReader) {
+        if self.depth > 0u {
+            self.depth = self.depth - 1u;
+        }
+    }
+
+    // A key part, which is a bare key, a quoted key, or something that lexed as a number and is a perfectly good
+    // key: `1979 = "x"` is a key of four digits.
+    func TakeKeyPart(self: *var TomlEventReader) -> bool {
+        let token = self.ahead;
+        if token.kind == TomlTokenKind::Error {
+            self.Fail(TomlParseError::Lexical);
+            return false;
+        }
+        if token.kind != TomlTokenKind::BareKey && token.kind != TomlTokenKind::Text &&
+            token.kind != TomlTokenKind::Integer && token.kind != TomlTokenKind::Boolean {
+            self.Fail(TomlParseError::Unexpected);
+            return false;
+        }
+        if token.kind == TomlTokenKind::Text &&
+            (token.form == TomlTextForm::MultiLineBasic || token.form == TomlTextForm::MultiLineLiteral) {
+            self.Fail(TomlParseError::Unexpected);
+            return false;
+        }
+        self.current = self.Advance();
+        return true;
+    }
+}
+
+extend TomlEventReader {
+    /// The next event, or `End` when the document is finished.
+    ///
+    /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
+    /// the document never meant.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/next
+    func Next(self: *var TomlEventReader) -> TomlEvent {
+        if self.state == TomlEventState::Finished {
+            return TomlEvent::End;
+        }
+        if self.state == TomlEventState::Document {
+            return self.NextAtDocument();
+        }
+        if self.state == TomlEventState::HeaderKey {
+            return self.NextHeaderKey();
+        }
+        if self.state == TomlEventState::PairKey {
+            return self.NextPairKey();
+        }
+        if self.state == TomlEventState::Value {
+            return self.NextValue();
+        }
+        if self.state == TomlEventState::InlineKey {
+            return self.NextInlineKey();
+        }
+        return self.NextAfterValue();
+    }
+
+    func NextAtDocument(self: *var TomlEventReader) -> TomlEvent {
+        self.SkipNewlines();
+        if self.ahead.kind == TomlTokenKind::Error {
+            return self.Fail(TomlParseError::Lexical);
+        }
+        if self.ahead.kind == TomlTokenKind::End {
+            self.current = self.ahead;
+            self.state = TomlEventState::Finished;
+            return TomlEvent::End;
+        }
+        if self.ahead.kind == TomlTokenKind::LeftBracket {
+            self.current = self.Advance();
+            self.tableArray = false;
+            if self.ahead.kind == TomlTokenKind::LeftBracket {
+                self.tableArray = true;
+                self.Advance();
+            }
+            self.state = TomlEventState::HeaderKey;
+            return TomlEvent::HeaderStart;
+        }
+        self.current = self.ahead;
+        self.state = TomlEventState::PairKey;
+        return TomlEvent::KeyStart;
+    }
+
+    func NextHeaderKey(self: *var TomlEventReader) -> TomlEvent {
+        if self.ahead.kind == TomlTokenKind::RightBracket {
+            self.current = self.Advance();
+            if self.tableArray {
+                if self.ahead.kind != TomlTokenKind::RightBracket {
+                    return self.Fail(TomlParseError::Unexpected);
+                }
+                self.Advance();
+            }
+            if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
+                return self.Fail(TomlParseError::Unexpected);
+            }
+            self.state = TomlEventState::Document;
+            return TomlEvent::HeaderEnd;
+        }
+        if !self.TakeKeyPart() {
+            return TomlEvent::Error;
+        }
+        if self.ahead.kind == TomlTokenKind::Dot {
+            self.Advance();
+        }
+        else if self.ahead.kind != TomlTokenKind::RightBracket {
+            return self.Fail(TomlParseError::Unexpected);
+        }
+        return TomlEvent::KeyPart;
+    }
+
+    func NextPairKey(self: *var TomlEventReader) -> TomlEvent {
+        if !self.TakeKeyPart() {
+            return TomlEvent::Error;
+        }
+        if self.ahead.kind == TomlTokenKind::Dot {
+            self.Advance();
+            return TomlEvent::KeyPart;
+        }
+        if self.ahead.kind != TomlTokenKind::Equals {
+            return self.Fail(TomlParseError::Unexpected);
+        }
+        self.Advance();
+        self.state = TomlEventState::Value;
+        return TomlEvent::KeyPart;
+    }
+}
+
+extend TomlEventReader {
+    func NextValue(self: *var TomlEventReader) -> TomlEvent {
+        if self.depth > 0u {
+            self.SkipNewlines();
+        }
+        if self.ahead.kind == TomlTokenKind::Error {
+            return self.Fail(TomlParseError::Lexical);
+        }
+        if self.ahead.kind == TomlTokenKind::End {
+            return self.Fail(TomlParseError::Truncated);
+        }
+        // An empty array, or one whose last element was followed by a comma.
+        if self.ahead.kind == TomlTokenKind::RightBracket && self.depth > 0u && !self.InsideInlineTable() {
+            self.current = self.Advance();
+            self.CloseContainer();
+            self.state = TomlEventState::AfterValue;
+            return TomlEvent::ArrayEnd;
+        }
+        if self.ahead.kind == TomlTokenKind::LeftBracket {
+            self.current = self.Advance();
+            if !self.OpenContainer(false) {
+                return self.Fail(TomlParseError::TooDeep);
+            }
+            return TomlEvent::ArrayStart;
+        }
+        if self.ahead.kind == TomlTokenKind::LeftBrace {
+            self.current = self.Advance();
+            if !self.OpenContainer(true) {
+                return self.Fail(TomlParseError::TooDeep);
+            }
+            self.state = TomlEventState::InlineKey;
+            return TomlEvent::InlineTableStart;
+        }
+        let token = self.ahead;
+        if token.kind == TomlTokenKind::Text || token.kind == TomlTokenKind::Integer ||
+            token.kind == TomlTokenKind::Float || token.kind == TomlTokenKind::Boolean ||
+            token.kind == TomlTokenKind::DateTime {
+            self.current = self.Advance();
+            self.state = TomlEventState::AfterValue;
+            if token.kind == TomlTokenKind::Text {
+                return TomlEvent::Text;
+            }
+            if token.kind == TomlTokenKind::Integer {
+                return TomlEvent::Integer;
+            }
+            if token.kind == TomlTokenKind::Float {
+                return TomlEvent::Float;
+            }
+            if token.kind == TomlTokenKind::Boolean {
+                return TomlEvent::Boolean;
+            }
+            return TomlEvent::DateTime;
+        }
+        return self.Fail(TomlParseError::Unexpected);
+    }
+
+    func NextInlineKey(self: *var TomlEventReader) -> TomlEvent {
+        self.SkipNewlines();
+        if self.ahead.kind == TomlTokenKind::RightBrace {
+            self.current = self.Advance();
+            self.CloseContainer();
+            self.state = TomlEventState::AfterValue;
+            return TomlEvent::InlineTableEnd;
+        }
+        if self.ahead.kind == TomlTokenKind::End {
+            return self.Fail(TomlParseError::Truncated);
+        }
+        self.current = self.ahead;
+        self.state = TomlEventState::PairKey;
+        return TomlEvent::KeyStart;
+    }
+
+    func NextAfterValue(self: *var TomlEventReader) -> TomlEvent {
+        // At the top level a value ends its line, and nothing else may share it.
+        if self.depth == 0u {
+            if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
+                return self.Fail(TomlParseError::Unexpected);
+            }
+            self.state = TomlEventState::Document;
+            return self.NextAtDocument();
+        }
+        self.SkipNewlines();
+        let inlineTable = self.InsideInlineTable();
+        if self.ahead.kind == TomlTokenKind::Comma {
+            self.Advance();
+            self.state = inlineTable ? TomlEventState::InlineKey : TomlEventState::Value;
+            return self.Next();
+        }
+        if inlineTable {
+            if self.ahead.kind != TomlTokenKind::RightBrace {
+                if self.ahead.kind == TomlTokenKind::End {
+                    return self.Fail(TomlParseError::Truncated);
+                }
+                return self.Fail(TomlParseError::Unexpected);
+            }
+            self.current = self.Advance();
+            self.CloseContainer();
+            return TomlEvent::InlineTableEnd;
+        }
+        if self.ahead.kind != TomlTokenKind::RightBracket {
+            if self.ahead.kind == TomlTokenKind::End {
+                return self.Fail(TomlParseError::Truncated);
+            }
+            return self.Fail(TomlParseError::Unexpected);
+        }
+        self.current = self.Advance();
+        self.CloseContainer();
+        return TomlEvent::ArrayEnd;
+    }
+}

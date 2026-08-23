@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Events"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Toml: streaming events in document order, with their source locations"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Toml = { Path = "../../../../Packages/Toml" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Toml"
