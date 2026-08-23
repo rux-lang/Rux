@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Scalar"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Toml: integers in four bases, floats, and the four date and time forms"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Time = { Path = "../../../../Packages/Time" }
+Toml = { Path = "../../../../Packages/Toml" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Toml"

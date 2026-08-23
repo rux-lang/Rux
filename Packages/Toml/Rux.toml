@@ -21,6 +21,7 @@ Allocator = { Namespace = "Rux", Version = "0.1.0" }
 Collections = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
+Math = { Namespace = "Rux", Version = "0.1.0" }
 Memory = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Time = { Namespace = "Rux", Version = "0.1.0" }

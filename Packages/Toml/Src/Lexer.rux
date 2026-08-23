@@ -245,8 +245,16 @@ extend TomlLexer {
             }
             if escapes && c == 0x5Cu8 {
                 let next = self.At(1u);
-                if next == 0x75u8 || next == 0x55u8 {
-                    let digits = next == 0x75u8 ? 4u : 8u;
+                if next == 0x75u8 || next == 0x55u8 || next == 0x78u8 {
+                    // TOML 1.1 adds the two-digit escape, which names the same scalar values as the short form
+                    // and spells the ones below 256 in half the characters.
+                    var digits = 8u;
+                    if next == 0x75u8 {
+                        digits = 4u;
+                    }
+                    else if next == 0x78u8 {
+                        digits = 2u;
+                    }
                     var digit: uint = 1;
                     while digit <= digits {
                         let h = self.At(1u + digit);
@@ -543,8 +551,14 @@ func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm
         }
         let kind = span.data[index] as uint8;
         index = index + 1u;
-        if kind == 0x75u8 || kind == 0x55u8 {
-            let digits = kind == 0x75u8 ? 4u : 8u;
+        if kind == 0x75u8 || kind == 0x55u8 || kind == 0x78u8 {
+            var digits = 8u;
+            if kind == 0x75u8 {
+                digits = 4u;
+            }
+            else if kind == 0x78u8 {
+                digits = 2u;
+            }
             if index + digits > span.length {
                 *bad = true;
                 break;
