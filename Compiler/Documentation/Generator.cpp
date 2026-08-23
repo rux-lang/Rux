@@ -8,6 +8,7 @@
 #include <chrono>
 #include <format>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string_view>
 #include <system_error>
@@ -22,6 +23,19 @@ struct SearchEntry {
     std::string kind;
     std::string module;
     std::string href;
+};
+
+/// What rendering found wrong, gathered as it goes.
+///
+/// A route two declarations both claim and a link that cannot be emitted are both silent losses: the page still
+/// renders, and the reader never learns that one of the two declarations is unreachable or that a link became
+/// plain text. Collecting them here is what turns them into a failed run.
+struct Findings {
+    std::vector<Diagnostic> diagnostics;
+    std::map<std::string, std::string> routes;
+    std::size_t rendered = 0;
+    std::string sourceName;
+    SourceLocation location;
 };
 
 /// Escape text for HTML. Documentation text comes from source comments, so it is author-controlled but not trusted
@@ -66,7 +80,7 @@ bool SafeLink(const std::string_view link) {
 }
 
 /// Render the inline subset the generator supports — code spans, emphasis, links — over already-escaped text.
-std::string InlineMarkdown(const std::string_view source) {
+std::string InlineMarkdown(const std::string_view source, Findings *findings = nullptr) {
     std::string result;
     for (std::size_t i = 0; i < source.size();) {
         if (source[i] == '`') {
@@ -101,7 +115,18 @@ std::string InlineMarkdown(const std::string_view source) {
                         result += "<a href=\"" + EscapeHtml(link) + "\">" + EscapeHtml(label) + "</a>";
                     }
                     else {
+                        // The link is dropped rather than emitted, and reported rather than dropped quietly: a
+                        // reader of the page would see prose where a link was meant and never know one was lost.
                         result += EscapeHtml(label);
+                        if (findings != nullptr) {
+                            Diagnostic problem = ErrorDiagnostic(
+                                std::format("documentation link '{}' uses a scheme that cannot be emitted",
+                                            std::string(link)),
+                                {}, "use an https, http or mailto link, or write the target as plain text");
+                            problem.sourceName = findings->sourceName;
+                            problem.location = findings->location;
+                            findings->diagnostics.push_back(std::move(problem));
+                        }
                     }
                     i = linkEnd + 1;
                     continue;
@@ -115,7 +140,7 @@ std::string InlineMarkdown(const std::string_view source) {
 }
 
 /// Render a doc comment's block structure: paragraphs, lists, and fenced code.
-std::string RenderMarkdown(const std::string_view source) {
+std::string RenderMarkdown(const std::string_view source, Findings *findings = nullptr) {
     std::istringstream input{std::string(source)};
     std::ostringstream output;
     std::string line;
@@ -124,7 +149,7 @@ std::string RenderMarkdown(const std::string_view source) {
     bool fence = false;
     auto flushParagraph = [&] {
         if (!paragraph.empty()) {
-            output << "<p>" << InlineMarkdown(paragraph) << "</p>";
+            output << "<p>" << InlineMarkdown(paragraph, findings) << "</p>";
             paragraph.clear();
         }
     };
@@ -149,7 +174,7 @@ std::string RenderMarkdown(const std::string_view source) {
                 output << "<ul>";
                 list = true;
             }
-            output << "<li>" << InlineMarkdown(std::string_view(line).substr(2)) << "</li>";
+            output << "<li>" << InlineMarkdown(std::string_view(line).substr(2), findings) << "</li>";
             continue;
         }
         if (list) {
@@ -364,8 +389,12 @@ std::string Anchor(std::string value) {
 }
 
 /// Whether a declaration belongs in the generated output, which by default is the package's public surface only.
-bool Visible(const Decl &decl, const bool includePrivate) {
-    if (includePrivate || decl.isPublic)
+///
+/// A declaration written at file scope is that surface: another package importing this one reaches it without any
+/// marker, so documenting only the ones spelled `pub` would leave every page empty. Inside a `module` block the
+/// marker means what it says, and only the exported items are shown.
+bool Visible(const Decl &decl, const bool includePrivate, const bool atFileScope) {
+    if (includePrivate || atFileScope || decl.isPublic)
         return true;
     if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
         return std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; });
@@ -374,53 +403,88 @@ bool Visible(const Decl &decl, const bool includePrivate) {
 }
 
 void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &moduleName, const std::string &source,
-                const bool includePrivate, std::vector<SearchEntry> &search, const std::string &prefix = {}) {
-    if (!Visible(decl, includePrivate))
+                const bool includePrivate, std::vector<SearchEntry> &search, Findings &findings,
+                const std::string &prefix = {}) {
+    const bool atFileScope = prefix.empty();
+    if (!Visible(decl, includePrivate, atFileScope))
         return;
     const std::string name = DeclName(decl);
+    // An import has no name and is not an item; rendering one produces an empty card with an empty heading.
+    if (name.empty())
+        return;
     const std::string qualified = prefix.empty() ? name : prefix + "::" + name;
-    const std::string id = Anchor(moduleName + "-" + qualified);
+    std::string id = Anchor(moduleName + "-" + qualified);
+    findings.sourceName = source;
+    findings.location = decl.location;
+    // A route is built by folding the name, so two declarations can land on one. Sharing a name is ordinary --
+    // an overload set, or a type extended in several blocks -- and those are numbered so each has a route of its
+    // own. Two *different* names folding together is the harmful case: one of them becomes unreachable, and
+    // every link to it lands on the other without saying so.
+    if (const auto claimed = findings.routes.find(id); claimed != findings.routes.end()) {
+        if (claimed->second == qualified) {
+            std::size_t occurrence = 2;
+            while (findings.routes.contains(id + "-" + std::to_string(occurrence))) {
+                occurrence = occurrence + 1;
+            }
+            id = id + "-" + std::to_string(occurrence);
+            findings.routes.emplace(id, qualified);
+        }
+        else {
+            Diagnostic problem = ErrorDiagnostic(
+                std::format("'{}' and '{}' both claim the documentation route '#{}'", claimed->second, qualified, id),
+                {}, "rename one of them, or move one into a module of its own");
+            problem.sourceName = source;
+            problem.location = decl.location;
+            findings.diagnostics.push_back(std::move(problem));
+        }
+    }
+    else {
+        findings.routes.emplace(id, qualified);
+    }
+    findings.rendered = findings.rendered + 1;
     search.push_back({qualified, DeclKind(decl), moduleName, "#" + id});
     html << "<article class=\"item\" id=\"" << EscapeHtml(id) << "\"><div class=\"kind\">" << EscapeHtml(DeclKind(decl))
          << "</div><h3>" << EscapeHtml(name) << "</h3><pre><code>" << EscapeHtml(DeclSignature(decl))
          << "</code></pre><div class=\"location\">" << EscapeHtml(source) << ':' << decl.location.line << "</div>"
-         << RenderMarkdown(decl.documentation);
+         << RenderMarkdown(decl.documentation, &findings);
 
     if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
         for (const auto &field : structure->fields) {
-            if (!includePrivate && !field.isPublic)
+            // A field of a file-scope struct is reachable wherever the struct is, so `pub` distinguishes nothing
+            // there and hiding the fields would document a type as if it had none.
+            if (!includePrivate && !atFileScope && !field.isPublic)
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
-                 << "</code>" << RenderMarkdown(field.documentation) << "</section>";
+                 << "</code>" << RenderMarkdown(field.documentation, &findings) << "</section>";
         }
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
         for (const auto &variant : enumeration->variants) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(variant.name) << "</h4>"
-                 << RenderMarkdown(variant.documentation) << "</section>";
+                 << RenderMarkdown(variant.documentation, &findings) << "</section>";
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
         for (const auto &method : interface->methods) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
-                 << EscapeHtml(FunctionSignature(*method)) << "</code>" << RenderMarkdown(method->documentation)
-                 << "</section>";
+                 << EscapeHtml(FunctionSignature(*method)) << "</code>"
+                 << RenderMarkdown(method->documentation, &findings) << "</section>";
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
         for (const auto &method : extension->methods) {
-            if (!includePrivate && !method->isPublic)
+            if (!includePrivate && !atFileScope && !method->isPublic)
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
-                 << EscapeHtml(FunctionSignature(*method)) << "</code>" << RenderMarkdown(method->documentation)
-                 << "</section>";
+                 << EscapeHtml(FunctionSignature(*method)) << "</code>"
+                 << RenderMarkdown(method->documentation, &findings) << "</section>";
         }
     }
     html << "</article>";
     if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
         for (const auto &item : module->items) {
-            RenderDecl(html, *item, moduleName, source, includePrivate, search, qualified);
+            RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, qualified);
         }
     }
 }
@@ -449,40 +513,46 @@ bool WriteFile(const std::filesystem::path &path, const std::string_view value, 
 }
 } // namespace
 
-bool Generate(const Manifest &manifest, const std::span<const ParseResult> modules, const GenerateOptions &options,
-              Diagnostic &error) {
+bool GenerateResult::HasErrors() const {
+    return std::ranges::any_of(diagnostics,
+                               [](const Diagnostic &item) { return item.severity == Diagnostic::Severity::Error; });
+}
+
+GenerateResult Generate(const Manifest &manifest, const std::span<const ParseResult> modules,
+                        const GenerateOptions &options) {
+    GenerateResult result;
+    Diagnostic error;
+    auto Fail = [&](Diagnostic diagnostic) {
+        result.diagnostics.push_back(std::move(diagnostic));
+        return result;
+    };
     std::error_code ec;
     const auto output = std::filesystem::absolute(options.outputDirectory, ec).lexically_normal();
     if (ec) {
-        error = FilesystemFailure(
+        return Fail(FilesystemFailure(
             std::format("could not resolve documentation output directory '{}'", options.outputDirectory.string()), ec,
-            "choose a valid path with '--output <dir>'");
-        return false;
+            "choose a valid path with '--output <dir>'"));
     }
     const bool outputExists = std::filesystem::exists(output, ec);
     if (ec) {
-        error = FilesystemFailure(std::format("could not inspect documentation output directory '{}'", output.string()),
-                                  ec);
-        return false;
+        return Fail(FilesystemFailure(
+            std::format("could not inspect documentation output directory '{}'", output.string()), ec));
     }
     if (outputExists) {
         const bool outputEmpty = std::filesystem::is_empty(output, ec);
         if (ec) {
-            error = FilesystemFailure(
-                std::format("could not inspect documentation output directory '{}'", output.string()), ec);
-            return false;
+            return Fail(FilesystemFailure(
+                std::format("could not inspect documentation output directory '{}'", output.string()), ec));
         }
         const bool managed = outputEmpty || std::filesystem::exists(output / MarkerName, ec);
         if (ec) {
-            error = FilesystemFailure(
-                std::format("could not inspect documentation marker '{}'", (output / MarkerName).string()), ec);
-            return false;
+            return Fail(FilesystemFailure(
+                std::format("could not inspect documentation marker '{}'", (output / MarkerName).string()), ec));
         }
         if (!managed) {
-            error =
+            return Fail(
                 ErrorDiagnostic(std::format("refusing to replace non-empty unmarked directory '{}'", output.string()),
-                                {}, "choose an empty output directory or remove its contents");
-            return false;
+                                {}, "choose an empty output directory or remove its contents"));
         }
     }
 
@@ -490,27 +560,53 @@ bool Generate(const Manifest &manifest, const std::span<const ParseResult> modul
     const auto temporary = output.parent_path() / std::format(".rux-docs-tmp-{}", nonce);
     std::filesystem::create_directories(temporary, ec);
     if (ec) {
-        error = FilesystemFailure(
+        return Fail(FilesystemFailure(
             std::format("could not create temporary documentation directory '{}'", temporary.string()), ec,
-            "check that the output directory's parent is writable");
-        return false;
+            "check that the output directory's parent is writable"));
     }
 
     std::ostringstream content;
     std::vector<SearchEntry> search;
+    Findings findings;
+    std::size_t declared = 0;
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
         auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
-        const std::string source = ec ? sourcePath.filename().generic_string() : relative.generic_string();
+        // A path that is already relative, or one the root does not contain, has no relative form; falling through
+        // to an empty string is how a rendered location loses its file and a diagnostic loses its source.
+        std::string source;
+        if (!ec && !relative.empty()) {
+            source = relative.generic_string();
+        }
+        else if (!sourcePath.is_absolute()) {
+            source = sourcePath.generic_string();
+        }
+        else {
+            source = sourcePath.filename().generic_string();
+        }
         ec.clear();
         const std::string moduleName = sourcePath.stem().string();
+        declared = declared + module.module.items.size();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";
         for (const auto &declaration : module.module.items) {
-            RenderDecl(content, *declaration, moduleName, source, options.includePrivate, search);
+            RenderDecl(content, *declaration, moduleName, source, options.includePrivate, search, findings);
         }
         content << "</section>";
     }
     std::ranges::sort(search, {}, &SearchEntry::name);
+    // A page of module headings with nothing under them is what a visibility rule that does not match the language
+    // produces, and it looks like a package with no API rather than like a bug.
+    if (declared > 0 && findings.rendered == 0) {
+        findings.diagnostics.push_back(
+            ErrorDiagnostic(std::format("'{}' declares {} items but none reached its documentation",
+                                        manifest.package.name.Text(), declared),
+                            {}, "check that the declarations are at file scope or marked 'pub'"));
+    }
+    result.diagnostics.insert(result.diagnostics.end(), findings.diagnostics.begin(), findings.diagnostics.end());
+    if (result.HasErrors()) {
+        std::filesystem::remove_all(temporary, ec);
+        return result;
+    }
 
     const std::string title = manifest.package.name.Text() + " " + manifest.package.version.Text();
     const std::string html =
@@ -559,23 +655,22 @@ bool Generate(const Manifest &manifest, const std::span<const ParseResult> modul
                    WriteFile(temporary / "search-index.json", searchJson.str(), error);
     if (!written) {
         std::filesystem::remove_all(temporary, ec);
-        return false;
+        return Fail(std::move(error));
     }
     if (std::filesystem::exists(output, ec)) {
         std::filesystem::remove_all(output, ec);
     }
     if (ec) {
-        error =
+        return Fail(
             FilesystemFailure(std::format("could not replace managed documentation directory '{}'", output.string()),
-                              ec, "close programs using the generated documentation and try again");
-        return false;
+                              ec, "close programs using the generated documentation and try again"));
     }
     std::filesystem::rename(temporary, output, ec);
     if (ec) {
-        error = FilesystemFailure(std::format("could not install generated documentation at '{}'", output.string()), ec,
-                                  "check that the output directory's parent is writable");
-        return false;
+        return Fail(FilesystemFailure(std::format("could not install generated documentation at '{}'", output.string()),
+                                      ec, "check that the output directory's parent is writable"));
     }
-    return true;
+    result.ok = true;
+    return result;
 }
 } // namespace Rux::Documentation
