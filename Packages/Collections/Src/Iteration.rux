@@ -13,7 +13,7 @@
 // iterator whose `Next` reports `Option<*var T>` does not survive lowering: the instantiation is named one way where
 // its layout is recorded and another where it is looked up, and the two disagree over whether the pointee's `var`
 // is part of the name. Until that is fixed, changing elements while walking is done by asking the container for a
-// `MutableSlice<T>` and indexing it, which is what `Rux/Algorithms` does throughout. See BACKLOG.md.
+// `MutableSlice<T>` and indexing it, which is what `Rux/Algorithms` does throughout. See Docs/CompilerDefects.md.
 //
 // Both borrow. Neither owns the storage it walks, and neither may outlive the container it came from or survive that
 // container growing, rehashing or being freed -- which is the one thing about iteration in this package worth

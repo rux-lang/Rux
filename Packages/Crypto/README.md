@@ -6,7 +6,8 @@ Cryptographic hashes, message authentication codes and key derivation.
 > vectors, but passing vectors is not the same as being safe to rely on: the things that go wrong in
 > cryptographic code — a comparison that leaks timing, a secret that outlives its use, a construction used
 > outside the assumptions it was proved under — pass vectors happily. This package is awaiting an independent
-> review by someone who did not write it. Until that review is recorded, treat it as unaudited.
+> review by someone who did not write it. Until that review is recorded, treat it as unaudited. The
+> [review checklist](../../Docs/CryptoReview.md) says what is already established and what to look at first.
 
 ## Installation
 
