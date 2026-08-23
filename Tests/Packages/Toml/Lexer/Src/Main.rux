@@ -140,6 +140,8 @@ func Main() -> int {
     Assert(Same(@astral, "\u{1F600}"), "and a long one names a scalar above the basic plane");
     var escape = FirstText("\"\\e\"");
     Assert(Same(@escape, "\u{1B}"), "TOML 1.1 spells the escape character");
+    var hex = FirstText("\"\\x41\"");
+    Assert(Same(@hex, "A"), "and TOML 1.1 spells a scalar below 256 in two digits");
 
     // A line-ending backslash in a multi-line string swallows the wrapping it was used to introduce.
     var folded = FirstText("\"\"\"\na\\ \n   b\"\"\"");

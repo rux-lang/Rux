@@ -1,0 +1,143 @@
+// Most of this is refusals, because the numbers TOML declines to accept are exactly the ones two readers would
+// disagree about. `010` is eight in one language and ten in another, so TOML says it is neither -- and a port
+// number that means two things is a bug waiting for a deployment.
+
+import Core::{ Assert, Slice };
+import Time::{ Date, TimeOfDay, UtcOffset };
+import Toml::{ TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };
+
+func Integer(text: Slice<char8>) -> int64 {
+    var value = 0i64;
+    Assert(TomlParseInteger(text, @value) == TomlScalarError::None, "a number that should parse");
+    return value;
+}
+
+func IntegerFails(text: Slice<char8>) -> bool {
+    var value = 0i64;
+    return TomlParseInteger(text, @value) != TomlScalarError::None;
+}
+
+func Float(text: Slice<char8>) -> float64 {
+    var value = 0.0;
+    Assert(TomlParseFloat(text, @value) == TomlScalarError::None, "a float that should parse");
+    return value;
+}
+
+func FloatFails(text: Slice<char8>) -> bool {
+    var value = 0.0;
+    return TomlParseFloat(text, @value) != TomlScalarError::None;
+}
+
+func Main() -> int {
+    // Integers, in the four bases TOML writes.
+    Assert(Integer("42") == 42i64, "a decimal integer");
+    Assert(Integer("-17") == -17i64, "a negative one");
+    Assert(Integer("+99") == 99i64, "an explicitly positive one");
+    Assert(Integer("0") == 0i64, "zero");
+    Assert(Integer("-0") == 0i64, "and negative zero, which is the same integer");
+    Assert(Integer("1_000_000") == 1000000i64, "underscores between digits are separators");
+    Assert(Integer("0xDEADBEEF") == 3735928559i64, "hexadecimal");
+    Assert(Integer("0xdead_beef") == 3735928559i64, "in either case, with separators");
+    Assert(Integer("0o755") == 493i64, "octal");
+    Assert(Integer("0b1101") == 13i64, "and binary");
+    Assert(Integer("9223372036854775807") == 9223372036854775807i64, "the largest integer TOML promises");
+    Assert(Integer("-9223372036854775808") == -9223372036854775808i64, "and the most negative");
+
+    // The refusals. Each is a form some reader accepts and some does not.
+    Assert(IntegerFails("010"), "a leading zero is not a TOML integer at all, in either base it might mean");
+    Assert(IntegerFails("_1"), "an underscore must have a digit before it");
+    Assert(IntegerFails("1_"), "and after it");
+    Assert(IntegerFails("1__0"), "so two in a row are refused");
+    Assert(IntegerFails("+0x1"), "a based integer takes no sign, because the grammar offers none");
+    Assert(IntegerFails("0x"), "a prefix with no digits");
+    Assert(IntegerFails("0b102"), "a digit outside the base");
+    Assert(IntegerFails("0o8"), "in octal too");
+    Assert(IntegerFails("9223372036854775808"), "and one past the largest integer is out of range, not wrapped");
+
+    // Floats. TOML can spell the three values JSON cannot.
+    Assert(Float("3.14") > 3.13 && Float("3.14") < 3.15, "a fractional float");
+    Assert(Float("5e+22") > 4.9e22 && Float("5e+22") < 5.1e22, "an exponent alone makes a float");
+    Assert(Float("-0.01") < 0.0, "a negative one");
+    Assert(Float("224_617.445_991_228") > 224617.0, "with separators, which floats allow too");
+    let infinity = Float("inf");
+    Assert(infinity > 1.7976931348623157e308, "infinity is a value TOML can write, and is past every finite one");
+    Assert(Float("-inf") < -1.7976931348623157e308, "in both directions");
+    Assert(Float("+inf") == infinity, "with an explicit sign as well");
+    let notNumber = Float("nan");
+    Assert(notNumber != notNumber, "and NaN, which is not equal to itself");
+
+    Assert(FloatFails(".7"), "a float needs a digit before its point");
+    Assert(FloatFails("7."), "and after it");
+    Assert(FloatFails("1e"), "an exponent needs digits");
+    Assert(FloatFails("3.e2"), "on both sides of a point that is there");
+    Assert(FloatFails("01.5"), "a leading zero is refused here as well");
+    Assert(FloatFails("1.2.3"), "and a second point is not a float");
+
+    // The four date-time forms, which are four different things and not four spellings of one.
+    var date = Date { year: 1970, month: 1u8, day: 1u8 };
+    var time = TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
+    var offset = UtcOffset::Utc();
+
+    Assert(TomlParseDateTime("1979-05-27T07:32:00Z", @date, @time, @offset) == TomlDateTimeShape::Offset,
+           "an offset date-time");
+    Assert(date.year == 1979 && date.month == 5u8 && date.day == 27u8, "with its date read");
+    Assert(time.hour == 7u8 && time.minute == 32u8, "and its time");
+    Assert(offset.TotalSeconds() == 0i32, "and Z meaning UTC");
+
+    Assert(TomlParseDateTime("1979-05-27T00:32:00-07:00", @date, @time, @offset) == TomlDateTimeShape::Offset,
+           "an offset date-time west of UTC");
+    Assert(offset.TotalSeconds() == -25200i32, "whose offset is negative, sign carried onto both parts");
+
+    Assert(TomlParseDateTime("1979-05-27T00:32:00.999999-07:00", @date, @time, @offset) ==
+               TomlDateTimeShape::Offset, "one with a fraction");
+    Assert(time.nanosecond == 999999000u32, "which is read as nanoseconds, not as digits");
+
+    Assert(TomlParseDateTime("1979-05-27 07:32:00", @date, @time, @offset) == TomlDateTimeShape::Local,
+           "a local date-time, which TOML lets a space separate");
+    Assert(TomlParseDateTime("1979-05-27t07:32:00", @date, @time, @offset) == TomlDateTimeShape::Local,
+           "and a lower-case T, as far as RFC 3339's own liberality goes");
+
+    Assert(TomlParseDateTime("1979-05-27", @date, @time, @offset) == TomlDateTimeShape::DateOnly,
+           "a local date");
+    Assert(TomlParseDateTime("07:32:00", @date, @time, @offset) == TomlDateTimeShape::TimeOnly,
+           "a local time");
+    Assert(TomlParseDateTime("00:32:00.999999", @date, @time, @offset) == TomlDateTimeShape::TimeOnly,
+           "and one with a fraction");
+
+    // A leap second folds to the last nanosecond of fifty-nine, the policy Time states for RFC 3339.
+    Assert(TomlParseDateTime("1979-05-27T23:59:60Z", @date, @time, @offset) == TomlDateTimeShape::Offset,
+           "second sixty is accepted");
+    Assert(time.second == 59u8 && time.nanosecond == 999999999u32, "and folded rather than represented");
+
+    // Refusals. Four correct digit pairs are not a date if the calendar has no such day.
+    Assert(TomlParseDateTime("1979-02-30", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "the thirtieth of February is four correct digit pairs and not a date");
+    Assert(TomlParseDateTime("1979-13-01", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "nor is a thirteenth month");
+    Assert(TomlParseDateTime("2024-02-30", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "even in a leap year");
+    Assert(TomlParseDateTime("1979-05-27T25:00:00Z", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "an hour past the day");
+    Assert(TomlParseDateTime("1979-05-27T07:32:00+07", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "an offset without its minutes");
+    Assert(TomlParseDateTime("1979-05-27T07:32:00Zextra", @date, @time, @offset) ==
+               TomlDateTimeShape::NotDateTime, "and anything after the offset");
+
+    // A leap day exists in a leap year and not otherwise, which is the whole of why the calendar validates.
+    Assert(TomlParseDateTime("2024-02-29", @date, @time, @offset) == TomlDateTimeShape::DateOnly,
+           "the twenty-ninth of February 2024 is a day");
+    Assert(TomlParseDateTime("2023-02-29", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "and in 2023 it is not");
+
+    // TOML 1.1 lets a time leave off its seconds, which is the shape a person writes when they mean a time of
+    // day rather than an instant.
+    Assert(TomlParseDateTime("07:32", @date, @time, @offset) == TomlDateTimeShape::TimeOnly,
+           "a time without seconds");
+    Assert(time.second == 0u8, "whose seconds are zero, since that is what the shorter text names");
+    Assert(TomlParseDateTime("1979-05-27T07:32Z", @date, @time, @offset) == TomlDateTimeShape::Offset,
+           "and a date-time written the same way");
+    Assert(TomlParseDateTime("07:3", @date, @time, @offset) == TomlDateTimeShape::NotDateTime,
+           "but a minute still needs both digits");
+
+    return 0;
+}
