@@ -1,0 +1,715 @@
+// Building a document from tokens, and refusing the three different ways of defining a table twice.
+//
+// Most of a TOML parser is bookkeeping about tables. `[a.b]` creates `a` implicitly and `b` deliberately, and
+// what may happen to each of them afterwards is different: a later `[a]` is fine because `a` was only implied,
+// while a later `[a.b]` is a redefinition. A table written inline is closed the moment its brace shuts, and one
+// reached through a dotted key is closed as soon as the line ends. Three rules, three reasons, three separate
+// errors -- because "duplicate key" tells a writer nothing about which of them they broke.
+//
+// The recursion of inline tables and arrays is bounded by the depth limit rather than by the stack, checked
+// before descending, so a document built to exhaust the stack is refused while there is still stack to refuse
+// it with.
+
+import Allocator::Allocator;
+import Collections::{ CollectionError, Vector };
+import Core::{ Drop, Slice };
+import Text::{ String, StringView, TextError };
+import Time::{ Date, TimeOfDay, UtcOffset };
+
+/// Why parsing stopped.
+///
+/// https://rux-lang.dev/docs/api/toml/parse-error
+enum TomlParseError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// The lexer refused the input; its reason is reported separately.
+    Lexical = 1,
+    /// A token that cannot appear where it did.
+    Unexpected = 2,
+    /// The document ended in the middle of something.
+    Truncated = 3,
+    /// A key given a value twice in the same table.
+    DuplicateKey = 4,
+    /// A table defined by a header that had already been defined by one.
+    RedefinedTable = 5,
+    /// An attempt to add to a table that was written inline, which its closing brace ended.
+    ExtendedInlineTable = 6,
+    /// An attempt to add to a table that a dotted key created, which its line ended.
+    ExtendedDottedTable = 7,
+    /// A key path that runs through something that is not a table.
+    NotATable = 8,
+    /// A `[[name]]` header naming an array that was not built from headers, or a table.
+    NotATableArray = 9,
+    /// A scalar whose text is not the number or date TOML's grammar defines.
+    BadValue = 10,
+    /// A string whose escapes name no scalar value.
+    BadText = 11,
+    /// Values nested deeper than the limit allowed.
+    TooDeep = 12,
+    /// The allocator refused.
+    OutOfMemory = 13
+}
+
+/// What a parse will accept.
+///
+/// https://rux-lang.dev/docs/api/toml/limits
+struct TomlLimits {
+    /// How deeply arrays and inline tables may nest.
+    maximumDepth: uint;
+}
+
+extend TomlLimits {
+    /// Limits that suit a configuration file: deep enough for anything written by hand, shallow enough that a
+    /// document built to exhaust the stack does not.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/limits/default
+    func Default() -> TomlLimits {
+        return TomlLimits { maximumDepth: 64 };
+    }
+
+    /// Limits that refuse nothing, for input already known to be trustworthy.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/limits/unlimited
+    func Unlimited() -> TomlLimits {
+        return TomlLimits { maximumDepth: 18446744073709551615u };
+    }
+}
+
+/// The outcome of a parse: why it stopped, and where.
+///
+/// https://rux-lang.dev/docs/api/toml/parse-outcome
+struct TomlParseOutcome {
+    /// Why parsing stopped, or `None`.
+    error: TomlParseError;
+    /// The lexer's reason, when `error` is `Lexical`.
+    lexical: TomlLexError;
+    /// The scalar reader's reason, when `error` is `BadValue`.
+    scalar: TomlScalarError;
+    /// Which line it stopped on, counting from one.
+    line: uint;
+    /// Which column, counting from one, in bytes.
+    column: uint;
+}
+
+extend TomlParseOutcome {
+    /// An outcome that has not failed, which is what a caller passes in to be filled.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/parse-outcome/new
+    func New() -> TomlParseOutcome {
+        return TomlParseOutcome {
+            error: TomlParseError::None,
+            lexical: TomlLexError::None,
+            scalar: TomlScalarError::None,
+            line: 1,
+            column: 1
+        };
+    }
+}
+
+/// A parser over a document.
+///
+/// https://rux-lang.dev/docs/api/toml/parser
+struct TomlParser {
+    /// Where tokens come from.
+    lexer: TomlLexer;
+    /// Where values are built.
+    allocator: Allocator;
+    /// What to accept.
+    limits: TomlLimits;
+    /// The whole document, which token spans point into.
+    input: Slice<char8>;
+    /// The token about to be read.
+    ahead: TomlToken;
+    /// How deep the current value is nested.
+    depth: uint;
+    /// Why parsing stopped.
+    outcome: TomlParseOutcome;
+}
+
+extend TomlParser {
+    /// A parser over `input` under `limits`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/parser/new
+    func New(allocator: Allocator, input: Slice<char8>, limits: TomlLimits) -> TomlParser {
+        var lexer = TomlLexer::New(input);
+        let first = lexer.Next();
+        return TomlParser {
+            lexer: lexer,
+            allocator: allocator,
+            limits: limits,
+            input: input,
+            ahead: first,
+            depth: 0,
+            outcome: TomlParseOutcome {
+                error: TomlParseError::None,
+                lexical: TomlLexError::None,
+                scalar: TomlScalarError::None,
+                line: 1,
+                column: 1
+            }
+        };
+    }
+
+    /// Why parsing stopped.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/parser/outcome
+    func Outcome(self: *TomlParser) -> TomlParseOutcome {
+        return self.outcome;
+    }
+
+    /// Whether parsing has failed.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/parser/failed
+    func Failed(self: *TomlParser) -> bool {
+        return self.outcome.error != TomlParseError::None;
+    }
+
+    // Records the first failure and where it happened; later ones are noise, since everything after a refusal is
+    // parsed from a position the document never meant.
+    func Stop(self: *var TomlParser, reason: TomlParseError) {
+        if self.outcome.error != TomlParseError::None {
+            return;
+        }
+        self.outcome.error = reason;
+        self.outcome.line = self.ahead.line;
+        self.outcome.column = self.ahead.column;
+        if reason == TomlParseError::Lexical {
+            self.outcome.lexical = self.ahead.error;
+        }
+    }
+
+    func Advance(self: *var TomlParser) -> TomlToken {
+        let current = self.ahead;
+        if current.kind != TomlTokenKind::End {
+            self.ahead = self.lexer.Next();
+        }
+        return current;
+    }
+
+    func SkipNewlines(self: *var TomlParser) {
+        while self.ahead.kind == TomlTokenKind::Newline {
+            self.Advance();
+        }
+    }
+}
+
+extend TomlParser {
+    // One value, whichever kind the token announces. A scalar's text is read here rather than in the lexer,
+    // because only here is it known which of the two number kinds or four date kinds was meant.
+    func ParseValue(self: *var TomlParser) -> TomlValue {
+        let token = self.ahead;
+        if token.kind == TomlTokenKind::Error {
+            self.Stop(TomlParseError::Lexical);
+            return TomlValue::Table(self.allocator);
+        }
+        if token.kind == TomlTokenKind::LeftBracket {
+            return self.ParseArray();
+        }
+        if token.kind == TomlTokenKind::LeftBrace {
+            return self.ParseInlineTable();
+        }
+        self.Advance();
+        let span = self.lexer.TextOf(@token);
+        if token.kind == TomlTokenKind::Text {
+            var textError = TextError::None;
+            var bad = false;
+            var decoded = TomlDecodeText(self.allocator, span, token.form, @textError, @bad);
+            if bad {
+                self.Stop(TomlParseError::BadText);
+            }
+            return TomlValue::FromString(self.allocator, decoded);
+        }
+        if token.kind == TomlTokenKind::Boolean {
+            return TomlValue::Boolean(self.allocator, span.length == 4u);
+        }
+        if token.kind == TomlTokenKind::Integer {
+            var value = 0i64;
+            let failure = TomlParseInteger(span, @value);
+            if failure != TomlScalarError::None {
+                self.outcome.scalar = failure;
+                self.Stop(TomlParseError::BadValue);
+                return TomlValue::Table(self.allocator);
+            }
+            return TomlValue::Integer(self.allocator, value);
+        }
+        if token.kind == TomlTokenKind::Float {
+            var value = 0.0;
+            let failure = TomlParseFloat(span, @value);
+            if failure != TomlScalarError::None {
+                self.outcome.scalar = failure;
+                self.Stop(TomlParseError::BadValue);
+                return TomlValue::Table(self.allocator);
+            }
+            return TomlValue::Float(self.allocator, value);
+        }
+        if token.kind == TomlTokenKind::DateTime {
+            var date = Date { year: 1970, month: 1u8, day: 1u8 };
+            var time = TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
+            var offset = UtcOffset::Utc();
+            let shape = TomlParseDateTime(span, @date, @time, @offset);
+            if shape == TomlDateTimeShape::Offset {
+                return TomlValue::OffsetDateTime(self.allocator, date, time, offset);
+            }
+            if shape == TomlDateTimeShape::Local {
+                return TomlValue::LocalDateTime(self.allocator, date, time);
+            }
+            if shape == TomlDateTimeShape::DateOnly {
+                return TomlValue::LocalDate(self.allocator, date);
+            }
+            if shape == TomlDateTimeShape::TimeOnly {
+                return TomlValue::LocalTime(self.allocator, time);
+            }
+            self.outcome.scalar = TomlScalarError::Malformed;
+            self.Stop(TomlParseError::BadValue);
+            return TomlValue::Table(self.allocator);
+        }
+        if token.kind == TomlTokenKind::End {
+            self.Stop(TomlParseError::Truncated);
+            return TomlValue::Table(self.allocator);
+        }
+        // A bare word where a value belongs is the shape of a string someone forgot to quote, which is worth
+        // reporting as a misplaced token rather than as an unknown keyword.
+        self.Stop(TomlParseError::Unexpected);
+        return TomlValue::Table(self.allocator);
+    }
+
+    // An array. Newlines and a trailing comma are allowed inside one, which they have been since TOML 1.0.
+    func ParseArray(self: *var TomlParser) -> TomlValue {
+        if self.depth >= self.limits.maximumDepth {
+            self.Stop(TomlParseError::TooDeep);
+            return TomlValue::Table(self.allocator);
+        }
+        self.depth = self.depth + 1u;
+        self.Advance();
+        var array = TomlValue::Array(self.allocator);
+        while true {
+            self.SkipNewlines();
+            if self.ahead.kind == TomlTokenKind::RightBracket {
+                self.Advance();
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::End {
+                self.Stop(TomlParseError::Truncated);
+                break;
+            }
+            var element = self.ParseValue();
+            if self.Failed() {
+                break;
+            }
+            if !array.Push(element) {
+                self.Stop(TomlParseError::OutOfMemory);
+                break;
+            }
+            self.SkipNewlines();
+            if self.ahead.kind == TomlTokenKind::Comma {
+                self.Advance();
+                continue;
+            }
+            if self.ahead.kind == TomlTokenKind::RightBracket {
+                self.Advance();
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::End {
+                self.Stop(TomlParseError::Truncated);
+                break;
+            }
+            self.Stop(TomlParseError::Unexpected);
+            break;
+        }
+        self.depth = self.depth - 1u;
+        return array;
+    }
+}
+
+extend TomlParser {
+    // An inline table. TOML 1.1 allows newlines and a trailing comma inside one, which 1.0 did not; a document
+    // using either is refused by an older reader, and that is worth knowing before writing one.
+    func ParseInlineTable(self: *var TomlParser) -> TomlValue {
+        if self.depth >= self.limits.maximumDepth {
+            self.Stop(TomlParseError::TooDeep);
+            return TomlValue::Table(self.allocator);
+        }
+        self.depth = self.depth + 1u;
+        self.Advance();
+        var table = TomlValue::Table(self.allocator);
+        table.defined = true;
+        table.inlined = true;
+        while true {
+            self.SkipNewlines();
+            if self.ahead.kind == TomlTokenKind::RightBrace {
+                self.Advance();
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::End {
+                self.Stop(TomlParseError::Truncated);
+                break;
+            }
+            self.ParseKeyValue(@table);
+            if self.Failed() {
+                break;
+            }
+            self.SkipNewlines();
+            if self.ahead.kind == TomlTokenKind::Comma {
+                self.Advance();
+                continue;
+            }
+            if self.ahead.kind == TomlTokenKind::RightBrace {
+                self.Advance();
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::End {
+                self.Stop(TomlParseError::Truncated);
+                break;
+            }
+            self.Stop(TomlParseError::Unexpected);
+            break;
+        }
+        self.depth = self.depth - 1u;
+        return table;
+    }
+
+    // One key part: a bare key, or a quoted one in either single-line string form. A multi-line string is not a
+    // key, which is the one place TOML's two quoting systems do not line up.
+    func ParseKeyPart(self: *var TomlParser, into: *var String) -> bool {
+        let token = self.ahead;
+        if token.kind == TomlTokenKind::Error {
+            self.Stop(TomlParseError::Lexical);
+            return false;
+        }
+        if token.kind != TomlTokenKind::BareKey && token.kind != TomlTokenKind::Text &&
+            token.kind != TomlTokenKind::Integer && token.kind != TomlTokenKind::Boolean {
+            self.Stop(TomlParseError::Unexpected);
+            return false;
+        }
+        if token.kind == TomlTokenKind::Text &&
+            (token.form == TomlTextForm::MultiLineBasic || token.form == TomlTextForm::MultiLineLiteral) {
+            self.Stop(TomlParseError::Unexpected);
+            return false;
+        }
+        self.Advance();
+        let span = self.lexer.TextOf(@token);
+        var textError = TextError::None;
+        var bad = false;
+        // A key made of digits -- `1234 = "x"` -- lexes as an integer and is a perfectly good bare key, so the
+        // form for anything that is not a quoted string is the one that copies the bytes unchanged.
+        let form = token.kind == TomlTokenKind::Text ? token.form : TomlTextForm::Bare;
+        into.Clear();
+        *into = TomlDecodeText(self.allocator, span, form, @textError, @bad);
+        if bad {
+            self.Stop(TomlParseError::BadText);
+            return false;
+        }
+        return true;
+    }
+
+    // A dotted key path, collected into `parts`.
+    func ParseKeyPath(self: *var TomlParser, parts: *var Vector<String>) -> bool {
+        while true {
+            var part = String::New(self.allocator);
+            if !self.ParseKeyPart(@part) {
+                part.Clear();
+                return false;
+            }
+            if parts.Push(part) != CollectionError::None {
+                self.Stop(TomlParseError::OutOfMemory);
+                return false;
+            }
+            if self.ahead.kind != TomlTokenKind::Dot {
+                return true;
+            }
+            self.Advance();
+        }
+        return true;
+    }
+}
+
+extend TomlParser {
+    // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
+    // tables are closed when the line ends -- which is why they are marked as dotted rather than merely made.
+    func ParseKeyValue(self: *var TomlParser, into: *var TomlValue) {
+        var parts = Vector::New<String>(self.allocator);
+        if !self.ParseKeyPath(@parts) {
+            parts.Clear();
+            return;
+        }
+        if self.ahead.kind != TomlTokenKind::Equals {
+            self.Stop(TomlParseError::Unexpected);
+            parts.Clear();
+            return;
+        }
+        self.Advance();
+        var value = self.ParseValue();
+        if self.Failed() {
+            parts.Clear();
+            return;
+        }
+        var target = into;
+        var index: uint = 0;
+        while index + 1u < parts.Length() && target != null {
+            let name = parts.AsSlice().data[index].View();
+            target = self.DescendDotted(target, name, parts.AsSlice().data[index].View());
+            index = index + 1u;
+        }
+        if target == null {
+            parts.Clear();
+            return;
+        }
+        let last = parts.Length() - 1u;
+        let finalName = parts.AsSlice().data[last].View();
+        if target.Find(finalName) != null {
+            self.Stop(TomlParseError::DuplicateKey);
+            parts.Clear();
+            return;
+        }
+        var textError = TextError::None;
+        var owned = String::FromView(self.allocator, finalName, @textError);
+        if !target.Insert(owned, value) {
+            self.Stop(TomlParseError::OutOfMemory);
+        }
+        parts.Clear();
+    }
+
+    // The table a dotted key passes through, made if it is not there and checked if it is.
+    func DescendDotted(self: *var TomlParser, target: *var TomlValue, name: StringView,
+                       copy: StringView) -> *var TomlValue {
+        var existing = target.FindMutable(name);
+        if existing == null {
+            var fresh = TomlValue::Table(self.allocator);
+            fresh.dotted = true;
+            var textError = TextError::None;
+            var owned = String::FromView(self.allocator, copy, @textError);
+            if !target.Insert(owned, fresh) {
+                self.Stop(TomlParseError::OutOfMemory);
+                return null;
+            }
+            return target.FindMutable(name);
+        }
+        if existing.kind != TomlKind::Table {
+            self.Stop(TomlParseError::NotATable);
+            return null;
+        }
+        if existing.inlined {
+            // An inline table is finished when its brace shuts. Adding to it later is the mistake that reads as
+            // harmless and is not: the value would depend on which line the reader had got to.
+            self.Stop(TomlParseError::ExtendedInlineTable);
+            return null;
+        }
+        if existing.defined && !existing.dotted {
+            self.Stop(TomlParseError::RedefinedTable);
+            return null;
+        }
+        return existing;
+    }
+}
+
+extend TomlParser {
+    // A `[name]` or `[[name]]` header, returning the table that the lines after it belong to.
+    func ParseHeader(self: *var TomlParser, root: *var TomlValue) -> *var TomlValue {
+        self.Advance();
+        var array = false;
+        if self.ahead.kind == TomlTokenKind::LeftBracket {
+            array = true;
+            self.Advance();
+        }
+        var parts = Vector::New<String>(self.allocator);
+        if !self.ParseKeyPath(@parts) {
+            parts.Clear();
+            return null;
+        }
+        if parts.Length() == 0u {
+            self.Stop(TomlParseError::Unexpected);
+            parts.Clear();
+            return null;
+        }
+        if self.ahead.kind != TomlTokenKind::RightBracket {
+            self.Stop(TomlParseError::Unexpected);
+            parts.Clear();
+            return null;
+        }
+        self.Advance();
+        if array {
+            if self.ahead.kind != TomlTokenKind::RightBracket {
+                self.Stop(TomlParseError::Unexpected);
+                parts.Clear();
+                return null;
+            }
+            self.Advance();
+        }
+        if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
+            self.Stop(TomlParseError::Unexpected);
+            parts.Clear();
+            return null;
+        }
+        var target = root;
+        var index: uint = 0;
+        while index + 1u < parts.Length() && target != null {
+            target = self.DescendHeader(target, parts.AsSlice().data[index].View());
+            index = index + 1u;
+        }
+        if target == null {
+            parts.Clear();
+            return null;
+        }
+        let last = parts.Length() - 1u;
+        var opened = array ? self.OpenTableArray(target, parts.AsSlice().data[last].View())
+                           : self.OpenTable(target, parts.AsSlice().data[last].View());
+        parts.Clear();
+        return opened;
+    }
+
+    // A table a header path passes through: made implicitly if absent, followed into its last element if it is
+    // an array of tables, and refused if it was closed by an inline brace or a dotted key.
+    func DescendHeader(self: *var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+        var existing = target.FindMutable(name);
+        if existing == null {
+            var fresh = TomlValue::Table(self.allocator);
+            var textError = TextError::None;
+            var owned = String::FromView(self.allocator, name, @textError);
+            if !target.Insert(owned, fresh) {
+                self.Stop(TomlParseError::OutOfMemory);
+                return null;
+            }
+            return target.FindMutable(name);
+        }
+        if existing.kind == TomlKind::Array {
+            if !existing.tableArray || existing.Length() == 0u {
+                self.Stop(TomlParseError::NotATableArray);
+                return null;
+            }
+            // A path through an array of tables means its most recent element, which is the one still being
+            // written; the earlier ones are finished.
+            return existing.AtMutable(existing.Length() - 1u);
+        }
+        if existing.kind != TomlKind::Table {
+            self.Stop(TomlParseError::NotATable);
+            return null;
+        }
+        if existing.inlined {
+            self.Stop(TomlParseError::ExtendedInlineTable);
+            return null;
+        }
+        if existing.dotted {
+            self.Stop(TomlParseError::ExtendedDottedTable);
+            return null;
+        }
+        return existing;
+    }
+
+    // The table a `[name]` header opens.
+    func OpenTable(self: *var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+        var existing = target.FindMutable(name);
+        if existing == null {
+            var fresh = TomlValue::Table(self.allocator);
+            fresh.defined = true;
+            var textError = TextError::None;
+            var owned = String::FromView(self.allocator, name, @textError);
+            if !target.Insert(owned, fresh) {
+                self.Stop(TomlParseError::OutOfMemory);
+                return null;
+            }
+            return target.FindMutable(name);
+        }
+        if existing.kind != TomlKind::Table {
+            self.Stop(TomlParseError::NotATable);
+            return null;
+        }
+        if existing.inlined {
+            self.Stop(TomlParseError::ExtendedInlineTable);
+            return null;
+        }
+        if existing.dotted {
+            self.Stop(TomlParseError::ExtendedDottedTable);
+            return null;
+        }
+        if existing.defined {
+            self.Stop(TomlParseError::RedefinedTable);
+            return null;
+        }
+        // A table that only existed because a longer header passed through it is now written out, which TOML
+        // allows in either order: `[a.b]` before `[a]` is fine, and `[a]` twice is not.
+        existing.defined = true;
+        return existing;
+    }
+
+    // The table a `[[name]]` header appends.
+    func OpenTableArray(self: *var TomlParser, target: *var TomlValue, name: StringView) -> *var TomlValue {
+        var existing = target.FindMutable(name);
+        if existing == null {
+            var fresh = TomlValue::Array(self.allocator);
+            fresh.tableArray = true;
+            var textError = TextError::None;
+            var owned = String::FromView(self.allocator, name, @textError);
+            if !target.Insert(owned, fresh) {
+                self.Stop(TomlParseError::OutOfMemory);
+                return null;
+            }
+            existing = target.FindMutable(name);
+        }
+        else if existing.kind != TomlKind::Array || !existing.tableArray {
+            // A static array is a value, not a place to put tables; the two are spelled differently and mean
+            // different things.
+            self.Stop(TomlParseError::NotATableArray);
+            return null;
+        }
+        var element = TomlValue::Table(self.allocator);
+        element.defined = true;
+        if !existing.Push(element) {
+            self.Stop(TomlParseError::OutOfMemory);
+            return null;
+        }
+        return existing.AtMutable(existing.Length() - 1u);
+    }
+}
+
+extend TomlParser {
+    /// Reads the whole document into a table.
+    ///
+    /// On failure the table holds whatever had been read before the refusal, and `Outcome` says what stopped it
+    /// and where. A partial document is not a usable one; it is returned rather than discarded so a caller can
+    /// show what was understood before the line that was not.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/parser/parse
+    func Parse(self: *var TomlParser) -> TomlValue {
+        var root = TomlValue::Table(self.allocator);
+        root.defined = true;
+        var current = @root;
+        while true {
+            self.SkipNewlines();
+            if self.ahead.kind == TomlTokenKind::End {
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::Error {
+                self.Stop(TomlParseError::Lexical);
+                break;
+            }
+            if self.ahead.kind == TomlTokenKind::LeftBracket {
+                current = self.ParseHeader(@root);
+                if current == null {
+                    break;
+                }
+                continue;
+            }
+            self.ParseKeyValue(current);
+            if self.Failed() {
+                break;
+            }
+            if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
+                // Two key-value pairs on one line is the shape of a missing newline, and TOML has no separator
+                // that would make it mean anything else.
+                self.Stop(TomlParseError::Unexpected);
+                break;
+            }
+        }
+        return root;
+    }
+}
+
+/// Reads `input` into a table, reporting through `outcome` why it stopped if it did.
+///
+/// https://rux-lang.dev/docs/api/toml/parse
+func TomlParse(allocator: Allocator, input: Slice<char8>, outcome: *var TomlParseOutcome) -> TomlValue {
+    var parser = TomlParser::New(allocator, input, TomlLimits::Default());
+    var root = parser.Parse();
+    *outcome = parser.Outcome();
+    return root;
+}
