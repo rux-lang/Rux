@@ -9,7 +9,7 @@ Version = "0.1.0"
 Type = "SourceLibrary"
 Description = "TOML parsing, serialization and streaming"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["Toml", "Configuration", "Parsing", "DataFormat"]
+Keywords = ["Toml", "Configuration", "Parsing", "DataFormat", "Serialization"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
@@ -22,6 +22,5 @@ Collections = { Namespace = "Rux", Version = "0.1.0" }
 Core = { Namespace = "Rux", Version = "0.1.0" }
 Format = { Namespace = "Rux", Version = "0.1.0" }
 Math = { Namespace = "Rux", Version = "0.1.0" }
-Memory = { Namespace = "Rux", Version = "0.1.0" }
 Text = { Namespace = "Rux", Version = "0.1.0" }
 Time = { Namespace = "Rux", Version = "0.1.0" }

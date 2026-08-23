@@ -12,8 +12,8 @@
 
 import Core::{ MutableSlice, Slice };
 
-/// The eighty round constants: the first sixty-four bits of the fractional parts of the cube roots of the first
-/// eighty primes.
+// The eighty round constants: the first sixty-four bits of the fractional parts of the cube roots of the first
+// eighty primes.
 const Sha512RoundConstants: uint64[80] = [
     0x428A2F98D728AE22u64, 0x7137449123EF65CDu64, 0xB5C0FBCFEC4D3B2Fu64, 0xE9B5DBA58189DBBCu64,
     0x3956C25BF348B538u64, 0x59F111F1B605D019u64, 0x923F82A4AF194F9Bu64, 0xAB1C5ED5DA6D8118u64,
@@ -37,27 +37,27 @@ const Sha512RoundConstants: uint64[80] = [
     0x4CC5D4BECB3E42B6u64, 0x597F299CFC657E2Au64, 0x5FCB6FAB3AD6FAECu64, 0x6C44198C4A475817u64
 ];
 
-/// SHA-512's initial state: the first sixty-four bits of the fractional parts of the square roots of the first
-/// eight primes.
+// SHA-512's initial state: the first sixty-four bits of the fractional parts of the square roots of the first
+// eight primes.
 const Sha512InitialState: uint64[8] = [
     0x6A09E667F3BCC908u64, 0xBB67AE8584CAA73Bu64, 0x3C6EF372FE94F82Bu64, 0xA54FF53A5F1D36F1u64,
     0x510E527FADE682D1u64, 0x9B05688C2B3E6C1Fu64, 0x1F83D9ABFB41BD6Bu64, 0x5BE0CD19137E2179u64
 ];
 
-/// SHA-384's initial state: the first sixty-four bits of the fractional parts of the square roots of the
-/// *ninth through sixteenth* primes -- the same rule as SHA-512's, applied to the next eight primes.
+// SHA-384's initial state: the first sixty-four bits of the fractional parts of the square roots of the
+// *ninth through sixteenth* primes -- the same rule as SHA-512's, applied to the next eight primes.
 const Sha384InitialState: uint64[8] = [
     0xCBBB9D5DC1059ED8u64, 0x629A292A367CD507u64, 0x9159015A3070DD17u64, 0x152FECD8F70E5939u64,
     0x67332667FFC00B31u64, 0x8EB44A8768581511u64, 0xDB0C2E0D64F98FA7u64, 0x47B5481DBEFA4FA4u64
 ];
 
-/// SHA-512/224's initial state, derived by hashing its own name with a modified SHA-512.
+// SHA-512/224's initial state, derived by hashing its own name with a modified SHA-512.
 const Sha512Trunc224InitialState: uint64[8] = [
     0x8C3D37C819544DA2u64, 0x73E1996689DCD4D6u64, 0x1DFAB7AE32FF9C82u64, 0x679DD514582F9FCFu64,
     0x0F6D2B697BD44DA8u64, 0x77E36F7304C48942u64, 0x3F9D85A86A1D36C8u64, 0x1112E6AD91D692A1u64
 ];
 
-/// SHA-512/256's initial state, derived the same way.
+// SHA-512/256's initial state, derived the same way.
 const Sha512Trunc256InitialState: uint64[8] = [
     0x22312194FC2BF72Cu64, 0x9F555FA3C84C64C2u64, 0x2393B86B6F53B151u64, 0x963877195940EABDu64,
     0x96283EE2A88EFFE3u64, 0xBE5E1E2553863992u64, 0x2B0199FC2C85B8AAu64, 0x0EB72DDC81C52CA2u64

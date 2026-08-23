@@ -85,7 +85,7 @@ struct JsonEventReader {
     expectingValue: bool;
 }
 
-/// How much the buffer starts at, and how far it grows in one step.
+// How much the buffer starts at, and how far it grows in one step.
 const JsonStreamChunk: uint = 4096;
 
 extend JsonEventReader {

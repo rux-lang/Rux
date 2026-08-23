@@ -14,9 +14,9 @@
 
 import Core::{ MutableSlice, Slice };
 
-/// The byte repeated to make the inner key.
+// The byte repeated to make the inner key.
 const HmacInnerPad: uint8 = 0x36;
-/// The byte repeated to make the outer key, which differs from the inner one in every bit pair.
+// The byte repeated to make the outer key, which differs from the inner one in every bit pair.
 const HmacOuterPad: uint8 = 0x5C;
 
 /// The longest block any supported digest uses, which is what the padded key buffers are sized to.

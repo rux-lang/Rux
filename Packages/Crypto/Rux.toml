@@ -9,7 +9,7 @@ Version = "0.1.0"
 Type = "SourceLibrary"
 Description = "Cryptographic hashes, message authentication codes and key derivation"
 Authors = ["Rux Contributors <info@rux-lang.dev>"]
-Keywords = ["Crypto", "Hash", "Sha2", "Sha3", "Blake3"]
+Keywords = ["Crypto", "Hashing", "Sha2", "Sha3", "Blake3"]
 License = "MIT"
 LicenseFile = "LICENSE.md"
 Repository = "https://github.com/rux-lang/Rux"
@@ -18,4 +18,3 @@ ReadmeFile = "README.md"
 
 [Dependencies]
 Core = { Namespace = "Rux", Version = "0.1.0" }
-Memory = { Namespace = "Rux", Version = "0.1.0" }

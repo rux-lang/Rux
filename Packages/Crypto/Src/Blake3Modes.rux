@@ -11,11 +11,11 @@
 
 import Core::{ MutableSlice, Slice };
 
-/// This hash is keyed.
+// This hash is keyed.
 const Blake3KeyedHash: uint32 = 16;
-/// This hash is deriving a context key from a context string.
+// This hash is deriving a context key from a context string.
 const Blake3DeriveKeyContext: uint32 = 32;
-/// This hash is deriving output from key material under a context key.
+// This hash is deriving output from key material under a context key.
 const Blake3DeriveKeyMaterial: uint32 = 64;
 
 // The thirty-two byte key, read as eight little-endian words.

@@ -1,6 +1,6 @@
 # Time
 
-Durations, monotonic clocks, and wall clocks.
+Durations, monotonic clocks and wall clocks.
 
 ## What it provides
 
@@ -21,6 +21,10 @@ rux add Rux/Time
 ## Planned surface
 
 A `Duration` type, a monotonic clock for measuring elapsed time, and a wall clock for calendar time — built over the platform primitives the binding packages already expose: `ClockGetTime` and `Timespec` on [FreeBSD](../FreeBSD) and the [Linux](../Linux), `GetTimeOfDay` and `Timeval` on [macOS](../macOS), and `SystemTime` / `FileTime` on [Windows](../Windows).
+
+## Documentation
+
+<https://rux-lang.dev/docs/api/time>
 
 ## License
 

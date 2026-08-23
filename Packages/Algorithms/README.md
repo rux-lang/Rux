@@ -336,6 +336,10 @@ The planned ordering and search modules will require `func <` in the same way. A
 - **No stable sort.** Every sort here is unstable. A stable sort needs an auxiliary buffer, which would end the package's zero-allocation property.
 - `Algorithms::Copy` and [`Memory::Copy`](../Memory) share a name. Importing both is fine — they take different parameter types and overload — but the Algorithms one is element-wise and correct for any `T`, while the Memory one is a byte copy.
 
+## Documentation
+
+<https://rux-lang.dev/docs/api/algorithms>
+
 ## License
 
 Licensed under the [MIT License](LICENSE.md).

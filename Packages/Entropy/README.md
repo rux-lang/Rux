@@ -49,6 +49,10 @@ counted its calls in a field of its own would count them where nobody can see.
 wrong; a system with no source and a provider that refused are both reported at once, since repeating them would only
 take longer to reach the same answer. Its `attempts` is how many *extra* tries to make, so zero is one attempt.
 
+## Documentation
+
+<https://rux-lang.dev/docs/api/entropy>
+
 ## License
 
-MIT. See [LICENSE.md](LICENSE.md).
+Licensed under the [MIT License](LICENSE.md).

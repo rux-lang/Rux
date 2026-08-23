@@ -1,6 +1,6 @@
 # Storage
 
-Files, directories, and filesystem operations.
+Files, directories and filesystem operations.
 
 ## Installation
 

@@ -16,27 +16,27 @@
 
 import Core::{ MutableSlice, Slice };
 
-/// Bytes per chunk: the unit each leaf of the tree covers.
+// Bytes per chunk: the unit each leaf of the tree covers.
 const Blake3ChunkLength: uint = 1024;
 
-/// Bytes per compression: the unit the compression function consumes.
+// Bytes per compression: the unit the compression function consumes.
 const Blake3BlockLength: uint = 64;
 
-/// The initial chaining value, which is SHA-256's -- the fractional square roots of the first eight primes.
+// The initial chaining value, which is SHA-256's -- the fractional square roots of the first eight primes.
 const Blake3InitialValue: uint32[8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
 ];
 
-/// The message word permutation applied between rounds.
+// The message word permutation applied between rounds.
 const Blake3Permutation: uint[16] = [2, 6, 3, 10, 7, 0, 4, 13, 1, 11, 12, 5, 9, 14, 15, 8];
 
-/// This block begins a chunk.
+// This block begins a chunk.
 const Blake3ChunkStart: uint32 = 1;
-/// This block ends a chunk.
+// This block ends a chunk.
 const Blake3ChunkEnd: uint32 = 2;
-/// This compression joins two child chaining values rather than covering message bytes.
+// This compression joins two child chaining values rather than covering message bytes.
 const Blake3Parent: uint32 = 4;
-/// This compression produces the final output, which is what stops a subtree standing in for the whole.
+// This compression produces the final output, which is what stops a subtree standing in for the whole.
 const Blake3Root: uint32 = 8;
 
 func Blake3Rotate(value: uint32, amount: uint32) -> uint32 {

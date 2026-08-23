@@ -15,7 +15,7 @@
 
 import Core::{ MutableSlice, Slice };
 
-/// MD5's round constants: the integer parts of the absolute sines of one through sixty-four, scaled.
+// MD5's round constants: the integer parts of the absolute sines of one through sixty-four, scaled.
 const Md5Constants: uint32[64] = [
     0xD76AA478u32, 0xE8C7B756u32, 0x242070DBu32, 0xC1BDCEEEu32,
     0xF57C0FAFu32, 0x4787C62Au32, 0xA8304613u32, 0xFD469501u32,
@@ -34,7 +34,7 @@ const Md5Constants: uint32[64] = [
     0x6FA87E4Fu32, 0xFE2CE6E0u32, 0xA3014314u32, 0x4E0811A1u32,
     0xF7537E82u32, 0xBD3AF235u32, 0x2AD7D2BBu32, 0xEB86D391u32
 ];
-/// The per-round rotation amounts.
+// The per-round rotation amounts.
 const Md5Shifts: uint32[64] = [
     7u32, 12u32, 17u32, 22u32, 7u32, 12u32, 17u32, 22u32,
     7u32, 12u32, 17u32, 22u32, 7u32, 12u32, 17u32, 22u32,

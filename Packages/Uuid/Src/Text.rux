@@ -18,9 +18,13 @@
 import Core::{ MutableSlice, Slice };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
+///
+/// https://rux-lang.dev/docs/api/uuid/text-length
 const UuidTextLength: uint = 36;
 
 /// How long the URN form is: the canonical form after `urn:uuid:`.
+///
+/// https://rux-lang.dev/docs/api/uuid/urn-length
 const UuidUrnLength: uint = 45;
 
 /// Why a string could not be read as a UUID.
