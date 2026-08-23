@@ -92,6 +92,15 @@ func Main() -> int {
     Assert(FirstKind("3.14") == TomlTokenKind::Float, "a fractional float");
     Assert(FirstKind("5e+22") == TomlTokenKind::Float, "an exponent makes one too");
     Assert(FirstKind("6.626e-34") == TomlTokenKind::Float, "and both together");
+    // A sign at the start belongs to the number, so it must not end the run of digits the point follows.
+    Assert(FirstKind("-0.01") == TomlTokenKind::Float, "a signed fractional float is one token");
+    Assert(FirstToken("-0.01").end == 5u, "spanning all of it, not stopping at the point");
+    Assert(FirstKind("+1.0") == TomlTokenKind::Float, "and so is a positive one");
+    // An underscore between digits separates them rather than ending the number.
+    Assert(FirstKind("224_617.445_991_228") == TomlTokenKind::Float, "a float with separators");
+    Assert(FirstToken("224_617.445_991_228").end == 19u, "spanning all of it");
+    // One at the start begins a bare key, and a dot after that key is the dotted-key separator.
+    Assert(FirstToken("_key.rest").end == 4u, "a bare key stops at the dot that follows it");
     Assert(FirstKind("inf") == TomlTokenKind::Float, "infinity is a float TOML can write");
     Assert(FirstKind("-inf") == TomlTokenKind::Float, "in both directions");
     Assert(FirstKind("nan") == TomlTokenKind::Float, "and so is NaN");
@@ -104,6 +113,10 @@ func Main() -> int {
     Assert(FirstKind("1979-05-27T07:32:00Z") == TomlTokenKind::DateTime, "an offset date-time");
     Assert(FirstKind("1979-05-27 07:32:00") == TomlTokenKind::DateTime,
            "and one written with a space, which TOML allows");
+    Assert(FirstKind("1979-05-27T00:32:00.999999-07:00") == TomlTokenKind::DateTime,
+           "one carrying a fraction and an offset");
+    Assert(FirstToken("1979-05-27T00:32:00.999999-07:00").end == 32u, "as a single token, fraction included");
+    Assert(FirstKind("00:32:00.999999") == TomlTokenKind::DateTime, "and a local time with a fraction");
     Assert(FirstKind("1979") == TomlTokenKind::Integer, "a bare year is still an integer");
 
 
@@ -142,6 +155,11 @@ func Main() -> int {
     Assert(Same(@escape, "\u{1B}"), "TOML 1.1 spells the escape character");
     var hex = FirstText("\"\\x41\"");
     Assert(Same(@hex, "A"), "and TOML 1.1 spells a scalar below 256 in two digits");
+
+    // A raw character outside ASCII beside an escape: decoding a byte at a time would hand a builder half
+    // of a multi-byte scalar, and a builder that validates what it is given refuses half of one.
+    var accented = FirstText("\"caf\u{E9}\\ttab\"");
+    Assert(Same(@accented, "caf\u{E9}\ttab"), "an accent survives the escape beside it");
 
     // A line-ending backslash in a multi-line string swallows the wrapping it was used to introduce.
     var folded = FirstText("\"\"\"\na\\ \n   b\"\"\"");

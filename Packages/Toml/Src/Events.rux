@@ -78,6 +78,8 @@ struct TomlEventReader {
     state: TomlEventState;
     /// Whether the header being read is a `[[name]]` one.
     tableArray: bool;
+    /// Whether the header being read has named anything yet, since `[]` names nothing.
+    namedSomething: bool;
     /// The open containers, one bit each: set for an inline table, clear for an array.
     containers: uint64;
     /// How many of those bits are in use.
@@ -102,6 +104,7 @@ extend TomlEventReader {
             current: first,
             state: TomlEventState::Document,
             tableArray: false,
+            namedSomething: false,
             containers: 0u64,
             depth: 0,
             error: TomlParseError::None,
@@ -290,6 +293,7 @@ extend TomlEventReader {
         if self.ahead.kind == TomlTokenKind::LeftBracket {
             self.current = self.Advance();
             self.tableArray = false;
+            self.namedSomething = false;
             if self.ahead.kind == TomlTokenKind::LeftBracket {
                 self.tableArray = true;
                 self.Advance();
@@ -304,6 +308,10 @@ extend TomlEventReader {
 
     func NextHeaderKey(self: *var TomlEventReader) -> TomlEvent {
         if self.ahead.kind == TomlTokenKind::RightBracket {
+            // `[]` names no table, and a header that names nothing is not a header.
+            if !self.namedSomething {
+                return self.Fail(TomlParseError::Unexpected);
+            }
             self.current = self.Advance();
             if self.tableArray {
                 if self.ahead.kind != TomlTokenKind::RightBracket {
@@ -320,6 +328,7 @@ extend TomlEventReader {
         if !self.TakeKeyPart() {
             return TomlEvent::Error;
         }
+        self.namedSomething = true;
         if self.ahead.kind == TomlTokenKind::Dot {
             self.Advance();
         }

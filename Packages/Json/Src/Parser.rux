@@ -138,8 +138,15 @@ extend JsonParser {
         while index < span.length {
             let c = span.data[index] as uint8;
             if c != 0x5Cu8 {
-                *error = builder.AppendBytes(Slice<char8> { data: @span.data[index], length: 1 });
-                index = index + 1;
+                // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte
+                // scalar across two appends, and a builder that validates what it is given refuses half of one
+                // -- so an accented letter beside an escape would quietly disappear.
+                var run = index;
+                while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
+                    run = run + 1;
+                }
+                *error = builder.AppendBytes(Slice<char8> { data: @span.data[index], length: run - index });
+                index = run;
                 continue;
             }
             index = index + 1;
