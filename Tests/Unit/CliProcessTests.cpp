@@ -813,6 +813,10 @@ Type = "SourceLibrary"
     CHECK(quiet.output.empty());
     CHECK(std::filesystem::is_regular_file(quietArchive));
 
+    // The archive a registry receives has to be a function of the sources and nothing else: two packs of the same
+    // tree must agree byte for byte, or a rebuilt release cannot be checked against a published one.
+    CHECK(ReadTextFile(archive) == ReadTextFile(quietArchive));
+
     const std::string rootText = root.string();
     const auto writeFailure =
         Run(std::array<std::string_view, 6>{"--manifest", manifest, "pack", "--output", rootText, "--color=never"});
