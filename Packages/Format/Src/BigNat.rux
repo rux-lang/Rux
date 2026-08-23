@@ -1,0 +1,401 @@
+// An arbitrary-size natural number, for the two conversions that have to be exact.
+//
+// Turning a float into its shortest decimal, or a decimal into the nearest float, is a question about where the
+// exact value sits between two neighbours, and answering it with floating-point arithmetic loses the very bits the
+// answer depends on. The classic way out is integer arithmetic on the exact value: a float is an integer times a
+// power of two, a decimal is an integer times a power of ten, and comparing the two needs nothing more than big
+// integers that can be multiplied, shifted and compared. That is everything this type does, and nothing more.
+//
+// The sizes involved are why this cannot be a fixed width. A float512 reaches 2^4194303, and the exact decimal
+// conversion of a value near that limit works on numbers of that many bits. They come from an allocator because
+// nothing else can hold them; the narrow widths never get near that, and a float80 never needs more than a few
+// hundred words.
+
+import Allocator::{ AllocError, Allocator, Layout };
+import Core::Drop;
+
+/// A natural number of any size, held as little-endian 64-bit limbs.
+///
+/// https://rux-lang.dev/docs/api/format/big-nat
+struct BigNat {
+    /// Where the limbs live.
+    allocator: Allocator;
+    /// The limbs, least significant first.
+    limbs: *var uint64;
+    /// How many limbs the block holds.
+    capacity: uint;
+    /// How many limbs carry the value; the top one is never zero, and zero itself has none.
+    length: uint;
+}
+
+extend BigNat {
+    /// Zero, holding no storage yet.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/new
+    func New(allocator: Allocator) -> BigNat {
+        return BigNat { allocator: allocator, limbs: null, capacity: 0, length: 0 };
+    }
+
+    /// Makes room for `count` limbs, keeping the value. Reports `false` when the allocator refuses.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/reserve
+    func Reserve(self: *var BigNat, count: uint) -> bool {
+        if count <= self.capacity {
+            return true;
+        }
+        // Growing by halves keeps repeated multiplication linear in allocations rather than quadratic.
+        var wanted = self.capacity + self.capacity / 2u + 8u;
+        if wanted < count {
+            wanted = count;
+        }
+        let empty = Layout { size: 0, alignment: 1 };
+        let layout = Layout::New(wanted * 8u, 8u).ValueOr(empty);
+        if layout.size == 0u {
+            return false;
+        }
+        var block: *var opaque = null;
+        if self.allocator.Allocate(layout, @block) != AllocError::None {
+            return false;
+        }
+        let fresh = block as *var uint64;
+        var index: uint = 0;
+        while index < self.length {
+            fresh[index] = self.limbs[index];
+            index = index + 1u;
+        }
+        // The old block goes back by hand rather than through Release, which also forgets the length -- and the
+        // whole point of growing is to keep the value.
+        if self.limbs != null {
+            let old = Layout::New(self.capacity * 8u, 8u).ValueOr(empty);
+            self.allocator.Deallocate(self.limbs as *var opaque, old);
+        }
+        self.limbs = fresh;
+        self.capacity = wanted;
+        return true;
+    }
+
+    func Release(self: *var BigNat) {
+        if self.limbs != null {
+            let empty = Layout { size: 0, alignment: 1 };
+            let layout = Layout::New(self.capacity * 8u, 8u).ValueOr(empty);
+            self.allocator.Deallocate(self.limbs as *var opaque, layout);
+            self.limbs = null;
+            self.capacity = 0;
+        }
+        self.length = 0;
+    }
+
+    // Drops leading zero limbs so that `length` is canonical, which every comparison relies on.
+    func Trim(self: *var BigNat) {
+        while self.length > 0u && self.limbs[self.length - 1u] == 0u64 {
+            self.length = self.length - 1u;
+        }
+    }
+
+    /// Whether this is zero.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/is-zero
+    func IsZero(self: *BigNat) -> bool {
+        return self.length == 0u;
+    }
+
+    /// Sets this to a small value.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/set-small
+    func SetSmall(self: *var BigNat, value: uint64) -> bool {
+        if !self.Reserve(1u) {
+            return false;
+        }
+        self.limbs[0] = value;
+        self.length = value == 0u64 ? 0u : 1u;
+        return true;
+    }
+
+    /// Sets this to a 512-bit value.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/set-wide
+    func SetWide(self: *var BigNat, value: uint512) -> bool {
+        if !self.Reserve(8u) {
+            return false;
+        }
+        var index: uint = 0;
+        while index < 8u {
+            self.limbs[index] = (value >> (index * 64u)) as uint64;
+            index = index + 1u;
+        }
+        self.length = 8;
+        self.Trim();
+        return true;
+    }
+
+    /// Copies `other` into this.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/assign
+    func Assign(self: *var BigNat, other: *BigNat) -> bool {
+        if !self.Reserve(other.length) {
+            return false;
+        }
+        var index: uint = 0;
+        while index < other.length {
+            self.limbs[index] = other.limbs[index];
+            index = index + 1u;
+        }
+        self.length = other.length;
+        return true;
+    }
+
+    /// How many bits the value needs; zero for zero.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/bit-length
+    func BitLength(self: *BigNat) -> uint {
+        if self.length == 0u {
+            return 0u;
+        }
+        var top = self.limbs[self.length - 1u];
+        var bits: uint = 0;
+        while top != 0u64 {
+            top = top >> 1u64;
+            bits = bits + 1u;
+        }
+        return (self.length - 1u) * 64u + bits;
+    }
+
+    /// Orders this against `other`: negative, zero or positive.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/compare
+    func Compare(self: *BigNat, other: *BigNat) -> int32 {
+        if self.length != other.length {
+            return self.length < other.length ? -1i32 : 1i32;
+        }
+        var index = self.length;
+        while index > 0u {
+            index = index - 1u;
+            if self.limbs[index] != other.limbs[index] {
+                return self.limbs[index] < other.limbs[index] ? -1i32 : 1i32;
+            }
+        }
+        return 0i32;
+    }
+}
+
+extend BigNat {
+    /// Multiplies this by 2^`bits` in place.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/shift-left
+    func ShiftLeft(self: *var BigNat, bits: uint) -> bool {
+        if self.length == 0u || bits == 0u {
+            return true;
+        }
+        let limbShift = bits / 64u;
+        let bitShift = bits % 64u;
+        let newLength = self.length + limbShift + 1u;
+        if !self.Reserve(newLength) {
+            return false;
+        }
+        // From the top down, so nothing is overwritten before it has been read.
+        self.limbs[newLength - 1u] = 0u64;
+        var index = self.length;
+        while index > 0u {
+            index = index - 1u;
+            let limb = self.limbs[index];
+            if bitShift == 0u {
+                self.limbs[index + limbShift] = limb;
+            }
+            else {
+                self.limbs[index + limbShift + 1u] = self.limbs[index + limbShift + 1u] | (limb >> (64u - bitShift));
+                self.limbs[index + limbShift] = limb << bitShift;
+            }
+        }
+        index = 0;
+        while index < limbShift {
+            self.limbs[index] = 0u64;
+            index = index + 1u;
+        }
+        self.length = newLength;
+        self.Trim();
+        return true;
+    }
+
+    /// Multiplies this by a small factor in place.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/multiply-small
+    func MultiplySmall(self: *var BigNat, factor: uint64) -> bool {
+        if factor == 0u64 {
+            self.length = 0;
+            return true;
+        }
+        if !self.Reserve(self.length + 1u) {
+            return false;
+        }
+        var carry: uint64 = 0;
+        var index: uint = 0;
+        while index < self.length {
+            let product = (self.limbs[index] as uint128) * (factor as uint128) + (carry as uint128);
+            self.limbs[index] = product as uint64;
+            carry = (product >> 64u) as uint64;
+            index = index + 1u;
+        }
+        if carry != 0u64 {
+            self.limbs[self.length] = carry;
+            self.length = self.length + 1u;
+        }
+        return true;
+    }
+
+    /// Adds a small value in place.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/add-small
+    func AddSmall(self: *var BigNat, value: uint64) -> bool {
+        if !self.Reserve(self.length + 1u) {
+            return false;
+        }
+        var carry = value;
+        var index: uint = 0;
+        while carry != 0u64 && index < self.length {
+            let sum = (self.limbs[index] as uint128) + (carry as uint128);
+            self.limbs[index] = sum as uint64;
+            carry = (sum >> 64u) as uint64;
+            index = index + 1u;
+        }
+        if carry != 0u64 {
+            self.limbs[self.length] = carry;
+            self.length = self.length + 1u;
+        }
+        return true;
+    }
+
+    /// Adds `other` in place.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/add
+    func Add(self: *var BigNat, other: *BigNat) -> bool {
+        let longest = self.length > other.length ? self.length : other.length;
+        if !self.Reserve(longest + 1u) {
+            return false;
+        }
+        var carry: uint64 = 0;
+        var index: uint = 0;
+        while index < longest {
+            let left = index < self.length ? self.limbs[index] : 0u64;
+            let right = index < other.length ? other.limbs[index] : 0u64;
+            let sum = (left as uint128) + (right as uint128) + (carry as uint128);
+            self.limbs[index] = sum as uint64;
+            carry = (sum >> 64u) as uint64;
+            index = index + 1u;
+        }
+        self.length = longest;
+        if carry != 0u64 {
+            self.limbs[self.length] = carry;
+            self.length = self.length + 1u;
+        }
+        return true;
+    }
+
+    /// Subtracts `other` in place. It must not exceed this, which every caller compares for first.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/subtract
+    func Subtract(self: *var BigNat, other: *BigNat) {
+        var borrow: uint64 = 0;
+        var index: uint = 0;
+        while index < self.length {
+            let right = index < other.length ? other.limbs[index] : 0u64;
+            let left = self.limbs[index];
+            let taken = (right as uint128) + (borrow as uint128);
+            if (left as uint128) >= taken {
+                self.limbs[index] = ((left as uint128) - taken) as uint64;
+                borrow = 0;
+            }
+            else {
+                self.limbs[index] = (((left as uint128) + (1u128 << 64u)) - taken) as uint64;
+                borrow = 1;
+            }
+            index = index + 1u;
+        }
+        self.Trim();
+    }
+}
+
+extend BigNat {
+    /// Sets this to `left` times `right`. Neither operand may be this.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/set-product
+    func SetProduct(self: *var BigNat, left: *BigNat, right: *BigNat) -> bool {
+        let total = left.length + right.length;
+        if !self.Reserve(total + 1u) {
+            return false;
+        }
+        var index: uint = 0;
+        while index < total {
+            self.limbs[index] = 0u64;
+            index = index + 1u;
+        }
+        var i: uint = 0;
+        while i < left.length {
+            var carry: uint64 = 0;
+            var j: uint = 0;
+            while j < right.length {
+                let product = (left.limbs[i] as uint128) * (right.limbs[j] as uint128) +
+                              (self.limbs[i + j] as uint128) + (carry as uint128);
+                self.limbs[i + j] = product as uint64;
+                carry = (product >> 64u) as uint64;
+                j = j + 1u;
+            }
+            self.limbs[i + right.length] = carry;
+            i = i + 1u;
+        }
+        self.length = total;
+        self.Trim();
+        return true;
+    }
+
+    /// The quotient of this by `divisor` when it is below ten, removing that many divisors from this.
+    ///
+    /// The digit loops only ever ask for one decimal digit at a time, so a count of subtractions is the whole of
+    /// the division they need.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/take-digit
+    func TakeDigit(self: *var BigNat, divisor: *BigNat) -> uint {
+        var digit: uint = 0;
+        while digit < 9u && self.Compare(divisor) >= 0i32 {
+            self.Subtract(divisor);
+            digit = digit + 1u;
+        }
+        return digit;
+    }
+}
+
+extend BigNat : Drop {
+    /// Gives the limbs back.
+    ///
+    /// https://rux-lang.dev/docs/api/format/big-nat/drop
+    func Drop(self: *var BigNat) {
+        self.Release();
+    }
+}
+
+/// Sets `target` to 10^`power`, using `base` and `scratch` as working room.
+///
+/// Ten to the power is five to the power shifted, and five has fewer bits to carry through the squarings: the
+/// intermediate numbers are a third shorter, which is the difference between a tolerable and an intolerable wait at
+/// the widths where the exponent runs to millions.
+///
+/// https://rux-lang.dev/docs/api/format/set-power-of-ten
+func SetPowerOfTen(target: *var BigNat, power: uint, base: *var BigNat, scratch: *var BigNat) -> bool {
+    if !target.SetSmall(1u64) || !base.SetSmall(5u64) {
+        return false;
+    }
+    var remaining = power;
+    while remaining > 0u {
+        if (remaining & 1u) == 1u {
+            if !scratch.SetProduct(target, base) || !target.Assign(scratch) {
+                return false;
+            }
+        }
+        remaining = remaining >> 1u;
+        if remaining > 0u {
+            if !scratch.SetProduct(base, base) || !base.Assign(scratch) {
+                return false;
+            }
+        }
+    }
+    return target.ShiftLeft(power);
+}

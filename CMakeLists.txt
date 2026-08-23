@@ -34,6 +34,7 @@ add_subdirectory(Tools/UnicodeGen)
 
 # The math reference generator, run by hand when a boundary vector set needs regenerating.
 add_subdirectory(Tools/MathVectors)
+add_subdirectory(Tools/FloatVectors)
 
 if (RUX_BUILD_TESTS)
     enable_testing()
