@@ -1,0 +1,621 @@
+// Turning TOML text into tokens, with the position of each one.
+//
+// TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways
+// to write a string -- basic, multi-line basic, literal, multi-line literal -- and they differ in whether
+// escapes are honoured and whether newlines are allowed, which is exactly the sort of distinction an
+// implementation collapses and then surprises someone whose Windows path lost its backslashes.
+//
+// Spans are carried on every token because TOML is a configuration format, and a configuration error that does
+// not say where it is costs more than the parse itself. Every diagnostic this package produces can point at a
+// line and column because the token knew.
+
+import Allocator::Allocator;
+import Core::Slice;
+import Text::{ String, StringBuilder, TextError };
+
+/// What kind of token this is.
+///
+/// https://rux-lang.dev/docs/api/toml/token-kind
+enum TomlTokenKind: int32 {
+    /// The input is exhausted.
+    End = 0,
+    /// A bare key: letters, digits, underscores and hyphens.
+    BareKey = 1,
+    /// A quoted key or a string value; the span excludes the quotes and the text may need unescaping.
+    Text = 2,
+    /// An integer, in any of the four bases.
+    Integer = 3,
+    /// A float, including the infinities and NaN that TOML -- unlike JSON -- can spell.
+    Float = 4,
+    /// `true` or `false`.
+    Boolean = 5,
+    /// An offset date-time, a local date-time, a local date, or a local time.
+    DateTime = 6,
+    /// `=`
+    Equals = 7,
+    /// `.`
+    Dot = 8,
+    /// `,`
+    Comma = 9,
+    /// `[`
+    LeftBracket = 10,
+    /// `]`
+    RightBracket = 11,
+    /// `{`
+    LeftBrace = 12,
+    /// `}`
+    RightBrace = 13,
+    /// One or more newlines, which TOML treats as significant.
+    Newline = 14,
+    /// Something that is not TOML.
+    Error = 15
+}
+
+/// Which of the four string forms a text token was written in.
+///
+/// https://rux-lang.dev/docs/api/toml/text-form
+enum TomlTextForm: int32 {
+    /// Not a text token.
+    NotText = 0,
+    /// A basic string: escapes honoured, no raw newlines.
+    Basic = 1,
+    /// A multi-line basic string: escapes honoured, newlines allowed, a leading newline trimmed.
+    MultiLineBasic = 2,
+    /// A literal string: no escapes at all, which is what makes it right for Windows paths and regular
+    /// expressions.
+    Literal = 3,
+    /// A multi-line literal string: no escapes, newlines allowed.
+    MultiLineLiteral = 4,
+    /// A bare key, which has no quotes and no escapes.
+    Bare = 5
+}
+
+/// Why lexing stopped.
+///
+/// https://rux-lang.dev/docs/api/toml/lex-error
+enum TomlLexError: int32 {
+    /// Nothing went wrong.
+    None = 0,
+    /// A byte that begins no token.
+    UnexpectedByte = 1,
+    /// A string the input ended before closing.
+    UnterminatedText = 2,
+    /// An escape sequence TOML does not define.
+    BadEscape = 3,
+    /// A unicode escape that is not the right number of digits, or names no scalar value.
+    BadUnicodeEscape = 4,
+    /// A number whose shape TOML grammar does not allow.
+    MalformedNumber = 5,
+    /// A raw newline inside a single-line string.
+    NewlineInText = 6,
+    /// A control character appearing unescaped where TOML forbids it.
+    UnescapedControl = 7,
+    /// A date or time that is not the shape RFC 3339 defines.
+    MalformedDateTime = 8
+}
+
+/// One token, and where it came from.
+///
+/// https://rux-lang.dev/docs/api/toml/token
+struct TomlToken {
+    /// What kind of token this is.
+    kind: TomlTokenKind;
+    /// Which string form, for a text token.
+    form: TomlTextForm;
+    /// Where its text starts, as a byte offset.
+    start: uint;
+    /// Where its text ends.
+    end: uint;
+    /// Which line it starts on, counting from one.
+    line: uint;
+    /// Which column it starts at, counting from one, in bytes.
+    column: uint;
+    /// Why lexing stopped, when the kind is `Error`.
+    error: TomlLexError;
+}
+
+/// A TOML lexer over a byte slice.
+///
+/// https://rux-lang.dev/docs/api/toml/lexer
+struct TomlLexer {
+    /// The document.
+    input: Slice<char8>;
+    /// How far reading has reached.
+    position: uint;
+    /// Which line that is on.
+    line: uint;
+    /// Where the current line started, so a column is a subtraction.
+    lineStart: uint;
+}
+
+extend TomlLexer {
+    /// A lexer over `input`.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/lexer/new
+    func New(input: Slice<char8>) -> TomlLexer {
+        return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
+    }
+
+    func Make(self: *TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
+        return TomlToken {
+            kind: kind, form: form, start: start, end: end, line: self.line,
+            column: start - self.lineStart + 1u, error: TomlLexError::None
+        };
+    }
+
+    func Fail(self: *TomlLexer, reason: TomlLexError) -> TomlToken {
+        return TomlToken {
+            kind: TomlTokenKind::Error, form: TomlTextForm::NotText, start: self.position, end: self.position,
+            line: self.line, column: self.position - self.lineStart + 1u, error: reason
+        };
+    }
+
+    func At(self: *TomlLexer, offset: uint) -> uint8 {
+        if self.position + offset >= self.input.length {
+            return 0u8;
+        }
+        return self.input.data[self.position + offset] as uint8;
+    }
+
+    // Comments run to the end of the line and are not tokens: nothing above the lexer ever sees one, which is
+    // also why a document read and written back loses them.
+    func SkipSpaceAndComments(self: *var TomlLexer) {
+        while self.position < self.input.length {
+            let c = self.input.data[self.position] as uint8;
+            if c == 0x20u8 || c == 0x09u8 {
+                self.position = self.position + 1u;
+            }
+            else if c == 0x23u8 {
+                while self.position < self.input.length && (self.input.data[self.position] as uint8) != 0x0Au8 {
+                    self.position = self.position + 1u;
+                }
+            }
+            else {
+                return;
+            }
+        }
+    }
+
+    func IsBareKeyByte(c: uint8) -> bool {
+        return (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) ||
+               (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8 || c == 0x2Du8;
+    }
+}
+
+extend TomlLexer {
+    // A string in whichever of the four forms the quotes announce. The span excludes the delimiters, and the
+    // form travels with the token so the parser knows whether escapes are its business.
+    func LexText(self: *var TomlLexer, quote: uint8) -> TomlToken {
+        let opening = self.position;
+        var multiline = false;
+        if self.At(1u) == quote && self.At(2u) == quote {
+            multiline = true;
+            self.position = self.position + 3u;
+        }
+        else {
+            self.position = self.position + 1u;
+        }
+        // A multi-line string ignores a newline immediately after its opening delimiter, which is what lets the
+        // content start on the next line without gaining a leading blank.
+        if multiline && self.position < self.input.length {
+            if (self.input.data[self.position] as uint8) == 0x0Du8 &&
+                self.position + 1u < self.input.length &&
+                (self.input.data[self.position + 1u] as uint8) == 0x0Au8 {
+                self.position = self.position + 2u;
+                self.line = self.line + 1u;
+                self.lineStart = self.position;
+            }
+            else if (self.input.data[self.position] as uint8) == 0x0Au8 {
+                self.position = self.position + 1u;
+                self.line = self.line + 1u;
+                self.lineStart = self.position;
+            }
+        }
+        let start = self.position;
+        let escapes = quote == 0x22u8;
+        while self.position < self.input.length {
+            let c = self.input.data[self.position] as uint8;
+            if c == quote {
+                if !multiline {
+                    let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::Basic
+                                                                       : TomlTextForm::Literal,
+                                          start, self.position);
+                    self.position = self.position + 1u;
+                    return token;
+                }
+                if self.At(1u) == quote && self.At(2u) == quote {
+                    let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::MultiLineBasic
+                                                                       : TomlTextForm::MultiLineLiteral,
+                                          start, self.position);
+                    self.position = self.position + 3u;
+                    return token;
+                }
+            }
+            if c == 0x0Au8 {
+                if !multiline {
+                    // A raw newline inside a single-line string is its own error, rather than being reported as
+                    // an unterminated one, because it says what the writer probably meant to do.
+                    return self.Fail(TomlLexError::NewlineInText);
+                }
+                self.line = self.line + 1u;
+                self.lineStart = self.position + 1u;
+            }
+            else if c < 0x20u8 && c != 0x09u8 {
+                return self.Fail(TomlLexError::UnescapedControl);
+            }
+            if escapes && c == 0x5Cu8 {
+                let next = self.At(1u);
+                if next == 0x75u8 || next == 0x55u8 {
+                    let digits = next == 0x75u8 ? 4u : 8u;
+                    var digit: uint = 1;
+                    while digit <= digits {
+                        let h = self.At(1u + digit);
+                        let isDigit = (h >= 0x30u8 && h <= 0x39u8) || (h >= 0x61u8 && h <= 0x66u8) ||
+                                      (h >= 0x41u8 && h <= 0x46u8);
+                        if !isDigit {
+                            return self.Fail(TomlLexError::BadUnicodeEscape);
+                        }
+                        digit = digit + 1u;
+                    }
+                    self.position = self.position + 1u + digits;
+                }
+                else if next == 0x22u8 || next == 0x5Cu8 || next == 0x62u8 || next == 0x66u8 ||
+                        next == 0x6Eu8 || next == 0x72u8 || next == 0x74u8 || next == 0x65u8 {
+                    // TOML 1.1 adds \e for escape to the set JSON defines.
+                    self.position = self.position + 1u;
+                }
+                else if multiline && (next == 0x0Au8 || next == 0x20u8 || next == 0x09u8 || next == 0x0Du8) {
+                    // A line-ending backslash in a multi-line string swallows the whitespace that follows it,
+                    // which is how a long string is wrapped without gaining the wrapping.
+                    self.position = self.position + 1u;
+                }
+                else {
+                    return self.Fail(TomlLexError::BadEscape);
+                }
+            }
+            self.position = self.position + 1u;
+        }
+        self.position = opening;
+        return self.Fail(TomlLexError::UnterminatedText);
+    }
+}
+
+extend TomlLexer {
+    // A bare token: a key, a keyword, a number, or a date-time. TOML does not separate these lexically -- the
+    // run of characters has to be scanned and then classified -- because `1979-05-27` is a date and `1979` is
+    // an integer and both start the same way.
+    func LexBare(self: *var TomlLexer) -> TomlToken {
+        let start = self.position;
+        var sawColon = false;
+        var sawDash = false;
+        var sawDot = false;
+        var sawExponent = false;
+        var allDigits = true;
+        var index = self.position;
+        while index < self.input.length {
+            let c = self.input.data[index] as uint8;
+            let isWord = (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) ||
+                         (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8;
+            if isWord {
+                if !(c >= 0x30u8 && c <= 0x39u8) {
+                    allDigits = false;
+                }
+                index = index + 1u;
+                continue;
+            }
+            if c == 0x2Du8 {
+                sawDash = true;
+                allDigits = false;
+                index = index + 1u;
+                continue;
+            }
+            if c == 0x2Bu8 {
+                allDigits = false;
+                index = index + 1u;
+                continue;
+            }
+            if c == 0x3Au8 {
+                sawColon = true;
+                allDigits = false;
+                index = index + 1u;
+                continue;
+            }
+            // A dot continues the token only when it looks like part of a number; otherwise it is the dotted-key
+            // separator and belongs to the parser.
+            if c == 0x2Eu8 && allDigits && !sawColon {
+                sawDot = true;
+                allDigits = false;
+                index = index + 1u;
+                continue;
+            }
+            // A space continues the token only between a date and a time, which is the one place TOML lets a
+            // value contain one.
+            if c == 0x20u8 && sawDash && !sawColon && index + 1u < self.input.length {
+                let after = self.input.data[index + 1u] as uint8;
+                if after >= 0x30u8 && after <= 0x39u8 && self.LooksLikeTime(index + 1u) {
+                    sawColon = true;
+                    index = index + 2u;
+                    continue;
+                }
+            }
+            break;
+        }
+        let end = index;
+        if end == start {
+            return self.Fail(TomlLexError::UnexpectedByte);
+        }
+        let first = self.input.data[start] as uint8;
+        let digitLike = (first >= 0x30u8 && first <= 0x39u8) || first == 0x2Bu8 || first == 0x2Du8;
+        var kind = TomlTokenKind::BareKey;
+        if self.Matches(start, end, "true") || self.Matches(start, end, "false") {
+            kind = TomlTokenKind::Boolean;
+        }
+        else if self.Matches(start, end, "inf") || self.Matches(start, end, "nan") ||
+                self.Matches(start, end, "+inf") || self.Matches(start, end, "-inf") ||
+                self.Matches(start, end, "+nan") || self.Matches(start, end, "-nan") {
+            kind = TomlTokenKind::Float;
+        }
+        else if digitLike && (sawColon || self.LooksLikeDate(start, end)) {
+            kind = TomlTokenKind::DateTime;
+        }
+        else if digitLike {
+            kind = sawDot || sawExponent || self.HasExponent(start, end) ? TomlTokenKind::Float
+                                                                        : TomlTokenKind::Integer;
+        }
+        let token = self.Make(kind, kind == TomlTokenKind::BareKey ? TomlTextForm::Bare : TomlTextForm::NotText,
+                              start, end);
+        self.position = end;
+        return token;
+    }
+
+    // A date opens with four digits and a hyphen. Requiring the shape rather than merely the presence of a
+    // hyphen is what keeps `6.626e-34` a float: its hyphen belongs to the exponent, not to a month.
+    func LooksLikeDate(self: *TomlLexer, start: uint, end: uint) -> bool {
+        if end - start < 5u {
+            return false;
+        }
+        var index: uint = 0;
+        while index < 4u {
+            let c = self.input.data[start + index] as uint8;
+            if c < 0x30u8 || c > 0x39u8 {
+                return false;
+            }
+            index = index + 1u;
+        }
+        return (self.input.data[start + 4u] as uint8) == 0x2Du8;
+    }
+
+    func LooksLikeTime(self: *TomlLexer, at: uint) -> bool {
+        // `HH:MM`, the shortest thing that can follow a date across a space.
+        if at + 4u >= self.input.length {
+            return false;
+        }
+        return (self.input.data[at + 2u] as uint8) == 0x3Au8;
+    }
+
+    // A hexadecimal float is not TOML, so an `e` that could be a hex digit only counts as an exponent when the
+    // number is decimal -- which is why this looks at the prefix first.
+    func HasExponent(self: *TomlLexer, start: uint, end: uint) -> bool {
+        if end - start > 2u && (self.input.data[start] as uint8) == 0x30u8 {
+            let radix = self.input.data[start + 1u] as uint8;
+            if radix == 0x78u8 || radix == 0x6Fu8 || radix == 0x62u8 {
+                return false;
+            }
+        }
+        var index = start;
+        while index < end {
+            let c = self.input.data[index] as uint8;
+            if c == 0x65u8 || c == 0x45u8 {
+                return true;
+            }
+            index = index + 1u;
+        }
+        return false;
+    }
+
+    func Matches(self: *TomlLexer, start: uint, end: uint, word: Slice<char8>) -> bool {
+        if end - start != word.length {
+            return false;
+        }
+        var index: uint = 0;
+        while index < word.length {
+            if self.input.data[start + index] != word.data[index] {
+                return false;
+            }
+            index = index + 1u;
+        }
+        return true;
+    }
+}
+
+extend TomlLexer {
+    /// The next token, or `End` at the end of the input.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/lexer/next
+    func Next(self: *var TomlLexer) -> TomlToken {
+        self.SkipSpaceAndComments();
+        if self.position >= self.input.length {
+            return self.Make(TomlTokenKind::End, TomlTextForm::NotText, self.position, self.position);
+        }
+        let c = self.input.data[self.position] as uint8;
+        if c == 0x0Du8 || c == 0x0Au8 {
+            let start = self.position;
+            let token = self.Make(TomlTokenKind::Newline, TomlTextForm::NotText, start, start + 1u);
+            if c == 0x0Du8 {
+                self.position = self.position + 1u;
+                if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x0Au8 {
+                    self.position = self.position + 1u;
+                }
+            }
+            else {
+                self.position = self.position + 1u;
+            }
+            self.line = self.line + 1u;
+            self.lineStart = self.position;
+            return token;
+        }
+        if c == 0x22u8 || c == 0x27u8 {
+            return self.LexText(c);
+        }
+        if c == 0x3Du8 {
+            let token = self.Make(TomlTokenKind::Equals, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x2Eu8 {
+            let token = self.Make(TomlTokenKind::Dot, TomlTextForm::NotText, self.position, self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x2Cu8 {
+            let token = self.Make(TomlTokenKind::Comma, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x5Bu8 {
+            let token = self.Make(TomlTokenKind::LeftBracket, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x5Du8 {
+            let token = self.Make(TomlTokenKind::RightBracket, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x7Bu8 {
+            let token = self.Make(TomlTokenKind::LeftBrace, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if c == 0x7Du8 {
+            let token = self.Make(TomlTokenKind::RightBrace, TomlTextForm::NotText, self.position,
+                                  self.position + 1u);
+            self.position = self.position + 1u;
+            return token;
+        }
+        if TomlLexer::IsBareKeyByte(c) || c == 0x2Bu8 {
+            return self.LexBare();
+        }
+        return self.Fail(TomlLexError::UnexpectedByte);
+    }
+
+    /// The bytes a token spans, which for a text token excludes the quotes and is still escaped.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/lexer/text-of
+    func TextOf(self: *TomlLexer, token: *TomlToken) -> Slice<char8> {
+        return Slice<char8> { data: self.input.data + token.start, length: token.end - token.start };
+    }
+}
+
+/// Decodes a text token's span into an owned string, honouring the escapes its form allows.
+///
+/// A literal string is copied unchanged -- that is what makes it the right form for a Windows path -- while a
+/// basic string has its escapes resolved, including the line-ending backslash that lets a multi-line string be
+/// wrapped in the source without the wrapping appearing in the value.
+///
+/// https://rux-lang.dev/docs/api/toml/decode-text
+func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm, error: *var TextError,
+                    bad: *var bool) -> String {
+    *bad = false;
+    if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {
+        return String::FromBytes(allocator, span, error);
+    }
+    let multiline = form == TomlTextForm::MultiLineBasic;
+    var builder = StringBuilder::New(allocator);
+    var index: uint = 0;
+    while index < span.length {
+        let c = span.data[index] as uint8;
+        if c != 0x5Cu8 {
+            let one = Slice<char8> { data: @span.data[index], length: 1 };
+            *error = builder.AppendBytes(one);
+            index = index + 1u;
+            continue;
+        }
+        index = index + 1u;
+        if index >= span.length {
+            *bad = true;
+            break;
+        }
+        let kind = span.data[index] as uint8;
+        index = index + 1u;
+        if kind == 0x75u8 || kind == 0x55u8 {
+            let digits = kind == 0x75u8 ? 4u : 8u;
+            if index + digits > span.length {
+                *bad = true;
+                break;
+            }
+            let scalar = TomlHexRun(span, index, digits);
+            index = index + digits;
+            // TOML escapes name scalar values, not UTF-16 code units, so a surrogate is simply not one of them
+            // and there is no pairing rule to get wrong.
+            if scalar > 0x10FFFFu32 || (scalar >= 0xD800u32 && scalar <= 0xDFFFu32) {
+                *bad = true;
+                break;
+            }
+            *error = builder.AppendScalar(scalar as char32);
+        }
+        else if kind == 0x62u8 {
+            *error = builder.AppendAscii(0x08u8 as char8);
+        }
+        else if kind == 0x66u8 {
+            *error = builder.AppendAscii(0x0Cu8 as char8);
+        }
+        else if kind == 0x6Eu8 {
+            *error = builder.AppendAscii(0x0Au8 as char8);
+        }
+        else if kind == 0x72u8 {
+            *error = builder.AppendAscii(0x0Du8 as char8);
+        }
+        else if kind == 0x74u8 {
+            *error = builder.AppendAscii(0x09u8 as char8);
+        }
+        else if kind == 0x65u8 {
+            *error = builder.AppendAscii(0x1Bu8 as char8);
+        }
+        else if kind == 0x22u8 || kind == 0x5Cu8 {
+            *error = builder.AppendAscii(kind as char8);
+        }
+        else if multiline && (kind == 0x0Au8 || kind == 0x0Du8 || kind == 0x20u8 || kind == 0x09u8) {
+            index = index - 1u;
+            while index < span.length {
+                let w = span.data[index] as uint8;
+                if w != 0x20u8 && w != 0x09u8 && w != 0x0Au8 && w != 0x0Du8 {
+                    break;
+                }
+                index = index + 1u;
+            }
+        }
+        else {
+            *bad = true;
+            break;
+        }
+    }
+    return builder.IntoString();
+}
+
+// A run of hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
+func TomlHexRun(span: Slice<char8>, at: uint, count: uint) -> uint32 {
+    var value = 0u32;
+    var index: uint = 0;
+    while index < count {
+        let c = span.data[at + index] as uint8;
+        var digit = 0u32;
+        if c >= 0x30u8 && c <= 0x39u8 {
+            digit = (c - 0x30u8) as uint32;
+        }
+        else if c >= 0x61u8 && c <= 0x66u8 {
+            digit = (c - 0x61u8 + 10u8) as uint32;
+        }
+        else {
+            digit = (c - 0x41u8 + 10u8) as uint32;
+        }
+        value = (value << 4u32) | digit;
+        index = index + 1u;
+    }
+    return value;
+}
