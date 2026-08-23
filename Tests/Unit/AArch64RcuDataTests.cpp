@@ -24,6 +24,39 @@ using namespace Rux::Testing;
 // the constant, which is why these cases assert what was emitted for the
 // constant rather than that nothing was reported.
 
+TEST_CASE("AArch64 RCU emitter writes every byte of an aggregate constant") {
+    // A payload-carrying enum written as its empty variant is one constant whose type is not a register value. The
+    // literal names the low bytes and says nothing about the rest, so the rest is written as zero: leaving it would
+    // hand the slot whatever the last value there happened to be, which is the sort of difference that shows up as
+    // a test passing on one target and not the other.
+    const auto package = CompileToAArch64Lir(R"(
+        enum Parcel {
+            Nothing,
+            Count(int64)
+        }
+
+        func Take(parcel: Parcel) -> int64 {
+            return 0i64;
+        }
+
+        func Main() -> int {
+            return Take(Parcel::Nothing) as int;
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    REQUIRE_EQ(objects.size(), 1);
+
+    const auto words = FunctionWords(objects.front(), "Main");
+    // STR (immediate, unsigned offset) at 64 bits is 1111'1001'00 with the source register in the low five bits, so
+    // a store naming register 31 is a store of the zero register.
+    const auto zeroStores = std::ranges::count_if(
+        words, [](const std::uint32_t word) { return (word & 0xFFC0'0000U) == 0xF900'0000U && (word & 0x1FU) == 31U; });
+    CHECK_MESSAGE(zeroStores > 0, "the padding of an aggregate constant must be written, not left");
+}
+
 TEST_CASE("AArch64 RCU emitter materializes a boolean, a character and a null pointer") {
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {

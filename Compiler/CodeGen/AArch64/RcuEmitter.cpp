@@ -76,9 +76,13 @@ constexpr std::string_view kKernel32 = "KERNEL32.DLL";
 /// restores.
 constexpr std::int32_t kFrameRecordSize = 16;
 
-/// The largest frame a single pre-indexed STP can open: its 7-bit immediate counts pairs of doublewords, so it reaches
-/// 64 of them below the stack pointer. A frame past this opens with FrameAdjust instead.
-constexpr std::int32_t kInlineFrameLimit = 512;
+/// The largest frame a single pre-indexed STP can open *and* a single post-indexed LDP can close.
+///
+/// The 7-bit immediate counts pairs of doublewords, so it spans -64 to +63 of them: 512 bytes below the stack pointer
+/// but only 504 above it. The prologue uses the negative reach and the epilogue the positive one, so the usable limit
+/// is the smaller of the two, rounded down to the 16-byte alignment every frame keeps. A frame past this opens and
+/// closes with FrameAdjust instead.
+constexpr std::int32_t kInlineFrameLimit = 496;
 
 /// The register this generator computes in. AAPCS64 leaves X9 through X15 to the caller, so nothing that has to survive
 /// a call lives here, and it is clear of both the argument registers and the X16/X17 pair the encoder's composite
