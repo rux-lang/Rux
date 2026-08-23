@@ -60,6 +60,7 @@ public:
 
     /// Includes constants, local and symbol addresses, scalar and aggregate loads/stores, and field/index address
     /// computation.
+    void EmitAggregateConstant(const LirInstr &instruction);
     [[nodiscard]] bool EmitMemory(const LirInstr &instruction);
 
 private:

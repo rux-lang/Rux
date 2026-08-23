@@ -556,6 +556,35 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     }
 }
 
+// An aggregate whose whole value is a literal -- an enum variant carrying no payload, or a zeroed structure.
+//
+// The literal names the low bytes and says nothing about the rest, so the rest is written as zero rather than left
+// holding whatever the slot had. That is a strictly narrower promise than leaving it: a reader of those bytes is
+// reading something the program never set either way, and a deterministic zero is the version that reproduces.
+void AArch64FunctionEmitter::EmitAggregateConstant(const LirInstr &instruction) {
+    const int size = RuntimeSize(instruction.type);
+    if (size <= 0) {
+        // A zero-sized aggregate occupies nothing, so there is nothing to write.
+        return;
+    }
+    const A64Reg address = A64::Xn(kTemp2);
+    hooks.SlotAddress(address, instruction.dst);
+    const A64Reg bits = A64::Xn(kTemp);
+    Must(encoder.LoadImm64(bits, ConstantBits(instruction)), "a constant");
+
+    int offset = 0;
+    bool literalWritten = false;
+    // Widest chunk first, the same descent the block copy makes; only the first chunk carries the literal.
+    for (const unsigned width : {8U, 4U, 2U, 1U}) {
+        while (offset + static_cast<int>(width) <= size) {
+            const A64Reg source = literalWritten ? A64::Xzr : bits;
+            hooks.StoreScalar(width == 8U ? source : A64::Wn(source.code), address, offset, width);
+            literalWritten = true;
+            offset += static_cast<int>(width);
+        }
+    }
+}
+
 bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
     switch (instruction.op) {
     case LirOpcode::Const: {
@@ -575,7 +604,7 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
             return true;
         }
         if (!IsRegisterValue(instruction.type)) {
-            NotImplemented(std::format("a constant of type '{}'", instruction.type.ToString()));
+            EmitAggregateConstant(instruction);
             return true;
         }
         const A64Reg value = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));

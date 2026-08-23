@@ -147,6 +147,34 @@ TEST_CASE("AArch64 RCU emitter keeps the stack pointer 16-byte aligned across a 
     CHECK(std::ranges::find(words, kStackProbeTouch) == words.end());
 }
 
+TEST_CASE("AArch64 RCU emitter closes a frame the epilogue's immediate cannot reach") {
+    // The pair immediate counts doubleword pairs and spans -64 to +63 of them: 512 bytes below the stack pointer
+    // and only 504 above it. A frame of exactly 512 fits the prologue's pre-indexed STP and not the epilogue's
+    // post-indexed LDP, so a limit taken from the negative reach alone refuses to encode the function it just
+    // opened. Every frame between 504 and 512 has to take the explicit-adjustment path at both ends.
+    std::string body;
+    for (int i = 0; i < 60; ++i) {
+        body += std::format("    var v{}: int = {};\n", i, i);
+    }
+    const auto package = CompileToAArch64Lir(std::format(R"(
+        func Main() -> int {{
+{}            return 0;
+        }}
+    )",
+                                                         body));
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    REQUIRE_EQ(objects.size(), 1);
+    const auto words = FunctionWords(objects.front(), "Main");
+    REQUIRE_GE(words.size(), 4);
+
+    // Whichever side of the boundary this frame lands on, the record is stored and restored, and the function
+    // ends in a return rather than in a diagnostic.
+    CHECK_EQ(HexWord(words.back()), HexWord(0xD65F03C0)); // ret
+}
+
 TEST_CASE("Windows AArch64 selects stack probing at the 4 KiB frame boundary") {
     struct BoundaryCase {
         int arrayBytes;
