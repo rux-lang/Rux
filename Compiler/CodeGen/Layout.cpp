@@ -281,7 +281,8 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
 
 int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, const LayoutMap &layouts,
                   const std::unordered_set<std::string> &interfaceNames) {
-    if (pointerType.kind != TypeRef::Kind::Pointer || pointerType.inner.empty()) {
+    if ((pointerType.kind != TypeRef::Kind::Pointer && pointerType.kind != TypeRef::Kind::Reference) ||
+        pointerType.inner.empty()) {
         return 0;
     }
     const TypeRef &pointee = pointerType.inner[0];

@@ -198,9 +198,11 @@ const FuncDecl *SemanticAnalyzerContext::SelectBoundOperation(const std::string 
 
 std::optional<SemanticAnalyzerContext::ConstrainedOperation>
 SemanticAnalyzerContext::LookupConstrainedOperation(const TypeRef &receiverType, const std::string &methodName) const {
-    const TypeRef &receiver = receiverType.kind == TypeRef::Kind::Pointer && !receiverType.inner.empty()
-                                ? receiverType.inner.front()
-                                : receiverType;
+    const TypeRef &receiver =
+        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
+                !receiverType.inner.empty()
+            ? receiverType.inner.front()
+            : receiverType;
     if (receiver.kind != TypeRef::Kind::TypeParam) {
         return std::nullopt;
     }
@@ -234,9 +236,11 @@ void SemanticAnalyzerContext::RecordConstrainedBinding(const CallExpr &call, con
 void SemanticAnalyzerContext::EmitMissingConstrainedOperation(const SourceLocation location,
                                                               const TypeRef &receiverType,
                                                               const std::string &methodName) const {
-    const TypeRef &receiver = receiverType.kind == TypeRef::Kind::Pointer && !receiverType.inner.empty()
-                                ? receiverType.inner.front()
-                                : receiverType;
+    const TypeRef &receiver =
+        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
+                !receiverType.inner.empty()
+            ? receiverType.inner.front()
+            : receiverType;
     std::vector<std::string> notes;
     std::string names;
     if (const auto bounds = currentTypeParamBounds.find(receiver.name); bounds != currentTypeParamBounds.end()) {

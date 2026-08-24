@@ -11,9 +11,30 @@
 
 #include <doctest.h>
 #include <ranges>
+#include <string>
 #include <utility>
+#include <vector>
 
 using namespace Rux;
+
+namespace {
+std::vector<SemanticDiagnostic> AnalyzeReferences(const std::string &source) {
+    Lexer lexer(source, "reference-diagnostics.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "reference-diagnostics.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    return analyzer.Analyze().diagnostics;
+}
+
+bool HasErrorContaining(const std::vector<SemanticDiagnostic> &diagnostics, const std::string_view text) {
+    return std::ranges::any_of(diagnostics, [&](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.severity == Diagnostic::Severity::Error && diagnostic.message.contains(text);
+    });
+}
+} // namespace
 
 TEST_CASE("reference types preserve identity mutability and layout") {
     const TypeRef shared = TypeRef::MakeReference(TypeRef::MakeInt32());
@@ -104,4 +125,58 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
     REQUIRE_EQ(lir.modules[0].funcs[0].params.size(), 3);
     CHECK_EQ(lir.modules[0].funcs[0].params[0].type, *shared);
     CHECK_EQ(lir.modules[0].funcs[0].params[1].type, *exclusive);
+}
+
+TEST_CASE("exclusive borrows require writable places") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        struct Item { value: int32; }
+        func Write(item: &var Item) {}
+        func Test() {
+            let item = Item { value: 1i32 };
+            Write(item);
+        }
+    )");
+
+    CHECK(HasErrorContaining(diagnostics, "requires '&var Item'"));
+}
+
+TEST_CASE("references reject pointer-only operations") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        struct Item { value: int32; }
+        func Accept(item: &Item) {}
+        func Test(item: &Item) {
+            let dereferenced = *item;
+            let advanced = item + 1;
+            let empty: &Item = null;
+            Accept(null);
+        }
+    )");
+
+    CHECK(HasErrorContaining(diagnostics, "operator '*' requires a pointer operand"));
+    CHECK(HasErrorContaining(diagnostics, "operator '+' cannot combine"));
+    CHECK(HasErrorContaining(diagnostics, "null cannot initialize non-null reference '&Item'"));
+    CHECK(HasErrorContaining(diagnostics, "requires '&Item'"));
+}
+
+TEST_CASE("references cannot destroy or transfer borrowed ownership") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        interface Drop {}
+        struct Resource { value: int32; }
+        extend Resource : Drop {}
+        struct Holder { resource: Resource; }
+        extend Holder {
+            func Drop(self: &var Holder) {}
+            func Take(self: Holder) {}
+        }
+        func Consume(value: Resource) {}
+        func Test(shared: &Holder, exclusive: &var Holder) {
+            Consume(shared.resource);
+            shared.Take();
+            exclusive.Drop();
+        }
+    )");
+
+    CHECK(HasErrorContaining(diagnostics, "out of borrowed reference storage"));
+    CHECK(HasErrorContaining(diagnostics, "to by-value receiver"));
+    CHECK(HasErrorContaining(diagnostics, "cannot destroy value through reference"));
 }

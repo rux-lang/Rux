@@ -553,6 +553,18 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
     }
 
     HirExprPtr lowered = LowerExpr(expression);
+    if (targetType.kind == TypeRef::Kind::Reference) {
+        if (lowered->type.kind == TypeRef::Kind::Reference) {
+            lowered->type = targetType;
+            return lowered;
+        }
+        auto borrow = std::make_unique<HirUnaryExpr>();
+        borrow->location = expression.location;
+        borrow->op = TokenKind::At;
+        borrow->type = targetType;
+        borrow->operand = std::move(lowered);
+        return borrow;
+    }
     if (UnsuffixedIntegerLiteralFits(expression, targetType)) {
         lowered->type = targetType;
     }

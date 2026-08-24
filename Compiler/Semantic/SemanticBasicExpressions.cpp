@@ -140,8 +140,8 @@ TokenKind BinaryOperation(const TokenKind op) noexcept {
 }
 
 bool IsAssignablePlace(const Expr &expression) noexcept {
-    if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const FieldExpr *>(&expression) ||
-        dynamic_cast<const IndexExpr *>(&expression)) {
+    if (dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
+        dynamic_cast<const FieldExpr *>(&expression) || dynamic_cast<const IndexExpr *>(&expression)) {
         return true;
     }
     const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
@@ -265,8 +265,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
             }
         }
         else if (isAssignable) {
-            const bool compatible =
-                target.IsUnknown() || value.IsUnknown() || CanAssignExprTo(*assignment->value, value, target);
+            const bool nullReference = target.kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
+            const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
+                                                       CanAssignExprTo(*assignment->value, value, target));
             if (!compatible) {
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
@@ -277,7 +278,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                 if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location)) {
                     return TypeRef::MakeOpaque();
                 }
-                ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
+                if (target.kind != TypeRef::Kind::Reference) {
+                    ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
+                }
                 MarkTrackedAssignment(*assignment->target, assignment->location);
             }
         }
@@ -683,14 +686,16 @@ bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {
     }
     if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
         const TypeRef objectType = CheckExpr(*field->object);
-        if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+            !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;
         }
         return PlaceIsImmutable(*field->object);
     }
     if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
         const TypeRef objectType = CheckExpr(*index->object);
-        if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+            !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;
         }
         return PlaceIsImmutable(*index->object);
@@ -739,10 +744,14 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
     }
     else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
         const TypeRef objectType = CheckExpr(*field->object);
-        if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+            !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
-                EmitError(target.location,
-                          std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
+                EmitError(
+                    target.location,
+                    objectType.kind == TypeRef::Kind::Reference
+                        ? std::format("cannot modify data through immutable reference '{}'", objectType.ToString())
+                        : std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
         }
         else {
@@ -751,10 +760,14 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
     }
     else if (const auto *index = dynamic_cast<const IndexExpr *>(&target)) {
         const TypeRef objectType = CheckExpr(*index->object);
-        if (objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty()) {
+        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+            !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
-                EmitError(target.location,
-                          std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
+                EmitError(
+                    target.location,
+                    objectType.kind == TypeRef::Kind::Reference
+                        ? std::format("cannot modify data through immutable reference '{}'", objectType.ToString())
+                        : std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
         }
         else if (IsSliceType(objectType)) {

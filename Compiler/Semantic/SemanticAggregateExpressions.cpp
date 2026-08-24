@@ -7,6 +7,10 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+[[nodiscard]] const TypeRef &ReferencedValue(const TypeRef &type) {
+    return type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner.front() : type;
+}
+
 template <typename Range, typename Projection>
 [[nodiscard]] std::string AvailableNames(const Range &values, Projection projection) {
     std::vector<std::string> names;
@@ -32,7 +36,7 @@ template <typename Range, typename Projection>
 
 std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) const {
     const TypeRef *named = &type;
-    if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+    if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
     if (named->kind == TypeRef::Kind::Named) {
@@ -67,14 +71,15 @@ std::optional<TypeRef> SemanticAnalyzerContext::SliceElementType(const TypeRef &
 }
 
 std::optional<TypeRef> SemanticAnalyzerContext::IndexElementType(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-        return type.inner[0];
+    const TypeRef &value = ReferencedValue(type);
+    if (value.kind == TypeRef::Kind::Array && !value.inner.empty()) {
+        return value.inner[0];
     }
-    if (auto elementType = SliceElementType(type)) {
+    if (auto elementType = SliceElementType(value)) {
         return elementType;
     }
-    if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
-        return type.inner[0];
+    if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
+        return value.inner[0];
     }
     return std::nullopt;
 }
@@ -147,7 +152,10 @@ TypeRef SemanticAnalyzerContext::StructFieldType(const TypeRef &objectType, cons
     // reached through a pointer -- a pointer has no name of its own, so reading them off `objectType` would leave a
     // generic instantiation looking like a bare declaration and its fields still spelled in the type parameters.
     const TypeRef &named =
-        objectType.kind == TypeRef::Kind::Pointer && !objectType.inner.empty() ? objectType.inner[0] : objectType;
+        ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+         !objectType.inner.empty())
+            ? objectType.inner[0]
+            : objectType;
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::vector<TypeRef> typeArguments = ParseTypeArgsFromTypeName(named.name);
     const auto &parameters = structure->second->typeParams;
@@ -381,14 +389,15 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
 std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const Expr &expression) {
     if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
         const TypeRef objectType = CheckExpr(*index->object);
+        const TypeRef &objectValueType = ReferencedValue(objectType);
         const TypeRef indexType = CheckExpr(*index->index);
         if (indexType.IsRange()) {
             std::optional<TypeRef> elementType;
-            if (objectType.kind == TypeRef::Kind::Array && !objectType.inner.empty()) {
-                elementType = objectType.inner[0];
+            if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
+                elementType = objectValueType.inner[0];
             }
             else {
-                elementType = SliceElementType(objectType);
+                elementType = SliceElementType(objectValueType);
             }
             if (elementType) {
                 return TypeRef::MakeNamed(SliceTypeName(*elementType));
@@ -414,10 +423,11 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
 
     if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
         const TypeRef objectType = CheckExpr(*field->object);
-        if (objectType.kind == TypeRef::Kind::Array && objectType.arrayLength && field->field == "length") {
+        const TypeRef &objectValueType = ReferencedValue(objectType);
+        if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && field->field == "length") {
             return TypeRef::MakeUInt();
         }
-        if (auto elementType = SliceElementType(objectType)) {
+        if (auto elementType = SliceElementType(objectValueType)) {
             if (field->field == "data") {
                 return TypeRef::MakePointer(*elementType);
             }
@@ -429,12 +439,12 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                       {"available slice members are 'data' and 'length'"});
             return TypeRef::MakeUnknown();
         }
-        if (objectType.IsRange()) {
-            const TypeRef elementType = objectType.inner.empty() ? TypeRef::MakeInt64() : objectType.inner[0];
-            if (field->field == "start" && objectType.RangeHasStart()) {
+        if (objectValueType.IsRange()) {
+            const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];
+            if (field->field == "start" && objectValueType.RangeHasStart()) {
                 return elementType;
             }
-            if (field->field == "end" && objectType.RangeHasEnd()) {
+            if (field->field == "end" && objectValueType.RangeHasEnd()) {
                 return elementType;
             }
             EmitError(field->location,
@@ -442,17 +452,17 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                       {"range members are 'start' and 'end' when that bound is present"});
             return TypeRef::MakeUnknown();
         }
-        if (objectType.kind == TypeRef::Kind::Tuple) {
+        if (objectValueType.kind == TypeRef::Kind::Tuple) {
             try {
                 std::size_t consumed = 0;
                 const std::size_t index = std::stoul(field->field, &consumed);
                 if (consumed == field->field.size()) {
-                    if (index < objectType.inner.size()) {
-                        return objectType.inner[index];
+                    if (index < objectValueType.inner.size()) {
+                        return objectValueType.inner[index];
                     }
                     EmitError(field->location,
                               std::format("tuple index {} is out of range for a tuple with {} element{}", index,
-                                          objectType.inner.size(), objectType.inner.size() == 1 ? "" : "s"));
+                                          objectValueType.inner.size(), objectValueType.inner.size() == 1 ? "" : "s"));
                     return TypeRef::MakeUnknown();
                 }
             }

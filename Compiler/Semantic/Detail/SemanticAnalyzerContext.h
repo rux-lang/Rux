@@ -133,7 +133,8 @@ protected:
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
-    void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes);
+    void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                              const std::vector<TypeRef> *parameterTypes = nullptr);
     template <typename Arm>
     void ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                              SourceLocation location);

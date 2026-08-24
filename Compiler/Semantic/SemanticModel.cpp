@@ -76,7 +76,10 @@ const TypeRef &RequireSubstitution(const std::unordered_map<std::string, TypeRef
 } // namespace
 
 std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef &type) {
-    const TypeRef &owner = type.kind == TypeRef::Kind::Pointer && !type.inner.empty() ? type.inner.front() : type;
+    const TypeRef &owner =
+        (type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()
+            ? type.inner.front()
+            : type;
     std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
     // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
     // other generic instantiation shares one, so it reduces to the declaration that owns it.

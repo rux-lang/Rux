@@ -114,10 +114,16 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         return EmitLoad(ptr, e->type);
     }
     if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
-        if (e->object->type.kind == TypeRef::Kind::Array && e->object->type.arrayLength && e->field == "length") {
-            return EmitConst(std::to_string(*e->object->type.arrayLength), TypeRef::MakeUInt());
+        const TypeRef &objectValueType =
+            e->object->type.kind == TypeRef::Kind::Reference && !e->object->type.inner.empty()
+                ? e->object->type.inner.front()
+                : e->object->type;
+        if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && e->field == "length") {
+            return EmitConst(std::to_string(*objectValueType.arrayLength), TypeRef::MakeUInt());
         }
-        LirReg base = e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
+        const bool indirect =
+            e->object->type.kind == TypeRef::Kind::Pointer || e->object->type.kind == TypeRef::Kind::Reference;
+        LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
         LirReg ptr = EmitFieldPtr(base, e->field, e->type);
         // An interface value is a 16-byte fat pointer that is handled by its address, the same way a local or an
         // element of one is. Loading it would take eight of its sixteen bytes and pass that as the address, which is
@@ -529,12 +535,16 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
     // Evaluate the collection once and obtain its data pointer and length.
     LirReg data;
     LirReg collectionLength;
-    if (IsArrayType(e.object->type)) {
-        data = LowerLValue(*e.object);
-        collectionLength = EmitConst(std::to_string(e.object->type.arrayLength.value_or(0)), indexType);
+    const TypeRef &collectionType = e.object->type.kind == TypeRef::Kind::Reference && !e.object->type.inner.empty()
+                                      ? e.object->type.inner.front()
+                                      : e.object->type;
+    if (IsArrayType(collectionType)) {
+        data = e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);
+        collectionLength = EmitConst(std::to_string(collectionType.arrayLength.value_or(0)), indexType);
     }
     else {
-        const LirReg objectSlot = LowerLValue(*e.object);
+        const LirReg objectSlot =
+            e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);
         const LirReg dataField = EmitFieldPtr(objectSlot, "data", dataType);
         data = EmitLoad(dataField, dataType);
         const LirReg lengthField = EmitFieldPtr(objectSlot, "length", indexType);
@@ -637,7 +647,9 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         return slot;
     }
     if (auto *e = dynamic_cast<const HirFieldExpr *>(&expr)) {
-        LirReg base = e->object->type.kind == TypeRef::Kind::Pointer ? LowerExpr(*e->object) : LowerLValue(*e->object);
+        const bool indirect =
+            e->object->type.kind == TypeRef::Kind::Pointer || e->object->type.kind == TypeRef::Kind::Reference;
+        LirReg base = indirect ? LowerExpr(*e->object) : LowerLValue(*e->object);
         return EmitFieldPtr(base, e->field, e->type);
     }
 

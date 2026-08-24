@@ -355,6 +355,9 @@ struct TypeRef {
 
     /// True when this type can be assigned to `other` (lenient: Unknown is compatible with anything).
     [[nodiscard]] bool IsAssignableTo(const TypeRef &other) const noexcept;
+    /// Whether this value type can be implicitly borrowed as `other`. This answers only type compatibility; semantic
+    /// analysis separately requires addressable storage and write permission for an exclusive borrow.
+    [[nodiscard]] bool CanImplicitlyBorrowTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
 

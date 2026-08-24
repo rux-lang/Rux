@@ -13,6 +13,11 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+bool IsNullLiteral(const Expr &expression) {
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    return literal && literal->token.kind == TokenKind::NullKeyword;
+}
+
 /// A stable textual key for a pattern, so two arms written differently but matching the same values compare equal. This
 /// is what lets a duplicate or already-covered arm be reported without implementing full pattern subsumption.
 std::string PatternKey(const Pattern &pattern) {
@@ -188,6 +193,12 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         const bool initializerAccepted =
             letStatement->init && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
             (!letStatement->type || CanAssignExprTo(*letStatement->init, initializerType, declarationType));
+        const bool nullReferenceInitializer = letStatement->init && declarationType.kind == TypeRef::Kind::Reference &&
+                                              IsNullLiteral(*letStatement->init);
+        if (nullReferenceInitializer) {
+            EmitError(letStatement->init->location,
+                      std::format("null cannot initialize non-null reference '{}'", declarationType.ToString()));
+        }
         if (letStatement->init && letStatement->type && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
             !initializerAccepted) {
             EmitError(letStatement->location,
@@ -195,7 +206,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
                                              std::format("cannot assign '{}' to '{}'", initializerType.ToString(),
                                                          declarationType.ToString())));
         }
-        if (initializerAccepted) {
+        if (initializerAccepted && !nullReferenceInitializer && declarationType.kind != TypeRef::Kind::Reference) {
             ConsumeValue(*letStatement->init, initializerType, ValueConsumptionKind::Initialization,
                          letStatement->location);
         }

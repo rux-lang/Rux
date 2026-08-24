@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "References"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: References"
+
+[Build]
+Output = "../../../Bin/Tests/Language"
