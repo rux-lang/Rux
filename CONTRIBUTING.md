@@ -43,6 +43,7 @@ For anything beyond the quick start, see the detailed guides:
 
 | Guide                                             | What it covers                                                  |
 | ------------------------------------------------- | --------------------------------------------------------------- |
+| [Language Ownership](Docs/Language.md)            | Values, references, copy, move, construction, and destruction   |
 | [Development Workflow](Docs/Workflow.md)          | Day-to-day loop: build, change, test, format, commit            |
 | [Compiler Architecture](Docs/Architecture.md)     | Component ownership, dependency direction, compilation pipeline |
 | [Package Builds](Docs/Builds.md)                  | Profiles, targets, artifact paths, and the 16-cell build matrix |
