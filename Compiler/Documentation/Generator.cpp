@@ -231,6 +231,9 @@ std::string TypeText(const TypeExpr *type) {
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
         return std::string("*") + (pointer->pointeeMut ? "var " : "") + TypeText(pointer->pointee.get());
     }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
+        return std::string("&") + (reference->pointeeMut ? "var " : "") + TypeText(reference->pointee.get());
+    }
     if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
         std::string text = "(";
         for (std::size_t i = 0; i < tuple->elements.size(); ++i) {

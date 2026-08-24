@@ -56,6 +56,12 @@ struct PointerTypeExpr : TypeExpr {
     bool pointeeMut = false; // *var T: the pointee is writable (default is read-only)
 };
 
+// &T  or  &var T
+struct ReferenceTypeExpr : TypeExpr {
+    TypeExprPtr pointee;
+    bool pointeeMut = false; // &var T: the referent is writable (default is read-only)
+};
+
 // (int32, float64)
 struct TupleTypeExpr : TypeExpr {
     std::vector<TypeExprPtr> elements;

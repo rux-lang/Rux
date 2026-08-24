@@ -25,6 +25,15 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
         p->pointee = ParseType("add the pointee type after '*'");
         base = std::move(p);
     }
+    // Reference: &T  or  &var T
+    else if (Match(TokenKind::Amp)) {
+        const bool pointeeMut = Match(TokenKind::VarKeyword);
+        auto reference = std::make_unique<ReferenceTypeExpr>();
+        reference->location = loc;
+        reference->pointeeMut = pointeeMut;
+        reference->pointee = ParseType("add the referent type after '&'");
+        base = std::move(reference);
+    }
     // Grouped type or tuple: (T) or (T, U, ...)
     else if (Check(TokenKind::LeftParen)) {
         Advance();
@@ -344,7 +353,10 @@ std::string ImplTypeName(const TypeExpr &type) {
         return ImplTypeName(*array->element) + (array->size ? "[N]" : "[]");
     }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
-        return "*" + ImplTypeName(*pointer->pointee);
+        return (pointer->pointeeMut ? "*var " : "*") + ImplTypeName(*pointer->pointee);
+    }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+        return (reference->pointeeMut ? "&var " : "&") + ImplTypeName(*reference->pointee);
     }
     if (const auto *path = dynamic_cast<const PathTypeExpr *>(&type)) {
         std::string result;

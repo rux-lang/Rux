@@ -59,6 +59,7 @@ set(RUX_TEST_SOURCES
     LexerTests.cpp
     LinearScanTests.cpp
     PrimitiveCatalogTests.cpp
+    ReferenceTypeTests.cpp
     WideIntegerTests.cpp
     LinkerTests.cpp
     RcuLinkGraphTests.cpp

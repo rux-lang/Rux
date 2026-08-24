@@ -76,7 +76,8 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     }
     if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
         std::string element = TypeString(array->element.get());
-        if (dynamic_cast<const PointerTypeExpr *>(array->element.get())) {
+        if (dynamic_cast<const PointerTypeExpr *>(array->element.get()) ||
+            dynamic_cast<const ReferenceTypeExpr *>(array->element.get())) {
             element = "(" + element + ")";
         }
         std::string result = element + "[";
@@ -91,6 +92,13 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
             pointee = "(" + pointee + ")";
         }
         return (pointer->pointeeMut ? "*var " : "*") + pointee;
+    }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
+        std::string pointee = TypeString(reference->pointee.get());
+        if (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get())) {
+            pointee = "(" + pointee + ")";
+        }
+        return (reference->pointeeMut ? "&var " : "&") + pointee;
     }
     if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(type)) {
         std::string result = "(";

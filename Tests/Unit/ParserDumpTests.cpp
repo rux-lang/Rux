@@ -18,6 +18,9 @@ import Core::{ Thing, Value };
 pub struct Box<T> {
     pub value: T;
     array: (*var uint8)[4];
+    shared: &T;
+    exclusive: &var T;
+    references: (&uint8)[4];
     tuple: (int32,);
     path: Core::Thing;
 }
@@ -86,6 +89,9 @@ asm func Raw() {
   pub StructDecl 'Box'<T>
     pub Field 'value' : T
     Field 'array' : (*var uint8)[N]
+    Field 'shared' : &T
+    Field 'exclusive' : &var T
+    Field 'references' : (&uint8)[N]
     Field 'tuple' : (int32,)
     Field 'path' : Core::Thing
   pub EnumDecl 'Choice'<T> : uint8
