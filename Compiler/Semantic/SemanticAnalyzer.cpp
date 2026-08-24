@@ -2162,18 +2162,22 @@ private:
             }
             if (externFn->returnType) {
                 ValidateArrayType(*externFn->returnType->get());
-                ResolveType(*externFn->returnType->get());
+                const TypeRef returnType = ResolveType(*externFn->returnType->get());
+                ValidateStoredType(returnType, externFn->returnType->get()->location, "extern return type");
             }
             for (auto &p : externFn->params) {
                 if (!p.isVariadic) {
                     ValidateArrayType(*p.type);
-                    ResolveType(*p.type);
+                    const TypeRef parameterType = ResolveType(*p.type);
+                    if (parameterType.kind != TypeRef::Kind::Reference) {
+                        ValidateStoredType(parameterType, p.location, "extern parameter");
+                    }
                 }
             }
         }
         else if (auto *externVar = dynamic_cast<const ExternVarDecl *>(&decl)) {
             ValidateArrayType(*externVar->type);
-            ResolveType(*externVar->type);
+            ValidateStoredType(ResolveType(*externVar->type), externVar->location, "extern variable");
         }
         else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
             for (auto &item : externBlock->items) {
@@ -2198,6 +2202,10 @@ private:
             ValidateArrayType(*d.returnType->get());
         }
         TypeRef retType = d.returnType ? ResolveType(*d.returnType->get()) : TypeRef::MakeOpaque();
+        if (!retType.IsOpaque() && !retType.IsUnknown()) {
+            ValidateStoredType(retType, d.returnType ? d.returnType->get()->location : d.location,
+                               "function return type");
+        }
 
         auto savedRet = currentReturnType;
         currentReturnType = retType;
@@ -2240,6 +2248,9 @@ private:
             sym.location = param.location;
             sym.type = param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type)))
                                         : ResolveType(*param.type);
+            if (sym.type.kind != TypeRef::Kind::Reference) {
+                ValidateStoredType(sym.type, param.location, "function parameter");
+            }
             sym.isMut = param.isMut;
             DefineTrackedLocal(std::move(sym), true);
             if (param.defaultValue) {
@@ -2331,7 +2342,8 @@ private:
             const auto *array = dynamic_cast<const ArrayTypeExpr *>(field.type.get());
             const bool isFlexibleTail = array && !array->size && i + 1 == d.fields.size();
             ValidateArrayType(*field.type, isFlexibleTail);
-            ResolveType(*field.type);
+            ValidateStoredType(ResolveType(*field.type), field.location,
+                               std::format("field '{}' in struct '{}'", field.name, d.name));
         }
 
         PopScope();
@@ -2358,7 +2370,8 @@ private:
             }
             for (const auto &f : variant.fields) {
                 ValidateArrayType(*f);
-                ResolveType(*f);
+                ValidateStoredType(ResolveType(*f), f->location,
+                                   std::format("payload in enum variant '{}::{}'", d.name, variant.name));
             }
             std::unordered_set<std::string> namedFields;
             for (const auto &f : variant.namedFields) {
@@ -2367,7 +2380,8 @@ private:
                                                       variant.name));
                 }
                 ValidateArrayType(*f.type);
-                ResolveType(*f.type);
+                ValidateStoredType(ResolveType(*f.type), f.location,
+                                   std::format("field '{}' in enum variant '{}::{}'", f.name, d.name, variant.name));
             }
         }
         currentTypeParams = savedTypeParams;
@@ -2398,7 +2412,8 @@ private:
                 EmitError(field.location, std::format("duplicate field '{}' in union '{}'", field.name, d.name));
             }
             ValidateArrayType(*field.type);
-            ResolveType(*field.type);
+            ValidateStoredType(ResolveType(*field.type), field.location,
+                               std::format("field '{}' in union '{}'", field.name, d.name));
         }
     }
 
@@ -2416,11 +2431,15 @@ private:
                           std::format("duplicate method '{}' in interface '{}'", method->name, d.name));
             }
             if (method->returnType) {
-                ResolveType(**method->returnType);
+                ValidateStoredType(ResolveType(**method->returnType), method->returnType->get()->location,
+                                   "interface method return type");
             }
             for (const auto &p : method->params) {
                 if (!p.isVariadic) {
-                    ResolveType(*p.type);
+                    const TypeRef parameterType = ResolveType(*p.type);
+                    if (parameterType.kind != TypeRef::Kind::Reference) {
+                        ValidateStoredType(parameterType, p.location, "interface method parameter");
+                    }
                 }
             }
         }
@@ -2563,6 +2582,7 @@ private:
                 return;
             }
             const TypeRef constType = ResolveType(**d.type);
+            ValidateStoredType(constType, d.location, "intrinsic constant");
             if (Symbol *sym = currentScope->Lookup(d.name)) {
                 sym->type = constType;
                 sym->intrinsicName = d.intrinsicName;
@@ -2578,6 +2598,7 @@ private:
         }
         TypeRef valueType = CheckExpr(*d.value);
         TypeRef constType = d.type ? ResolveType(*d.type->get()) : valueType;
+        ValidateStoredType(constType, d.location, "constant");
         if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
             !CanAssignExprTo(*d.value, valueType, constType)) {
             EmitError(d.value->location,

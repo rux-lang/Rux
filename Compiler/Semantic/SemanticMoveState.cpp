@@ -34,14 +34,22 @@ const FuncDecl *SemanticAnalyzerContext::BeginTrackedFunction(const FuncDecl &fu
     savedMoveStates.push_back(std::move(moveStates));
     savedTrackedFlowReachability.push_back(trackedFlowReachable);
     savedTrackedLoops.push_back(std::move(trackedLoops));
+    savedActiveBorrows.push_back(std::move(activeBorrows));
+    savedEndedBorrowProvenance.push_back(std::move(endedBorrowProvenance));
+    savedPendingCallBorrows.push_back(std::move(pendingCallBorrows));
+    savedBorrowLiveAfter.push_back(std::move(borrowLiveAfter));
+    savedBorrowLastUseOffsets.push_back(std::move(borrowLastUseOffsets));
+    savedBorrowStatements.push_back(currentBorrowStatement);
     moveStates.Reset();
     trackedFlowReachable = true;
     trackedLoops.clear();
+    PrepareBorrowAnalysis(function);
     currentFunctionDecl = &function;
     return previousFunction;
 }
 
 void SemanticAnalyzerContext::EndTrackedFunction(const FuncDecl *previousFunction) {
+    FinishBorrowAnalysis();
     currentFunctionDecl = previousFunction;
     moveStates = std::move(savedMoveStates.back());
     savedMoveStates.pop_back();
@@ -49,11 +57,26 @@ void SemanticAnalyzerContext::EndTrackedFunction(const FuncDecl *previousFunctio
     savedTrackedFlowReachability.pop_back();
     trackedLoops = std::move(savedTrackedLoops.back());
     savedTrackedLoops.pop_back();
+    activeBorrows = std::move(savedActiveBorrows.back());
+    savedActiveBorrows.pop_back();
+    endedBorrowProvenance = std::move(savedEndedBorrowProvenance.back());
+    savedEndedBorrowProvenance.pop_back();
+    pendingCallBorrows = std::move(savedPendingCallBorrows.back());
+    savedPendingCallBorrows.pop_back();
+    borrowLiveAfter = std::move(savedBorrowLiveAfter.back());
+    savedBorrowLiveAfter.pop_back();
+    borrowLastUseOffsets = std::move(savedBorrowLastUseOffsets.back());
+    savedBorrowLastUseOffsets.pop_back();
+    currentBorrowStatement = savedBorrowStatements.back();
+    savedBorrowStatements.pop_back();
 }
 
 void SemanticAnalyzerContext::CheckTrackedRead(const Symbol &symbol, const SourceLocation location) {
     if (!trackedFlowReachable) {
         return;
+    }
+    if (!checkingBorrowProjectionRoot) {
+        CheckBorrowedRead(symbol, location);
     }
     const std::optional<MoveStateTracker::Issue> issue = moveStates.Read(MoveStateTracker::Local(&symbol));
     if (!issue) {
@@ -89,20 +112,23 @@ void SemanticAnalyzerContext::CheckTrackedRead(const Symbol &symbol, const Sourc
 }
 
 SemanticAnalyzerContext::TrackedFlow SemanticAnalyzerContext::SaveTrackedFlow() const {
-    return {moveStates.Save(), trackedFlowReachable};
+    return {moveStates.Save(), SaveBorrows(), trackedFlowReachable};
 }
 
 void SemanticAnalyzerContext::RestoreTrackedFlow(const TrackedFlow &flow) {
     moveStates.Restore(flow.states);
+    RestoreBorrows(flow.borrows);
     trackedFlowReachable = flow.reachable;
 }
 
 void SemanticAnalyzerContext::MergeTrackedFlows(const std::vector<TrackedFlow> &flows) {
     std::vector<MoveStateTracker::Snapshot> reachable;
+    std::vector<BorrowSnapshot> reachableBorrows;
     reachable.reserve(flows.size());
     for (const TrackedFlow &flow : flows) {
         if (flow.reachable) {
             reachable.push_back(flow.states);
+            reachableBorrows.push_back(flow.borrows);
         }
     }
     if (reachable.empty()) {
@@ -110,11 +136,12 @@ void SemanticAnalyzerContext::MergeTrackedFlows(const std::vector<TrackedFlow> &
         return;
     }
     moveStates.Restore(MoveStateTracker::Merge(reachable));
+    RestoreBorrows(MergeBorrows(reachableBorrows));
     trackedFlowReachable = true;
 }
 
 void SemanticAnalyzerContext::BeginTrackedLoop(const std::string_view label) {
-    trackedLoops.push_back({std::string(label), moveStates.Save(), {}, {}});
+    trackedLoops.push_back({std::string(label), moveStates.Save(), SaveBorrows(), {}, {}});
 }
 
 SemanticAnalyzerContext::TrackedLoop SemanticAnalyzerContext::EndTrackedLoop() {
@@ -133,6 +160,7 @@ void SemanticAnalyzerContext::RecordTrackedLoopExit(const std::string_view label
     }
     TrackedFlow exit = SaveTrackedFlow();
     exit.states = MoveStateTracker::Project(exit.states, target->shape);
+    exit.borrows = ProjectBorrows(exit.borrows, target->borrowShape);
     (isContinue ? target->continues : target->breaks).push_back(std::move(exit));
 }
 
@@ -277,6 +305,7 @@ TypeRef SemanticAnalyzerContext::CheckMatchExpression(const MatchExpr &expressio
 TypeRef SemanticAnalyzerContext::ReadTrackedSymbol(const Symbol &symbol, const SourceLocation location) {
     if (symbol.kind == Symbol::Kind::Var && !checkingPlainAssignmentTarget) {
         CheckTrackedRead(symbol, location);
+        ExpireBorrowAtLastUse(symbol, location);
     }
     return symbol.type;
 }
@@ -337,6 +366,9 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const T
                                                  const SourceLocation location) {
     if (!ClassifyTypeProperties(type).IsMoveOnly()) {
         return true;
+    }
+    if (!CheckBorrowedMove(expression, location)) {
+        return false;
     }
     const auto usesReferenceStorage = [&](this auto &&self, const Expr &candidate) -> bool {
         const Expr *object = nullptr;
@@ -438,6 +470,9 @@ std::vector<TypeRef> SemanticAnalyzerContext::CheckCallArgumentValues(const Call
 
 void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                                                    const std::vector<TypeRef> *parameterTypes) {
+    if (parameterTypes) {
+        ValidateCallReferenceBorrows(call, *parameterTypes);
+    }
     const std::size_t count = std::min(call.args.size(), argumentTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
         if (parameterTypes && index < parameterTypes->size() &&
@@ -452,7 +487,11 @@ void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const s
 void SemanticAnalyzerContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver,
                                                     const TypeRef &receiverType, const FuncDecl &method) {
     const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
-    if (!declared || declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference ||
+    if (declared && declared->kind == TypeRef::Kind::Reference) {
+        BeginReceiverReferenceBorrow(call, receiver, *declared);
+        return;
+    }
+    if (!declared || declared->kind == TypeRef::Kind::Pointer ||
         (declared->kind == TypeRef::Kind::Named && declared->name.starts_with("Slice<"))) {
         return;
     }

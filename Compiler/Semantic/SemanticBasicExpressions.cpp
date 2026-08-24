@@ -282,6 +282,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
                 MarkTrackedAssignment(*assignment->target, assignment->location);
+                if (target.kind == TypeRef::Kind::Reference) {
+                    RegisterReferenceAssignment(*assignment->target, *assignment->value, target);
+                }
             }
         }
         return TypeRef::MakeOpaque();
@@ -685,7 +688,10 @@ bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {
         return symbol != nullptr && !symbol->isMut;
     }
     if (const auto *field = dynamic_cast<const FieldExpr *>(&place)) {
+        const bool savedProjectionRoot = checkingBorrowProjectionRoot;
+        checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*field->object);
+        checkingBorrowProjectionRoot = savedProjectionRoot;
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;
@@ -693,7 +699,10 @@ bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {
         return PlaceIsImmutable(*field->object);
     }
     if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+        const bool savedProjectionRoot = checkingBorrowProjectionRoot;
+        checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
+        checkingBorrowProjectionRoot = savedProjectionRoot;
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;
@@ -791,6 +800,7 @@ bool SemanticAnalyzerContext::CheckAssignableTarget(const Expr &target, const Ty
                               operatorName, targetType.ToString()));
         return false;
     }
+    CheckBorrowedMutation(target, target.location);
     CheckMutability(target);
     return true;
 }
