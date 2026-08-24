@@ -540,7 +540,7 @@ bool AstToHirContext::IsNullLiteral(const Expr &expr) {
 
 std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     const TypeRef *named = &type;
-    if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
+    if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
     if (named->kind == TypeRef::Kind::Named) {
@@ -629,14 +629,15 @@ std::optional<TypeRef> AstToHirContext::SliceElementType(const TypeRef &type) co
 }
 
 std::optional<TypeRef> AstToHirContext::IndexElementType(const TypeRef &type) const {
-    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
-        return type.inner[0];
+    const TypeRef &value = type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner[0] : type;
+    if (value.kind == TypeRef::Kind::Array && !value.inner.empty()) {
+        return value.inner[0];
     }
-    if (auto elemType = SliceElementType(type)) {
+    if (auto elemType = SliceElementType(value)) {
         return elemType;
     }
-    if (type.kind == TypeRef::Kind::Pointer && !type.inner.empty()) {
-        return type.inner[0];
+    if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
+        return value.inner[0];
     }
     return std::nullopt;
 }
@@ -766,7 +767,8 @@ TypeRef AstToHirContext::StructFieldType(const TypeRef &objectType, const std::s
 
 std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitutions(const TypeRef &receiverType) const {
     const TypeRef *receiver = &receiverType;
-    if (receiver->kind == TypeRef::Kind::Pointer && !receiver->inner.empty()) {
+    if ((receiver->kind == TypeRef::Kind::Pointer || receiver->kind == TypeRef::Kind::Reference) &&
+        !receiver->inner.empty()) {
         receiver = &receiver->inner[0];
     }
     if (receiver->kind != TypeRef::Kind::Named) {
@@ -803,7 +805,9 @@ TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl 
 
 TypeRef AstToHirContext::AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
     TypeRef savedSelfType = currentSelfType;
-    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+    currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                        ? receiverType
+                        : TypeRef::MakePointer(receiverType);
     const auto substitutions = MethodTypeSubstitutions(receiverType);
     std::vector<TypeRef> params;
     for (const auto &param : method.params) {
@@ -866,8 +870,9 @@ std::string AstToHirContext::ConcreteMethodCalleeName(const std::string &typeNam
 
     if (generatedMonomorphizedFuncNames.insert(name).second) {
         const TypeRef savedSelfType = currentSelfType;
-        currentSelfType =
-            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                            ? receiverType
+                            : TypeRef::MakePointer(receiverType);
         monomorphizedFuncs.push_back(LowerFunc(method, /*isMethod=*/true, substitutions, name));
         currentSelfType = savedSelfType;
     }
@@ -986,7 +991,8 @@ const FuncDecl *AstToHirContext::LookupMethod(const TypeRef &receiverType, const
             if (argTypes[i].IsUnknown() || paramType.IsUnknown()) {
                 continue;
             }
-            if (!argTypes[i].IsAssignableTo(paramType) && !(argTypes[i].IsInteger() && paramType.IsInteger())) {
+            if (!argTypes[i].IsAssignableTo(paramType) && !argTypes[i].CanImplicitlyBorrowTo(paramType) &&
+                !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                 return nullptr;
             }
         }
@@ -1003,7 +1009,7 @@ const FuncDecl *AstToHirContext::LookupMethod(const TypeRef &receiverType, const
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
             const TypeRef &paramType = ft.inner[i + 1];
             if (!argTypes[i].IsUnknown() && !paramType.IsUnknown() && !argTypes[i].IsAssignableTo(paramType) &&
-                !(argTypes[i].IsInteger() && paramType.IsInteger())) {
+                !argTypes[i].CanImplicitlyBorrowTo(paramType) && !(argTypes[i].IsInteger() && paramType.IsInteger())) {
                 match = false;
                 break;
             }

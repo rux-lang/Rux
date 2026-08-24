@@ -338,6 +338,30 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const T
     if (!ClassifyTypeProperties(type).IsMoveOnly()) {
         return true;
     }
+    const auto usesReferenceStorage = [&](this auto &&self, const Expr &candidate) -> bool {
+        const Expr *object = nullptr;
+        if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate)) {
+            object = index->object.get();
+        }
+        if (!object) {
+            return false;
+        }
+        if (const auto found = expressionTypes.find(object);
+            found != expressionTypes.end() && found->second.kind == TypeRef::Kind::Reference) {
+            return true;
+        }
+        return self(*object);
+    };
+    if (usesReferenceStorage(expression)) {
+        const MovePlace place = AnalyzeMovePlace(expression);
+        EmitError(location, std::format("cannot move '{}' out of borrowed reference storage", place.Display()),
+                  {"references do not transfer ownership of the value they borrow"},
+                  "move the owning value or clone the borrowed value explicitly");
+        return false;
+    }
     const MovePlace place = AnalyzeMovePlace(expression);
     if (place.IsBorrowedStorage()) {
         EmitError(location, std::format("cannot move '{}' out of borrowed pointer storage", place.Display()),
@@ -412,9 +436,14 @@ std::vector<TypeRef> SemanticAnalyzerContext::CheckCallArgumentValues(const Call
     return types;
 }
 
-void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes) {
+void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                                                   const std::vector<TypeRef> *parameterTypes) {
     const std::size_t count = std::min(call.args.size(), argumentTypes.size());
     for (std::size_t index = 0; index < count; ++index) {
+        if (parameterTypes && index < parameterTypes->size() &&
+            (*parameterTypes)[index].kind == TypeRef::Kind::Reference) {
+            continue;
+        }
         ConsumeValue(*call.args[index], argumentTypes[index], ValueConsumptionKind::Argument,
                      call.args[index]->location);
     }
@@ -423,7 +452,7 @@ void SemanticAnalyzerContext::ConsumeCallArguments(const CallExpr &call, const s
 void SemanticAnalyzerContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver,
                                                     const TypeRef &receiverType, const FuncDecl &method) {
     const std::optional<TypeRef> declared = ResolveMethodReceiverType(receiverType, method);
-    if (!declared || declared->kind == TypeRef::Kind::Pointer ||
+    if (!declared || declared->kind == TypeRef::Kind::Pointer || declared->kind == TypeRef::Kind::Reference ||
         (declared->kind == TypeRef::Kind::Named && declared->name.starts_with("Slice<"))) {
         return;
     }

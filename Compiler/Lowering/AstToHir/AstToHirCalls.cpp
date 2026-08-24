@@ -60,16 +60,15 @@ std::string AstToHirContext::LogicalCurrentFilePath() const {
     return path.generic_string();
 }
 
-/// Whether the method asked for a copy of its receiver rather than a reference to it. A pointer receiver is passed as
-/// it stands, and a slice receiver is a value the ABI still passes by address, so only a receiver written as a plain
-/// type travels the way an ordinary argument does.
+/// Whether the method asked for a copy of its receiver rather than indirect access to it. Pointer and reference
+/// receivers are passed as they stand, and a slice receiver is a value the ABI still passes by address.
 bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
     const Param *receiver = method.Receiver();
     if (!receiver || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
         return false;
     }
     const TypeRef &declared = ResolvedType(*receiver->type);
-    return declared.kind != TypeRef::Kind::Pointer &&
+    return declared.kind != TypeRef::Kind::Pointer && declared.kind != TypeRef::Kind::Reference &&
            !(declared.kind == TypeRef::Kind::Named && declared.name.starts_with("Slice<"));
 }
 
@@ -77,12 +76,14 @@ bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
 /// says which of those the method wants, so the difference is made up here rather than at each of the places a method
 /// can be reached from.
 HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver) {
-    const bool isPointer = receiver->type.kind == TypeRef::Kind::Pointer;
+    const bool isIndirect =
+        receiver->type.kind == TypeRef::Kind::Pointer || receiver->type.kind == TypeRef::Kind::Reference;
     if (ReceiverIsByValue(method)) {
-        if (!isPointer) {
+        if (!isIndirect) {
             return receiver;
         }
-        // A by-value receiver reached through a pointer is the value the pointer names, copied like any argument.
+        // A by-value receiver reached through indirection is the value it names. Semantic analysis rejects ownership
+        // transfer through a reference; the remaining legacy pointer and Copy cases load like any by-value argument.
         auto load = std::make_unique<HirUnaryExpr>();
         load->location = receiver->location;
         load->op = TokenKind::Star;
@@ -90,13 +91,18 @@ HirExprPtr AstToHirContext::LowerReceiverFor(const FuncDecl &method, HirExprPtr 
         load->operand = std::move(receiver);
         return load;
     }
-    if (isPointer) {
+    const Param *parameter = method.Receiver();
+    const TypeRef declared = parameter
+                               ? ResolveTypeWithSubstitution(*parameter->type, MethodTypeSubstitutions(receiver->type))
+                               : TypeRef::MakeUnknown();
+    if (isIndirect) {
+        receiver->type = declared.IsUnknown() ? receiver->type : declared;
         return receiver;
     }
     auto address = std::make_unique<HirUnaryExpr>();
     address->location = receiver->location;
     address->op = TokenKind::At;
-    address->type = TypeRef::MakePointer(receiver->type);
+    address->type = declared.IsUnknown() ? TypeRef::MakePointer(receiver->type) : declared;
     address->operand = std::move(receiver);
     return address;
 }
@@ -192,7 +198,8 @@ void AstToHirContext::EnsureBoundMethodInstance(const FuncDecl &method, const Re
            "generic method binding is missing its receiver or linker name");
     if (generatedMonomorphizedFuncNames.insert(binding.linkerName).second) {
         const TypeRef savedSelfType = currentSelfType;
-        currentSelfType = binding.receiverType->kind == TypeRef::Kind::Pointer
+        currentSelfType = binding.receiverType->kind == TypeRef::Kind::Pointer ||
+                                  binding.receiverType->kind == TypeRef::Kind::Reference
                             ? *binding.receiverType
                             : TypeRef::MakePointer(*binding.receiverType);
         monomorphizedFuncs.push_back(LowerFunc(method, true, binding.substitutions, binding.linkerName));

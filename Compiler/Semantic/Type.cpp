@@ -150,6 +150,20 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     return false;
 }
 
+bool TypeRef::CanImplicitlyBorrowTo(const TypeRef &other) const noexcept {
+    if (other.kind != Kind::Reference || other.inner.empty()) {
+        return false;
+    }
+    if (kind == Kind::Reference) {
+        return IsAssignableTo(other);
+    }
+    TypeRef value = *this;
+    TypeRef referent = other.inner.front();
+    value.isMut = false;
+    referent.isMut = false;
+    return value == referent;
+}
+
 std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     if (const auto primitive = PrimitiveSize(kind, DefaultPointerSize)) {
         return *primitive;

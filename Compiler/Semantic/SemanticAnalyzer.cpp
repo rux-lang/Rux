@@ -948,6 +948,22 @@ private:
     }
 
     bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) override {
+        if (targetType.kind == TypeRef::Kind::Reference) {
+            if (!exprType.CanImplicitlyBorrowTo(targetType)) {
+                return false;
+            }
+            if (exprType.kind == TypeRef::Kind::Reference) {
+                return true;
+            }
+            const bool addressable =
+                dynamic_cast<const IdentExpr *>(&expr) || dynamic_cast<const SelfExpr *>(&expr) ||
+                dynamic_cast<const FieldExpr *>(&expr) || dynamic_cast<const IndexExpr *>(&expr) ||
+                (dynamic_cast<const UnaryExpr *>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
+            if (!addressable) {
+                return false;
+            }
+            return targetType.inner.empty() || !targetType.inner.front().isMut || !PlaceIsImmutable(expr);
+        }
         if (exprType.kind == TypeRef::Kind::Array && exprType.arrayLength && !exprType.inner.empty()) {
             if (const auto sliceElement = SliceElementType(targetType)) {
                 if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
@@ -1395,7 +1411,7 @@ private:
                 if (argTypes[i].IsUnknown() || paramTypes[i].IsUnknown()) {
                     continue;
                 }
-                if (!argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                if (!argTypes[i].IsAssignableTo(paramTypes[i]) && !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) &&
                     !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                     return nullptr;
                 }
@@ -1410,7 +1426,7 @@ private:
             bool match = true;
             for (std::size_t i = 0; i < argTypes.size(); ++i) {
                 if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() &&
-                    !argTypes[i].IsAssignableTo(paramTypes[i]) &&
+                    !argTypes[i].IsAssignableTo(paramTypes[i]) && !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) &&
                     !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                     match = false;
                     break;
@@ -1425,7 +1441,8 @@ private:
 
     std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const override {
         const TypeRef *receiver = &receiverType;
-        if (receiver->kind == TypeRef::Kind::Pointer && !receiver->inner.empty()) {
+        if ((receiver->kind == TypeRef::Kind::Pointer || receiver->kind == TypeRef::Kind::Reference) &&
+            !receiver->inner.empty()) {
             receiver = &receiver->inner[0];
         }
         if (receiver->kind != TypeRef::Kind::Named) {
@@ -1465,8 +1482,9 @@ private:
 
     TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType =
-            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                            ? receiverType
+                            : TypeRef::MakePointer(receiverType);
         const auto substitutions = MethodTypeSubstitutions(receiverType);
         TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
                                         : TypeRef::MakeOpaque();
@@ -1476,8 +1494,9 @@ private:
 
     std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType =
-            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                            ? receiverType
+                            : TypeRef::MakePointer(receiverType);
         std::vector<TypeRef> params;
         for (const auto &param : method.params) {
             if (param.isVariadic || param.name == "self") {
@@ -1504,8 +1523,9 @@ private:
 
     TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
         TypeRef savedSelfType = currentSelfType;
-        currentSelfType =
-            receiverType.kind == TypeRef::Kind::Pointer ? receiverType : TypeRef::MakePointer(receiverType);
+        currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
+                            ? receiverType
+                            : TypeRef::MakePointer(receiverType);
         TypeRef type =
             MakeFuncTypeWithSubstitution(method.params, method.returnType, MethodTypeSubstitutions(receiverType),
                                          TypeParameterNames(method.typeParams));
@@ -1594,6 +1614,7 @@ private:
                     continue;
                 }
                 if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
+                    !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
                     !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                     return nullptr;
                 }
@@ -1649,7 +1670,8 @@ private:
                         // match still wins, and only `int` widens, so an explicitly typed argument is never silently
                         // narrowed to a different width.
                         const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
-                        const bool assignable = argTypes[i].IsAssignableTo(paramType) || literalToInteger;
+                        const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
+                                                argTypes[i].CanImplicitlyBorrowTo(paramType) || literalToInteger;
                         if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
                             match = false;
                             break;

@@ -59,6 +59,7 @@ TEST_CASE("an instantiation's size reaches the struct and the array holding it")
 
     CHECK_EQ(layouts.at("Holder").totalSize, 24);
     CHECK_EQ(FieldOffsetOf(TypeRef::MakePointer(TypeRef::MakeNamed("Holder")), "second", layouts, {}), 16);
+    CHECK_EQ(FieldOffsetOf(TypeRef::MakeReference(TypeRef::MakeNamed("Holder")), "second", layouts, {}), 16);
     CHECK_EQ(FieldOffsetOf(TypeRef::MakePointer(TypeRef::MakeNamed("Box<Wide>")), "value", layouts, {}), 0);
 
     CHECK_EQ(RuntimeSizeOf(TypeRef::MakeArray(TypeRef::MakeNamed("Box<Wide>"), 3), layouts, {}), 48);

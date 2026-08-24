@@ -1,0 +1,53 @@
+struct Counter {
+    value: int32;
+}
+
+extend Counter {
+    func Read(self: &Counter) -> int32 {
+        return self.value;
+    }
+
+    func Add(self: &var Counter, amount: int32) {
+        self.value += amount;
+    }
+}
+
+func Observe(counter: &Counter) -> int32 {
+    return counter.value;
+}
+
+func Increment(counter: &var Counter) {
+    counter.value += 1i32;
+}
+
+func First(values: &int32[3]) -> int32 {
+    return values[0];
+}
+
+func Main() -> int {
+    var counter = Counter { value: 4i32 };
+    if Observe(counter) != 4i32 || counter.Read() != 4i32 {
+        return 1;
+    }
+
+    let shared: &Counter = counter;
+    if Observe(shared) != 4i32 || shared.value != 4i32 || shared.Read() != 4i32 {
+        return 2;
+    }
+
+    var exclusive: &var Counter = counter;
+    exclusive.value = 6i32;
+    Increment(exclusive);
+    exclusive.Add(3i32);
+    if Observe(exclusive) != 10i32 || counter.value != 10i32 {
+        return 3;
+    }
+
+    let values = [7i32, 8i32, 9i32];
+    let view: &int32[3] = values;
+    if First(values) != 7i32 || First(view) != 7i32 || view[2] != 9i32 || view.length != 3u {
+        return 4;
+    }
+
+    return 0;
+}
