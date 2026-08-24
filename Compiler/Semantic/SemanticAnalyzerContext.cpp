@@ -153,9 +153,8 @@ SemanticAnalyzerContext::SubstituteTypeParameters(TypeRef type,
     if (type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::TypeParam) {
         if (const auto it = substitutions.find(type.name); it != substitutions.end()) {
             TypeRef substituted = it->second;
-            // `*var T` records that its pointee is writable on the `T` slot itself, so the substitution has to carry
-            // that mark onto whatever `T` turns out to be. Dropping it turned `*var T` into a read-only pointer the
-            // moment a type argument arrived -- silently, because the two render identically.
+            // Pointer and reference types record writability on the substituted slot itself, so the substitution has
+            // to carry that mark onto whatever the type parameter becomes.
             substituted.isMut = type.isMut;
             return substituted;
         }
@@ -180,7 +179,7 @@ const EnumDecl *SemanticAnalyzerContext::EnumNamed(const std::string &name) cons
 }
 
 namespace {
-/// Whether `expression` names `Self` anywhere inside it, following pointers, arrays and type arguments.
+/// Whether `expression` names `Self` anywhere inside it, following indirection, arrays and type arguments.
 [[nodiscard]] bool MentionsSelf(const TypeExpr &expression) {
     if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&expression)) {
         if (named->name == SelfTypeName) {
@@ -191,6 +190,9 @@ namespace {
     }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&expression)) {
         return MentionsSelf(*pointer->pointee);
+    }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&expression)) {
+        return MentionsSelf(*reference->pointee);
     }
     if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expression)) {
         return MentionsSelf(*array->element);

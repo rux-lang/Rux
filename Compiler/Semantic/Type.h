@@ -51,6 +51,7 @@ struct TypeRef {
         Float256,
         Float512,         // String
         Pointer,          // *T  — inner[0] = pointee
+        Reference,        // &T  — inner[0] = referent
         Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
         Range,            // start..end — inner[0] = element
         RangeInclusive,   // start..=end — inner[0] = element
@@ -78,10 +79,11 @@ struct TypeRef {
     std::optional<std::uint64_t> arrayLength;
     bool isVariadic = false; // Func kind: trailing C-style ... (extern) or
     // Rux variadic; extra call args are allowed
-    bool isMut = false; // this type, viewed as a pointee, is writable
-                        // (*var T). The default is read-only (*T). Deliberately
-                        // NOT part of operator== so it never leaks onto loaded
-                        // value types and breaks overload resolution.
+    bool isMut = false; // this type, viewed as a pointee or referent, is writable
+                        // (*var T / &var T). The default is read-only. Pointer
+                        // mutability is deliberately not part of operator== so
+                        // it never leaks onto loaded value types; reference
+                        // identity handles it at the enclosing type.
 
     // Factories
     static TypeRef MakeUnknown() {
@@ -250,6 +252,13 @@ struct TypeRef {
         TypeRef t;
         t.kind = Kind::Pointer;
         t.inner.push_back(std::move(pointee));
+        return t;
+    }
+
+    static TypeRef MakeReference(TypeRef referent) {
+        TypeRef t;
+        t.kind = Kind::Reference;
+        t.inner.push_back(std::move(referent));
         return t;
     }
 

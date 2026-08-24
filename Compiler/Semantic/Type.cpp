@@ -61,6 +61,18 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
         !inner[0].isMut && other.inner[0].isMut) {
         return false;
     }
+    // References preserve mutability in their type identity. An exclusive reference may be weakened to an immutable
+    // reference to the same referent, but the reverse would grant write access.
+    if (kind == Kind::Reference && other.kind == Kind::Reference && !inner.empty() && !other.inner.empty()) {
+        if (!inner[0].isMut && other.inner[0].isMut) {
+            return false;
+        }
+        TypeRef source = inner[0];
+        TypeRef target = other.inner[0];
+        source.isMut = false;
+        target.isMut = false;
+        return source == target;
+    }
     if (*this == other) {
         return true;
     }
@@ -149,6 +161,7 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     case Kind::Opaque:
         return 0;
     case Kind::Pointer:
+    case Kind::Reference:
     case Kind::Func:
         return 8;
     case Kind::Array: {
@@ -245,9 +258,19 @@ std::string TypeRef::ToString() const {
         }
         return (inner[0].isMut ? "*var " : "*") + pointee;
     }
+    case Kind::Reference: {
+        if (inner.empty()) {
+            return "&?";
+        }
+        std::string referent = inner[0].ToString();
+        if (inner[0].kind == Kind::Array) {
+            referent = "(" + referent + ")";
+        }
+        return (inner[0].isMut ? "&var " : "&") + referent;
+    }
     case Kind::Array: {
         std::string element = inner.empty() ? "?" : inner[0].ToString();
-        if (!inner.empty() && inner[0].kind == Kind::Pointer) {
+        if (!inner.empty() && (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference)) {
             element = "(" + element + ")";
         }
         return element + (arrayLength ? "[" + std::to_string(*arrayLength) + "]" : "[]");
@@ -306,6 +329,9 @@ bool TypeRef::operator==(const TypeRef &o) const noexcept {
         return true;
     }
     if (arrayLength != o.arrayLength || inner.size() != o.inner.size()) {
+        return false;
+    }
+    if (kind == Kind::Reference && !inner.empty() && inner[0].isMut != o.inner[0].isMut) {
         return false;
     }
     for (std::size_t i = 0; i < inner.size(); ++i) {

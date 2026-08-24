@@ -31,6 +31,7 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
         return TypeProperties::Unresolved();
     case TypeRef::Kind::Opaque:
     case TypeRef::Kind::Pointer:
+    case TypeRef::Kind::Reference:
     case TypeRef::Kind::RangeFull:
     case TypeRef::Kind::Func:
         return TypeProperties::Copy();

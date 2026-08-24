@@ -311,11 +311,10 @@ private:
             return *primitive;
         }
 
-        if (str[0] == '*') {
-            // `*var T` renders the writability of its pointee as a `var` in front of the pointee's own spelling, so
-            // reading a type back from its name has to take it off again and put it where it belongs. Left in place it
-            // parses as part of the pointee's name, which produces a read-only pointer to a type nobody declared -- and
-            // one that renders identically to the type it should have been.
+        if (str[0] == '*' || str[0] == '&') {
+            // Pointer and reference names render writability as `var` in front of the inner type, so reading a name
+            // back has to take the qualifier off and restore it on that inner type.
+            const bool isReference = str[0] == '&';
             std::string pointee = str.substr(1);
             trim(pointee);
             const bool writable = pointee.starts_with("var ");
@@ -325,7 +324,7 @@ private:
             }
             TypeRef inner = ParseTypeRefFromString(std::move(pointee));
             inner.isMut = writable;
-            return TypeRef::MakePointer(std::move(inner));
+            return isReference ? TypeRef::MakeReference(std::move(inner)) : TypeRef::MakePointer(std::move(inner));
         }
 
         if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
@@ -1039,6 +1038,10 @@ private:
             ValidateArrayType(*pointer->pointee);
             return;
         }
+        if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+            ValidateArrayType(*reference->pointee);
+            return;
+        }
         if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
             for (const auto &element : tuple->elements) {
                 ValidateArrayType(*element);
@@ -1221,6 +1224,15 @@ private:
             return TypeRef::MakePointer(std::move(pointeeType));
         }
 
+        if (const auto *t = dynamic_cast<const ReferenceTypeExpr *>(&expr)) {
+            TypeRef pointeeType = ResolveType(*t->pointee);
+            if (pointeeType.IsUnknown()) {
+                return TypeRef::MakeUnknown();
+            }
+            pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
+            return TypeRef::MakeReference(std::move(pointeeType));
+        }
+
         if (const auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
             TypeRef elemType = ResolveType(*t->element);
             if (elemType.IsUnknown()) {
@@ -1314,6 +1326,11 @@ private:
             TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
             pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
             return TypeRef::MakePointer(std::move(pointeeType));
+        }
+        if (auto *t = dynamic_cast<const ReferenceTypeExpr *>(&expr)) {
+            TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);
+            pointeeType.isMut = pointeeType.isMut || t->pointeeMut;
+            return TypeRef::MakeReference(std::move(pointeeType));
         }
         if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
             return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
@@ -2750,6 +2767,9 @@ private:
             }
             else if (const auto *ptr = dynamic_cast<const PointerTypeExpr *>(&type)) {
                 self(*ptr->pointee);
+            }
+            else if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
+                self(*reference->pointee);
             }
             else if (const auto *slice = dynamic_cast<const ArrayTypeExpr *>(&type)) {
                 self(*slice->element);
