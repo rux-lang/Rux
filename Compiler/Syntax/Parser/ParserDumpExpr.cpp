@@ -62,6 +62,8 @@ namespace {
         return ">=";
     case TokenKind::Assign:
         return "=";
+    case TokenKind::MoveArrow:
+        return "<-";
     case TokenKind::PlusAssign:
         return "+=";
     case TokenKind::MinusAssign:
@@ -167,6 +169,15 @@ void ExpressionPrinter::Print(const Expr &expression) {
         ++indent;
         if (unary->operand) {
             Print(*unary->operand);
+        }
+        --indent;
+    }
+    else if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        Pad();
+        out << "MoveExpr <-\n";
+        ++indent;
+        if (move->operand) {
+            Print(*move->operand);
         }
         --indent;
     }

@@ -21,11 +21,11 @@ namespace {
         return literal->token.kind != TokenKind::NullKeyword;
     }
     return dynamic_cast<const IdentExpr *>(&expression) || dynamic_cast<const SelfExpr *>(&expression) ||
-           dynamic_cast<const UnaryExpr *>(&expression) || dynamic_cast<const PostfixExpr *>(&expression) ||
-           dynamic_cast<const BinaryExpr *>(&expression) || dynamic_cast<const AssignExpr *>(&expression) ||
-           dynamic_cast<const TernaryExpr *>(&expression) || dynamic_cast<const IndexExpr *>(&expression) ||
-           dynamic_cast<const FieldExpr *>(&expression) || dynamic_cast<const CastExpr *>(&expression) ||
-           dynamic_cast<const IsExpr *>(&expression);
+           dynamic_cast<const UnaryExpr *>(&expression) || dynamic_cast<const MoveExpr *>(&expression) ||
+           dynamic_cast<const PostfixExpr *>(&expression) || dynamic_cast<const BinaryExpr *>(&expression) ||
+           dynamic_cast<const AssignExpr *>(&expression) || dynamic_cast<const TernaryExpr *>(&expression) ||
+           dynamic_cast<const IndexExpr *>(&expression) || dynamic_cast<const FieldExpr *>(&expression) ||
+           dynamic_cast<const CastExpr *>(&expression) || dynamic_cast<const IsExpr *>(&expression);
 }
 } // namespace
 

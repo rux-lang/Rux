@@ -70,9 +70,9 @@ protected:
     void MarkTrackedAssignment(const Expr &target, SourceLocation location);
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
-    [[nodiscard]] bool ValidateMoveSource(const Expr &expression, const TypeRef &type, SourceLocation location);
+    [[nodiscard]] bool ValidateMoveSource(const Expr &expression, SourceLocation location);
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
-                                      SourceLocation location);
+                                      SourceLocation location, bool explicitMove = false);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
 
     struct BorrowPlace {
@@ -177,6 +177,7 @@ protected:
     void RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
                                   const TypeRef &receiverType);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
+    void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
     void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,

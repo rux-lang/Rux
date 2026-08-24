@@ -74,6 +74,8 @@ std::string_view OperatorName(const TokenKind op) noexcept {
         return ">=";
     case TK::Assign:
         return "=";
+    case TK::MoveArrow:
+        return "<-";
     case TK::PlusAssign:
         return "+=";
     case TK::MinusAssign:
@@ -226,6 +228,11 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         }
         return CheckUnary(unary->op, operandType, unary->location);
     }
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        const TypeRef operandType = CheckExpr(*move->operand);
+        ConsumeExplicitValue(*move->operand, operandType, move->location);
+        return operandType;
+    }
     if (const auto *tryExpression = dynamic_cast<const TryExpr *>(&expression)) {
         return CheckTryExpression(*tryExpression);
     }
@@ -248,14 +255,15 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
     }
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
-        checkingPlainAssignmentTarget = assignment->op == TokenKind::Assign;
+        const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
+        checkingPlainAssignmentTarget = simpleAssignment;
         TypeRef target = CheckExpr(*assignment->target);
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         TypeRef value = CheckExpr(*assignment->value);
-        checkingPlainAssignmentTarget = assignment->op == TokenKind::Assign;
+        checkingPlainAssignmentTarget = simpleAssignment;
         const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
         checkingPlainAssignmentTarget = savedAssignmentTarget;
-        if (isAssignable && assignment->op != TokenKind::Assign && !target.IsUnknown() && !value.IsUnknown()) {
+        if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
                                                assignment->location);
             if (!result.IsUnknown() && !result.IsAssignableTo(target)) {
@@ -274,15 +282,26 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                               *assignment->value, target,
                               std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
             }
-            else if (assignment->op == TokenKind::Assign) {
-                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location)) {
+            else if (simpleAssignment) {
+                const bool explicitMove = assignment->op == TokenKind::MoveArrow;
+                if (explicitMove && target.kind == TypeRef::Kind::Reference) {
+                    EmitError(assignment->location, "cannot move ownership into a reference",
+                              {"a reference target stores a non-owning alias"},
+                              "write '=' to assign or reborrow the reference");
                     return TypeRef::MakeOpaque();
                 }
-                if (target.kind != TypeRef::Kind::Reference) {
+                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location,
+                                   explicitMove)) {
+                    return TypeRef::MakeOpaque();
+                }
+                if (explicitMove) {
+                    ConsumeExplicitValue(*assignment->value, value, assignment->location);
+                }
+                else if (target.kind != TypeRef::Kind::Reference) {
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
                 MarkTrackedAssignment(*assignment->target, assignment->location);
-                if (target.kind == TypeRef::Kind::Reference) {
+                if (!explicitMove && target.kind == TypeRef::Kind::Reference) {
                     RegisterReferenceAssignment(*assignment->target, *assignment->value, target);
                 }
             }
@@ -364,7 +383,7 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             // recorded; a move-only one hands its value over, and the fact is what tells lowering not to destroy the
             // source afterwards.
             const TypeRef resolved = SubstituteTypeParameters(deferred.type, substitutions);
-            if (!ClassifyTypeProperties(resolved).IsMoveOnly()) {
+            if (deferred.kind != ValueConsumptionKind::ExplicitMove && !ClassifyTypeProperties(resolved).IsMoveOnly()) {
                 continue;
             }
             // Recorded without asking whether the source was a legal place to move from. That question is answered

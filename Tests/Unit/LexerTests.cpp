@@ -59,6 +59,16 @@ TEST_CASE("Lexer uses maximal munch for logical right shift operators") {
     CHECK(result.tokens[5].text == ">>>=");
 }
 
+TEST_CASE("Lexer recognizes ownership transfer arrows without splitting comparisons") {
+    const auto result = Lex("let destination <- source; left < -right;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.tokens.size() >= 10);
+    CHECK(result.tokens[2].Is(TokenKind::MoveArrow));
+    CHECK_EQ(result.tokens[2].text, "<-");
+    CHECK(result.tokens[6].Is(TokenKind::Less));
+    CHECK(result.tokens[7].Is(TokenKind::Minus));
+}
+
 TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     static constexpr const char *aliases[] = {
         "line",

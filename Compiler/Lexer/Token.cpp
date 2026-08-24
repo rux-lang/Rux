@@ -156,6 +156,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "DotDotEqual";
     case TokenKind::Arrow:
         return "Arrow";
+    case TokenKind::MoveArrow:
+        return "MoveArrow";
     case TokenKind::FatArrow:
         return "FatArrow";
     case TokenKind::At:

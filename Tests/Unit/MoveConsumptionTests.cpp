@@ -48,6 +48,173 @@ const HirFunc &RequireFunction(const HirPackage &package, const std::string &nam
 }
 } // namespace
 
+TEST_CASE("explicit move syntax parses in bindings assignments calls and returns") {
+    Lexer lexer(R"(
+        func Take(value: int32) -> int32 { return value; }
+        func Transfer(source: int32) -> int32 {
+            let bound <- source;
+            var destination = 0;
+            destination <- bound;
+            return Take(<- destination);
+        }
+    )",
+                "explicit_move_syntax.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "explicit_move_syntax.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto *transfer = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    REQUIRE(transfer != nullptr);
+    REQUIRE(transfer->body != nullptr);
+    REQUIRE_EQ(transfer->body->stmts.size(), 4);
+
+    const auto *bound = dynamic_cast<const LetStmt *>(transfer->body->stmts[0].get());
+    REQUIRE(bound != nullptr);
+    const auto *bindingMove = dynamic_cast<const MoveExpr *>(bound->init.get());
+    REQUIRE(bindingMove != nullptr);
+    CHECK(dynamic_cast<const IdentExpr *>(bindingMove->operand.get()) != nullptr);
+
+    const auto *assignmentStatement = dynamic_cast<const ExprStmt *>(transfer->body->stmts[2].get());
+    REQUIRE(assignmentStatement != nullptr);
+    const auto *assignment = dynamic_cast<const AssignExpr *>(assignmentStatement->expr.get());
+    REQUIRE(assignment != nullptr);
+    CHECK_EQ(assignment->op, TokenKind::MoveArrow);
+
+    const auto *returned = dynamic_cast<const ReturnStmt *>(transfer->body->stmts[3].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *call = dynamic_cast<const CallExpr *>((*returned->value).get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    CHECK(dynamic_cast<const MoveExpr *>(call->args[0].get()) != nullptr);
+}
+
+TEST_CASE("explicit moves invalidate copyable places and reject invalid ownership sources") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        interface Drop {}
+        struct Pair { first: int32; second: int32; }
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func ThroughPointer(pointer: *Pair) {
+            let pointee <- *pointer;
+        }
+
+        func ThroughReference(pair: &Pair) {
+            let field <- pair.first;
+        }
+
+        func MoveReference(pair: &Pair) {
+            let alias <- pair;
+        }
+
+        func AssignReference(pair: &Pair, other: &Pair) {
+            var alias: &Pair = pair;
+            alias <- other;
+        }
+
+        func MoveBorrowed() {
+            let pair = Pair { first: 1, second: 2 };
+            let alias: &Pair = pair;
+            let moved <- pair;
+            alias.first;
+        }
+
+        func MoveBorrowedHandle() {
+            let handle = Handle { value: 1 };
+            let alias: &Handle = handle;
+            let moved <- handle;
+            alias.value;
+        }
+
+        func Main() {
+            let source = 1;
+            let destination <- source;
+            source;
+
+            var selfMove = 2;
+            selfMove <- selfMove;
+
+            let pair = Pair { first: 3, second: 4 };
+            let partial <- pair.first;
+        }
+    )");
+
+    const std::vector<std::string> expected = {
+        "cannot move '*pointer' out of borrowed pointer storage",
+        "cannot move 'pair.first' out of borrowed reference storage",
+        "cannot move a non-owning reference",
+        "cannot move ownership into a reference",
+        "cannot move 'pair' while it is immutably borrowed",
+        "cannot move 'handle' while it is immutably borrowed",
+        "value 'source' is used after it was moved",
+        "cannot move 'selfMove' into itself",
+        "cannot move field 'first' out of droppable value 'pair'",
+    };
+    REQUIRE_EQ(diagnostics.size(), expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        CHECK_EQ(diagnostics[index].message, expected[index]);
+    }
+}
+
+TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
+    const HirPackage package = LowerConsumptionHir(R"(
+        interface Drop {}
+        struct Handle { value: int32; }
+        extend Handle : Drop {}
+
+        func Transfer(source: Handle) -> Handle {
+            let local <- source;
+            return <- local;
+        }
+
+        func Replace(var destination: Handle, source: Handle) {
+            destination <- source;
+        }
+
+        func Fresh() -> Handle {
+            return Handle { value: 1 };
+        }
+    )");
+
+    const HirFunc &transfer = RequireFunction(package, "Transfer");
+    REQUIRE(transfer.body.has_value());
+    REQUIRE_EQ(transfer.params.size(), 1);
+    const auto *local = dynamic_cast<const HirLetStmt *>(transfer.body->stmts[0].get());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(transfer.body->stmts[1].get());
+    REQUIRE(local != nullptr);
+    REQUIRE(local->init != nullptr);
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    CHECK_EQ(local->init->consumption, ValueConsumptionKind::ExplicitMove);
+    CHECK_EQ(local->init->consumedBindingId, transfer.params[0].bindingId);
+    CHECK_EQ((*returned->value)->consumption, ValueConsumptionKind::ExplicitMove);
+    CHECK_EQ((*returned->value)->consumedBindingId, local->bindingId);
+
+    const HirFunc &replace = RequireFunction(package, "Replace");
+    REQUIRE(replace.body.has_value());
+    REQUIRE_EQ(replace.params.size(), 2);
+    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+    CHECK_EQ(assignment->op, TokenKind::MoveArrow);
+    REQUIRE(assignment->overwriteCleanup.has_value());
+    CHECK_EQ(assignment->overwriteCleanup->bindingId, replace.params[0].bindingId);
+    CHECK_EQ(assignment->value->consumption, ValueConsumptionKind::ExplicitMove);
+    CHECK_EQ(assignment->value->consumedBindingId, replace.params[1].bindingId);
+
+    const HirFunc &fresh = RequireFunction(package, "Fresh");
+    REQUIRE(fresh.body.has_value());
+    const auto *freshReturn = dynamic_cast<const HirReturnStmt *>(fresh.body->stmts[0].get());
+    REQUIRE(freshReturn != nullptr);
+    REQUIRE(freshReturn->value.has_value());
+    CHECK_EQ((*freshReturn->value)->consumption, ValueConsumptionKind::Return);
+    CHECK_EQ((*freshReturn->value)->consumedBindingId, 0);
+}
+
 TEST_CASE("move-only values are consumed in every by-value context") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         interface Drop {}

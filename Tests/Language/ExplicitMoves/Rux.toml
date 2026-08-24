@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ExplicitMoves"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: explicit ownership transfer syntax"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

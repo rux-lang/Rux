@@ -349,6 +349,9 @@ void SemanticAnalyzerContext::MarkTrackedAssignment(const Expr &target, const So
 
 std::optional<MoveStateTracker::Issue> SemanticAnalyzerContext::MoveTrackedExpression(const Expr &expression,
                                                                                       const SourceLocation location) {
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        return MoveTrackedExpression(*move->operand, location);
+    }
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
         if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
             return moveStates.Move(MoveStateTracker::Local(symbol), location);
@@ -362,11 +365,7 @@ std::optional<MoveStateTracker::Issue> SemanticAnalyzerContext::MoveTrackedExpre
     return moveStates.Move(MoveStateTracker::Temporary(&expression), location);
 }
 
-bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const TypeRef &type,
-                                                 const SourceLocation location) {
-    if (!ClassifyTypeProperties(type).IsMoveOnly()) {
-        return true;
-    }
+bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const SourceLocation location) {
     if (!CheckBorrowedMove(expression, location)) {
         return false;
     }
@@ -414,8 +413,8 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const T
 }
 
 bool SemanticAnalyzerContext::RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
-                                             const SourceLocation location) {
-    if (!ClassifyTypeProperties(type).IsMoveOnly() || !SameStoragePlace(target, value)) {
+                                             const SourceLocation location, const bool explicitMove) {
+    if ((!explicitMove && !ClassifyTypeProperties(type).IsMoveOnly()) || !SameStoragePlace(target, value)) {
         return false;
     }
     const std::string place = AnalyzeMovePlace(target).Display();
@@ -430,6 +429,11 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
     if (!trackedFlowReachable) {
         return;
     }
+    // A `<-value` node performs and records its transfer while it is checked. The surrounding by-value context must
+    // not try to consume the same source a second time.
+    if (dynamic_cast<const MoveExpr *>(&expression)) {
+        return;
+    }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
         // Whether handing this value over consumes it depends on what the parameter stands for, which is not known
         // here and is known at every instantiation. Recording the question is what lets each instantiation answer
@@ -441,11 +445,40 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
     if (!ClassifyTypeProperties(type).IsMoveOnly()) {
         return;
     }
-    if (!ValidateMoveSource(expression, type, location)) {
+    if (!ValidateMoveSource(expression, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
         valueConsumptions.insert_or_assign(&expression, ValueConsumption{kind, type, location});
+    }
+}
+
+void SemanticAnalyzerContext::ConsumeExplicitValue(const Expr &expression, const TypeRef &type,
+                                                   const SourceLocation location) {
+    if (!trackedFlowReachable || type.IsUnknown()) {
+        return;
+    }
+    if (type.kind == TypeRef::Kind::Reference) {
+        EmitError(location, "cannot move a non-owning reference",
+                  {"references borrow storage but do not own the value they address"},
+                  "pass or assign the reference without '<-', or move the owning value instead");
+        return;
+    }
+    if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
+        if (!ValidateMoveSource(expression, location)) {
+            return;
+        }
+        deferredConsumptions[currentFunctionDecl].push_back(
+            {&expression, ValueConsumptionKind::ExplicitMove, type, location});
+        static_cast<void>(MoveTrackedExpression(expression, location));
+        return;
+    }
+    if (!ValidateMoveSource(expression, location)) {
+        return;
+    }
+    if (!MoveTrackedExpression(expression, location)) {
+        valueConsumptions.insert_or_assign(&expression,
+                                           ValueConsumption{ValueConsumptionKind::ExplicitMove, type, location});
     }
 }
 

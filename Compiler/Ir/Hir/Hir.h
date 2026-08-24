@@ -176,7 +176,7 @@ struct HirBinaryExpr : HirExpr {
     HirExprPtr right;
 };
 
-/// a = b, a += b, etc.
+/// a = b, a <- b, a += b, etc.
 struct HirAssignExpr : HirExpr {
     TokenKind op;
     HirExprPtr target;

@@ -18,6 +18,8 @@ std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexc
         return "aggregate";
     case ValueConsumptionKind::ConditionalArm:
         return "conditional-arm";
+    case ValueConsumptionKind::ExplicitMove:
+        return "explicit";
     }
     return "unknown";
 }

@@ -161,7 +161,8 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     else {
         s->pattern = ParseRequiredPattern("after the binding keyword");
         if (!s->pattern) {
-            while (!CheckAny({TokenKind::Colon, TokenKind::Assign, TokenKind::Semicolon}) && !IsAtEnd()) {
+            while (!CheckAny({TokenKind::Colon, TokenKind::Assign, TokenKind::MoveArrow, TokenKind::Semicolon}) &&
+                   !IsAtEnd()) {
                 Advance();
             }
         }
@@ -174,8 +175,15 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (Match(TokenKind::Assign)) {
         s->init = ParseRequiredExpr("after '=' in the binding");
     }
+    else if (Match(TokenKind::MoveArrow)) {
+        const SourceLocation moveLocation = Previous().location;
+        auto move = std::make_unique<MoveExpr>();
+        move->location = moveLocation;
+        move->operand = ParseRequiredExpr("after '<-' in the binding");
+        s->init = std::move(move);
+    }
     else if (!s->type) {
-        EmitExpected(CurrentLocation(), "'=' before the binding initializer",
+        EmitExpected(CurrentLocation(), "'=' or '<-' before the binding initializer",
                      "add a type annotation or initialize the binding");
     }
     ExpectBefore(TokenKind::Semicolon, "';' after the binding declaration");

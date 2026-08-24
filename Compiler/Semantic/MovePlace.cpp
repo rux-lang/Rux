@@ -13,6 +13,9 @@ std::string ReadableCanonical(const std::string &value) {
 }
 
 std::string CanonicalIndex(const Expr &expression) {
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        return CanonicalIndex(*move->operand);
+    }
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
         return "$" + identifier->name;
     }
@@ -56,6 +59,9 @@ std::string CanonicalIndex(const Expr &expression) {
 }
 
 MovePlace AnalyzeImpl(const Expr &expression) {
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        return AnalyzeImpl(*move->operand);
+    }
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
         return {MovePlace::RootKind::Named, identifier->name, &expression, {}};
     }

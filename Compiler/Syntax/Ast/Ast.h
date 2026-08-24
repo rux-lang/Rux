@@ -243,6 +243,11 @@ struct UnaryExpr : Expr {
     ExprPtr operand;
 };
 
+/// `<-value` -- an explicit ownership transfer used where the destination is supplied by the surrounding expression.
+struct MoveExpr : Expr {
+    ExprPtr operand;
+};
+
 /// `expr?`
 ///
 /// Propagate a failure: the expression evaluates to the success payload, and a failure returns from the enclosing
@@ -264,7 +269,7 @@ struct BinaryExpr : Expr {
     ExprPtr right;
 };
 
-/// a = b, a += b, etc.
+/// a = b, a <- b, a += b, etc.
 struct AssignExpr : Expr {
     TokenKind op;
     ExprPtr target;

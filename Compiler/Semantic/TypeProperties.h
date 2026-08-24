@@ -12,6 +12,7 @@ enum class ValueConsumptionKind {
     Assignment,
     Aggregate,
     ConditionalArm,
+    ExplicitMove,
 };
 
 /// Returns the stable diagnostic spelling for a by-value ownership-transfer context.
