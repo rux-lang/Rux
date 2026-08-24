@@ -26,6 +26,52 @@ std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexc
 } // namespace Rux
 
 namespace Rux::SemanticDetail {
+bool SemanticAnalyzerContext::IsSpecialOperationName(const std::string_view name) {
+    return name == "=" || name == "<-";
+}
+
+void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType) {
+    if (!IsSpecialOperationName(method.name)) {
+        return;
+    }
+
+    const auto sameValueType = [](TypeRef left, TypeRef right) {
+        left.isMut = false;
+        right.isMut = false;
+        return left == right;
+    };
+    const bool copy = method.name == "=";
+    const auto canonicalSignature = [&] {
+        if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
+            method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isMut ||
+            method.params[1].isMut || method.params[0].isVariadic || method.params[1].isVariadic ||
+            method.params[0].defaultValue || method.params[1].defaultValue) {
+            return false;
+        }
+
+        const TypeRef receiver = ResolveType(*method.params[0].type);
+        const TypeRef other = ResolveType(*method.params[1].type);
+        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut ||
+            !sameValueType(receiver.inner.front(), extendedType)) {
+            return false;
+        }
+        if (!copy) {
+            return other.kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
+        }
+        return other.kind == TypeRef::Kind::Reference && !other.inner.empty() && !other.inner.front().isMut &&
+               sameValueType(other.inner.front(), extendedType);
+    }();
+    if (canonicalSignature) {
+        return;
+    }
+
+    const std::string type = extendedType.ToString();
+    const std::string expected = copy ? std::format("func =(self: &var {0}, other: &{0})", type)
+                                      : std::format("func <-(self: &var {0}, other: {0})", type);
+    EmitError(method.location, std::format("{} special operation for type '{}' must have signature '{}'",
+                                           copy ? "copy" : "move", type, expected));
+}
+
 TypeProperties SemanticAnalyzerContext::ClassifyTypeProperties(const TypeRef &type) {
     const std::string key = type.ToString();
     if (const auto known = typeProperties.find(key); known != typeProperties.end() && known->second.IsResolved()) {
@@ -33,7 +79,7 @@ TypeProperties SemanticAnalyzerContext::ClassifyTypeProperties(const TypeRef &ty
     }
 
     TypePropertyClassifier classifier(
-        structDecls, enumDecls, unionDecls, interfaceDecls, typeImplementsInterfaces,
+        structDecls, enumDecls, unionDecls, interfaceDecls, typeImplementsInterfaces, methodsByType,
         [this](const TypeExpr &type, const TypePropertyClassifier::Substitutions &substitutions) {
             if (!typeNodeTypes.contains(&type)) {
                 return TypeRef::MakeUnknown();

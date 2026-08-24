@@ -20,6 +20,13 @@ enum class ValueConsumptionKind {
 
 /// Describes whether values of a resolved type may be copied and whether leaving one live requires drop glue.
 struct TypeProperties {
+    enum class SpecialOperationState {
+        Generated,
+        Custom,
+        Prohibited,
+        Unresolved,
+    };
+
     enum class Mobility {
         Copy,
         MoveOnly,
@@ -28,13 +35,26 @@ struct TypeProperties {
 
     Mobility mobility = Mobility::Unresolved;
     bool droppable = false;
+    SpecialOperationState copyOperation = SpecialOperationState::Unresolved;
+    SpecialOperationState moveOperation = SpecialOperationState::Unresolved;
 
     [[nodiscard]] static constexpr TypeProperties Copy() noexcept {
-        return {Mobility::Copy, false};
+        return {Mobility::Copy, false, SpecialOperationState::Generated, SpecialOperationState::Generated};
     }
 
     [[nodiscard]] static constexpr TypeProperties MoveOnly(const bool needsDrop = false) noexcept {
-        return {Mobility::MoveOnly, needsDrop};
+        return {Mobility::MoveOnly, needsDrop, SpecialOperationState::Prohibited, SpecialOperationState::Generated};
+    }
+
+    [[nodiscard]] static constexpr TypeProperties FromOperations(const SpecialOperationState copy,
+                                                                 const SpecialOperationState move,
+                                                                 const bool needsDrop = false) noexcept {
+        const Mobility valueMobility =
+            copy == SpecialOperationState::Unresolved || move == SpecialOperationState::Unresolved
+                ? Mobility::Unresolved
+            : copy == SpecialOperationState::Prohibited ? Mobility::MoveOnly
+                                                        : Mobility::Copy;
+        return {valueMobility, needsDrop, copy, move};
     }
 
     [[nodiscard]] static constexpr TypeProperties Unresolved() noexcept {
@@ -51,6 +71,14 @@ struct TypeProperties {
 
     [[nodiscard]] constexpr bool IsResolved() const noexcept {
         return mobility != Mobility::Unresolved;
+    }
+
+    [[nodiscard]] constexpr bool IsMovable() const noexcept {
+        return moveOperation == SpecialOperationState::Generated || moveOperation == SpecialOperationState::Custom;
+    }
+
+    [[nodiscard]] constexpr bool IsMoveProhibited() const noexcept {
+        return moveOperation == SpecialOperationState::Prohibited;
     }
 
     [[nodiscard]] constexpr bool IsDroppable() const noexcept {

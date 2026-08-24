@@ -2190,6 +2190,10 @@ private:
         const FuncDecl *savedFunctionDecl = BeginTrackedFunction(d);
         if (!isMethod) {
             currentTypeParams.clear();
+            if (IsSpecialOperationName(d.name)) {
+                EmitError(d.location,
+                          std::format("special operation '{}' may only be declared in an extend block", d.name));
+            }
         }
         AppendTypeParameterNames(currentTypeParams, d.typeParams);
         const ScopedTypeParameterBounds boundScope(*this, &d.typeParams, !isMethod);
@@ -2271,7 +2275,7 @@ private:
             CheckAsmBodyArchitecture(d);
         }
         else if (!d.body) {
-            if (d.intrinsicName.empty()) {
+            if (d.intrinsicName.empty() && !(isMethod && IsSpecialOperationName(d.name))) {
                 EmitError(d.location, std::format("function '{}' has no body", d.name));
             }
         }
@@ -2533,6 +2537,7 @@ private:
                     ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);
                 }
             }
+            ValidateSpecialOperation(*m, currentExtendedType);
             CheckFuncDecl(*m, /*isMethod=*/true);
         }
         currentSelfType = savedSelfType;

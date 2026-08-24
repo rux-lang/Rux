@@ -10,12 +10,13 @@ TypePropertyClassifier::TypePropertyClassifier(
     const std::unordered_map<std::string, const UnionDecl *> &inputUnions,
     const std::unordered_map<std::string, const InterfaceDecl *> &inputInterfaces,
     const std::unordered_map<std::string, std::unordered_set<std::string>> &inputInterfacesByType,
-    ResolveType inputResolveType, ParseTypeArguments inputParseTypeArguments)
+    const MethodsByType &inputMethodsByType, ResolveType inputResolveType, ParseTypeArguments inputParseTypeArguments)
     : structs(inputStructs)
     , enums(inputEnums)
     , unions(inputUnions)
     , interfaces(inputInterfaces)
     , interfacesByType(inputInterfacesByType)
+    , methodsByType(inputMethodsByType)
     , resolveType(std::move(inputResolveType))
     , parseTypeArguments(std::move(inputParseTypeArguments)) {
 }
@@ -64,12 +65,6 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     }
 
     const std::string baseName = BaseTypeName(type.name);
-    if (ImplementsDrop(baseName)) {
-        const TypeProperties result = TypeProperties::MoveOnly(true);
-        cache.emplace(key, result);
-        return result;
-    }
-
     // Interface objects and slices are borrowed, pointer-shaped views. Their pointee may be move-only without making
     // the view itself move-only.
     if (interfaces.contains(baseName) || baseName == "Slice" || baseName == "MutableSlice") {
@@ -96,6 +91,27 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     else if (!type.inner.empty()) {
         result = Classify(type.inner.front());
     }
+
+    const bool directlyDroppable = ImplementsDrop(baseName);
+    result.droppable = result.droppable || directlyDroppable;
+    if (const auto copy = DeclaredSpecialOperation(type, arguments, "=")) {
+        result.copyOperation = *copy;
+    }
+    else if (directlyDroppable) {
+        // Core::Drop remains a compatibility signal for resource ownership until package migration declares copy
+        // prohibition explicitly.
+        result.copyOperation = TypeProperties::SpecialOperationState::Prohibited;
+    }
+    if (const auto move = DeclaredSpecialOperation(type, arguments, "<-")) {
+        result.moveOperation = *move;
+    }
+    else if (directlyDroppable && result.moveOperation == TypeProperties::SpecialOperationState::Unresolved) {
+        // The legacy Drop marker predates structural move classification and promised that values could be
+        // transferred. Preserve that promise for recursive or not-yet-instantiated compatibility types; a resolved
+        // structural prohibition still wins.
+        result.moveOperation = TypeProperties::SpecialOperationState::Generated;
+    }
+    result = TypeProperties::FromOperations(result.copyOperation, result.moveOperation, result.droppable);
 
     activeTypes.erase(key);
     cache.emplace(key, result);
@@ -152,6 +168,58 @@ bool TypePropertyClassifier::ImplementsDrop(const std::string &baseName) const {
                                [](const std::string &name) { return name == "Drop" || name.ends_with("::Drop"); });
 }
 
+std::optional<TypeProperties::SpecialOperationState>
+TypePropertyClassifier::DeclaredSpecialOperation(const TypeRef &type, const std::vector<TypeRef> &arguments,
+                                                 const std::string_view name) const {
+    const std::string baseName = BaseTypeName(type.name);
+    const auto typeMethods = methodsByType.find(baseName);
+    if (typeMethods == methodsByType.end()) {
+        return std::nullopt;
+    }
+    const auto operations = typeMethods->second.find(std::string(name));
+    if (operations == typeMethods->second.end()) {
+        return std::nullopt;
+    }
+
+    std::vector<std::string> parameters;
+    if (const auto structure = structs.find(baseName); structure != structs.end()) {
+        parameters = TypeParameterNames(structure->second->typeParams);
+    }
+    else if (const auto enumeration = enums.find(baseName); enumeration != enums.end()) {
+        parameters = TypeParameterNames(enumeration->second->typeParams);
+    }
+    const Substitutions substitutions = BindArguments(parameters, arguments);
+    for (const FuncDecl *method : operations->second) {
+        if (IsCanonicalSpecialOperation(*method, type, substitutions, name == "=")) {
+            return method->body ? TypeProperties::SpecialOperationState::Custom
+                                : TypeProperties::SpecialOperationState::Prohibited;
+        }
+    }
+    return std::nullopt;
+}
+
+bool TypePropertyClassifier::IsCanonicalSpecialOperation(const FuncDecl &method, const TypeRef &type,
+                                                         const Substitutions &substitutions, const bool copy) const {
+    if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
+        method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isMut ||
+        method.params[1].isMut || method.params[0].isVariadic || method.params[1].isVariadic ||
+        method.params[0].defaultValue || method.params[1].defaultValue) {
+        return false;
+    }
+
+    const TypeRef receiver = resolveType(*method.params[0].type, substitutions);
+    const TypeRef other = resolveType(*method.params[1].type, substitutions);
+    if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut ||
+        !SameValueType(receiver.inner.front(), type)) {
+        return false;
+    }
+    if (!copy) {
+        return other.kind != TypeRef::Kind::Reference && SameValueType(other, type);
+    }
+    return other.kind == TypeRef::Kind::Reference && !other.inner.empty() && !other.inner.front().isMut &&
+           SameValueType(other.inner.front(), type);
+}
+
 std::string TypePropertyClassifier::BaseTypeName(const std::string &name) {
     const std::size_t arguments = name.find('<');
     return arguments == std::string::npos ? name : name.substr(0, arguments);
@@ -159,18 +227,27 @@ std::string TypePropertyClassifier::BaseTypeName(const std::string &name) {
 
 TypeProperties TypePropertyClassifier::Combine(TypeProperties aggregate, const TypeProperties member) {
     aggregate.droppable = aggregate.droppable || member.droppable;
-    if (aggregate.mobility == TypeProperties::Mobility::MoveOnly ||
-        member.mobility == TypeProperties::Mobility::MoveOnly) {
-        aggregate.mobility = TypeProperties::Mobility::MoveOnly;
-    }
-    else if (aggregate.mobility == TypeProperties::Mobility::Unresolved ||
-             member.mobility == TypeProperties::Mobility::Unresolved) {
-        aggregate.mobility = TypeProperties::Mobility::Unresolved;
-    }
-    else {
-        aggregate.mobility = TypeProperties::Mobility::Copy;
-    }
-    return aggregate;
+    const auto combineOperation = [](const TypeProperties::SpecialOperationState left,
+                                     const TypeProperties::SpecialOperationState right) {
+        if (left == TypeProperties::SpecialOperationState::Prohibited ||
+            right == TypeProperties::SpecialOperationState::Prohibited) {
+            return TypeProperties::SpecialOperationState::Prohibited;
+        }
+        if (left == TypeProperties::SpecialOperationState::Unresolved ||
+            right == TypeProperties::SpecialOperationState::Unresolved) {
+            return TypeProperties::SpecialOperationState::Unresolved;
+        }
+        return TypeProperties::SpecialOperationState::Generated;
+    };
+    return TypeProperties::FromOperations(combineOperation(aggregate.copyOperation, member.copyOperation),
+                                          combineOperation(aggregate.moveOperation, member.moveOperation),
+                                          aggregate.droppable);
+}
+
+bool TypePropertyClassifier::SameValueType(TypeRef left, TypeRef right) {
+    left.isMut = false;
+    right.isMut = false;
+    return left == right;
 }
 
 TypePropertyClassifier::Substitutions TypePropertyClassifier::BindArguments(const std::vector<std::string> &parameters,

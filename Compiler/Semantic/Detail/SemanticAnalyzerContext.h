@@ -74,6 +74,8 @@ protected:
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
                                       SourceLocation location, bool explicitMove = false);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
+    [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
+    void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
 
     struct BorrowPlace {
         const Symbol *root = nullptr;

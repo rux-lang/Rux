@@ -27,6 +27,11 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             tag: int32;
         }
 
+        struct GenericOwner<T> {
+            value: T;
+        }
+        extend GenericOwner<T> : Drop {}
+
         enum Maybe<T> {
             None,
             Some(T)
@@ -39,6 +44,8 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
 
         func Identity<T>(value: T) {}
 
+        func TransferGenericOwner<T>(owner: GenericOwner<T>) {}
+
         func Observe(copy: Pair<int32>, moved: Pair<Handle>, wrapped: Wrapper, choice: Maybe<Handle>,
                      bits: Bits, pointer: *Handle, array: Handle[2], tuple: (Handle, int32)) {}
     )",
@@ -50,6 +57,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
     REQUIRE_FALSE(parsed.HasErrors());
 
     const FuncDecl *identity = nullptr;
+    const FuncDecl *transferGenericOwner = nullptr;
     const FuncDecl *observe = nullptr;
     for (const auto &item : parsed.module.items) {
         const auto *function = dynamic_cast<const FuncDecl *>(item.get());
@@ -59,8 +67,12 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
         if (function && function->name == "Observe") {
             observe = function;
         }
+        if (function && function->name == "TransferGenericOwner") {
+            transferGenericOwner = function;
+        }
     }
     REQUIRE(identity != nullptr);
+    REQUIRE(transferGenericOwner != nullptr);
     REQUIRE(observe != nullptr);
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
@@ -77,6 +89,12 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
     const TypeProperties &unresolved = propertiesOf(identity->params[0]);
     CHECK_FALSE(unresolved.IsResolved());
     CHECK_FALSE(unresolved.IsDroppable());
+
+    REQUIRE_EQ(transferGenericOwner->params.size(), 1);
+    const TypeProperties &legacyGenericOwner = propertiesOf(transferGenericOwner->params[0]);
+    CHECK(legacyGenericOwner.IsMoveOnly());
+    CHECK(legacyGenericOwner.IsMovable());
+    CHECK(legacyGenericOwner.IsDroppable());
 
     REQUIRE_EQ(observe->params.size(), 8);
     const TypeProperties &copy = propertiesOf(observe->params[0]);
@@ -96,6 +114,167 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
     }
 
     CHECK(model.TryGetProperties(TypeRef::MakeNamed("NeverObserved")) == nullptr);
+}
+
+TEST_CASE("special operations classify generated custom and prohibited capabilities") {
+    Lexer lexer(R"(
+        interface Drop {}
+
+        interface Assignable {
+            func =(self: &var Self, other: &Self);
+        }
+
+        struct Handle {
+            value: int32;
+        }
+        extend Handle : Drop {}
+
+        struct Generated {
+            value: int32;
+        }
+
+        struct Wrapper<T> {
+            value: T;
+        }
+
+        struct CustomCopy {
+            handle: Handle;
+        }
+        extend CustomCopy {
+            func =(self: &var CustomCopy, other: &CustomCopy) {}
+        }
+
+        struct Pinned {
+            value: int32;
+        }
+        extend Pinned {
+            func =(self: &var Pinned, other: &Pinned);
+            func <-(self: &var Pinned, other: Pinned);
+        }
+
+        struct ContainsPinned {
+            value: Pinned;
+        }
+
+        struct CustomMove {
+            value: Pinned;
+        }
+        extend CustomMove {
+            func <-(self: &var CustomMove, other: CustomMove) {}
+        }
+
+        func Observe(generated: Generated, genericCopy: Wrapper<int32>, genericMove: Wrapper<Handle>,
+                     customCopy: CustomCopy, pinned: Pinned, nested: ContainsPinned, customMove: CustomMove) {}
+    )",
+                "special_operations.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "special_operations.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const FuncDecl *observe = nullptr;
+    const ImplDecl *pinnedImplementation = nullptr;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+            function && function->name == "Observe") {
+            observe = function;
+        }
+        if (const auto *implementation = dynamic_cast<const ImplDecl *>(item.get());
+            implementation && implementation->typeName == "Pinned") {
+            pinnedImplementation = implementation;
+        }
+    }
+    REQUIRE(observe != nullptr);
+    REQUIRE(pinnedImplementation != nullptr);
+    REQUIRE_EQ(pinnedImplementation->methods.size(), 2);
+    CHECK_EQ(pinnedImplementation->methods[0]->name, "=");
+    CHECK_FALSE(pinnedImplementation->methods[0]->body);
+    CHECK_EQ(pinnedImplementation->methods[1]->name, "<-");
+    CHECK_FALSE(pinnedImplementation->methods[1]->body);
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto propertiesOf = [&](const std::size_t parameter) -> const TypeProperties & {
+        const TypeProperties *properties = model.TryGetProperties(*observe->params[parameter].type);
+        REQUIRE(properties != nullptr);
+        return *properties;
+    };
+    using Operation = TypeProperties::SpecialOperationState;
+
+    for (const std::size_t parameter : {0U, 1U}) {
+        const TypeProperties &properties = propertiesOf(parameter);
+        CHECK(properties.IsCopy());
+        CHECK(properties.IsMovable());
+        CHECK_EQ(properties.copyOperation, Operation::Generated);
+        CHECK_EQ(properties.moveOperation, Operation::Generated);
+    }
+
+    const TypeProperties &genericMove = propertiesOf(2);
+    CHECK(genericMove.IsMoveOnly());
+    CHECK(genericMove.IsMovable());
+    CHECK_EQ(genericMove.copyOperation, Operation::Prohibited);
+    CHECK_EQ(genericMove.moveOperation, Operation::Generated);
+
+    const TypeProperties &customCopy = propertiesOf(3);
+    CHECK(customCopy.IsCopy());
+    CHECK(customCopy.IsMovable());
+    CHECK(customCopy.IsDroppable());
+    CHECK_EQ(customCopy.copyOperation, Operation::Custom);
+    CHECK_EQ(customCopy.moveOperation, Operation::Generated);
+
+    for (const std::size_t parameter : {4U, 5U}) {
+        const TypeProperties &properties = propertiesOf(parameter);
+        CHECK(properties.IsMoveOnly());
+        CHECK_FALSE(properties.IsMovable());
+        CHECK_EQ(properties.copyOperation, Operation::Prohibited);
+        CHECK_EQ(properties.moveOperation, Operation::Prohibited);
+    }
+
+    const TypeProperties &customMove = propertiesOf(6);
+    CHECK(customMove.IsMoveOnly());
+    CHECK(customMove.IsMovable());
+    CHECK_EQ(customMove.copyOperation, Operation::Prohibited);
+    CHECK_EQ(customMove.moveOperation, Operation::Custom);
+}
+
+TEST_CASE("special operations require canonical implementation signatures") {
+    Lexer lexer(R"(
+        struct Bad {
+            value: int32;
+        }
+
+        extend Bad {
+            func =(self: &Bad, other: Bad);
+            func <-(self: &var Bad, other: &Bad);
+            func Ordinary();
+        }
+
+        func =(left: Bad, right: Bad) {}
+    )",
+                "invalid_special_operations.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "invalid_special_operations.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE(model.HasErrors());
+
+    const auto hasMessage = [&](const std::string_view message) {
+        return std::ranges::any_of(model.diagnostics,
+                                   [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
+    };
+    CHECK(hasMessage("copy special operation for type 'Bad' must have signature "
+                     "'func =(self: &var Bad, other: &Bad)'"));
+    CHECK(hasMessage("move special operation for type 'Bad' must have signature "
+                     "'func <-(self: &var Bad, other: Bad)'"));
+    CHECK(hasMessage("function 'Ordinary' has no body"));
+    CHECK(hasMessage("special operation '=' may only be declared in an extend block"));
 }
 
 TEST_CASE("drop glue expands concrete aggregates in reverse construction order") {
