@@ -282,7 +282,11 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
     const FuncDecl &method = SelectedFunction(binding);
     const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
     assert(field && binding.receiverType && "interface binding is missing its receiver");
-    const std::string interfaceName = BaseTypeName(binding.receiverType->name);
+    const TypeRef &interfaceType =
+        binding.receiverType->kind == TypeRef::Kind::Reference && !binding.receiverType->inner.empty()
+            ? binding.receiverType->inner.front()
+            : *binding.receiverType;
+    const std::string interfaceName = BaseTypeName(interfaceType.name);
     const auto interface = interfaceDecls.find(interfaceName);
     assert(interface != interfaceDecls.end() && "interface binding names an unknown interface");
     const auto methodIt = std::ranges::find_if(interface->second->methods,

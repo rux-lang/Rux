@@ -510,9 +510,15 @@ LirReg HirToLirContext::LowerMatchExpr(const HirMatchExpr &e) {
 
 /// Fill an existing 16-byte fat-pointer slot with {&concrete, &vtable}.
 void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, LirReg slot) {
-    LirReg val = LowerExpr(*e.value);
-    LirReg concreteSlot = EmitAlloca(e.value->type);
-    EmitStore(val, concreteSlot, e.value->type);
+    LirReg concreteSlot = LirNoReg;
+    if (e.borrowed) {
+        concreteSlot = e.value->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.value) : LowerLValue(*e.value);
+    }
+    else {
+        LirReg val = LowerExpr(*e.value);
+        concreteSlot = EmitAlloca(e.value->type);
+        EmitStore(val, concreteSlot, e.value->type);
+    }
 
     const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());
     LirReg i0 = EmitConst("0", TypeRef::MakeUInt64());

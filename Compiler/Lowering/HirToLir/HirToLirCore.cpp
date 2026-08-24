@@ -463,7 +463,8 @@ LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemTyp
 }
 
 [[nodiscard]] bool HirToLirContext::IsInterfaceType(const TypeRef &t) const {
-    return t.kind == TypeRef::Kind::Named && interfacesByName.contains(t.name);
+    const TypeRef &candidate = t.kind == TypeRef::Kind::Reference && !t.inner.empty() ? t.inner.front() : t;
+    return candidate.kind == TypeRef::Kind::Named && interfacesByName.contains(candidate.name);
 }
 
 bool HirToLirContext::IsSliceType(const TypeRef &type) {

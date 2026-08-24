@@ -255,6 +255,10 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         }
         return AlignUp(offset, maxAlign);
     }
+    if (t.kind == TypeRef::Kind::Reference && !t.inner.empty() && t.inner.front().kind == TypeRef::Kind::Named &&
+        interfaceNames.contains(BaseTypeName(t.inner.front().name))) {
+        return 16;
+    }
     if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(t.name);
         // An interface value is a data pointer and a vtable pointer, and the

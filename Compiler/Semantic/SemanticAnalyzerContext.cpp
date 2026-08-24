@@ -48,6 +48,39 @@ std::string SemanticAnalyzerContext::SliceTypeName(const TypeRef &elementType) {
     return "Slice<" + elementType.ToString() + ">";
 }
 
+bool SemanticAnalyzerContext::TypeImplementsInterface(const TypeRef &expressionType, const TypeRef &targetType) const {
+    if (targetType.kind != TypeRef::Kind::Named) {
+        return false;
+    }
+    Symbol *symbol = currentScope->Lookup(targetType.name);
+    if (!symbol || symbol->kind != Symbol::Kind::Interface) {
+        return false;
+    }
+    if (symbol->interfaceMethods.empty()) {
+        return true;
+    }
+    const auto implements = [&](const TypeRef &type) {
+        const auto implementation = typeImplementsInterfaces.find(type.ToString());
+        return implementation != typeImplementsInterfaces.end() && implementation->second.contains(targetType.name);
+    };
+    if (implements(expressionType)) {
+        return true;
+    }
+    if (expressionType.kind == TypeRef::Kind::Int) {
+        return implements(TypeRef::MakeInt64());
+    }
+    if (expressionType.kind == TypeRef::Kind::Int64) {
+        return implements(TypeRef::MakeInt());
+    }
+    if (expressionType.kind == TypeRef::Kind::UInt) {
+        return implements(TypeRef::MakeUInt64());
+    }
+    if (expressionType.kind == TypeRef::Kind::UInt64) {
+        return implements(TypeRef::MakeUInt());
+    }
+    return false;
+}
+
 SemanticAnalyzerContext::SemanticAnalyzerContext(
     std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDependencies,
     const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiagnostics,

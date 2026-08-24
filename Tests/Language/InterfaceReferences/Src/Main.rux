@@ -1,0 +1,42 @@
+interface CounterView {
+    func Read() -> int32;
+    func Add(amount: int32);
+}
+
+struct Counter {
+    value: int32;
+}
+
+extend Counter : CounterView {
+    func Read(self: &Counter) -> int32 {
+        return self.value;
+    }
+
+    func Add(self: &var Counter, amount: int32) {
+        self.value += amount;
+    }
+}
+
+func Observe(view: &CounterView) -> int32 {
+    return view.Read();
+}
+
+func Mutate(view: &var CounterView, amount: int32) {
+    view.Add(amount);
+}
+
+func Main() -> int {
+    var counter = Counter { value: 4i32 };
+    let first: &CounterView = counter;
+    let second: &CounterView = counter;
+    if Observe(first) != 4i32 || Observe(second) != 4i32 {
+        return 1;
+    }
+
+    let writable: &var CounterView = counter;
+    Mutate(writable, 5i32);
+    if counter.value != 9i32 {
+        return 2;
+    }
+    return 0;
+}

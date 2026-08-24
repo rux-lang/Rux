@@ -459,26 +459,33 @@ TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, c
 
 std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRef &expressionType,
                                                                     const TypeRef &targetType) const {
-    if (targetType.kind != TypeRef::Kind::Named) {
+    TypeRef target = targetType.kind == TypeRef::Kind::Reference && !targetType.inner.empty() ? targetType.inner.front()
+                                                                                              : targetType;
+    TypeRef expression = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
+                           ? expressionType.inner.front()
+                           : expressionType;
+    target.isMut = false;
+    expression.isMut = false;
+    if (target.kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }
     const auto hasVtable = [&](const TypeRef &type) {
         const auto implementation = typeInterfaceVtables.find(type.ToString());
-        return implementation != typeInterfaceVtables.end() && implementation->second.contains(targetType.name);
+        return implementation != typeInterfaceVtables.end() && implementation->second.contains(target.name);
     };
-    if (hasVtable(expressionType)) {
-        return expressionType;
+    if (hasVtable(expression)) {
+        return expression;
     }
-    if (expressionType.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
+    if (expression.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
         return TypeRef::MakeInt64();
     }
-    if (expressionType.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt())) {
+    if (expression.kind == TypeRef::Kind::Int64 && hasVtable(TypeRef::MakeInt())) {
         return TypeRef::MakeInt();
     }
-    if (expressionType.kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64())) {
+    if (expression.kind == TypeRef::Kind::UInt && hasVtable(TypeRef::MakeUInt64())) {
         return TypeRef::MakeUInt64();
     }
-    if (expressionType.kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt())) {
+    if (expression.kind == TypeRef::Kind::UInt64 && hasVtable(TypeRef::MakeUInt())) {
         return TypeRef::MakeUInt();
     }
     return std::nullopt;
@@ -554,6 +561,32 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     HirExprPtr lowered = LowerExpr(expression);
     if (targetType.kind == TypeRef::Kind::Reference) {
+        const TypeRef &referent = targetType.inner.front();
+        if (referent.kind == TypeRef::Kind::Named) {
+            if (HirSymbol *symbol = currentScope->Lookup(referent.name);
+                symbol && symbol->kind == HirSymbol::Kind::Interface && lowered->type != targetType) {
+                std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
+                if (!implementationType) {
+                    implementationType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
+                                           ? lowered->type.inner.front()
+                                           : lowered->type;
+                    implementationType->isMut = false;
+                }
+                auto coercion = std::make_unique<HirCoerceToInterfaceExpr>();
+                coercion->location = expression.location;
+                coercion->type = targetType;
+                coercion->borrowed = true;
+                const auto type = typeInterfaceVtables.find(implementationType->ToString());
+                if (type != typeInterfaceVtables.end()) {
+                    const auto label = type->second.find(referent.name);
+                    if (label != type->second.end()) {
+                        coercion->vtableLabel = label->second;
+                    }
+                }
+                coercion->value = std::move(lowered);
+                return coercion;
+            }
+        }
         if (lowered->type.kind == TypeRef::Kind::Reference) {
             lowered->type = targetType;
             return lowered;

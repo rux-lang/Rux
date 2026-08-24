@@ -54,6 +54,7 @@ set(RUX_TEST_SOURCES
     FloatFormatTests.cpp
     GoldenDiagnosticsTests.cpp
     InspectionOutputTests.cpp
+    InterfaceReferenceTests.cpp
     IterationLoweringTests.cpp
     JsonTests.cpp
     LayoutTests.cpp
