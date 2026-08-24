@@ -323,7 +323,8 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
 }
 
 LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
-    if (e.op == TokenKind::Assign && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
+    const bool simpleAssignment = e.op == TokenKind::Assign || e.op == TokenKind::MoveArrow;
+    if (simpleAssignment && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
         const LirReg ptr = LowerLValue(*e.target);
         StoreExprIntoSlot(*e.value, ptr, e.type);
         return ptr;
@@ -335,7 +336,7 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     if (e.overwriteCleanup) {
         EmitCleanup(*e.overwriteCleanup);
     }
-    if (e.op != TokenKind::Assign) {
+    if (!simpleAssignment) {
         // Compound assignment: load current value, compute, then store.
         const LirReg current = LowerExpr(*e.target);
         if (IsPointerArithmetic(e.type)) {

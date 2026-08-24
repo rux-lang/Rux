@@ -1071,8 +1071,11 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         }
         return MakeToken(TokenKind::Assign, start, tokenStart);
 
-    // <  or  <=  or  <<=  or  <<
+    // <  or  <-  or  <=  or  <<=  or  <<
     case '<':
+        if (Match('-')) {
+            return MakeToken(TokenKind::MoveArrow, start, tokenStart);
+        }
         if (Match('<')) {
             return MakeToken(Match('=') ? TokenKind::LessLessAssign : TokenKind::LessLess, start, tokenStart);
         }

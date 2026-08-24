@@ -43,10 +43,19 @@ ExprPtr Parser::ParseAssign() {
     }
 
     static constexpr TokenKind kAssignOps[] = {
-        TokenKind::Assign,         TokenKind::PlusAssign,           TokenKind::MinusAssign,
-        TokenKind::StarAssign,     TokenKind::SlashAssign,          TokenKind::PercentAssign,
-        TokenKind::AmpAssign,      TokenKind::PipeAssign,           TokenKind::CaretAssign,
-        TokenKind::LessLessAssign, TokenKind::GreaterGreaterAssign, TokenKind::GreaterGreaterGreaterAssign,
+        TokenKind::Assign,
+        TokenKind::MoveArrow,
+        TokenKind::PlusAssign,
+        TokenKind::MinusAssign,
+        TokenKind::StarAssign,
+        TokenKind::SlashAssign,
+        TokenKind::PercentAssign,
+        TokenKind::AmpAssign,
+        TokenKind::PipeAssign,
+        TokenKind::CaretAssign,
+        TokenKind::LessLessAssign,
+        TokenKind::GreaterGreaterAssign,
+        TokenKind::GreaterGreaterGreaterAssign,
     };
 
     for (auto op : kAssignOps) {
@@ -439,6 +448,19 @@ ExprPtr Parser::ParseExp() {
 }
 
 ExprPtr Parser::ParseUnary() {
+    if (Check(TokenKind::MoveArrow)) {
+        const auto loc = CurrentLocation();
+        Advance();
+        auto operand = ParseUnary();
+        if (!operand) {
+            EmitMissingExpression("after '<-'");
+        }
+        auto expression = std::make_unique<MoveExpr>();
+        expression->location = loc;
+        expression->operand = std::move(operand);
+        return expression;
+    }
+
     // C spells address-of '&', so report the rewrite where an expression
     // starts and keep parsing as '@'. Recovering here is what stops the
     // operand from cascading into "expected an expression".

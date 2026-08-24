@@ -112,6 +112,7 @@ enum class TokenKind : std::uint8_t {
     GreaterEqual, // >=
 
     // Assignment operators
+    MoveArrow,                   // <-
     Assign,                      // =
     PlusAssign,                  // +=
     MinusAssign,                 // -=

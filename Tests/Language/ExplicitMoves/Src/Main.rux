@@ -1,0 +1,11 @@
+func Take(value: int32) -> int32 {
+    return value;
+}
+
+func Main() -> int {
+    let first = 40i32;
+    let second <- first;
+    var destination = 0i32;
+    destination <- second;
+    return Take(<-destination) == 40i32 ? 0 : 1;
+}

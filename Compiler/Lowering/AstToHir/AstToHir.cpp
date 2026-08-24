@@ -69,6 +69,8 @@ std::string_view OpStr(TokenKind op) {
         return ">=";
     case TK::Assign:
         return "=";
+    case TK::MoveArrow:
+        return "<-";
     case TK::PlusAssign:
         return "+=";
     case TK::MinusAssign:
@@ -118,6 +120,8 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "intrinsic";
     if (dynamic_cast<const UnaryExpr *>(&expression))
         return "unary";
+    if (dynamic_cast<const MoveExpr *>(&expression))
+        return "move";
     if (dynamic_cast<const TryExpr *>(&expression))
         return "propagation";
     if (dynamic_cast<const PostfixExpr *>(&expression))

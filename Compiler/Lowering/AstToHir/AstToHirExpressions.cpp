@@ -147,6 +147,9 @@ const std::string &AstToHirContext::FunctionReferenceName(const IdentExpr &ident
 }
 
 HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
+        return LowerExpr(*move->operand);
+    }
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
         auto lowered = std::make_unique<HirLiteralExpr>();
         lowered->location = literal->location;
@@ -227,7 +230,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->op = assignment->op;
         lowered->target = LowerExpr(*assignment->target);
         lowered->value = LowerExprAs(*assignment->value, lowered->target->type);
-        if (assignment->op == TokenKind::Assign) {
+        if (assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow) {
             lowered->overwriteCleanup = OverwriteCleanup(*lowered->target, assignment->location);
         }
         // Assignment's semantic result is opaque because it is not a value,
