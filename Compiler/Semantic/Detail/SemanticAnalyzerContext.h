@@ -415,6 +415,10 @@ protected:
     [[nodiscard]] TypeRef SubstituteTypeParameters(TypeRef type,
                                                    const std::unordered_map<std::string, TypeRef> &substitutions) const;
 
+    /// Whether a concrete type supplies the vtable required by an interface target. Empty interfaces accept every
+    /// type, and platform-sized integer aliases share implementations with their fixed-width equivalents.
+    [[nodiscard]] bool TypeImplementsInterface(const TypeRef &expressionType, const TypeRef &targetType) const;
+
 private:
     struct DeferredUnaryCheck {
         TokenKind op;
@@ -464,7 +468,6 @@ private:
     void CollectModule(const Module &module);
     void CheckStatement(const Stmt &statement);
     void CheckLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
-
     virtual TypeRef ResolveType(const TypeExpr &expression) = 0;
     /// The target layout of a written type, or nothing when it has none: recursive, unsized, or not yet validated.
     [[nodiscard]] virtual std::optional<ResolvedTypeLayout> LayoutOfTypeExpression(const TypeExpr &expression) = 0;

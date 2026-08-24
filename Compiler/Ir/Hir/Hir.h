@@ -215,10 +215,13 @@ struct HirCallExpr : HirExpr {
     std::uint32_t sourceColumn = 0;
 };
 
-/// Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}
+/// Wrap a concrete value into an interface fat pointer {data_ptr, vtable_ptr}.
 struct HirCoerceToInterfaceExpr : HirExpr {
     HirExprPtr value;
     std::string vtableLabel;
+    /// A reference-to-interface view points at the source place directly. A by-value interface keeps the legacy
+    /// compatibility behavior of materializing its own concrete storage.
+    bool borrowed = false;
 };
 
 /// A fixed inline array viewed as a non-owning Slice<T>.

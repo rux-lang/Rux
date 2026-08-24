@@ -784,41 +784,6 @@ private:
         return fallback;
     }
 
-    bool TypeImplementsInterface(const TypeRef &exprType, const TypeRef &targetType) const {
-        if (targetType.kind != TypeRef::Kind::Named) {
-            return false;
-        }
-        Symbol *sym = currentScope->Lookup(targetType.name);
-        if (!sym || sym->kind != Symbol::Kind::Interface) {
-            return false;
-        }
-        // An empty interface is trivially satisfied by every type.
-        if (sym->interfaceMethods.empty()) {
-            return true;
-        }
-        auto implements = [&](const TypeRef &type) {
-            const std::string typeName = type.ToString();
-            auto it = typeImplementsInterfaces.find(typeName);
-            return it != typeImplementsInterfaces.end() && it->second.count(targetType.name);
-        };
-        if (implements(exprType)) {
-            return true;
-        }
-        if (exprType.kind == TypeRef::Kind::Int) {
-            return implements(TypeRef::MakeInt64());
-        }
-        if (exprType.kind == TypeRef::Kind::Int64) {
-            return implements(TypeRef::MakeInt());
-        }
-        if (exprType.kind == TypeRef::Kind::UInt) {
-            return implements(TypeRef::MakeUInt64());
-        }
-        if (exprType.kind == TypeRef::Kind::UInt64) {
-            return implements(TypeRef::MakeUInt());
-        }
-        return false;
-    }
-
     // Folds a compile-time-constant integer expression (unsuffixed integer
     // literals combined with the integer operators) to its int64 value,
     // using the same two's-complement wrapping the generated code produces
@@ -949,11 +914,18 @@ private:
 
     bool CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) override {
         if (targetType.kind == TypeRef::Kind::Reference) {
-            if (!exprType.CanImplicitlyBorrowTo(targetType)) {
+            TypeRef targetReferent = targetType.inner.front();
+            TypeRef sourceReferent = exprType.kind == TypeRef::Kind::Reference && !exprType.inner.empty()
+                                       ? exprType.inner.front()
+                                       : exprType;
+            targetReferent.isMut = false;
+            sourceReferent.isMut = false;
+            const bool interfaceView = TypeImplementsInterface(sourceReferent, targetReferent);
+            if (!exprType.CanImplicitlyBorrowTo(targetType) && !interfaceView) {
                 return false;
             }
             if (exprType.kind == TypeRef::Kind::Reference) {
-                return true;
+                return !exprType.inner.empty() && (!targetType.inner.front().isMut || exprType.inner.front().isMut);
             }
             const bool addressable =
                 dynamic_cast<const IdentExpr *>(&expr) || dynamic_cast<const SelfExpr *>(&expr) ||
@@ -1581,6 +1553,18 @@ private:
         if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
             return nullptr;
         }
+        const auto borrowsAsInterface = [&](const TypeRef &argument, const TypeRef &parameter) {
+            if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
+                return false;
+            }
+            TypeRef source = argument.kind == TypeRef::Kind::Reference && !argument.inner.empty()
+                               ? argument.inner.front()
+                               : argument;
+            TypeRef target = parameter.inner.front();
+            source.isMut = false;
+            target.isMut = false;
+            return TypeImplementsInterface(source, target);
+        };
         if (sym.funcOverloads.size() == 1) {
             // Single overload: still validate arity and assignability so
             // that Bar(wrongType) against a lone Bar(int32) returns null
@@ -1615,6 +1599,7 @@ private:
                 }
                 if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
                     !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
+                    !borrowsAsInterface(argTypes[i], funcType.inner[i]) &&
                     !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                     return nullptr;
                 }
@@ -1671,7 +1656,8 @@ private:
                         // narrowed to a different width.
                         const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
                         const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
-                                                argTypes[i].CanImplicitlyBorrowTo(paramType) || literalToInteger;
+                                                argTypes[i].CanImplicitlyBorrowTo(paramType) ||
+                                                borrowsAsInterface(argTypes[i], paramType) || literalToInteger;
                         if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
                             match = false;
                             break;
@@ -1774,6 +1760,16 @@ private:
                 return finish(LayoutOfTypeRef(inputType.inner[0], localSubs));
             }
             return finish(std::nullopt);
+        }
+
+        if (inputType.kind == TypeRef::Kind::Reference && !inputType.inner.empty()) {
+            const TypeRef referent = inputType.inner.front();
+            if (referent.kind == TypeRef::Kind::Named) {
+                const auto interface = interfaceDecls.find(BaseTypeName(referent.name));
+                if (interface != interfaceDecls.end()) {
+                    return finish(ResolvedTypeLayout{16, 8});
+                }
+            }
         }
 
         if (inputType.kind == TypeRef::Kind::Tuple) {
