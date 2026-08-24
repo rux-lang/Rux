@@ -146,6 +146,7 @@ rux_add_component(RuxSemantic
     Semantic/SemanticAllocationMath.cpp
     Semantic/SemanticZeroization.cpp
     Semantic/SemanticBasicExpressions.cpp
+    Semantic/SemanticBorrowState.cpp
     Semantic/SemanticCallExpressions.cpp
     Semantic/SemanticConstraints.cpp
     Semantic/SemanticMoveState.cpp

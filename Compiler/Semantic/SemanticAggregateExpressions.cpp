@@ -388,9 +388,15 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
 
 std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const Expr &expression) {
     if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+        const bool wasProjectionRoot = checkingBorrowProjectionRoot;
+        checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
+        checkingBorrowProjectionRoot = wasProjectionRoot;
         const TypeRef &objectValueType = ReferencedValue(objectType);
         const TypeRef indexType = CheckExpr(*index->index);
+        if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
+            CheckBorrowedPlaceRead(*index, index->location);
+        }
         if (indexType.IsRange()) {
             std::optional<TypeRef> elementType;
             if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
@@ -422,7 +428,13 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
     }
 
     if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+        const bool wasProjectionRoot = checkingBorrowProjectionRoot;
+        checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*field->object);
+        checkingBorrowProjectionRoot = wasProjectionRoot;
+        if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
+            CheckBorrowedPlaceRead(*field, field->location);
+        }
         const TypeRef &objectValueType = ReferencedValue(objectType);
         if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && field->field == "length") {
             return TypeRef::MakeUInt();
@@ -561,7 +573,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
             }
         }
-        return TypeRef::MakeArray(elementType, array->elements.size());
+        TypeRef arrayType = TypeRef::MakeArray(elementType, array->elements.size());
+        ValidateStoredType(arrayType, array->location, "array value");
+        return arrayType;
     }
 
     if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
@@ -571,7 +585,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
             ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
             elementTypes.push_back(type);
         }
-        return TypeRef::MakeTuple(std::move(elementTypes));
+        TypeRef tupleType = TypeRef::MakeTuple(std::move(elementTypes));
+        ValidateStoredType(tupleType, tuple->location, "tuple value");
+        return tupleType;
     }
 
     return std::nullopt;

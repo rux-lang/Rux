@@ -30,6 +30,7 @@ set(RUX_TEST_SOURCES
     AsmParserTests.cpp
     BuiltinAssertTests.cpp
     BuiltinPanicTests.cpp
+    BorrowCheckerTests.cpp
     BuildPlanTests.cpp
     BuildReportTests.cpp
     CheckedLirBuilderTests.cpp

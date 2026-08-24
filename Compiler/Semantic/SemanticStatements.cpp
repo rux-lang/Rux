@@ -115,23 +115,35 @@ void SemanticAnalyzerContext::PushScope() {
 
 void SemanticAnalyzerContext::PopScope() {
     assert(currentScope->Parent() != nullptr && "cannot pop global scope");
+    EndBorrowScope(*currentScope);
     moveStates.EndScope();
     currentScope = currentScope->Parent();
 }
 
 void SemanticAnalyzerContext::CheckBlock(const Block &block) {
+    const Stmt *savedBorrowStatement = currentBorrowStatement;
+    auto savedEndedProvenance = std::move(endedBorrowProvenance);
+    endedBorrowProvenance.clear();
     PushScope();
     for (const auto &statement : block.stmts) {
+        currentBorrowStatement = statement.get();
+        endedBorrowProvenance.clear();
         if (trackedFlowReachable) {
             CheckStatement(*statement);
+            ExpireDeadBorrowsAfter(*statement);
+            endedBorrowProvenance.clear();
             continue;
         }
 
         const TrackedFlow unreachableEntry = SaveTrackedFlow();
         CheckStatement(*statement);
+        ExpireDeadBorrowsAfter(*statement);
         RestoreTrackedFlow(unreachableEntry);
+        endedBorrowProvenance.clear();
     }
     PopScope();
+    currentBorrowStatement = savedBorrowStatement;
+    endedBorrowProvenance = std::move(savedEndedProvenance);
 }
 
 void SemanticAnalyzerContext::CheckFunctionBody(const Block &block, const FuncDecl &function,
@@ -173,6 +185,9 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
+        if (declarationType.kind != TypeRef::Kind::Reference) {
+            ValidateStoredType(declarationType, letStatement->location, "local variable");
+        }
 
         if (!letStatement->init && !letStatement->type) {
             EmitError(letStatement->location, "uninitialized variable requires an explicit type");
@@ -222,7 +237,10 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         symbol.location = letStatement->location;
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
-        DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr);
+        Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr);
+        if (defined && initializerAccepted && declarationType.kind == TypeRef::Kind::Reference) {
+            RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
+        }
     }
     else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
         TypeRef condition = CheckExpr(*ifStatement->condition);
@@ -433,6 +451,12 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         bool returnAccepted = false;
         if (returnStatement->value) {
             TypeRef valueType = CheckExpr(**returnStatement->value);
+            if (valueType.kind == TypeRef::Kind::Reference) {
+                EmitError(returnStatement->location,
+                          std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
+                          {"references are restricted to parameters, receivers, and local aliases"},
+                          "return an owned value instead");
+            }
             if (currentReturnType.IsOpaque()) {
                 EmitError(returnStatement->location, "'return' cannot have a value in a function with no return type");
             }

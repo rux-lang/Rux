@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Semantic/Detail/MovePlace.h"
 #include "Semantic/Detail/MoveStateTracker.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Semantic/SemanticProgramIndex.h"
@@ -7,9 +8,11 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace Rux::SemanticDetail {
 /// The name an interface uses for the type implementing it. There are no generic interfaces, so this is the only way
@@ -71,6 +74,49 @@ protected:
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
                                       SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
+
+    struct BorrowPlace {
+        const Symbol *root = nullptr;
+        std::vector<MovePlace::Projection> projections;
+
+        [[nodiscard]] std::string Display() const;
+    };
+
+    struct ActiveBorrow {
+        const Symbol *alias = nullptr;
+        const Symbol *parentAlias = nullptr;
+        BorrowPlace place;
+        bool exclusive = false;
+        SourceLocation location;
+    };
+
+    using BorrowSnapshot = std::vector<ActiveBorrow>;
+
+    void PrepareBorrowAnalysis(const FuncDecl &function);
+    void FinishBorrowAnalysis();
+    void ExpireDeadBorrowsAfter(const Stmt &statement);
+    void ExpireBorrowAtLastUse(const Symbol &symbol, SourceLocation location);
+    void EndBorrowScope(const Scope &scope);
+    void RegisterReferenceBinding(const Symbol &alias, const Expr &initializer, const TypeRef &referenceType);
+    void RegisterReferenceAssignment(const Expr &target, const Expr &initializer, const TypeRef &referenceType);
+    void CheckBorrowedRead(const Symbol &symbol, SourceLocation location);
+    void CheckBorrowedPlaceRead(const Expr &expression, SourceLocation location);
+    void CheckBorrowedMutation(const Expr &target, SourceLocation location);
+    [[nodiscard]] bool CheckBorrowedMove(const Expr &expression, SourceLocation location);
+    void ValidateCallReferenceBorrows(const CallExpr &call, const std::vector<TypeRef> &parameterTypes);
+    void BeginReceiverReferenceBorrow(const CallExpr &call, const Expr &receiver, const TypeRef &referenceType);
+    [[nodiscard]] bool TypeStoresReference(const TypeRef &type);
+    void ValidateStoredType(const TypeRef &type, SourceLocation location, std::string_view subject);
+    [[nodiscard]] BorrowSnapshot SaveBorrows() const;
+    void RestoreBorrows(const BorrowSnapshot &snapshot);
+    [[nodiscard]] static BorrowSnapshot MergeBorrows(std::span<const BorrowSnapshot> snapshots);
+    [[nodiscard]] static BorrowSnapshot ProjectBorrows(const BorrowSnapshot &source, const BorrowSnapshot &shape);
+    [[nodiscard]] static bool BorrowPlacesOverlap(const BorrowPlace &left, const BorrowPlace &right);
+    [[nodiscard]] static bool SameBorrowPlace(const BorrowPlace &left, const BorrowPlace &right);
+    [[nodiscard]] std::optional<BorrowPlace> ResolveBorrowPlace(const Expr &expression) const;
+    [[nodiscard]] const Symbol *ReferenceSourceAlias(const Expr &expression) const;
+    [[nodiscard]] bool ReportBorrowConflict(const BorrowPlace &place, bool exclusive, const Symbol *parentAlias,
+                                            SourceLocation location, std::string_view action) const;
 
     /// One interface bound written on a generic parameter, resolved to the interface it names. `interface` is null when
     /// the bound named nothing, or named something that is not an interface; the declaration site reports that, and
@@ -143,6 +189,7 @@ protected:
 
     struct TrackedFlow {
         MoveStateTracker::Snapshot states;
+        BorrowSnapshot borrows;
         bool reachable;
     };
 
@@ -153,6 +200,7 @@ protected:
     struct TrackedLoop {
         std::string label;
         MoveStateTracker::Snapshot shape;
+        BorrowSnapshot borrowShape;
         std::vector<TrackedFlow> breaks;
         std::vector<TrackedFlow> continues;
     };
@@ -321,7 +369,22 @@ protected:
     std::vector<bool> savedTrackedFlowReachability;
     std::vector<TrackedLoop> trackedLoops;
     std::vector<std::vector<TrackedLoop>> savedTrackedLoops;
+    std::unordered_map<const Symbol *, ActiveBorrow> activeBorrows;
+    std::unordered_map<const CallExpr *, std::vector<ActiveBorrow>> pendingCallBorrows;
+    std::unordered_map<const Stmt *, std::unordered_set<std::string>> borrowLiveAfter;
+    std::unordered_map<const Stmt *, std::unordered_map<std::string, std::uint32_t>> borrowLastUseOffsets;
+    std::unordered_map<const Symbol *, ActiveBorrow> endedBorrowProvenance;
+    std::vector<std::unordered_map<const Symbol *, ActiveBorrow>> savedActiveBorrows;
+    std::vector<std::unordered_map<const CallExpr *, std::vector<ActiveBorrow>>> savedPendingCallBorrows;
+    std::vector<std::unordered_map<const Stmt *, std::unordered_set<std::string>>> savedBorrowLiveAfter;
+    std::vector<std::unordered_map<const Stmt *, std::unordered_map<std::string, std::uint32_t>>>
+        savedBorrowLastUseOffsets;
+    std::vector<std::unordered_map<const Symbol *, ActiveBorrow>> savedEndedBorrowProvenance;
+    const Stmt *currentBorrowStatement = nullptr;
+    std::vector<const Stmt *> savedBorrowStatements;
+    std::unordered_set<std::string> referenceStorageChecks;
     bool checkingPlainAssignmentTarget = false;
+    bool checkingBorrowProjectionRoot = false;
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 

@@ -58,10 +58,9 @@ TEST_CASE("reference types preserve identity mutability and layout") {
 TEST_CASE("reference parameters retain their types through HIR and LIR") {
     Lexer lexer(R"(
         struct Item { value: int32; }
-        struct View<T> { value: &T; }
         type Shared = &Item;
         #Link("test")
-        extern func Inspect(shared: &Item, exclusive: &var Item, view: View<Item>) -> int32;
+        extern func Inspect(shared: &Item, exclusive: &var Item) -> int32;
     )",
                 "references.rux");
     auto lexed = lexer.Tokenize();
@@ -78,7 +77,7 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
         }
     }
     REQUIRE(declaration != nullptr);
-    REQUIRE_EQ(declaration->params.size(), 3);
+    REQUIRE_EQ(declaration->params.size(), 2);
     CHECK(dynamic_cast<const ReferenceTypeExpr *>(declaration->params[0].type.get()) != nullptr);
     CHECK(dynamic_cast<const ReferenceTypeExpr *>(declaration->params[1].type.get()) != nullptr);
 
@@ -107,13 +106,8 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
     REQUIRE_EQ(hir.modules.size(), 1);
     REQUIRE_EQ(hir.modules[0].typeAliases.size(), 1);
     CHECK_EQ(hir.modules[0].typeAliases[0].type.kind, TypeRef::Kind::Reference);
-    const auto instantiated = std::ranges::find_if(
-        hir.modules[0].structs, [](const HirStruct &structure) { return structure.name == "View<Item>"; });
-    REQUIRE(instantiated != hir.modules[0].structs.end());
-    REQUIRE_EQ(instantiated->fields.size(), 1);
-    CHECK_EQ(instantiated->fields[0].type.ToString(), "&Item");
     REQUIRE_EQ(hir.modules[0].externFuncs.size(), 1);
-    REQUIRE_EQ(hir.modules[0].externFuncs[0].params.size(), 3);
+    REQUIRE_EQ(hir.modules[0].externFuncs[0].params.size(), 2);
     CHECK_EQ(hir.modules[0].externFuncs[0].params[0].type, *shared);
     CHECK_EQ(hir.modules[0].externFuncs[0].params[1].type, *exclusive);
 
@@ -122,7 +116,7 @@ TEST_CASE("reference parameters retain their types through HIR and LIR") {
     REQUIRE(lowering.Diagnostics().empty());
     REQUIRE_EQ(lir.modules.size(), 1);
     REQUIRE_EQ(lir.modules[0].funcs.size(), 1);
-    REQUIRE_EQ(lir.modules[0].funcs[0].params.size(), 3);
+    REQUIRE_EQ(lir.modules[0].funcs[0].params.size(), 2);
     CHECK_EQ(lir.modules[0].funcs[0].params[0].type, *shared);
     CHECK_EQ(lir.modules[0].funcs[0].params[1].type, *exclusive);
 }
