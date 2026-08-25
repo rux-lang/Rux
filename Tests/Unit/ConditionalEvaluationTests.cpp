@@ -175,7 +175,7 @@ struct Target {
 }
 
 extend Target {
-    intrinsic func HasFeature(self: *Target, feature: TargetFeature) -> bool;
+    intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
 }
 
 struct Build {
@@ -195,7 +195,7 @@ struct SemanticVersion {
 }
 struct Compiler { version: SemanticVersion; }
 extend Compiler {
-    intrinsic func HasFeature(self: *Compiler, feature: Slice<char8>) -> bool;
+    intrinsic func HasFeature(self: &Compiler, feature: Slice<char8>) -> bool;
 }
 
 struct Source {
@@ -209,8 +209,8 @@ struct Source {
 
 struct Config {}
 extend Config {
-    intrinsic func Get(self: *Config, name: Slice<char8>) -> Slice<char8>;
-    intrinsic func Has(self: *Config, name: Slice<char8>) -> bool;
+    intrinsic func Get(self: &Config, name: Slice<char8>) -> Slice<char8>;
+    intrinsic func Has(self: &Config, name: Slice<char8>) -> bool;
 }
 
 intrinsic #target: Target;

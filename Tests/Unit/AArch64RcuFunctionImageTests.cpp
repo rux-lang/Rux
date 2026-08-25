@@ -25,7 +25,7 @@ TEST_CASE("AArch64 RCU emitter lays a vtable out as a run of relocated function 
         }
 
         extend Square : Figure {
-            func Area(self: *Square) -> int {
+            func Area(self: &Square) -> int {
                 return self.size * self.size;
             }
         }

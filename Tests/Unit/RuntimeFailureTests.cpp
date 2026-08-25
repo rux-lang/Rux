@@ -42,11 +42,11 @@ LirPackage CompileRuntimeFailures(const Target::OS os, const Target::Arch arch) 
 struct Reporter { value: int; }
 
 extend Reporter {
-    func AssertNow(self: *Reporter) {
+    func AssertNow(self: &Reporter) {
         Assert(false, "");
     }
 
-    func PanicNow(self: *Reporter) {
+    func PanicNow(self: &Reporter) {
         Panic("Помилка 🚨");
     }
 }

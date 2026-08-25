@@ -69,7 +69,7 @@ TEST_CASE("an instantiation passed as a type argument waits for the parameter it
         }
 
         extend Holder<T> {
-            func Size(self: *Holder<T>) -> uint {
+            func Size(self: &Holder<T>) -> uint {
                 return Width<Node<T>>();
             }
         }

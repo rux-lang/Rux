@@ -118,11 +118,11 @@ const std::string kMeasuredPrelude = R"(
     }
     struct Square { size: int; }
     extend Square : Measured {
-        func Measure(self: *Square) -> int { return self.size * self.size; }
+        func Measure(self: &Square) -> int { return self.size * self.size; }
     }
     struct Segment { length: int; }
     extend Segment {
-        func Measure(self: *Segment) -> int { return self.length; }
+        func Measure(self: &Segment) -> int { return self.length; }
     }
     func Total<T: Measured>(value: T) -> int { return value.Measure(); }
 )";
@@ -135,7 +135,7 @@ const std::string kDisplayPrelude = R"(
     }
     struct Labeled { value: int; }
     extend Labeled : Display {
-        func Show(self: *Labeled) -> int { return self.value; }
+        func Show(self: &Labeled) -> int { return self.value; }
     }
     struct Plain { value: int; }
     func Render<T: Display>(value: T) -> int { return 0; }
@@ -181,7 +181,7 @@ TEST_CASE("a type declaring every required method satisfies the bound without a 
         }
         struct Structural { value: int; }
         extend Structural {
-            func Show(self: *Structural) -> int { return self.value; }
+            func Show(self: &Structural) -> int { return self.value; }
         }
         func Render<T: Display>(value: T) -> int { return 0; }
         func Main() {
@@ -213,7 +213,7 @@ TEST_CASE("every bound of a multiply constrained parameter is checked independen
         }
         struct Half { value: int; }
         extend Half : Display {
-            func Show(self: *Half) -> int { return self.value; }
+            func Show(self: &Half) -> int { return self.value; }
         }
         func Render<T: Display + Sized>(value: T) -> int { return 0; }
         func Main() {
@@ -351,7 +351,7 @@ TEST_CASE("an extend block borrows the bounds of the type it extends") {
         struct Cell<T: Display> { item: T; }
         func Render<T: Display>(count: int) -> int { return count; }
         extend Cell<T> {
-            func Count(self: *Cell<T>) -> int { return Render<T>(1); }
+            func Count(self: &Cell<T>) -> int { return Render<T>(1); }
         }
     )");
 
@@ -364,7 +364,7 @@ TEST_CASE("an extend block borrows the bounds of the type it extends") {
         struct Cell<T> { item: T; }
         func Render<T: Display>(count: int) -> int { return count; }
         extend Cell<T> {
-            func Count(self: *Cell<T>) -> int { return Render<T>(1); }
+            func Count(self: &Cell<T>) -> int { return Render<T>(1); }
         }
     )");
 
@@ -512,7 +512,7 @@ TEST_CASE("a method of a generic extend block calls the bound of the type it ext
     const HirPackage package = LowerSource(kMeasuredPrelude + R"(
         struct Cell<T: Measured> { item: T; }
         extend Cell<T> {
-            func Inside(self: *Cell<T>) -> int { return self.item.Measure(); }
+            func Inside(self: &Cell<T>) -> int { return self.item.Measure(); }
         }
         func Main() -> int {
             let cell = Cell<Square> { item: Square { size: 4 } };
@@ -544,7 +544,7 @@ pub interface Measured {
 pub struct Square { size: int; }
 
 extend Square : Measured {
-    func Measure(self: *Square) -> int { return self.size * self.size; }
+    func Measure(self: &Square) -> int { return self.size * self.size; }
 }
 
 pub func Total<T: Measured>(value: T) -> int { return value.Measure(); }

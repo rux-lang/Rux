@@ -13,15 +13,15 @@ struct Other {
 }
 
 interface Shape {
-    func Area(self: *self) -> float64;
+    func Area(self: &Self) -> float64;
 }
 
 extend Vector {
-    func Foreign(self: *var Other) -> float64 {
+    func Foreign(self: &var Other) -> float64 {
         return 0.0;
     }
 
-    func Late(factor: float64, self: *Vector) -> float64 {
+    func Late(factor: float64, self: &Vector) -> float64 {
         return factor;
     }
 }
@@ -32,7 +32,7 @@ extend Vector : Shape {
     }
 }
 
-func Free(self: *Vector) -> float64 {
+func Free(self: &Vector) -> float64 {
     return 0.0;
 }
 

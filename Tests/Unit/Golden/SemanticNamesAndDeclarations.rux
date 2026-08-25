@@ -2,7 +2,7 @@ const Config = 1;
 struct Config {}
 
 interface Drawable {
-    func Draw(self: *self);
+    func Draw();
 }
 
 struct Widget {}

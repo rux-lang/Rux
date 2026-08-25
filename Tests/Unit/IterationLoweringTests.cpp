@@ -70,7 +70,7 @@ const std::string kIterationPrelude = R"(
     enum Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: *var Counter) -> Option<int32> {
+        func Next(self: &var Counter) -> Option<int32> {
             if self.value >= self.limit { return Option::None<int32>(); }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -79,7 +79,7 @@ const std::string kIterationPrelude = R"(
     }
     struct Span { limit: int32; }
     extend Span {
-        func Iterate(self: *Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
+        func Iterate(self: &Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
     }
 )";
 } // namespace

@@ -1,4 +1,4 @@
-20:18: error: receiver type '*var Other' does not name the extended type 'Vector'
+20:18: error: receiver type '&var Other' does not name the extended type 'Vector'
 24:32: error: receiver 'self' must be the first parameter of method 'Late'
 30:15: error: method 'Area' cannot take its receiver by value because this block implements interface 'Shape'
 35:11: error: function 'Free' cannot take a receiver because it is not a method

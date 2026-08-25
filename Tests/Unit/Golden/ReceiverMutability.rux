@@ -7,17 +7,17 @@ struct Counter {
 }
 
 extend Counter {
-    func Read(self: *Counter) -> int {
+    func Read(self: &Counter) -> int {
         return self.value;
     }
 
     // Writing through a read-only receiver, which is the same mistake as
-    // writing through any other read-only pointer.
-    func Bump(self: *Counter) {
+    // writing through any other read-only reference.
+    func Bump(self: &Counter) {
         self.value += 1;
     }
 
-    func BumpBy(self: *var Counter, amount: int) {
+    func BumpBy(self: &var Counter, amount: int) {
         self.value += amount;
     }
 
@@ -29,8 +29,8 @@ extend Counter {
     }
 }
 
-// A read-only pointer cannot reach a method that writes through its receiver.
-func Observe(counter: *Counter) {
+// A read-only reference cannot reach a method that writes through its receiver.
+func Observe(counter: &Counter) {
     counter.BumpBy(1);
 }
 
