@@ -15,8 +15,20 @@ when #target.os {
     }
 }
 
-// Allocates an uninitialized block of memory
-// https://rux-lang.dev/api/memory/alloc
+/// Allocates `size` uninitialized bytes.
+///
+/// Returns the base address, or null when the size overflows the platform bookkeeping or the system cannot satisfy
+/// the request. A zero size is permitted, but the returned address is platform-dependent and must not be touched.
+///
+/// The allocation is owned by the caller until `Free` releases it or `Realloc` replaces it. The address is aligned
+/// to at least 16 bytes on every supported target.
+///
+/// # Safety
+///
+/// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
+/// after it is released is invalid.
+///
+/// https://rux-lang.dev/docs/api/memory/alloc
 func Alloc(size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {

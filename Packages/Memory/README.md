@@ -52,6 +52,15 @@ rather than here; it can only make a caller ask for more than it needed.
 
 None of the comparisons is constant-time: each stops at the first difference, so none may compare a secret.
 
+## Value and ownership model
+
+`PageError` is a structural `Copy` value. Every address remains a raw pointer because this package exposes byte
+ranges, nullable allocation failure, stored addresses, pointer arithmetic, and explicit release—the operations for
+which references cannot prove validity or ownership. `Alloc` and `PageAllocate` transfer ownership to the caller;
+`Free` and `PageRelease` end it. No destructor runs automatically, so never copy an owning address with the intent of
+freeing both copies. Scalar output slots are also raw: pass writable addresses such as `@result` and obey the
+function's non-null contract.
+
 > **Changed in this release.** `Compare` now returns an `Ordering`, which is what this table always claimed it did;
 > the old first-difference offset is `MismatchOffset`, and `Equal` is what most callers of the old `Compare` wanted.
 > `Set` takes its arguments in `memset` order — destination, value, length — where it previously took the length
@@ -60,10 +69,13 @@ None of the comparisons is constant-time: each stops at the first difference, so
 ## Example
 
 ```rux
-import Memory::{ Alloc, Free };
+import Memory::{ Alloc, Free, Zero };
 
 var buffer = Alloc(1024);
-Free(buffer);
+if buffer != null {
+    Zero(buffer, 1024);
+    Free(buffer);
+}
 ```
 
 ## Documentation

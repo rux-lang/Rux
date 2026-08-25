@@ -4,8 +4,18 @@ when #target.os == .Windows {
     import Windows::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };
 }
 
-// Resizes a block of memory, preserving the bytes that still fit
-// https://rux-lang.dev/api/memory/realloc
+/// Resizes an allocation to `size` bytes, preserving the bytes that still fit.
+///
+/// A null `ptr` behaves as `Alloc(size)`. A zero size releases a non-null allocation and returns null. On failure,
+/// returns null and leaves the original allocation valid; on success, the original address is invalid even when the
+/// returned address has the same numeric value.
+///
+/// # Safety
+///
+/// A non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior, released,
+/// or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
+///
+/// https://rux-lang.dev/docs/api/memory/realloc
 func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
