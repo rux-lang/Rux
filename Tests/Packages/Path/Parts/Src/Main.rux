@@ -29,89 +29,89 @@ func Spells(path: Path, expected: Slice<char8>) -> bool {
     return true;
 }
 
-func PathOf(text: *OsString) -> Path {
+func PathOf(text: &OsString) -> Path {
     return Path::FromView(text.View());
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
     let deep = OsString::FromText(allocator, "/a/b/c.tar.gz", @error);
-    let deepPath = PathOf(@deep);
+    let deepPath = PathOf(deep);
 
     // Parents, down to the fixed ends.
-    let parent = deepPath.Parent().ValueOr(Path::New());
+    let parent = deepPath.Parent().ValueOr(Path());
     Assert(Spells(parent, "/a/b"), "the parent drops the last component");
-    let grand = parent.Parent().ValueOr(Path::New());
+    let grand = parent.Parent().ValueOr(Path());
     Assert(Spells(grand, "/a"), "and again");
-    let top = grand.Parent().ValueOr(Path::New());
+    let top = grand.Parent().ValueOr(Path());
     Assert(Spells(top, "/"), "the parent of /a is the root");
     Assert(top.Parent().IsNone(), "and the root is inside nothing");
     let bare = OsString::FromText(allocator, "name", @error);
-    let barePath = PathOf(@bare);
+    let barePath = PathOf(bare);
     Assert(barePath.Parent().ValueOr(deepPath).IsEmpty(), "a bare segment's parent is the empty path");
-    Assert(Path::New().Parent().IsNone(), "which itself has none");
+    Assert(Path().Parent().IsNone(), "which itself has none");
     let trailing = OsString::FromText(allocator, "/a/b/", @error);
-    let trailingPath = PathOf(@trailing);
-    Assert(Spells(trailingPath.Parent().ValueOr(Path::New()), "/a"), "trailing separators say nothing");
+    let trailingPath = PathOf(trailing);
+    Assert(Spells(trailingPath.Parent().ValueOr(Path()), "/a"), "trailing separators say nothing");
 
     // Names, stems and extensions.
     let nameOwned = OsString::FromText(allocator, "c.tar.gz", @error);
     var wanted = nameOwned.View();
-    var got = deepPath.FileName().ValueOr(OsStringView::New());
-    Assert(got.Equals(@wanted), "the file name is the last component");
-    got = trailingPath.FileName().ValueOr(OsStringView::New());
+    var got = deepPath.FileName().ValueOr(OsStringView());
+    Assert(got.Equals(wanted), "the file name is the last component");
+    got = trailingPath.FileName().ValueOr(OsStringView());
     let bOwned = OsString::FromText(allocator, "b", @error);
     wanted = bOwned.View();
-    Assert(got.Equals(@wanted), "through trailing separators");
+    Assert(got.Equals(wanted), "through trailing separators");
     let rootOwned = OsString::FromText(allocator, "/", @error);
-    let rootPath = PathOf(@rootOwned);
+    let rootPath = PathOf(rootOwned);
     Assert(rootPath.FileName().IsNone(), "the root has no file name");
 
     let stemOwned = OsString::FromText(allocator, "c.tar", @error);
     wanted = stemOwned.View();
-    got = deepPath.Stem().ValueOr(OsStringView::New());
-    Assert(got.Equals(@wanted), "one extension comes off the stem");
+    got = deepPath.Stem().ValueOr(OsStringView());
+    Assert(got.Equals(wanted), "one extension comes off the stem");
     let extOwned = OsString::FromText(allocator, "gz", @error);
     wanted = extOwned.View();
-    got = deepPath.Extension().ValueOr(OsStringView::New());
-    Assert(got.Equals(@wanted), "and it is the last one, without its dot");
+    got = deepPath.Extension().ValueOr(OsStringView());
+    Assert(got.Equals(wanted), "and it is the last one, without its dot");
 
     let hidden = OsString::FromText(allocator, "/home/.bashrc", @error);
-    let hiddenPath = PathOf(@hidden);
+    let hiddenPath = PathOf(hidden);
     let hiddenName = OsString::FromText(allocator, ".bashrc", @error);
     wanted = hiddenName.View();
-    got = hiddenPath.Stem().ValueOr(OsStringView::New());
-    Assert(got.Equals(@wanted), "a leading dot is a name, not a marker");
+    got = hiddenPath.Stem().ValueOr(OsStringView());
+    Assert(got.Equals(wanted), "a leading dot is a name, not a marker");
     Assert(hiddenPath.Extension().IsNone(), "so a dotfile has no extension");
     let plainName = OsString::FromText(allocator, "Makefile", @error);
-    let plainPath = PathOf(@plainName);
+    let plainPath = PathOf(plainName);
     Assert(plainPath.Extension().IsNone(), "and neither does a name with no dot");
 
     // Joining.
     let baseOwned = OsString::FromText(allocator, "/a/b", @error);
     let segOwned = OsString::FromText(allocator, "c", @error);
-    let joined = Join(allocator, PathOf(@baseOwned), segOwned.View(), @error);
+    let joined = Join(allocator, PathOf(baseOwned), segOwned.View(), @error);
     Assert(error == TextError::None && Spells(joined.AsPath(), "/a/b/c"), "a join supplies the separator");
     let absOwned = OsString::FromText(allocator, "/x", @error);
-    let replaced = Join(allocator, PathOf(@baseOwned), absOwned.View(), @error);
+    let replaced = Join(allocator, PathOf(baseOwned), absOwned.View(), @error);
     Assert(error == TextError::None && Spells(replaced.AsPath(), "/x"), "and an absolute segment replaces");
 
     // Normalization: the simplifications, and the honesty line.
     let messyOwned = OsString::FromText(allocator, "/a/./b//c/../d", @error);
-    let cleaned = Normalize(allocator, PathOf(@messyOwned), @error);
+    let cleaned = Normalize(allocator, PathOf(messyOwned), @error);
     Assert(error == TextError::None && Spells(cleaned.AsPath(), "/a/b/d"), "dots and climbs simplify");
     let relativeOwned = OsString::FromText(allocator, "../a/../b", @error);
-    let relative = Normalize(allocator, PathOf(@relativeOwned), @error);
+    let relative = Normalize(allocator, PathOf(relativeOwned), @error);
     Assert(error == TextError::None && Spells(relative.AsPath(), "../b"),
            "a climb past a relative start survives");
     let overOwned = OsString::FromText(allocator, "/../a", @error);
-    let over = Normalize(allocator, PathOf(@overOwned), @error);
+    let over = Normalize(allocator, PathOf(overOwned), @error);
     Assert(error == TextError::None && Spells(over.AsPath(), "/a"), "and a climb past the root vanishes");
     let dotOwned = OsString::FromText(allocator, "./a/", @error);
-    let dotted = Normalize(allocator, PathOf(@dotOwned), @error);
+    let dotted = Normalize(allocator, PathOf(dotOwned), @error);
     Assert(error == TextError::None && Spells(dotted.AsPath(), "a"), "a lone dot and a trailing slash both go");
 
     return 0;

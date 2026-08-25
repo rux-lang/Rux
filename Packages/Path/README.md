@@ -24,6 +24,15 @@ rux add Rux/Path
 - **Prefixes** — the Windows family (drive, UNC share, verbatim) behind `PrefixLength`, `HasRoot` and
   `IsAbsolute`; the Unix systems have no prefixes, and nothing here folds case.
 
+`Path` and `OsStringView` are copyable borrowed values whose receivers use `&T`. Immutable `OsString` has deep-copy
+value semantics: a language copy allocates an independent native-unit block from the same allocator. `PathBuffer`
+prohibits copying, transfers with `<-`, and releases its block through `~PathBuffer`.
+
+Use `Path()`, `OsStringView()`, `OsString(allocator)`, and `PathBuffer(allocator)` for empty values. Temporary `New`
+forwarding methods remain for downstream compatibility; descriptive and fallible factories such as `FromText`,
+`FromPath`, `Join`, and `Normalize` retain their names. Raw pointers remain only for native storage and scalar output
+slots, where nullable or stored addresses are required.
+
 ## Documentation
 
 <https://rux-lang.dev/docs/api/path>

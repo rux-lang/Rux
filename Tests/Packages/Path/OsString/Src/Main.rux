@@ -9,17 +9,20 @@ import Text::TextError;
 // unit count differs per platform in a way the test states rather than papers over.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
-    let empty = OsString::New(allocator);
+    let empty = OsString(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "new native text holds nothing");
 
     // Ordinary text converts, and its unit count is the platform's business: an accented word is six UTF-8 bytes
     // and five UTF-16 units, and a supplementary character four bytes or one surrogate pair.
     let plain = OsString::FromText(allocator, "hi", @error);
     Assert(error == TextError::None && plain.Length() == 2, "ASCII is two units either way");
+    var copied = plain;
+    copied.Clear();
+    Assert(copied.IsEmpty() && plain.Length() == 2, "copying native text produces independent storage");
     let accented = OsString::FromText(allocator, "héllo", @error);
     when #target.os == .Windows {
         Assert(accented.Length() == 5, "five UTF-16 units on Windows");
@@ -59,7 +62,7 @@ func Main() -> int {
     let kept = OsString::FromView(allocator, view, @error);
     Assert(error == TextError::None && kept.Length() == 4, "and an owning copy without complaint");
     let keptView = kept.View();
-    Assert(keptView.Equals(@view), "which holds exactly the units that went in");
+    Assert(keptView.Equals(view), "which holds exactly the units that went in");
     var index: uint = 0;
     while index < 4 {
         Assert(keptView.Units().data[index] == hostile[index], "unit for unit");
@@ -70,10 +73,10 @@ func Main() -> int {
     let alsoPlain = OsString::FromText(allocator, "hi", @error);
     let plainView = plain.View();
     let alsoView = alsoPlain.View();
-    Assert(plainView.Equals(@alsoView), "the same text is the same units");
+    Assert(plainView.Equals(alsoView), "the same text is the same units");
     let upper = OsString::FromText(allocator, "HI", @error);
     let upperView = upper.View();
-    Assert(!plainView.Equals(@upperView), "and case is not folded, deliberately");
+    Assert(!plainView.Equals(upperView), "and case is not folded, deliberately");
 
     // Releasing early leaves something usable, and twice is not a second release.
     var released = OsString::FromText(allocator, "gone", @error);
