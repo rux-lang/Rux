@@ -34,8 +34,13 @@ extend Pcg64Dxsm {
     /// A generator seeded by spreading `seed` through `SplitMix64`, on the default stream.
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/new
-    func New(seed: uint64) -> Pcg64Dxsm {
+    func Pcg64Dxsm(seed: uint64) -> Pcg64Dxsm {
         return Pcg64Dxsm::WithStream(seed, 0u64);
+    }
+
+    /// Temporary compatibility spelling for `Pcg64Dxsm(seed)`.
+    func New(seed: uint64) -> Pcg64Dxsm {
+        return Pcg64Dxsm(seed);
     }
 
     /// A generator on the stream `stream` selects.
@@ -46,10 +51,10 @@ extend Pcg64Dxsm {
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/with-stream
     func WithStream(seed: uint64, stream: uint64) -> Pcg64Dxsm {
-        var mixer = SplitMix64::New(seed);
+        var mixer = SplitMix64(seed);
         let stateHigh = mixer.NextUint64() as uint128;
         let stateLow = mixer.NextUint64() as uint128;
-        var streamMixer = SplitMix64::New(stream);
+        var streamMixer = SplitMix64(stream);
         let incrementHigh = streamMixer.NextUint64() as uint128;
         let incrementLow = streamMixer.NextUint64() as uint128;
         var generator = Pcg64Dxsm {
@@ -67,7 +72,7 @@ extend Pcg64Dxsm {
     }
 
     // One state advance: the linear congruential step in 128 bits, wrapping as it must.
-    func Step(self: *var Pcg64Dxsm) {
+    func Step(self: &var Pcg64Dxsm) {
         self.state = self.state * (PcgMultiplier as uint128) + self.increment;
     }
 }
@@ -80,7 +85,7 @@ extend Pcg64Dxsm : RandomGenerator {
     /// value rather than collapsing any of it.
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/next-uint64
-    func NextUint64(self: *var Pcg64Dxsm) -> uint64 {
+    func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
         var high = (self.state >> 64u128) as uint64;
         let low = ((self.state as uint64) | 1u64);
         high = high ^ (high >> 32u64);

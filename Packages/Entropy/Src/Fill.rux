@@ -52,8 +52,13 @@ extend SystemEntropy {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/entropy/system-entropy/new
-    func New() -> SystemEntropy {
+    func SystemEntropy() -> SystemEntropy {
         return SystemEntropy {};
+    }
+
+    /// Temporary compatibility spelling for `SystemEntropy()`.
+    func New() -> SystemEntropy {
+        return SystemEntropy();
     }
 }
 
@@ -69,7 +74,7 @@ extend SystemEntropy : EntropySource {
     /// `buffer` must be writable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/entropy/system-entropy/fill
-    func Fill(self: *var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
+    func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
         return FillFromSource(buffer, length);
     }
 }
@@ -91,7 +96,7 @@ extend SystemEntropy : EntropySource {
 /// earlier call filled successfully.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-from
-func FillFrom(source: EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
+func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
     if length == 0 {
         return EntropyError::None;
     }
@@ -131,7 +136,7 @@ func FillFrom(source: EntropySource, buffer: *var opaque, length: uint) -> Entro
 /// exhausts the attempts leaves zeros.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-with-retries
-func FillWithRetries(source: EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
+func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
     var error = FillFrom(source, buffer, length);
     var remaining = attempts;
     while error.IsTransient() && remaining > 0 {
@@ -154,8 +159,8 @@ func FillWithRetries(source: EntropySource, buffer: *var opaque, length: uint, a
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill
 func Fill(buffer: *var opaque, length: uint) -> EntropyError {
-    var system = SystemEntropy::New();
-    let source: EntropySource = system;
+    var system = SystemEntropy();
+    let source: &var EntropySource = system;
     return FillFrom(source, buffer, length);
 }
 

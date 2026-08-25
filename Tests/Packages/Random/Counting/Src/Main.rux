@@ -8,7 +8,7 @@ import Math::{ Abs, IsFinite, Sqrt };
 import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256::New(31337u64);
+    var generator = Xoshiro256(31337u64);
 
     // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it -- the two
     // sides of the boosting cutoff.
@@ -20,7 +20,7 @@ func Main() -> int {
         var totalSquares = 0.0;
         var draw: uint = 0;
         while draw < 60000u {
-            let value = Gamma<Xoshiro256>(@generator, shape);
+            let value = Gamma<Xoshiro256>(generator, shape);
             Assert(IsFinite(value) && value >= 0.0, "a gamma draw is finite and non-negative");
             total = total + value;
             totalSquares = totalSquares + value * value;
@@ -32,15 +32,15 @@ func Main() -> int {
         Assert(Abs(variance - shape) < 0.12 * shape + 0.05, "and so is its variance");
         shapeIndex = shapeIndex + 1;
     }
-    Assert(Gamma<Xoshiro256>(@generator, 0.0) == 0.0, "a shape of zero has no distribution");
-    Assert(Gamma<Xoshiro256>(@generator, -1.0) == 0.0, "and neither has a negative one");
-    Assert(GammaWithScale<Xoshiro256>(@generator, 2.0, 0.0) == 0.0, "nor has a scale of zero");
+    Assert(Gamma<Xoshiro256>(generator, 0.0) == 0.0, "a shape of zero has no distribution");
+    Assert(Gamma<Xoshiro256>(generator, -1.0) == 0.0, "and neither has a negative one");
+    Assert(GammaWithScale<Xoshiro256>(generator, 2.0, 0.0) == 0.0, "nor has a scale of zero");
 
     // Scaling multiplies the mean by the scale.
     var scaledTotal = 0.0;
     var draw: uint = 0;
     while draw < 40000u {
-        scaledTotal = scaledTotal + GammaWithScale<Xoshiro256>(@generator, 3.0, 2.0);
+        scaledTotal = scaledTotal + GammaWithScale<Xoshiro256>(generator, 3.0, 2.0);
         draw = draw + 1;
     }
     Assert(Abs(scaledTotal / 40000.0 - 6.0) < 0.2, "a scaled gamma has mean shape times scale");
@@ -49,7 +49,7 @@ func Main() -> int {
     var betaTotal = 0.0;
     draw = 0;
     while draw < 60000u {
-        let value = Beta<Xoshiro256>(@generator, 2.0, 3.0);
+        let value = Beta<Xoshiro256>(generator, 2.0, 3.0);
         Assert(value >= 0.0 && value <= 1.0, "a beta draw is in the unit interval");
         betaTotal = betaTotal + value;
         draw = draw + 1;
@@ -61,7 +61,7 @@ func Main() -> int {
     var smallSquares = 0.0;
     draw = 0;
     while draw < 60000u {
-        let value = Binomial<Xoshiro256>(@generator, 20u64, 0.3) as float64;
+        let value = Binomial<Xoshiro256>(generator, 20u64, 0.3) as float64;
         Assert(value <= 20.0, "a binomial never exceeds its trial count");
         smallTotal = smallTotal + value;
         smallSquares = smallSquares + value * value;
@@ -77,7 +77,7 @@ func Main() -> int {
     var largeSquares = 0.0;
     draw = 0;
     while draw < 40000u {
-        let value = Binomial<Xoshiro256>(@generator, 1000u64, 0.3) as float64;
+        let value = Binomial<Xoshiro256>(generator, 1000u64, 0.3) as float64;
         Assert(value <= 1000.0, "the reduced method also respects the trial count");
         largeTotal = largeTotal + value;
         largeSquares = largeSquares + value * value;
@@ -89,23 +89,23 @@ func Main() -> int {
     Assert(Abs(variance - 210.0) < 12.0, "and the same variance");
 
     // A count far past anything the direct method could reach, which is the point of the reduction.
-    let huge = Binomial<Xoshiro256>(@generator, 1000000000u64, 0.5);
+    let huge = Binomial<Xoshiro256>(generator, 1000000000u64, 0.5);
     Assert(huge > 499000000u64 && huge < 501000000u64,
            "a binomial over a billion trials is drawn without a billion draws");
 
     // The saturating edges.
-    Assert(Binomial<Xoshiro256>(@generator, 0u64, 0.5) == 0u64, "no trials give no successes");
-    Assert(Binomial<Xoshiro256>(@generator, 50u64, 0.0) == 0u64, "a probability of zero gives none");
-    Assert(Binomial<Xoshiro256>(@generator, 50u64, 1.0) == 50u64, "and one of one gives all of them");
-    Assert(Binomial<Xoshiro256>(@generator, 50u64, -0.5) == 0u64, "an out-of-range probability saturates");
-    Assert(Binomial<Xoshiro256>(@generator, 50u64, 2.0) == 50u64, "at both ends");
+    Assert(Binomial<Xoshiro256>(generator, 0u64, 0.5) == 0u64, "no trials give no successes");
+    Assert(Binomial<Xoshiro256>(generator, 50u64, 0.0) == 0u64, "a probability of zero gives none");
+    Assert(Binomial<Xoshiro256>(generator, 50u64, 1.0) == 50u64, "and one of one gives all of them");
+    Assert(Binomial<Xoshiro256>(generator, 50u64, -0.5) == 0u64, "an out-of-range probability saturates");
+    Assert(Binomial<Xoshiro256>(generator, 50u64, 2.0) == 50u64, "at both ends");
 
     // Poisson below the cutoff, where Knuth's method applies: mean and variance are both the parameter.
     var poissonTotal = 0.0;
     var poissonSquares = 0.0;
     draw = 0;
     while draw < 60000u {
-        let value = Poisson<Xoshiro256>(@generator, 4.0) as float64;
+        let value = Poisson<Xoshiro256>(generator, 4.0) as float64;
         poissonTotal = poissonTotal + value;
         poissonSquares = poissonSquares + value * value;
         draw = draw + 1;
@@ -120,7 +120,7 @@ func Main() -> int {
     poissonSquares = 0.0;
     draw = 0;
     while draw < 40000u {
-        let value = Poisson<Xoshiro256>(@generator, 500.0) as float64;
+        let value = Poisson<Xoshiro256>(generator, 500.0) as float64;
         poissonTotal = poissonTotal + value;
         poissonSquares = poissonSquares + value * value;
         draw = draw + 1;
@@ -131,12 +131,12 @@ func Main() -> int {
     Assert(Abs(variance - 500.0) < 20.0, "and the same variance, which a normal approximation would not");
 
     // A mean large enough that multiplying uniforms would underflow to a hang.
-    let enormous = Poisson<Xoshiro256>(@generator, 1000000.0);
+    let enormous = Poisson<Xoshiro256>(generator, 1000000.0);
     Assert(enormous > 995000u64 && enormous < 1005000u64,
            "a Poisson with a mean of a million is drawn without a million draws");
 
-    Assert(Poisson<Xoshiro256>(@generator, 0.0) == 0u64, "a mean of zero gives no events");
-    Assert(Poisson<Xoshiro256>(@generator, -1.0) == 0u64, "and neither does a negative one");
+    Assert(Poisson<Xoshiro256>(generator, 0.0) == 0u64, "a mean of zero gives no events");
+    Assert(Poisson<Xoshiro256>(generator, -1.0) == 0u64, "and neither does a negative one");
 
     return 0;
 }

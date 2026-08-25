@@ -41,9 +41,9 @@ steadily, or a cryptographic provider that refuses — none of which a test can 
 fails exactly when it wants it to. The code that handles a failure is then the same code in the test and in
 production, which is the only way to know it works.
 
-An implementor of `EntropySource` must keep its mutable state behind a pointer — a small struct holding a pointer to
-the state, not the state itself. Coercing a value to an interface hands the interface its own copy, so a source that
-counted its calls in a field of its own would count them where nobody can see.
+`FillFrom` borrows an `EntropySource` interface view for the duration of the call. The view refers to the original
+source rather than copying it, so an implementation can keep mutable state directly in its own fields and callers
+observe the same state after the fill.
 
 `FillWithRetries` only retries a transient failure. `Interrupted` says a signal arrived rather than that anything is
 wrong; a system with no source and a provider that refused are both reported at once, since repeating them would only

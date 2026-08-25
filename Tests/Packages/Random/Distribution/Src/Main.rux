@@ -9,13 +9,13 @@ import Random::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair
                  Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256::New(20240822u64);
+    var generator = Xoshiro256(20240822u64);
 
     // Bernoulli: the rate comes out right, and the two saturating ends are absolute rather than merely likely.
     var heads: uint = 0;
     var draw: uint = 0;
     while draw < 40000u {
-        if Bernoulli<Xoshiro256>(@generator, 0.25) {
+        if Bernoulli<Xoshiro256>(generator, 0.25) {
             heads = heads + 1;
         }
         draw = draw + 1;
@@ -23,10 +23,10 @@ func Main() -> int {
     Assert(heads > 9600u && heads < 10400u, "a quarter-probability coin comes up true about a quarter of the time");
     draw = 0;
     while draw < 1000u {
-        Assert(!Bernoulli<Xoshiro256>(@generator, 0.0), "a probability of zero never comes up true");
-        Assert(Bernoulli<Xoshiro256>(@generator, 1.0), "and one of one always does");
-        Assert(!Bernoulli<Xoshiro256>(@generator, -0.5), "a probability below zero behaves like zero");
-        Assert(Bernoulli<Xoshiro256>(@generator, 1.5), "and one above one like one");
+        Assert(!Bernoulli<Xoshiro256>(generator, 0.0), "a probability of zero never comes up true");
+        Assert(Bernoulli<Xoshiro256>(generator, 1.0), "and one of one always does");
+        Assert(!Bernoulli<Xoshiro256>(generator, -0.5), "a probability below zero behaves like zero");
+        Assert(Bernoulli<Xoshiro256>(generator, 1.5), "and one above one like one");
         draw = draw + 1;
     }
 
@@ -38,7 +38,7 @@ func Main() -> int {
     var smallest = 1.0e300;
     draw = 0;
     while draw < 200000u {
-        let value = Exponential<Xoshiro256>(@generator);
+        let value = Exponential<Xoshiro256>(generator);
         Assert(IsFinite(value), "an exponential draw is always finite, however the uniform draw landed");
         Assert(value >= 0.0, "and never negative");
         if value < smallest {
@@ -59,12 +59,12 @@ func Main() -> int {
     total = 0.0;
     draw = 0;
     while draw < 100000u {
-        total = total + ExponentialWithRate<Xoshiro256>(@generator, 4.0);
+        total = total + ExponentialWithRate<Xoshiro256>(generator, 4.0);
         draw = draw + 1;
     }
     Assert(Abs(total / 100000.0 - 0.25) < 0.01, "a rate of four gives a mean of a quarter");
-    Assert(ExponentialWithRate<Xoshiro256>(@generator, 0.0) == 0.0, "a rate of zero has no distribution");
-    Assert(ExponentialWithRate<Xoshiro256>(@generator, -1.0) == 0.0, "and neither has a negative one");
+    Assert(ExponentialWithRate<Xoshiro256>(generator, 0.0) == 0.0, "a rate of zero has no distribution");
+    Assert(ExponentialWithRate<Xoshiro256>(generator, -1.0) == 0.0, "and neither has a negative one");
 
     // Normal: mean zero, variance one, symmetric, and always finite.
     total = 0.0;
@@ -73,7 +73,7 @@ func Main() -> int {
     var beyondTwo: uint = 0;
     draw = 0;
     while draw < 200000u {
-        let value = Normal<Xoshiro256>(@generator);
+        let value = Normal<Xoshiro256>(generator);
         Assert(IsFinite(value), "a normal draw is always finite");
         total = total + value;
         totalSquares = totalSquares + value * value;
@@ -99,7 +99,7 @@ func Main() -> int {
     var differed: uint = 0;
     draw = 0;
     while draw < 1000u {
-        NormalPair<Xoshiro256>(@generator, @first, @second);
+        NormalPair<Xoshiro256>(generator, @first, @second);
         Assert(IsFinite(first) && IsFinite(second), "both values of a pair are finite");
         if first != second {
             differed = differed + 1;
@@ -113,7 +113,7 @@ func Main() -> int {
     totalSquares = 0.0;
     draw = 0;
     while draw < 100000u {
-        let value = NormalWith<Xoshiro256>(@generator, 5.0, 2.0);
+        let value = NormalWith<Xoshiro256>(generator, 5.0, 2.0);
         total = total + value;
         totalSquares = totalSquares + value * value;
         draw = draw + 1;
@@ -122,7 +122,7 @@ func Main() -> int {
     let shiftedVariance = totalSquares / 100000.0 - shiftedMean * shiftedMean;
     Assert(Abs(shiftedMean - 5.0) < 0.05, "a shifted normal has the mean it was given");
     Assert(Abs(Sqrt(shiftedVariance) - 2.0) < 0.05, "and the standard deviation it was given");
-    Assert(NormalWith<Xoshiro256>(@generator, 3.0, 0.0) == 3.0, "a zero deviation gives the mean exactly");
+    Assert(NormalWith<Xoshiro256>(generator, 3.0, 0.0) == 3.0, "a zero deviation gives the mean exactly");
 
     return 0;
 }

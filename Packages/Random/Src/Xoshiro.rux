@@ -32,8 +32,8 @@ extend Xoshiro256 {
     /// several outputs are visibly poor, which is the whole reason this goes through the mixer.
     ///
     /// https://rux-lang.dev/docs/api/random/xoshiro256/new
-    func New(seed: uint64) -> Xoshiro256 {
-        var mixer = SplitMix64::New(seed);
+    func Xoshiro256(seed: uint64) -> Xoshiro256 {
+        var mixer = SplitMix64(seed);
         var generator = Xoshiro256 { state: [0, 0, 0, 0] };
         var index: uint = 0;
         while index < 4u {
@@ -41,6 +41,11 @@ extend Xoshiro256 {
             index = index + 1;
         }
         return generator;
+    }
+
+    /// Temporary compatibility spelling for `Xoshiro256(seed)`.
+    func New(seed: uint64) -> Xoshiro256 {
+        return Xoshiro256(seed);
     }
 
     /// A generator from four words of state given directly, for reproducing a stream recorded elsewhere.
@@ -51,7 +56,7 @@ extend Xoshiro256 {
     /// https://rux-lang.dev/docs/api/random/xoshiro256/from-state
     func FromState(words: uint64[4]) -> Xoshiro256 {
         if words[0] == 0u64 && words[1] == 0u64 && words[2] == 0u64 && words[3] == 0u64 {
-            return Xoshiro256::New(0u64);
+            return Xoshiro256(0u64);
         }
         return Xoshiro256 { state: words };
     }
@@ -64,7 +69,7 @@ extend Xoshiro256 : RandomGenerator {
     /// two implementations agree on the first word rather than being one step apart forever.
     ///
     /// https://rux-lang.dev/docs/api/random/xoshiro256/next-uint64
-    func NextUint64(self: *var Xoshiro256) -> uint64 {
+    func NextUint64(self: &var Xoshiro256) -> uint64 {
         let result = RotateLeft64(self.state[1] * 5u64, 7u64) * 9u64;
         let t = self.state[1] << 17u64;
         self.state[2] = self.state[2] ^ self.state[0];

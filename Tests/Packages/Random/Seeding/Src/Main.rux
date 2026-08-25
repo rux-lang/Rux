@@ -55,8 +55,8 @@ func Main() -> int {
 
     // Independence: generators are values, so drawing from one cannot disturb another. This is what a shared
     // global generator would take away, and the reason there is not one.
-    var left = Xoshiro256::New(77u64);
-    var right = Xoshiro256::New(77u64);
+    var left = Xoshiro256(77u64);
+    var right = Xoshiro256(77u64);
     var expected: uint64[8];
     index = 0;
     while index < 8u {
@@ -64,8 +64,8 @@ func Main() -> int {
         index = index + 1;
     }
     // Interleave a great deal of unrelated drawing between the second generator's draws.
-    var noise = Xoshiro256::New(1234u64);
-    var noisePcg = Pcg64Dxsm::New(4321u64);
+    var noise = Xoshiro256(1234u64);
+    var noisePcg = Pcg64Dxsm(4321u64);
     index = 0;
     while index < 8u {
         var burst: uint = 0;
@@ -80,7 +80,7 @@ func Main() -> int {
     }
 
     // A copy of a generator is a fork of its stream, not a share of it.
-    var original = Xoshiro256::New(555u64);
+    var original = Xoshiro256(555u64);
     original.NextUint64();
     var forked = original;
     let fromOriginal = original.NextUint64();

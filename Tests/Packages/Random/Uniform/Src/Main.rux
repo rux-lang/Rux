@@ -10,7 +10,7 @@ import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange
 
 func Main() -> int {
     // Every value below the bound appears, and none at or above it.
-    var generator = Xoshiro256::New(1u64);
+    var generator = Xoshiro256(1u64);
     var counts: uint[6];
     var index: uint = 0;
     while index < 6u {
@@ -19,7 +19,7 @@ func Main() -> int {
     }
     var draw: uint = 0;
     while draw < 60000u {
-        let value = UniformBelow<Xoshiro256>(@generator, 6u64);
+        let value = UniformBelow<Xoshiro256>(generator, 6u64);
         Assert(value < 6u64, "a bounded draw stays below its bound");
         counts[value as uint] = counts[value as uint] + 1;
         draw = draw + 1;
@@ -39,7 +39,7 @@ func Main() -> int {
     var highHalf: uint = 0;
     draw = 0;
     while draw < 20000u {
-        let value = UniformBelow<Xoshiro256>(@generator, halfish);
+        let value = UniformBelow<Xoshiro256>(generator, halfish);
         Assert(value < halfish, "a huge bound is still respected");
         if value < 0x4000000000000000u64 {
             lowHalf = lowHalf + 1;
@@ -55,10 +55,10 @@ func Main() -> int {
     Assert(highHalf > 9500u && highHalf < 10500u, "nor the high one");
 
     // The degenerate bounds.
-    Assert(UniformBelow<Xoshiro256>(@generator, 0u64) == 0u64, "a bound of zero has nothing to choose and gives it");
+    Assert(UniformBelow<Xoshiro256>(generator, 0u64) == 0u64, "a bound of zero has nothing to choose and gives it");
     draw = 0;
     while draw < 100u {
-        Assert(UniformBelow<Xoshiro256>(@generator, 1u64) == 0u64, "a bound of one always gives zero");
+        Assert(UniformBelow<Xoshiro256>(generator, 1u64) == 0u64, "a bound of one always gives zero");
         draw = draw + 1;
     }
 
@@ -67,7 +67,7 @@ func Main() -> int {
     var sawHigh = false;
     draw = 0;
     while draw < 20000u {
-        let value = UniformInRange<Xoshiro256>(@generator, 10u64, 20u64);
+        let value = UniformInRange<Xoshiro256>(generator, 10u64, 20u64);
         Assert(value >= 10u64 && value <= 20u64, "an inclusive range is respected at both ends");
         if value == 10u64 {
             sawLow = true;
@@ -80,12 +80,12 @@ func Main() -> int {
     Assert(sawLow && sawHigh, "and both ends actually occur");
 
     // A single-value range, a reversed one, and the full width.
-    Assert(UniformInRange<Xoshiro256>(@generator, 7u64, 7u64) == 7u64, "a range of one value gives that value");
-    Assert(UniformInRange<Xoshiro256>(@generator, 9u64, 3u64) == 9u64, "a reversed range gives its low end");
+    Assert(UniformInRange<Xoshiro256>(generator, 7u64, 7u64) == 7u64, "a range of one value gives that value");
+    Assert(UniformInRange<Xoshiro256>(generator, 9u64, 3u64) == 9u64, "a reversed range gives its low end");
     var sawAbove = false;
     draw = 0;
     while draw < 200u {
-        let value = UniformInRange<Xoshiro256>(@generator, 0u64, 0xFFFFFFFFFFFFFFFFu64);
+        let value = UniformInRange<Xoshiro256>(generator, 0u64, 0xFFFFFFFFFFFFFFFFu64);
         if value > 0x8000000000000000u64 {
             sawAbove = true;
         }
@@ -98,7 +98,7 @@ func Main() -> int {
     var sawPositive = false;
     draw = 0;
     while draw < 20000u {
-        let value = UniformInSignedRange<Xoshiro256>(@generator, -5i64, 5i64);
+        let value = UniformInSignedRange<Xoshiro256>(generator, -5i64, 5i64);
         Assert(value >= -5i64 && value <= 5i64, "a signed range crossing zero is respected");
         if value < 0i64 {
             sawNegative = true;
@@ -112,7 +112,7 @@ func Main() -> int {
     var sawVeryNegative = false;
     draw = 0;
     while draw < 200u {
-        let value = UniformInSignedRange<Xoshiro256>(@generator, -9223372036854775808i64, 9223372036854775807i64);
+        let value = UniformInSignedRange<Xoshiro256>(generator, -9223372036854775808i64, 9223372036854775807i64);
         if value < -4611686018427387904i64 {
             sawVeryNegative = true;
         }
@@ -125,7 +125,7 @@ func Main() -> int {
     var sawNearHigh = false;
     draw = 0;
     while draw < 20000u {
-        let value = UniformFloatInRange<Xoshiro256>(@generator, -2.0, 3.0);
+        let value = UniformFloatInRange<Xoshiro256>(generator, -2.0, 3.0);
         Assert(value >= -2.0 && value < 3.0, "a float range is half-open at the top");
         if value < -1.9 {
             sawNearLow = true;
@@ -136,7 +136,7 @@ func Main() -> int {
         draw = draw + 1;
     }
     Assert(sawNearLow && sawNearHigh, "and both ends are approached");
-    Assert(UniformFloatInRange<Xoshiro256>(@generator, 1.0, 1.0) == 1.0, "an empty float range gives its low end");
+    Assert(UniformFloatInRange<Xoshiro256>(generator, 1.0, 1.0) == 1.0, "an empty float range gives its low end");
 
     // An interval so wide that its span overflows to an infinity still yields values across the whole of it.
     let enormous = 1.5e308;
@@ -144,7 +144,7 @@ func Main() -> int {
     var sawAboveZero = false;
     draw = 0;
     while draw < 2000u {
-        let value = UniformFloatInRange<Xoshiro256>(@generator, -enormous, enormous);
+        let value = UniformFloatInRange<Xoshiro256>(generator, -enormous, enormous);
         Assert(value >= -enormous && value < enormous, "an interval whose span overflows is still respected");
         if value < 0.0 {
             sawBelowZero = true;

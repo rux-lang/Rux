@@ -6,11 +6,9 @@ import Entropy::{ EntropyError, EntropySource, Fill, FillFrom, FillWithRetries, 
 // the test supplies one that fails on demand, which means the code handling a failure here is the same code that
 // handles it in production.
 
-// The scripted source keeps its state behind a pointer rather than in itself, exactly as `ArenaHandle` and
-// `PoolHandle` do. Coercing a value to an interface hands the interface its own copy, so a source that counted its
-// calls in a field of its own would count them where nobody can see. Everything mutable therefore lives in
-// `ScriptState`, which stays where the test put it.
-struct ScriptState {
+// The scripted source keeps its state directly. A borrowed interface view refers to this value rather than copying
+// it, so the test can observe the same counters that the implementation updates.
+struct ScriptedSource {
     // What to report until `failures` runs out.
     error: EntropyError;
     // How many more calls report `error`; after that the source succeeds.
@@ -19,13 +17,9 @@ struct ScriptState {
     calls: uint;
 }
 
-struct ScriptedSource {
-    state: *var ScriptState;
-}
-
 extend ScriptedSource : EntropySource {
-    func Fill(self: *var ScriptedSource, buffer: *var opaque, length: uint) -> EntropyError {
-        self.state.calls = self.state.calls + 1;
+    func Fill(self: &var ScriptedSource, buffer: *var opaque, length: uint) -> EntropyError {
+        self.calls = self.calls + 1;
 
         // Write a recognizable pattern first, exactly as a real source that fails part-way through would. If the
         // facade ever let a partial write reach a caller, this is what would be sitting in the buffer.
@@ -36,16 +30,16 @@ extend ScriptedSource : EntropySource {
             index++;
         }
 
-        if self.state.failures > 0 {
-            self.state.failures = self.state.failures - 1;
-            return self.state.error;
+        if self.failures > 0 {
+            self.failures = self.failures - 1;
+            return self.error;
         }
         return EntropyError::None;
     }
 }
 
-func Scripted(state: *var ScriptState) -> ScriptedSource {
-    return ScriptedSource { state: state };
+func Scripted(error: EntropyError, failures: uint) -> ScriptedSource {
+    return ScriptedSource { error: error, failures: failures, calls: 0 };
 }
 
 func AllBytesAre(buffer: *byte, length: uint, value: byte) -> bool {
@@ -63,64 +57,57 @@ func Main() -> int {
     var storage: byte[64];
 
     // A source that always succeeds fills the buffer, in a single call.
-    var workingState = ScriptState { error: EntropyError::None, failures: 0, calls: 0 };
-    var working = Scripted(@workingState);
-    let workingSource: EntropySource = working;
+    var working = Scripted(EntropyError::None, 0);
+    let workingSource: &var EntropySource = working;
     Assert(FillFrom(workingSource, @storage[0] as *var opaque, 64) == EntropyError::None,
            "a working source fills the buffer");
-    Assert(workingState.calls == 1, "in a single call");
+    Assert(working.calls == 1, "in a single call");
     Assert(AllBytesAre(@storage[0] as *byte, 64, 0x7E), "and what it wrote is what came back");
 
     // A refusal is reported, and everything the source managed to write is destroyed before the caller sees it.
-    var refusingState = ScriptState { error: EntropyError::Failed, failures: 1, calls: 0 };
-    var refusing = Scripted(@refusingState);
-    let refusingSource: EntropySource = refusing;
+    var refusing = Scripted(EntropyError::Failed, 1);
+    let refusingSource: &var EntropySource = refusing;
     Assert(FillFrom(refusingSource, @storage[0] as *var opaque, 64) == EntropyError::Failed,
            "a refusal is reported as it was given");
     Assert(AllBytesAre(@storage[0] as *byte, 64, 0), "and the partial write is zeroized rather than left");
 
     // A system with no source reports that, and is not retried, because it will not grow one.
-    var missingState = ScriptState { error: EntropyError::Unsupported, failures: 8, calls: 0 };
-    var missing = Scripted(@missingState);
-    let missingSource: EntropySource = missing;
+    var missing = Scripted(EntropyError::Unsupported, 8);
+    let missingSource: &var EntropySource = missing;
     Assert(FillWithRetries(missingSource, @storage[0] as *var opaque, 64, 4) == EntropyError::Unsupported,
            "a system with no source reports it");
-    Assert(missingState.calls == 1, "and is asked exactly once, however many retries were offered");
+    Assert(missing.calls == 1, "and is asked exactly once, however many retries were offered");
 
     // An interruption is transient, so the retries are actually spent on it.
-    var signalledState = ScriptState { error: EntropyError::Interrupted, failures: 2, calls: 0 };
-    var signalled = Scripted(@signalledState);
-    let signalledSource: EntropySource = signalled;
+    var signalled = Scripted(EntropyError::Interrupted, 2);
+    let signalledSource: &var EntropySource = signalled;
     Assert(FillWithRetries(signalledSource, @storage[0] as *var opaque, 64, 4) == EntropyError::None,
            "an interruption that clears is retried into success");
-    Assert(signalledState.calls == 3, "taking exactly the two failures and the attempt that worked");
+    Assert(signalled.calls == 3, "taking exactly the two failures and the attempt that worked");
     Assert(AllBytesAre(@storage[0] as *byte, 64, 0x7E), "and the successful attempt is what the caller keeps");
 
     // Retries are bounded: a source that stays interrupted is given up on rather than looped on forever.
-    var stuckState = ScriptState { error: EntropyError::Interrupted, failures: 100, calls: 0 };
-    var stuck = Scripted(@stuckState);
-    let stuckSource: EntropySource = stuck;
+    var stuck = Scripted(EntropyError::Interrupted, 100);
+    let stuckSource: &var EntropySource = stuck;
     Assert(FillWithRetries(stuckSource, @storage[0] as *var opaque, 64, 3) == EntropyError::Interrupted,
            "a source that stays interrupted is given up on");
-    Assert(stuckState.calls == 4, "after the first attempt and exactly the three retries offered");
+    Assert(stuck.calls == 4, "after the first attempt and exactly the three retries offered");
     Assert(AllBytesAre(@storage[0] as *byte, 64, 0), "leaving zeros rather than a partly written buffer");
 
     // Zero retries is one attempt, which is what makes the parameter an addition rather than a total.
-    var onceState = ScriptState { error: EntropyError::Interrupted, failures: 100, calls: 0 };
-    var once = Scripted(@onceState);
-    let onceSource: EntropySource = once;
+    var once = Scripted(EntropyError::Interrupted, 100);
+    let onceSource: &var EntropySource = once;
     Assert(FillWithRetries(onceSource, @storage[0] as *var opaque, 64, 0) == EntropyError::Interrupted,
            "no retries means one attempt");
-    Assert(onceState.calls == 1, "and exactly one call");
+    Assert(once.calls == 1, "and exactly one call");
 
     // The degenerate requests never reach the source at all.
-    var untouchedState = ScriptState { error: EntropyError::Failed, failures: 100, calls: 0 };
-    var untouched = Scripted(@untouchedState);
-    let untouchedSource: EntropySource = untouched;
+    var untouched = Scripted(EntropyError::Failed, 100);
+    let untouchedSource: &var EntropySource = untouched;
     Assert(FillFrom(untouchedSource, @storage[0] as *var opaque, 0) == EntropyError::None,
            "a zero-length request succeeds");
     Assert(FillFrom(untouchedSource, null, 64) == EntropyError::Failed, "and a null buffer is refused");
-    Assert(untouchedState.calls == 0, "without either one reaching the source");
+    Assert(untouched.calls == 0, "without either one reaching the source");
 
     // The real generator, reached the way a caller reaches it.
     Assert(Fill(@storage[0] as *var opaque, 64) == EntropyError::None, "the system source fills a buffer");
@@ -128,8 +115,8 @@ func Main() -> int {
     Assert(!AllBytesAre(@storage[0] as *byte, 64, 0x7E), "and something other than the scripted pattern");
 
     // The same source through the interface, which is what generic code will be handed.
-    var system = SystemEntropy::New();
-    let systemSource: EntropySource = system;
+    var system = SystemEntropy();
+    let systemSource: &var EntropySource = system;
     Assert(FillFrom(systemSource, @storage[0] as *var opaque, 64) == EntropyError::None,
            "and does the same through the interface");
 

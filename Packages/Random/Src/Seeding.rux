@@ -23,9 +23,9 @@ import Entropy::{ EntropyError, NextUint64 };
 func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
     let seed = NextUint64(error);
     if *error != EntropyError::None {
-        return Xoshiro256::New(0u64);
+        return Xoshiro256(0u64);
     }
-    return Xoshiro256::New(seed);
+    return Xoshiro256(seed);
 }
 
 /// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
@@ -36,9 +36,9 @@ func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
 func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
     if *error != EntropyError::None {
-        return Pcg64Dxsm::New(0u64);
+        return Pcg64Dxsm(0u64);
     }
-    return Pcg64Dxsm::New(seed);
+    return Pcg64Dxsm(seed);
 }
 
 /// A `Pcg64Dxsm` seeded from entropy on the stream `stream` selects.

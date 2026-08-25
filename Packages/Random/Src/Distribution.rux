@@ -15,7 +15,7 @@ import Math::{ Cos, Log, Sin, Sqrt };
 /// impossible rather than merely rare -- which is what makes the two ends behave.
 ///
 /// https://rux-lang.dev/docs/api/random/bernoulli
-func Bernoulli<G: RandomGenerator>(generator: *var G, probability: float64) -> bool {
+func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) -> bool {
     if !(probability > 0.0) {
         return false;
     }
@@ -34,7 +34,7 @@ func Bernoulli<G: RandomGenerator>(generator: *var G, probability: float64) -> b
 /// Multiply the result by a mean, or divide by a rate, to scale it.
 ///
 /// https://rux-lang.dev/docs/api/random/exponential
-func Exponential<G: RandomGenerator>(generator: *var G) -> float64 {
+func Exponential<G: RandomGenerator>(generator: &var G) -> float64 {
     return 0.0 - Log(1.0 - NextFloat64<G>(generator));
 }
 
@@ -43,7 +43,7 @@ func Exponential<G: RandomGenerator>(generator: *var G) -> float64 {
 /// A rate at or below zero has no distribution and gives zero.
 ///
 /// https://rux-lang.dev/docs/api/random/exponential-with-rate
-func ExponentialWithRate<G: RandomGenerator>(generator: *var G, rate: float64) -> float64 {
+func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float64) -> float64 {
     if !(rate > 0.0) {
         return 0.0;
     }
@@ -66,7 +66,7 @@ const FullTurn: float64 = 6.283185307179586;
 /// a rejection loop is not.
 ///
 /// https://rux-lang.dev/docs/api/random/normal-pair
-func NormalPair<G: RandomGenerator>(generator: *var G, first: *var float64, second: *var float64) {
+func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, second: *var float64) {
     let radius = Sqrt(-2.0 * Log(1.0 - NextFloat64<G>(generator)));
     let angle = FullTurn * NextFloat64<G>(generator);
     *first = radius * Cos(angle);
@@ -79,7 +79,7 @@ func NormalPair<G: RandomGenerator>(generator: *var G, first: *var float64, seco
 /// halves the work.
 ///
 /// https://rux-lang.dev/docs/api/random/normal
-func Normal<G: RandomGenerator>(generator: *var G) -> float64 {
+func Normal<G: RandomGenerator>(generator: &var G) -> float64 {
     var first = 0.0;
     var second = 0.0;
     NormalPair<G>(generator, @first, @second);
@@ -92,6 +92,6 @@ func Normal<G: RandomGenerator>(generator: *var G) -> float64 {
 /// same one; a zero gives the mean exactly.
 ///
 /// https://rux-lang.dev/docs/api/random/normal-with
-func NormalWith<G: RandomGenerator>(generator: *var G, mean: float64, deviation: float64) -> float64 {
+func NormalWith<G: RandomGenerator>(generator: &var G, mean: float64, deviation: float64) -> float64 {
     return mean + Normal<G>(generator) * deviation;
 }

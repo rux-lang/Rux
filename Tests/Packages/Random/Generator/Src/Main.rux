@@ -10,65 +10,73 @@ import Random::{ FillBytes, NextFloat32, NextFloat64, NextUint128, NextUint16, N
 func Main() -> int {
     // The published SplitMix64 sequence from a zero seed. These are the values the reference implementation
     // produces, and they are the reason this generator can be used for seeding at all.
-    var mixer = SplitMix64::New(0u64);
+    var mixer = SplitMix64(0u64);
     Assert(mixer.NextUint64() == 0xE220A8397B1DCDAFu64, "the first word of the zero-seeded sequence");
     Assert(mixer.NextUint64() == 0x6E789E6AA1B965F4u64, "the second");
     Assert(mixer.NextUint64() == 0x06C45D188009454Fu64, "the third");
     Assert(mixer.NextUint64() == 0xF88BB8A8724C81ECu64, "and the fourth");
 
     // Every seed gives the full period, so no seed is a bad one -- including the one people reach for first.
-    var fromZero = SplitMix64::New(0u64);
-    var fromOne = SplitMix64::New(1u64);
+    var fromZero = SplitMix64(0u64);
+    var fromOne = SplitMix64(1u64);
     Assert(fromZero.NextUint64() != fromOne.NextUint64(), "adjacent seeds do not give adjacent output");
 
     // A generator is a value, so two copies from the same seed march in step -- which is what reproducibility
     // means and what a test suite depends on.
-    var first = SplitMix64::New(12345u64);
-    var second = SplitMix64::New(12345u64);
+    var first = SplitMix64(12345u64);
+    var second = SplitMix64(12345u64);
     var index: uint = 0;
     while index < 200u {
         Assert(first.NextUint64() == second.NextUint64(), "two generators from one seed agree at every step");
         index = index + 1;
     }
 
-    // Taking a generator by generic bound advances the caller's own state. If it were taken as an interface
-    // value it would advance a copy, and this would draw the same word forever.
-    var shared = SplitMix64::New(999u64);
-    let a = NextUint32<SplitMix64>(@shared);
-    let b = NextUint32<SplitMix64>(@shared);
-    let c = NextUint32<SplitMix64>(@shared);
+    // Taking a generator by mutable reference through a generic bound advances the caller's own state.
+    var shared = SplitMix64(999u64);
+    let a = NextUint32<SplitMix64>(shared);
+    let b = NextUint32<SplitMix64>(shared);
+    let c = NextUint32<SplitMix64>(shared);
     Assert(a != b || b != c, "drawing through a generic bound advances the caller's generator");
 
+    // A borrowed interface view has the same identity-preserving behavior when dynamic dispatch is useful.
+    var dynamic = SplitMix64(999u64);
+    var dynamicExpected = SplitMix64(999u64);
+    let dynamicGenerator: &var RandomGenerator = dynamic;
+    Assert(dynamicGenerator.NextUint64() == dynamicExpected.NextUint64(),
+           "a borrowed generator interface draws from the original state");
+    Assert(dynamicGenerator.NextUint64() == dynamicExpected.NextUint64(),
+           "and keeps advancing that state across calls");
+
     // A narrow draw costs a whole word, so the stream stays aligned however the draws are mixed.
-    var narrow = SplitMix64::New(7u64);
-    var wide = SplitMix64::New(7u64);
-    let narrowFirst = NextUint32<SplitMix64>(@narrow) as uint64;
+    var narrow = SplitMix64(7u64);
+    var wide = SplitMix64(7u64);
+    let narrowFirst = NextUint32<SplitMix64>(narrow) as uint64;
     let wideFirst = wide.NextUint64();
     Assert(narrowFirst == (wideFirst & 0xFFFFFFFFu64), "a 32-bit draw is the low half of the word it consumed");
-    Assert(NextUint32<SplitMix64>(@narrow) as uint64 == (wide.NextUint64() & 0xFFFFFFFFu64),
+    Assert(NextUint32<SplitMix64>(narrow) as uint64 == (wide.NextUint64() & 0xFFFFFFFFu64),
            "and the next one comes from the next word, not the discarded half");
 
-    var eight = SplitMix64::New(7u64);
-    var sixteen = SplitMix64::New(7u64);
-    Assert(NextUint8<SplitMix64>(@eight) as uint64 == (wideFirst & 0xFFu64), "an 8-bit draw is the low byte");
-    Assert(NextUint16<SplitMix64>(@sixteen) as uint64 == (wideFirst & 0xFFFFu64),
+    var eight = SplitMix64(7u64);
+    var sixteen = SplitMix64(7u64);
+    Assert(NextUint8<SplitMix64>(eight) as uint64 == (wideFirst & 0xFFu64), "an 8-bit draw is the low byte");
+    Assert(NextUint16<SplitMix64>(sixteen) as uint64 == (wideFirst & 0xFFFFu64),
            "and a 16-bit draw the low two bytes, of the same word");
 
     // A 128-bit draw takes two words, high half first.
-    var wide128 = SplitMix64::New(31u64);
-    var paired = SplitMix64::New(31u64);
+    var wide128 = SplitMix64(31u64);
+    var paired = SplitMix64(31u64);
     let high = paired.NextUint64();
     let low = paired.NextUint64();
     let expected128 = ((high as uint128) << 64u128) | (low as uint128);
-    Assert(NextUint128<SplitMix64>(@wide128) == expected128,
+    Assert(NextUint128<SplitMix64>(wide128) == expected128,
            "a 128-bit draw is two words with the first as the high half");
 
     // Filling bytes consumes words least significant byte first, and a partial word discards the rest.
-    var filler = SplitMix64::New(2024u64);
-    var reference = SplitMix64::New(2024u64);
+    var filler = SplitMix64(2024u64);
+    var reference = SplitMix64(2024u64);
     var storage: char8[24];
     let room = MutableSlice::From<char8>(@storage[0], 20);
-    FillBytes<SplitMix64>(@filler, room);
+    FillBytes<SplitMix64>(filler, room);
     var word = reference.NextUint64();
     Assert(storage[0] == (word & 0xFFu64) as uint8 as char8, "the first byte is the first word's lowest");
     Assert(storage[7] == ((word >> 56u64) & 0xFFu64) as uint8 as char8, "the eighth is its highest");
@@ -80,19 +88,19 @@ func Main() -> int {
            "and a partial final word is still consumed whole, so both generators stay in step");
 
     // Filling nothing consumes nothing.
-    var untouched = SplitMix64::New(5u64);
-    var alsoUntouched = SplitMix64::New(5u64);
+    var untouched = SplitMix64(5u64);
+    var alsoUntouched = SplitMix64(5u64);
     let empty = MutableSlice::From<char8>(@storage[0], 0);
-    FillBytes<SplitMix64>(@untouched, empty);
+    FillBytes<SplitMix64>(untouched, empty);
     Assert(untouched.NextUint64() == alsoUntouched.NextUint64(), "an empty fill draws no words");
 
     // The floats stay in their half-open interval, and reach both ends of it.
-    var floats = SplitMix64::New(4242u64);
+    var floats = SplitMix64(4242u64);
     var sawSmall = false;
     var sawLarge = false;
     var draw: uint = 0;
     while draw < 5000u {
-        let value = NextFloat64<SplitMix64>(@floats);
+        let value = NextFloat64<SplitMix64>(floats);
         Assert(value >= 0.0 && value < 1.0, "a float64 draw is in the half-open unit interval");
         if value < 0.01 {
             sawSmall = true;
@@ -104,10 +112,10 @@ func Main() -> int {
     }
     Assert(sawSmall && sawLarge, "and reaches both ends of it");
 
-    var narrowFloats = SplitMix64::New(99u64);
+    var narrowFloats = SplitMix64(99u64);
     draw = 0;
     while draw < 2000u {
-        let value = NextFloat32<SplitMix64>(@narrowFloats);
+        let value = NextFloat32<SplitMix64>(narrowFloats);
         Assert(value >= 0.0f32 && value < 1.0f32, "a float32 draw is in the half-open unit interval too");
         draw = draw + 1;
     }
