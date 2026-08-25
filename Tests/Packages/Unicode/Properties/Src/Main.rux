@@ -6,6 +6,10 @@ import Unicode::{ CategoryOf, CombiningClassOf, GeneralCategory, IsAlphabetic, I
 // deliberately nothing.
 
 func Main() -> int {
+    let category = GeneralCategory::UppercaseLetter;
+    let copiedCategory = category;
+    Assert(copiedCategory == category, "Unicode property values copy structurally");
+
     Assert(CategoryOf(0x41u32 as char32) == GeneralCategory::UppercaseLetter, "A is Lu");
     Assert(CategoryOf(0x61u32 as char32) == GeneralCategory::LowercaseLetter, "a is Ll");
     Assert(CategoryOf(0x30u32 as char32) == GeneralCategory::DecimalNumber, "zero is Nd");

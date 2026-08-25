@@ -6,7 +6,7 @@
 
 import Core::Slice;
 
-/// The Unicode general category, one per scalar value.
+/// The Unicode general category, one per scalar value. `Copy`.
 ///
 /// The ordinals match the generated table and must not be reordered: the table stores them as numbers.
 ///

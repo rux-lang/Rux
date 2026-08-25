@@ -13,12 +13,12 @@ struct Record {
 }
 
 extend Record {
-    func ==(self: *Record, other: Record) -> bool {
+    func ==(self: &Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 
-    func !=(self: *Record, other: Record) -> bool {
-        return !(*self == other);
+    func !=(self: &Record, other: Record) -> bool {
+        return !(self == other);
     }
 }
 
@@ -45,6 +45,10 @@ func Ints(data: *int32, length: uint) -> Slice<int32> {
 }
 
 func Main() -> int {
+    let original = Record { key: 7i32, origin: 11i32 };
+    let copied = original;
+    Assert(copied == original, "plain algorithm elements copy structurally");
+
     var storage: int32[7];
     storage[0] = 4;
     storage[1] = 7;

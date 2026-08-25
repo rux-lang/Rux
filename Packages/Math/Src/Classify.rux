@@ -12,7 +12,7 @@
 // own bits.
 
 
-/// The five kinds IEEE 754 sorts every value into.
+/// The five kinds IEEE 754 sorts every value into. `Copy`.
 ///
 /// https://rux-lang.dev/docs/api/math/float-class
 enum FloatClass: int32 {
@@ -330,6 +330,10 @@ const IndeterminateExponent: int64 = 9223372036854775807;
 /// unchanged with an exponent of zero -- neither has a decomposition, and inventing one would be worse than
 /// returning the value itself. The sign stays with the fraction.
 ///
+/// # Safety
+///
+/// `exponent` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/math/decompose
 func Decompose(value: float64, exponent: *var int64) -> float64 {
     *exponent = 0;
@@ -356,6 +360,10 @@ func Decompose(value: float32, exponent: *var int64) -> float32 {
 /// `integral` receives the part toward zero and the fractional part is returned, so the two always sum back to
 /// `value` exactly. An infinity puts itself in `integral` and returns a zero of the same sign; a NaN puts a NaN
 /// in both.
+///
+/// # Safety
+///
+/// `integral` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/split-integral
 func SplitIntegral(value: float64, integral: *var float64) -> float64 {

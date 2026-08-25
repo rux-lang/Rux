@@ -11,7 +11,7 @@
 
 import Core::Slice;
 
-/// The grapheme break class of a scalar value.
+/// The grapheme break class of a scalar value. `Copy`.
 ///
 /// The ordinals match the generated table and must not be reordered.
 ///

@@ -13,6 +13,9 @@ func Main() -> int {
     let notANumber = QuietNan64();
     let smallestSubnormal = ScaleByPowerOfTwo(1.0, -1074i64);
     let smallestNormal = ScaleByPowerOfTwo(1.0, -1022i64);
+    let class = FloatClass::Normal;
+    let copiedClass = class;
+    Assert(copiedClass == class, "math classification values copy structurally");
 
     // The five kinds, each recognised as itself and as nothing else.
     Assert(Classify(notANumber) == FloatClass::NotANumber, "a NaN classifies as one");

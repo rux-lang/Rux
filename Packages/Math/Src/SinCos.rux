@@ -11,6 +11,10 @@
 /// `sine` and `cosine` both receive their value. Equivalent to calling `Sin` and `Cos` separately, at roughly
 /// half the cost.
 ///
+/// # Safety
+///
+/// `sine` and `cosine` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/math/sin-cos
 func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
     // NaN propagates into both.
@@ -71,6 +75,10 @@ func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
 }
 
 /// The sine and cosine of `angle`, at the narrow width.
+///
+/// # Safety
+///
+/// `sine` and `cosine` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/sin-cos-32
 func SinCos(angle: float32, sine: *var float32, cosine: *var float32) {

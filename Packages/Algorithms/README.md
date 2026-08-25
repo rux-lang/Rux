@@ -132,22 +132,15 @@ Type arguments are always explicit — Rux does not infer them for free function
 
 ```rux
 import Algorithms::{ Reverse, Unique };
-import Collections::{ CollectionError, Vector };
+import Core::MutableSlice;
 
-let source: Slice<int32> = [3, 1, 1];
-var numbers = Vector::New<int32>();
-if !(Vector::FromSlice<int32>(source, @numbers) == CollectionError::None) {
-    return;
-}
-
-let view = numbers.AsMutableSlice();
-Reverse<int32>(view.data, view.length);
+var numbers: int32[3] = [3, 1, 1];
+let view = MutableSlice::From<int32>(@numbers[0], 3);
+Reverse<int32>(view);
 
 // Unique compacts the survivors toward the front and returns how many are
-// left, without resizing anything. Truncate is what tells the Vector.
-let kept = Unique<int32>(view.data, view.length);
-numbers.Truncate(kept);
-numbers.Free();
+// left, without resizing the caller-owned storage.
+let kept = Unique<int32>(view);
 ```
 
 A [`Rux/Core`](../Core) `MutableSlice` works the same way, and a plain fixed array needs no view at all:
@@ -157,10 +150,8 @@ import Algorithms::Rotate;
 import Core::MutableSlice;
 
 var values: int32[5] = [1, 2, 3, 4, 5];
-Rotate<int32>(@values[0], 5, 2);
-
 let view = MutableSlice::From<int32>(@values[0], 5);
-Rotate<int32>(view.data, view.length, 2);
+Rotate<int32>(view, 2);
 ```
 
 ## What it provides
@@ -317,15 +308,18 @@ struct Record {
 }
 
 extend Record {
-    func ==(self: Record, other: Record) -> bool {
+    func ==(self: &Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }
 ```
 
-Both operands are values, so both are written the same way. A larger element can take its receiver by reference instead — `func ==(self: *Record, other: Record)` — but the other operand stays a value either way: only the receiver is addressed for you, so a `*Record` there would leave `a == b` with no operator to find.
+The receiver is a shared reference: comparison borrows the stored element and cannot mutate, consume, or be null.
+The right operand remains the operator's value argument. Plain records are structural `Copy` values; types that
+prohibit copying cannot use algorithms whose operator or callback takes `T` by value.
 
-The planned ordering and search modules will require `func <` in the same way. A missing operator is reported where the algorithm is instantiated, not where it is declared.
+Ordering and search algorithms require `func <` in the same form. A missing operator is reported where the
+algorithm is instantiated, not where it is declared.
 
 ## Guarantees and limitations
 
@@ -333,8 +327,13 @@ The planned ordering and search modules will require `func <` in the same way. A
 - **Unchecked indexing**, matching `Slice` and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
-- **No stable sort.** Every sort here is unstable. A stable sort needs an auxiliary buffer, which would end the package's zero-allocation property.
-- `Algorithms::Copy` and [`Memory::Copy`](../Memory) share a name. Importing both is fine — they take different parameter types and overload — but the Algorithms one is element-wise and correct for any `T`, while the Memory one is a byte copy.
+- **Caller-provided stability.** `StableSort` requires a scratch `MutableSlice<T>` as long as the input, preserving
+  the package's zero-allocation property.
+- `Algorithms::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
+
+`Slice<T>` and `MutableSlice<T>` are borrowed views and copy only their pointer and length, never their elements.
+Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain
+raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
 
 ## Documentation
 

@@ -115,12 +115,20 @@ func CanonicalOrder(items: MutableSlice<char32>, length: uint) {
 /// Reports the length through `written`, or `false` without a defined result when the room is short. The
 /// decompositions are fully expanded in the tables, so nothing recurses.
 ///
+/// # Safety
+///
+/// `written` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/unicode/decompose-canonical
 func DecomposeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     return Decompose(text, false, into, written);
 }
 
 /// Writes the compatibility decomposition of `text` into `into`, marks in canonical order: NFKD.
+///
+/// # Safety
+///
+/// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/decompose-compatibility
 func DecomposeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
@@ -238,6 +246,10 @@ func Compose(items: MutableSlice<char32>, length: uint) -> uint {
 
 /// Writes the NFC of `text` into `into`: canonical decomposition, canonical order, then composition.
 ///
+/// # Safety
+///
+/// `written` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/unicode/normalize-canonical
 func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     var length: uint = 0;
@@ -249,6 +261,10 @@ func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written
 }
 
 /// Writes the NFKC of `text` into `into`: compatibility decomposition, canonical order, then composition.
+///
+/// # Safety
+///
+/// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/normalize-compatibility
 func NormalizeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {

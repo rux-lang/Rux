@@ -12,7 +12,7 @@ struct Ranked {
 }
 
 extend Ranked {
-    func <(self: *Ranked, other: Ranked) -> bool {
+    func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 }
