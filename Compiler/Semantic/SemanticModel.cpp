@@ -132,6 +132,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                              std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
+                             std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> inputDefaultConstructors,
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
@@ -151,6 +152,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , valueConsumptions(std::move(inputValueConsumptions))
     , valueCopies(std::move(inputValueCopies))
     , callableBindings(std::move(inputCallableBindings))
+    , defaultConstructors(std::move(inputDefaultConstructors))
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
     , constraintWitnesses(std::move(inputConstraintWitnesses))
@@ -195,6 +197,11 @@ const ValueCopy *SemanticModel::TryGetCopy(const Expr &expression) const noexcep
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
     const auto binding = callableBindings.find(&call);
     return binding == callableBindings.end() ? nullptr : &binding->second;
+}
+
+const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
+    const auto constructor = defaultConstructors.find(&statement);
+    return constructor == defaultConstructors.end() ? nullptr : &constructor->second;
 }
 
 const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &declaration) const noexcept {

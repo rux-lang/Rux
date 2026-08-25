@@ -91,6 +91,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
     std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
+    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &inputDefaultConstructors,
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
     std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
@@ -106,6 +107,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     , valueConsumptions(inputValueConsumptions)
     , valueCopies(inputValueCopies)
     , callableBindings(inputCallableBindings)
+    , defaultConstructors(inputDefaultConstructors)
     , symbolIdentities(inputSymbolIdentities)
     , vtableIdentities(inputVtableIdentities)
     , typeLayouts(inputTypeLayouts)

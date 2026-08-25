@@ -164,6 +164,7 @@ private:
     void EnsureBoundMethodInstance(const FuncDecl &method, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundDirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundMethodCall(const CallExpr &call, const ResolvedCallableBinding &binding);
+    [[nodiscard]] HirExprPtr LowerBoundConstructorCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundConstrainedCall(const CallExpr &call, const ResolvedCallableBinding &binding);
     [[nodiscard]] HirExprPtr LowerBoundIndirectCall(const CallExpr &call, const ResolvedCallableBinding &binding);

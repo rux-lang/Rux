@@ -185,6 +185,32 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
+        const FuncDecl *defaultConstructor = nullptr;
+        if (!letStatement->init && letStatement->isMut && !declarationType.IsUnknown()) {
+            std::vector<const FuncDecl *> eligible;
+            for (const FuncDecl *candidate : ConstructorCandidates(declarationType)) {
+                const bool acceptsNoArguments = std::ranges::all_of(candidate->params, [](const Param &parameter) {
+                    return parameter.isVariadic || parameter.defaultValue.has_value();
+                });
+                if (acceptsNoArguments) {
+                    eligible.push_back(candidate);
+                }
+            }
+            if (eligible.size() == 1) {
+                defaultConstructor = eligible.front();
+                const auto substitutions = MethodTypeSubstitutions(declarationType);
+                QueueGenericInstantiation(*defaultConstructor, substitutions);
+                defaultConstructors.insert_or_assign(letStatement,
+                                                     ResolvedDefaultConstructor{defaultConstructor, declarationType});
+                EmitCallSiteDiagnostics(*defaultConstructor, letStatement->location);
+            }
+            else if (eligible.size() > 1) {
+                EmitError(letStatement->location,
+                          std::format("default construction of '{}' is ambiguous", declarationType.ToString()),
+                          {"more than one constructor can be called without arguments"},
+                          "remove defaults so exactly one constructor accepts no arguments");
+            }
+        }
         if (declarationType.kind != TypeRef::Kind::Reference) {
             ValidateStoredType(declarationType, letStatement->location, "local variable");
         }
@@ -237,7 +263,7 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         symbol.location = letStatement->location;
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
-        Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr);
+        Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
         if (defined && initializerAccepted && declarationType.kind == TypeRef::Kind::Reference) {
             RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
         }

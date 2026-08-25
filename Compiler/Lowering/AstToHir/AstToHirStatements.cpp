@@ -4,6 +4,7 @@
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
 #include <algorithm>
+#include <cassert>
 #include <format>
 #include <utility>
 
@@ -54,6 +55,36 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
             statement->type ? std::optional<TypeRef>(ResolveType(**statement->type)) : std::nullopt;
         if (statement->init) {
             lowered->init = explicitType ? LowerExprAs(*statement->init, *explicitType) : LowerExpr(*statement->init);
+        }
+        else if (const ResolvedDefaultConstructor *resolved = model.TryGetDefaultConstructor(*statement)) {
+            const TypeRef constructedType = SubstituteCurrentType(resolved->type);
+            const FuncDecl &constructor = *resolved->declaration;
+            auto call = std::make_unique<HirCallExpr>();
+            call->location = statement->location;
+            call->type = constructedType;
+            auto callee = std::make_unique<HirVarExpr>();
+            callee->location = statement->location;
+            callee->name = ConcreteMethodCalleeName(BaseTypeName(constructedType.name), constructedType, constructor);
+            callee->type = AssociatedFunctionType(constructedType, constructor);
+            call->callee = std::move(callee);
+            const auto substitutions = MethodTypeSubstitutions(constructedType);
+            for (std::size_t index = 0; index < constructor.params.size(); ++index) {
+                const Param &parameter = constructor.params[index];
+                if (parameter.isVariadic) {
+                    const TypeRef elementType = ResolveTypeWithSubstitution(*parameter.type, substitutions);
+                    auto empty = std::make_unique<HirArrayExpr>();
+                    empty->location = statement->location;
+                    empty->elementType = elementType;
+                    empty->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+                    call->args.push_back(std::move(empty));
+                    continue;
+                }
+                assert(parameter.defaultValue && "default constructor has an unsatisfied required parameter");
+                const TypeRef parameterType = ResolveTypeWithSubstitution(*parameter.type, substitutions);
+                call->args.push_back(
+                    LowerDefaultArgument(**parameter.defaultValue, parameterType, statement->location));
+            }
+            lowered->init = std::move(call);
         }
         lowered->type = explicitType ? *explicitType : (lowered->init ? lowered->init->type : TypeRef::MakeUnknown());
         if (statement->pattern) {
