@@ -11,9 +11,8 @@ namespace Rux::HirToLirDetail {
 
 void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, const LirReg slot) {
     if (!IsAggregateEnumType(e.type)) {
-        auto &payloadSlots = enumPayloadSlots[slot];
-        payloadSlots.clear();
-        payloadSlots.reserve(e.payloads.size());
+        enumPayloadSlots[slot].clear();
+        enumPayloadSlots[slot].reserve(e.payloads.size());
 
         LirReg packed = EmitConst(e.discriminant, TypeRef::MakeInt64());
         for (std::size_t i = 0; i < e.payloads.size(); ++i) {
@@ -21,7 +20,9 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
             LirReg payload = LowerExpr(*payloadExpr);
             const LirReg payloadSlot = EmitAlloca(payloadExpr->type);
             EmitStore(payload, payloadSlot, payloadExpr->type);
-            payloadSlots.push_back(payloadSlot);
+            // Lowering the payload can register nested enum slots and rehash the map, so reacquire this entry rather
+            // than retaining a reference across the recursive call.
+            enumPayloadSlots[slot].push_back(payloadSlot);
 
             // The established compact enum representation has room for
             // one payload in the upper 32 bits. Wider generic enums use
@@ -39,22 +40,25 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
         return;
     }
 
-    LirReg tag = EmitConst(e.discriminant, TypeRef::MakeInt64());
-    EmitStore(tag, slot, TypeRef::MakeInt64());
+    const TypeRef tagType = EnumTagType(e.type);
+    LirReg tag = EmitConst(e.discriminant, tagType);
+    EmitStore(tag, slot, tagType);
 
-    auto &payloadSlots = enumPayloadSlots[slot];
-    payloadSlots.clear();
-    payloadSlots.reserve(e.payloads.size());
-    std::uint64_t offset = 8;
-    for (const auto &payloadExpr : e.payloads) {
+    enumPayloadSlots[slot].clear();
+    enumPayloadSlots[slot].reserve(e.payloads.size());
+    std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+    for (std::size_t index = 0; index < e.payloads.size(); ++index) {
+        const auto &payloadExpr = e.payloads[index];
         const std::uint64_t size = payloadExpr->type.SizeInBytes().value_or(8);
         const std::uint64_t align = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
         offset = (offset + align - 1) / align * align;
         const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
         const LirReg payloadSlot = EmitIndexPtr(slot, offsetReg, TypeRef::MakeChar8());
+        PushPartialCleanupFrame(e.failureCleanups, index, slot);
         const LirReg payload = LowerExpr(*payloadExpr);
         EmitStore(payload, payloadSlot, payloadExpr->type);
-        payloadSlots.push_back(payloadSlot);
+        PopPartialCleanupFrame();
+        enumPayloadSlots[slot].push_back(payloadSlot);
         offset += size;
     }
 }
@@ -75,7 +79,7 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         StoreExprIntoSlot(*s.subject, subjectSlot, s.subject->type);
     }
     const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(s.subject->type)
-                                ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
+                                ? EmitLoad(subjectSlot, EnumTagType(s.subject->type))
                                 : LowerExpr(*s.subject);
     // Reading an aggregate subject straight out of its slot skips the one place consumption is normally recorded, so
     // a subject handed over to the arms would still be destroyed as well. Clearing it here covers both paths.
@@ -210,7 +214,7 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
                     payload = EmitLoad((*enumPayload)[payloadIndex], bindType);
                 }
                 else if (subjectSlot != LirNoReg) {
-                    std::uint64_t offset = 8;
+                    std::uint64_t offset = tagType.SizeInBytes().value_or(8);
                     for (std::size_t fieldIndex = 0; fieldIndex < payloadIndex && fieldIndex < p->args.size();
                          ++fieldIndex) {
                         TypeRef fieldType = TypeRef::MakeUnknown();
@@ -570,7 +574,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         StoreExprIntoSlot(*e.subject, subjectSlot, e.subject->type);
     }
     const LirReg subjectVal = subjectSlot != LirNoReg && IsAggregateEnumType(e.subject->type)
-                                ? EmitLoad(subjectSlot, TypeRef::MakeInt64())
+                                ? EmitLoad(subjectSlot, EnumTagType(e.subject->type))
                                 : LowerExpr(*e.subject);
     ClearConsumedBinding(*e.subject);
     const std::uint32_t mergeBlock = NewBlock("match.expr.store.merge");
@@ -698,9 +702,12 @@ LirReg HirToLirContext::LowerStructInit(const HirStructInitExpr &e) {
 }
 
 void HirToLirContext::StoreStructInit(const HirStructInitExpr &e, LirReg slot) {
-    for (const auto &f : e.fields) {
+    for (std::size_t index = 0; index < e.fields.size(); ++index) {
+        const auto &f = e.fields[index];
         const LirReg ptr = EmitFieldPtr(slot, f.name, f.value->type);
+        PushPartialCleanupFrame(e.failureCleanups, index, slot);
         StoreExprIntoSlot(*f.value, ptr, f.value->type);
+        PopPartialCleanupFrame();
     }
 }
 
@@ -719,7 +726,9 @@ LirReg HirToLirContext::LowerTuple(const HirTupleExpr &e) {
 void HirToLirContext::StoreTupleInit(const HirTupleExpr &e, LirReg slot) {
     for (std::size_t i = 0; i < e.elements.size(); ++i) {
         const LirReg ptr = EmitFieldPtr(slot, std::to_string(i), e.elements[i]->type);
+        PushPartialCleanupFrame(e.failureCleanups, i, slot);
         StoreExprIntoSlot(*e.elements[i], ptr, e.elements[i]->type);
+        PopPartialCleanupFrame();
     }
 }
 
@@ -748,7 +757,9 @@ void HirToLirContext::StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
         for (std::size_t i = 0; i < e.elements.size(); ++i) {
             const LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
             const LirReg ptr = EmitIndexPtr(slot, idx, elemType);
+            PushPartialCleanupFrame(e.failureCleanups, i, slot);
             StoreExprIntoSlot(*e.elements[i], ptr, elemType);
+            PopPartialCleanupFrame();
         }
         return;
     }
@@ -756,7 +767,9 @@ void HirToLirContext::StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
     for (std::size_t i = 0; i < e.elements.size(); ++i) {
         LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());
         LirReg ptr = EmitIndexPtr(data, idx, elemType);
+        PushPartialCleanupFrame(e.failureCleanups, i, data);
         StoreExprIntoSlot(*e.elements[i], ptr, elemType);
+        PopPartialCleanupFrame();
     }
     LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
     EmitStore(data, dataField, TypeRef::MakePointer(elemType));

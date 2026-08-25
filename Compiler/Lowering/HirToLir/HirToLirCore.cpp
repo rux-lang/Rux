@@ -515,7 +515,10 @@ std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type
 }
 
 bool HirToLirContext::IsAggregateEnumType(const TypeRef &type) const {
-    return EnumLayoutSize(type).value_or(0) > 8;
+    // Semantic analysis attaches an array marker containing the complete storage size to every payload enum. Even a
+    // marker of eight bytes or fewer needs the aggregate path: the compact representation has no addressable payload
+    // storage for destruction or borrowing.
+    return EnumLayoutSize(type).has_value();
 }
 
 /// The type an enum's tag is stored as, which is what a match has to read it back as. Defaults to a full word, so an
@@ -708,6 +711,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     locals.clear();
     localConsts.clear();
     enumPayloadSlots.clear();
+    partialCleanupFrames.clear();
     LirFunc lf;
     lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
     lf.isPublic = hf.isPublic;
