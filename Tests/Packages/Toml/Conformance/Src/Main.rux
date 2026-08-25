@@ -957,7 +957,7 @@ func Differential(index: uint) -> Slice<char8> {
     }
     return "differential vector past the end";
 }
-func Render(value: *TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
+func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
     var cursor = ByteCursor::New(storage);
     let writer: TextWriter = CursorWriter::Of(@cursor);
     let failure = TomlWriteDocument(writer, value);
@@ -981,7 +981,7 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
 
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
 func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
-    var reader = TomlEventReader::New(text);
+    var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
         let event = reader.Next();
@@ -1003,13 +1003,13 @@ func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
 }
 
 // How many scalar values a tree holds, counted the same way.
-func TreeScalars(value: *TomlValue) -> uint {
+func TreeScalars(value: &TomlValue) -> uint {
     let kind = value.Kind();
     if kind == TomlKind::Table {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            total = total + TreeScalars(@value.EntryAt(index).value);
+            total = total + TreeScalars((*value.EntryAt(index)).value);
             index = index + 1u;
         }
         return total;
@@ -1018,7 +1018,7 @@ func TreeScalars(value: *TomlValue) -> uint {
         var total: uint = 0;
         var index: uint = 0;
         while index < value.Length() {
-            total = total + TreeScalars(value.At(index));
+            total = total + TreeScalars(*value.At(index));
             index = index + 1u;
         }
         return total;
@@ -1031,7 +1031,7 @@ func Main() -> int {
     let allocator: Allocator = system;
     var storage: char8[8192];
     var second: char8[8192];
-    var outcome = TomlParseOutcome::New();
+    var outcome = TomlParseOutcome();
 
     // Every document TOML accepts, accepted -- and then written, read and written again to the same bytes.
     var index: uint = 0;
@@ -1039,10 +1039,10 @@ func Main() -> int {
         let text = Valid(index);
         var parsed = TomlParse(allocator, text, @outcome);
         Assert(outcome.error == TomlParseError::None, Label(index));
-        let once = Render(@parsed, MutableSlice::From<char8>(@storage[0], 8192));
+        let once = Render(parsed, MutableSlice::From<char8>(@storage[0], 8192));
         var again = TomlParse(allocator, once, @outcome);
         Assert(outcome.error == TomlParseError::None, Reparsed(index));
-        let twice = Render(@again, MutableSlice::From<char8>(@second[0], 8192));
+        let twice = Render(again, MutableSlice::From<char8>(@second[0], 8192));
         Assert(Same(once, twice), Fixed(index));
         index = index + 1u;
     }
@@ -1068,7 +1068,7 @@ func Main() -> int {
         var clean = false;
         let streamed = StreamedScalars(text, @clean);
         Assert(clean, Differential(index));
-        Assert(streamed == TreeScalars(@parsed), Differential(index));
+        Assert(streamed == TreeScalars(parsed), Differential(index));
         index = index + 1u;
     }
 

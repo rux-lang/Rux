@@ -14,9 +14,10 @@ rux add Rux/Toml
   integers in four bases, floats, booleans, and the date and time types.
 - **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's
   table syntax unambiguous.
-- **A semantic DOM** — ordered tables and arrays with move-safe ownership, and dates and times as `Rux/Time`
-  values rather than strings.
-- **Writing** — deterministic output that chooses a valid key and string form for whatever it is given.
+- **A semantic DOM** — ordered, move-only tables and arrays with explicit `<-` transfers and deterministic
+  `~Type` cleanup, and dates and times as `Rux/Time` values rather than strings.
+- **Writing** — deterministic output that borrows the document without copying and chooses a valid key and
+  string form for whatever it is given.
 
 ## What it does not do
 
