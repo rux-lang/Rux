@@ -23,7 +23,7 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: *var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
@@ -74,13 +74,13 @@ func StreamCounts(allocator: Allocator, text: Slice<char8>, scalars: *var uint, 
 }
 
 // The same counts taken from a tree.
-func TreeCounts(value: *JsonValue, scalars: *var uint, opens: *var uint, names: *var uint) {
+func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: *var uint) {
     let kind = value.Kind();
     if kind == JsonKind::Array {
         *opens = *opens + 1u;
         var index: uint = 0;
         while index < value.Length() {
-            TreeCounts(value.At(index), scalars, opens, names);
+            TreeCounts(*value.At(index), scalars, opens, names);
             index = index + 1;
         }
         return;
@@ -91,7 +91,7 @@ func TreeCounts(value: *JsonValue, scalars: *var uint, opens: *var uint, names: 
         while index < value.Length() {
             *names = *names + 1u;
             let member = value.MemberAt(index);
-            TreeCounts(@member.value, scalars, opens, names);
+            TreeCounts((*member).value, scalars, opens, names);
             index = index + 1;
         }
         return;
@@ -215,7 +215,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
 
     var builder = StringBuilder(allocator);
     let sink: TextWriter = BuilderWriter::Of(@builder);
-    *wrote = WriteValue(sink, @value, JsonStyle::Compact());
+    *wrote = WriteValue(sink, value, JsonStyle::Compact());
     Assert(*wrote == JsonWriteError::None, "and writes");
     var once = builder.IntoString();
 
@@ -223,7 +223,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     Assert(parsed.error == JsonParseError::None, "and the written form parses");
     var secondBuilder = StringBuilder(allocator);
     let secondSink: TextWriter = BuilderWriter::Of(@secondBuilder);
-    *wrote = WriteValue(secondSink, @again, JsonStyle::Compact());
+    *wrote = WriteValue(secondSink, again, JsonStyle::Compact());
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -237,7 +237,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     var treeScalars: uint = 0;
     var treeOpens: uint = 0;
     var treeNames: uint = 0;
-    TreeCounts(@value, @treeScalars, @treeOpens, @treeNames);
+    TreeCounts(value, @treeScalars, @treeOpens, @treeNames);
     Assert(streamScalars == treeScalars, "and counts the same scalars as the tree");
     Assert(streamOpens == treeOpens, "the same containers");
     Assert(streamNames == treeNames, "and the same member names");

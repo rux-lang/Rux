@@ -194,11 +194,11 @@ func WriteNewlineAndIndent(writer: TextWriter, style: JsonStyle, level: uint) ->
 /// Writes `value` to `writer` in the given style.
 ///
 /// https://rux-lang.dev/docs/api/json/write-value
-func WriteValue(writer: TextWriter, value: *JsonValue, style: JsonStyle) -> JsonWriteError {
+func WriteValue(writer: TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
     return WriteAtLevel(writer, value, style, 0u);
 }
 
-func WriteAtLevel(writer: TextWriter, value: *JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
+func WriteAtLevel(writer: TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
     if level > 512u {
         return JsonWriteError::TooDeep;
     }
@@ -212,7 +212,7 @@ func WriteAtLevel(writer: TextWriter, value: *JsonValue, style: JsonStyle, level
         return WriteBytes(writer, flag ? "true" : "false");
     }
     if kind == JsonKind::Number {
-        let text = value.AsNumber().Text().Bytes();
+        let text = (*value.AsNumber()).Text().Bytes();
         if !IsFiniteNumberText(text) {
             // JSON has no way to spell a NaN or an infinity, so this refuses rather than emitting something
             // other parsers will reject.
@@ -265,10 +265,10 @@ func WriteAtLevel(writer: TextWriter, value: *JsonValue, style: JsonStyle, level
                     return outcome;
                 }
             }
-            outcome = WriteAtLevel(writer, @member.value, style, level + 1u);
+            outcome = WriteAtLevel(writer, (*member).value, style, level + 1u);
         }
         else {
-            outcome = WriteAtLevel(writer, value.At(index), style, level + 1u);
+            outcome = WriteAtLevel(writer, *value.At(index), style, level + 1u);
         }
         if outcome != JsonWriteError::None {
             return outcome;

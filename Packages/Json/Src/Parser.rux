@@ -91,9 +91,9 @@ extend JsonParser {
     /// A parser over `input` under `limits`, rejecting duplicate names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/new
-    func New(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
+    func JsonParser(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
         return JsonParser {
-            lexer: JsonLexer::New(input, limits),
+            lexer: JsonLexer(input, limits),
             allocator: allocator,
             limits: limits,
             duplicates: DuplicateKeyPolicy::Reject,
@@ -105,21 +105,26 @@ extend JsonParser {
         };
     }
 
+    /// Temporary compatibility spelling for the receiverless constructor.
+    func New(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
+        return JsonParser(allocator, input, limits);
+    }
+
     /// Chooses what to do about duplicate object names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy
-    func SetDuplicatePolicy(self: *var JsonParser, policy: DuplicateKeyPolicy) {
+    func SetDuplicatePolicy(self: &var JsonParser, policy: DuplicateKeyPolicy) {
         self.duplicates = policy;
     }
 
     /// Why parsing stopped.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/outcome
-    func Outcome(self: *JsonParser) -> JsonParseOutcome {
+    func Outcome(self: &JsonParser) -> JsonParseOutcome {
         return self.outcome;
     }
 
-    func Stop(self: *var JsonParser, reason: JsonParseError) -> JsonValue {
+    func Stop(self: &var JsonParser, reason: JsonParseError) -> JsonValue {
         if self.outcome.error == JsonParseError::None {
             self.outcome.error = reason;
             self.outcome.position = self.lexer.Position();
@@ -128,7 +133,7 @@ extend JsonParser {
     }
 
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
-    func TakeText(self: *var JsonParser, token: JsonToken, error: *var TextError) -> String {
+    func TakeText(self: &var JsonParser, token: JsonToken, error: *var TextError) -> String {
         let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
         if !token.escaped {
             return String::FromBytes(self.allocator, span, error);
@@ -221,7 +226,7 @@ func HexQuad(span: Slice<char8>, at: uint) -> uint32 {
 
 extend JsonParser {
     // One value, whatever kind the next token opens.
-    func ParseValue(self: *var JsonParser, token: JsonToken) -> JsonValue {
+    func ParseValue(self: &var JsonParser, token: JsonToken) -> JsonValue {
         if token.kind == JsonTokenKind::Error {
             self.outcome.error = JsonParseError::Lexical;
             self.outcome.lexical = token.error;
@@ -247,7 +252,7 @@ extend JsonParser {
             if textError != TextError::None {
                 return self.Stop(JsonParseError::OutOfMemory);
             }
-            return value;
+            return <-value;
         }
         if token.kind == JsonTokenKind::Text {
             var textError = TextError::None;
@@ -259,7 +264,7 @@ extend JsonParser {
             var value = JsonValue::Null(self.allocator);
             value.kind = JsonKind::Text;
             value.text = held;
-            return value;
+            return <-value;
         }
         if token.kind == JsonTokenKind::ArrayStart {
             return self.ParseArray();
@@ -270,7 +275,7 @@ extend JsonParser {
         return self.Stop(JsonParseError::Unexpected);
     }
 
-    func ParseArray(self: *var JsonParser) -> JsonValue {
+    func ParseArray(self: &var JsonParser) -> JsonValue {
         // The depth check happens before descending, so a document built to exhaust the stack is refused while
         // there is still stack to refuse it with.
         if self.depth >= self.limits.maximumDepth {
@@ -281,25 +286,25 @@ extend JsonParser {
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ArrayEnd {
             self.depth = self.depth - 1u;
-            return array;
+            return <-array;
         }
         var entries: uint = 0;
         while true {
             var element = self.ParseValue(token);
             if self.outcome.error != JsonParseError::None {
-                return array;
+                return <-array;
             }
             entries = entries + 1u;
             if entries > self.limits.maximumEntries {
                 return self.Stop(JsonParseError::TooManyEntries);
             }
-            if !array.Push(element) {
+            if !array.Push(<-element) {
                 return self.Stop(JsonParseError::OutOfMemory);
             }
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1u;
-                return array;
+                return <-array;
             }
             if token.kind != JsonTokenKind::Comma {
                 // A trailing comma lands here, since after one the next token is the closing bracket.
@@ -308,12 +313,12 @@ extend JsonParser {
             }
             token = self.lexer.Next();
         }
-        return array;
+        return <-array;
     }
 }
 
 extend JsonParser {
-    func ParseObject(self: *var JsonParser) -> JsonValue {
+    func ParseObject(self: &var JsonParser) -> JsonValue {
         if self.depth >= self.limits.maximumDepth {
             return self.Stop(JsonParseError::TooDeep);
         }
@@ -322,7 +327,7 @@ extend JsonParser {
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ObjectEnd {
             self.depth = self.depth - 1u;
-            return object;
+            return <-object;
         }
         var entries: uint = 0;
         while true {
@@ -330,7 +335,7 @@ extend JsonParser {
                 self.outcome.error = JsonParseError::Lexical;
                 self.outcome.lexical = token.error;
                 self.outcome.position = token.start;
-                return object;
+                return <-object;
             }
             if token.kind != JsonTokenKind::Text {
                 // A member name must be a string. An unquoted name is JavaScript, not JSON.
@@ -354,7 +359,7 @@ extend JsonParser {
             var value = self.ParseValue(self.lexer.Next());
             if self.outcome.error != JsonParseError::None {
                 name.Clear();
-                return object;
+                return <-object;
             }
 
             let existing = object.Find(name.View());
@@ -370,7 +375,7 @@ extend JsonParser {
                     token = self.lexer.Next();
                     if token.kind == JsonTokenKind::ObjectEnd {
                         self.depth = self.depth - 1u;
-                        return object;
+                        return <-object;
                     }
                     if token.kind != JsonTokenKind::Comma {
                         return self.Stop(JsonParseError::Unexpected);
@@ -389,14 +394,14 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonParseError::TooManyEntries);
             }
-            if !object.Insert(name, value) {
+            if !object.Insert(name, <-value) {
                 return self.Stop(JsonParseError::OutOfMemory);
             }
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
                 self.depth = self.depth - 1u;
-                return object;
+                return <-object;
             }
             if token.kind != JsonTokenKind::Comma {
                 return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
@@ -404,7 +409,7 @@ extend JsonParser {
             }
             token = self.lexer.Next();
         }
-        return object;
+        return <-object;
     }
 
     /// Parses the whole document and returns its top-level value.
@@ -413,17 +418,17 @@ extend JsonParser {
     /// not a document however well-formed each is.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/parse
-    func Parse(self: *var JsonParser) -> JsonValue {
+    func Parse(self: &var JsonParser) -> JsonValue {
         var value = self.ParseValue(self.lexer.Next());
         if self.outcome.error != JsonParseError::None {
-            return value;
+            return <-value;
         }
         let trailing = self.lexer.Next();
         if trailing.kind != JsonTokenKind::End {
             self.outcome.error = JsonParseError::TrailingContent;
             self.outcome.position = trailing.start;
         }
-        return value;
+        return <-value;
     }
 }
 
@@ -431,10 +436,10 @@ extend JsonParser {
 ///
 /// https://rux-lang.dev/docs/api/json/parse
 func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOutcome) -> JsonValue {
-    var parser = JsonParser::New(allocator, input, JsonLimits::Default());
+    var parser = JsonParser(allocator, input, JsonLimits::Default());
     var value = parser.Parse();
     *outcome = parser.Outcome();
-    return value;
+    return <-value;
 }
 
 /// Parses `input` under chosen limits and a chosen duplicate-name policy.
@@ -446,9 +451,9 @@ func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOut
 /// https://rux-lang.dev/docs/api/json/parse-with
 func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits, duplicates: DuplicateKeyPolicy,
                outcome: *var JsonParseOutcome) -> JsonValue {
-    var parser = JsonParser::New(allocator, input, limits);
+    var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
     var value = parser.Parse();
     *outcome = parser.Outcome();
-    return value;
+    return <-value;
 }
