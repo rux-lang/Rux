@@ -14,7 +14,10 @@ struct Tracked {
 }
 
 extend Tracked {
-    func =(self: &var Tracked, other: &Tracked);
+    func =(self: &var Tracked, other: &Tracked) {
+        self.counter = other.counter;
+        self.value = other.value;
+    }
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
@@ -99,28 +102,27 @@ func Main() -> int {
 
     // Destruction: every element of an array is destroyed exactly once when the array's life ends.
     //
-    // `Filled` copies its value into every position, and the value it was given is moved into the last of them
+    // `Filled` copies its value into every position, then destroys the source parameter when the call ends.
     // rather than copied and destroyed, so the count is the length exactly. An element type that owns something
     // could not be filled this way at all -- the copies would each claim what one of them owns -- which is why the
     // element here owns nothing but a pointer to the counter.
     var destroyed: int32 = 0;
     Assert(FillAndDrop(allocator, @destroyed, 5) == CollectionError::None, "an array of tracked elements is made");
-    Assert(destroyed == 5, "and destroying it destroys every element exactly once");
+    Assert(destroyed == 6, "and destroys every element plus the source parameter exactly once");
 
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 1) == CollectionError::None, "a single-element array is made");
-    Assert(destroyed == 1, "and destroys its one element once");
+    Assert(destroyed == 2, "and destroys its element and source parameter once");
 
-    // One, for a length of zero: the value was handed over and never stored anywhere, so `Filled` destroys it
-    // rather than leaving it to nobody. A length of one destroys one, and so does a length of none -- the same
-    // element, reached two different ways.
+    // One for a length of zero: the value was handed over and never copied anywhere, so `Filled` destroys its
+    // parameter rather than leaving it to nobody.
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 0) == CollectionError::None, "an empty array of them is made");
     Assert(destroyed == 1, "and destroys the value it was given but never stored");
 
     destroyed = 0;
     Assert(FillAndDrop(allocator, @destroyed, 32) == CollectionError::None, "a longer array is made");
-    Assert(destroyed == 32, "with the count still exactly the length");
+    Assert(destroyed == 33, "with one destruction per element plus the source parameter");
 
     return 0;
 }

@@ -73,8 +73,7 @@ protected:
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
     [[nodiscard]] bool ValidateMoveSource(const Expr &expression, SourceLocation location);
-    [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
-                                      SourceLocation location, bool explicitMove = false);
+    [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
     [[nodiscard]] static bool IsDestructorName(std::string_view name);
@@ -185,6 +184,8 @@ protected:
                                          const std::string &methodName) const;
     void RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
                                   const TypeRef &receiverType);
+    [[nodiscard]] bool RejectImplicitMove(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind,
+                                          SourceLocation location);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
     void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);

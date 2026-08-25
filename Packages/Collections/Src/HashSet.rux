@@ -132,7 +132,7 @@ extend HashSet<T> {
         if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<T>();
         }
-        let taken = self.table.keys[slot];
+        let taken <- self.table.keys[slot];
         self.table.Vacate(slot);
         return Option::Some<T>(<-taken);
     }
@@ -244,7 +244,7 @@ extend HashSetIntoIterator<T> {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
-                let taken = self.table.keys[index];
+                let taken <- self.table.keys[index];
                 self.table.states[index] = SlotEmpty;
                 self.table.length = self.table.length - 1;
                 self.cursor = index + 1;
@@ -458,7 +458,7 @@ extend HashSet<T> {
             var index: uint = 0;
             while index < self.table.Capacity() {
                 if self.table.IsOccupied(index) && !other.Contains(self.table.keys[index]) {
-                    let taken = self.table.keys[index];
+                    let taken <- self.table.keys[index];
                     self.table.Vacate(index);
                     sweeping = true;
                 }
@@ -487,7 +487,7 @@ extend HashSet<T> {
             var index: uint = 0;
             while index < self.table.Capacity() {
                 if self.table.IsOccupied(index) && other.Contains(self.table.keys[index]) {
-                    let taken = self.table.keys[index];
+                    let taken <- self.table.keys[index];
                     self.table.Vacate(index);
                     sweeping = true;
                 }
@@ -524,7 +524,7 @@ extend HashSet<T> {
                 .Some(value) => {
                     var slot: uint = 0;
                     if self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
-                        let taken = self.table.keys[slot];
+                        let taken <- self.table.keys[slot];
                         self.table.Vacate(slot);
                     }
                     else {

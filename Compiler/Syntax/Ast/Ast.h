@@ -501,7 +501,6 @@ struct Param {
     SourceLocation location;
     std::string name;
     TypeExprPtr type;
-    bool isMut = false;      // `var name: T`; parameters are immutable by default
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
 

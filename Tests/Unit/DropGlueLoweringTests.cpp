@@ -89,7 +89,7 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let held = Handle { slot: 1i32 };
-                let copied = held;
+                let copied <- held;
                 return 0;
             }
         )");
@@ -156,12 +156,12 @@ TEST_SUITE("DropGlueLowering") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let first = Handle { slot: 1i32 };
-                let second = first;
+                let second <- first;
                 return 0;
             }
         )");
 
-        // Two bindings, but the first one's flag is cleared by the move, so only one of the two calls can run.
+        // Two bindings, but the explicit move clears the first flag, so only one of the two calls can run.
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Handle")), 2);
     }
 

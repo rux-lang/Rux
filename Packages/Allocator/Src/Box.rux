@@ -60,7 +60,7 @@ extend Box<T> {
             return Box<T> { pointer: null, allocator: allocator };
         }
         let typed = block as *var T;
-        *typed = value;
+        *typed <- value;
         return Box<T> { pointer: typed, allocator: allocator };
     }
 
@@ -108,7 +108,7 @@ extend Box<T> {
             return false;
         }
         let held = self.pointer;
-        *destination = *held;
+        *destination <- *held;
         let layout = LayoutOf<T>();
         self.allocator.Deallocate(held as *var opaque, layout);
         self.pointer = null;
@@ -136,5 +136,5 @@ extend Box<T> {
 // Moving the stored value into this helper destroys it before the allocation containing it is released. The raw
 // load is the allocator boundary: the compiler's explicit raw-storage move syntax lands in the ownership cutover.
 func DestroyBoxValue<T>(pointer: *var T) {
-    let taken = pointer[0];
+    let taken <- pointer[0];
 }

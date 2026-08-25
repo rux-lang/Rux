@@ -57,7 +57,7 @@ when true {
 
 #Link("library", "symbol")
 #Abi(.C)
-pub extern func Imported(var buffer: *var uint8, ...) -> int;
+pub extern func Imported(buffer: *var uint8, ...) -> int;
 pub extern Shared: Core::Thing;
 
 asm func Raw() {
@@ -123,7 +123,7 @@ asm func Raw() {
         LiteralExpr (int) '0'
   #Link("library", "symbol")
   #Abi(.C)
-  pub ExternFuncDecl 'Imported' (var buffer: *var uint8, ...) -> int
+  pub ExternFuncDecl 'Imported' (buffer: *var uint8, ...) -> int
   pub ExternVarDecl 'Shared' : Core::Thing
   asm FuncDecl 'Raw' ()
     mov rax, [rbx + 8]

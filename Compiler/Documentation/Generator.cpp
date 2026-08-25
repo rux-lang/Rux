@@ -290,7 +290,7 @@ std::string FunctionSignature(const FuncDecl &function) {
         if (parameter.isVariadic)
             text += "...";
         else
-            text += (parameter.isMut ? "var " : "") + parameter.name + ": " + TypeText(parameter.type.get());
+            text += parameter.name + ": " + TypeText(parameter.type.get());
     }
     text += ')';
     if (function.returnType)

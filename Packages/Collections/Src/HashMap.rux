@@ -178,7 +178,7 @@ extend HashMap<K, V> {
         if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             // Reading the old value into a local destroys it when the local's life ends, which is what keeps a
             // replaced value from being leaked.
-            let replaced = self.table.values[slot];
+            let replaced <- self.table.values[slot];
             self.table.values[slot] <- value;
             return CollectionError::None;
         }
@@ -210,8 +210,8 @@ extend HashMap<K, V> {
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<V>();
         }
-        let takenKey = self.table.keys[slot];
-        let takenValue = self.table.values[slot];
+        let takenKey <- self.table.keys[slot];
+        let takenValue <- self.table.values[slot];
         self.table.Vacate(slot);
         return Option::Some<V>(<-takenValue);
     }
@@ -347,7 +347,7 @@ extend HashMap<K, V> {
     func Replace(self: &var HashMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
         var slot: uint = 0;
         if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            let previous = self.table.values[slot];
+            let previous <- self.table.values[slot];
             self.table.values[slot] <- value;
             *error = CollectionError::None;
             return Option::Some<V>(<-previous);
@@ -381,8 +381,8 @@ extend HashMap<K, V> {
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<KeyValue<K, V>>();
         }
-        let takenKey = self.table.keys[slot];
-        let takenValue = self.table.values[slot];
+        let takenKey <- self.table.keys[slot];
+        let takenValue <- self.table.values[slot];
         self.table.Vacate(slot);
         return Option::Some<KeyValue<K, V>>(KeyValue<K, V> { key: <-takenKey, value: <-takenValue });
     }
@@ -455,8 +455,8 @@ extend HashMapIntoIterator<K, V> {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
-                let takenKey = self.table.keys[index];
-                let takenValue = self.table.values[index];
+                let takenKey <- self.table.keys[index];
+                let takenValue <- self.table.values[index];
                 self.table.states[index] = SlotEmpty;
                 self.table.length = self.table.length - 1;
                 self.cursor = index + 1;

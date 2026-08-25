@@ -244,7 +244,7 @@ extend Array<T> {
             // Reading the element into a local moves it there, and the local's life ends on the next line -- which
             // is what destroys an element whose type owns something, and copies nothing at all for one that does
             // not. There is no other way for a container to destroy an element it does not know is droppable.
-            let taken = self.data[index];
+            let taken <- self.data[index];
             index++;
         }
         ReleaseBlock<T>(self.allocator, self.data, self.length);

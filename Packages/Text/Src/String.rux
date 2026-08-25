@@ -260,15 +260,16 @@ extend String {
     ///
     /// A fresh value transfers directly. Passing a named string first invokes its deep copy, so the caller keeps an
     /// independent original.
-    func ReplaceWith(self: &var String, var value: String) {
+    func ReplaceWith(self: &var String, value: String) {
+        var owned <- value;
         self.Clear();
-        self.data = value.data;
-        self.length = value.length;
-        self.capacity = value.capacity;
-        self.allocator = value.allocator;
-        value.data = null;
-        value.length = 0;
-        value.capacity = 0;
+        self.data = owned.data;
+        self.length = owned.length;
+        self.capacity = owned.capacity;
+        self.allocator = owned.allocator;
+        owned.data = null;
+        owned.length = 0;
+        owned.capacity = 0;
     }
 }
 

@@ -62,7 +62,7 @@ A `const` array declared in one file of a package and read from another was not 
 
 Storing a `T` into a generic container's storage was not recognized as consuming it, so the container kept a copy and the caller's value was destroyed where it stood — a use-after-free for any element owning memory. Consumption is now recorded as a question where it is asked and answered at each instantiation, and methods and associated functions of generic types are queued as instantiations at all, which they never were.
 
-Reference provenance and explicit move operands now answer the public legality question: ownership cannot move through a reference or caller-visible raw pointer merely because the pointee type is movable. Named transfers use `<-`, so source invalidation is visible where it occurs. Containers retain a narrow internal raw-relocation compatibility path until the language can name an owned raw place; their public borrowed views never transfer ownership.
+Reference provenance and explicit move operands now answer the public legality question: ownership cannot move through a reference or caller-visible raw pointer merely because the pointee type is movable. Named transfers use `<-`, so source invalidation is visible where it occurs. Generic owning containers have a narrow internal raw-storage transfer rule because the type system cannot yet distinguish their owned allocation from a borrowed raw pointer; the explicit `<-` remains required, while their public borrowed views never transfer ownership.
 
 ### A match-arm payload was destroyed twice, then not at all — fixed in `30d464a8` and `85d5d402`
 

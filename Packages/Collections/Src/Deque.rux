@@ -285,7 +285,7 @@ extend Deque<T> {
         while index < self.length {
             // Moving each element into a local destroys it when the local's life ends, which is the only way a
             // container has to destroy an element it does not know is droppable.
-            let taken = self.data[self.SlotOf(index)];
+            let taken <- self.data[self.SlotOf(index)];
             index++;
         }
         self.head = 0;
@@ -372,7 +372,7 @@ extend Deque<T> {
         if self.length == 0 {
             return Option::None<T>();
         }
-        let taken = self.data[self.head];
+        let taken <- self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
         return Option::Some<T>(<-taken);
@@ -389,8 +389,7 @@ extend Deque<T> {
             return Option::None<T>();
         }
         self.length = self.length - 1;
-        // Raw backing storage is the ownership boundary: reference loans cannot move through it explicitly yet.
-        return Option::Some<T>(self.data[self.SlotOf(self.length)]);
+        return Option::Some<T>(<-self.data[self.SlotOf(self.length)]);
     }
 
     /// A pointer to the front element, or `None` for an empty deque.

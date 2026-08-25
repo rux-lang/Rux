@@ -305,7 +305,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         sym.name = param.name;
         sym.type =
             param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type))) : ResolveType(*param.type);
-        sym.isMut = param.isMut;
+        sym.isMut = false;
         sym.bindingId = RegisterCleanupBinding(sym.name, sym.type, param.location);
         Define(sym);
     }

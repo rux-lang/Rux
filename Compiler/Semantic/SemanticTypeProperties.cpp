@@ -97,8 +97,7 @@ void SemanticAnalyzerContext::ValidateDestructor(const FuncDecl &method, const T
 
     const bool canonical = [&] {
         if (!method.typeParams.empty() || method.params.size() != 1 || method.returnType ||
-            method.params[0].name != "self" || method.params[0].isMut || method.params[0].isVariadic ||
-            method.params[0].defaultValue) {
+            method.params[0].name != "self" || method.params[0].isVariadic || method.params[0].defaultValue) {
             return false;
         }
         TypeRef receiver = ResolveType(*method.params[0].type);
@@ -132,9 +131,8 @@ void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, c
     const bool copy = method.name == "=";
     const auto operationSignature = [&] {
         if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
-            method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isMut ||
-            method.params[1].isMut || method.params[0].isVariadic || method.params[1].isVariadic ||
-            method.params[0].defaultValue || method.params[1].defaultValue) {
+            method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isVariadic ||
+            method.params[1].isVariadic || method.params[0].defaultValue || method.params[1].defaultValue) {
             return false;
         }
 

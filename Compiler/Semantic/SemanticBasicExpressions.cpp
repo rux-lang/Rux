@@ -284,9 +284,6 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                               "use '<-' if ownership should move instead");
                     return TypeRef::MakeOpaque();
                 }
-                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location, false)) {
-                    return TypeRef::MakeOpaque();
-                }
                 valueCopies.insert_or_assign(
                     assignment->value.get(),
                     ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
@@ -310,8 +307,7 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
                               "write '=' to assign or reborrow the reference");
                     return TypeRef::MakeOpaque();
                 }
-                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location,
-                                   explicitMove)) {
+                if (explicitMove && RejectSelfMove(*assignment->target, *assignment->value, assignment->location)) {
                     return TypeRef::MakeOpaque();
                 }
                 if (explicitMove) {
@@ -419,9 +415,17 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
                 }
                 continue;
             }
-            // What the parameter stands for decides. A move-only argument hands its value over, and the fact is what
-            // tells lowering not to destroy the source afterwards.
-            if (deferred.kind != ValueConsumptionKind::ExplicitMove && !properties.IsMoveOnly()) {
+            if (deferred.kind != ValueConsumptionKind::ExplicitMove) {
+                if (properties.IsMoveOnly()) {
+                    static_cast<void>(
+                        RejectImplicitMove(*deferred.expression, resolved, deferred.kind, deferred.location));
+                }
+                continue;
+            }
+            // A method of a generic aggregate can be queued while another generic body still names the aggregate's
+            // parameter. That is not a concrete ownership decision yet; the later concrete instantiation validates
+            // it with the matching substitution.
+            if (!properties.IsResolved() || MentionsTypeParameter(resolved)) {
                 continue;
             }
             if (!properties.IsMovable()) {

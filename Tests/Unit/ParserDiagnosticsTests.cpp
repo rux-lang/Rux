@@ -132,6 +132,22 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
     }
 }
 
+TEST_CASE("removed mutable parameters provide final binding and reference syntax") {
+    const auto parsed = ParseSource("func Replace(var value: Item, var self: Widget);");
+    REQUIRE_EQ(parsed.diagnostics.size(), 2);
+
+    CHECK_EQ(parsed.diagnostics[0].message, "mutable parameter syntax 'var value: T' has been removed");
+    REQUIRE(parsed.diagnostics[0].help.has_value());
+    CHECK(parsed.diagnostics[0].help->contains("value: T"));
+    CHECK(parsed.diagnostics[0].help->contains("var local <- value"));
+    CHECK(parsed.diagnostics[0].help->contains("value: &var T"));
+
+    CHECK_EQ(parsed.diagnostics[1].message, "mutable parameter syntax 'var self: T' has been removed");
+    REQUIRE(parsed.diagnostics[1].help.has_value());
+    CHECK(parsed.diagnostics[1].help->contains("self: T"));
+    CHECK(parsed.diagnostics[1].help->contains("self: &var T"));
+}
+
 TEST_CASE("type diagnostics carry declaration-specific corrective help") {
     const auto field = ParseSource("struct Broken { value: }");
     const auto *fieldDiagnostic = FindDiagnostic(field, "expected a type before '}'");

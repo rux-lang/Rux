@@ -7,6 +7,30 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
+namespace {
+std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string &place) {
+    switch (kind) {
+    case ValueConsumptionKind::Initialization:
+        return std::format("write 'let destination <- {}' to transfer ownership", place);
+    case ValueConsumptionKind::Assignment:
+        return std::format("write 'destination <- {}' to transfer ownership", place);
+    case ValueConsumptionKind::Argument:
+        return std::format("prefix the argument with '<-', as in 'Take(<-{})'", place);
+    case ValueConsumptionKind::Receiver:
+        return std::format("prefix the receiver with '<-', as in '(<-{}).Method()'", place);
+    case ValueConsumptionKind::Return:
+        return std::format("prefix the return value with '<-', as in 'return <-{}'", place);
+    case ValueConsumptionKind::Aggregate:
+        return std::format("prefix the aggregate value with '<-', as in '{{ field: <-{} }}'", place);
+    case ValueConsumptionKind::ConditionalArm:
+        return std::format("prefix the selected value with '<-', as in 'condition ? <-{} : fallback'", place);
+    case ValueConsumptionKind::ExplicitMove:
+        break;
+    }
+    return std::format("prefix the value with '<-', as in '<-{}'", place);
+}
+} // namespace
+
 Symbol *SemanticAnalyzerContext::Define(Symbol symbol) {
     const std::string name = symbol.name;
     if (!currentScope->Define(std::move(symbol), diags, currentFile)) {
@@ -389,12 +413,41 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const S
         }
         return self(*object);
     };
-    if (usesReferenceStorage(expression)) {
+    const auto usesRawPointerStorage = [&](this auto &&self, const Expr &candidate) -> bool {
+        const Expr *object = nullptr;
+        if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate)) {
+            object = index->object.get();
+        }
+        else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&candidate);
+                 unary && unary->op == TokenKind::Star) {
+            object = unary->operand.get();
+        }
+        if (!object) {
+            return false;
+        }
+        if (const auto found = expressionTypes.find(object);
+            found != expressionTypes.end() && found->second.kind == TypeRef::Kind::Pointer) {
+            return true;
+        }
+        return self(*object);
+    };
+    const bool rawPointerStorage = usesRawPointerStorage(expression);
+    if (usesReferenceStorage(expression) && !rawPointerStorage) {
         const MovePlace place = AnalyzeMovePlace(expression);
         EmitError(location, std::format("cannot move '{}' out of borrowed reference storage", place.Display()),
                   {"references do not transfer ownership of the value they borrow"},
                   "move the owning value or clone the borrowed value explicitly");
         return false;
+    }
+    if (rawPointerStorage && currentFunctionDecl && !currentTypeParams.empty()) {
+        // Generic owning containers cannot encode ownership in `*var T`. Requiring `<-` makes the unsafe transfer
+        // visible, and restricting the exception to a generic body keeps concrete raw pointers borrowed by default.
+        // An extend block contributes its aggregate's parameters to `currentTypeParams`; they are not repeated on
+        // every method declaration.
+        return true;
     }
     const MovePlace place = AnalyzeMovePlace(expression);
     if (place.IsBorrowedStorage()) {
@@ -415,15 +468,29 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const S
     return false;
 }
 
-bool SemanticAnalyzerContext::RejectSelfMove(const Expr &target, const Expr &value, const TypeRef &type,
-                                             const SourceLocation location, const bool explicitMove) {
-    if ((!explicitMove && !ClassifyTypeProperties(type).IsMoveOnly()) || !SameStoragePlace(target, value)) {
+bool SemanticAnalyzerContext::RejectSelfMove(const Expr &target, const Expr &value, const SourceLocation location) {
+    if (!SameStoragePlace(target, value)) {
         return false;
     }
     const std::string place = AnalyzeMovePlace(target).Display();
     EmitError(location, std::format("cannot move '{}' into itself", place),
               {"the assignment source and destination identify the same move-only storage"},
               "remove the assignment or assign a distinct value");
+    return true;
+}
+
+bool SemanticAnalyzerContext::RejectImplicitMove(const Expr &expression, const TypeRef &type,
+                                                 const ValueConsumptionKind kind, const SourceLocation location) {
+    const MovePlace place = AnalyzeMovePlace(expression);
+    if (!place.IsNamedStorage() && !place.IsBorrowedStorage()) {
+        return false;
+    }
+    const std::string display = place.Display();
+    EmitError(
+        location,
+        std::format("move-only value '{}' requires an explicit '<-' in {}", display, ValueConsumptionKindName(kind)),
+        {std::format("plain by-value use copies its source, but '{}' prohibits copying", type.ToString())},
+        ExplicitMoveHelp(kind, display));
     return true;
 }
 
@@ -438,10 +505,9 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
         return;
     }
     if (!ClassifyTypeProperties(type).IsResolved() && MentionsTypeParameter(type) && currentFunctionDecl) {
-        // Whether handing this value over consumes it depends on what the parameter stands for, which is not known
-        // here and is known at every instantiation. Recording the question is what lets each instantiation answer
-        // it; without that a generic container kept a copy of what it was given and the caller's value was destroyed
-        // where it stood, which for an element owning memory is a use-after-free.
+        // Plain by-value use means copy, but whether a symbolic type permits that is known only at instantiation.
+        // Record the question so a copyable argument receives its copy plan and a move-only one gets the explicit
+        // transfer diagnostic at the generic source location.
         deferredConsumptions[currentFunctionDecl].push_back({&expression, kind, type, location});
         return;
     }
@@ -464,6 +530,11 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
     if (!properties.IsMoveOnly()) {
         return;
     }
+    if (RejectImplicitMove(expression, type, kind, location)) {
+        return;
+    }
+    // A fresh temporary has no named source whose later use could hide an ownership transfer, but lowering still
+    // needs the consumption fact to transfer its drop flag into the destination instead of destroying both values.
     if (!properties.IsMovable()) {
         EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
                   {"the type declares its canonical move operation without a body"},
@@ -474,16 +545,8 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
-        const MovePlace place = AnalyzeMovePlace(expression);
-        const bool constructsDestination = place.IsNamedStorage();
-        const FuncDecl *custom = nullptr;
-        if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
-            if (const FuncDecl *operation = LookupMethod(type, "<-", {type}); operation && operation->body) {
-                custom = operation;
-            }
-        }
-        valueConsumptions.insert_or_assign(&expression,
-                                           ValueConsumption{kind, type, location, custom, constructsDestination});
+        valueConsumptions.insert_or_assign(
+            &expression, ValueConsumption{kind, type, location, nullptr, /*constructsDestination=*/false});
     }
 }
 

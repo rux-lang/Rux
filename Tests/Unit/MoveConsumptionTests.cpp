@@ -216,8 +216,9 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
             return <- local;
         }
 
-        func Replace(var destination: Handle, source: Handle) {
-            destination <- source;
+        func Replace(destination: Handle, source: Handle) {
+            var target <- destination;
+            target <- source;
         }
 
         func Fresh() -> Handle {
@@ -242,13 +243,15 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     const HirFunc &replace = RequireFunction(package, "Replace");
     REQUIRE(replace.body.has_value());
     REQUIRE_EQ(replace.params.size(), 2);
-    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[0].get());
+    const auto *target = dynamic_cast<const HirLetStmt *>(replace.body->stmts[0].get());
+    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[1].get());
+    REQUIRE(target != nullptr);
     REQUIRE(statement != nullptr);
     const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
     CHECK_EQ(assignment->op, TokenKind::MoveArrow);
     REQUIRE(assignment->overwriteCleanup.has_value());
-    CHECK_EQ(assignment->overwriteCleanup->bindingId, replace.params[0].bindingId);
+    CHECK_EQ(assignment->overwriteCleanup->bindingId, target->bindingId);
     CHECK_EQ(assignment->value->consumption, ValueConsumptionKind::ExplicitMove);
     CHECK_EQ(assignment->value->consumedBindingId, replace.params[1].bindingId);
 
@@ -327,8 +330,9 @@ TEST_CASE("custom move assignment reuses conditional destination cleanup") {
             }
         }
 
-        func Replace(var destination: Cell, source: Cell) {
-            destination <- source;
+        func Replace(destination: Cell, source: Cell) {
+            var target <- destination;
+            target <- source;
         }
         func Initialize(source: Cell) {
             var destination: Cell;
@@ -340,8 +344,7 @@ TEST_CASE("custom move assignment reuses conditional destination cleanup") {
     for (const std::string name : {"Replace", "Initialize"}) {
         const HirFunc &function = RequireFunction(hir, name);
         REQUIRE(function.body.has_value());
-        const std::size_t statementIndex = name == "Replace" ? 0 : 1;
-        const auto *statement = dynamic_cast<const HirExprStmt *>(function.body->stmts[statementIndex].get());
+        const auto *statement = dynamic_cast<const HirExprStmt *>(function.body->stmts[1].get());
         REQUIRE(statement != nullptr);
         const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
         REQUIRE(assignment != nullptr);
@@ -451,7 +454,8 @@ TEST_CASE("cross-source copy assignment constructs scratch before replacing the 
             }
         }
 
-        func Replace(var destination: Cell, source: Seed) {
+        func Replace(source: Seed) {
+            var destination = Cell { value: 0 };
             destination = source;
         }
     )";
@@ -459,7 +463,7 @@ TEST_CASE("cross-source copy assignment constructs scratch before replacing the 
     const HirPackage hir = LowerConsumptionHir(source);
     const HirFunc &replace = RequireFunction(hir, "Replace");
     REQUIRE(replace.body.has_value());
-    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[0].get());
+    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[1].get());
     REQUIRE(statement != nullptr);
     const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
@@ -515,7 +519,40 @@ TEST_CASE("generated enum copies recursively copy the active owning payload") {
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 1);
 }
 
-TEST_CASE("move-only values are consumed in every by-value context") {
+TEST_CASE("named move-only values require explicit transfer syntax in every by-value context") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
+
+        func Take(value: Handle) {}
+
+        func MissingInitialization(source: Handle) {
+            let destination = source;
+        }
+
+        func MissingArgument(source: Handle) {
+            Take(source);
+        }
+
+        func MissingReturn(source: Handle) -> Handle {
+            return source;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "move-only value 'source' requires an explicit '<-' in initialization");
+    CHECK_EQ(diagnostics[0].help, "write 'let destination <- source' to transfer ownership");
+    CHECK_EQ(diagnostics[1].message, "move-only value 'source' requires an explicit '<-' in argument");
+    CHECK_EQ(diagnostics[1].help, "prefix the argument with '<-', as in 'Take(<-source)'");
+    CHECK_EQ(diagnostics[2].message, "move-only value 'source' requires an explicit '<-' in return");
+    CHECK_EQ(diagnostics[2].help, "prefix the return value with '<-', as in 'return <-source'");
+}
+
+TEST_CASE("explicit syntax consumes move-only values in every by-value context") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
 
         struct Handle { value: int32; }
@@ -813,7 +850,7 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
                 first;
             }
             let last = Handle { value: 3 };
-            Take(last);
+            Take(<-last);
         }
     )");
 
@@ -872,9 +909,9 @@ TEST_CASE("returns evaluate their value before conditionally destroying every li
             let outer = Handle { value: 1 };
             if selectNested {
                 let nested = Handle { value: 2 };
-                return nested;
+                return <-nested;
             }
-            return parameter;
+            return <-parameter;
         }
     )");
 
@@ -967,12 +1004,14 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
         }
         struct Owner { handle: Handle; }
 
-        func Replace(var destination: Handle, source: Handle) {
-            destination <- source;
+        func Replace(destination: Handle, source: Handle) {
+            var target <- destination;
+            target <- source;
         }
 
-        func ReplaceField(var owner: Owner, source: Handle) {
-            owner.handle <- source;
+        func ReplaceField(owner: Owner, source: Handle) {
+            var target <- owner;
+            target.handle <- source;
         }
 
         func Initialize(source: Handle) {
@@ -984,18 +1023,20 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
     const HirFunc &replace = RequireFunction(package, "Replace");
     REQUIRE(replace.body.has_value());
     REQUIRE_EQ(replace.params.size(), 2);
-    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[0].get());
+    const auto *target = dynamic_cast<const HirLetStmt *>(replace.body->stmts[0].get());
+    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[1].get());
+    REQUIRE(target != nullptr);
     REQUIRE(statement != nullptr);
     const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
     REQUIRE(assignment->overwriteCleanup.has_value());
-    CHECK_EQ(assignment->overwriteCleanup->bindingId, replace.params[0].bindingId);
+    CHECK_EQ(assignment->overwriteCleanup->bindingId, target->bindingId);
     CHECK_EQ(assignment->overwriteCleanup->glueSymbol, "__rux_drop__Handle");
     CHECK_EQ(assignment->value->consumedBindingId, replace.params[1].bindingId);
 
     const HirFunc &replaceField = RequireFunction(package, "ReplaceField");
     REQUIRE(replaceField.body.has_value());
-    const auto *fieldStatement = dynamic_cast<const HirExprStmt *>(replaceField.body->stmts[0].get());
+    const auto *fieldStatement = dynamic_cast<const HirExprStmt *>(replaceField.body->stmts[1].get());
     REQUIRE(fieldStatement != nullptr);
     const auto *fieldAssignment = dynamic_cast<const HirAssignExpr *>(fieldStatement->expr.get());
     REQUIRE(fieldAssignment != nullptr);
@@ -1027,13 +1068,13 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
         enum Choice { Both(Handle, Handle) }
 
         func Build(first: Handle, last: Handle) -> Owner {
-            return Owner { first: first, copy: 1, last: last };
+            return Owner { first: <-first, copy: 1, last: <-last };
         }
 
         func Aggregate(a: Handle, b: Handle, c: Handle, d: Handle, e: Handle, f: Handle) {
-            let array = [a, b];
-            let tuple = (c, 1, d);
-            let choice = Choice::Both(e, f);
+            let array = [<-a, <-b];
+            let tuple = (<-c, 1, <-d);
+            let choice = Choice::Both(<-e, <-f);
         }
     )");
 
@@ -1084,7 +1125,9 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
 
         func Take(value: Handle) {}
 
-        func Invalid(var handle: Handle, var owner: Owner, values: Handle[2], pointer: *Handle) {
+        func Invalid(inputHandle: Handle, inputOwner: Owner, values: Handle[2], pointer: *Handle) {
+            var handle <- inputHandle;
+            var owner <- inputOwner;
             Take(<-owner.handle);
             Take(<-values[0]);
             Take(<-*pointer);

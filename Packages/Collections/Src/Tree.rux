@@ -383,7 +383,7 @@ extend Tree<K, V> {
                 descendedLeft = false;
             }
             else {
-                let displaced = walk.value;
+                let displaced <- walk.value;
                 walk.value <- value;
                 *replaced <- Option::Some<V>(<-displaced);
                 return CollectionError::None;
@@ -585,8 +585,8 @@ extend Tree<K, V> {
             self.RemoveFixup(risen, risenParent);
         }
 
-        let key = node.key;
-        let value = node.value;
+        let key <- node.key;
+        let value <- node.value;
         ReleaseBlock<TreeNode<K, V>>(self.allocator, node, 1);
         return KeyValue<K, V> { key: <-key, value: <-value };
     }
@@ -623,8 +623,8 @@ extend Tree<K, V> {
                 }
                 // Reading the key and the value out gives them to locals, and the locals dying here is what
                 // destroys them. Nothing else in a generic container can reach a destructor.
-                let key = walk.key;
-                let value = walk.value;
+                let key <- walk.key;
+                let value <- walk.value;
                 ReleaseBlock<TreeNode<K, V>>(self.allocator, walk, 1);
                 walk = above;
             }

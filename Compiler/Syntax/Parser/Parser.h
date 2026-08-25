@@ -87,7 +87,7 @@ private:
     [[nodiscard]] bool IsTypeArgListAhead() const noexcept;
 
     // Diagnostics
-    void EmitError(SourceLocation loc, std::string message);
+    void EmitError(SourceLocation loc, std::string message, std::optional<std::string> help = {});
     void EmitExpected(SourceLocation loc, std::string_view expected, std::optional<std::string> help = {});
     void EmitWarning(SourceLocation loc, std::string message);
 

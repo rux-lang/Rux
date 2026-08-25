@@ -2257,7 +2257,7 @@ private:
             if (sym.type.kind != TypeRef::Kind::Reference) {
                 ValidateStoredType(sym.type, param.location, "function parameter");
             }
-            sym.isMut = param.isMut;
+            sym.isMut = false;
             DefineTrackedLocal(std::move(sym), true);
             if (param.defaultValue) {
                 TypeRef paramType = ResolveType(*param.type);

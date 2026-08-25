@@ -324,9 +324,9 @@ bool Parser::IsTypeArgListAhead() const noexcept {
 }
 
 // Diagnostics
-void Parser::EmitError(const SourceLocation loc, std::string message) {
-    diagnostics.push_back(
-        ParserDiagnostic{ParserDiagnostic::Severity::Error, sourceName, loc, std::move(message), {}, {}, {}});
+void Parser::EmitError(const SourceLocation loc, std::string message, std::optional<std::string> help) {
+    diagnostics.push_back(ParserDiagnostic{
+        ParserDiagnostic::Severity::Error, sourceName, loc, std::move(message), {}, std::move(help), {}});
 }
 
 void Parser::EmitExpected(const SourceLocation loc, const std::string_view expected, std::optional<std::string> help) {

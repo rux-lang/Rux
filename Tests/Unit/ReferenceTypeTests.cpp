@@ -187,11 +187,11 @@ TEST_CASE("references cannot transfer borrowed ownership") {
         }
         func Consume(value: Resource) {}
         func Test(shared: &Holder) {
-            Consume(shared.resource);
-            shared.Take();
+            Consume(<-shared.resource);
+            (<-shared).Take();
         }
     )");
 
     CHECK(HasErrorContaining(diagnostics, "out of borrowed reference storage"));
-    CHECK(HasErrorContaining(diagnostics, "to by-value receiver"));
+    CHECK(HasErrorContaining(diagnostics, "cannot move a non-owning reference"));
 }

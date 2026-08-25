@@ -210,9 +210,6 @@ void DeclarationPrinter::PrintFuncDecl(const FuncDecl &decl) {
             out << "...";
             continue;
         }
-        if (parameter.isMut) {
-            out << "var ";
-        }
         out << parameter.name << ": " << TypeString(parameter.type.get());
     }
     out << ')';
@@ -530,9 +527,6 @@ void DeclarationPrinter::PrintExternFuncDecl(const ExternFuncDecl &decl) const {
     for (std::size_t index = 0; index < decl.params.size(); ++index) {
         if (index) {
             out << ", ";
-        }
-        if (decl.params[index].isMut) {
-            out << "var ";
         }
         out << decl.params[index].name << ": " << TypeString(decl.params[index].type.get());
     }

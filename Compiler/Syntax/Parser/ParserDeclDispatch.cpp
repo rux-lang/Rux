@@ -157,7 +157,14 @@ Param Parser::ParseParam(const bool allowVariadic) {
         return parameter;
     }
 
-    parameter.isMut = Match(TokenKind::VarKeyword);
+    if (Match(TokenKind::VarKeyword)) {
+        const std::string name = Check(TokenKind::SelfKeyword) ? "self"
+                               : Check(TokenKind::Ident)       ? Peek().text
+                                                               : "value";
+        EmitError(Previous().location, "mutable parameter syntax 'var " + name + ": T' has been removed",
+                  "write '" + name + ": T' and create 'var local <- " + name + "' in the body, or write '" + name +
+                      ": &var T' to mutate caller storage");
+    }
 
     // The receiver is an ordinary parameter that happens to be named `self`; its type says whether the method takes its
     // receiver by value, by read-only reference or by writable reference. It is written out like any other parameter's,

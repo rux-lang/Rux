@@ -186,8 +186,7 @@ bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::
     const Substitutions substitutions = BindArguments(parameters, arguments);
     return std::ranges::any_of(destructors->second, [&](const FuncDecl *method) {
         if (!method->body || !method->typeParams.empty() || method->params.size() != 1 || method->returnType ||
-            method->params[0].name != "self" || method->params[0].isMut || method->params[0].isVariadic ||
-            method->params[0].defaultValue) {
+            method->params[0].name != "self" || method->params[0].isVariadic || method->params[0].defaultValue) {
             return false;
         }
         const TypeRef receiver = resolveType(*method->params[0].type, substitutions);
@@ -235,9 +234,8 @@ TypePropertyClassifier::DeclaredSpecialOperation(const TypeRef &type, const std:
 bool TypePropertyClassifier::IsCanonicalSpecialOperation(const FuncDecl &method, const TypeRef &type,
                                                          const Substitutions &substitutions, const bool copy) const {
     if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
-        method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isMut ||
-        method.params[1].isMut || method.params[0].isVariadic || method.params[1].isVariadic ||
-        method.params[0].defaultValue || method.params[1].defaultValue) {
+        method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isVariadic ||
+        method.params[1].isVariadic || method.params[0].defaultValue || method.params[1].defaultValue) {
         return false;
     }
 

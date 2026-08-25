@@ -257,7 +257,7 @@ extend Vector<T> {
         while index < self.length {
             // Moving each element into a local destroys it when the local's life ends -- the same mechanism `Array`
             // uses, and the only one a container has for an element it does not know is droppable.
-            let taken = self.data[index];
+            let taken <- self.data[index];
             index++;
         }
         self.length = length;
@@ -345,7 +345,7 @@ extend Vector<T> {
             return false;
         }
         self.length = self.length - 1;
-        *value = self.data[self.length];
+        *value <- self.data[self.length];
         return true;
     }
 
@@ -468,8 +468,7 @@ extend Vector<T> {
         // Backwards, so each element is read before the one that overwrites it.
         var position = self.length;
         while position > index {
-            // Raw backing storage is the ownership boundary: reference loans cannot move through it explicitly yet.
-            self.data[position] = self.data[position - 1];
+            self.data[position] <- self.data[position - 1];
             position = position - 1;
         }
         self.data[index] <- value;
@@ -490,10 +489,10 @@ extend Vector<T> {
         if index >= self.length {
             return Option::None<T>();
         }
-        let removed = self.data[index];
+        let removed <- self.data[index];
         var position = index;
         while position + 1 < self.length {
-            self.data[position] = self.data[position + 1];
+            self.data[position] <- self.data[position + 1];
             position = position + 1;
         }
         self.length = self.length - 1;
@@ -514,11 +513,10 @@ extend Vector<T> {
         if index >= self.length {
             return Option::None<T>();
         }
-        let removed = self.data[index];
+        let removed <- self.data[index];
         let last = self.length - 1;
         if index != last {
-            // Raw backing storage is the ownership boundary: reference loans cannot move through it explicitly yet.
-            self.data[index] = self.data[last];
+            self.data[index] <- self.data[last];
         }
         self.length = last;
         return Option::Some<T>(<-removed);
@@ -626,7 +624,7 @@ extend VectorIntoIterator<T> {
         if self.position >= self.length {
             return Option::None<T>();
         }
-        let taken = self.data[self.position];
+        let taken <- self.data[self.position];
         self.position = self.position + 1;
         return Option::Some<T>(<-taken);
     }
@@ -644,7 +642,7 @@ extend VectorIntoIterator<T> {
     func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
         var index = self.position;
         while index < self.length {
-            let taken = self.data[index];
+            let taken <- self.data[index];
             index++;
         }
         if self.data != null {
