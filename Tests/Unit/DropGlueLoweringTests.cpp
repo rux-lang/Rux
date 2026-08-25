@@ -87,9 +87,76 @@ const char *HandleSource = R"(
         }
     }
 )";
+
+const char *DestructorHandleSource = R"(
+    struct Handle {
+        slot: int32;
+    }
+
+    extend Handle {
+        func ~Handle(self: &var Handle) {
+            self.slot = 0i32;
+        }
+    }
+)";
 } // namespace
 
 TEST_SUITE("DropGlueLowering") {
+    TEST_CASE("a type-named destructor is invoked by synthesized glue") {
+        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+            func Main() -> int {
+                let held = Handle { slot: 1i32 };
+                let copied = held;
+                return 0;
+            }
+        )");
+
+        const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Handle"));
+        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::Drop"), 0);
+        CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Handle")), 2);
+    }
+
+    TEST_CASE("generic type-named destructors are instantiated for concrete owners") {
+        const LirPackage package = CompileToLir(R"(
+            struct Owner<T> { value: T; }
+            extend Owner<T> {
+                func ~Owner(self: &var Owner<T>) {}
+            }
+
+            func Main() -> int {
+                let owner = Owner<int32> { value: 1i32 };
+                return 0;
+            }
+        )");
+
+        const auto plan = std::ranges::find(package.dropGlues, TypeRef::MakeNamed("Owner<int32>"), &DropGluePlan::type);
+        REQUIRE(plan != package.dropGlues.end());
+        REQUIRE_EQ(plan->steps.size(), 1);
+        CHECK(plan->steps.front().dropSymbol.contains("~Owner"));
+        CHECK_EQ(CallCount(RequireFunction(package, plan->symbol), plan->steps.front().dropSymbol), 1);
+        RequireFunction(package, plan->steps.front().dropSymbol);
+    }
+
+    TEST_CASE("type-named destruction takes precedence during Drop compatibility") {
+        const LirPackage package = CompileToLir(R"(
+            struct Compatible { value: int32; }
+            extend Compatible : Drop {
+                func Drop(self: *var Compatible) {}
+                func ~Compatible(self: &var Compatible) {}
+            }
+
+            func Main() -> int {
+                let value = Compatible { value: 1i32 };
+                return 0;
+            }
+        )");
+
+        const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Compatible"));
+        CHECK_EQ(CallCount(glue, "Compatible::~Compatible"), 1);
+        CHECK_EQ(CallCount(glue, "Compatible::Drop"), 0);
+    }
+
     TEST_CASE("glue is one function taking the value's address") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {

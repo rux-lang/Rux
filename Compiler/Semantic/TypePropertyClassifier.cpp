@@ -92,12 +92,13 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
         result = Classify(type.inner.front());
     }
 
-    const bool directlyDroppable = ImplementsDrop(baseName);
+    const bool legacyDroppable = ImplementsDrop(baseName);
+    const bool directlyDroppable = legacyDroppable || DeclaresDestructor(type, arguments);
     result.droppable = result.droppable || directlyDroppable;
     if (const auto copy = DeclaredSpecialOperation(type, arguments, "=")) {
         result.copyOperation = *copy;
     }
-    else if (directlyDroppable) {
+    else if (legacyDroppable) {
         // Core::Drop remains a compatibility signal for resource ownership until package migration declares copy
         // prohibition explicitly.
         result.copyOperation = TypeProperties::SpecialOperationState::Prohibited;
@@ -105,7 +106,7 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     if (const auto move = DeclaredSpecialOperation(type, arguments, "<-")) {
         result.moveOperation = *move;
     }
-    else if (directlyDroppable && result.moveOperation == TypeProperties::SpecialOperationState::Unresolved) {
+    else if (legacyDroppable && result.moveOperation == TypeProperties::SpecialOperationState::Unresolved) {
         // The legacy Drop marker predates structural move classification and promised that values could be
         // transferred. Preserve that promise for recursive or not-yet-instantiated compatibility types; a resolved
         // structural prohibition still wins.
@@ -166,6 +167,37 @@ bool TypePropertyClassifier::ImplementsDrop(const std::string &baseName) const {
     }
     return std::ranges::any_of(implementations->second,
                                [](const std::string &name) { return name == "Drop" || name.ends_with("::Drop"); });
+}
+
+bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::vector<TypeRef> &arguments) const {
+    const std::string baseName = BaseTypeName(type.name);
+    const auto typeMethods = methodsByType.find(baseName);
+    if (typeMethods == methodsByType.end()) {
+        return false;
+    }
+    const auto destructors = typeMethods->second.find("~" + baseName);
+    if (destructors == typeMethods->second.end()) {
+        return false;
+    }
+
+    std::vector<std::string> parameters;
+    if (const auto structure = structs.find(baseName); structure != structs.end()) {
+        parameters = TypeParameterNames(structure->second->typeParams);
+    }
+    else if (const auto enumeration = enums.find(baseName); enumeration != enums.end()) {
+        parameters = TypeParameterNames(enumeration->second->typeParams);
+    }
+    const Substitutions substitutions = BindArguments(parameters, arguments);
+    return std::ranges::any_of(destructors->second, [&](const FuncDecl *method) {
+        if (!method->body || !method->typeParams.empty() || method->params.size() != 1 || method->returnType ||
+            method->params[0].name != "self" || method->params[0].isMut || method->params[0].isVariadic ||
+            method->params[0].defaultValue) {
+            return false;
+        }
+        const TypeRef receiver = resolveType(*method->params[0].type, substitutions);
+        return receiver.kind == TypeRef::Kind::Reference && !receiver.inner.empty() && receiver.inner.front().isMut &&
+               SameValueType(receiver.inner.front(), type);
+    });
 }
 
 std::optional<TypeProperties::SpecialOperationState>

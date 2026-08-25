@@ -75,17 +75,17 @@ HirPackage AstToHirContext::Run() {
     return package;
 }
 
-/// Fill in the parts of a destruction recipe that only lowering can answer: which symbol a type's own `Drop` reaches
+/// Fill in the parts of a destruction recipe that only lowering can answer: which symbol a type's destructor reaches
 /// the linker under, and which tag value a variant is stored with.
 ///
-/// The plan is walked here rather than while it is built because naming a generic implementation's `Drop` is also what
+/// The plan is walked here rather than while it is built because naming a generic destructor is also what
 /// instantiates it. Nothing else calls it -- destruction has no call site in source -- so a `Vector<File>` that is only
 /// ever dropped would otherwise name a body that was never lowered.
 void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     if (package.modules.empty()) {
         return;
     }
-    // Every name the package already emitted, so that naming a `Drop` an ordinary call site had already instantiated
+    // Every name the package already emitted, so a compatibility `Drop` call site already instantiated
     // resolves to that body instead of lowering a second one under the same symbol.
     generatedMonomorphizedFuncNames.clear();
     for (const HirModule &module : package.modules) {
@@ -171,11 +171,14 @@ std::string AstToHirContext::DropMethodSymbol(const TypeRef &type) {
     if (byType == methodsByType.end()) {
         return {};
     }
-    const auto byName = byType->second.find("Drop");
-    if (byName == byType->second.end() || byName->second.empty()) {
-        return {};
+    const auto destructor = byType->second.find("~" + typeName);
+    if (destructor != byType->second.end() && !destructor->second.empty()) {
+        return ConcreteMethodCalleeName(typeName, type, *destructor->second.front());
     }
-    return ConcreteMethodCalleeName(typeName, type, *byName->second.front());
+    const auto legacyDrop = byType->second.find("Drop");
+    return legacyDrop == byType->second.end() || legacyDrop->second.empty()
+             ? std::string{}
+             : ConcreteMethodCalleeName(typeName, type, *legacyDrop->second.front());
 }
 
 void AstToHirContext::PushScope() {

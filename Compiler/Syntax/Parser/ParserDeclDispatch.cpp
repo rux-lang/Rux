@@ -230,6 +230,10 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         Advance(); // consume '#'
         decl->name = "#" + Advance().text;
     }
+    else if (Check(TokenKind::Tilde) && Peek(1).Is(TokenKind::Ident)) {
+        const std::string prefix = Advance().text;
+        decl->name = prefix + Advance().text;
+    }
     else if (Peek().IsOperator()) {
         decl->name = Advance().text;
     }

@@ -2197,6 +2197,9 @@ private:
                 EmitError(d.location,
                           std::format("special operation '{}' may only be declared in an extend block", d.name));
             }
+            else if (IsDestructorName(d.name)) {
+                EmitError(d.location, std::format("destructor '{}' may only be declared in an extend block", d.name));
+            }
         }
         AppendTypeParameterNames(currentTypeParams, d.typeParams);
         const ScopedTypeParameterBounds boundScope(*this, &d.typeParams, !isMethod);
@@ -2278,7 +2281,8 @@ private:
             CheckAsmBodyArchitecture(d);
         }
         else if (!d.body) {
-            if (d.intrinsicName.empty() && !(isMethod && IsSpecialOperationName(d.name))) {
+            if (d.intrinsicName.empty() &&
+                !(isMethod && (IsSpecialOperationName(d.name) || IsDestructorName(d.name)))) {
                 EmitError(d.location, std::format("function '{}' has no body", d.name));
             }
         }
@@ -2541,6 +2545,7 @@ private:
                 }
             }
             ValidateSpecialOperation(*m, currentExtendedType);
+            ValidateDestructor(*m, currentExtendedType);
             ValidateConstructor(*m, currentExtendedType);
             CheckFuncDecl(*m, /*isMethod=*/true);
         }
@@ -3480,7 +3485,11 @@ private:
             if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
                 return;
             }
-            const FuncDecl *destructor = LookupMethod(type, "Drop");
+            const std::string destructorName = "~" + NamedBaseTypeName(type);
+            const FuncDecl *destructor = LookupMethod(type, destructorName);
+            if (destructor == nullptr) {
+                destructor = LookupMethod(type, "Drop");
+            }
             if (destructor == nullptr) {
                 return;
             }
