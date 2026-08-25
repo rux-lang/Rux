@@ -81,7 +81,7 @@ func Main() -> int {
     // Lookup finds by key, and reports absence rather than inventing an empty value.
     var found = table.Find(View("apple"));
     Assert(found != null, "a key that is there is found");
-    Assert(found.AsInteger(@readInteger) && readInteger == 2i64, "with the value it was stored with");
+    Assert((*found).AsInteger(@readInteger) && readInteger == 2i64, "with the value it was stored with");
     Assert(table.Find(View("pear")) == null, "and a key that is not there is not");
 
     // An array keeps its order too, and a borrowed element can be modified in place -- which is how an array of
@@ -90,10 +90,11 @@ func Main() -> int {
     array.Push(TomlValue::Integer(allocator, 10i64));
     array.Push(TomlValue::Integer(allocator, 20i64));
     Assert(array.Length() == 2u, "an array holds what it was given");
-    Assert(array.At(1u).AsInteger(@readInteger) && readInteger == 20i64, "in order");
+    Assert((*array.At(1u)).AsInteger(@readInteger) && readInteger == 20i64, "in order");
     var element = array.AtMutable(0u);
     element.integer = 11i64;
-    Assert(array.At(0u).AsInteger(@readInteger) && readInteger == 11i64, "and an element can be edited in place");
+    Assert((*array.At(0u)).AsInteger(@readInteger) && readInteger == 11i64,
+           "and an element can be edited in place");
 
     // The kinds do not answer each other's questions.
     Assert(array.Find(View("apple")) == null, "an array has no keys");
@@ -110,10 +111,10 @@ func Main() -> int {
     nested.Push(TomlValue::Text(allocator, "held", @error));
     nested.Push(TomlValue::Text(allocator, "also held", @error));
     var nestedKey = String::FromBytes(allocator, "list", @error);
-    inner.Insert(nestedKey, nested);
+    inner.Insert(nestedKey, <-nested);
     var innerKey = String::FromBytes(allocator, "inner", @error);
-    outer.Insert(innerKey, inner);
-    Assert(outer.Find(View("inner")).Find(View("list")).Length() == 2u,
+    outer.Insert(innerKey, <-inner);
+    Assert((*(*outer.Find(View("inner"))).Find(View("list"))).Length() == 2u,
            "a nested tree is reachable all the way down");
 
     return 0;

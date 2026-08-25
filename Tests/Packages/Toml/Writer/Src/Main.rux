@@ -11,7 +11,7 @@ import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
                TomlWriteError };
 
 // Renders `value` into `storage` and returns the bytes.
-func Render(value: *TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
+func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
     var cursor = ByteCursor::New(storage);
     let writer: TextWriter = CursorWriter::Of(@cursor);
     Assert(TomlWriteDocument(writer, value) == TomlWriteError::None, "writing succeeds");
@@ -43,15 +43,15 @@ func Main() -> int {
     var second: char8[4096];
     // A document written and read and written again is the same the second time, which is the property a file
     // in version control needs.
-    var outcome = TomlParseOutcome::New();
+    var outcome = TomlParseOutcome();
     var source = "[server]\nhost = \"local\"\nports = [1, 2]\n\n[[user]]\nname = \"ada\"\n\n[[user]]\nname = \"alan\"";
     var parsed = TomlParse(allocator, source, @outcome);
     Assert(outcome.error == TomlParseError::None, "the document parses");
-    let once = Render(@parsed, MutableSlice::From<char8>(@storage[0], 4096));
+    let once = Render(parsed, MutableSlice::From<char8>(@storage[0], 4096));
 
     var again = TomlParse(allocator, once, @outcome);
     Assert(outcome.error == TomlParseError::None, "its output parses");
-    let twice = Render(@again, MutableSlice::From<char8>(@second[0], 4096));
+    let twice = Render(again, MutableSlice::From<char8>(@second[0], 4096));
     Assert(Same(once, twice), "and writes the same bytes the second time");
 
     // Every kind survives the round trip, including the ones a lazier writer would collapse.
@@ -59,38 +59,38 @@ func Main() -> int {
     var dates = "d = 1979-05-27\nt = 07:32:00\nw = 1979-05-27T07:32:00\nm = 1979-05-27T07:32:00-08:00";
     var values = TomlParse(allocator, kinds, @outcome);
     Assert(outcome.error == TomlParseError::None, "a document of every scalar kind parses");
-    let written = Render(@values, MutableSlice::From<char8>(@storage[0], 4096));
+    let written = Render(values, MutableSlice::From<char8>(@storage[0], 4096));
     var reread = TomlParse(allocator, written, @outcome);
     Assert(outcome.error == TomlParseError::None, "and its output parses");
 
     var readInteger = 0i64;
-    Assert(reread.Find(View("i")).AsInteger(@readInteger) && readInteger == 42i64, "the integer survives");
+    Assert((*reread.Find(View("i"))).AsInteger(@readInteger) && readInteger == 42i64, "the integer survives");
     var readFloat = 0.0;
-    Assert(reread.Find(View("tiny")).AsFloat(@readFloat) && readFloat == 0.1,
+    Assert((*reread.Find(View("tiny"))).AsFloat(@readFloat) && readFloat == 0.1,
            "and a float comes back as exactly the same float, not merely a close one");
-    Assert(reread.Find(View("whole")).Kind() == TomlKind::Float,
+    Assert((*reread.Find(View("whole"))).Kind() == TomlKind::Float,
            "a whole float keeps its point, or it would read back as an integer");
     // The date kinds are their own document, since what matters about them is that the four stay four.
     var stamped = TomlParse(allocator, dates, @outcome);
     Assert(outcome.error == TomlParseError::None, "a document of every date kind parses");
-    let stampedText = Render(@stamped, MutableSlice::From<char8>(@storage[0], 4096));
+    let stampedText = Render(stamped, MutableSlice::From<char8>(@storage[0], 4096));
     var restamped = TomlParse(allocator, stampedText, @outcome);
     Assert(outcome.error == TomlParseError::None, "and its output parses");
-    Assert(restamped.Find(View("m")).Kind() == TomlKind::OffsetDateTime,
+    Assert((*restamped.Find(View("m"))).Kind() == TomlKind::OffsetDateTime,
            "an offset date-time keeps its offset");
     var readOffset = UtcOffset::Utc();
-    Assert(restamped.Find(View("m")).AsOffset(@readOffset) && readOffset.TotalSeconds() == -28800i32,
+    Assert((*restamped.Find(View("m"))).AsOffset(@readOffset) && readOffset.TotalSeconds() == -28800i32,
            "and the offset is the one it was written with");
-    Assert(restamped.Find(View("w")).Kind() == TomlKind::LocalDateTime,
+    Assert((*restamped.Find(View("w"))).Kind() == TomlKind::LocalDateTime,
            "while a local one is not given one it never had");
-    Assert(restamped.Find(View("d")).Kind() == TomlKind::LocalDate, "a date stays a date");
-    Assert(restamped.Find(View("t")).Kind() == TomlKind::LocalTime, "and a time stays a time");
+    Assert((*restamped.Find(View("d"))).Kind() == TomlKind::LocalDate, "a date stays a date");
+    Assert((*restamped.Find(View("t"))).Kind() == TomlKind::LocalTime, "and a time stays a time");
 
     // Keys are bare where TOML allows it and quoted where it does not, which is the whole of the choice.
     var keys = "bare_key = 1\n\"needs quoting\" = 2\n\"\" = 3\n1979 = 4";
     var keyed = TomlParse(allocator, keys, @outcome);
     Assert(outcome.error == TomlParseError::None, "keys of every shape parse");
-    let keyText = Render(@keyed, MutableSlice::From<char8>(@storage[0], 4096));
+    let keyText = Render(keyed, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(keyText, "bare_key = 1\n\"needs quoting\" = 2\n\"\" = 3\n1979 = 4\n"),
            "and each is written in the shortest valid form");
 
@@ -98,43 +98,43 @@ func Main() -> int {
     var strings = "a = \"tab\\there\"\nb = \"quote\\\"here\"\nc = \"back\\\\slash\"";
     var stringy = TomlParse(allocator, strings, @outcome);
     Assert(outcome.error == TomlParseError::None, "strings with escapes parse");
-    let stringText = Render(@stringy, MutableSlice::From<char8>(@storage[0], 4096));
+    let stringText = Render(stringy, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(stringText, "a = \"tab\\there\"\nb = \"quote\\\"here\"\nc = \"back\\\\slash\"\n"),
            "and come back escaped the same way");
 
     // Nesting produces headers, and an inline table read from a document is written as one of them.
     var nested = TomlParse(allocator, "a = { b = 1, c = { d = 2 } }", @outcome);
     Assert(outcome.error == TomlParseError::None, "an inline table parses");
-    let nestedText = Render(@nested, MutableSlice::From<char8>(@storage[0], 4096));
+    let nestedText = Render(nested, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(nestedText, "[a]\nb = 1\n\n[a.c]\nd = 2\n"),
            "and is written as headers, which is the one spelling that stays readable as it grows");
 
     // A table inside an array has no header spelling, so it stays inline.
     var arrayed = TomlParse(allocator, "a = [{ b = 1 }, {}]", @outcome);
     Assert(outcome.error == TomlParseError::None, "a table inside an array parses");
-    let arrayedText = Render(@arrayed, MutableSlice::From<char8>(@storage[0], 4096));
+    let arrayedText = Render(arrayed, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(arrayedText, "a = [{ b = 1 }, {}]\n"), "and stays inline, because TOML has no other way");
 
     // The infinities and NaN are values TOML can spell, so they are written rather than refused.
     var special = TomlParse(allocator, "a = inf\nb = -inf\nc = nan", @outcome);
     Assert(outcome.error == TomlParseError::None, "the three named floats parse");
-    let specialText = Render(@special, MutableSlice::From<char8>(@storage[0], 4096));
+    let specialText = Render(special, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(specialText, "a = inf\nb = -inf\nc = nan\n"), "and are written back as themselves");
 
     // The three escapes vector 9 combines, taken one at a time so a failure names the byte that caused it.
     var quoteOnly = TomlParse(allocator, "a = \"\\\"q\\\"\"", @outcome);
     Assert(outcome.error == TomlParseError::None, "a quote escape parses");
-    let quoteOnce = Render(@quoteOnly, MutableSlice::From<char8>(@storage[0], 4096));
+    let quoteOnce = Render(quoteOnly, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(quoteOnce, "a = \"\\\"q\\\"\"\n"), "and is written back as an escaped quote");
 
     var tabOnly = TomlParse(allocator, "a = \"x\\ty\"", @outcome);
     Assert(outcome.error == TomlParseError::None, "a tab escape parses");
-    let tabOnce = Render(@tabOnly, MutableSlice::From<char8>(@storage[0], 4096));
+    let tabOnce = Render(tabOnly, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(tabOnce, "a = \"x\\ty\"\n"), "and is written back as an escaped tab");
 
     var scalarOnly = TomlParse(allocator, "a = \"x\\u00E9y\"", @outcome);
     Assert(outcome.error == TomlParseError::None, "a unicode escape parses");
-    let scalarOnce = Render(@scalarOnly, MutableSlice::From<char8>(@storage[0], 4096));
+    let scalarOnce = Render(scalarOnly, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(scalarOnce, "a = \"x\u{E9}y\"\n"),
            "and is written back as the scalar itself, which needs no escape");
 
@@ -143,25 +143,25 @@ func Main() -> int {
                           "str = \"a \\\"quoted\\\" word, a \\t tab and a \\u00E9 escape.\"",
                           @outcome);
     Assert(outcome.error == TomlParseError::None, "the combined document parses");
-    let wholeOnce = Render(@whole, MutableSlice::From<char8>(@storage[0], 4096));
+    let wholeOnce = Render(whole, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(wholeOnce.length == 53u, "and renders to the length the escapes add up to");
     Assert(Same(wholeOnce, "str = \"a \\\"quoted\\\" word, a \\t tab and a \u{E9} escape.\"\n"),
            "with each byte where it belongs");
     var wholeAgain = TomlParse(allocator, wholeOnce, @outcome);
     Assert(outcome.error == TomlParseError::None, "its output parses");
-    let wholeTwice = Render(@wholeAgain, MutableSlice::From<char8>(@second[0], 4096));
+    let wholeTwice = Render(wholeAgain, MutableSlice::From<char8>(@second[0], 4096));
     Assert(wholeTwice.length == 53u, "to the same length");
     Assert(Same(wholeOnce, wholeTwice), "and the same bytes");
 
     // The loss the README describes, pinned here so the documentation cannot drift away from the code.
     var commented = TomlParse(allocator, "# leading comment\na = 1 # trailing\n\n\nb = 2", @outcome);
     Assert(outcome.error == TomlParseError::None, "a commented document parses");
-    let plain = Render(@commented, MutableSlice::From<char8>(@storage[0], 4096));
+    let plain = Render(commented, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(plain, "a = 1\nb = 2\n"), "and comes back without its comments or its blank lines");
 
     var spelled = TomlParse(allocator, "a = 0xFF\nb = 1e3\nc = 'literal'", @outcome);
     Assert(outcome.error == TomlParseError::None, "a document of alternative spellings parses");
-    let canonical = Render(@spelled, MutableSlice::From<char8>(@storage[0], 4096));
+    let canonical = Render(spelled, MutableSlice::From<char8>(@storage[0], 4096));
     Assert(Same(canonical, "a = 255\nb = 1000.0\nc = \"literal\"\n"),
            "and comes back in one spelling each, because the tree holds values and not the text of them");
 

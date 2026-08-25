@@ -94,8 +94,8 @@ extend TomlEventReader {
     /// A reader over `input`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/new
-    func New(input: Slice<char8>) -> TomlEventReader {
-        var lexer = TomlLexer::New(input);
+    func TomlEventReader(input: Slice<char8>) -> TomlEventReader {
+        var lexer = TomlLexer(input);
         let first = lexer.Next();
         return TomlEventReader {
             lexer: lexer,
@@ -112,17 +112,22 @@ extend TomlEventReader {
         };
     }
 
+    /// Temporary compatibility spelling for the receiverless constructor.
+    func New(input: Slice<char8>) -> TomlEventReader {
+        return TomlEventReader(input);
+    }
+
     /// Why reading stopped, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/error
-    func Error(self: *TomlEventReader) -> TomlParseError {
+    func Error(self: &TomlEventReader) -> TomlParseError {
         return self.error;
     }
 
     /// The lexer's reason, when the error is `Lexical`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/lexical-error
-    func LexicalError(self: *TomlEventReader) -> TomlLexError {
+    func LexicalError(self: &TomlEventReader) -> TomlLexError {
         return self.lexical;
     }
 
@@ -130,7 +135,7 @@ extend TomlEventReader {
     /// text.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/span
-    func Span(self: *TomlEventReader) -> Slice<char8> {
+    func Span(self: &TomlEventReader) -> Slice<char8> {
         return Slice<char8> {
             data: self.input.data + self.current.start, length: self.current.end - self.current.start
         };
@@ -139,41 +144,41 @@ extend TomlEventReader {
     /// Which string form the current text event was written in, which decoding it needs.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/form
-    func Form(self: *TomlEventReader) -> TomlTextForm {
+    func Form(self: &TomlEventReader) -> TomlTextForm {
         return self.current.form;
     }
 
     /// Which line the current event is on, counting from one.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/line
-    func Line(self: *TomlEventReader) -> uint {
+    func Line(self: &TomlEventReader) -> uint {
         return self.current.line;
     }
 
     /// Which column the current event is at, counting from one, in bytes.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/column
-    func Column(self: *TomlEventReader) -> uint {
+    func Column(self: &TomlEventReader) -> uint {
         return self.current.column;
     }
 
     /// Whether the header being read was written `[[name]]` rather than `[name]`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
-    func IsTableArray(self: *TomlEventReader) -> bool {
+    func IsTableArray(self: &TomlEventReader) -> bool {
         return self.tableArray;
     }
 
     /// How deep inside arrays and inline tables the reader is.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/depth
-    func Depth(self: *TomlEventReader) -> uint {
+    func Depth(self: &TomlEventReader) -> uint {
         return self.depth;
     }
 }
 
 extend TomlEventReader {
-    func Advance(self: *var TomlEventReader) -> TomlToken {
+    func Advance(self: &var TomlEventReader) -> TomlToken {
         let token = self.ahead;
         if token.kind != TomlTokenKind::End {
             self.ahead = self.lexer.Next();
@@ -181,7 +186,7 @@ extend TomlEventReader {
         return token;
     }
 
-    func Fail(self: *var TomlEventReader, reason: TomlParseError) -> TomlEvent {
+    func Fail(self: &var TomlEventReader, reason: TomlParseError) -> TomlEvent {
         if self.error == TomlParseError::None {
             self.error = reason;
             self.current = self.ahead;
@@ -193,7 +198,7 @@ extend TomlEventReader {
         return TomlEvent::Error;
     }
 
-    func SkipNewlines(self: *var TomlEventReader) {
+    func SkipNewlines(self: &var TomlEventReader) {
         while self.ahead.kind == TomlTokenKind::Newline {
             self.Advance();
         }
@@ -201,14 +206,14 @@ extend TomlEventReader {
 
     // Whether the innermost open container is an inline table. The stack is a single word, one bit per
     // container, which is also why the depth limit here is sixty-four.
-    func InsideInlineTable(self: *TomlEventReader) -> bool {
+    func InsideInlineTable(self: &TomlEventReader) -> bool {
         if self.depth == 0u {
             return false;
         }
         return (self.containers >> ((self.depth - 1u) as uint64) & 1u64) == 1u64;
     }
 
-    func OpenContainer(self: *var TomlEventReader, inlineTable: bool) -> bool {
+    func OpenContainer(self: &var TomlEventReader, inlineTable: bool) -> bool {
         if self.depth >= 64u {
             return false;
         }
@@ -222,7 +227,7 @@ extend TomlEventReader {
         return true;
     }
 
-    func CloseContainer(self: *var TomlEventReader) {
+    func CloseContainer(self: &var TomlEventReader) {
         if self.depth > 0u {
             self.depth = self.depth - 1u;
         }
@@ -230,7 +235,7 @@ extend TomlEventReader {
 
     // A key part, which is a bare key, a quoted key, or something that lexed as a number and is a perfectly good
     // key: `1979 = "x"` is a key of four digits.
-    func TakeKeyPart(self: *var TomlEventReader) -> bool {
+    func TakeKeyPart(self: &var TomlEventReader) -> bool {
         let token = self.ahead;
         if token.kind == TomlTokenKind::Error {
             self.Fail(TomlParseError::Lexical);
@@ -258,7 +263,7 @@ extend TomlEventReader {
     /// the document never meant.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/next
-    func Next(self: *var TomlEventReader) -> TomlEvent {
+    func Next(self: &var TomlEventReader) -> TomlEvent {
         if self.state == TomlEventState::Finished {
             return TomlEvent::End;
         }
@@ -280,7 +285,7 @@ extend TomlEventReader {
         return self.NextAfterValue();
     }
 
-    func NextAtDocument(self: *var TomlEventReader) -> TomlEvent {
+    func NextAtDocument(self: &var TomlEventReader) -> TomlEvent {
         self.SkipNewlines();
         if self.ahead.kind == TomlTokenKind::Error {
             return self.Fail(TomlParseError::Lexical);
@@ -306,7 +311,7 @@ extend TomlEventReader {
         return TomlEvent::KeyStart;
     }
 
-    func NextHeaderKey(self: *var TomlEventReader) -> TomlEvent {
+    func NextHeaderKey(self: &var TomlEventReader) -> TomlEvent {
         if self.ahead.kind == TomlTokenKind::RightBracket {
             // `[]` names no table, and a header that names nothing is not a header.
             if !self.namedSomething {
@@ -338,7 +343,7 @@ extend TomlEventReader {
         return TomlEvent::KeyPart;
     }
 
-    func NextPairKey(self: *var TomlEventReader) -> TomlEvent {
+    func NextPairKey(self: &var TomlEventReader) -> TomlEvent {
         if !self.TakeKeyPart() {
             return TomlEvent::Error;
         }
@@ -356,7 +361,7 @@ extend TomlEventReader {
 }
 
 extend TomlEventReader {
-    func NextValue(self: *var TomlEventReader) -> TomlEvent {
+    func NextValue(self: &var TomlEventReader) -> TomlEvent {
         if self.depth > 0u {
             self.SkipNewlines();
         }
@@ -411,7 +416,7 @@ extend TomlEventReader {
         return self.Fail(TomlParseError::Unexpected);
     }
 
-    func NextInlineKey(self: *var TomlEventReader) -> TomlEvent {
+    func NextInlineKey(self: &var TomlEventReader) -> TomlEvent {
         self.SkipNewlines();
         if self.ahead.kind == TomlTokenKind::RightBrace {
             self.current = self.Advance();
@@ -427,7 +432,7 @@ extend TomlEventReader {
         return TomlEvent::KeyStart;
     }
 
-    func NextAfterValue(self: *var TomlEventReader) -> TomlEvent {
+    func NextAfterValue(self: &var TomlEventReader) -> TomlEvent {
         // At the top level a value ends its line, and nothing else may share it.
         if self.depth == 0u {
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {

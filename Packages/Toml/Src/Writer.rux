@@ -43,7 +43,7 @@ struct TomlPath {
 }
 
 extend TomlPath {
-    func Append(self: *var TomlPath, bytes: Slice<char8>) -> bool {
+    func Append(self: &var TomlPath, bytes: Slice<char8>) -> bool {
         if self.length + bytes.length > self.room.length {
             return false;
         }
@@ -56,7 +56,7 @@ extend TomlPath {
         return true;
     }
 
-    func Bytes(self: *TomlPath) -> Slice<char8> {
+    func Bytes(self: &TomlPath) -> Slice<char8> {
         return Slice<char8> { data: self.room.data, length: self.length };
     }
 }
@@ -249,7 +249,7 @@ func EmitPadded(writer: TextWriter, value: uint32, width: uint) -> TomlWriteErro
 }
 
 // A date-time in whichever of the four forms the kind names, which is what keeps a local reading local.
-func EmitDateTime(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
+func EmitDateTime(writer: TextWriter, value: &TomlValue) -> TomlWriteError {
     var failure = TomlWriteError::None;
     let kind = value.Kind();
     if kind != TomlKind::LocalTime {
@@ -338,7 +338,7 @@ func EmitDateTime(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
 
 // A value written where a value belongs: on the right of an equals sign, or inside an array. A table reached
 // this way is written inline, because inside an array TOML has no other spelling for one.
-func EmitValue(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
+func EmitValue(writer: TextWriter, value: &TomlValue) -> TomlWriteError {
     let kind = value.Kind();
     if kind == TomlKind::Boolean {
         return Emit(writer, value.boolean ? "true" : "false");
@@ -365,7 +365,7 @@ func EmitValue(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
                     return failure;
                 }
             }
-            failure = EmitValue(writer, value.At(index));
+            failure = EmitValue(writer, *value.At(index));
             if failure != TomlWriteError::None {
                 return failure;
             }
@@ -392,7 +392,7 @@ func EmitValue(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
                 }
             }
             let entry = value.EntryAt(index);
-            failure = EmitKey(writer, entry.key.View().Bytes());
+            failure = EmitKey(writer, (*entry).key.View().Bytes());
             if failure != TomlWriteError::None {
                 return failure;
             }
@@ -400,7 +400,7 @@ func EmitValue(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
             if failure != TomlWriteError::None {
                 return failure;
             }
-            failure = EmitValue(writer, @entry.value);
+            failure = EmitValue(writer, (*entry).value);
             if failure != TomlWriteError::None {
                 return failure;
             }
@@ -414,7 +414,7 @@ func EmitValue(writer: TextWriter, value: *TomlValue) -> TomlWriteError {
 // Whether an entry belongs to the body of a table -- written as `key = value` -- rather than to a header of its
 // own. A table and an array of tables get headers; everything else, including a static array of tables, is a
 // value.
-func IsBodyEntry(value: *TomlValue) -> bool {
+func IsBodyEntry(value: &TomlValue) -> bool {
     if value.Kind() == TomlKind::Table {
         return false;
     }
@@ -425,12 +425,12 @@ func IsBodyEntry(value: *TomlValue) -> bool {
 }
 
 // The entries of a table that are written as `key = value` lines, in the order the table holds them.
-func EmitBody(writer: TextWriter, table: *TomlValue) -> TomlWriteError {
+func EmitBody(writer: TextWriter, table: &TomlValue) -> TomlWriteError {
     var index: uint = 0;
     while index < table.Length() {
         let entry = table.EntryAt(index);
-        if IsBodyEntry(@entry.value) {
-            var failure = EmitKey(writer, entry.key.View().Bytes());
+        if IsBodyEntry((*entry).value) {
+            var failure = EmitKey(writer, (*entry).key.View().Bytes());
             if failure != TomlWriteError::None {
                 return failure;
             }
@@ -438,7 +438,7 @@ func EmitBody(writer: TextWriter, table: *TomlValue) -> TomlWriteError {
             if failure != TomlWriteError::None {
                 return failure;
             }
-            failure = EmitValue(writer, @entry.value);
+            failure = EmitValue(writer, (*entry).value);
             if failure != TomlWriteError::None {
                 return failure;
             }
@@ -453,7 +453,7 @@ func EmitBody(writer: TextWriter, table: *TomlValue) -> TomlWriteError {
 }
 
 // A header, `[path]` or `[[path]]`, followed by a newline.
-func EmitHeader(writer: TextWriter, path: *TomlPath, array: bool, first: bool) -> TomlWriteError {
+func EmitHeader(writer: TextWriter, path: &TomlPath, array: bool, first: bool) -> TomlWriteError {
     var failure = TomlWriteError::None;
     if !first {
         // A blank line before every header but the first, which is what makes a configuration file readable and
@@ -480,12 +480,12 @@ func EmitHeader(writer: TextWriter, path: *TomlPath, array: bool, first: bool) -
 
 // The sub-tables of a table, each under a header of its own, after the body has been written. The order is the
 // table's own, so the output of a tree is the same every time.
-func EmitSections(writer: TextWriter, table: *TomlValue, path: *var TomlPath, written: *var uint,
+func EmitSections(writer: TextWriter, table: &TomlValue, path: &var TomlPath, written: *var uint,
                   root: bool) -> TomlWriteError {
     var index: uint = 0;
     while index < table.Length() {
         let entry = table.EntryAt(index);
-        if IsBodyEntry(@entry.value) {
+        if IsBodyEntry((*entry).value) {
             index = index + 1u;
             continue;
         }
@@ -495,39 +495,39 @@ func EmitSections(writer: TextWriter, table: *TomlValue, path: *var TomlPath, wr
                 return TomlWriteError::PathTooLong;
             }
         }
-        var named = KeyIntoPath(path, entry.key.View().Bytes());
+        var named = KeyIntoPath(path, (*entry).key.View().Bytes());
         if named != TomlWriteError::None {
             return named;
         }
-        if entry.value.Kind() == TomlKind::Table {
+        if (*entry).value.Kind() == TomlKind::Table {
             var failure = EmitHeader(writer, path, false, *written == 0u);
             if failure != TomlWriteError::None {
                 return failure;
             }
             *written = *written + 1u;
-            failure = EmitBody(writer, @entry.value);
+            failure = EmitBody(writer, (*entry).value);
             if failure != TomlWriteError::None {
                 return failure;
             }
-            failure = EmitSections(writer, @entry.value, path, written, false);
+            failure = EmitSections(writer, (*entry).value, path, written, false);
             if failure != TomlWriteError::None {
                 return failure;
             }
         }
         else {
             var element: uint = 0;
-            while element < entry.value.Length() {
-                let held = entry.value.At(element);
+            while element < (*entry).value.Length() {
+                let held = (*entry).value.At(element);
                 var failure = EmitHeader(writer, path, true, *written == 0u);
                 if failure != TomlWriteError::None {
                     return failure;
                 }
                 *written = *written + 1u;
-                failure = EmitBody(writer, held);
+                failure = EmitBody(writer, *held);
                 if failure != TomlWriteError::None {
                     return failure;
                 }
-                failure = EmitSections(writer, held, path, written, false);
+                failure = EmitSections(writer, *held, path, written, false);
                 if failure != TomlWriteError::None {
                     return failure;
                 }
@@ -541,7 +541,7 @@ func EmitSections(writer: TextWriter, table: *TomlValue, path: *var TomlPath, wr
 }
 
 // A key appended to the header path, in the form a header would spell it.
-func KeyIntoPath(path: *var TomlPath, name: Slice<char8>) -> TomlWriteError {
+func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
     if IsBareKey(name) {
         return path.Append(name) ? TomlWriteError::None : TomlWriteError::PathTooLong;
     }
@@ -565,7 +565,7 @@ func KeyIntoPath(path: *var TomlPath, name: Slice<char8>) -> TomlWriteError {
 /// by this writer, which is an equivalent document and not the same file.
 ///
 /// https://rux-lang.dev/docs/api/toml/write-document
-func TomlWriteDocument(writer: TextWriter, table: *TomlValue) -> TomlWriteError {
+func TomlWriteDocument(writer: TextWriter, table: &TomlValue) -> TomlWriteError {
     if table.Kind() != TomlKind::Table {
         return EmitValue(writer, table);
     }
@@ -578,15 +578,15 @@ func TomlWriteDocument(writer: TextWriter, table: *TomlValue) -> TomlWriteError 
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been
     // written yet.
     var written = CountBodyEntries(table);
-    return EmitSections(writer, table, @path, @written, true);
+    return EmitSections(writer, table, path, @written, true);
 }
 
 // How many of a table's entries are written as lines rather than as sections.
-func CountBodyEntries(table: *TomlValue) -> uint {
+func CountBodyEntries(table: &TomlValue) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < table.Length() {
-        if IsBodyEntry(@table.EntryAt(index).value) {
+        if IsBodyEntry((*table.EntryAt(index)).value) {
             count = count + 1u;
         }
         index = index + 1u;

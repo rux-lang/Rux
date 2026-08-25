@@ -9,7 +9,7 @@ import Text::{ String, TextError };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
 func FirstToken(text: Slice<char8>) -> TomlToken {
-    var lexer = TomlLexer::New(text);
+    var lexer = TomlLexer(text);
     return lexer.Next();
 }
 
@@ -25,11 +25,11 @@ func FirstError(text: Slice<char8>) -> TomlLexError {
 func FirstText(text: Slice<char8>) -> String {
     var system = SystemAllocator::New();
     let allocator: Allocator = system;
-    var lexer = TomlLexer::New(text);
+    var lexer = TomlLexer(text);
     let token = lexer.Next();
     var error = TextError::None;
     var bad = false;
-    let span = lexer.TextOf(@token);
+    let span = lexer.TextOf(token);
     return TomlDecodeText(allocator, span, token.form, @error, @bad);
 }
 
@@ -64,7 +64,7 @@ func Main() -> int {
     Assert(FirstKind("\r\n") == TomlTokenKind::Newline, "and so is a carriage return pair");
 
     // A comment is not a token at all; it is skipped like the whitespace around it.
-    var comments = TomlLexer::New("# a comment\nkey");
+    var comments = TomlLexer("# a comment\nkey");
     Assert(comments.Next().kind == TomlTokenKind::Newline, "a comment runs to the end of its line");
     Assert(comments.Next().kind == TomlTokenKind::BareKey, "and the key after it survives");
 
@@ -176,17 +176,17 @@ func Main() -> int {
     // A surrogate is not a scalar value, so no escape names one.
     var system = SystemAllocator::New();
     let allocator: Allocator = system;
-    var surrogateLexer = TomlLexer::New("\"\\uD800\"");
+    var surrogateLexer = TomlLexer("\"\\uD800\"");
     let surrogate = surrogateLexer.Next();
     var surrogateError = TextError::None;
     var surrogateBad = false;
-    let surrogateSpan = surrogateLexer.TextOf(@surrogate);
+    let surrogateSpan = surrogateLexer.TextOf(surrogate);
     var surrogateText = TomlDecodeText(allocator, surrogateSpan, surrogate.form, @surrogateError,
                                        @surrogateBad);
     Assert(surrogateBad, "an escaped surrogate names no scalar value");
 
     // Spans and positions, because a configuration error that cannot point at itself costs more than the parse.
-    var document = TomlLexer::New("alpha = 1\nbeta = 2");
+    var document = TomlLexer("alpha = 1\nbeta = 2");
     Assert(document.Next().line == 1u, "the first key is on line one");
     document.Next();
     document.Next();
