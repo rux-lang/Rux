@@ -11,13 +11,10 @@
 // `Reset` is what makes an arena worth reusing: it rewinds every allocation while keeping the largest block, so the
 // next round of work runs without asking the system for anything at all.
 //
-// The arena owns its blocks, so it implements `Drop` and is move-only. That makes it awkward to hand to something
-// expecting an `Allocator`, because coercing a move-only value to an interface moves it -- and an arena that has
-// been moved into an interface value can no longer be reset by its owner. `Handle` is the answer: a `Copy` borrow of
-// the arena that implements `Allocator` and can be passed freely while the arena stays where it is.
+// The arena prohibits copying and `~Arena` releases its blocks. `Handle` is a storable interface adapter over the
+// same owner; because it contains a raw pointer, it must not outlive or survive a move of the arena.
 
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Core::Drop;
 import Memory::AlignUp;
 
 /// The default payload of an arena's first block.
@@ -50,8 +47,8 @@ struct ArenaBlock {
 
 /// An allocator that advances a pointer and reclaims everything at once.
 ///
-/// Move-only, because it owns its blocks. Pass it to something expecting an `Allocator` through `Handle`, which
-/// borrows rather than moves.
+/// Move-only, because it owns its blocks and explicitly prohibits copying. Pass its `Handle` where a storable
+/// `Allocator` adapter is needed.
 ///
 /// https://rux-lang.dev/docs/api/allocator/arena
 struct Arena {
@@ -69,6 +66,9 @@ struct Arena {
 }
 
 extend Arena {
+    /// Copying an arena would give two owners of every block it holds.
+    func =(self: &var Arena, other: &Arena);
+
     /// An arena that will take its storage from `backing`.
     ///
     /// `backing` is borrowed for the call and kept. `blockSize` is the payload of the first block; zero asks for the
@@ -76,7 +76,7 @@ extend Arena {
     /// arena that is never used costs nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena/new
-    func New(backing: Allocator, blockSize: uint) -> Arena {
+    func Arena(backing: Allocator, blockSize: uint) -> Arena {
         let size = blockSize == 0 ? DefaultArenaBlockSize : blockSize;
         return Arena {
             backing: backing,
@@ -87,11 +87,14 @@ extend Arena {
         };
     }
 
-    /// A `Copy` borrow of this arena that implements `Allocator`.
+    /// Temporary compatibility spelling for downstream packages. Prefer `Arena(backing, blockSize)`.
+    func New(backing: Allocator, blockSize: uint) -> Arena {
+        return Arena(backing, blockSize);
+    }
+
+    /// A copyable interface adapter pointing at this arena.
     ///
-    /// `self` is borrowed mutably and stays the caller's. The handle is what to pass to anything expecting an
-    /// allocator, since coercing the arena itself to an interface would move it and leave the owner unable to reset
-    /// or release it.
+    /// `self` stays the caller's. Allocations through the handle update this arena rather than copied state.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
@@ -119,14 +122,17 @@ extend Arena {
     /// Nothing may be read from or written to any earlier allocation afterwards.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena/reset
-    func Reset(self: *var Arena) {
+    func Reset(self: &var Arena) {
         if self.current == null {
             return;
         }
         var block = self.current.previous;
         while block != null {
             let earlier = block.previous;
-            self.ReleaseBlock(block);
+            let total = sizeof(ArenaBlock) + block.capacity;
+            let layout = Layout::New(total, ArenaBlockAlignment)
+                             .ValueOr(Layout { size: total, alignment: ArenaBlockAlignment });
+            self.backing.Deallocate(block as *var opaque, layout);
             block = earlier;
         }
         self.current.previous = null;
@@ -141,7 +147,7 @@ extend Arena {
     /// measure for a test rather than an accounting of the whole arena.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena/bytes-used
-    func BytesUsed(self: *Arena) -> uint {
+    func BytesUsed(self: &Arena) -> uint {
         return self.current == null ? 0u : self.current.used;
     }
 
@@ -150,7 +156,7 @@ extend Arena {
     /// `self` is borrowed. Zero before the first request.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena/block-count
-    func BlockCount(self: *Arena) -> uint {
+    func BlockCount(self: &Arena) -> uint {
         return self.blocks;
     }
 
@@ -221,17 +227,20 @@ extend Arena {
     }
 }
 
-extend Arena : Drop {
+extend Arena {
     /// Gives every block back to the backing allocator.
     ///
     /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/arena/drop
-    func Drop(self: *var Arena) {
+    /// https://rux-lang.dev/docs/api/allocator/arena/destructor
+    func ~Arena(self: &var Arena) {
         var block = self.current;
         while block != null {
             let earlier = block.previous;
-            self.ReleaseBlock(block);
+            let total = sizeof(ArenaBlock) + block.capacity;
+            let layout = Layout::New(total, ArenaBlockAlignment)
+                             .ValueOr(Layout { size: total, alignment: ArenaBlockAlignment });
+            self.backing.Deallocate(block as *var opaque, layout);
             block = earlier;
         }
         self.current = null;
@@ -240,10 +249,9 @@ extend Arena : Drop {
     }
 }
 
-/// A `Copy` borrow of an arena, which is what implements `Allocator` for one.
+/// A copyable interface adapter pointing at an arena.
 ///
-/// Exists because coercing the arena itself to an interface would move it, leaving its owner unable to reset or
-/// release it. A handle is cheap to copy and may be passed anywhere an allocator is wanted.
+/// A handle is cheap to copy and may be stored wherever an allocator is wanted, but it does not own the arena.
 ///
 /// https://rux-lang.dev/docs/api/allocator/arena-handle
 struct ArenaHandle {
@@ -264,7 +272,7 @@ extend ArenaHandle : Allocator {
     /// The storage lives until the arena is reset or destroyed, whichever comes first, and not one moment longer.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena-handle/allocate
-    func Allocate(self: *var ArenaHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    func Allocate(self: &var ArenaHandle, layout: Layout, result: *var *var opaque) -> AllocError {
         if layout.size == 0 {
             *result = EmptyBlockAddress();
             return AllocError::None;
@@ -298,7 +306,7 @@ extend ArenaHandle : Allocator {
     /// that releases what it takes.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena-handle/deallocate
-    func Deallocate(self: *var ArenaHandle, block: *var opaque, layout: Layout) -> AllocError {
+    func Deallocate(self: &var ArenaHandle, block: *var opaque, layout: Layout) -> AllocError {
         if layout.size == 0 {
             return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
         }
@@ -324,7 +332,7 @@ extend ArenaHandle : Allocator {
     /// next reset to reclaim.
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena-handle/reallocate
-    func Reallocate(self: *var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+    func Reallocate(self: &var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         if oldLayout.alignment != newLayout.alignment {
             return AllocError::Unsupported;

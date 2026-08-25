@@ -23,8 +23,8 @@ import Allocator::{ AllocError, Layout };
 
 /// The operations every allocator provides.
 ///
-/// Written as an interface so a generic can require it -- `func Build<A: Allocator>(allocator: *var A)` resolves the
-/// calls at each instantiation with nothing dispatched at run time.
+/// Written as an interface so a generic can require it -- `func Build<A: Allocator>(allocator: &var A)` borrows the
+/// caller's allocator and resolves calls at each instantiation with nothing dispatched at run time.
 ///
 /// https://rux-lang.dev/docs/api/allocator/allocator
 interface Allocator {

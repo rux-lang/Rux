@@ -9,7 +9,7 @@ import Memory::IsPointerAligned;
 func Main() -> int {
     // The buffer is a local array, so nothing here allocates at all.
     var storage: byte[512];
-    var buffer = FixedBuffer::New(@storage[0] as *var opaque, 512);
+    var buffer = FixedBuffer(@storage[0] as *var opaque, 512);
     Assert(buffer.BytesUsed() == 0, "an unused allocator has handed out nothing");
     Assert(buffer.BytesRemaining() == 512, "and has its whole buffer left");
 
@@ -113,7 +113,7 @@ func Main() -> int {
     Assert((afterReset as uint) == (first as uint), "starting from the front of the buffer once more");
 
     // An allocator over no storage is a usable allocator that refuses everything.
-    var none = FixedBuffer::New(null, 4096);
+    var none = FixedBuffer(null, 4096);
     Assert(none.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
     var noneHandle = none.Handle();
     let empties: Allocator = noneHandle;

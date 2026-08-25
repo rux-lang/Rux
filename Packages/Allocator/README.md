@@ -23,10 +23,11 @@ rux add Rux/Allocator
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
-A `Layout` that exists is valid. `Layout::New` is the only way to build one and refuses an alignment that is not a
+A `Layout` that exists is valid. `Layout::New` refuses an alignment that is not a
 power of two, or a size whose rounding would pass the end of the address space — so nothing downstream checks again.
 That second case is the one worth naming: it is how a request for a huge array becomes an allocation far smaller than
-the caller asked for.
+the caller asked for. Use `LayoutOf<T>()` or `LayoutOfArray<T>(count)` when storage follows a type; neither requires a
+sample value, so describing a move-only type consumes nothing.
 
 Four promises hold for every allocator here:
 
@@ -41,22 +42,23 @@ A zero-sized layout is legal and gives a non-null aligned address that nothing m
 which must still be released. That is cheaper than a null case every caller has to branch on, and it keeps an empty
 collection from being a special shape.
 
-`Box<T>` implements `Drop`, so it is move-only: handing one to a function or another binding transfers it,
-and reading the source afterwards is rejected while compiling. It is *returned* rather than written
-through an out-parameter, which every other fallible call here does — ownership is what forces the
-difference. The compiler tracks a binding's initialization, and a write through a pointer is invisible to
-that tracking, so a box delivered that way would be owned by a binding the compiler believes owns
-nothing. The error travels by pointer instead.
+`Arena`, `Pool`, `FixedBuffer`, and `Box<T>` prohibit copying. The first two and the box use canonical destructors;
+the fixed buffer owns no storage but still cannot be copied because duplicate bump state could hand out overlapping
+blocks. Move an owner explicitly, for example `let destination <- source`. Destroying a non-empty box destroys its
+value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
+
+Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and
+`FixedBuffer(storage, capacity)`. The `New` methods remain temporary compatibility spellings.
 
 An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever
 a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice
 the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while
 keeping the largest block, so a second round of the same work asks the system for nothing.
 
-Pass an arena to something expecting an `Allocator` through `Arena::Handle`. Coercing a move-only value to an
-interface *moves* it, and an arena moved into an interface value can no longer be reset or released by its owner —
-so the handle is a `Copy` borrow that implements the interface while the arena stays where it is. It must not outlive
-its arena, and nothing checks that.
+Borrow a concrete implementation directly for a short-lived interface view, for example
+`let view: &var Allocator = system`. Arena, pool, and fixed-buffer handles are storable adapters for allocators whose
+mutable state must stay with an owner. A handle stores a raw pointer because references cannot be fields or returned;
+it must not outlive or survive a move of its owner.
 
 An arena accepts a release rather than refusing one, so it can stand in for any allocator in generic code that
 releases what it takes. Ordinary releases do nothing; the most recent allocation is rewound, which is what lets a
@@ -65,9 +67,8 @@ growing collection in an arena avoid wasting every earlier size it passed throug
 A `FixedBuffer` is the arena's shape without the arena's appetite: it hands out storage the caller already has,
 never asks anyone for more, and reports `OutOfMemory` when the buffer runs out. That makes it the allocator for the
 places where allocation must not happen — a fixed working set, a signal-safe path, a target with no allocator
-underneath at all. It owns nothing and has no destructor, but it does have state, so it is used through
-`FixedBuffer::Handle` for the same reason an arena is: an allocator copied while it is in use would hand out the same
-storage twice.
+underneath at all. It owns nothing and has no destructor, but its copy operation is prohibited because copying its
+state while it is in use would hand out the same storage twice.
 
 A `Pool` is for the other shape — many small values whose lives end at different times and in no particular order.
 A request is rounded up to one of five power-of-two classes, each keeping its own free list, so both allocation and

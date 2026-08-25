@@ -6,8 +6,40 @@ import Core::Assert;
 // allocator's header check, and a leak by the loop below, which would exhaust the address space long before it
 // finished -- the system allocator being page-granular.
 
+struct Tracked {
+    destroyed: *var int32;
+    value: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        if self.destroyed != null {
+            *self.destroyed += 1i32;
+        }
+    }
+}
+
+func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) {
+    var error = AllocError::None;
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91i32 }, @error);
+    Assert(error == AllocError::None, "a box accepts a move-only value");
+    Assert(boxed.Get().value == 91i32, "and owns that value");
+    Assert(*destroyed == 0i32, "without destroying it during construction");
+}
+
+func BoxAndTake(allocator: Allocator, destroyed: *var int32) {
+    var error = AllocError::None;
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27i32 }, @error);
+    var taken = Tracked { destroyed: null, value: 0i32 };
+    Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
+    Assert(boxed.IsEmpty(), "taking leaves its box empty");
+    Assert(taken.value == 27i32 && *destroyed == 0i32, "and transfers rather than destroys the value");
+}
+
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = AllocError::None;
 
@@ -45,10 +77,18 @@ func Main() -> int {
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
     var source = Box::Create<int64>(allocator, 7, @error);
     Assert(error == AllocError::None, "a box to move");
-    var destination = source;
+    var destination <- source;
     Assert(*destination.Get() == 7, "the destination holds the value");
 
     var emptied: int64 = 0;
     Assert(destination.TryTake(@emptied) && emptied == 7, "and it is still takeable from there");
+
+    var destroyed: int32 = 0;
+    BoxAndDestroy(allocator, @destroyed);
+    Assert(destroyed == 1i32, "destroying a box destroys its move-only value exactly once");
+
+    destroyed = 0;
+    BoxAndTake(allocator, @destroyed);
+    Assert(destroyed == 1i32, "a value taken from a box is destroyed by its new owner exactly once");
     return 0;
 }
