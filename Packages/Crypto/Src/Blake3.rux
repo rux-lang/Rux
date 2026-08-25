@@ -162,11 +162,6 @@ extend Blake3Chunk {
         };
     }
 
-    /// Temporary compatibility spelling. Prefer `Blake3Chunk(key, counter, flags)`.
-    func New(key: uint32[8], counter: uint64, flags: uint32) -> Blake3Chunk {
-        return Blake3Chunk(key, counter, flags);
-    }
-
     // The start flag applies only to the first block of the chunk.
     func StartFlag(self: &Blake3Chunk) -> uint32 {
         return self.blocksCompressed == 0u ? Blake3ChunkStart : 0u32;
@@ -289,11 +284,6 @@ extend Blake3 {
     /// https://rux-lang.dev/docs/api/crypto/blake3/new
     func Blake3() -> Blake3 {
         return Blake3::Start(Blake3InitialValue, 0u32);
-    }
-
-    /// Temporary compatibility spelling for downstream packages. Prefer `Blake3()`.
-    func New() -> Blake3 {
-        return Blake3();
     }
 
     // Joins two child chaining values into their parent.

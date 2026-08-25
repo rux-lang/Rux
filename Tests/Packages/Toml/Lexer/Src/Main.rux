@@ -23,7 +23,7 @@ func FirstError(text: Slice<char8>) -> TomlLexError {
 
 // The decoded content of the first token, which must be a text token.
 func FirstText(text: Slice<char8>) -> String {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var lexer = TomlLexer(text);
     let token = lexer.Next();
@@ -174,7 +174,7 @@ func Main() -> int {
     Assert(FirstError("\"a\u{1}b\"") == TomlLexError::UnescapedControl, "and a raw control character");
 
     // A surrogate is not a scalar value, so no escape names one.
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var surrogateLexer = TomlLexer("\"\\uD800\"");
     let surrogate = surrogateLexer.Next();

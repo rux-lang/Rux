@@ -672,12 +672,9 @@ std::optional<ParsedSemanticVersion> ConditionalEvaluator::Impl::EvalSemanticVer
     }
 
     if (const auto *call = dynamic_cast<const CallExpr *>(&expr)) {
-        const auto *path = dynamic_cast<const PathExpr *>(call->callee.get());
         const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get());
         const bool typeConstructor = identifier && identifier->name == "SemanticVersion";
-        const bool compatibilityFactory =
-            path && path->segments.size() == 2 && path->segments[0] == "SemanticVersion" && path->segments[1] == "New";
-        if ((typeConstructor || compatibilityFactory) && call->args.size() == 3) {
+        if (typeConstructor && call->args.size() == 3) {
             ParsedSemanticVersion version;
             std::uint64_t *components[] = {&version.major, &version.minor, &version.patch};
             for (std::size_t index = 0; index < call->args.size(); ++index) {

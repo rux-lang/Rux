@@ -100,7 +100,7 @@ func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, a
     if error.IsError() {
         return builder.IntoString();
     }
-    var sink = BuilderWriter::Of(@builder);
+    let sink: &var TextWriter = builder;
     let writer: &var TextWriter = sink;
     *error = WriteFormat(writer, format, args...);
     return builder.IntoString();

@@ -43,11 +43,6 @@ extend Xoshiro256 {
         return generator;
     }
 
-    /// Temporary compatibility spelling for `Xoshiro256(seed)`.
-    func New(seed: uint64) -> Xoshiro256 {
-        return Xoshiro256(seed);
-    }
-
     /// A generator from four words of state given directly, for reproducing a stream recorded elsewhere.
     ///
     /// An all-zero state is the one state with no future, so it is replaced by the mixer's output for a zero

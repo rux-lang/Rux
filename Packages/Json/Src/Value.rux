@@ -182,8 +182,8 @@ extend JsonValue {
             boolean: false,
             number: JsonNumber { text: String(allocator) },
             text: String(allocator),
-            elements: Vector::New<JsonValue>(allocator),
-            members: Vector::New<JsonMember>(allocator),
+            elements: Vector<JsonValue>(allocator),
+            members: Vector<JsonMember>(allocator),
             allocator: allocator
         };
     }
@@ -398,7 +398,7 @@ extend JsonValue {
         if target >= self.members.Length() {
             return false;
         }
-        var tail = Vector::New<JsonMember>(self.allocator);
+        var tail = Vector<JsonMember>(self.allocator);
         while self.members.Length() > target + 1u {
             var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !self.members.TryPop(@moved) {

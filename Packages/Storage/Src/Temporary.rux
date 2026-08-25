@@ -45,11 +45,11 @@ func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer
         let written = GetTempPathW(512, @units[0] as *var char16);
         if written == 0u32 {
             *error = TranslateNative(GetLastError() as int32);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         if written > 512u32 {
             *error = IoError::Of(IoErrorKind::LimitExceeded);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         // The reported path ends in a separator; the buffer holds names, so it is dropped here.
         var length = written as uint;
@@ -67,7 +67,7 @@ func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer
         var name = OsString::FromText(allocator, "/tmp", @textError);
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         var held = PathBuffer::FromPath(allocator, Path::FromView(name.View()), @textError);
         if textError != TextError::None {
@@ -85,7 +85,7 @@ func RandomName(allocator: Allocator, prefix: Slice<char8>, error: *var IoError)
     if entropyError != EntropyError::None {
         // A name without entropy behind it is not a name this package will hand out.
         *error = IoError::Of(IoErrorKind::Other);
-        return OsString::New(allocator);
+        return OsString(allocator);
     }
     var text: char8[64];
     var length: uint = 0;
@@ -139,7 +139,7 @@ extend TemporaryFile {
         *error = IoError::Ok();
         var result = TemporaryFile {
             file: File { handle: NoFile(), open: false },
-            path: PathBuffer::New(allocator),
+            path: PathBuffer(allocator),
             owned: false
         };
         var options = OpenOptions();
@@ -243,7 +243,7 @@ extend TemporaryDirectoryHandle {
     func Create(allocator: Allocator, directory: Path, prefix: Slice<char8>,
                 error: *var IoError) -> TemporaryDirectoryHandle {
         *error = IoError::Ok();
-        var result = TemporaryDirectoryHandle { path: PathBuffer::New(allocator), owned: false };
+        var result = TemporaryDirectoryHandle { path: PathBuffer(allocator), owned: false };
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
             var textError = TextError::None;

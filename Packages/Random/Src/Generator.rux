@@ -48,10 +48,6 @@ extend SplitMix64 {
         return SplitMix64 { state: seed };
     }
 
-    /// Temporary compatibility spelling for `SplitMix64(seed)`.
-    func New(seed: uint64) -> SplitMix64 {
-        return SplitMix64(seed);
-    }
 }
 
 extend SplitMix64 : RandomGenerator {

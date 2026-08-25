@@ -72,11 +72,6 @@ extend String {
         return String { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `String(allocator)`.
-    func New(allocator: Allocator) -> String {
-        return String(allocator);
-    }
-
     /// A copy of bytes the caller vouches are UTF-8.
     ///
     /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already

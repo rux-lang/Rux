@@ -4,7 +4,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, MutableSlice, Slice };
-import Format::{ ByteCursor, CursorWriter, TextWriter };
+import Format::{ ByteCursor, TextWriter };
 import Text::{ StringView, TextError };
 import Time::UtcOffset;
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue, TomlWriteDocument,
@@ -12,8 +12,8 @@ import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
 
 // Renders `value` into `storage` and returns the bytes.
 func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
-    var cursor = ByteCursor::New(storage);
-    let writer: TextWriter = CursorWriter::Of(@cursor);
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
     Assert(TomlWriteDocument(writer, value) == TomlWriteError::None, "writing succeeds");
     return cursor.Written();
 }
@@ -37,7 +37,7 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var storage: char8[4096];
     var second: char8[4096];

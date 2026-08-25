@@ -31,11 +31,6 @@ extend ByteCursor {
         return ByteCursor { room: room, length: 0, overran: false };
     }
 
-    /// Temporary compatibility spelling for `ByteCursor(room)`.
-    func New(room: MutableSlice<char8>) -> ByteCursor {
-        return ByteCursor(room);
-    }
-
     /// Appends one byte, or records an overrun when there is no room.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push

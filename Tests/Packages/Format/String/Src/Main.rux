@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
-import Format::{ BuilderWriter, Debug, Display, Format, FormatSpec, TextWriter };
+import Format::{ Debug, Display, Format, FormatSpec, TextWriter };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
@@ -38,19 +38,20 @@ func Main() -> int {
 
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
     var builder = StringBuilder(allocator);
-    var sink = BuilderWriter::Of(@builder);
-    let writer: &var TextWriter = sink;
     let empty = String(allocator);
     let shownPlain: Display = empty.View();
-    if shownPlain.Format(writer, FormatSpec::Plain()) != TextError::None { return 20; }
+    let plainWriter: &var TextWriter = builder;
+    if shownPlain.Format(plainWriter, FormatSpec::Plain()) != TextError::None { return 20; }
     if builder.Length() != 0 { return 21; }
     let shownDebug: Debug = empty.View();
-    if shownDebug.FormatDebug(writer, FormatSpec::Plain()) != TextError::None { return 22; }
+    let emptyDebugWriter: &var TextWriter = builder;
+    if shownDebug.FormatDebug(emptyDebugWriter, FormatSpec::Plain()) != TextError::None { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     builder.Clear();
     let shownHello: Debug = hello.View();
-    if shownHello.FormatDebug(writer, FormatSpec::Plain()) != TextError::None { return 24; }
+    let helloDebugWriter: &var TextWriter = builder;
+    if shownHello.FormatDebug(helloDebugWriter, FormatSpec::Plain()) != TextError::None { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
     return 0;

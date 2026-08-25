@@ -56,18 +56,6 @@ extend Fnv1a32 {
         return Fnv1a32 { state: FnvOffsetBasis32 };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Fnv1a32()`.
-    ///
-    /// Takes nothing and cannot fail. `Finish` on a fresh hasher gives the offset basis, which is the defined hash
-    /// of the empty input rather than an accident of the construction.
-    ///
-    /// Runs in constant time and allocates nothing.
-    ///
-    /// https://rux-lang.dev/docs/api/hash/fnv1a32/new
-    func New() -> Fnv1a32 {
-        return Fnv1a32();
-    }
-
     /// Puts the hasher back to where `Fnv1a32()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
@@ -148,18 +136,6 @@ extend Fnv1a64 {
     /// Constructs a hasher with nothing written into it yet.
     func Fnv1a64() -> Fnv1a64 {
         return Fnv1a64 { state: FnvOffsetBasis64 };
-    }
-
-    /// Temporary compatibility spelling for downstream packages. Prefer `Fnv1a64()`.
-    ///
-    /// Takes nothing and cannot fail. `Finish` on a fresh hasher gives the offset basis, which is the defined hash
-    /// of the empty input.
-    ///
-    /// Runs in constant time and allocates nothing.
-    ///
-    /// https://rux-lang.dev/docs/api/hash/fnv1a64/new
-    func New() -> Fnv1a64 {
-        return Fnv1a64();
     }
 
     /// Puts the hasher back to where `Fnv1a64()` leaves one.

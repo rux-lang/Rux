@@ -85,11 +85,6 @@ extend LegacyMd5 {
         };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `LegacyMd5()`.
-    func New() -> LegacyMd5 {
-        return LegacyMd5();
-    }
-
     func Compress(self: &var LegacyMd5, block: *char8) {
         // MD5 reads its words little-endian, where the SHA family reads big-endian.
         var words: uint32[16];
@@ -242,11 +237,6 @@ extend LegacySha1 {
             buffered: 0,
             length: 0
         };
-    }
-
-    /// Temporary compatibility spelling for downstream packages. Prefer `LegacySha1()`.
-    func New() -> LegacySha1 {
-        return LegacySha1();
     }
 
     func Compress(self: &var LegacySha1, block: *char8) {

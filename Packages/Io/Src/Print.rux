@@ -35,10 +35,6 @@ extend ConsoleWriter {
         return ConsoleWriter { failure: failure };
     }
 
-    /// Temporary compatibility spelling for `ConsoleWriter(failure)`.
-    func New(failure: *var IoError) -> ConsoleWriter {
-        return ConsoleWriter(failure);
-    }
 }
 
 extend ConsoleWriter : TextWriter {

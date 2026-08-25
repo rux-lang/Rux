@@ -146,11 +146,6 @@ extend Table<K, V> {
         };
     }
 
-    /// Temporary compatibility spelling for `Table<K, V>(allocator, seed)`.
-    func New(allocator: Allocator, seed: TableSeed) -> Table<K, V> {
-        return Table<K, V>(allocator, seed);
-    }
-
     /// How many entries the table holds.
     ///
     /// `self` is borrowed.

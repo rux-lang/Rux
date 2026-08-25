@@ -48,7 +48,7 @@ blocks. Move an owner explicitly, for example `let destination <- source`. Destr
 value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
 
 Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and
-`FixedBuffer(storage, capacity)`. The `New` methods remain temporary compatibility spellings.
+`FixedBuffer(storage, capacity)`. `Layout::New` retains its name because it validates and returns `Option<Layout>`.
 
 An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever
 a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice

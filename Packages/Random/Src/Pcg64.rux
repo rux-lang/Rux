@@ -38,11 +38,6 @@ extend Pcg64Dxsm {
         return Pcg64Dxsm::WithStream(seed, 0u64);
     }
 
-    /// Temporary compatibility spelling for `Pcg64Dxsm(seed)`.
-    func New(seed: uint64) -> Pcg64Dxsm {
-        return Pcg64Dxsm(seed);
-    }
-
     /// A generator on the stream `stream` selects.
     ///
     /// Two generators with the same seed and different streams produce unrelated sequences of the same period,

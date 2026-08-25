@@ -60,18 +60,18 @@ extend AtomicWrite {
         var result = AtomicWrite {
             scratch: TemporaryFile {
                 file: File { handle: NoFile(), open: false },
-                path: PathBuffer::New(allocator),
+                path: PathBuffer(allocator),
                 owned: false
             },
-            target: PathBuffer::New(allocator),
+            target: PathBuffer(allocator),
             pending: false
         };
 
         // A target with no parent is a bare name in the working directory, whose parent is that directory.
         let parent = target.Parent();
-        var directory = PathBuffer::New(allocator);
+        var directory = PathBuffer(allocator);
         if parent.IsSome() {
-            directory <- PathBuffer::FromPath(allocator, parent.ValueOr(Path::New()), @textError);
+            directory <- PathBuffer::FromPath(allocator, parent.ValueOr(Path()), @textError);
         }
         else {
             var here: OsUnit[1];

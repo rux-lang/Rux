@@ -42,11 +42,6 @@ extend TreeMap<K, V> {
         return TreeMap<K, V> { tree: Tree<K, V>(allocator), compare: compare };
     }
 
-    /// Temporary compatibility spelling for `TreeMap<K, V>(allocator, compare)`.
-    func New(allocator: Allocator, compare: func(K, K) -> Ordering) -> TreeMap<K, V> {
-        return TreeMap<K, V>(allocator, compare);
-    }
-
     /// How many entries the map holds.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/length

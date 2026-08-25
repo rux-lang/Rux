@@ -17,11 +17,6 @@ extend MutableSlice<T> {
         return MutableSlice<T> { data: null, length: 0 };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `MutableSlice<T>()`.
-    func New() -> MutableSlice<T> {
-        return MutableSlice<T>();
-    }
-
     // A view over length elements starting at data. The caller guarantees the
     // range is initialized and outlives the view.
     func From(data: *var T, length: uint) -> MutableSlice<T> {

@@ -43,9 +43,9 @@ func Main() -> int {
 }
 ```
 
-Use `String(allocator)`, `StringBuilder(allocator)`, and `StringView()` for empty values. Temporary `New` forwarding
-methods remain for downstream compatibility. Move builders and C strings explicitly with `<-`. Ordinary `String`
-copy syntax is infallible and terminates on allocation failure; use `Clone(@error)` in recoverable paths.
+Use `String(allocator)`, `StringBuilder(allocator)`, and `StringView()` for empty values. Move builders and C strings
+explicitly with `<-`. Ordinary `String` copy syntax is infallible and terminates on allocation failure; use
+`Clone(@error)` in recoverable paths.
 
 ## Documentation
 

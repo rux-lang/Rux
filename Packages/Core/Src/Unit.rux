@@ -19,8 +19,4 @@ extend Unit {
         return Unit {};
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Unit()`.
-    func New() -> Unit {
-        return Unit();
-    }
 }

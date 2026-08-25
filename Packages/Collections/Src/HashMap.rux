@@ -48,12 +48,6 @@ extend HashMap<K, V> {
         return HashMap::WithSeed<K, V>(allocator, TableSeed::Random(), hash, equals);
     }
 
-    /// Temporary compatibility spelling for `HashMap<K, V>(allocator, hash, equals)`.
-    func New(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
-             equals: func(K, K) -> bool) -> HashMap<K, V> {
-        return HashMap<K, V>(allocator, hash, equals);
-    }
-
     /// An empty map that has not allocated anything, hashing with `seed`.
     ///
     /// `allocator` is borrowed for the call and kept; `seed` is read by value. Two maps sharing a seed hash alike,

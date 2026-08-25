@@ -55,11 +55,6 @@ extend ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 
-    /// Temporary compatibility spelling for `ValueIterator<T>(items)`.
-    func New(items: Slice<T>) -> ValueIterator<T> {
-        return ValueIterator<T>(items);
-    }
-
     /// The next element, or `None` once the run is exhausted.
     ///
     /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `None`.
@@ -109,11 +104,6 @@ extend ReferenceIterator<T> {
     /// https://rux-lang.dev/docs/api/collections/reference-iterator/new
     func ReferenceIterator(items: Slice<T>) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
-    }
-
-    /// Temporary compatibility spelling for `ReferenceIterator<T>(items)`.
-    func New(items: Slice<T>) -> ReferenceIterator<T> {
-        return ReferenceIterator<T>(items);
     }
 
     /// A pointer to the next element, or `None` once the run is exhausted.

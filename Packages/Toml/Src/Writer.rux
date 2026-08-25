@@ -19,7 +19,7 @@
 // will produce a diff of the whole file.
 
 import Core::{ MutableSlice, Slice };
-import Format::{ ByteCursor, CursorWriter, ParseFloat64, TextWriter, WriteDecimal };
+import Format::{ ByteCursor, ParseFloat64, TextWriter, WriteDecimal };
 import Text::TextError;
 
 /// Why writing stopped.
@@ -79,12 +79,12 @@ func IsBareKey(name: Slice<char8>) -> bool {
     return true;
 }
 
-func Emit(writer: TextWriter, bytes: Slice<char8>) -> TomlWriteError {
+func Emit(writer: &var TextWriter, bytes: Slice<char8>) -> TomlWriteError {
     var sink = writer;
     return sink.Write(bytes) == TextError::None ? TomlWriteError::None : TomlWriteError::Failed;
 }
 
-func EmitByte(writer: TextWriter, byte: uint8) -> TomlWriteError {
+func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {
     var one: char8[1];
     one[0] = byte as char8;
     return Emit(writer, one[0..1]);
@@ -92,7 +92,7 @@ func EmitByte(writer: TextWriter, byte: uint8) -> TomlWriteError {
 
 // A basic string: the quote, the backslash and every control character escaped, and nothing else. The short
 // escapes are used where TOML defines them, and a four-digit form otherwise.
-func EmitBasicString(writer: TextWriter, text: Slice<char8>) -> TomlWriteError {
+func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteError {
     var failure = EmitByte(writer, 0x22u8);
     if failure != TomlWriteError::None {
         return failure;
@@ -151,7 +151,7 @@ func HexDigit(value: uint8) -> uint8 {
 }
 
 // A key, bare where TOML allows it and quoted where it does not.
-func EmitKey(writer: TextWriter, name: Slice<char8>) -> TomlWriteError {
+func EmitKey(writer: &var TextWriter, name: Slice<char8>) -> TomlWriteError {
     if IsBareKey(name) {
         return Emit(writer, name);
     }
@@ -161,7 +161,7 @@ func EmitKey(writer: TextWriter, name: Slice<char8>) -> TomlWriteError {
 // A float, at the fewest digits that read back as the same value. Fifteen digits is what a float64 always
 // carries cleanly, and seventeen is what always round-trips; trying the three in order gives text that is both
 // short and exact, and the same value always produces the same text.
-func EmitFloat(writer: TextWriter, value: float64) -> TomlWriteError {
+func EmitFloat(writer: &var TextWriter, value: float64) -> TomlWriteError {
     if value != value {
         return Emit(writer, "nan");
     }
@@ -175,7 +175,7 @@ func EmitFloat(writer: TextWriter, value: float64) -> TomlWriteError {
     var length: uint = 0;
     var significant = 15u;
     while significant <= 17u {
-        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
+        var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
@@ -207,7 +207,7 @@ func EmitFloat(writer: TextWriter, value: float64) -> TomlWriteError {
 
 // An integer, in decimal. The other three bases are spellings of the same value, and picking one of them would
 // make the output depend on how the value was written rather than on what it is.
-func EmitInteger(writer: TextWriter, value: int64) -> TomlWriteError {
+func EmitInteger(writer: &var TextWriter, value: int64) -> TomlWriteError {
     var storage: char8[24];
     var length: uint = 0;
     var negative = value < 0i64;
@@ -236,7 +236,7 @@ func EmitInteger(writer: TextWriter, value: int64) -> TomlWriteError {
 }
 
 // Two digits, which every part of a date and a time is written with except the year and the fraction.
-func EmitPadded(writer: TextWriter, value: uint32, width: uint) -> TomlWriteError {
+func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) -> TomlWriteError {
     var storage: char8[10];
     var index = width;
     var rest = value;
@@ -249,7 +249,7 @@ func EmitPadded(writer: TextWriter, value: uint32, width: uint) -> TomlWriteErro
 }
 
 // A date-time in whichever of the four forms the kind names, which is what keeps a local reading local.
-func EmitDateTime(writer: TextWriter, value: &TomlValue) -> TomlWriteError {
+func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
     var failure = TomlWriteError::None;
     let kind = value.Kind();
     if kind != TomlKind::LocalTime {
@@ -338,7 +338,7 @@ func EmitDateTime(writer: TextWriter, value: &TomlValue) -> TomlWriteError {
 
 // A value written where a value belongs: on the right of an equals sign, or inside an array. A table reached
 // this way is written inline, because inside an array TOML has no other spelling for one.
-func EmitValue(writer: TextWriter, value: &TomlValue) -> TomlWriteError {
+func EmitValue(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
     let kind = value.Kind();
     if kind == TomlKind::Boolean {
         return Emit(writer, value.boolean ? "true" : "false");
@@ -425,7 +425,7 @@ func IsBodyEntry(value: &TomlValue) -> bool {
 }
 
 // The entries of a table that are written as `key = value` lines, in the order the table holds them.
-func EmitBody(writer: TextWriter, table: &TomlValue) -> TomlWriteError {
+func EmitBody(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
     var index: uint = 0;
     while index < table.Length() {
         let entry = table.EntryAt(index);
@@ -453,7 +453,7 @@ func EmitBody(writer: TextWriter, table: &TomlValue) -> TomlWriteError {
 }
 
 // A header, `[path]` or `[[path]]`, followed by a newline.
-func EmitHeader(writer: TextWriter, path: &TomlPath, array: bool, first: bool) -> TomlWriteError {
+func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bool) -> TomlWriteError {
     var failure = TomlWriteError::None;
     if !first {
         // A blank line before every header but the first, which is what makes a configuration file readable and
@@ -480,7 +480,7 @@ func EmitHeader(writer: TextWriter, path: &TomlPath, array: bool, first: bool) -
 
 // The sub-tables of a table, each under a header of its own, after the body has been written. The order is the
 // table's own, so the output of a tree is the same every time.
-func EmitSections(writer: TextWriter, table: &TomlValue, path: &var TomlPath, written: *var uint,
+func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPath, written: *var uint,
                   root: bool) -> TomlWriteError {
     var index: uint = 0;
     while index < table.Length() {
@@ -546,8 +546,8 @@ func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
         return path.Append(name) ? TomlWriteError::None : TomlWriteError::PathTooLong;
     }
     var storage: char8[512];
-    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 512));
-    let quoted: TextWriter = CursorWriter::Of(@cursor);
+    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 512));
+    let quoted: &var TextWriter = cursor;
     let failure = EmitBasicString(quoted, name);
     if failure != TomlWriteError::None {
         return failure;
@@ -565,7 +565,7 @@ func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
 /// by this writer, which is an equivalent document and not the same file.
 ///
 /// https://rux-lang.dev/docs/api/toml/write-document
-func TomlWriteDocument(writer: TextWriter, table: &TomlValue) -> TomlWriteError {
+func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
     if table.Kind() != TomlKind::Table {
         return EmitValue(writer, table);
     }

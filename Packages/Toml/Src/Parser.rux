@@ -111,10 +111,6 @@ extend TomlParseOutcome {
         };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New() -> TomlParseOutcome {
-        return TomlParseOutcome();
-    }
 }
 
 /// A parser over a document.
@@ -159,11 +155,6 @@ extend TomlParser {
                 column: 1
             }
         };
-    }
-
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New(allocator: Allocator, input: Slice<char8>, limits: TomlLimits) -> TomlParser {
-        return TomlParser(allocator, input, limits);
     }
 
     /// Why parsing stopped.
@@ -442,7 +433,7 @@ extend TomlParser {
     // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
     // tables are closed when the line ends -- which is why they are marked as dotted rather than merely made.
     func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
-        var parts = Vector::New<String>(self.allocator);
+        var parts = Vector<String>(self.allocator);
         if !self.ParseKeyPath(parts) {
             parts.Clear();
             return;
@@ -526,7 +517,7 @@ extend TomlParser {
             array = true;
             self.Advance();
         }
-        var parts = Vector::New<String>(self.allocator);
+        var parts = Vector<String>(self.allocator);
         if !self.ParseKeyPath(parts) {
             parts.Clear();
             return null;

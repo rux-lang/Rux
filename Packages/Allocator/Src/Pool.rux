@@ -116,11 +116,6 @@ extend Pool {
         };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Pool(backing, blocksPerChunk)`.
-    func New(backing: Allocator, blocksPerChunk: uint) -> Pool {
-        return Pool(backing, blocksPerChunk);
-    }
-
     /// A copyable interface adapter pointing at this pool.
     ///
     /// `self` stays the caller's. Allocations through the handle update this pool rather than copied state.

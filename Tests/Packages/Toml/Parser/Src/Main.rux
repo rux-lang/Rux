@@ -26,7 +26,7 @@ func Refuses(allocator: Allocator, text: Slice<char8>) -> TomlParseError {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     // The ordinary shapes, which have to work before the refusals mean anything.
     var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");

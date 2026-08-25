@@ -64,11 +64,6 @@ extend Vector<T> {
         return Vector<T> { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `Vector<T>(allocator)`.
-    func New(allocator: Allocator) -> Vector<T> {
-        return Vector<T>(allocator);
-    }
-
     /// An empty vector with room for `capacity` elements already taken.
     ///
     /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The

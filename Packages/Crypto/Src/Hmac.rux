@@ -99,11 +99,6 @@ extend Hmac<D> {
         return state;
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Hmac<D>(prototype, key)`.
-    func New<D: Digest>(prototype: D, key: Slice<char8>) -> Hmac<D> {
-        return Hmac<D>(prototype, key);
-    }
-
     /// Adds `bytes` to the message being authenticated.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/update

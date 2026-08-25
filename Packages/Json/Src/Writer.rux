@@ -64,7 +64,7 @@ const JsonHexDigits: Slice<char8> = "0123456789abcdef";
 /// into escapes -- which is legal but makes output several times larger for no gain.
 ///
 /// https://rux-lang.dev/docs/api/json/write-escaped
-func WriteEscaped(writer: TextWriter, text: Slice<char8>) -> JsonWriteError {
+func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteError {
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
@@ -158,12 +158,12 @@ func IsFiniteNumberText(text: Slice<char8>) -> bool {
     return true;
 }
 
-func WriteBytes(writer: TextWriter, bytes: Slice<char8>) -> JsonWriteError {
+func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> JsonWriteError {
     var sink = writer;
     return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
 }
 
-func WriteNewlineAndIndent(writer: TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
+func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
     if style.indent == 0u {
         return JsonWriteError::None;
     }
@@ -194,11 +194,11 @@ func WriteNewlineAndIndent(writer: TextWriter, style: JsonStyle, level: uint) ->
 /// Writes `value` to `writer` in the given style.
 ///
 /// https://rux-lang.dev/docs/api/json/write-value
-func WriteValue(writer: TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
+func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
     return WriteAtLevel(writer, value, style, 0u);
 }
 
-func WriteAtLevel(writer: TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
+func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
     if level > 512u {
         return JsonWriteError::TooDeep;
     }

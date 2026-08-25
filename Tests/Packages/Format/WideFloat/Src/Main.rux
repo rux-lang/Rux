@@ -5,7 +5,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, MutableSlice, Result, Slice };
-import Format::{ ByteCursor, CursorWriter, Display, Float128, Float256, Float512, Float80, FloatLayout,
+import Format::{ ByteCursor, Display, Float128, Float256, Float512, Float80, FloatLayout,
                  FormatSpec, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80,
                  ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
 import Text::TextError;
@@ -36,7 +36,7 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: Muta
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var cursor = ByteCursor(storage);
-    var sink = CursorWriter::Of(@cursor);
+    let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     Assert(WriteWideFloat(allocator, writer, spec, bits, layout) == TextError::None, "rendering succeeds");
     return cursor.Written();
@@ -204,7 +204,7 @@ func Main() -> int {
 
     // The interface path, which chooses its own allocator.
     var cursor = ByteCursor(room);
-    var sink = CursorWriter::Of(@cursor);
+    let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     let shown: Display = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
     Assert(shown.Format(writer, plain) == TextError::None, "Display renders");

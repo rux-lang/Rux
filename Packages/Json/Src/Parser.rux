@@ -105,11 +105,6 @@ extend JsonParser {
         };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
-        return JsonParser(allocator, input, limits);
-    }
-
     /// Chooses what to do about duplicate object names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy

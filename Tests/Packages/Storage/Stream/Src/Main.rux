@@ -13,7 +13,7 @@ func View(bytes: Slice<char8>) -> StringView {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
     var textError = TextError::None;

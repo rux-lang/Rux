@@ -45,11 +45,6 @@ extend OsStringView {
         return OsStringView { units: Slice<OsUnit> { data: null, length: 0 } };
     }
 
-    /// Temporary compatibility spelling for `OsStringView()`.
-    func New() -> OsStringView {
-        return OsStringView();
-    }
-
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/from-units
@@ -138,11 +133,6 @@ extend OsString {
     /// https://rux-lang.dev/docs/api/path/os-string/new
     func OsString(allocator: Allocator) -> OsString {
         return OsString { data: null, length: 0, allocator: allocator };
-    }
-
-    /// Temporary compatibility spelling for `OsString(allocator)`.
-    func New(allocator: Allocator) -> OsString {
-        return OsString(allocator);
     }
 
     /// An owning copy of what `view` spans, exactly as it stands.

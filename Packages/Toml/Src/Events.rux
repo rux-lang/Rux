@@ -112,11 +112,6 @@ extend TomlEventReader {
         };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New(input: Slice<char8>) -> TomlEventReader {
-        return TomlEventReader(input);
-    }
-
     /// Why reading stopped, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/error

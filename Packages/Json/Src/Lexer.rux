@@ -159,11 +159,6 @@ extend JsonLexer {
         return JsonLexer { input: input, position: 0, limits: limits };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New(input: Slice<char8>, limits: JsonLimits) -> JsonLexer {
-        return JsonLexer(input, limits);
-    }
-
     /// Where reading has reached, as a byte offset.
     ///
     /// https://rux-lang.dev/docs/api/json/json-lexer/position

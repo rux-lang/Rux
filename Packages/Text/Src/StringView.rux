@@ -34,11 +34,6 @@ extend StringView {
         return StringView { bytes: Slice<char8> { data: null, length: 0 } };
     }
 
-    /// Temporary compatibility spelling for `StringView()`.
-    func New() -> StringView {
-        return StringView();
-    }
-
     /// A view over `bytes` when they are UTF-8, and `None` when they are not.
     ///
     /// `bytes` is borrowed and must outlive the view. This is the only way to make a view out of bytes whose

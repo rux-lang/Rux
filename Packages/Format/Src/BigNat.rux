@@ -38,11 +38,6 @@ extend BigNat {
         return BigNat { allocator: allocator, limbs: null, capacity: 0, length: 0 };
     }
 
-    /// Temporary compatibility spelling for `BigNat(allocator)`.
-    func New(allocator: Allocator) -> BigNat {
-        return BigNat(allocator);
-    }
-
     /// Makes room for `count` limbs, keeping the value. Reports `false` when the allocator refuses.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/reserve

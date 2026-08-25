@@ -53,11 +53,6 @@ extend StringBuilder {
         return StringBuilder { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `StringBuilder(allocator)`.
-    func New(allocator: Allocator) -> StringBuilder {
-        return StringBuilder(allocator);
-    }
-
     /// A builder with room for `capacity` bytes already taken.
     ///
     /// Worth using when the size is known or can be guessed well: appends that stay within the room never
@@ -306,18 +301,6 @@ func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *v
     Copy(@(*data)[*length] as *var opaque, bytes.data as *opaque, bytes.length);
     *length = *length + bytes.length;
     return TextError::None;
-}
-
-/// Appends through a stored raw builder address.
-///
-/// This is the compatibility boundary for adapters that must keep an address because references cannot be fields.
-/// New call-time APIs should accept `&var StringBuilder` and use `AppendValidated`.
-///
-/// # Safety
-///
-/// `builder` must be non-null, live, and unmoved for the call.
-func AppendValidatedRaw(builder: *var StringBuilder, bytes: Slice<char8>) -> TextError {
-    return AppendBuilderStorage(@builder.data, @builder.length, @builder.capacity, builder.allocator, bytes);
 }
 
 extend StringBuilder {

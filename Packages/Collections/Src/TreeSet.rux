@@ -51,11 +51,6 @@ extend TreeSet<T> {
         return TreeSet<T> { tree: Tree<T, Unit>(allocator), compare: compare };
     }
 
-    /// Temporary compatibility spelling for `TreeSet<T>(allocator, compare)`.
-    func New(allocator: Allocator, compare: func(T, T) -> Ordering) -> TreeSet<T> {
-        return TreeSet<T>(allocator, compare);
-    }
-
     /// How many elements the set holds.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-set/length

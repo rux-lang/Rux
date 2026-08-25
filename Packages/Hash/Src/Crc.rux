@@ -137,17 +137,6 @@ extend Crc32 {
         return Crc32 { register: Crc32Initial };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Crc32()`.
-    ///
-    /// Takes nothing and cannot fail. `Value` on a fresh one is zero, which is the CRC of the empty message.
-    ///
-    /// Runs in constant time and allocates nothing.
-    ///
-    /// https://rux-lang.dev/docs/api/hash/crc32/new
-    func New() -> Crc32 {
-        return Crc32();
-    }
-
     /// Puts the checksum back to where `Crc32()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
@@ -227,17 +216,6 @@ extend Crc32c {
     /// Constructs a checksum with nothing written into it yet.
     func Crc32c() -> Crc32c {
         return Crc32c { register: Crc32Initial };
-    }
-
-    /// Temporary compatibility spelling for downstream packages. Prefer `Crc32c()`.
-    ///
-    /// Takes nothing and cannot fail. `Value` on a fresh one is zero, which is the CRC of the empty message.
-    ///
-    /// Runs in constant time and allocates nothing.
-    ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c/new
-    func New() -> Crc32c {
-        return Crc32c();
     }
 
     /// Puts the checksum back to where `Crc32c()` leaves one.
