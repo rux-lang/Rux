@@ -43,6 +43,30 @@ TEST_CASE("FreeBSD AArch64 selects generic AAPCS64 while Apple selects its fixed
     }
 }
 
+TEST_CASE("AArch64 ABI classifies shared and exclusive references as one address register") {
+    const Layout::LayoutMap layouts;
+    const std::unordered_set<std::string> interfaces;
+    const std::vector<LirStructDecl> structures;
+    AArch64CallPlanner planner(layouts, interfaces, structures, Target::OS::Linux);
+
+    TypeRef shared = TypeRef::MakeReference(TypeRef::MakeInt64());
+    TypeRef exclusiveReferent = TypeRef::MakeInt64();
+    exclusiveReferent.isMut = true;
+    TypeRef exclusive = TypeRef::MakeReference(std::move(exclusiveReferent));
+    const AArch64CallLayout arguments = planner.PlanArguments({shared, exclusive, TypeRef::MakeInt64()});
+
+    REQUIRE_EQ(arguments.args.size(), 3);
+    for (std::size_t index = 0; index < arguments.args.size(); ++index) {
+        CHECK_EQ(arguments.args[index].kind, AArch64ArgumentLocation::Kind::General);
+        CHECK_EQ(arguments.args[index].first, index);
+        CHECK_EQ(arguments.args[index].count, 1);
+        CHECK_FALSE(arguments.args[index].byReference);
+    }
+    const AArch64ArgumentLocation result = planner.PlanResult(shared);
+    CHECK_EQ(result.kind, AArch64ArgumentLocation::Kind::General);
+    CHECK_EQ(result.count, 1);
+}
+
 TEST_CASE("FreeBSD AArch64 fixed calls match generic AAPCS64 through aggregate and stack exhaustion") {
     const auto package = CompileToAArch64Lir(R"(
         struct Pair { first: int64; second: int64; }

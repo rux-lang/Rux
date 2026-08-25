@@ -60,7 +60,7 @@ std::string_view InspectionHeading(const InspectionKind kind) noexcept {
 std::string_view InspectionDescription(const InspectionKind kind) noexcept {
     static constexpr std::string_view descriptions[]{"lexical tokens and source locations",
                                                      "parsed abstract syntax tree",
-                                                     "resolved symbols and semantic diagnostics",
+                                                     "resolved symbols, signatures, type capabilities, and diagnostics",
                                                      "high-level intermediate representation",
                                                      "low-level intermediate representation",
                                                      "x86-64 textual assembly",

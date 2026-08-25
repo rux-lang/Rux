@@ -132,6 +132,42 @@ asm func Raw() {
     CHECK_EQ(output, expected);
 }
 
+TEST_CASE("AST dumps spell references and lifecycle operations canonically") {
+    constexpr std::string_view source = R"(
+struct Cell { value: int32; }
+extend Cell {
+    func =(self: &var Cell, other: &Cell);
+    func <-(self: &var Cell, other: Cell) {}
+    func ~Cell(self: &var Cell) {}
+}
+func Transfer(source: Cell) -> Cell {
+    let result <- source;
+    return <- result;
+}
+)";
+
+    Lexer lexer(std::string(source), "ownership-dump.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "ownership-dump.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-ownership-dump.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    CHECK(output.contains("FuncDecl '=' (self: &var Cell, other: &Cell) [signature]"));
+    CHECK(output.contains("FuncDecl '<-' (self: &var Cell, other: Cell)"));
+    CHECK(output.contains("FuncDecl '~Cell' (self: &var Cell)"));
+    const std::size_t firstMove = output.find("MoveExpr <-");
+    REQUIRE_NE(firstMove, std::string::npos);
+    CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
+}
+
 TEST_CASE("AST dumps render generic interface bounds in declaration order") {
     constexpr std::string_view source = R"(
 func Convert<T: Display + Core::Debug, U>(value: T) -> U;

@@ -66,6 +66,20 @@ TEST_CASE("linter accepts symbolic operator function names") {
     CHECK(result.diagnostics.empty());
 }
 
+TEST_CASE("linter accepts lifecycle operation names") {
+    auto result = Rux::Linting::Lint(R"(
+        struct Cell { value: int32; }
+        extend Cell {
+            func =(self: &var Cell, other: &Cell);
+            func <-(self: &var Cell, other: Cell) {}
+            func ~Cell(self: &var Cell) {}
+        }
+    )",
+                                     "lifecycle.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
 TEST_CASE("linter warns on bad function parameter name") {
     auto result = Rux::Linting::Lint("func Test(BadParam: int) {}", "param_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);

@@ -108,6 +108,38 @@ TEST_CASE("documentation covers the file-scope surface and honours pub inside a 
     std::filesystem::remove_all(root, ec);
 }
 
+TEST_CASE("documentation renders reference and lifecycle signatures as source syntax") {
+    auto parsed = Parse(R"(
+        struct Cell { value: int32; }
+        extend Cell {
+            /// Copy is intentionally unavailable.
+            func =(self: &var Cell, other: &Cell);
+            /// Move a cell.
+            func <-(self: &var Cell, other: Cell) {}
+            /// Destroy a cell.
+            func ~Cell(self: &var Cell) {}
+        }
+        /// Observe borrowed cells.
+        func Observe(shared: &Cell, exclusive: &var Cell);
+    )");
+    auto loaded = Docs("LifecycleDocs");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-lifecycle-unit");
+    const std::array modules{std::move(parsed)};
+    const auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    REQUIRE(generated.ok);
+    const std::string html = Read(root / "site" / "index.html");
+    CHECK(html.contains("func =(self: &amp;var Cell, other: &amp;Cell)"));
+    CHECK(html.contains("func &lt;-(self: &amp;var Cell, other: Cell)"));
+    CHECK(html.contains("func ~Cell(self: &amp;var Cell)"));
+    CHECK(html.contains("func Observe(shared: &amp;Cell, exclusive: &amp;var Cell)"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("documentation refuses a link it cannot emit rather than dropping it quietly") {
     auto parsed = Parse("/// See [bad](javascript:alert(1)).\nfunc Thing();\n");
     auto loaded = Docs("DocsLinks");
