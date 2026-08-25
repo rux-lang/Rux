@@ -7,7 +7,7 @@ import Math::Abs;
 import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256::New(8675309u64);
+    var generator = Xoshiro256(8675309u64);
 
     // A shuffle is a permutation: every element still present, exactly once.
     var items: uint64[16];
@@ -19,7 +19,7 @@ func Main() -> int {
     let room = MutableSlice::From<uint64>(@items[0], 16);
     var run: uint = 0;
     while run < 200u {
-        Shuffle<Xoshiro256, uint64>(@generator, room);
+        Shuffle<Xoshiro256, uint64>(generator, room);
         var seen: bool[16];
         index = 0;
         while index < 16u {
@@ -55,7 +55,7 @@ func Main() -> int {
             small[index] = index as uint64;
             index = index + 1;
         }
-        Shuffle<Xoshiro256, uint64>(@generator, smallRoom);
+        Shuffle<Xoshiro256, uint64>(generator, smallRoom);
         index = 0;
         while index < 8u {
             let value = small[index] as uint;
@@ -74,10 +74,10 @@ func Main() -> int {
 
     // The degenerate lengths.
     let emptyRoom = MutableSlice::From<uint64>(@items[0], 0);
-    Shuffle<Xoshiro256, uint64>(@generator, emptyRoom);
+    Shuffle<Xoshiro256, uint64>(generator, emptyRoom);
     let singleRoom = MutableSlice::From<uint64>(@items[0], 1);
     let held = items[0];
-    Shuffle<Xoshiro256, uint64>(@generator, singleRoom);
+    Shuffle<Xoshiro256, uint64>(generator, singleRoom);
     Assert(items[0] == held, "shuffling one element changes nothing");
 
     // Choosing an index: in range, every value reachable, and an empty collection answers out of range.
@@ -89,7 +89,7 @@ func Main() -> int {
     }
     run = 0;
     while run < 50000u {
-        let value = ChooseIndex<Xoshiro256>(@generator, 5u);
+        let value = ChooseIndex<Xoshiro256>(generator, 5u);
         Assert(value < 5u, "a chosen index is in range");
         chosen[value] = chosen[value] + 1;
         run = run + 1;
@@ -99,7 +99,7 @@ func Main() -> int {
         Assert(chosen[index] > 9500u && chosen[index] < 10500u, "and every index comes up about equally often");
         index = index + 1;
     }
-    Assert(ChooseIndex<Xoshiro256>(@generator, 0u) == 0u, "an empty collection has no index to choose");
+    Assert(ChooseIndex<Xoshiro256>(generator, 0u) == 0u, "an empty collection has no index to choose");
 
     // Weighted choice: the proportions come out as given, a zero weight is never chosen, and a negative one is
     // ignored rather than subtracted.
@@ -117,7 +117,7 @@ func Main() -> int {
     }
     run = 0;
     while run < 40000u {
-        let value = WeightedIndex<Xoshiro256>(@generator, weightSlice);
+        let value = WeightedIndex<Xoshiro256>(generator, weightSlice);
         Assert(value < 4u, "a weighted choice is in range");
         picks[value] = picks[value] + 1;
         run = run + 1;
@@ -133,10 +133,10 @@ func Main() -> int {
     zeros[1] = 0.0;
     zeros[2] = 0.0;
     let zeroSlice = Slice<float64> { data: @zeros[0], length: 3 };
-    Assert(WeightedIndex<Xoshiro256>(@generator, zeroSlice) == 3u,
+    Assert(WeightedIndex<Xoshiro256>(generator, zeroSlice) == 3u,
            "weights that are all zero leave nothing to choose");
     let emptySlice = Slice<float64> { data: @zeros[0], length: 0 };
-    Assert(WeightedIndex<Xoshiro256>(@generator, emptySlice) == 0u, "and neither does an empty slice");
+    Assert(WeightedIndex<Xoshiro256>(generator, emptySlice) == 0u, "and neither does an empty slice");
 
     // Reservoir sampling: the sample is drawn from the stream, distinct, and uniform over it.
     var reservoirCounts: uint[20];
@@ -149,10 +149,10 @@ func Main() -> int {
     while run < 20000u {
         var sample: uint64[4];
         let sampleRoom = MutableSlice::From<uint64>(@sample[0], 4);
-        var reservoir = Reservoir::New<uint64>(sampleRoom);
+        var reservoir = Reservoir<uint64>(sampleRoom);
         index = 0;
         while index < 20u {
-            Offer<Xoshiro256, uint64>(@generator, @reservoir, index as uint64);
+            Offer<Xoshiro256, uint64>(generator, reservoir, index as uint64);
             index = index + 1;
         }
         Assert(reservoir.Seen() == 20u, "the reservoir counts everything offered");
@@ -182,10 +182,10 @@ func Main() -> int {
     // A stream shorter than the reservoir is kept whole.
     var shortSample: uint64[6];
     let shortRoom = MutableSlice::From<uint64>(@shortSample[0], 6);
-    var shortReservoir = Reservoir::New<uint64>(shortRoom);
+    var shortReservoir = Reservoir<uint64>(shortRoom);
     index = 0;
     while index < 3u {
-        Offer<Xoshiro256, uint64>(@generator, @shortReservoir, (100u + index) as uint64);
+        Offer<Xoshiro256, uint64>(generator, shortReservoir, (100u + index) as uint64);
         index = index + 1;
     }
     Assert(shortReservoir.Length() == 3u, "a short stream fills the reservoir only as far as it goes");
@@ -194,8 +194,8 @@ func Main() -> int {
 
     // A reservoir with no room accepts the stream and keeps nothing.
     let noRoom = MutableSlice::From<uint64>(@shortSample[0], 0);
-    var emptyReservoir = Reservoir::New<uint64>(noRoom);
-    Offer<Xoshiro256, uint64>(@generator, @emptyReservoir, 7u64);
+    var emptyReservoir = Reservoir<uint64>(noRoom);
+    Offer<Xoshiro256, uint64>(generator, emptyReservoir, 7u64);
     Assert(emptyReservoir.Length() == 0u && emptyReservoir.Seen() == 1u,
            "a reservoir with no room still counts what it was offered");
 

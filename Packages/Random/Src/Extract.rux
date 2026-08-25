@@ -14,7 +14,7 @@ import Core::MutableSlice;
 /// fill buffers of the same size stay in step.
 ///
 /// https://rux-lang.dev/docs/api/random/fill-bytes
-func FillBytes<G: RandomGenerator>(generator: *var G, into: MutableSlice<char8>) {
+func FillBytes<G: RandomGenerator>(generator: &var G, into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
         var word = generator.NextUint64();
@@ -35,28 +35,28 @@ func FillBytes<G: RandomGenerator>(generator: *var G, into: MutableSlice<char8>)
 /// narrow draws happened to precede a wide one.
 ///
 /// https://rux-lang.dev/docs/api/random/next-uint32
-func NextUint32<G: RandomGenerator>(generator: *var G) -> uint32 {
+func NextUint32<G: RandomGenerator>(generator: &var G) -> uint32 {
     return (generator.NextUint64() & 0xFFFFFFFFu64) as uint32;
 }
 
 /// The next 16-bit word.
 ///
 /// https://rux-lang.dev/docs/api/random/next-uint16
-func NextUint16<G: RandomGenerator>(generator: *var G) -> uint16 {
+func NextUint16<G: RandomGenerator>(generator: &var G) -> uint16 {
     return (generator.NextUint64() & 0xFFFFu64) as uint16;
 }
 
 /// The next 8-bit word.
 ///
 /// https://rux-lang.dev/docs/api/random/next-uint8
-func NextUint8<G: RandomGenerator>(generator: *var G) -> uint8 {
+func NextUint8<G: RandomGenerator>(generator: &var G) -> uint8 {
     return (generator.NextUint64() & 0xFFu64) as uint8;
 }
 
 /// The next 128-bit word, high half drawn first.
 ///
 /// https://rux-lang.dev/docs/api/random/next-uint128
-func NextUint128<G: RandomGenerator>(generator: *var G) -> uint128 {
+func NextUint128<G: RandomGenerator>(generator: &var G) -> uint128 {
     let high = generator.NextUint64() as uint128;
     let low = generator.NextUint64() as uint128;
     return (high << 64u128) | low;
@@ -70,7 +70,7 @@ func NextUint128<G: RandomGenerator>(generator: *var G) -> uint128 {
 /// scaling into an array index do not expect.
 ///
 /// https://rux-lang.dev/docs/api/random/next-float64
-func NextFloat64<G: RandomGenerator>(generator: *var G) -> float64 {
+func NextFloat64<G: RandomGenerator>(generator: &var G) -> float64 {
     let bits = generator.NextUint64() >> 11u64;
     return (bits as float64) * 1.1102230246251565e-16; // 2^-53
 }
@@ -78,7 +78,7 @@ func NextFloat64<G: RandomGenerator>(generator: *var G) -> float64 {
 /// A `float32` uniformly distributed in `[0, 1)`, from the top 24 bits.
 ///
 /// https://rux-lang.dev/docs/api/random/next-float32
-func NextFloat32<G: RandomGenerator>(generator: *var G) -> float32 {
+func NextFloat32<G: RandomGenerator>(generator: &var G) -> float32 {
     let bits = generator.NextUint64() >> 40u64;
     return ((bits as float64) * 5.960464477539063e-8) as float32; // 2^-24
 }

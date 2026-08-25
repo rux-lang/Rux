@@ -9,7 +9,7 @@ import Random::{ Pcg64Dxsm, RandomGenerator, Xoshiro256 };
 func Main() -> int {
     // Xoshiro256** from a known seed. Frozen, not derived from a reference implementation this machine could
     // run -- see the backlog note -- but fixed from here on.
-    var xoshiro = Xoshiro256::New(42u64);
+    var xoshiro = Xoshiro256(42u64);
     var xoshiroWords: uint64[8];
     var index: uint = 0;
     while index < 8u {
@@ -28,7 +28,7 @@ func Main() -> int {
     }
 
     // Reproducibility: the same seed replays exactly.
-    var replay = Xoshiro256::New(42u64);
+    var replay = Xoshiro256(42u64);
     index = 0;
     while index < 8u {
         Assert(replay.NextUint64() == xoshiroWords[index], "the sequence replays from the same seed");
@@ -57,7 +57,7 @@ func Main() -> int {
     Assert(different.NextUint64() != restored.NextUint64(), "and a state one bit apart diverges");
 
     // PCG64-DXSM from a known seed, frozen the same way.
-    var pcg = Pcg64Dxsm::New(42u64);
+    var pcg = Pcg64Dxsm(42u64);
     var pcgWords: uint64[8];
     index = 0;
     while index < 8u {
@@ -73,7 +73,7 @@ func Main() -> int {
         }
         outer = outer + 1;
     }
-    var pcgReplay = Pcg64Dxsm::New(42u64);
+    var pcgReplay = Pcg64Dxsm(42u64);
     index = 0;
     while index < 8u {
         Assert(pcgReplay.NextUint64() == pcgWords[index], "and its sequence replays from the same seed");
@@ -106,7 +106,7 @@ func Main() -> int {
 
     // A crude but decisive bias check: over many draws each bit position should come up set about half the
     // time. A generator with a stuck bit, or one whose state never reaches the high words, fails this loudly.
-    var counted = Xoshiro256::New(2024u64);
+    var counted = Xoshiro256(2024u64);
     var setCounts: uint[64];
     var position: uint = 0;
     while position < 64u {
@@ -132,7 +132,7 @@ func Main() -> int {
         position = position + 1;
     }
 
-    var pcgCounted = Pcg64Dxsm::New(2024u64);
+    var pcgCounted = Pcg64Dxsm(2024u64);
     position = 0;
     while position < 64u {
         setCounts[position] = 0;
