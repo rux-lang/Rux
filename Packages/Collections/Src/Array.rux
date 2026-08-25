@@ -5,8 +5,8 @@
 // `Slice<T>`, which borrows storage someone else owns; and it is not `Vector<T>`, which can grow. Owning storage of
 // a length chosen at run time is the one thing none of the others does.
 //
-// An array owns its storage and its elements, so it implements `Drop` and is move-only. Handing one to a function
-// transfers it, and the function's copy is what gets destroyed; reading the source afterwards is rejected while
+// An array owns its storage and its elements, so copying is prohibited and it is move-only. Handing one to a function
+// requires an explicit move; reading the source afterwards is rejected while
 // compiling rather than discovered later. Destruction destroys every element and then releases the block, in that
 // order, so an array of things that own something does not leak what they own.
 //
@@ -18,11 +18,11 @@
 // moved in exactly once.
 
 import Allocator::Allocator;
-import Core::{ Drop, MutableSlice, Option };
+import Core::{ MutableSlice, Option };
 
 /// A fixed-length run of elements on storage this array owns.
 ///
-/// Move-only: it owns its elements and its storage, so it implements `Drop`.
+/// Move-only: it owns its elements and storage, prohibits copying, and destroys both with `~Array`.
 ///
 /// https://rux-lang.dev/docs/api/collections/array
 struct Array<T> {
@@ -35,6 +35,9 @@ struct Array<T> {
 }
 
 extend Array<T> {
+    /// Copying an array would give two owners of one allocation and its elements.
+    func =(self: &var Array<T>, other: &Array<T>);
+
     /// An array of `length` elements, every one a copy of `value`.
     ///
     /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position;
@@ -107,7 +110,7 @@ extend Array<T> {
     /// Runs in time proportional to the length.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/clone
-    func Clone(self: *Array<T>, error: *var CollectionError) -> Array<T> {
+    func Clone(self: &Array<T>, error: *var CollectionError) -> Array<T> {
         return Array::FromSlice<T>(self.allocator, self.AsSlice(), error);
     }
 
@@ -116,7 +119,7 @@ extend Array<T> {
     /// `self` is borrowed. Fixed for the array's whole life.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/length
-    func Length(self: *Array<T>) -> uint {
+    func Length(self: &Array<T>) -> uint {
         return self.length;
     }
 
@@ -125,7 +128,7 @@ extend Array<T> {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/is-empty
-    func IsEmpty(self: *Array<T>) -> bool {
+    func IsEmpty(self: &Array<T>) -> bool {
         return self.length == 0;
     }
 
@@ -135,7 +138,7 @@ extend Array<T> {
     /// indexing the slice directly.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/get
-    func Get(self: *Array<T>, index: uint) -> Option<T> {
+    func Get(self: &Array<T>, index: uint) -> Option<T> {
         if index >= self.length {
             return Option::None<T>();
         }
@@ -152,7 +155,7 @@ extend Array<T> {
     /// The pointer is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/reference
-    func Reference(self: *Array<T>, index: uint) -> Option<*T> {
+    func Reference(self: &Array<T>, index: uint) -> Option<*T> {
         if index >= self.length {
             return Option::None<*T>();
         }
@@ -169,11 +172,11 @@ extend Array<T> {
     /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/set
-    func Set(self: *var Array<T>, index: uint, value: T) -> CollectionError {
+    func Set(self: &var Array<T>, index: uint, value: T) -> CollectionError {
         if index >= self.length {
             return CollectionError::IndexOutOfRange;
         }
-        self.data[index] = value;
+        self.data[index] <- value;
         return CollectionError::None;
     }
 
@@ -186,7 +189,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-slice
-    func AsSlice(self: *Array<T>) -> Slice<T> {
+    func AsSlice(self: &Array<T>) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
     }
 
@@ -200,7 +203,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-mutable-slice
-    func AsMutableSlice(self: *var Array<T>) -> MutableSlice<T> {
+    func AsMutableSlice(self: &var Array<T>) -> MutableSlice<T> {
         return MutableSlice<T> { data: self.data, length: self.length };
     }
 
@@ -209,8 +212,8 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/iterate
-    func Iterate(self: *Array<T>) -> ValueIterator<T> {
-        return ValueIterator::New<T>(self.AsSlice());
+    func Iterate(self: &Array<T>) -> ValueIterator<T> {
+        return ValueIterator<T>(self.AsSlice());
     }
 
     /// An iterator over pointers to the elements.
@@ -218,12 +221,12 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is how elements that own something are walked.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/references
-    func References(self: *Array<T>) -> ReferenceIterator<T> {
-        return ReferenceIterator::New<T>(self.AsSlice());
+    func References(self: &Array<T>) -> ReferenceIterator<T> {
+        return ReferenceIterator<T>(self.AsSlice());
     }
 }
 
-extend Array<T> : Drop {
+extend Array<T> {
     /// Destroys every element and releases the storage.
     ///
     /// Runs when the array's life ends. Elements go first and the block second, which is the only order that works:
@@ -231,8 +234,8 @@ extend Array<T> : Drop {
     ///
     /// An array that was moved away is not destroyed where it used to live, so this happens exactly once.
     ///
-    /// https://rux-lang.dev/docs/api/collections/array/drop
-    func Drop(self: *var Array<T>) {
+    /// https://rux-lang.dev/docs/api/collections/array/destructor
+    func ~Array(self: &var Array<T>) {
         if self.data == null {
             return;
         }

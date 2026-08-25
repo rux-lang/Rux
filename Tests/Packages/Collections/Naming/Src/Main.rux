@@ -18,7 +18,7 @@ func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     Assert(HashInt32(21, 0, 0) == 42u64, "a call resolves to this program's own declaration");

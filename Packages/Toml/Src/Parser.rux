@@ -408,7 +408,7 @@ extend TomlParser {
     }
 
     // A dotted key path, collected into `parts`.
-    func ParseKeyPath(self: *var TomlParser, parts: *var Vector<String>) -> bool {
+    func ParseKeyPath(self: *var TomlParser, parts: &var Vector<String>) -> bool {
         while true {
             var part = String(self.allocator);
             if !self.ParseKeyPart(part) {
@@ -433,7 +433,7 @@ extend TomlParser {
     // tables are closed when the line ends -- which is why they are marked as dotted rather than merely made.
     func ParseKeyValue(self: *var TomlParser, into: *var TomlValue) {
         var parts = Vector::New<String>(self.allocator);
-        if !self.ParseKeyPath(@parts) {
+        if !self.ParseKeyPath(parts) {
             parts.Clear();
             return;
         }
@@ -517,7 +517,7 @@ extend TomlParser {
             self.Advance();
         }
         var parts = Vector::New<String>(self.allocator);
-        if !self.ParseKeyPath(@parts) {
+        if !self.ParseKeyPath(parts) {
             parts.Clear();
             return null;
         }

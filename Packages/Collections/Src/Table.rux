@@ -27,7 +27,7 @@
 // Internal to this package: the kernel, not something a caller reaches for.
 
 import Allocator::Allocator;
-import Core::{ Drop, Option };
+import Core::Option;
 import Entropy::{ EntropyError, NextUint64 };
 
 /// The state byte of a slot that has never held an entry, and does not now.
@@ -104,7 +104,7 @@ extend TableSeed {
 /// Holds keys, values and one distance byte per slot in three parallel runs. A set instantiates the value type with
 /// something that occupies nothing worth reading, which is what lets one kernel serve both.
 ///
-/// Move-only: it owns its storage and everything in it, so it implements `Drop`.
+/// Move-only: it owns its storage and entries, prohibits copying, and destroys both with `~Table`.
 ///
 /// https://rux-lang.dev/docs/api/collections/table
 struct Table<K, V> {
@@ -125,13 +125,16 @@ struct Table<K, V> {
 }
 
 extend Table<K, V> {
+    /// Copying a table would give two owners of its entries and three allocations.
+    func =(self: &var Table<K, V>, other: &Table<K, V>);
+
     /// An empty table that has not allocated anything.
     ///
     /// `allocator` is borrowed for the call and kept; `seed` is read by value. Costs nothing: a table nothing is put
     /// into never allocates.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/new
-    func New(allocator: Allocator, seed: TableSeed) -> Table<K, V> {
+    func Table(allocator: Allocator, seed: TableSeed) -> Table<K, V> {
         return Table<K, V> {
             keys: null,
             values: null,
@@ -143,12 +146,17 @@ extend Table<K, V> {
         };
     }
 
+    /// Temporary compatibility spelling for `Table<K, V>(allocator, seed)`.
+    func New(allocator: Allocator, seed: TableSeed) -> Table<K, V> {
+        return Table<K, V>(allocator, seed);
+    }
+
     /// How many entries the table holds.
     ///
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/length
-    func Length(self: *Table<K, V>) -> uint {
+    func Length(self: &Table<K, V>) -> uint {
         return self.length;
     }
 
@@ -158,7 +166,7 @@ extend Table<K, V> {
     /// them free, because a table run fuller than that spends its time displacing entries rather than storing them.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/capacity
-    func Capacity(self: *Table<K, V>) -> uint {
+    func Capacity(self: &Table<K, V>) -> uint {
         return self.capacity;
     }
 
@@ -167,7 +175,7 @@ extend Table<K, V> {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/is-empty
-    func IsEmpty(self: *Table<K, V>) -> bool {
+    func IsEmpty(self: &Table<K, V>) -> bool {
         return self.length == 0;
     }
 
@@ -176,17 +184,17 @@ extend Table<K, V> {
     /// `self` is borrowed. This is what an iteration over the slots asks of each one.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/is-occupied
-    func IsOccupied(self: *Table<K, V>, index: uint) -> bool {
+    func IsOccupied(self: &Table<K, V>, index: uint) -> bool {
         return index < self.capacity && self.states[index] != SlotEmpty;
     }
 
     // Where a hash starts probing.
-    func HomeOf(self: *Table<K, V>, hashed: uint64) -> uint {
+    func HomeOf(self: &Table<K, V>, hashed: uint64) -> uint {
         return (hashed as uint) & (self.capacity - 1);
     }
 
     // The slot after `index`, wrapping. The mask is why the capacity is a power of two.
-    func NextOf(self: *Table<K, V>, index: uint) -> uint {
+    func NextOf(self: &Table<K, V>, index: uint) -> uint {
         return (index + 1) & (self.capacity - 1);
     }
 
@@ -201,7 +209,7 @@ extend Table<K, V> {
     /// Runs in constant expected time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/find
-    func Find(self: *Table<K, V>, key: K, hash: func(K, uint64, uint64) -> uint64,
+    func Find(self: &Table<K, V>, key: K, hash: func(K, uint64, uint64) -> uint64,
               equals: func(K, K) -> bool) -> Option<uint> {
         if self.capacity == 0 || self.length == 0 {
             return Option::None<uint>();
@@ -234,18 +242,18 @@ extend Table<K, V> {
     // Returns the slot the entry ended up in, or `None` when the probe ran further than a distance byte can hold.
     // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
     // would not help.
-    func Place(self: *var Table<K, V>, key: K, value: V, hash: func(K, uint64, uint64) -> uint64) -> Option<uint> {
+    func Place(self: &var Table<K, V>, key: K, value: V, hash: func(K, uint64, uint64) -> uint64) -> Option<uint> {
         var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
         var distance: uint = 0;
-        var carriedKey = key;
-        var carriedValue = value;
+        var carriedKey <- key;
+        var carriedValue <- value;
         var landed = self.capacity;
 
         while distance <= MaximumProbeDistance {
             let state = self.states[index];
             if state == SlotEmpty {
-                self.keys[index] = carriedKey;
-                self.values[index] = carriedValue;
+                self.keys[index] <- carriedKey;
+                self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
                 self.length = self.length + 1;
                 return Option::Some<uint>(landed < self.capacity ? landed : index);
@@ -258,14 +266,14 @@ extend Table<K, V> {
                 // extra step.
                 let displacedKey = self.keys[index];
                 let displacedValue = self.values[index];
-                self.keys[index] = carriedKey;
-                self.values[index] = carriedValue;
+                self.keys[index] <- carriedKey;
+                self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
                 if landed == self.capacity {
                     landed = index;
                 }
-                carriedKey = displacedKey;
-                carriedValue = displacedValue;
+                carriedKey <- displacedKey;
+                carriedValue <- displacedValue;
                 distance = occupantDistance;
             }
 
@@ -280,7 +288,7 @@ extend Table<K, V> {
     // Every following entry that is not already at home moves back one slot, which leaves the table exactly as if
     // the removed entry had never been inserted. That is what a tombstone would have stood in for, and why there are
     // none here.
-    func Vacate(self: *var Table<K, V>, index: uint) {
+    func Vacate(self: &var Table<K, V>, index: uint) {
         var hole = index;
         var next = self.NextOf(hole);
         while true {
@@ -330,7 +338,7 @@ extend Table<K, V> {
     /// Runs in time proportional to the capacity.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/rehash
-    func Rehash(self: *var Table<K, V>, capacity: uint,
+    func Rehash(self: &var Table<K, V>, capacity: uint,
                 hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var keys: *var K = null;
         let keyRoom = AllocateBlock<K>(self.allocator, capacity, @keys);
@@ -392,7 +400,7 @@ extend Table<K, V> {
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/ensure-room
-    func EnsureRoom(self: *var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
+    func EnsureRoom(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
         if total.IsError() {
@@ -414,7 +422,7 @@ extend Table<K, V> {
     /// `self` is borrowed mutably; the length does not change. A failure leaves the table exactly as it was.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/reserve
-    func Reserve(self: *var Table<K, V>, additional: uint,
+    func Reserve(self: &var Table<K, V>, additional: uint,
                  hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
@@ -438,7 +446,7 @@ extend Table<K, V> {
     /// at its current capacity, since failing to hand memory back is never a reason to stop working.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/shrink-to-fit
-    func ShrinkToFit(self: *var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
+    func ShrinkToFit(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         if self.length == 0 {
             self.Release();
             return CollectionError::None;
@@ -459,7 +467,7 @@ extend Table<K, V> {
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
     ///
     /// https://rux-lang.dev/docs/api/collections/table/clear
-    func Clear(self: *var Table<K, V>) {
+    func Clear(self: &var Table<K, V>) {
         var index: uint = 0;
         while index < self.capacity {
             if self.states[index] != SlotEmpty {
@@ -475,7 +483,7 @@ extend Table<K, V> {
     }
 
     // Gives back all three runs and leaves the table as a new one.
-    func Release(self: *var Table<K, V>) {
+    func Release(self: &var Table<K, V>) {
         if self.keys == null {
             return;
         }
@@ -490,14 +498,14 @@ extend Table<K, V> {
     }
 }
 
-extend Table<K, V> : Drop {
+extend Table<K, V> {
     /// Destroys every entry and releases the storage.
     ///
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
     /// storage was released would be read from freed memory.
     ///
-    /// https://rux-lang.dev/docs/api/collections/table/drop
-    func Drop(self: *var Table<K, V>) {
+    /// https://rux-lang.dev/docs/api/collections/table/destructor
+    func ~Table(self: &var Table<K, V>) {
         self.Clear();
         self.Release();
     }

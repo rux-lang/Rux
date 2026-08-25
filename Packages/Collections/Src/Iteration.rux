@@ -51,8 +51,13 @@ extend ValueIterator<T> {
     /// The storage must not be grown, freed or otherwise moved while this is alive.
     ///
     /// https://rux-lang.dev/docs/api/collections/value-iterator/new
-    func New(items: Slice<T>) -> ValueIterator<T> {
+    func ValueIterator(items: Slice<T>) -> ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
+    }
+
+    /// Temporary compatibility spelling for `ValueIterator<T>(items)`.
+    func New(items: Slice<T>) -> ValueIterator<T> {
+        return ValueIterator<T>(items);
     }
 
     /// The next element, or `None` once the run is exhausted.
@@ -62,7 +67,7 @@ extend ValueIterator<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/value-iterator/next
-    func Next(self: *var ValueIterator<T>) -> Option<T> {
+    func Next(self: &var ValueIterator<T>) -> Option<T> {
         if self.position >= self.length {
             return Option::None<T>();
         }
@@ -102,8 +107,13 @@ extend ReferenceIterator<T> {
     /// this or any pointer it yielded is still in use.
     ///
     /// https://rux-lang.dev/docs/api/collections/reference-iterator/new
-    func New(items: Slice<T>) -> ReferenceIterator<T> {
+    func ReferenceIterator(items: Slice<T>) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
+    }
+
+    /// Temporary compatibility spelling for `ReferenceIterator<T>(items)`.
+    func New(items: Slice<T>) -> ReferenceIterator<T> {
+        return ReferenceIterator<T>(items);
     }
 
     /// A pointer to the next element, or `None` once the run is exhausted.
@@ -113,7 +123,7 @@ extend ReferenceIterator<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/reference-iterator/next
-    func Next(self: *var ReferenceIterator<T>) -> Option<*T> {
+    func Next(self: &var ReferenceIterator<T>) -> Option<*T> {
         if self.position >= self.length {
             return Option::None<*T>();
         }

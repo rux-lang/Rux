@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError };
-import Core::{ Assert, Drop };
+import Core::Assert;
 
 // An array owns its storage and its elements, so the questions worth asking are about ownership: does destroying one
 // destroy what it holds, exactly once, and does a failed construction leave anything behind. Counting destructions is
@@ -13,8 +13,10 @@ struct Tracked {
     value: int32;
 }
 
-extend Tracked : Drop {
-    func Drop(self: *var Tracked) {
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
         if self.counter != null {
             *self.counter = *self.counter + 1i32;
         }
@@ -50,7 +52,7 @@ func SumOf(allocator: Allocator) -> int32 {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // The ordinary shape: numbers copied in, walked, and released with the array.

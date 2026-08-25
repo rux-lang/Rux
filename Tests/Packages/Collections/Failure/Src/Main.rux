@@ -36,7 +36,7 @@ func Main() -> int {
     // A count whose byte size cannot be addressed is rejected before anything is allocated. Array now takes an
     // allocator and is covered by its own test; what stays here is the Vector side.
 
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     var overflowError = CollectionError::None;
@@ -51,7 +51,7 @@ func Main() -> int {
 
     // A populated Vector survives a rejected reservation untouched: the same
     // block, the same length, the same capacity, the same elements.
-    var populated = Vector::New<int64>(allocator);
+    var populated = Vector<int64>(allocator);
     var element: int64 = 0;
     while element < 8i64 {
         if !(populated.Push(element) == CollectionError::None) { return 30; }
@@ -99,7 +99,7 @@ func Main() -> int {
     // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
 
     // A Deque rejects the same requests and stays usable afterwards.
-    var ring = Deque::New<int64>(allocator);
+    var ring = Deque<int64>(allocator);
     if !(ring.PushBack(1i64) == CollectionError::None) { return 60; }
     let ringCapacity = ring.Capacity();
     if !(ring.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 61; }
@@ -111,7 +111,7 @@ func Main() -> int {
     if ring.Get(0).ValueOr(-1i64) != 0i64 || ring.Get(1).ValueOr(-1i64) != 1i64 { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
-    var map = HashMap::New<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     if !(map.Insert(1, 10) == CollectionError::None) { return 70; }
     if !(map.Insert(2, 20) == CollectionError::None) { return 71; }
     let mapCapacity = map.Capacity();
@@ -120,7 +120,7 @@ func Main() -> int {
     if map.Get(1).ValueOr(-1) != 10 { return 74; }
 
     // A set rejects it the same way.
-    var set = HashSet::New<int32>(allocator, HashInt32, EqualsInt32);
+    var set = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     var added = false;
     if !(set.Insert(1, @added) == CollectionError::None) { return 80; }
     let setCapacity = set.Capacity();
