@@ -12,7 +12,7 @@ import Core::{ AddChecked, MulChecked, Option, Ordering };
 
 /// A calendar date that exists.
 ///
-/// `Copy`. Only constructible through `New`, which is what lets everything downstream assume validity.
+/// `Copy`. Only constructible through the fallible `New` factory, which lets everything downstream assume validity.
 ///
 /// https://rux-lang.dev/docs/api/time/date
 struct Date {
@@ -72,7 +72,7 @@ extend Date {
     /// it cannot disturb the month arithmetic.
     ///
     /// https://rux-lang.dev/docs/api/time/date/days-from-epoch
-    func DaysFromEpoch(self: *Date) -> int64 {
+    func DaysFromEpoch(self: &Date) -> int64 {
         var year = self.year as int64;
         if self.month <= 2u8 {
             year = year - 1i64;
@@ -107,7 +107,7 @@ extend Date {
     /// The day of the week, 0 for Sunday through 6 for Saturday.
     ///
     /// https://rux-lang.dev/docs/api/time/date/day-of-week
-    func DayOfWeek(self: *Date) -> uint8 {
+    func DayOfWeek(self: &Date) -> uint8 {
         let days = self.DaysFromEpoch();
         // The epoch was a Thursday; the shift keeps the remainder non-negative either side of it.
         let weekday = (days % 7i64 + 11i64) % 7i64;
@@ -117,7 +117,7 @@ extend Date {
     /// The day of the year, 1 through 365 or 366.
     ///
     /// https://rux-lang.dev/docs/api/time/date/day-of-year
-    func DayOfYear(self: *Date) -> uint16 {
+    func DayOfYear(self: &Date) -> uint16 {
         let opening = Date { year: self.year, month: 1, day: 1 };
         return (self.DaysFromEpoch() - opening.DaysFromEpoch() + 1i64) as uint16;
     }
@@ -125,14 +125,14 @@ extend Date {
     /// Whether two dates are the same day.
     ///
     /// https://rux-lang.dev/docs/api/time/date/equals
-    func Equals(self: *Date, other: Date) -> bool {
+    func Equals(self: &Date, other: Date) -> bool {
         return self.year == other.year && self.month == other.month && self.day == other.day;
     }
 
     /// How this date orders against `other`.
     ///
     /// https://rux-lang.dev/docs/api/time/date/compare
-    func Compare(self: *Date, other: Date) -> Ordering {
+    func Compare(self: &Date, other: Date) -> Ordering {
         let mine = self.DaysFromEpoch();
         let theirs = other.DaysFromEpoch();
         if mine < theirs {
@@ -188,7 +188,7 @@ extend TimeOfDay {
     /// The seconds from midnight to this time, ignoring the fraction.
     ///
     /// https://rux-lang.dev/docs/api/time/time-of-day/seconds-from-midnight
-    func SecondsFromMidnight(self: *TimeOfDay) -> uint32 {
+    func SecondsFromMidnight(self: &TimeOfDay) -> uint32 {
         return (self.hour as uint32) * 3600u32 + (self.minute as uint32) * 60u32 + self.second as uint32;
     }
 }
@@ -235,7 +235,7 @@ extend UtcOffset {
     /// The whole seconds east of UTC, negative west.
     ///
     /// https://rux-lang.dev/docs/api/time/utc-offset/total-seconds
-    func TotalSeconds(self: *UtcOffset) -> int32 {
+    func TotalSeconds(self: &UtcOffset) -> int32 {
         return self.seconds;
     }
 }
@@ -260,7 +260,7 @@ extend DateTime {
     /// the calendar's, so the conversion cannot overflow for any date `Date::New` accepts.
     ///
     /// https://rux-lang.dev/docs/api/time/date-time/to-timestamp
-    func ToTimestamp(self: *DateTime, offset: UtcOffset) -> Timestamp {
+    func ToTimestamp(self: &DateTime, offset: UtcOffset) -> Timestamp {
         let days = self.date.DaysFromEpoch();
         let seconds = days * 86400i64 + (self.time.SecondsFromMidnight() as int64) -
                       (offset.TotalSeconds() as int64);
@@ -295,7 +295,7 @@ extend DateTime {
     /// carrying the offset beside the pair means.
     ///
     /// https://rux-lang.dev/docs/api/time/date-time/equals
-    func Equals(self: *DateTime, other: DateTime) -> bool {
+    func Equals(self: &DateTime, other: DateTime) -> bool {
         return self.date.Equals(other.date) && self.time.hour == other.time.hour &&
                self.time.minute == other.time.minute && self.time.second == other.time.second &&
                self.time.nanosecond == other.time.nanosecond;

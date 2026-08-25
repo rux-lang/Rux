@@ -86,14 +86,14 @@ extend Timestamp {
     /// The whole seconds since the epoch, rounded toward negative infinity.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/unix-seconds
-    func UnixSeconds(self: *Timestamp) -> int64 {
+    func UnixSeconds(self: &Timestamp) -> int64 {
         return self.seconds;
     }
 
     /// The fraction beyond the whole seconds, in nanoseconds.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/subsecond-nanoseconds
-    func SubsecondNanoseconds(self: *Timestamp) -> uint32 {
+    func SubsecondNanoseconds(self: &Timestamp) -> uint32 {
         return self.nanoseconds;
     }
 
@@ -103,7 +103,7 @@ extend Timestamp {
     /// reversed. That is information, not an error, which is the difference from `Instant::Since`.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/since
-    func Since(self: *Timestamp, earlier: Timestamp) -> Option<Duration> {
+    func Since(self: &Timestamp, earlier: Timestamp) -> Option<Duration> {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         return mine.Minus(Duration { seconds: earlier.seconds, nanoseconds: earlier.nanoseconds });
     }
@@ -111,7 +111,7 @@ extend Timestamp {
     /// This moment shifted by `span`, or `None` past the range.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/plus
-    func Plus(self: *Timestamp, span: Duration) -> Option<Timestamp> {
+    func Plus(self: &Timestamp, span: Duration) -> Option<Timestamp> {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         let shifted = mine.Plus(span);
         if shifted.IsNone() {
@@ -124,14 +124,14 @@ extend Timestamp {
     /// Whether two timestamps name the same moment.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/equals
-    func Equals(self: *Timestamp, other: Timestamp) -> bool {
+    func Equals(self: &Timestamp, other: Timestamp) -> bool {
         return self.seconds == other.seconds && self.nanoseconds == other.nanoseconds;
     }
 
     /// How this moment orders against `other`.
     ///
     /// https://rux-lang.dev/docs/api/time/timestamp/compare
-    func Compare(self: *Timestamp, other: Timestamp) -> Ordering {
+    func Compare(self: &Timestamp, other: Timestamp) -> Ordering {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         return mine.Compare(Duration { seconds: other.seconds, nanoseconds: other.nanoseconds });
     }

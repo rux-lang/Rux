@@ -136,7 +136,7 @@ func Parse(text: Slice<char8>, error: *var UuidParseError) -> Uuid {
 /// that varies by case is not canonical -- two systems comparing text would disagree about equal UUIDs.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format
-func Format(value: *Uuid, into: MutableSlice<char8>) {
+func Format(value: &Uuid, into: MutableSlice<char8>) {
     let digits = "0123456789abcdef";
     var position: uint = 0;
     var byteIndex: uint = 0;
@@ -159,7 +159,7 @@ func Format(value: *Uuid, into: MutableSlice<char8>) {
 /// Offered because some formats demand it; `Format` is what a program should write when it has the choice.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format-upper
-func FormatUpper(value: *Uuid, into: MutableSlice<char8>) {
+func FormatUpper(value: &Uuid, into: MutableSlice<char8>) {
     Format(value, into);
     var index: uint = 0;
     while index < UuidTextLength && index < into.length {
@@ -174,7 +174,7 @@ func FormatUpper(value: *Uuid, into: MutableSlice<char8>) {
 /// Writes the URN form into `into`, which must be at least forty-five bytes.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format-urn
-func FormatUrn(value: *Uuid, into: MutableSlice<char8>) {
+func FormatUrn(value: &Uuid, into: MutableSlice<char8>) {
     let prefix = "urn:uuid:";
     var index: uint = 0;
     while index < 9u && index < into.length {

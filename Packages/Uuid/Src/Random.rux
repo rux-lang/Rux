@@ -57,8 +57,8 @@ func RandomFromBytes(bytes: Slice<char8>) -> Uuid {
 /// well-formed identifier that refers to something else entirely.
 ///
 /// https://rux-lang.dev/docs/api/uuid/swap-guid-order
-func SwapGuidOrder(value: *Uuid) -> Uuid {
-    var swapped = *value;
+func SwapGuidOrder(value: &Uuid) -> Uuid {
+    var swapped = Uuid::FromBytes(value.Bytes());
     // The first field is four bytes, the next two are two bytes each; the remaining eight are a byte array in
     // both layouts and are left alone.
     swapped.bytes[0] = value.bytes[3];
