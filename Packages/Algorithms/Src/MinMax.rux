@@ -122,6 +122,10 @@ func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<u
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
+/// # Safety
+///
+/// `smallest` and `largest` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index
 func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) -> bool {
     if items.length == 0 {
@@ -150,6 +154,10 @@ func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) ->
 /// an empty slice and writes neither. Ties go to the earliest index on both ends.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
+///
+/// # Safety
+///
+/// `smallest` and `largest` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index-by
 func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest: *var uint,

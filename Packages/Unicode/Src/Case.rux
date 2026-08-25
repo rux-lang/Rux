@@ -71,12 +71,20 @@ func WriteMapping(index: Slice<uint32>, elements: Slice<uint32>, scalar: char32,
 /// Up to three values, so a buffer of three always suffices; reports `false` without writing when the room is
 /// short. Falls back to the simple mapping for the points that need no expansion, which is nearly all of them.
 ///
+/// # Safety
+///
+/// `written` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/unicode/to-upper-full
 func ToUpperFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
     return WriteMapping(FullUpperIndex[..], FullUpperElements[..], scalar, ToUpperSimple(scalar), into, written);
 }
 
 /// Writes the full lowercase of `scalar` into `into`.
+///
+/// # Safety
+///
+/// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-lower-full
 func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
@@ -88,6 +96,10 @@ func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint)
 /// Folding is for comparison rather than display: fold both strings, and equal foldings mean the same text
 /// whatever its case. It is built from the C and F entries alone, which is what makes the answer the same in every
 /// locale. A point with no entry folds to itself.
+///
+/// # Safety
+///
+/// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/fold
 func Fold(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {

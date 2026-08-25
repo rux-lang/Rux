@@ -23,6 +23,10 @@ import Core::{ MaximumOf, MinimumOf, MulChecked };
 ///
 /// Runs in constant time and allocates nothing.
 ///
+/// # Safety
+///
+/// `result` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/math/abs-checked
 func AbsChecked<T>(value: T, result: *var T) -> bool {
     let zero = value - value;
@@ -92,6 +96,10 @@ func Clamp<T>(value: T, low: T, high: T) -> T {
 ///
 /// Runs in time proportional to the number of bits and allocates nothing.
 ///
+/// # Safety
+///
+/// `result` must be non-null and writable.
+///
 /// https://rux-lang.dev/docs/api/math/gcd-checked
 func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
@@ -121,6 +129,10 @@ func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// overflows readily -- two coprime values multiply -- so the flag is the usual case rather than the exception,
 /// and the division is done before the multiplication so a representable answer is not lost to an intermediate
 /// that is not.
+///
+/// # Safety
+///
+/// `result` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/lcm-checked
 func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
@@ -154,6 +166,10 @@ func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
 ///
 /// `result` receives the wrapped power when this returns `true`, so a caller who wants modular arithmetic can
 /// use it directly. Runs in time proportional to the number of bits in `exponent`.
+///
+/// # Safety
+///
+/// `result` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/pow-checked
 func PowChecked<T>(base: T, exponent: uint, result: *var T) -> bool {

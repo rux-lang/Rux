@@ -23,11 +23,21 @@ rux add Rux/Math
 ## Example
 
 ```rux
-import Math::{ Pi, Sqrt, Sin };
+import Math::{ Pi, SinCos, Sqrt };
 
 let root = Sqrt(2.0);
-let wave = Sin(Pi / 4.0);
+var sine = 0.0;
+var cosine = 0.0;
+SinCos(Pi / 4.0, @sine, @cosine);
 ```
+
+## Value model
+
+All inputs and results are ordinary values. Public enums such as `FloatClass` and `RoundingMode` are structural
+`Copy` values; the package owns no storage and needs no constructors or destructors. Multi-result and checked
+operations use raw writable output pointers, for example `SinCos(angle, @sine, @cosine)` and
+`AbsChecked<int32>(value, @magnitude)`. Each output address must be non-null, correctly aligned, and valid for one
+value for the duration of the call.
 
 ## Documentation
 
