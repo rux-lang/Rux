@@ -41,7 +41,7 @@ extend ConsoleWriter : TextWriter {
     /// Writes `bytes` to standard output, unless a failure has already been recorded.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
-    func Write(self: *var ConsoleWriter, bytes: Slice<char8>) -> TextError {
+    func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
         if self.failure.IsError() {
             return TextError::None;
         }
@@ -67,7 +67,8 @@ func OfTextFailure(failure: TextError) -> IoError {
 /// https://rux-lang.dev/docs/api/io/print-value
 func PrintValue(value: Display) -> IoError {
     var failure = IoError::Ok();
-    let writer: TextWriter = ConsoleWriter::New(@failure);
+    var sink = ConsoleWriter::New(@failure);
+    let writer: &var TextWriter = sink;
     let formatted = value.Format(writer, FormatSpec::Plain());
     if failure.IsError() {
         return failure;
@@ -110,7 +111,8 @@ func Print(value: Slice<char8>) -> IoError {
 /// https://rux-lang.dev/docs/api/io/print-format
 func Print(format: Slice<char8>, args: Display...) -> IoError {
     var failure = IoError::Ok();
-    let writer: TextWriter = ConsoleWriter::New(@failure);
+    var sink = ConsoleWriter::New(@failure);
+    let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
     if failure.IsError() {
         return failure;

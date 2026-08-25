@@ -15,7 +15,7 @@ import Core::{ MutableSlice, Slice };
 // The digits of `value`, as few as read back to the same bits, written into `digits`. `exponent10` receives the
 // power of ten of the first digit, so the value is d.ddd times ten to it. Reports `false` when the allocator refuses
 // or the digits do not fit, and never partially writes either way.
-func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatLayout, digits: MutableSlice<char8>,
+func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, digits: MutableSlice<char8>,
                         count: *var uint, exponent10: *var int) -> bool {
     let f = value.significand;
     let e = value.exponent;
@@ -25,13 +25,13 @@ func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *Flo
     let lonely = f == leading && e > layout.MinimumExponent();
     let even = (f & 1u512) == 0u512;
 
-    var r = BigNat::New(allocator);
-    var s = BigNat::New(allocator);
-    var high = BigNat::New(allocator);
-    var low = BigNat::New(allocator);
-    var tmp = BigNat::New(allocator);
-    var base = BigNat::New(allocator);
-    var scratch = BigNat::New(allocator);
+    var r = BigNat(allocator);
+    var s = BigNat(allocator);
+    var high = BigNat(allocator);
+    var low = BigNat(allocator);
+    var tmp = BigNat(allocator);
+    var base = BigNat(allocator);
+    var scratch = BigNat(allocator);
     if !r.SetWide(f) || !high.SetSmall(1u64) || !low.SetSmall(1u64) {
         return false;
     }
@@ -60,23 +60,23 @@ func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *Flo
         k = k - 1;
     }
     if k >= 0 {
-        if !SetPowerOfTen(@tmp, k as uint, @base, @scratch) || !scratch.SetProduct(@s, @tmp) || !s.Assign(@scratch) {
+        if !SetPowerOfTen(tmp, k as uint, base, scratch) || !scratch.SetProduct(s, tmp) || !s.Assign(scratch) {
             return false;
         }
     }
     else {
-        if !SetPowerOfTen(@tmp, (0 - k) as uint, @base, @scratch) || !scratch.SetProduct(@r, @tmp) ||
-            !r.Assign(@scratch) || !scratch.SetProduct(@high, @tmp) || !high.Assign(@scratch) ||
-            !scratch.SetProduct(@low, @tmp) || !low.Assign(@scratch) {
+        if !SetPowerOfTen(tmp, (0 - k) as uint, base, scratch) || !scratch.SetProduct(r, tmp) ||
+            !r.Assign(scratch) || !scratch.SetProduct(high, tmp) || !high.Assign(scratch) ||
+            !scratch.SetProduct(low, tmp) || !low.Assign(scratch) {
             return false;
         }
     }
     // Too low: the upper edge of the rounding interval reaches the next power of ten.
     while true {
-        if !tmp.Assign(@r) || !tmp.Add(@high) {
+        if !tmp.Assign(r) || !tmp.Add(high) {
             return false;
         }
-        let reaches = even ? tmp.Compare(@s) >= 0i32 : tmp.Compare(@s) > 0i32;
+        let reaches = even ? tmp.Compare(s) >= 0i32 : tmp.Compare(s) > 0i32;
         if !reaches {
             break;
         }
@@ -87,10 +87,10 @@ func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *Flo
     }
     // Too high: even the upper edge falls short of the previous power of ten, so the first digit would be zero.
     while true {
-        if !tmp.Assign(@r) || !tmp.Add(@high) || !tmp.MultiplySmall(10u64) {
+        if !tmp.Assign(r) || !tmp.Add(high) || !tmp.MultiplySmall(10u64) {
             return false;
         }
-        let short = even ? tmp.Compare(@s) < 0i32 : tmp.Compare(@s) <= 0i32;
+        let short = even ? tmp.Compare(s) < 0i32 : tmp.Compare(s) <= 0i32;
         if !short {
             break;
         }
@@ -108,19 +108,19 @@ func ShortestWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *Flo
         if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) {
             return false;
         }
-        var digit = r.TakeDigit(@s);
-        let withinLow = even ? r.Compare(@low) <= 0i32 : r.Compare(@low) < 0i32;
-        if !tmp.Assign(@r) || !tmp.Add(@high) {
+        var digit = r.TakeDigit(s);
+        let withinLow = even ? r.Compare(low) <= 0i32 : r.Compare(low) < 0i32;
+        if !tmp.Assign(r) || !tmp.Add(high) {
             return false;
         }
-        let withinHigh = even ? tmp.Compare(@s) >= 0i32 : tmp.Compare(@s) > 0i32;
+        let withinHigh = even ? tmp.Compare(s) >= 0i32 : tmp.Compare(s) > 0i32;
         if withinLow && withinHigh {
             // Both the digit and the one above read back correctly; the closer one wins, and a dead heat goes
             // to the even digit so that the choice is at least a rule.
-            if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+            if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
                 return false;
             }
-            let order = tmp.Compare(@s);
+            let order = tmp.Compare(s);
             if order > 0i32 || (order == 0i32 && (digit & 1u) == 1u) {
                 digit = digit + 1u;
             }
@@ -153,13 +153,13 @@ func BitLengthOf(value: uint512) -> uint {
 // The digits of `value` rounded to `fraction` places after the point, integer digits first. `exponent10` receives
 // the power of ten of the first digit as for the shortest form; a value that rounds all the way to zero reports
 // no digits at all. Reports `false` when the allocator refuses or the digits do not fit.
-func FixedWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatLayout, fraction: uint,
+func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, fraction: uint,
                      digits: MutableSlice<char8>, count: *var uint, exponent10: *var int) -> bool {
-    var r = BigNat::New(allocator);
-    var s = BigNat::New(allocator);
-    var tmp = BigNat::New(allocator);
-    var base = BigNat::New(allocator);
-    var scratch = BigNat::New(allocator);
+    var r = BigNat(allocator);
+    var s = BigNat(allocator);
+    var tmp = BigNat(allocator);
+    var base = BigNat(allocator);
+    var scratch = BigNat(allocator);
     if !r.SetWide(value.significand) || !s.SetSmall(1u64) {
         return false;
     }
@@ -177,26 +177,26 @@ func FixedWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatL
         k = k - 1;
     }
     if k >= 0 {
-        if !SetPowerOfTen(@tmp, k as uint, @base, @scratch) || !scratch.SetProduct(@s, @tmp) || !s.Assign(@scratch) {
+        if !SetPowerOfTen(tmp, k as uint, base, scratch) || !scratch.SetProduct(s, tmp) || !s.Assign(scratch) {
             return false;
         }
     }
-    else if !SetPowerOfTen(@tmp, (0 - k) as uint, @base, @scratch) || !scratch.SetProduct(@r, @tmp) ||
-             !r.Assign(@scratch) {
+    else if !SetPowerOfTen(tmp, (0 - k) as uint, base, scratch) || !scratch.SetProduct(r, tmp) ||
+             !r.Assign(scratch) {
         return false;
     }
     // Settle on r/s in [1/10, 1), so that the value is 0.d1d2... times ten to the k.
-    while r.Compare(@s) >= 0i32 {
+    while r.Compare(s) >= 0i32 {
         if !s.MultiplySmall(10u64) {
             return false;
         }
         k = k + 1;
     }
     while true {
-        if !tmp.Assign(@r) || !tmp.MultiplySmall(10u64) {
+        if !tmp.Assign(r) || !tmp.MultiplySmall(10u64) {
             return false;
         }
-        if tmp.Compare(@s) >= 0i32 {
+        if tmp.Compare(s) >= 0i32 {
             break;
         }
         if !r.MultiplySmall(10u64) {
@@ -214,10 +214,10 @@ func FixedWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatL
     }
     if wanted == 0 {
         // Between a tenth and one unit in the last place: it is that unit, or nothing.
-        if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+        if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
             return false;
         }
-        if tmp.Compare(@s) > 0i32 {
+        if tmp.Compare(s) > 0i32 {
             digits.data[0] = c8'1';
             *count = 1;
             *exponent10 = 0 - fraction as int;
@@ -235,15 +235,15 @@ func FixedWideDigits(allocator: Allocator, value: *UnpackedWide, layout: *FloatL
         if !r.MultiplySmall(10u64) {
             return false;
         }
-        digits.data[produced] = (r.TakeDigit(@s) as uint8 + 0x30u8) as char8;
+        digits.data[produced] = (r.TakeDigit(s) as uint8 + 0x30u8) as char8;
         produced = produced + 1u;
     }
     // What is left decides the last digit: over half rounds up, under half rounds down, and exactly half goes to
     // the even digit.
-    if !tmp.Assign(@r) || !tmp.ShiftLeft(1u) {
+    if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
         return false;
     }
-    let order = tmp.Compare(@s);
+    let order = tmp.Compare(s);
     let lastOdd = ((digits.data[needed - 1u] as uint8) & 1u8) == 1u8;
     if order > 0i32 || (order == 0i32 && lastOdd) {
         var index = needed;

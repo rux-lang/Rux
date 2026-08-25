@@ -15,7 +15,7 @@ struct Point {
 }
 
 extend Point : Display {
-    func Format(self: *Point, writer: TextWriter) -> TextError {
+    func Format(self: &Point, writer: &var TextWriter) -> TextError {
         let open = WriteAscii(writer, c8'(');
         if open.IsError() { return open; }
         let first: Display = self.x;
@@ -36,7 +36,7 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func Format(self: *Filler, writer: TextWriter) -> TextError {
+    func Format(self: &Filler, writer: &var TextWriter) -> TextError {
         var remaining = self.count;
         while remaining > 0 {
             let written = WriteBytes(writer, "0123456789abcdef");
@@ -53,7 +53,7 @@ func Matches(actual: StringView, expected: Slice<char8>) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

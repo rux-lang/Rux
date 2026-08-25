@@ -22,7 +22,7 @@ import Text::{ String, StringBuilder, TextError };
 /// Reports whatever the writer reported, having written what it managed to first.
 ///
 /// https://rux-lang.dev/docs/api/format/write-format
-func WriteFormat(writer: TextWriter, format: Slice<char8>, args: Display...) -> TextError {
+func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Display...) -> TextError {
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
     // ever moves forward.
     var next: uint = 0;
@@ -100,7 +100,8 @@ func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, a
     if error.IsError() {
         return builder.IntoString();
     }
-    let writer: TextWriter = BuilderWriter::Of(@builder);
+    var sink = BuilderWriter::Of(@builder);
+    let writer: &var TextWriter = sink;
     *error = WriteFormat(writer, format, args...);
     return builder.IntoString();
 }

@@ -17,7 +17,7 @@ func Matches(allocator: Allocator, rendered: Slice<char8>, expected: Slice<char8
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

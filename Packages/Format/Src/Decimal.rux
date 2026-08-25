@@ -6,7 +6,7 @@
 // The digits of a finite, non-zero magnitude, and the point placed by the
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
-func WriteDecimal(cursor: *var ByteCursor, value: float64, significant: uint) {
+func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {
         cursor.Push(c8'-');
@@ -88,7 +88,7 @@ func WriteDecimal(cursor: *var ByteCursor, value: float64, significant: uint) {
 // exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
 // written, so the text still reads as a float when the value has no fraction
 // of its own to show.
-func WriteFixed(cursor: *var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteFixed(cursor: &var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
     if exp10 < 0 {
         // Below one, so the text opens with a zero and the point, then as
         // many more zeros as the exponent calls for: -1 puts the first digit
@@ -136,7 +136,7 @@ func WriteFixed(cursor: *var ByteCursor, digits: Slice<char8>, count: uint, exp1
 // One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
 // exponent carries a sign and at least two digits, so the tail keeps a
 // steady width across the range.
-func WriteScientific(cursor: *var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteScientific(cursor: &var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
     cursor.Push(digits[0]);
     cursor.Push(c8'.');
     if count == 1 {
@@ -231,7 +231,7 @@ func ScaleByPow10(value: float64, exp: int) -> float64 {
 // and a value past that renders shortest instead of pretending to a precision the arithmetic cannot honour. The
 // rounding happens once, in the scaled integer, so the carry out of ".995" propagates into the integer part the
 // way arithmetic says it should.
-func WriteFixedPrecision(cursor: *var ByteCursor, value: float64, precision: uint) {
+func WriteFixedPrecision(cursor: &var ByteCursor, value: float64, precision: uint) {
     var abs = value;
     if value < 0.0 {
         cursor.Push(c8'-');

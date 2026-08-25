@@ -176,7 +176,7 @@ func EmitFloat(writer: TextWriter, value: float64) -> TomlWriteError {
     var significant = 15u;
     while significant <= 17u {
         var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
-        WriteDecimal(@cursor, value, significant);
+        WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
         let parsed = ParseFloat64(rendered);

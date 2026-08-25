@@ -61,28 +61,28 @@ extend FloatLayout {
     /// How many bits the stored significand field has: the precision, less the leading bit unless it is written.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/significand-field-bits
-    func SignificandFieldBits(self: *FloatLayout) -> uint {
+    func SignificandFieldBits(self: &FloatLayout) -> uint {
         return self.explicitInteger ? self.precision : self.precision - 1u;
     }
 
     /// The smallest exponent a normal value has, as the power of two its integer significand is scaled by.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/minimum-exponent
-    func MinimumExponent(self: *FloatLayout) -> int {
+    func MinimumExponent(self: &FloatLayout) -> int {
         return 1 - self.bias - (self.precision as int - 1);
     }
 
     /// The largest exponent a finite value has, on the same scale.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/maximum-exponent
-    func MaximumExponent(self: *FloatLayout) -> int {
+    func MaximumExponent(self: &FloatLayout) -> int {
         return self.bias - (self.precision as int - 1);
     }
 
     /// How many decimal digits the shortest exact rendering can need: one more than the precision is worth.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/decimal-digits
-    func DecimalDigits(self: *FloatLayout) -> uint {
+    func DecimalDigits(self: &FloatLayout) -> uint {
         return (self.precision * 30103u) / 100000u + 2u;
     }
 }
@@ -120,7 +120,7 @@ struct UnpackedWide {
 /// Takes a bit pattern apart under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/unpack-wide
-func UnpackWide(bits: uint512, layout: *FloatLayout) -> UnpackedWide {
+func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
     let fieldBits = layout.SignificandFieldBits();
     let negative = ((bits >> (layout.bits - 1u)) & 1u512) == 1u512;
     let exponentField = ((bits >> fieldBits) & ((1u512 << layout.exponentBits) - 1u512)) as uint64;
@@ -176,7 +176,7 @@ func UnpackWide(bits: uint512, layout: *FloatLayout) -> UnpackedWide {
 /// Puts a finite value back together under `layout`, which must already be within range and precision.
 ///
 /// https://rux-lang.dev/docs/api/format/pack-wide
-func PackWide(negative: bool, significand: uint512, exponent: int, layout: *FloatLayout) -> uint512 {
+func PackWide(negative: bool, significand: uint512, exponent: int, layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = 0u512;
     if negative {
@@ -198,7 +198,7 @@ func PackWide(negative: bool, significand: uint512, exponent: int, layout: *Floa
 /// The bits of infinity under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/infinity-bits
-func InfinityBits(negative: bool, layout: *FloatLayout) -> uint512 {
+func InfinityBits(negative: bool, layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = ((1u512 << layout.exponentBits) - 1u512) << fieldBits;
     if layout.explicitInteger {
@@ -213,7 +213,7 @@ func InfinityBits(negative: bool, layout: *FloatLayout) -> uint512 {
 /// The bits of a quiet NaN under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/nan-bits
-func NanBits(layout: *FloatLayout) -> uint512 {
+func NanBits(layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = ((1u512 << layout.exponentBits) - 1u512) << fieldBits;
     bits = bits | (1u512 << (layout.precision - 2u));

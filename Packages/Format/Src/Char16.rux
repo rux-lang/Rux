@@ -10,7 +10,7 @@ extend char16 : Display {
     /// Writes this code unit's character, or the replacement character when it is half of one.
     ///
     /// https://rux-lang.dev/docs/api/format/char16/format
-    func Format(self: *char16, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *char16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let value = *self as uint32;
         if !IsScalarValue(value) {
             return FormatScalar(writer, spec, ReplacementCharacter);
@@ -23,7 +23,7 @@ extend char16 : Debug {
     /// The same character, quoted.
     ///
     /// https://rux-lang.dev/docs/api/format/char16/format-debug
-    func FormatDebug(self: *char16, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *char16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'\'');
         if opening.IsError() {
             return opening;

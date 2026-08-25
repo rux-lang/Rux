@@ -29,13 +29,11 @@ interface TextWriter {
 
 /// Writes `bytes` to `writer`.
 ///
-/// The interface value is copied into a mutable binding first, which is what lets a method taking `*var self` be
-/// called on it. Every helper here exists to keep that ceremony out of the formatting code.
+/// The writer is borrowed mutably for the call, so position changes remain visible to its owner.
 ///
 /// https://rux-lang.dev/docs/api/format/write-bytes
-func WriteBytes(writer: TextWriter, bytes: Slice<char8>) -> TextError {
-    var sink = writer;
-    return sink.Write(bytes);
+func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> TextError {
+    return writer.Write(bytes);
 }
 
 /// Writes one ASCII byte.
@@ -44,7 +42,7 @@ func WriteBytes(writer: TextWriter, bytes: Slice<char8>) -> TextError {
 /// takes whole characters. `WriteScalar` is what writes one that takes more than a byte.
 ///
 /// https://rux-lang.dev/docs/api/format/write-ascii
-func WriteAscii(writer: TextWriter, byte: char8) -> TextError {
+func WriteAscii(writer: &var TextWriter, byte: char8) -> TextError {
     if (byte as uint32) > 0x7F {
         return TextError::InvalidUtf8;
     }
@@ -58,7 +56,7 @@ func WriteAscii(writer: TextWriter, byte: char8) -> TextError {
 /// Reports `InvalidUtf8` for a value that is not a scalar value.
 ///
 /// https://rux-lang.dev/docs/api/format/write-scalar
-func WriteScalar(writer: TextWriter, scalar: char32) -> TextError {
+func WriteScalar(writer: &var TextWriter, scalar: char32) -> TextError {
     var encoded: char8[4];
     var written: uint = 0;
     let sink = MutableSlice::From<char8>(@encoded[0], 4);
@@ -98,7 +96,7 @@ extend BuilderWriter : TextWriter {
     /// Reports `OutOfMemory` when the builder cannot make room, having appended nothing.
     ///
     /// https://rux-lang.dev/docs/api/format/builder-writer/write
-    func Write(self: *var BuilderWriter, bytes: Slice<char8>) -> TextError {
+    func Write(self: &var BuilderWriter, bytes: Slice<char8>) -> TextError {
         return AppendValidatedRaw(self.builder, bytes);
     }
 }
@@ -132,8 +130,8 @@ extend CursorWriter : TextWriter {
     /// Writes `bytes` into the buffer, reporting `LengthOverflow` when they do not fit.
     ///
     /// https://rux-lang.dev/docs/api/format/cursor-writer/write
-    func Write(self: *var CursorWriter, bytes: Slice<char8>) -> TextError {
-        self.cursor.PushBytes(bytes);
-        return self.cursor.Overran() ? TextError::LengthOverflow : TextError::None;
+    func Write(self: &var CursorWriter, bytes: Slice<char8>) -> TextError {
+        (*self.cursor).PushBytes(bytes);
+        return (*self.cursor).Overran() ? TextError::LengthOverflow : TextError::None;
     }
 }

@@ -12,7 +12,7 @@ func Matches(actual: StringView, expected: Slice<char8>) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -38,7 +38,8 @@ func Main() -> int {
 
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
     var builder = StringBuilder(allocator);
-    let writer: TextWriter = BuilderWriter::Of(@builder);
+    var sink = BuilderWriter::Of(@builder);
+    let writer: &var TextWriter = sink;
     let empty = String(allocator);
     let shownPlain: Display = empty.View();
     if shownPlain.Format(writer, FormatSpec::Plain()) != TextError::None { return 20; }

@@ -8,7 +8,7 @@ extend bool8 : Display {
     /// Writes `true` or `false`.
     ///
     /// https://rux-lang.dev/docs/api/format/bool8/format
-    func Format(self: *bool8, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteAligned(writer, spec, *self ? "true" : "false", false);
     }
 }
@@ -17,7 +17,7 @@ extend bool8 : Debug {
     /// The same two words.
     ///
     /// https://rux-lang.dev/docs/api/format/bool8/format-debug
-    func FormatDebug(self: *bool8, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

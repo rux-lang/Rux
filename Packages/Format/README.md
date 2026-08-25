@@ -11,7 +11,8 @@ rux add Rux/Format
 ## What it provides
 
 - **`Display` and `Debug`** — the two ways a value turns into text: what a reader sees, and what an inspector sees, with quoting where the two differ. Both write into a `Writer` rather than answering with a string, so printing a value allocates nothing. Every primitive implements both, along with `String` and `StringView`.
-- **`Writer`** — where formatted text goes: a builder, a fixed buffer, or the console, without the value knowing which.
+- **`TextWriter`** — a mutable borrowed destination: a builder, fixed buffer, or console, without the value knowing
+  which. Formatting updates the original writer state rather than a copied interface handle.
 - **`Format`** — placeholder-based formatting, used by [`Rux/Io`](../Io) to implement `Print` and `PrintLine`.
 - **The digit machinery** — `WriteInt`, `WriteUint`, `WriteFloat` and the decimal helpers, writing into a stack buffer through `ByteCursor` so no primitive's rendering allocates.
 - **Parsing** — `ParseInt64` and `ParseFloat64`, plus the non-trapping `TryParseInt64` and `TryParseFloat64`, which report failure through `ParseError`.

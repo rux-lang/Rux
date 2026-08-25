@@ -8,7 +8,7 @@ extend bool32 : Display {
     /// Writes `true` or `false`.
     ///
     /// https://rux-lang.dev/docs/api/format/bool32/format
-    func Format(self: *bool32, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *bool32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteAligned(writer, spec, *self ? "true" : "false", false);
     }
 }
@@ -17,7 +17,7 @@ extend bool32 : Debug {
     /// The same two words.
     ///
     /// https://rux-lang.dev/docs/api/format/bool32/format-debug
-    func FormatDebug(self: *bool32, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *bool32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
