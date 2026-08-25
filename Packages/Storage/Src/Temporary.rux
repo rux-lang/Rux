@@ -167,7 +167,7 @@ extend TemporaryFile {
             var opened = File::Open(allocator, candidate.AsPath(), options, error);
             if error.IsOk() {
                 result.file = opened;
-                result.path = candidate;
+                result.path <- candidate;
                 result.owned = true;
                 return result;
             }
@@ -261,7 +261,7 @@ extend TemporaryDirectoryHandle {
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
             let made = MakeDirectory(allocator, candidate.AsPath());
             if made.IsOk() {
-                result.path = candidate;
+                result.path <- candidate;
                 result.owned = true;
                 return result;
             }

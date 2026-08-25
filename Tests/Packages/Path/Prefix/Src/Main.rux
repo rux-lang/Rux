@@ -12,7 +12,7 @@ func PathText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

@@ -68,13 +68,13 @@ extend AtomicWrite {
         let parent = target.Parent();
         var directory = PathBuffer::New(allocator);
         if parent.IsSome() {
-            directory = PathBuffer::FromPath(allocator, parent.ValueOr(Path::New()), @textError);
+            directory <- PathBuffer::FromPath(allocator, parent.ValueOr(Path::New()), @textError);
         }
         else {
             var here: OsUnit[1];
             here[0] = DotSegmentUnit();
-            directory = PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(here[0..1])),
-                                             @textError);
+            directory <- PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(here[0..1])),
+                                              @textError);
         }
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
@@ -96,7 +96,7 @@ extend AtomicWrite {
             return result;
         }
         result.scratch = scratch;
-        result.target = held;
+        result.target <- held;
         result.pending = true;
         return result;
     }

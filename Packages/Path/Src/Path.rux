@@ -9,7 +9,7 @@
 // facts is the whole platform difference at this layer, and it is confined to two functions.
 
 import Allocator::Allocator;
-import Core::{ #target, Drop, Option, Slice };
+import Core::{ #target, Option, Slice };
 import Text::TextError;
 
 /// Whether `unit` separates path segments on this system.
@@ -52,8 +52,13 @@ extend Path {
     /// A path over nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/path/new
+    func Path() -> Path {
+        return Path { name: OsStringView() };
+    }
+
+    /// Temporary compatibility spelling for `Path()`.
     func New() -> Path {
-        return Path { name: OsStringView::New() };
+        return Path();
     }
 
     /// A path over `view`'s units as they stand.
@@ -66,21 +71,21 @@ extend Path {
     /// How many native units the path spans.
     ///
     /// https://rux-lang.dev/docs/api/path/path/length
-    func Length(self: *Path) -> uint {
+    func Length(self: &Path) -> uint {
         return self.name.Length();
     }
 
     /// Whether the path is empty, which names nothing at all.
     ///
     /// https://rux-lang.dev/docs/api/path/path/is-empty
-    func IsEmpty(self: *Path) -> bool {
+    func IsEmpty(self: &Path) -> bool {
         return self.name.IsEmpty();
     }
 
     /// The name under the structure.
     ///
     /// https://rux-lang.dev/docs/api/path/path/as-view
-    func AsView(self: *Path) -> OsStringView {
+    func AsView(self: &Path) -> OsStringView {
         return self.name;
     }
 
@@ -90,15 +95,15 @@ extend Path {
     /// is normalization's job, asked for by name.
     ///
     /// https://rux-lang.dev/docs/api/path/path/equals
-    func Equals(self: *Path, other: Path) -> bool {
+    func Equals(self: &Path, other: Path) -> bool {
         let mine = self.name;
-        return mine.Equals(@other.name);
+        return mine.Equals(other.name);
     }
 
     /// A walk over the path's components, first to last.
     ///
     /// https://rux-lang.dev/docs/api/path/path/components
-    func Components(self: *Path) -> ComponentIterator {
+    func Components(self: &Path) -> ComponentIterator {
         return ComponentIterator { units: self.name.Units(), cursor: 0 };
     }
 }
@@ -121,12 +126,12 @@ extend ComponentIterator {
     /// The next component, or `None` when the walk is done.
     ///
     /// https://rux-lang.dev/docs/api/path/component-iterator/next
-    func Next(self: *var ComponentIterator) -> Option<OsStringView> {
+    func Next(self: &var ComponentIterator) -> Option<OsStringView> {
         // The root: a separator at the very start yields the empty component once, then the walk continues past
         // every separator that follows it.
         if self.cursor == 0 && self.units.length > 0 && IsSeparator(self.units.data[0]) {
             self.cursor = 1;
-            return Option::Some<OsStringView>(OsStringView::New());
+            return Option::Some<OsStringView>(OsStringView());
         }
         while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;

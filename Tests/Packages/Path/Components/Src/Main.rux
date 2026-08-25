@@ -20,13 +20,13 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
             .Some(segment) => {
                 var piece = segment;
                 if seen == 0 {
-                    good = good && piece.Equals(@expected0);
+                    good = good && piece.Equals(expected0);
                 }
                 else if seen == 1 {
-                    good = good && piece.Equals(@expected1);
+                    good = good && piece.Equals(expected1);
                 }
                 else if seen == 2 {
-                    good = good && piece.Equals(@expected2);
+                    good = good && piece.Equals(expected2);
                 }
                 else {
                     good = false;
@@ -42,7 +42,7 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -56,7 +56,7 @@ func Main() -> int {
     let a = aOwned.View();
     let b = bOwned.View();
     let c = cOwned.View();
-    let root = OsStringView::New();
+    let root = OsStringView();
 
     // A relative path walks its segments; runs of separators count once; a trailing one adds nothing.
     let plainOwned = OsString::FromText(allocator, "a/b/c", @error);
@@ -70,12 +70,12 @@ func Main() -> int {
     let slashOwned = OsString::FromText(allocator, "/", @error);
     Assert(Walk(Path::FromView(slashOwned.View()), root, a, b, 1), "and the root alone is one component");
 
-    let empty = Path::New();
+    let empty = Path();
     Assert(empty.IsEmpty(), "the empty path is empty");
     Assert(Walk(empty, root, a, b, 0), "and walks as nothing at all");
 
     // The buffer: pushes separate, an absolute push replaces, and the result reads back as a path.
-    var buffer = PathBuffer::New(allocator);
+    var buffer = PathBuffer(allocator);
     Assert(buffer.Push(a) == TextError::None, "the first segment goes in");
     Assert(buffer.Push(b) == TextError::None, "and the second");
     Assert(buffer.Push(c) == TextError::None, "and the third");
@@ -90,9 +90,9 @@ func Main() -> int {
     Assert(Walk(buffer.AsPath(), root, a, b, 3), "and replaces everything before it");
 
     // Pushing the empty segment changes nothing.
-    var settled = PathBuffer::New(allocator);
+    var settled = PathBuffer(allocator);
     Assert(settled.Push(a) == TextError::None, "one segment");
-    Assert(settled.Push(OsStringView::New()) == TextError::None, "then the empty one");
+    Assert(settled.Push(OsStringView()) == TextError::None, "then the empty one");
     Assert(settled.Length() == 1, "which adds nothing, not even a separator");
 
     return 0;
