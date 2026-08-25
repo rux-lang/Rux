@@ -18,7 +18,7 @@ extend Date {
     /// Exact: a day is a day, and the round trip through the epoch count neither loses nor invents one.
     ///
     /// https://rux-lang.dev/docs/api/time/date/plus-days
-    func PlusDays(self: *Date, days: int64) -> Option<Date> {
+    func PlusDays(self: &Date, days: int64) -> Option<Date> {
         var landed: int64 = 0;
         if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) {
             return Option::None<Date>();
@@ -36,7 +36,7 @@ extend Date {
     /// January 31st plus one month is the last day of February; the clamp is the policy the module header states.
     ///
     /// https://rux-lang.dev/docs/api/time/date/plus-months
-    func PlusMonths(self: *Date, months: int64) -> Option<Date> {
+    func PlusMonths(self: &Date, months: int64) -> Option<Date> {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
         var flat: int64 = (self.year as int64) * 12i64 + (self.month as int64) - 1i64;
         if AddChecked<int64>(flat, months, @flat) {
@@ -59,7 +59,7 @@ extend Date {
     /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.
     ///
     /// https://rux-lang.dev/docs/api/time/date/plus-years
-    func PlusYears(self: *Date, years: int64) -> Option<Date> {
+    func PlusYears(self: &Date, years: int64) -> Option<Date> {
         var target: int64 = 0;
         if AddChecked<int64>(self.year as int64, years, @target) {
             return Option::None<Date>();
@@ -75,7 +75,7 @@ extend Date {
     /// The whole days from `earlier` to this date, negative when it is the later one.
     ///
     /// https://rux-lang.dev/docs/api/time/date/days-since
-    func DaysSince(self: *Date, earlier: Date) -> int64 {
+    func DaysSince(self: &Date, earlier: Date) -> int64 {
         return self.DaysFromEpoch() - earlier.DaysFromEpoch();
     }
 }

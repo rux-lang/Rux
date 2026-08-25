@@ -56,7 +56,7 @@ func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
 /// Meaningless for any other version, which is why the version should be checked first.
 ///
 /// https://rux-lang.dev/docs/api/uuid/millisecond-of
-func MillisecondOf(value: *Uuid) -> uint64 {
+func MillisecondOf(value: &Uuid) -> uint64 {
     var milliseconds = 0u64;
     var index: uint = 0;
     while index < 6u {
@@ -88,14 +88,19 @@ extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     ///
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
-    func New() -> MonotonicUuid {
+    func MonotonicUuid() -> MonotonicUuid {
         return MonotonicUuid { previous: Uuid::Nil(), started: false };
+    }
+
+    /// Temporary compatibility spelling for `MonotonicUuid()`.
+    func New() -> MonotonicUuid {
+        return MonotonicUuid();
     }
 
     /// The next identifier, strictly greater than the one before it.
     ///
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
-    func Next(self: *var MonotonicUuid, error: *var EntropyError) -> Uuid {
+    func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
         let candidate = TimeOrdered(error);
         if *error != EntropyError::None {
             return Uuid::Nil();
@@ -108,7 +113,7 @@ extend MonotonicUuid {
         // A fresh draw is used only if it already sorts above the last one; otherwise the previous value is
         // stepped, which keeps the sequence strictly increasing whatever the clock did -- including going
         // backwards, which a clock adjustment can do.
-        if candidate.Compare(@self.previous) == Ordering::Greater {
+        if candidate.Compare(self.previous) == Ordering::Greater {
             self.previous = candidate;
             return candidate;
         }

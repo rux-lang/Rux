@@ -21,7 +21,7 @@ func Main() -> int {
     Assert(error == UuidParseError::None, "the canonical form parses");
     Assert(value.Version() == 1u8, "and its version is read from the right nibble");
     var text: char8[64];
-    Format(@value, MutableSlice::From<char8>(@text[0], 36));
+    Format(value, MutableSlice::From<char8>(@text[0], 36));
     var index: uint = 0;
     while index < 36u {
         Assert(text[index] == canonical.data[index], "and it formats back to exactly what was parsed");
@@ -31,28 +31,28 @@ func Main() -> int {
     // Upper case is read and gives the same value, but is never written by `Format`.
     var upper = Parse("F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6", @error);
     Assert(error == UuidParseError::None, "upper case parses");
-    Assert(upper.Equals(@value), "and means the same thing");
+    Assert(upper.Equals(value), "and means the same thing");
     var mixed = Parse("f81D4fAe-7DeC-11d0-A765-00a0C91e6Bf6", @error);
-    Assert(error == UuidParseError::None && mixed.Equals(@value), "as does mixed case");
+    Assert(error == UuidParseError::None && mixed.Equals(value), "as does mixed case");
 
     var upperText: char8[64];
-    FormatUpper(@value, MutableSlice::From<char8>(@upperText[0], 36));
+    FormatUpper(value, MutableSlice::From<char8>(@upperText[0], 36));
     Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
     Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
     var reparsed = Parse(Slice<char8> { data: @upperText[0], length: 36 }, @error);
-    Assert(error == UuidParseError::None && reparsed.Equals(@value), "and parses back to the same value");
+    Assert(error == UuidParseError::None && reparsed.Equals(value), "and parses back to the same value");
 
     // The URN form, in both cases of its prefix.
     var urn = Parse("urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", @error);
-    Assert(error == UuidParseError::None && urn.Equals(@value), "the URN form parses");
+    Assert(error == UuidParseError::None && urn.Equals(value), "the URN form parses");
     var urnUpper = Parse("URN:UUID:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", @error);
-    Assert(error == UuidParseError::None && urnUpper.Equals(@value),
+    Assert(error == UuidParseError::None && urnUpper.Equals(value),
            "and its prefix is case-insensitive, which is a different rule from the digits and also the standard's");
 
     var urnText: char8[64];
-    FormatUrn(@value, MutableSlice::From<char8>(@urnText[0], 45));
+    FormatUrn(value, MutableSlice::From<char8>(@urnText[0], 45));
     var urnRoundTrip = Parse(Slice<char8> { data: @urnText[0], length: 45 }, @error);
-    Assert(error == UuidParseError::None && urnRoundTrip.Equals(@value), "and the written URN form parses back");
+    Assert(error == UuidParseError::None && urnRoundTrip.Equals(value), "and the written URN form parses back");
 
     // The refusals: every widely-circulated non-standard form.
     Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", UuidParseError::WrongLength,
@@ -85,11 +85,11 @@ func Main() -> int {
 
     // The sentinels have text forms too.
     var nil = Uuid::Nil();
-    Format(@nil, MutableSlice::From<char8>(@text[0], 36));
+    Format(nil, MutableSlice::From<char8>(@text[0], 36));
     var nilParsed = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
     Assert(error == UuidParseError::None && nilParsed.IsNil(), "the nil UUID round-trips through text");
     var max = Uuid::Max();
-    Format(@max, MutableSlice::From<char8>(@text[0], 36));
+    Format(max, MutableSlice::From<char8>(@text[0], 36));
     var maxParsed = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
     Assert(error == UuidParseError::None && maxParsed.IsMax(), "and so does the max UUID");
 
@@ -100,9 +100,9 @@ func Main() -> int {
     while index < 16u {
         probe = Uuid::Nil();
         probe.bytes[index] = 0x9Cu8 as char8;
-        Format(@probe, MutableSlice::From<char8>(@text[0], 36));
+        Format(probe, MutableSlice::From<char8>(@text[0], 36));
         var back = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
-        Assert(error == UuidParseError::None && back.Equals(@probe),
+        Assert(error == UuidParseError::None && back.Equals(probe),
                "every byte position survives the text round trip");
         index = index + 1;
     }

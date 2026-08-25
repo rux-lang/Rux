@@ -13,6 +13,10 @@ func Main() -> int {
     // Constructors normalize, negative counts included.
     let plain = Duration::FromSeconds(5i64);
     Assert(plain.WholeSeconds() == 5i64 && plain.SubsecondNanoseconds() == 0u32, "whole seconds carry no fraction");
+    var copied = plain;
+    copied.seconds = 8i64;
+    Assert(plain.WholeSeconds() == 5i64 && copied.WholeSeconds() == 8i64,
+           "copying a duration produces an independent value");
     let millis = Duration::FromMilliseconds(1500i64);
     Assert(millis.WholeSeconds() == 1i64 && millis.SubsecondNanoseconds() == 500000000u32,
            "fifteen hundred milliseconds is one and a half seconds");

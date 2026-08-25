@@ -68,7 +68,7 @@ extend Instant {
     /// visible bug instead of a wildly large duration.
     ///
     /// https://rux-lang.dev/docs/api/time/instant/since
-    func Since(self: *Instant, earlier: Instant) -> Option<Duration> {
+    func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
         if self.ticks < earlier.ticks {
             return Option::None<Duration>();
         }
@@ -81,9 +81,9 @@ extend Instant {
     /// The time from this reading to now.
     ///
     /// https://rux-lang.dev/docs/api/time/instant/elapsed
-    func Elapsed(self: *Instant) -> Duration {
+    func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
-        return now.Since(*self).ValueOr(Duration::Zero());
+        return now.Since(Instant { ticks: self.ticks }).ValueOr(Duration::Zero());
     }
 }
 

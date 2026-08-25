@@ -10,8 +10,8 @@ func Main() -> int {
     var max = Uuid::Max();
     Assert(nil.IsNil() && !nil.IsMax(), "the nil UUID is nil and not max");
     Assert(max.IsMax() && !max.IsNil(), "and the max UUID the other way round");
-    Assert(!nil.Equals(@max), "they are not equal");
-    Assert(nil.Compare(@max) == Ordering::Less, "and nil sorts below max");
+    Assert(!nil.Equals(max), "they are not equal");
+    Assert(nil.Compare(max) == Ordering::Less, "and nil sorts below max");
 
     // Round-tripping bytes.
     var raw: char8[16];
@@ -30,6 +30,11 @@ func Main() -> int {
     }
     Assert(!value.IsNil() && !value.IsMax(), "and an ordinary value is neither sentinel");
 
+    var copied = value;
+    copied.bytes[0] = 0xFFu8 as char8;
+    Assert(value.bytes[0] == raw[0] && copied.bytes[0] != value.bytes[0],
+           "copying a UUID produces an independent value");
+
     // A short slice leaves the rest zero rather than reading past it.
     let shortBytes = Slice<char8> { data: @raw[0], length: 4 };
     var partial = Uuid::FromBytes(shortBytes);
@@ -42,21 +47,21 @@ func Main() -> int {
     var lower = Uuid::Nil();
     var higher = Uuid::Nil();
     higher.bytes[0] = 1u8 as char8;
-    Assert(lower.Compare(@higher) == Ordering::Less, "a difference in the first byte decides the order");
+    Assert(lower.Compare(higher) == Ordering::Less, "a difference in the first byte decides the order");
     var lateDifference = Uuid::Nil();
     lateDifference.bytes[15] = 1u8 as char8;
-    Assert(lower.Compare(@lateDifference) == Ordering::Less, "as does one in the last");
-    Assert(higher.Compare(@lateDifference) == Ordering::Greater,
+    Assert(lower.Compare(lateDifference) == Ordering::Less, "as does one in the last");
+    Assert(higher.Compare(lateDifference) == Ordering::Greater,
            "and the earlier byte outweighs the later one, which is what byte order means");
-    Assert(lower.Compare(@lower) == Ordering::Equal, "a value equals itself");
+    Assert(lower.Compare(lower) == Ordering::Equal, "a value equals itself");
 
     // Every byte position affects the order, so none is being skipped.
     index = 0;
     while index < 16u {
         var stepped = Uuid::Nil();
         stepped.bytes[index] = 1u8 as char8;
-        Assert(stepped.Compare(@nil) == Ordering::Greater, "every byte position participates in the ordering");
-        Assert(!stepped.Equals(@nil), "and in equality");
+        Assert(stepped.Compare(nil) == Ordering::Greater, "every byte position participates in the ordering");
+        Assert(!stepped.Equals(nil), "and in equality");
         index = index + 1;
     }
 
