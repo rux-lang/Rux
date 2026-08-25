@@ -31,16 +31,16 @@ func Main() -> int {
     var large = JsonValue::Number(allocator, "9007199254740993", @textError);
     Assert(textError == TextError::None, "a large integer is stored");
     var exact: uint64 = 0;
-    Assert(large.AsNumber().AsUint64(@exact), "and reads back as an unsigned integer");
+    Assert((*large.AsNumber()).AsUint64(@exact), "and reads back as an unsigned integer");
     Assert(exact == 9007199254740993u64,
            "exactly -- one past two to the fifty-third, which a double would have rounded away");
     var asFloat = 0.0;
-    Assert(large.AsNumber().AsFloat64(@asFloat), "it also reads as a float");
+    Assert((*large.AsNumber()).AsFloat64(@asFloat), "it also reads as a float");
     Assert((asFloat as uint64) != 9007199254740993u64,
            "and that reading loses the last digit, which is why the exact one is offered separately");
 
     var written = JsonValue::Number(allocator, "1.2000", @textError);
-    let writtenText = written.AsNumber().Text();
+    let writtenText = (*written.AsNumber()).Text();
     let expectedText = View("1.2000");
     Assert(writtenText.Equals(expectedText), "a number keeps the text it was written with, trailing zeros too");
 
@@ -48,21 +48,22 @@ func Main() -> int {
     var whole = JsonValue::Number(allocator, "42", @textError);
     var pointZero = JsonValue::Number(allocator, "42.0", @textError);
     var exponent = JsonValue::Number(allocator, "4.2e1", @textError);
-    Assert(whole.AsNumber().IsIntegral(), "42 is integral");
-    Assert(!pointZero.AsNumber().IsIntegral(), "42.0 is not, though its value is whole");
-    Assert(!exponent.AsNumber().IsIntegral(), "and neither is 4.2e1");
+    Assert((*whole.AsNumber()).IsIntegral(), "42 is integral");
+    Assert(!(*pointZero.AsNumber()).IsIntegral(), "42.0 is not, though its value is whole");
+    Assert(!(*exponent.AsNumber()).IsIntegral(), "and neither is 4.2e1");
     var pointZeroAsInt: int64 = 0;
-    Assert(!pointZero.AsNumber().AsInt64(@pointZeroAsInt),
+    Assert(!(*pointZero.AsNumber()).AsInt64(@pointZeroAsInt),
            "so 42.0 does not read as an integer, which keeps a distinction the document was making");
     var floatValue = 0.0;
-    Assert(pointZero.AsNumber().AsFloat64(@floatValue) && floatValue == 42.0, "while it reads fine as a float");
+    Assert((*pointZero.AsNumber()).AsFloat64(@floatValue) && floatValue == 42.0,
+           "while it reads fine as a float");
 
     var negative = JsonValue::Number(allocator, "-9223372036854775808", @textError);
     var signedValue: int64 = 0;
-    Assert(negative.AsNumber().AsInt64(@signedValue) && signedValue == -9223372036854775808i64,
+    Assert((*negative.AsNumber()).AsInt64(@signedValue) && signedValue == -9223372036854775808i64,
            "the most negative signed integer reads back exactly");
     var negativeAsUnsigned: uint64 = 0;
-    Assert(!negative.AsNumber().AsUint64(@negativeAsUnsigned), "and does not read as unsigned");
+    Assert(!(*negative.AsNumber()).AsUint64(@negativeAsUnsigned), "and does not read as unsigned");
 
     // Strings.
     var text = JsonValue::Text(allocator, "hello", @textError);
@@ -77,7 +78,7 @@ func Main() -> int {
     var index: uint = 0;
     while index < 5u {
         var element = JsonValue::Boolean(allocator, (index % 2u) == 0u);
-        Assert(array.Push(element), "elements append");
+        Assert(array.Push(<-element), "elements append");
         index = index + 1;
     }
     Assert(array.Length() == 5u, "and the array grows");
@@ -86,7 +87,7 @@ func Main() -> int {
         let element = array.At(index);
         Assert(element != null, "every index is reachable");
         var value = false;
-        Assert(element.AsBoolean(@value) && value == ((index % 2u) == 0u),
+        Assert((*element).AsBoolean(@value) && value == ((index % 2u) == 0u),
                "and the elements are in the order they were added");
         index = index + 1;
     }
@@ -98,13 +99,13 @@ func Main() -> int {
     var nameError = TextError::None;
     var zetaName = String::FromBytes(allocator, "zeta", @nameError);
     var zetaValue = JsonValue::Number(allocator, "1", @textError);
-    Assert(object.Insert(zetaName, zetaValue), "a member inserts");
+    Assert(object.Insert(zetaName, <-zetaValue), "a member inserts");
     var alphaName = String::FromBytes(allocator, "alpha", @nameError);
     var alphaValue = JsonValue::Number(allocator, "2", @textError);
-    Assert(object.Insert(alphaName, alphaValue), "and another");
+    Assert(object.Insert(alphaName, <-alphaValue), "and another");
     var muName = String::FromBytes(allocator, "mu", @nameError);
     var muValue = JsonValue::Text(allocator, "found", @textError);
-    Assert(object.Insert(muName, muValue), "and a third");
+    Assert(object.Insert(muName, <-muValue), "and a third");
     Assert(object.Length() == 3u, "and the object grows");
 
     let firstMember = object.MemberAt(0u);
@@ -118,9 +119,9 @@ func Main() -> int {
     // Lookup by name.
     let mu = View("mu");
     let found = object.Find(mu);
-    Assert(found != null && found.Kind() == JsonKind::Text, "a member is found by name");
+    Assert(found != null && (*found).Kind() == JsonKind::Text, "a member is found by name");
     let foundText = View("found");
-    Assert(found.AsText().Equals(foundText), "with the value it was given");
+    Assert((*found).AsText().Equals(foundText), "with the value it was given");
     let missing = View("absent");
     Assert(object.Find(missing) == null, "and a name that is not there is not found");
     Assert(array.Find(mu) == null, "looking for a member in an array finds nothing rather than misreading it");
@@ -130,7 +131,7 @@ func Main() -> int {
     Assert(object.MemberAt(0u) != null && array.MemberAt(0u) == null, "and members the other way round");
     Assert(nullValue.Length() == 0u && text.Length() == 0u, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
-    Assert(!nullValue.Push(pushRefused), "pushing into a scalar is refused rather than ignored");
+    Assert(!nullValue.Push(<-pushRefused), "pushing into a scalar is refused rather than ignored");
 
     return 0;
 }

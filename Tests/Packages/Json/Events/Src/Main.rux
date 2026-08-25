@@ -18,7 +18,7 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: *var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
