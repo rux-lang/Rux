@@ -222,6 +222,77 @@ TEST_SUITE("DropGlueLowering") {
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Owner")), 1);
     }
 
+    TEST_CASE("drop glue recursively reaches nested fields and array elements") {
+        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+            struct Inner {
+                handle: Handle;
+            }
+            struct Outer {
+                inner: Inner;
+                handles: Handle[2];
+            }
+
+            func Main() -> int {
+                let outer = Outer {
+                    inner: Inner { handle: Handle { slot: 1i32 } },
+                    handles: [Handle { slot: 2i32 }, Handle { slot: 3i32 }],
+                };
+                return 0;
+            }
+        )");
+
+        const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Outer"));
+        // One call is for the nested field and one is the body of the reverse array-destruction loop.
+        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 2);
+        CHECK_EQ(CallCount(glue, GlueSymbol(package, "Inner")), 0);
+        CHECK_EQ(CallCount(glue, GlueSymbol(package, "Handle")), 0);
+    }
+
+    TEST_CASE("small payload enums retain addressable storage for destruction") {
+        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+            enum Tiny: uint8 {
+                Empty,
+                Some(Handle)
+            }
+
+            func Main() -> int {
+                let tiny = Tiny::Some(Handle { slot: 1i32 });
+                return 0;
+            }
+        )");
+
+        const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Tiny"));
+        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
+        CHECK(std::ranges::any_of(
+            glue.blocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
+    }
+
+    TEST_CASE("propagation rolls back completed aggregate components") {
+        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+            enum Error: uint8 { Bad }
+            enum Result<T, E> { Success(T), Error(E) }
+            struct Pair {
+                first: Handle;
+                second: int32;
+            }
+
+            func Read(ok: bool) -> Result<int32, Error> {
+                return Result::Success<int32, Error>(7i32);
+            }
+
+            func Build(ok: bool) -> Result<Pair, Error> {
+                return Result::Success<Pair, Error>(Pair {
+                    first: Handle { slot: 1i32 },
+                    second: Read(ok)?,
+                });
+            }
+        )");
+
+        // The call is on the propagated-failure path. The completed first field is not a named local, so this call
+        // can only come from the aggregate's failure-cleanup edge.
+        CHECK_EQ(CallCount(RequireFunction(package, "Build"), GlueSymbol(package, "Handle")), 1);
+    }
+
     TEST_CASE("a Copy type gets no plan and no glue") {
         const LirPackage package = CompileToLir(R"(
             struct Plain {

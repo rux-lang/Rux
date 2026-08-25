@@ -47,6 +47,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             LirReg val = LowerExpr(**s->value);
             // The returned value is in hand and its binding is already released, so every cleanup below leaves it
             // alone and destroys only what the function still owns.
+            EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
             TypeRef retType = builder->Function().returnType;
             if (val != LirNoReg && !retType.IsUnknown() && (*s->value)->type != retType) {
@@ -63,6 +64,7 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
             Return({val}, retType);
         }
         else {
+            EmitActivePartialCleanups();
             EmitCleanups(s->cleanups);
             Return(std::nullopt, TypeRef::MakeOpaque());
         }

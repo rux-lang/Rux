@@ -38,6 +38,7 @@ LirFunc HirToLirContext::SynthesizeDropGlueFunc(const DropGluePlan &plan) {
     localConsts.clear();
     enumPayloadSlots.clear();
     dropFlags.clear();
+    partialCleanupFrames.clear();
 
     LirFunc function;
     function.name = plan.symbol;
@@ -126,15 +127,13 @@ void HirToLirContext::EmitDropGlueArrayElements(const DropGlueStep &step, const 
 
 /// Destroy the payload of one enum variant, when the value stored is that variant.
 ///
-/// Only the aggregate representation is decoded here -- a tag word followed by the payloads at their aligned offsets,
-/// laid out exactly as construction writes them. A compact enum packs its payload into the upper half of a single
-/// word, which nothing wider than four bytes survives, so a droppable payload never has a well-defined home there and
-/// the glue leaves it alone rather than destroying a truncated copy of it.
+/// The aggregate representation is a tag followed by payloads at aligned offsets, laid out exactly as construction
+/// writes them. Payload enums always use this representation so every droppable payload has an addressable home.
 void HirToLirContext::EmitDropGlueEnumVariant(const DropGlueStep &step, const LirReg base) {
     if (!IsAggregateEnumType(step.type)) {
         return;
     }
-    const TypeRef tagType = TypeRef::MakeInt64();
+    const TypeRef tagType = EnumTagType(step.type);
     const LirReg tag = EmitLoad(base, tagType);
     const LirReg expected = EmitConst(step.discriminant, tagType);
     const std::uint32_t payloadBlock = NewBlock("drop.variant");
@@ -144,7 +143,7 @@ void HirToLirContext::EmitDropGlueEnumVariant(const DropGlueStep &step, const Li
     SetBlock(payloadBlock);
     // Offsets are recomputed from the payload types the plan carries, by the same rule construction uses, because a
     // payload's home depends on the sizes of the payloads written before it -- including the ones nothing destroys.
-    std::uint64_t offset = 8;
+    std::uint64_t offset = tagType.SizeInBytes().value_or(8);
     for (std::size_t index = 0; index < step.payloadTypes.size(); ++index) {
         const std::uint64_t size = step.payloadTypes[index].SizeInBytes().value_or(8);
         const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
@@ -184,6 +183,59 @@ void HirToLirContext::EmitDropGlueCall(const std::string &symbol, const LirReg a
         call.callConv = convention->second;
     }
     Emit(std::move(call));
+}
+
+void HirToLirContext::PushPartialCleanupFrame(const std::vector<HirFailureCleanup> &cleanups,
+                                              const std::size_t component, const LirReg aggregateSlot) {
+    std::vector<PendingPartialCleanup> frame;
+    if (component >= cleanups.size()) {
+        partialCleanupFrames.push_back(std::move(frame));
+        return;
+    }
+    const HirFailureCleanup &cleanup = cleanups[component];
+    frame.reserve(cleanup.size());
+    for (const HirPartialDropAction &action : cleanup) {
+        LirReg address = LirNoReg;
+        switch (action.kind) {
+        case HirPartialDropAction::Kind::Field:
+            address = EmitFieldPtr(aggregateSlot, action.name, action.type);
+            break;
+        case HirPartialDropAction::Kind::TupleElement:
+            address = EmitFieldPtr(aggregateSlot, std::to_string(action.ordinal), action.type);
+            break;
+        case HirPartialDropAction::Kind::Element: {
+            const LirReg index = EmitConst(std::to_string(action.ordinal), TypeRef::MakeUInt64());
+            address = EmitIndexPtr(aggregateSlot, index, action.type);
+            break;
+        }
+        case HirPartialDropAction::Kind::EnumPayload: {
+            const auto payloads = enumPayloadSlots.find(aggregateSlot);
+            if (payloads == enumPayloadSlots.end() || action.ordinal >= payloads->second.size()) {
+                BuilderFailure(
+                    std::format("enum payload {} has no completed storage for partial cleanup", action.ordinal));
+                continue;
+            }
+            address = payloads->second[action.ordinal];
+            break;
+        }
+        }
+        frame.push_back({action.glueSymbol, address});
+    }
+    partialCleanupFrames.push_back(std::move(frame));
+}
+
+void HirToLirContext::PopPartialCleanupFrame() {
+    if (!partialCleanupFrames.empty()) {
+        partialCleanupFrames.pop_back();
+    }
+}
+
+void HirToLirContext::EmitActivePartialCleanups() {
+    for (auto frame = partialCleanupFrames.rbegin(); frame != partialCleanupFrames.rend(); ++frame) {
+        for (const PendingPartialCleanup &cleanup : *frame) {
+            EmitDropGlueCall(cleanup.glueSymbol, cleanup.address);
+        }
+    }
 }
 
 /// The flag slot for one binding, created on first mention.

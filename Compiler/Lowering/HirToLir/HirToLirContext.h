@@ -34,6 +34,11 @@ private:
         std::uint32_t continueTarget;
     };
 
+    struct PendingPartialCleanup {
+        std::string glueSymbol;
+        LirReg address = LirNoReg;
+    };
+
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
     std::unordered_map<std::string, TypeRef> enumTagTypes;
     /// Type parameters of every generic enum whose variants carry payloads, keyed by both the plain and the
@@ -47,6 +52,9 @@ private:
     /// The bool slot standing for "this binding still owns its value", one per droppable binding of the function being
     /// lowered. A cleanup reads it, a consuming expression clears it, and an initialization sets it.
     std::unordered_map<std::uint64_t, LirReg> dropFlags;
+    /// Completed subobjects of aggregates whose next component is currently being evaluated. An early return from
+    /// that evaluation destroys these before the surrounding function-scope cleanups.
+    std::vector<std::vector<PendingPartialCleanup>> partialCleanupFrames;
     std::uint32_t breakTarget = 0;
     std::uint32_t continueTarget = 0;
     std::unordered_map<std::string, LabelTargets> labelTargets;
@@ -125,6 +133,10 @@ private:
     void ClearConsumedBinding(const HirExpr &expression);
     void EmitCleanup(const HirDropAction &action);
     void EmitCleanups(const std::vector<HirDropAction> &actions);
+    void PushPartialCleanupFrame(const std::vector<HirFailureCleanup> &cleanups, std::size_t component,
+                                 LirReg aggregateSlot);
+    void PopPartialCleanupFrame();
+    void EmitActivePartialCleanups();
 
     void LowerBlock(const HirBlock &block);
     void LowerStmt(const HirStmt &statement);
