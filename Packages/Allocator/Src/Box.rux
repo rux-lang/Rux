@@ -1,8 +1,8 @@
 // One value, on the heap, with exactly one owner.
 //
 // A `Box<T>` is the smallest thing that owns an allocation: it holds a value of `T` and the allocator that gave it
-// the storage, and it releases both when it goes. It implements `Drop`, so it is move-only -- handing one to a
-// function or another binding transfers ownership, and reading the original afterwards is rejected while compiling.
+// the storage, and it destroys the value and releases the storage when it goes. Copying is prohibited, so handing
+// one to a function or another binding requires an explicit move.
 //
 // The allocator is held as an interface value rather than a type parameter, so `Box<T>` has one parameter rather
 // than two and a container of boxes does not have to name which allocator each came from. The cost is one indirect
@@ -19,12 +19,11 @@
 // out-parameter instead -- an error being the thing that is cheap to hand back the other way.
 
 import Allocator::{ AllocError, Allocator, LayoutOf };
-import Core::Drop;
 
 /// One heap-allocated value of `T`, owned by exactly one holder.
 ///
-/// Move-only, because it implements `Drop`. Passing one by value transfers it; the source is then moved-out and
-/// reading it is rejected while compiling rather than at run time.
+/// Move-only: its copy operation is prohibited and `~Box` releases its allocation. Transfer one with `<-`; the
+/// source is then moved-out and reading it is rejected while compiling rather than at run time.
 ///
 /// The storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or
 /// overwriting assignment the value's life ends at.
@@ -38,6 +37,9 @@ struct Box<T> {
 }
 
 extend Box<T> {
+    /// Copying a box would give two owners of one allocation.
+    func =(self: &var Box<T>, other: &Box<T>);
+
     /// Puts `value` on the heap and hands back the box that owns it.
     ///
     /// `allocator` is borrowed for the call and kept in the box. `value` is consumed: on success the box owns it,
@@ -51,7 +53,7 @@ extend Box<T> {
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/create
     func Create(allocator: Allocator, value: T, error: *var AllocError) -> Box<T> {
-        let layout = LayoutOf<T>(value);
+        let layout = LayoutOf<T>();
         var block: *var opaque = null;
         *error = allocator.Allocate(layout, @block);
         if *error != AllocError::None {
@@ -74,7 +76,7 @@ extend Box<T> {
     /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/get
-    func Get(self: *Box<T>) -> *var T {
+    func Get(self: &Box<T>) -> *var T {
         return self.pointer;
     }
 
@@ -86,7 +88,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/is-empty
-    func IsEmpty(self: *Box<T>) -> bool {
+    func IsEmpty(self: &Box<T>) -> bool {
         return self.pointer == null;
     }
 
@@ -101,31 +103,38 @@ extend Box<T> {
     /// Runs in whatever time the allocator takes.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/try-take
-    func TryTake(self: *var Box<T>, destination: *var T) -> bool {
+    func TryTake(self: &var Box<T>, destination: *var T) -> bool {
         if self.pointer == null || destination == null {
             return false;
         }
         let held = self.pointer;
         *destination = *held;
-        let layout = LayoutOf<T>(*destination);
+        let layout = LayoutOf<T>();
         self.allocator.Deallocate(held as *var opaque, layout);
         self.pointer = null;
         return true;
     }
 }
 
-extend Box<T> : Drop {
-    /// Releases the storage, if the box still holds any.
+extend Box<T> {
+    /// Destroys the value and releases its storage, if the box still holds any.
     ///
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/box/drop
-    func Drop(self: *var Box<T>) {
+    /// https://rux-lang.dev/docs/api/allocator/box/destructor
+    func ~Box(self: &var Box<T>) {
         if self.pointer != null {
-            let layout = LayoutOf<T>(*self.pointer);
-            self.allocator.Deallocate(self.pointer as *var opaque, layout);
+            let held = self.pointer;
             self.pointer = null;
+            DestroyBoxValue<T>(held);
+            self.allocator.Deallocate(held as *var opaque, LayoutOf<T>());
         }
     }
+}
+
+// Moving the stored value into this helper destroys it before the allocation containing it is released. The raw
+// load is the allocator boundary: the compiler's explicit raw-storage move syntax lands in the ownership cutover.
+func DestroyBoxValue<T>(pointer: *var T) {
+    let taken = pointer[0];
 }

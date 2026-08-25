@@ -19,11 +19,11 @@ func Main() -> int {
     Assert(ClassIndexFor(Layout::New(16, 32).ValueOr(zero)) == PoolClassCount,
            "an alignment stricter than a chunk is taken at has no class either");
 
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let backing: Allocator = system;
 
     // Four blocks to a chunk, so exhausting a class takes a handful of requests rather than dozens.
-    var pool = Pool::New(backing, 4);
+    var pool = Pool(backing, 4);
     Assert(pool.ChunkCount() == 0, "an unused pool holds no chunks");
     Assert(pool.LiveBlocks() == 0, "and has handed out nothing");
     Assert(pool.ClassSize(0) == PoolSmallestClass, "the first class is the smallest");
@@ -143,10 +143,10 @@ func Main() -> int {
 
     // Exhaustion: a pool over a buffer too small for a chunk reports the failure rather than inventing storage.
     var storage: byte[64];
-    var tiny = FixedBuffer::New(@storage[0] as *var opaque, 64);
+    var tiny = FixedBuffer(@storage[0] as *var opaque, 64);
     var tinyHandle = tiny.Handle();
     let starved: Allocator = tinyHandle;
-    var starvedPool = Pool::New(starved, 32);
+    var starvedPool = Pool(starved, 32);
     var starvedHandle = starvedPool.Handle();
     let starvedAllocator: Allocator = starvedHandle;
     var refused: *var opaque = null;

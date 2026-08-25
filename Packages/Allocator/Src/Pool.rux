@@ -16,12 +16,10 @@
 // straight to the backing allocator. That decision is made from the layout alone, so a release reaches the same
 // conclusion as the allocation it matches without the pool recording anything per block.
 //
-// The pool owns its chunks, so it implements `Drop` and is move-only. Pass it to something expecting an `Allocator`
-// through `Handle`, for the same reason an arena is passed through one: coercing a move-only value to an interface
-// moves it, and a pool moved into an interface value can no longer be reset or released by its owner.
+// The pool prohibits copying and `~Pool` releases its chunks. `Handle` is a storable interface adapter over the
+// same owner; because it contains a raw pointer, it must not outlive or survive a move of the pool.
 
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
-import Core::Drop;
 import Memory::{ AlignUp, Copy };
 
 /// How many size classes a pool serves.
@@ -96,6 +94,9 @@ struct Pool {
 }
 
 extend Pool {
+    /// Copying a pool would give two owners of every chunk it holds.
+    func =(self: &var Pool, other: &Pool);
+
     /// A pool that will take its chunks from `backing`.
     ///
     /// `backing` is borrowed for the call and kept. `blocksPerChunk` is how many blocks each chunk is carved into;
@@ -103,7 +104,7 @@ extend Pool {
     /// arrives, so a pool that is never used costs nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/new
-    func New(backing: Allocator, blocksPerChunk: uint) -> Pool {
+    func Pool(backing: Allocator, blocksPerChunk: uint) -> Pool {
         let blocks = blocksPerChunk == 0 ? DefaultPoolBlocksPerChunk : blocksPerChunk;
         return Pool {
             backing: backing,
@@ -115,11 +116,14 @@ extend Pool {
         };
     }
 
-    /// A `Copy` borrow of this pool that implements `Allocator`.
+    /// Temporary compatibility spelling for downstream packages. Prefer `Pool(backing, blocksPerChunk)`.
+    func New(backing: Allocator, blocksPerChunk: uint) -> Pool {
+        return Pool(backing, blocksPerChunk);
+    }
+
+    /// A copyable interface adapter pointing at this pool.
     ///
-    /// `self` is borrowed mutably and stays the caller's. The handle is what to pass to anything expecting an
-    /// allocator, since coercing the pool itself to an interface would move it and leave the owner unable to reset
-    /// or release it.
+    /// `self` stays the caller's. Allocations through the handle update this pool rather than copied state.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
@@ -148,7 +152,7 @@ extend Pool {
     /// Nothing may be read from or written to any pooled allocation afterwards.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/reset
-    func Reset(self: *var Pool) {
+    func Reset(self: &var Pool) {
         var index: uint = 0;
         while index < PoolClassCount {
             self.free[index] = 0;
@@ -156,7 +160,15 @@ extend Pool {
         }
         var chunk = self.chunks;
         while chunk != null {
-            self.CarveChunk(chunk);
+            let blockSize = PoolSmallestClass << chunk.classIndex;
+            let start = (chunk as uint) + Pool::ChunkHeaderSize();
+            var remaining = chunk.blocks;
+            while remaining > 0 {
+                let address = start + (remaining - 1) * blockSize;
+                *(address as *var uint) = self.free[chunk.classIndex];
+                self.free[chunk.classIndex] = address;
+                remaining--;
+            }
             chunk = chunk.previous;
         }
         self.live = 0;
@@ -168,7 +180,7 @@ extend Pool {
     /// track them.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/live-blocks
-    func LiveBlocks(self: *Pool) -> uint {
+    func LiveBlocks(self: &Pool) -> uint {
         return self.live;
     }
 
@@ -177,7 +189,7 @@ extend Pool {
     /// `self` is borrowed. Zero before the first request.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/chunk-count
-    func ChunkCount(self: *Pool) -> uint {
+    func ChunkCount(self: &Pool) -> uint {
         return self.chunkCount;
     }
 
@@ -186,7 +198,7 @@ extend Pool {
     /// `self` is borrowed. Classes run from `PoolSmallestClass` to `PoolLargestClass`, doubling.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/class-size
-    func ClassSize(self: *Pool, index: uint) -> uint {
+    func ClassSize(self: &Pool, index: uint) -> uint {
         if index >= PoolClassCount {
             return 0;
         }
@@ -250,14 +262,14 @@ extend Pool {
     }
 }
 
-extend Pool : Drop {
+extend Pool {
     /// Gives every chunk back to the backing allocator.
     ///
     /// Runs when the pool's life ends. Every pooled pointer the pool handed out becomes invalid. Blocks that went to
     /// the backing allocator directly are not released here and are still the caller's.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/pool/drop
-    func Drop(self: *var Pool) {
+    /// https://rux-lang.dev/docs/api/allocator/pool/destructor
+    func ~Pool(self: &var Pool) {
         var chunk = self.chunks;
         while chunk != null {
             let earlier = chunk.previous;
@@ -277,10 +289,9 @@ extend Pool : Drop {
     }
 }
 
-/// A `Copy` borrow of a pool, which is what implements `Allocator` for one.
+/// A copyable interface adapter pointing at a pool.
 ///
-/// Exists because coercing the pool itself to an interface would move it, leaving its owner unable to reset or
-/// release it. A handle is cheap to copy and may be passed anywhere an allocator is wanted.
+/// A handle is cheap to copy and may be stored wherever an allocator is wanted, but it does not own the pool.
 ///
 /// https://rux-lang.dev/docs/api/allocator/pool-handle
 struct PoolHandle {
@@ -303,7 +314,7 @@ extend PoolHandle : Allocator {
     /// The block lives until it is released, the pool is reset, or the pool is destroyed.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/allocate
-    func Allocate(self: *var PoolHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    func Allocate(self: &var PoolHandle, layout: Layout, result: *var *var opaque) -> AllocError {
         if layout.size == 0 {
             *result = EmptyBlockAddress();
             return AllocError::None;
@@ -340,7 +351,7 @@ extend PoolHandle : Allocator {
     /// The block may be handed to the next allocation of its class at once.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/deallocate
-    func Deallocate(self: *var PoolHandle, block: *var opaque, layout: Layout) -> AllocError {
+    func Deallocate(self: &var PoolHandle, block: *var opaque, layout: Layout) -> AllocError {
         if layout.size == 0 {
             return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
         }
@@ -369,7 +380,7 @@ extend PoolHandle : Allocator {
     /// copies, and releases the old one.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/reallocate
-    func Reallocate(self: *var PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+    func Reallocate(self: &var PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         if oldLayout.alignment != newLayout.alignment {
             return AllocError::Unsupported;

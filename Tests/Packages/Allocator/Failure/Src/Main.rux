@@ -9,8 +9,7 @@ import Core::Assert;
 // question: that a failure left nothing behind. A partial construction that leaks is the failure mode worth catching
 // here, and it is invisible to any test that only looks at the error code.
 
-// Everything mutable lives behind a pointer: coercing a value to an interface hands the interface its own copy, so a
-// counter kept in the allocator itself would count where nobody can see it.
+// Everything mutable lives behind a pointer so copied interface adapters observe the same failure budget and counts.
 struct FailureState {
     backing: Allocator;
     // How many more allocations succeed before this starts refusing.
@@ -26,7 +25,7 @@ struct FailingAllocator {
 }
 
 extend FailingAllocator : Allocator {
-    func Allocate(self: *var FailingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+    func Allocate(self: &var FailingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
             return AllocError::OutOfMemory;
@@ -39,7 +38,7 @@ extend FailingAllocator : Allocator {
         return error;
     }
 
-    func Deallocate(self: *var FailingAllocator, block: *var opaque, layout: Layout) -> AllocError {
+    func Deallocate(self: &var FailingAllocator, block: *var opaque, layout: Layout) -> AllocError {
         let error = self.state.backing.Deallocate(block, layout);
         if error == AllocError::None && layout.size != 0 && !IsEmptyBlock(block) {
             self.state.live = self.state.live - 1;
@@ -47,7 +46,7 @@ extend FailingAllocator : Allocator {
         return error;
     }
 
-    func Reallocate(self: *var FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+    func Reallocate(self: &var FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
@@ -63,7 +62,7 @@ func Failing(state: *var FailureState) -> FailingAllocator {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let real: Allocator = system;
     let small = Layout::New(64, 8).ValueOr(Layout { size: 64, alignment: 8 });
 
@@ -107,7 +106,7 @@ func Main() -> int {
     // An arena that cannot take its first block fails at the first request and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var arena = Arena::New(starved, 256);
+    var arena = Arena(starved, 256);
     var handle = arena.Handle();
     let arenaAllocator: Allocator = handle;
     var fromArena: *var opaque = null;
@@ -131,7 +130,7 @@ func Main() -> int {
     // A pool that cannot take a chunk refuses, and takes nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var pool = Pool::New(starved, 4);
+    var pool = Pool(starved, 4);
     var poolHandle = pool.Handle();
     let poolAllocator: Allocator = poolHandle;
     var fromPool: *var opaque = null;

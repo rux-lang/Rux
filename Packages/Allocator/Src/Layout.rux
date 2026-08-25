@@ -76,7 +76,7 @@ extend Layout {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/layout/padded-size
-    func PaddedSize(self: *Layout) -> uint {
+    func PaddedSize(self: &Layout) -> uint {
         var rounded: uint = 0;
         if AlignUpChecked(self.size, self.alignment, @rounded) {
             return self.size;
@@ -91,7 +91,7 @@ extend Layout {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/layout/is-satisfied-by
-    func IsSatisfiedBy(self: *Layout, address: uint) -> bool {
+    func IsSatisfiedBy(self: &Layout, address: uint) -> bool {
         return address % self.alignment == 0;
     }
 
@@ -100,14 +100,14 @@ extend Layout {
     /// `self` is borrowed and `other` is read by value.
     ///
     /// https://rux-lang.dev/docs/api/allocator/layout/equals
-    func ==(self: *Layout, other: Layout) -> bool {
+    func ==(self: &Layout, other: Layout) -> bool {
         return self.size == other.size && self.alignment == other.alignment;
     }
 
     /// Whether two layouts ask for different things.
     ///
     /// https://rux-lang.dev/docs/api/allocator/layout/not-equals
-    func !=(self: *Layout, other: Layout) -> bool {
+    func !=(self: &Layout, other: Layout) -> bool {
         return !(self == other);
     }
 }
@@ -136,8 +136,8 @@ func NaturalAlignment(size: uint) -> uint {
 
 /// A layout for one value of `T`.
 ///
-/// `sample` is read by value and only its type matters; its value is never used. Cannot fail: a type's own size and
-/// alignment are always a valid pair.
+/// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Cannot fail: a type's
+/// own size and alignment are always a valid pair.
 ///
 /// The alignment is the type's size rounded down to a power of two, capped at a machine word -- which is what every
 /// supported target's ABI requires, and which `alignof` will replace when it can be named for a type parameter.
@@ -145,23 +145,33 @@ func NaturalAlignment(size: uint) -> uint {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/allocator/layout-of
-func LayoutOf<T>(sample: T) -> Layout {
+func LayoutOf<T>() -> Layout {
     return Layout { size: sizeof(T), alignment: NaturalAlignment(sizeof(T)) };
+}
+
+/// Temporary compatibility spelling that infers `T` from `sample`. Prefer `LayoutOf<T>()` for owning values.
+func LayoutOf<T>(sample: T) -> Layout {
+    return LayoutOf<T>();
 }
 
 /// A layout for `count` values of `T` laid out one after another, or nothing when that many do not fit.
 ///
-/// `sample` is read by value and only its type matters. Reports `None` when `count` values would not fit in the
-/// address space, which is the multiplication an array allocation has to check and most callers forget -- a wrapped
-/// product is an allocation far smaller than the caller asked for.
+/// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Reports `None` when
+/// `count` values would not fit in the address space, which is the multiplication an array allocation has to check
+/// and most callers forget -- a wrapped product is an allocation far smaller than the caller asked for.
 ///
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/allocator/layout-of-array
-func LayoutOfArray<T>(sample: T, count: uint) -> Option<Layout> {
+func LayoutOfArray<T>(count: uint) -> Option<Layout> {
     let stride = sizeof(T);
     if stride != 0 && count > uint::Max / stride {
         return Option::None<Layout>();
     }
     return Layout::New(stride * count, NaturalAlignment(stride));
+}
+
+/// Temporary compatibility spelling that infers `T` from `sample`. Prefer `LayoutOfArray<T>(count)` for owners.
+func LayoutOfArray<T>(sample: T, count: uint) -> Option<Layout> {
+    return LayoutOfArray<T>(count);
 }

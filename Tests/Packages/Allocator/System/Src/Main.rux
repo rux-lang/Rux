@@ -1,4 +1,4 @@
-import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray,
+import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray,
                     NaturalAlignment, SystemAllocator };
 import Core::Assert;
 import Memory::{ IsPointerAligned, Set };
@@ -27,9 +27,9 @@ func Main() -> int {
     Assert(layout != odd, "and two asking different things are not");
 
     // An array layout has to check the multiplication, which is where a huge count turns into a small allocation.
-    Assert(LayoutOfArray<uint64>(0, 8).IsSome(), "an ordinary array layout");
-    Assert(LayoutOfArray<uint64>(0, uint::Max).IsNone(), "a count that cannot fit is refused");
-    let single = LayoutOf<uint64>(0);
+    Assert(LayoutOfArray<uint64>(8).IsSome(), "an ordinary array layout");
+    Assert(LayoutOfArray<uint64>(uint::Max).IsNone(), "a count that cannot fit is refused");
+    let single = LayoutOf<uint64>();
     Assert(single.size == 8 && single.alignment == 8, "a value's layout is its own size and alignment");
     Assert(NaturalAlignment(0) == 1 && NaturalAlignment(1) == 1, "a byte wants no alignment");
     Assert(NaturalAlignment(4) == 4 && NaturalAlignment(8) == 8, "a word wants its own width");
@@ -41,7 +41,14 @@ func Main() -> int {
     Assert(!AllocError::Unsupported.IsTransient(), "but an unsupported request will not");
     Assert(!AllocError::InvalidBlock.IsTransient(), "and neither will a mistaken one");
 
-    var allocator = SystemAllocator::New();
+    var allocator = SystemAllocator();
+
+    // A concrete allocator can be borrowed directly as an interface view. The view changes the same allocator and
+    // owns nothing, so it cannot accidentally duplicate or outlive allocator state.
+    let borrowed: &var Allocator = allocator;
+    var throughView: *var opaque = null;
+    Assert(borrowed.Allocate(layout, @throughView) == AllocError::None, "a borrowed interface view allocates");
+    Assert(borrowed.Deallocate(throughView, layout) == AllocError::None, "and releases through the same owner");
 
     // A zero-sized layout gives the shared empty block rather than null, so no caller has to branch.
     var empty: *var opaque = null;

@@ -31,8 +31,8 @@ extend AllocError {
     /// runs without the reader having to remember that zero means success here.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
-    func IsOk(self: *AllocError) -> bool {
-        return *self == AllocError::None;
+    func IsOk(self: AllocError) -> bool {
+        return self == AllocError::None;
     }
 
     /// Whether this is any of the failure cases.
@@ -40,8 +40,8 @@ extend AllocError {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
-    func IsError(self: *AllocError) -> bool {
-        return *self != AllocError::None;
+    func IsError(self: AllocError) -> bool {
+        return self != AllocError::None;
     }
 
     /// Whether a later attempt could plausibly succeed.
@@ -50,7 +50,7 @@ extend AllocError {
     /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-transient
-    func IsTransient(self: *AllocError) -> bool {
-        return *self == AllocError::OutOfMemory;
+    func IsTransient(self: AllocError) -> bool {
+        return self == AllocError::OutOfMemory;
     }
 }
