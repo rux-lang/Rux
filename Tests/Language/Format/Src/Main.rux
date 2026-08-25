@@ -7,7 +7,7 @@ import Text::{ StringView, TextError };
 // types, and the result checked as text rather than byte by byte.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

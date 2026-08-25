@@ -1,6 +1,6 @@
 // The three receiver forms, and the one thing that separates them: what the
-// method may do to the value the call site named. `self: *T` reads it,
-// `self: *var T` rewrites it in place, and `self: T` gets a copy the caller
+// method may do to the value the call site named. `self: &T` reads it,
+// `self: &var T` rewrites it in place, and `self: T` gets a copy the caller
 // never sees again.
 
 struct Vector {
@@ -9,11 +9,11 @@ struct Vector {
 }
 
 extend Vector {
-    func Sum(self: *Vector) -> float64 {
+    func Sum(self: &Vector) -> float64 {
         return self.x + self.y;
     }
 
-    func Scale(self: *var Vector, factor: float64) {
+    func Scale(self: &var Vector, factor: float64) {
         self.x *= factor;
         self.y *= factor;
     }
@@ -73,11 +73,11 @@ struct Pair<T> {
 extend Pair<T> {
     // A receiver is written with the type being extended, type arguments and
     // all, and reads its own type parameter through it.
-    func Second(self: *Pair<T>) -> T {
+    func Second(self: &Pair<T>) -> T {
         return self.second;
     }
 
-    func Swap(self: *var Pair<T>) {
+    func Swap(self: &var Pair<T>) {
         let held = self.first;
         self.first = self.second;
         self.second = held;

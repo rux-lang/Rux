@@ -1,4 +1,4 @@
-import Core::{ Assert, Drop };
+import Core::Assert;
 
 // A destructor whose body asks a question only an instantiation can answer.
 //
@@ -26,14 +26,16 @@ struct Store<T> {
 }
 
 extend Store<T> {
+    func =(self: &var Store<T>, other: &Store<T>);
+
     // A size that only an instantiation can answer, reached from the destructor below.
-    func Footprint(self: *Store<T>) -> uint {
+    func Footprint(self: &Store<T>) -> uint {
         return Width<Cell<T>>();
     }
 }
 
-extend Store<T> : Drop {
-    func Drop(self: *var Store<T>) {
+extend Store<T> {
+    func ~Store(self: &var Store<T>) {
         if self.released != null {
             *self.released = *self.released + (self.Footprint() as int32);
         }

@@ -43,37 +43,37 @@ struct Hasher {
 }
 
 extend Hasher {
-    func New(hash: func(int32) -> uint, equals: func(int32, int32) -> bool) -> Hasher {
+    func Hasher(hash: func(int32) -> uint, equals: func(int32, int32) -> bool) -> Hasher {
         return Hasher { hash: hash, equals: equals, salt: 7u };
     }
 
     // Calling straight through the receiver. This is the form a container would
     // actually use, and the one that could plausibly be read as a method
     // lookup for a method named `hash` rather than a call of a field.
-    func Apply(self: *Hasher, value: int32) -> uint {
+    func Apply(self: &Hasher, value: int32) -> uint {
         return self.hash(value);
     }
 
     // The same call routed through a local first, which is the fallback if the
     // direct form above does not resolve.
-    func ApplyViaLocal(self: *Hasher, value: int32) -> uint {
+    func ApplyViaLocal(self: &Hasher, value: int32) -> uint {
         let hash = self.hash;
         return hash(value);
     }
 
     // Handing a field-held callback to a generic function, which is what the
     // shared probing kernel would do.
-    func ApplyViaGeneric(self: *Hasher, value: int32) -> uint {
+    func ApplyViaGeneric(self: &Hasher, value: int32) -> uint {
         return ApplyHash<int32>(self.hash, value);
     }
 
-    func Same(self: *Hasher, a: int32, b: int32) -> bool {
+    func Same(self: &Hasher, a: int32, b: int32) -> bool {
         return self.equals(a, b);
     }
 
     // A callback stored after construction, so the field is written as well as
     // read.
-    func Retarget(self: *var Hasher, hash: func(int32) -> uint) {
+    func Retarget(self: &var Hasher, hash: func(int32) -> uint) {
         self.hash = hash;
     }
 }
@@ -86,23 +86,23 @@ struct Table<K> {
 }
 
 extend Table<K> {
-    func New(hash: func(K) -> uint, equals: func(K, K) -> bool) -> Table<K> {
+    func Table(hash: func(K) -> uint, equals: func(K, K) -> bool) -> Table<K> {
         return Table<K> { hash: hash, equals: equals, length: 0 };
     }
 
-    func Apply(self: *Table<K>, key: K) -> uint {
+    func Apply(self: &Table<K>, key: K) -> uint {
         return self.hash(key);
     }
 
-    func Same(self: *Table<K>, a: K, b: K) -> bool {
+    func Same(self: &Table<K>, a: K, b: K) -> bool {
         return self.equals(a, b);
     }
 
-    func ApplyViaGeneric(self: *Table<K>, key: K) -> uint {
+    func ApplyViaGeneric(self: &Table<K>, key: K) -> uint {
         return ApplyHash<K>(self.hash, key);
     }
 
-    func SameViaGeneric(self: *Table<K>, a: K, b: K) -> bool {
+    func SameViaGeneric(self: &Table<K>, a: K, b: K) -> bool {
         return ApplyEquals<K>(self.equals, a, b);
     }
 }
@@ -115,7 +115,7 @@ struct Store {
 }
 
 extend Store {
-    func TryPointerTo(self: *var Store, index: uint, value: *var *var int32) -> bool {
+    func TryPointerTo(self: &var Store, index: uint, value: *var *var int32) -> bool {
         if value == null || index >= self.length {
             return false;
         }
@@ -127,7 +127,7 @@ extend Store {
 
 func Main() -> int {
     // 1. A field of function type, in a plain struct.
-    var hasher = Hasher::New(HashInt32, EqualsInt32);
+    var hasher = Hasher(HashInt32, EqualsInt32);
     Assert(hasher.Apply(3) == HashInt32(3), "a callback field is callable through the receiver");
     Assert(hasher.ApplyViaLocal(3) == HashInt32(3), "a callback field is callable through a local");
     Assert(hasher.ApplyViaGeneric(3) == HashInt32(3), "a callback field passes to a generic function");
@@ -145,7 +145,7 @@ func Main() -> int {
     Assert(copied.Apply(3) == HashInt32(3), "replacing one copy's callback leaves the other alone");
 
     // 2. The same, typed by a struct type parameter.
-    var table = Table::New<int32>(HashInt32, EqualsInt32);
+    var table = Table<int32>(HashInt32, EqualsInt32);
     Assert(table.Apply(5) == HashInt32(5), "a generic callback field is callable through the receiver");
     Assert(table.ApplyViaGeneric(5) == HashInt32(5), "a generic callback field passes to a generic function");
     Assert(table.Same(6, 6), "a generic equality field accepts a matching pair");

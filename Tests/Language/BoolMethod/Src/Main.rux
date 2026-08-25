@@ -7,32 +7,32 @@
 // a false bool16 arrived as true whenever the stack above it was not clean.
 
 extend bool8 {
-    func Value(self: *bool8) -> bool8 {
-        return *self;
+    func Value(self: bool8) -> bool8 {
+        return self;
     }
 }
 
 extend bool16 {
-    func Value(self: *bool16) -> bool16 {
-        return *self;
+    func Value(self: bool16) -> bool16 {
+        return self;
     }
 }
 
 extend bool32 {
-    func Value(self: *bool32) -> bool32 {
-        return *self;
+    func Value(self: bool32) -> bool32 {
+        return self;
     }
 }
 
 extend int8 {
-    func Value(self: *int8) -> int8 {
-        return *self;
+    func Value(self: int8) -> int8 {
+        return self;
     }
 }
 
 extend int16 {
-    func Value(self: *int16) -> int16 {
-        return *self;
+    func Value(self: int16) -> int16 {
+        return self;
     }
 }
 

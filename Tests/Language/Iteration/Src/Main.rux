@@ -18,7 +18,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: *var Counter) -> Option {
+    func Next(self: &var Counter) -> Option {
         if self.value >= self.limit {
             return Option::None;
         }
@@ -34,7 +34,7 @@ struct Span {
 }
 
 extend Span {
-    func Iterate(self: *Span) -> Counter {
+    func Iterate(self: &Span) -> Counter {
         return Counter { value: 0i32, limit: self.limit };
     }
 }
