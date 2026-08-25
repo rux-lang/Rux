@@ -57,7 +57,7 @@ func TripFloat64(allocator: Allocator, value: float64) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

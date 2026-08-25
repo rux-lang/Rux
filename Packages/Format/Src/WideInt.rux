@@ -13,7 +13,7 @@ import Core::Slice;
 import Text::TextError;
 
 // The digits of a `uint128`, least significant first, in the spec's base.
-func WriteDigits128(writer: TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> TextError {
+func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> TextError {
     var digits: char8[128];
     var count: uint = 0;
     var radix: uint128 = 10u128;
@@ -48,7 +48,7 @@ extend uint128 : Display {
     /// which is the longest -- and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint128/format
-    func Format(self: *uint128, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *uint128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteDigits128(writer, spec, *self, false);
     }
 }
@@ -57,7 +57,7 @@ extend uint128 : Debug {
     /// The same digits.
     ///
     /// https://rux-lang.dev/docs/api/format/uint128/format-debug
-    func FormatDebug(self: *uint128, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *uint128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -66,7 +66,7 @@ extend int128 : Display {
     /// Writes this value's sign and digits in the spec's base.
     ///
     /// https://rux-lang.dev/docs/api/format/int128/format
-    func Format(self: *int128, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *int128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let negative = *self < 0i128;
         let magnitude = negative ? ~(*self as uint128) + 1u128 : *self as uint128;
         return WriteDigits128(writer, spec, magnitude, negative);
@@ -77,13 +77,13 @@ extend int128 : Debug {
     /// The same sign and digits.
     ///
     /// https://rux-lang.dev/docs/api/format/int128/format-debug
-    func FormatDebug(self: *int128, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *int128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
 
 // The digits of a `uint256`, least significant first, in the spec's base.
-func WriteDigits256(writer: TextWriter, spec: FormatSpec, magnitude: uint256, negative: bool) -> TextError {
+func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint256, negative: bool) -> TextError {
     var digits: char8[256];
     var count: uint = 0;
     var radix: uint256 = 10u256;
@@ -118,7 +118,7 @@ extend uint256 : Display {
     /// which is the longest -- and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint256/format
-    func Format(self: *uint256, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *uint256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteDigits256(writer, spec, *self, false);
     }
 }
@@ -127,7 +127,7 @@ extend uint256 : Debug {
     /// The same digits.
     ///
     /// https://rux-lang.dev/docs/api/format/uint256/format-debug
-    func FormatDebug(self: *uint256, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *uint256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -136,7 +136,7 @@ extend int256 : Display {
     /// Writes this value's sign and digits in the spec's base.
     ///
     /// https://rux-lang.dev/docs/api/format/int256/format
-    func Format(self: *int256, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *int256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let negative = *self < 0i256;
         let magnitude = negative ? ~(*self as uint256) + 1u256 : *self as uint256;
         return WriteDigits256(writer, spec, magnitude, negative);
@@ -147,13 +147,13 @@ extend int256 : Debug {
     /// The same sign and digits.
     ///
     /// https://rux-lang.dev/docs/api/format/int256/format-debug
-    func FormatDebug(self: *int256, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *int256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
 
 // The digits of a `uint512`, least significant first, in the spec's base.
-func WriteDigits512(writer: TextWriter, spec: FormatSpec, magnitude: uint512, negative: bool) -> TextError {
+func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint512, negative: bool) -> TextError {
     var digits: char8[512];
     var count: uint = 0;
     var radix: uint512 = 10u512;
@@ -188,7 +188,7 @@ extend uint512 : Display {
     /// which is the longest -- and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint512/format
-    func Format(self: *uint512, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *uint512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteDigits512(writer, spec, *self, false);
     }
 }
@@ -197,7 +197,7 @@ extend uint512 : Debug {
     /// The same digits.
     ///
     /// https://rux-lang.dev/docs/api/format/uint512/format-debug
-    func FormatDebug(self: *uint512, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *uint512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -206,7 +206,7 @@ extend int512 : Display {
     /// Writes this value's sign and digits in the spec's base.
     ///
     /// https://rux-lang.dev/docs/api/format/int512/format
-    func Format(self: *int512, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *int512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let negative = *self < 0i512;
         let magnitude = negative ? ~(*self as uint512) + 1u512 : *self as uint512;
         return WriteDigits512(writer, spec, magnitude, negative);
@@ -217,7 +217,7 @@ extend int512 : Debug {
     /// The same sign and digits.
     ///
     /// https://rux-lang.dev/docs/api/format/int512/format-debug
-    func FormatDebug(self: *int512, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *int512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

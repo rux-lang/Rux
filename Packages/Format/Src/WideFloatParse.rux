@@ -15,7 +15,7 @@ import Core::{ Result, Slice };
 /// format becomes the signed zero. `NaN`, `Inf` and `-Inf` are read exactly as formatting writes them.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-wide-float
-func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: *FloatLayout) -> Result<uint512, ParseError> {
+func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: &FloatLayout) -> Result<uint512, ParseError> {
     if str.length == 0u {
         return Result::Error<uint512, ParseError>(ParseError::Empty);
     }
@@ -35,7 +35,7 @@ func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: *FloatLayou
         return Result::Success<uint512, ParseError>(InfinityBits(negative, layout));
     }
 
-    var digits = BigNat::New(allocator);
+    var digits = BigNat(allocator);
     var significant: uint = 0;
     var decimalExponent: int = 0;
     var digitCount: uint = 0;
@@ -108,28 +108,28 @@ func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: *FloatLayou
     if magnitude < smallest {
         return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout));
     }
-    return RoundRatio(allocator, @digits, decimalExponent, negative, layout);
+    return RoundRatio(allocator, digits, decimalExponent, negative, layout);
 }
 
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
-func RoundRatio(allocator: Allocator, digits: *var BigNat, decimalExponent: int, negative: bool,
-                layout: *FloatLayout) -> Result<uint512, ParseError> {
-    var numerator = BigNat::New(allocator);
-    var denominator = BigNat::New(allocator);
-    var power = BigNat::New(allocator);
-    var base = BigNat::New(allocator);
-    var scratch = BigNat::New(allocator);
+func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int, negative: bool,
+                layout: &FloatLayout) -> Result<uint512, ParseError> {
+    var numerator = BigNat(allocator);
+    var denominator = BigNat(allocator);
+    var power = BigNat(allocator);
+    var base = BigNat(allocator);
+    var scratch = BigNat(allocator);
     if !denominator.SetSmall(1u64) {
         return Result::Error<uint512, ParseError>(ParseError::Overflow);
     }
     if decimalExponent >= 0 {
-        if !SetPowerOfTen(@power, decimalExponent as uint, @base, @scratch) || !numerator.SetProduct(digits, @power) {
+        if !SetPowerOfTen(power, decimalExponent as uint, base, scratch) || !numerator.SetProduct(digits, power) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
         }
     }
     else {
         if !numerator.Assign(digits) ||
-            !SetPowerOfTen(@denominator, (0 - decimalExponent) as uint, @base, @scratch) {
+            !SetPowerOfTen(denominator, (0 - decimalExponent) as uint, base, scratch) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
         }
     }
@@ -137,18 +137,18 @@ func RoundRatio(allocator: Allocator, digits: *var BigNat, decimalExponent: int,
     // The binade: two to the exponent is at most the ratio, which is below two to the exponent plus one.
     var exponent = numerator.BitLength() as int - denominator.BitLength() as int;
     if exponent >= 0 {
-        if !scratch.Assign(@denominator) || !scratch.ShiftLeft(exponent as uint) {
+        if !scratch.Assign(denominator) || !scratch.ShiftLeft(exponent as uint) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
         }
-        if numerator.Compare(@scratch) < 0i32 {
+        if numerator.Compare(scratch) < 0i32 {
             exponent = exponent - 1;
         }
     }
     else {
-        if !scratch.Assign(@numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
+        if !scratch.Assign(numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
         }
-        if scratch.Compare(@denominator) < 0i32 {
+        if scratch.Compare(denominator) < 0i32 {
             exponent = exponent - 1;
         }
     }
@@ -169,24 +169,24 @@ func RoundRatio(allocator: Allocator, digits: *var BigNat, decimalExponent: int,
     }
 
     // Long division to `wanted` bits, the leading one first, with whatever is left folded into the last.
-    var remainder = BigNat::New(allocator);
-    var divisor = BigNat::New(allocator);
+    var remainder = BigNat(allocator);
+    var divisor = BigNat(allocator);
     if exponent >= 0 {
-        if !remainder.Assign(@numerator) || !divisor.Assign(@denominator) || !divisor.ShiftLeft(exponent as uint) {
+        if !remainder.Assign(numerator) || !divisor.Assign(denominator) || !divisor.ShiftLeft(exponent as uint) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
         }
     }
-    else if !remainder.Assign(@numerator) || !remainder.ShiftLeft((0 - exponent) as uint) ||
-             !divisor.Assign(@denominator) {
+    else if !remainder.Assign(numerator) || !remainder.ShiftLeft((0 - exponent) as uint) ||
+             !divisor.Assign(denominator) {
         return Result::Error<uint512, ParseError>(ParseError::Overflow);
     }
     var quotient = 0u512;
     var position = wanted;
     while position > 0u {
         position = position - 1u;
-        if remainder.Compare(@divisor) >= 0i32 {
+        if remainder.Compare(divisor) >= 0i32 {
             quotient = quotient | (1u512 << position);
-            remainder.Subtract(@divisor);
+            remainder.Subtract(divisor);
         }
         if position > 0u && !remainder.ShiftLeft(1u) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
@@ -227,7 +227,7 @@ func RoundRatio(allocator: Allocator, digits: *var BigNat, decimalExponent: int,
 /// https://rux-lang.dev/docs/api/format/parse-float80
 func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80, ParseError> {
     let layout = FloatLayout::Extended80();
-    let parsed = ParseWideFloat(allocator, str, @layout);
+    let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) {
         return Result::Error<Float80, ParseError>(failure);
@@ -240,7 +240,7 @@ func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80, Pa
 /// https://rux-lang.dev/docs/api/format/parse-float128
 func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float128, ParseError> {
     let layout = FloatLayout::Binary128();
-    let parsed = ParseWideFloat(allocator, str, @layout);
+    let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) {
         return Result::Error<Float128, ParseError>(failure);
@@ -253,7 +253,7 @@ func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float128, 
 /// https://rux-lang.dev/docs/api/format/parse-float256
 func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float256, ParseError> {
     let layout = FloatLayout::Binary256();
-    let parsed = ParseWideFloat(allocator, str, @layout);
+    let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) {
         return Result::Error<Float256, ParseError>(failure);
@@ -266,7 +266,7 @@ func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float256, 
 /// https://rux-lang.dev/docs/api/format/parse-float512
 func ParseFloat512(allocator: Allocator, str: Slice<char8>) -> Result<Float512, ParseError> {
     let layout = FloatLayout::Binary512();
-    let parsed = ParseWideFloat(allocator, str, @layout);
+    let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) {
         return Result::Error<Float512, ParseError>(failure);

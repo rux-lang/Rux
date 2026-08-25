@@ -11,8 +11,8 @@ extend int64 : Display {
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
     /// https://rux-lang.dev/docs/api/format/int64/format
-    func Format(self: *int64, writer: TextWriter, spec: FormatSpec) -> TextError {
-        let wide = *self as int64;
+    func Format(self: *int64, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+        let wide = *self;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
         let negative = wide < 0i64;
@@ -25,7 +25,7 @@ extend int64 : Debug {
     /// The same digits: a number reads the same whoever is looking.
     ///
     /// https://rux-lang.dev/docs/api/format/int64/format-debug
-    func FormatDebug(self: *int64, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *int64, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

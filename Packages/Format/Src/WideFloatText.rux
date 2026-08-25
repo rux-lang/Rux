@@ -16,8 +16,8 @@ import Text::TextError;
 /// Writes `bits`, read under `layout`, as text under `spec`.
 ///
 /// https://rux-lang.dev/docs/api/format/write-wide-float
-func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, bits: uint512,
-                    layout: *FloatLayout) -> TextError {
+func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
+                    layout: &FloatLayout) -> TextError {
     let value = UnpackWide(bits, layout);
     if value.class == WideClass::NaN {
         return WriteAligned(writer, spec, "NaN", true);
@@ -26,11 +26,11 @@ func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, 
         return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true);
     }
     if spec.hasPrecision {
-        return WriteWidePrecision(allocator, writer, spec, @value, layout);
+        return WriteWidePrecision(allocator, writer, spec, value, layout);
     }
     var storage: char8[256];
     var digits: char8[160];
-    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 254));
+    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 254));
     if value.class == WideClass::Zero {
         if value.negative {
             cursor.Push(c8'-');
@@ -41,7 +41,7 @@ func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, 
         var count: uint = 0;
         var exponent10: int = 0;
         let room = MutableSlice::From<char8>(@digits[0], 160);
-        if !ShortestWideDigits(allocator, @value, layout, room, @count, @exponent10) {
+        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) {
             return TextError::OutOfMemory;
         }
         if value.negative {
@@ -49,10 +49,10 @@ func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, 
         }
         let produced = Slice<char8> { data: @digits[0], length: count };
         if exponent10 < -4 || exponent10 >= layout.DecimalDigits() as int {
-            WriteScientific(@cursor, produced, count, exponent10);
+            WriteScientific(cursor, produced, count, exponent10);
         }
         else {
-            WriteFixed(@cursor, produced, count, exponent10);
+            WriteFixed(cursor, produced, count, exponent10);
         }
     }
     var rendered = cursor.Written();
@@ -65,8 +65,8 @@ func WriteWideFloat(allocator: Allocator, writer: TextWriter, spec: FormatSpec, 
 
 // Fixed notation with exactly `spec.precision` digits after the point. The text can be as long as the exponent is
 // large, so it is built in storage from the allocator rather than on the stack.
-func WriteWidePrecision(allocator: Allocator, writer: TextWriter, spec: FormatSpec, value: *UnpackedWide,
-                        layout: *FloatLayout) -> TextError {
+func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, value: &UnpackedWide,
+                        layout: &FloatLayout) -> TextError {
     let fraction = spec.precision;
     let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
     let digitRoom = integerRoom + fraction + 4u;
@@ -92,7 +92,7 @@ func WriteWidePrecision(allocator: Allocator, writer: TextWriter, spec: FormatSp
         }
     }
     if failure == TextError::None {
-        var cursor = ByteCursor::New(MutableSlice<char8> { data: text + 1u, length: textRoom - 1u });
+        var cursor = ByteCursor(MutableSlice<char8> { data: text + 1u, length: textRoom - 1u });
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
         }

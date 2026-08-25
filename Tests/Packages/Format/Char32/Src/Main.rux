@@ -11,8 +11,9 @@ import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, TextWriter };
 // a uint64 holds any of them, and the length is checked alongside because 0x41 and 0x0041 pack the same.
 func Check(value: char32, length: uint, bytes: uint64, code: int) -> int {
     var storage: char8[8];
-    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 8));
-    let writer: TextWriter = CursorWriter::Of(@cursor);
+    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 8));
+    var sink = CursorWriter::Of(@cursor);
+    let writer: &var TextWriter = sink;
     let shown: Display = value;
     if shown.Format(writer, FormatSpec::Plain()).IsError() {
         return code;

@@ -27,14 +27,19 @@ extend ByteCursor {
     /// A cursor over `room`, filling from its start.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/new
-    func New(room: MutableSlice<char8>) -> ByteCursor {
+    func ByteCursor(room: MutableSlice<char8>) -> ByteCursor {
         return ByteCursor { room: room, length: 0, overran: false };
+    }
+
+    /// Temporary compatibility spelling for `ByteCursor(room)`.
+    func New(room: MutableSlice<char8>) -> ByteCursor {
+        return ByteCursor(room);
     }
 
     /// Appends one byte, or records an overrun when there is no room.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push
-    func Push(self: *var ByteCursor, byte: char8) {
+    func Push(self: &var ByteCursor, byte: char8) {
         if self.length >= self.room.length {
             self.overran = true;
             return;
@@ -46,7 +51,7 @@ extend ByteCursor {
     /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
-    func PushBytes(self: *var ByteCursor, bytes: Slice<char8>) {
+    func PushBytes(self: &var ByteCursor, bytes: Slice<char8>) {
         var index: uint = 0;
         while index < bytes.length {
             self.Push(bytes.data[index]);
@@ -57,14 +62,14 @@ extend ByteCursor {
     /// What has been written.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/written
-    func Written(self: *ByteCursor) -> Slice<char8> {
+    func Written(self: &ByteCursor) -> Slice<char8> {
         return Slice<char8> { data: self.room.data, length: self.length };
     }
 
     /// Whether a write was refused for want of room.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/overran
-    func Overran(self: *ByteCursor) -> bool {
+    func Overran(self: &ByteCursor) -> bool {
         return self.overran;
     }
 }

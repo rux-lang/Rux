@@ -34,16 +34,16 @@ extend float32 : Display {
     /// more than the longest rendering -- sign, digits, point and exponent -- can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format
-    func Format(self: *float32, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var storage: char8[52];
-        var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[2], 50));
+        var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 50));
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
         // to scale into a word renders shortest instead of pretending.
         if spec.hasPrecision && FitsPrecision(*self as float64, spec.precision) {
-            WriteFixedPrecision(@cursor, *self as float64, spec.precision);
+            WriteFixedPrecision(cursor, *self as float64, spec.precision);
         }
         else {
-            WriteFloat(@cursor, *self);
+            WriteFloat(cursor, *self);
         }
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
@@ -59,7 +59,7 @@ extend float32 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format-debug
-    func FormatDebug(self: *float32, writer: TextWriter, spec: FormatSpec) -> TextError {
+    func FormatDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -67,7 +67,7 @@ extend float32 : Debug {
 // Appends the text of a float32 to a builder. The conversion runs in float64,
 // which the value reaches exactly, and only the digit count says which type
 // it came from.
-func WriteFloat(cursor: *var ByteCursor, value: float32) {
+func WriteFloat(cursor: &var ByteCursor, value: float32) {
     if IsNan(value) {
         cursor.PushBytes("NaN");
         return;

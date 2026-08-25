@@ -10,8 +10,9 @@ import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, TextWriter };
 // buys: this test needs no allocator at all.
 func Check(value: uint64, expected: Slice<char8>, code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor::New(MutableSlice::From<char8>(@storage[0], 64));
-    let writer: TextWriter = CursorWriter::Of(@cursor);
+    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
+    var sink = CursorWriter::Of(@cursor);
+    let writer: &var TextWriter = sink;
     let shown: Display = value;
     if shown.Format(writer, FormatSpec::Plain()).IsError() {
         return code;
