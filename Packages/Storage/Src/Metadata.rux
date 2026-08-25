@@ -92,7 +92,7 @@ extend Permissions {
     /// Whether the owner may write.
     ///
     /// https://rux-lang.dev/docs/api/storage/permissions/is-writable
-    func IsWritable(self: *Permissions) -> bool {
+    func IsWritable(self: &Permissions) -> bool {
         return !self.readOnly;
     }
 }
@@ -450,7 +450,7 @@ extend File {
     /// query the way a path-based one can.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/metadata
-    func Metadata(self: *var File, error: *var IoError) -> Metadata {
+    func Metadata(self: &File, error: *var IoError) -> Metadata {
         *error = IoError::Ok();
         var result = Metadata {
             kind: FileKind::Other,

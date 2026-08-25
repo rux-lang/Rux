@@ -7,12 +7,12 @@
 // each platform happens to take it.
 //
 // `File` owns its handle the way `String` owns its bytes: `Close` releases it exactly once and reports what the
-// platform said, and `Drop` is the safety net that closes with the outcome discarded. A file being written
+// platform said, and its destructor is the safety net that closes with the outcome discarded. A file being written
 // deserves the explicit `Close`, for the same reason a buffered writer deserves the explicit `Flush`: the
 // destructor has nowhere to report failure.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Drop, Slice };
+import Core::{ #target, Slice };
 import Io::{ IoError, IoErrorKind };
 import Path::Path;
 
@@ -73,15 +73,20 @@ extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/new
-    func New() -> OpenOptions {
+    func OpenOptions() -> OpenOptions {
         return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
+    }
+
+    /// Temporary compatibility spelling for the receiverless constructor.
+    func New() -> OpenOptions {
+        return OpenOptions();
     }
 
     /// Reading an existing file.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/reading
     func Reading() -> OpenOptions {
-        var options = OpenOptions::New();
+        var options = OpenOptions();
         options.read = true;
         return options;
     }
@@ -90,7 +95,7 @@ extend OpenOptions {
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/writing
     func Writing() -> OpenOptions {
-        var options = OpenOptions::New();
+        var options = OpenOptions();
         options.write = true;
         options.create = true;
         options.truncate = true;
@@ -101,14 +106,14 @@ extend OpenOptions {
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/appending
     func Appending() -> OpenOptions {
-        var options = OpenOptions::New();
+        var options = OpenOptions();
         options.append = true;
         options.create = true;
         return options;
     }
 
     // The contradictions, refused before any platform is asked.
-    func Validate(self: *OpenOptions) -> IoError {
+    func Validate(self: &OpenOptions) -> IoError {
         if !self.read && !self.write && !self.append {
             return IoError::Of(IoErrorKind::InvalidInput);
         }
@@ -124,9 +129,9 @@ extend OpenOptions {
 
 /// An owned, open file.
 ///
-/// Move-only: the handle closes exactly once, through `Close` or through `Drop`. `Close` is the error-visible
-/// path; `Drop` discards the outcome, which is fine for a file that was read and a silent loss for one that was
-/// written.
+/// Move-only: the handle closes exactly once, through `Close` or through its destructor. `Close` is the
+/// error-visible path; destruction discards the outcome, which is fine for a file that was read and a silent
+/// loss for one that was written.
 ///
 /// https://rux-lang.dev/docs/api/storage/file
 struct File {
@@ -182,6 +187,9 @@ func ReleaseNativePath(allocator: Allocator, block: *var OsUnit, length: uint) {
 }
 
 extend File {
+    /// An owned handle cannot be duplicated.
+    func =(self: &var File, other: &File);
+
     /// Opens `path` under `options`.
     ///
     /// The allocator is borrowed for the platform form of the path and holds nothing afterward. On failure the
@@ -192,12 +200,12 @@ extend File {
         *error = options.Validate();
         var file = File { handle: NoFile(), open: false };
         if (*error).IsError() {
-            return file;
+            return <-file;
         }
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
         if (*error).IsError() {
-            return file;
+            return <-file;
         }
         when #target.os == .Windows {
             var access = 0u32;
@@ -270,13 +278,13 @@ extend File {
             }
         }
         ReleaseNativePath(allocator, native, path.name.units.length);
-        return file;
+        return <-file;
     }
 
     /// Whether the handle is still open.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/is-open
-    func IsOpen(self: *File) -> bool {
+    func IsOpen(self: &File) -> bool {
         return self.open;
     }
 
@@ -286,7 +294,7 @@ extend File {
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/close
-    func Close(self: *var File) -> IoError {
+    func Close(self: &var File) -> IoError {
         if !self.open {
             return IoError::Ok();
         }
@@ -305,6 +313,12 @@ extend File {
             return IoError::Ok();
         }
     }
+    /// Closes with the outcome discarded: the safety net, not the contract.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/file/destructor
+    func ~File(self: &var File) {
+        self.Close();
+    }
 }
 
 // The value of a handle that is not one.
@@ -314,14 +328,5 @@ func NoFile() -> RawFile {
     }
     else {
         return -1;
-    }
-}
-
-extend File : Drop {
-    /// Closes with the outcome discarded: the safety net, not the contract.
-    ///
-    /// https://rux-lang.dev/docs/api/storage/file/drop
-    func Drop(self: *var File) {
-        self.Close();
     }
 }

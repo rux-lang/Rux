@@ -64,7 +64,7 @@ func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return held;
+        return <-held;
     }
     else {
         let outcome = Getcwd(@units[0], 4096);
@@ -82,7 +82,7 @@ func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return held;
+        return <-held;
     }
 }
 
@@ -129,7 +129,7 @@ func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuff
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return simplified;
+        return <-simplified;
     }
     var here = CurrentDirectory(allocator, error);
     if (*error).IsError() {
@@ -141,14 +141,14 @@ func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuff
     }
     if textError != TextError::None {
         *error = IoError::Of(IoErrorKind::Other);
-        return joined;
+        return <-joined;
     }
     var simplified = Normalize(allocator, joined.AsPath(), @textError);
     if textError != TextError::None {
         *error = IoError::Of(IoErrorKind::Other);
     }
     joined.Release();
-    return simplified;
+    return <-simplified;
 }
 
 when #target.os != .Windows {
@@ -189,7 +189,7 @@ when #target.os != .Windows {
     }
 
     // Drops the last segment of `buffer`, leaving the root in place.
-    func PopSegment(buffer: *var PathBuffer) {
+    func PopSegment(buffer: &var PathBuffer) {
         var length = buffer.length;
         while length > 0 && !IsSeparator(buffer.data[length - 1]) {
             length = length - 1;
@@ -226,7 +226,7 @@ when #target.os != .Windows {
     //
     // Recursive, because a link's target is itself a path that must be walked the same way -- and bounded by the
     // follow count rather than by the nesting, since it is the link chain that can loop.
-    func ResolveInto(allocator: Allocator, path: Path, resolved: *var PathBuffer,
+    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer,
                      followed: *var uint) -> IoError {
         var textError = TextError::None;
         if IsAbsolute(path) {
@@ -331,14 +331,14 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return resolved;
+        return <-resolved;
     }
     else {
         // No Unix kernel resolves a whole path for a caller -- `realpath` is library code over `readlink` -- so
         // the walk is done here, component by component, against what each link actually points at.
         var started = Absolute(allocator, path, error);
         if error.IsError() {
-            return started;
+            return <-started;
         }
         var resolved = PathBuffer::New(allocator);
         var followed: uint = 0;
@@ -357,6 +357,6 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
             resolved.Release();
             return PathBuffer::New(allocator);
         }
-        return resolved;
+        return <-resolved;
     }
 }
