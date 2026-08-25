@@ -1,6 +1,6 @@
 # Language Ownership and Lifecycle Contract
 
-This page is the settled contract for Rux values, borrowing, copying, moving, construction, and destruction. The compiler and first-party packages migrate to it in dependency order. Until the final compatibility work is complete, the repository may contain both the old and new spellings; compatibility exists only to keep each intermediate commit buildable and is not part of the finished language.
+This page is the settled contract for Rux values, borrowing, copying, moving, construction, and destruction. The compiler, first-party packages, and positive language examples use this model. A narrow compatibility window still accepts selected old spellings while the final removal checks land; those spellings are not part of the finished language.
 
 The design favors locally visible ownership effects, explicit signatures, and separate syntax for safe borrowing and raw addresses. Declarations and members remain private by default and use `pub` for public API. A `struct` declares layout, while functions, operators, constructors, destructors, and interface implementations live in `extend` blocks.
 
@@ -39,6 +39,18 @@ T        owned value
 References are non-owning, non-null, automatically dereferenced for member and index access, and cannot perform pointer arithmetic. They may be parameters, receivers, or local aliases. They cannot be fields, returned values, or otherwise stored beyond the current call. Any number of immutable borrows may coexist, or one mutable borrow may exist exclusively; a borrow ends after its last use. A reference cannot destroy its referent or move ownership out of it. A concrete value may be borrowed directly as an immutable or mutable interface view without copying or consuming the value.
 
 Raw pointers remain the deliberate mechanism for FFI, nullable or sentinel values, stored addresses, pointer arithmetic, and unsafe memory APIs. Address-taking is explicit with `@value`. Moving a value out through a raw pointer is rejected because the pointer does not own the storage it addresses.
+
+### First-party raw-pointer boundaries
+
+The package surface keeps raw pointers only where the address itself is part of the contract:
+
+- `C` and the platform binding packages mirror foreign ABIs, including nullable arguments, buffers, handles, and operating-system-owned storage.
+- `Memory` and `Allocator` traffic in untyped blocks, alignment, address arithmetic, and ownership transfers that begin or end at an allocation boundary.
+- `Core` slices store an address and a length, and nullable `Try*` output slots use null to mean that no destination was supplied.
+- `Collections` stores backing blocks, node links, and iterator positions. It uses references for safe call-time access and raw addresses only for stored or ownership-aware internal places.
+- `Io`, `Storage`, `Json`, and `Toml` retain raw handles when a stream must be stored in a field; a non-escaping interface reference cannot represent that lifetime. Ordinary calls borrow streams and values through references.
+
+Package READMEs identify these retained boundaries beside the APIs that expose them. A new safe parameter or receiver uses a reference unless it has one of the address-level contracts above.
 
 ## Copy and Move
 
@@ -113,8 +125,8 @@ extend String {
 
 The compiler invokes it exactly once for each initialized value that still owns its state, then destroys contained fields, elements, and payloads in reverse construction order. Destruction runs at ordinary scope exit, replacement, `return`, `break`, `continue`, and failure propagation through `?`. A moved-from or never-initialized value is not destroyed. Panic and process termination do not unwind.
 
-The existing `Core::Drop` interface remains accepted only during the staged repository migration. Once every package, test, and example uses `~Type`, the compatibility interface and its semantic recognition are removed.
+The existing `Core::Drop` interface remains accepted only as a compiler compatibility spelling. First-party packages and positive examples use `~Type`; the compatibility interface and its semantic recognition are removed at the final cutover.
 
-## Migration Boundary
+## Compatibility Boundary
 
-Compiler syntax and semantics land before package use, with each migration change leaving the repository green. Old spellings remain accepted only while downstream sources still require them. The cutover ends by removing temporary constructor wrappers, `Core::Drop`, implicit named moves, and mutable-parameter prefixes, then adding repository policy guards against their return. No package or manifest version changes merely because an intermediate migration commit lands.
+The remaining compatibility surface consists of temporary forwarding `New` wrappers for exact-type constructors, `Core::Drop`, implicit consumption of named move-only values, and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.

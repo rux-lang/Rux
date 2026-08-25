@@ -37,12 +37,24 @@ The CLI loads the root manifest, then the driver loads package sources and depen
 
 Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64. Which triples a back end reaches is decided by the object and image writer, not by the host, and both back ends reach all eight: `freebsd-*` and `linux-*` through ELF, `windows-*` through PE/COFF, and `macos-*` through Mach-O. The FreeBSD and Linux paths produce executables, shared libraries, relocatable objects, and deterministic static archives entirely in-process. The Windows writer produces executables, DLLs with import libraries, and static libraries, while the Mach-O path produces AArch64 objects and BSD archives plus signed executables — fixed-address on x86-64, position-independent on AArch64 — imported executables, and shared libraries. The public driver exposes all three native artifact kinds for each of those targets.
 
+### Ownership and lifecycle through the pipeline
+
+Ownership is a cross-stage contract, but each decision has one owner:
+
+- Syntax preserves reference types, explicit move operands, operator-named special functions, type-named constructors, and `~Type` destructors without assigning semantics to them.
+- Semantic analysis resolves reference provenance and last use, enforces shared-versus-exclusive loans, rejects escaping references and moves through borrowed storage, and classifies copy, move, construction, initialization, and destruction capabilities for each concrete generic instantiation. It records those accepted facts in `SemanticModel` so lowering does not repeat overload or ownership decisions.
+- AST-to-HIR materializes borrows, interface-reference views, copies, moves, initialization state, drop flags, and cleanup edges. Custom copy first targets scratch storage; replacement destroys the old destination only after the copy succeeds. Moves transfer the source's live state and suppress its later destruction.
+- HIR-to-LIR turns those operations into explicit addresses, loads, stores, calls, branches, and cleanup blocks. Recursive drop glue, partially initialized aggregates, enum payloads, and exits through `return`, loops, or `?` all follow the same initialized-state facts.
+- Layout and code generation treat a concrete reference as one non-null machine address and an interface reference as a non-owning data/vtable pair. Raw pointers use their own unsafe operations and ABI rules; they are never silently upgraded into ownership.
+
+Reference, special-operation, and cleanup behavior therefore belongs in semantic and lowering tests first, with backend tests covering only representation and ABI. A backend must not infer whether a value is borrowed, copied, moved, initialized, or due for destruction.
+
 ## Architectural Guarantees
 
 The current architecture is protected by focused unit and regression tests plus repository policy checks:
 
 - Source identity, compiler build identity, profiles, artifact kinds, and target triples are typed neutral models. Unknown targets cannot fall back to the host, and frontend or object components do not depend on driver-owned version data.
-- Semantic analysis records accepted types, callable bindings, symbol identities, and layout facts. AST-to-HIR lowering consumes those facts rather than repeating semantic lookup or ABI-visible naming decisions.
+- Semantic analysis records accepted types, callable bindings, symbol identities, layout facts, borrow provenance, and value capabilities. AST-to-HIR lowering consumes those facts rather than repeating semantic, ownership, or ABI-visible naming decisions.
 - Checked LIR construction and verification stop malformed control flow before code generation. Release optimization uses overflow-safe constants, conservative effect analysis, bounded fixed points, and artifact-aware whole-program reachability; Debug remains transformation-free apart from verification.
 - Both native back ends use the shared RCU module builder. All image writers consume one deterministic link graph and common aligned-section layout before applying PE, ELF, or Mach-O container rules.
 - Parser, semantic, lowering, code-generation, assembler, object-writer, linker, manifest, package-command, and test implementations have named owners and narrow private interfaces. The oversized-file policy rejects unreviewed implementation files above 1,200 lines and growth beyond each reviewed exception.
@@ -66,11 +78,11 @@ These are maintained contracts, not a one-time migration record. Changes to them
 | `Numeric`              | Exact wide integers; binary float formats/encodings; numeric-literal suffix, base, and range models        | None                                  |
 | `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel, Numeric, and Diagnostics |
 | `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target        |
-| `Semantic`             | Symbols, types, conditional compilation, and validated semantic model                                     | BuildInfo, Numeric, Syntax, Diagnostics |
+| `Semantic`             | Symbols, types, conditional compilation, borrow/value analysis, and validated semantic model              | BuildInfo, Numeric, Syntax, Diagnostics |
 | `Ir/Hir`               | High-level IR and its transformations                                                                     | Semantic, Lexer, SourceModel, Target  |
 | `Ir/Lir`               | Control-flow-explicit low-level IR                                                                        | Semantic                              |
 | `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability                          | BuildInfo, Diagnostics, HIR, and LIR  |
-| `Lowering`             | AST/semantic model → HIR → LIR; private AST-to-HIR orchestration and lowering contexts                    | Frontend and IR components            |
+| `Lowering`             | AST/semantic model → ownership-explicit HIR → control-flow-explicit LIR; private lowering contexts        | Frontend and IR components            |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics          |
 | `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction                        | BuildInfo, LIR, Object, Diagnostics   |
 | `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction                      | BuildInfo, LIR, Object, Diagnostics   |

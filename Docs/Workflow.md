@@ -50,6 +50,18 @@ The same rule applies to FreeBSD AArch64. Every supported host can build or chec
 
 For package profile and target selection, ordinary artifact paths, and the complete `rux build --all` contract, see [Package Builds and the Target Matrix](Builds.md).
 
+### Ownership-facing changes
+
+Changes to values, references, constructors, special operations, or cleanup cross several compiler boundaries. Keep the decision in the stage that owns it and test each affected boundary:
+
+- Parser and dump tests cover the written syntax; semantic tests cover reference escape, loan conflicts, mutability, copy/move capability, definite initialization, and diagnostics.
+- Lowering tests cover interface views, scratch-copy replacement, source invalidation, drop flags, partial construction, and cleanup on every control-flow exit. Backend tests cover concrete and interface-reference ABI shapes rather than re-deciding ownership.
+- A user-visible behavior change gets an executable package under `Tests/Language/`; a rejected legacy spelling stays as a focused negative or golden diagnostic fixture.
+- Safe call-time parameters and receivers use `&T` or `&var T`. Keep `*T` and `*var T` only for FFI, nullable values, stored addresses, pointer arithmetic, raw storage, or an intentionally unsafe API, and state that boundary in the affected package README.
+- Named ownership transfers use `<-`; copyable values use `=`. Resource owners prohibit copying and provide `~Type`; infallible exact-type construction uses `Type(...)`, while fallible or descriptive factories keep their names.
+
+When a diagnostic changes, regenerate and review every affected golden file. When a package API changes, update its tests, README, API comments, and examples in the same change.
+
 ### Debug vs. Release Builds
 
 - **Release** (default) — optimized; this is what CI builds and tests, and what ships. Use it for normal development and before pushing.
