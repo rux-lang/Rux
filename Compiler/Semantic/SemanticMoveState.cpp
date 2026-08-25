@@ -461,11 +461,26 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
     if (!properties.IsMoveOnly()) {
         return;
     }
+    if (!properties.IsMovable()) {
+        EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
+                  {"the type declares its canonical move operation without a body"},
+                  "borrow the value or construct a distinct replacement instead");
+        return;
+    }
     if (!ValidateMoveSource(expression, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
-        valueConsumptions.insert_or_assign(&expression, ValueConsumption{kind, type, location});
+        const MovePlace place = AnalyzeMovePlace(expression);
+        const bool constructsDestination = place.IsNamedStorage();
+        const FuncDecl *custom = nullptr;
+        if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
+            if (const FuncDecl *operation = LookupMethod(type, "<-", {type}); operation && operation->body) {
+                custom = operation;
+            }
+        }
+        valueConsumptions.insert_or_assign(&expression,
+                                           ValueConsumption{kind, type, location, custom, constructsDestination});
     }
 }
 
@@ -489,12 +504,27 @@ void SemanticAnalyzerContext::ConsumeExplicitValue(const Expr &expression, const
         static_cast<void>(MoveTrackedExpression(expression, location));
         return;
     }
+    const TypeProperties properties = ClassifyTypeProperties(type);
+    if (!properties.IsMovable()) {
+        EmitError(location, std::format("moving type '{}' is prohibited", type.ToString()),
+                  {"the type declares its canonical move operation without a body"},
+                  "borrow the value or construct a distinct replacement instead");
+        return;
+    }
     if (!ValidateMoveSource(expression, location)) {
         return;
     }
     if (!MoveTrackedExpression(expression, location)) {
-        valueConsumptions.insert_or_assign(&expression,
-                                           ValueConsumption{ValueConsumptionKind::ExplicitMove, type, location});
+        const MovePlace place = AnalyzeMovePlace(expression);
+        const bool constructsDestination = place.IsNamedStorage();
+        const FuncDecl *custom = nullptr;
+        if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
+            if (const FuncDecl *operation = LookupMethod(type, "<-", {type}); operation && operation->body) {
+                custom = operation;
+            }
+        }
+        valueConsumptions.insert_or_assign(&expression, ValueConsumption{ValueConsumptionKind::ExplicitMove, type,
+                                                                         location, custom, constructsDestination});
     }
 }
 

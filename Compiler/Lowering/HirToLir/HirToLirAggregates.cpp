@@ -347,6 +347,10 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         StoreCopyIntoSlot(*copy, slot);
         return;
     }
+    if (auto *move = dynamic_cast<const HirMoveExpr *>(&expr)) {
+        StoreMoveIntoSlot(*move, slot);
+        return;
+    }
     if (auto *init = dynamic_cast<const HirStructInitExpr *>(&expr)) {
         StoreStructInit(*init, slot);
         return;
@@ -471,6 +475,52 @@ void HirToLirContext::StoreCopyIntoSlot(const HirCopyExpr &expression, const Lir
 LirReg HirToLirContext::LowerCopy(const HirCopyExpr &expression) {
     const LirReg slot = EmitAlloca(expression.type);
     StoreCopyIntoSlot(expression, slot);
+    return expression.type.kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
+}
+
+void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source, const LirReg destination) {
+    if (plan.kind == HirMovePlan::Kind::Custom) {
+        LirInstr call;
+        call.op = LirOpcode::Call;
+        call.type = TypeRef::MakeOpaque();
+        call.srcs = {destination, EmitLoad(source, plan.type)};
+        call.strArg = plan.customCallee;
+        if (const auto convention = funcConvs.find(plan.customCallee); convention != funcConvs.end()) {
+            call.callConv = convention->second;
+        }
+        Emit(std::move(call));
+        return;
+    }
+    if (plan.kind == HirMovePlan::Kind::Structure || plan.kind == HirMovePlan::Kind::Tuple) {
+        for (std::size_t index = 0; index < plan.components.size(); ++index) {
+            const std::string name =
+                plan.kind == HirMovePlan::Kind::Structure ? plan.componentNames[index] : std::to_string(index);
+            const HirMovePlan &component = plan.components[index];
+            EmitMovePlan(component, EmitFieldPtr(source, name, component.type),
+                         EmitFieldPtr(destination, name, component.type));
+        }
+        return;
+    }
+    if (plan.kind == HirMovePlan::Kind::Array && !plan.components.empty()) {
+        const HirMovePlan &element = plan.components.front();
+        for (std::uint64_t index = 0; index < plan.type.arrayLength.value_or(0); ++index) {
+            const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
+            EmitMovePlan(element, EmitIndexPtr(source, offset, element.type),
+                         EmitIndexPtr(destination, offset, element.type));
+        }
+        return;
+    }
+    EmitStore(EmitLoad(source, plan.type), destination, plan.type);
+}
+
+void HirToLirContext::StoreMoveIntoSlot(const HirMoveExpr &expression, const LirReg slot) {
+    const LirReg source = LowerLValue(*expression.value);
+    EmitMovePlan(expression.plan, source, slot);
+}
+
+LirReg HirToLirContext::LowerMove(const HirMoveExpr &expression) {
+    const LirReg slot = EmitAlloca(expression.type);
+    StoreMoveIntoSlot(expression, slot);
     return expression.type.kind == TypeRef::Kind::Array ? slot : EmitLoad(slot, expression.type);
 }
 

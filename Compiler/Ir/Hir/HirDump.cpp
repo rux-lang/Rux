@@ -90,6 +90,10 @@ static std::string PrintExprCore(const HirExpr &expr) {
         const std::string operation = e->plan.customCallee.empty() ? "generated" : e->plan.customCallee;
         return std::format("copy<{}>({})", operation, PrintExpr(*e->value));
     }
+    if (auto *e = dynamic_cast<const HirMoveExpr *>(&expr)) {
+        const std::string operation = e->plan.customCallee.empty() ? "generated" : e->plan.customCallee;
+        return std::format("move-construct<{}>({})", operation, PrintExpr(*e->value));
+    }
     if (auto *e = dynamic_cast<const HirAssignExpr *>(&expr)) {
         std::string assignment = std::format("{} {} {}", PrintExpr(*e->target), OpStr(e->op), PrintExpr(*e->value));
         if (e->overwriteCleanup) {

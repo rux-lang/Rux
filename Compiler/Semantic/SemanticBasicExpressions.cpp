@@ -424,14 +424,30 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             if (deferred.kind != ValueConsumptionKind::ExplicitMove && !properties.IsMoveOnly()) {
                 continue;
             }
+            if (!properties.IsMovable()) {
+                EmitError(deferred.location, std::format("moving type '{}' is prohibited", resolved.ToString()),
+                          {"the type declares its canonical move operation without a body"},
+                          "borrow the value or construct a distinct replacement instead");
+                continue;
+            }
             // Recorded without asking whether the source was a legal place to move from. That question is answered
             // for a concrete type where the move is written, and answering it here would reject what a container
             // exists to do: take a value out of storage it owns. Nothing in the language distinguishes an owned
             // pointer from a borrowed one, so a container moving out of its own block and a caller moving out of a
             // borrowed slice look alike. Diagnosing the second without forbidding the first needs a way to say which
             // is which; until there is one, this records what to consume and leaves the legality alone.
-            valueConsumptions.insert_or_assign(deferred.expression,
-                                               ValueConsumption{deferred.kind, resolved, deferred.location});
+            const MovePlace place = AnalyzeMovePlace(*deferred.expression);
+            const bool constructsDestination = place.IsNamedStorage();
+            const FuncDecl *custom = nullptr;
+            if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
+                if (const FuncDecl *operation = LookupMethod(resolved, "<-", {resolved});
+                    operation && operation->body) {
+                    custom = operation;
+                }
+            }
+            valueConsumptions.insert_or_assign(
+                deferred.expression,
+                ValueConsumption{deferred.kind, resolved, deferred.location, custom, constructsDestination});
         }
     }
 }

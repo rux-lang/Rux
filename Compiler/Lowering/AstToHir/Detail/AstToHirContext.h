@@ -279,6 +279,7 @@ private:
     [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                                        const FuncDecl &method);
     [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
+    [[nodiscard]] HirMovePlan BuildMovePlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
     [[nodiscard]] bool DropGlueTypeIsConcrete(const TypeRef &type);
