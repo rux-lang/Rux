@@ -29,7 +29,7 @@ const std::string kIterationPrelude = R"(
     enum Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: *var Counter) -> Option<int32> {
+        func Next(self: &var Counter) -> Option<int32> {
             if self.value >= self.limit { return Option::None<int32>(); }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -56,7 +56,7 @@ TEST_CASE("a container that hands out an iterator is iterable through it") {
     const auto diagnostics = AnalyzeSource(kIterationPrelude + R"(
         struct Span { limit: int32; }
         extend Span {
-            func Iterate(self: *Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
+            func Iterate(self: &Span) -> Counter { return Counter { value: 0i32, limit: self.limit }; }
         }
         func Total() -> int32 {
             let span = Span { limit: 3i32 };
@@ -100,7 +100,7 @@ TEST_CASE("a Next that cannot advance its receiver is rejected at its declaratio
     CHECK_EQ(diagnostics[0].notes[0],
              "advancing an iterator writes it, so 'Next' cannot borrow its receiver read-only");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "write the receiver as 'self: *var Counter'");
+    CHECK_EQ(*diagnostics[0].help, "write the receiver as 'self: &var Counter'");
 }
 
 TEST_CASE("a Next taking arguments is rejected at its declaration") {
@@ -142,7 +142,7 @@ TEST_CASE("an Iterate that does not return an iterator is rejected at its declar
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0], "type 'int32' has no 'Next' returning an 'Option'");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(self: *var T) -> Option<Item>'");
+    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(self: &var T) -> Option<Item>'");
 }
 
 TEST_CASE("a subject that is not iterable reports what iteration accepts") {
@@ -177,7 +177,7 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     CHECK_EQ(diagnostics[0].message, "cannot iterate over 'Cursor'");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0],
-             "type 'Cursor' declares 'Next', but not as 'func Next(self: *var Cursor) -> Option<T>'");
+             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> Option<T>'");
 }
 
 TEST_CASE("arrays and ranges keep their own iteration") {

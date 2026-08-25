@@ -7,7 +7,7 @@ struct Pair {
 
 func Main() -> int {
     // A new view borrows nothing and reports itself empty.
-    let empty = MutableSlice::New<int32>();
+    let empty = MutableSlice<int32>();
     if !empty.IsEmpty() || empty.Length() != 0 { return 10; }
     if empty.data != null { return 11; }
 
@@ -22,6 +22,8 @@ func Main() -> int {
     if view.IsEmpty() || view.Length() != 6 { return 20; }
     if view.data != @storage[0] { return 21; }
     if view.At(0) != 10 || view.At(5) != 60 { return 22; }
+    let copied = view;
+    if copied.data != view.data || copied.Length() != view.Length() { return 23; }
 
     // Set writes through to the borrowed storage.
     view.Set(0, 11);
@@ -67,6 +69,7 @@ func Main() -> int {
 
     // An empty view converts to an empty slice.
     if empty.AsSlice().length != 0 { return 53; }
+    if !MutableSlice::New<int32>().IsEmpty() { return 54; }
 
     // Element size participates in pointer indexing and in Sub's arithmetic.
     var pairs: Pair[3] = [Pair { first: 1, second: 2 },

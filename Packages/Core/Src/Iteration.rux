@@ -1,7 +1,7 @@
 /// A cursor that yields a sequence of items one at a time.
 ///
 /// The compiler drives iteration by shape rather than through this interface: a `for` loop accepts any type with a
-/// `func Next(self: *var Self) -> Option<Item>`, which advances the cursor and reports either the next item or that
+/// `func Next(self: &var Self) -> Option<Item>`, which advances the cursor and reports either the next item or that
 /// the sequence has ended. The item type is whatever that `Option` carries, and it differs per iterator, so the
 /// method cannot be written here — an interface has no way to name a type its implementor chooses.
 ///

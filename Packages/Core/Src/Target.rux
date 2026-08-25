@@ -142,7 +142,7 @@ extend Target {
     /// program.
     ///
     /// https://rux-lang.dev/docs/api/core/target/has-feature
-    intrinsic func HasFeature(self: *Target, feature: TargetFeature) -> bool;
+    intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
 }
 
 /// The machine being compiled for, as a compile-time value.

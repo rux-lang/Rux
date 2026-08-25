@@ -16,10 +16,10 @@ interface Equatable {
     /// Reports whether this value and `other` are equal.
     ///
     /// Borrows both operands and takes ownership of neither, so comparing costs nothing and leaves both usable.
-    /// `other` must not be null.
+    /// The reference guarantees that `other` is present.
     ///
     /// Cannot fail: every pair of values of the type is either equal or not.
     ///
     /// https://rux-lang.dev/docs/api/core/equatable/equals
-    func Equals(other: *Self) -> bool;
+    func Equals(other: &Self) -> bool;
 }

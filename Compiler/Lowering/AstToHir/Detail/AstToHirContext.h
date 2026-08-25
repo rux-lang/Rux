@@ -140,6 +140,7 @@ protected:
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;

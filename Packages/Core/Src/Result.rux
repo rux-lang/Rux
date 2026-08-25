@@ -24,8 +24,8 @@ extend Result<T, E> {
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
     /// https://rux-lang.dev/docs/api/core/result/is-success
-    func IsSuccess(self: *Result<T, E>) -> bool {
-        return match *self {
+    func IsSuccess(self: &Result<T, E>) -> bool {
+        return match self {
             .Success(_) => true,
             .Error(_) => false
         };
@@ -38,7 +38,7 @@ extend Result<T, E> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/result/is-error
-    func IsError(self: *Result<T, E>) -> bool {
+    func IsError(self: &Result<T, E>) -> bool {
         return !self.IsSuccess();
     }
 
@@ -53,9 +53,9 @@ extend Result<T, E> {
     ///
     /// https://rux-lang.dev/docs/api/core/result/value-or
     func ValueOr(self: Result<T, E>, fallback: T) -> T {
-        return match self {
-            .Success(value) => value,
-            .Error(_) => fallback
+        return match <-self {
+            .Success(value) => <-value,
+            .Error(_) => <-fallback
         };
     }
 
@@ -77,9 +77,9 @@ extend Result<T, E> {
             return false;
         }
 
-        match self {
+        match <-self {
             .Success(held) => {
-                *value = held;
+                *value <- held;
                 return true;
             },
             .Error(_) => {
@@ -105,12 +105,12 @@ extend Result<T, E> {
             return false;
         }
 
-        match self {
+        match <-self {
             .Success(_) => {
                 return false;
             },
             .Error(held) => {
-                *error = held;
+                *error <- held;
                 return true;
             }
         }

@@ -1,14 +1,17 @@
-import Core::{ Assert, Comparable, Drop, Equatable, Hashable, Iterable, Iterator, Option, Ordering };
+import Core::{ Assert, Comparable, Equatable, Hashable, Iterable, Iterator, Option, Ordering };
 
-// A droppable value. Implementing Drop is what makes a type move-only, which is
-// the part of the contract the compiler enforces today; the destructor itself is
-// not emitted yet, so nothing here asserts that it ran.
+// A resource value declares that copying is prohibited and releases itself with
+// its type-named destructor.
 struct Guard {
     value: int32;
+    drops: *var int32;
 }
 
-extend Guard : Drop {
-    func Drop(self: *var Guard) {
+extend Guard {
+    func =(self: &var Guard, other: &Guard);
+
+    func ~Guard(self: &var Guard) {
+        *self.drops += 1;
     }
 }
 
@@ -22,13 +25,13 @@ struct Card {
 }
 
 extend Card : Equatable {
-    func Equals(self: *Card, other: *Card) -> bool {
+    func Equals(self: &Card, other: &Card) -> bool {
         return self.value == other.value;
     }
 }
 
 extend Card : Comparable {
-    func Compare(self: *Card, other: *Card) -> Ordering {
+    func Compare(self: &Card, other: &Card) -> Ordering {
         if self.value < other.value {
             return Ordering::Less;
         }
@@ -40,7 +43,7 @@ extend Card : Comparable {
 }
 
 extend Card : Hashable {
-    func Hash(self: *Card) -> uint64 {
+    func Hash(self: &Card) -> uint64 {
         return self.value as uint64;
     }
 }
@@ -53,7 +56,7 @@ struct Counter {
 }
 
 extend Counter : Iterator {
-    func Next(self: *var Counter) -> Option<int32> {
+    func Next(self: &var Counter) -> Option<int32> {
         if self.next >= self.limit {
             return Option::None<int32>();
         }
@@ -68,22 +71,22 @@ struct Span {
 }
 
 extend Span : Iterable {
-    func Iterate(self: *Span) -> Counter {
+    func Iterate(self: &Span) -> Counter {
         return Counter { next: 0i32, limit: self.limit };
     }
 }
 
 // The bounds are what these interfaces exist for: each resolves `Self` to the
 // type argument, so the operand and the result are that type.
-func Matches<T: Equatable>(left: *T, right: *T) -> bool {
+func Matches<T: Equatable>(left: &T, right: &T) -> bool {
     return left.Equals(right);
 }
 
-func Ranks<T: Comparable>(left: *T, right: *T) -> Ordering {
+func Ranks<T: Comparable>(left: &T, right: &T) -> Ordering {
     return left.Compare(right);
 }
 
-func Digest<T: Hashable>(value: *T) -> uint64 {
+func Digest<T: Hashable>(value: &T) -> uint64 {
     return value.Hash();
 }
 
@@ -92,24 +95,24 @@ func Main() -> int {
     let low = Card { value: 3i32 };
     let alsoLow = Card { value: 3i32 };
     let high = Card { value: 9i32 };
-    Assert(Matches<Card>(@low, @low), "Equality is reflexive");
-    Assert(Matches<Card>(@low, @alsoLow), "Equal cards compare equal");
-    Assert(Matches<Card>(@alsoLow, @low), "Equality reads the same in either order");
-    Assert(!Matches<Card>(@low, @high), "Unequal cards compare unequal");
+    Assert(Matches<Card>(low, low), "Equality is reflexive");
+    Assert(Matches<Card>(low, alsoLow), "Equal cards compare equal");
+    Assert(Matches<Card>(alsoLow, low), "Equality reads the same in either order");
+    Assert(!Matches<Card>(low, high), "Unequal cards compare unequal");
 
     // Comparison is a total order, and reversing the operands reverses it.
-    Assert(Ranks<Card>(@low, @high).IsLess(), "A smaller card compares less");
-    Assert(Ranks<Card>(@high, @low).IsGreater(), "A larger card compares greater");
-    Assert(Ranks<Card>(@low, @alsoLow).IsEqual(), "Equal cards compare equal");
-    Assert(Ranks<Card>(@low, @high).Reverse() == Ranks<Card>(@high, @low), "Reversing the operands reverses it");
+    Assert(Ranks<Card>(low, high).IsLess(), "A smaller card compares less");
+    Assert(Ranks<Card>(high, low).IsGreater(), "A larger card compares greater");
+    Assert(Ranks<Card>(low, alsoLow).IsEqual(), "Equal cards compare equal");
+    Assert(Ranks<Card>(low, high).Reverse() == Ranks<Card>(high, low), "Reversing the operands reverses it");
 
     // Comparison and equality agree.
-    Assert(Ranks<Card>(@low, @alsoLow).IsEqual() == Matches<Card>(@low, @alsoLow), "Compare agrees with Equals");
-    Assert(Ranks<Card>(@low, @high).IsEqual() == Matches<Card>(@low, @high), "Compare disagrees where Equals does");
+    Assert(Ranks<Card>(low, alsoLow).IsEqual() == Matches<Card>(low, alsoLow), "Compare agrees with Equals");
+    Assert(Ranks<Card>(low, high).IsEqual() == Matches<Card>(low, high), "Compare disagrees where Equals does");
 
     // Hashing agrees with equality and is stable within a run.
-    Assert(Digest<Card>(@low) == Digest<Card>(@alsoLow), "Equal cards hash the same");
-    Assert(Digest<Card>(@low) == Digest<Card>(@low), "Hashing is stable within a run");
+    Assert(Digest<Card>(low) == Digest<Card>(alsoLow), "Equal cards hash the same");
+    Assert(Digest<Card>(low) == Digest<Card>(low), "Hashing is stable within a run");
 
     // The iteration protocol, driven by shape: a `for` over an iterable, and the
     // cursor advanced by hand.
@@ -139,14 +142,17 @@ func Main() -> int {
 
     // A droppable value is move-only: passing it by value consumes it, and the
     // value that was moved into the call is the one that arrives.
-    let guard = Guard { value: 5i32 };
-    Assert(Spend(guard) == 5i32, "A droppable value is passed by consuming it");
+    var drops = 0i32;
+    let guard = Guard { value: 5i32, drops: @drops };
+    Assert(Spend(<-guard) == 5i32, "A droppable value is passed by consuming it");
+    Assert(drops == 1i32, "The consumed value is destroyed in the callee");
 
     // Reinitializing after a complete move gives a fresh value to consume.
-    var reused = Guard { value: 7i32 };
-    Assert(Spend(reused) == 7i32, "A move-only value can be consumed once");
-    reused = Guard { value: 11i32 };
-    Assert(Spend(reused) == 11i32, "And consumed again after being reinitialized");
+    var reused = Guard { value: 7i32, drops: @drops };
+    Assert(Spend(<-reused) == 7i32, "A move-only value can be consumed once");
+    reused <- Guard { value: 11i32, drops: @drops };
+    Assert(Spend(<-reused) == 11i32, "And consumed again after being reinitialized");
+    Assert(drops == 3i32, "Each owned value is destroyed exactly once");
 
     return 0;
 }

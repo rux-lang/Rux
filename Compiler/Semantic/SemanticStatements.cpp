@@ -445,8 +445,11 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         MergeTrackedFlows(exits);
     }
     else if (const auto *matchStatement = dynamic_cast<const MatchStmt *>(&statement)) {
-        const TypeRef subjectType = CheckExpr(*matchStatement->subject);
-        ConsumeMatchSubject(*matchStatement->subject, subjectType, matchStatement->arms, matchStatement->location);
+        const TypeRef expressionType = CheckExpr(*matchStatement->subject);
+        const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
+                                      ? expressionType.inner.front()
+                                      : expressionType;
+        ConsumeMatchSubject(*matchStatement->subject, expressionType, matchStatement->arms, matchStatement->location);
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;

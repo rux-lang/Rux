@@ -1,12 +1,13 @@
 import Core::{ Assert, Option, Ordering, Result, Unit };
 
-interface Drop {}
-
 struct Handle {
     value: int32;
 }
 
-extend Handle : Drop {}
+extend Handle {
+    func =(self: &var Handle, other: &Handle);
+    func ~Handle(self: &var Handle) {}
+}
 
 enum Failure: int8 {
     Missing,
@@ -16,11 +17,12 @@ enum Failure: int8 {
 func Main() -> int {
     let some = Option::Some<int32>(7i32);
     Assert(some.IsSome() && !some.IsNone(), "Some tag inspection");
-    Assert(some.ValueOr(9i32) == 7i32, "Some consuming extraction");
+    let copiedSome = some;
+    Assert(copiedSome.IsSome() && (<-some).ValueOr(9i32) == 7i32, "Some copy and consuming extraction");
 
     let none = Option::None<int32>();
     Assert(none.IsNone() && !none.IsSome(), "None tag inspection");
-    Assert(none.ValueOr(9i32) == 9i32, "None fallback extraction");
+    Assert((<-none).ValueOr(9i32) == 9i32, "None fallback extraction");
 
     var extracted = 0i32;
     Assert(Option::Some<int32>(11i32).TryIntoValue(@extracted), "Option output extraction");
@@ -30,11 +32,11 @@ func Main() -> int {
 
     let success = Result::Success<int32, Failure>(13i32);
     Assert(success.IsSuccess() && !success.IsError(), "Success tag inspection");
-    Assert(success.ValueOr(17i32) == 13i32, "Success consuming extraction");
+    Assert((<-success).ValueOr(17i32) == 13i32, "Success consuming extraction");
 
     let failure = Result::Error<int32, Failure>(Failure::Invalid);
     Assert(failure.IsError() && !failure.IsSuccess(), "Error tag inspection");
-    Assert(failure.ValueOr(17i32) == 17i32, "Error fallback extraction");
+    Assert((<-failure).ValueOr(17i32) == 17i32, "Error fallback extraction");
 
     var error = Failure::Missing;
     Assert(Result::Error<int32, Failure>(Failure::Invalid).TryIntoError(@error), "Result error extraction");
@@ -44,10 +46,10 @@ func Main() -> int {
 
     let held = Option::Some<Handle>(Handle { value: 23i32 });
     Assert(held.IsSome(), "Borrowed inspection preserves move-only option");
-    let handle = held.ValueOr(Handle { value: 29i32 });
+    let handle <- (<-held).ValueOr(Handle { value: 29i32 });
     Assert(handle.value == 23i32, "Consuming extraction moves the payload");
 
-    let unitResult = Result::Success<Unit, Failure>(Unit::New());
+    let unitResult = Result::Success<Unit, Failure>(Unit());
     Assert(unitResult.IsSuccess(), "Unit construction");
 
     Assert(Ordering::Less.IsLess(), "Less classification");
@@ -84,7 +86,7 @@ func Main() -> int {
     Assert(taken.value == 47i32, "An empty option yields the fallback");
 
     // Unit fills a type position for an operation with nothing to report.
-    var unitOut = Unit::New();
-    Assert(Result::Success<Unit, Failure>(Unit::New()).TryIntoValue(@unitOut), "Unit extraction");
+    var unitOut = Unit();
+    Assert(Result::Success<Unit, Failure>(Unit::New()).TryIntoValue(@unitOut), "Unit extraction and legacy constructor");
     return 0;
 }
