@@ -7,6 +7,10 @@ import Memory::{ PageAlign, PageAllocate, PageError, PageExecute, PageNone, Page
 // rather than quietly accepted, and that a protection actually applies.
 
 func Main() -> int {
+    let error = PageError::InvalidLength;
+    let copiedError = error;
+    Assert(copiedError == error, "page errors copy structurally");
+
     let size = PageSize();
     Assert(size >= 4096, "a page is at least four kilobytes on every supported system");
     Assert((size & (size - 1)) == 0, "and its size is a power of two");

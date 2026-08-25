@@ -7,8 +7,14 @@ when #target.os {
     .Windows => import Windows::{ GetProcessHeap, HeapFree }
 }
 
-// Releases a block of memory back to the operating system
-// https://rux-lang.dev/api/memory/free
+/// Releases an allocation. A null pointer is accepted and does nothing.
+///
+/// # Safety
+///
+/// A non-null `ptr` must be the live base address returned by `Alloc` or `Realloc`. Every pointer into the block
+/// becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
+///
+/// https://rux-lang.dev/docs/api/memory/free
 func Free(ptr: *opaque) {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {

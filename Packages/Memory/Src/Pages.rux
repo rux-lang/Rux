@@ -64,7 +64,7 @@ const PageWrite: uint32 = 2;
 /// https://rux-lang.dev/docs/api/memory/page-execute
 const PageExecute: uint32 = 4;
 
-/// Why a page operation did not do what was asked.
+/// Why a page operation did not do what was asked. `Copy`.
 ///
 /// One set of reasons across four systems that report failure three different ways: an errno, a `GetLastError` code,
 /// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
