@@ -90,7 +90,7 @@ TEST_CASE("a Next that cannot advance its receiver is rejected at its declaratio
         enum Option<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: *Counter) -> Option<int32> { return Option::None<int32>(); }
+            func Next(self: &Counter) -> Option<int32> { return Option::None<int32>(); }
         }
     )");
 
@@ -108,7 +108,7 @@ TEST_CASE("a Next taking arguments is rejected at its declaration") {
         enum Option<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
-            func Next(self: *var Counter, step: int32) -> Option<int32> { return Option::None<int32>(); }
+            func Next(self: &var Counter, step: int32) -> Option<int32> { return Option::None<int32>(); }
         }
     )");
 
@@ -122,7 +122,7 @@ TEST_CASE("a method named Next that reports no end is not the convention's") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Cursor { value: int32; }
         extend Cursor {
-            func Next(self: *Cursor) -> int32 { return self.value + 1i32; }
+            func Next(self: &Cursor) -> int32 { return self.value + 1i32; }
         }
     )");
 
@@ -133,7 +133,7 @@ TEST_CASE("an Iterate that does not return an iterator is rejected at its declar
     const auto diagnostics = AnalyzeSource(R"(
         struct Span { limit: int32; }
         extend Span {
-            func Iterate(self: *Span) -> int32 { return self.limit; }
+            func Iterate(self: &Span) -> int32 { return self.limit; }
         }
     )");
 
@@ -165,7 +165,7 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     const auto diagnostics = AnalyzeSource(R"(
         struct Cursor { value: int32; }
         extend Cursor {
-            func Next(self: *Cursor) -> int32 { return self.value; }
+            func Next(self: &Cursor) -> int32 { return self.value; }
         }
         func Walk() {
             var cursor = Cursor { value: 1i32 };

@@ -13,7 +13,7 @@ extend Animal {
     }
 
     #Abi(.C)
-    func Legs(self: *Animal) -> int {
+    func Legs(self: &Animal) -> int {
         return 4;
     }
 }

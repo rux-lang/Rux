@@ -197,7 +197,7 @@ TEST_CASE("semantic model retains declared self parameter type facts") {
     Lexer lexer(R"(
         struct Number { value: int32; }
         extend Number {
-            func Value(self: *Number) -> int32 { return self.value; }
+            func Value(self: &Number) -> int32 { return self.value; }
         }
     )",
                 "self_type.rux");
@@ -217,7 +217,7 @@ TEST_CASE("semantic model retains declared self parameter type facts") {
     REQUIRE_EQ(implementation->methods[0]->params.size(), 1);
     const TypeRef *selfType = model.TryGetType(*implementation->methods[0]->params[0].type);
     REQUIRE(selfType != nullptr);
-    CHECK_EQ(selfType->ToString(), "*Number");
+    CHECK_EQ(selfType->ToString(), "&Number");
 }
 
 TEST_CASE("semantic model retains validated compile-time layouts and folded sizeof values") {
@@ -568,7 +568,7 @@ TEST_CASE("semantic model retains resolved callable bindings") {
         struct Number { value: int32; }
 
         extend Number : Reader {
-            func Read(self: *Number) -> int32 { return self.value; }
+            func Read(self: &Number) -> int32 { return self.value; }
         }
 
         #Abi(.C)
@@ -744,13 +744,13 @@ TEST_CASE("semantic model records final linker symbol identities") {
 
         struct Number { value: int32; }
         extend Number {
-            func Convert(self: *Number, value: int32) -> int32 { return value; }
-            func Convert(self: *Number, value: bool) -> bool { return value; }
+            func Convert(self: &Number, value: int32) -> int32 { return value; }
+            func Convert(self: &Number, value: bool) -> bool { return value; }
         }
 
         struct Box<T> { value: T; }
         extend Box<T> {
-            func Get(self: *Box<T>) -> T { return self.value; }
+            func Get(self: &Box<T>) -> T { return self.value; }
         }
 
         interface Reader {
@@ -758,7 +758,7 @@ TEST_CASE("semantic model records final linker symbol identities") {
         }
         struct File { value: int32; }
         extend File : Reader {
-            func Read(self: *File) -> int32 { return self.value; }
+            func Read(self: &File) -> int32 { return self.value; }
         }
 
         #Abi(.C)
@@ -877,8 +877,8 @@ TEST_CASE("AST-to-HIR instantiates symbolic method bindings for each generic rec
     Lexer lexer(R"(
         struct Box<T> { value: T; }
         extend Box<T> {
-            func Read(self: *Box<T>) -> T { return self.value; }
-            func Forward(self: *Box<T>) { self.Read(); }
+            func Read(self: &Box<T>) -> T { return self.value; }
+            func Forward(self: &Box<T>) { self.Read(); }
         }
 
         func Main() -> int64 {
@@ -1077,9 +1077,9 @@ TEST_CASE("duplicate method signatures are rejected") {
         struct Item {}
 
         extend Item {
-            func Run(self: *Item) {}
-            func Run(self: *Item) {}
-            func Run(self: *Item, value: int) {}
+            func Run(self: &Item) {}
+            func Run(self: &Item) {}
+            func Run(self: &Item, value: int) {}
         }
     )");
 

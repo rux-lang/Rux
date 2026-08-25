@@ -273,12 +273,12 @@ struct Animal {}
 
 extend Animal {
     when #target.os == OperatingSystem::Windows {
-        func Sound(self: *Animal) -> int { return 1; }
+        func Sound(self: &Animal) -> int { return 1; }
     } else {
-        func Sound(self: *Animal) -> int { return 2; }
+        func Sound(self: &Animal) -> int { return 2; }
     }
 
-    func Legs(self: *Animal) -> int { return 4; }
+    func Legs(self: &Animal) -> int { return 4; }
 }
 )");
     const auto model = Analyze(parsed.module, "Linux");

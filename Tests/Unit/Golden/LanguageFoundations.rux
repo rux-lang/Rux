@@ -72,7 +72,7 @@ struct Cursor {
 }
 
 extend Cursor {
-    func Next(self: *Cursor) -> Option<int32> {
+    func Next(self: &Cursor) -> Option<int32> {
         return Option::None<int32>();
     }
 }

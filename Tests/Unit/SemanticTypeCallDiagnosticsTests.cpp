@@ -211,7 +211,7 @@ TEST_CASE("method diagnostics retain receiver and parameter context") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Counter {}
         extend Counter {
-            func Add(self: *Counter, amount: int) {}
+            func Add(self: &Counter, amount: int) {}
         }
         func Main() {
             let counter = Counter {};

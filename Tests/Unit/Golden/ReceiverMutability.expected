@@ -1,4 +1,4 @@
-17:13: error: cannot modify data through read-only pointer '*Counter'
+17:13: error: cannot modify data through immutable reference '&Counter'
 27:9: error: cannot modify immutable receiver 'self'
-34:12: error: cannot call 'BumpBy' through read-only pointer '*Counter'
+34:12: error: cannot call 'BumpBy' through immutable reference '&Counter'
 39:10: error: cannot call 'BumpBy' on immutable 'fixed'
