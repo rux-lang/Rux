@@ -143,6 +143,7 @@ protected:
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
+    [[nodiscard]] TypeRef SubstituteCurrentType(TypeRef type) const;
     [[nodiscard]] TypeRef RestoreEnumLayoutMarkers(TypeRef type) const;
     [[nodiscard]] std::optional<std::string> CompilerParamRoot(const Expr &expression) const;
     [[nodiscard]] std::string LogicalCurrentFilePath() const;
@@ -277,6 +278,7 @@ private:
     [[nodiscard]] static std::string MangleTypeName(const TypeRef &type);
     [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                                        const FuncDecl &method);
+    [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
     [[nodiscard]] bool DropGlueTypeIsConcrete(const TypeRef &type);

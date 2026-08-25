@@ -1,5 +1,7 @@
+#include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Lowering/HirToLir/HirToLir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
@@ -45,6 +47,46 @@ const HirFunc &RequireFunction(const HirPackage &package, const std::string &nam
     }
     FAIL("missing lowered function " << name);
     throw std::runtime_error("missing lowered function");
+}
+
+LirPackage LowerConsumptionLir(const std::string &source) {
+    Lexer lexer(source, "copy_lowering.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "copy_lowering.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    HirToLirLowering lowering(AstToHirLowering(model).Generate(), CompileTimeContext{}.target);
+    LirPackage package = lowering.Generate();
+    REQUIRE(lowering.Diagnostics().empty());
+    return package;
+}
+
+const LirFunc &RequireLirFunction(const LirPackage &package, const std::string &name) {
+    for (const LirModule &module : package.modules) {
+        for (const LirFunc &function : module.funcs) {
+            if (function.name == name) {
+                return function;
+            }
+        }
+    }
+    FAIL("missing lowered LIR function " << name);
+    throw std::runtime_error("missing lowered LIR function");
+}
+
+std::size_t LirCallCount(const LirFunc &function, const std::string &symbol) {
+    std::size_t count = 0;
+    for (const LirBlock &block : function.blocks) {
+        for (const LirInstr &instruction : block.instrs) {
+            if (instruction.op == LirOpcode::Call && instruction.strArg == symbol) {
+                ++count;
+            }
+        }
+    }
+    return count;
 }
 } // namespace
 
@@ -213,6 +255,112 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     REQUIRE(freshReturn->value.has_value());
     CHECK_EQ((*freshReturn->value)->consumption, ValueConsumptionKind::Return);
     CHECK_EQ((*freshReturn->value)->consumedBindingId, 0);
+}
+
+TEST_CASE("named by-value sources use recursive custom copies while temporaries transfer directly") {
+    const std::string source = R"(
+        interface Drop {}
+
+        struct Cell { value: int32; }
+        extend Cell : Drop {}
+        extend Cell {
+            func =(self: &var Cell, other: &Cell) {
+                self.value = other.value;
+            }
+        }
+
+        struct Wrapper { cell: Cell; tag: int32; }
+
+        func Make(value: int32) -> Wrapper {
+            return Wrapper { cell: Cell { value: value }, tag: value };
+        }
+        func Take(value: Wrapper) {}
+        func Clone(source: Wrapper) -> Wrapper {
+            let local = source;
+            Take(source);
+            return source;
+        }
+        func Direct() -> Wrapper {
+            return Make(1);
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &clone = RequireFunction(hir, "Clone");
+    REQUIRE(clone.body.has_value());
+    const auto *local = dynamic_cast<const HirLetStmt *>(clone.body->stmts[0].get());
+    const auto *takeStatement = dynamic_cast<const HirExprStmt *>(clone.body->stmts[1].get());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(clone.body->stmts[2].get());
+    REQUIRE(local != nullptr);
+    REQUIRE(takeStatement != nullptr);
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *localCopy = dynamic_cast<const HirCopyExpr *>(local->init.get());
+    const auto *take = dynamic_cast<const HirCallExpr *>(takeStatement->expr.get());
+    const auto *returnCopy = dynamic_cast<const HirCopyExpr *>((*returned->value).get());
+    REQUIRE(localCopy != nullptr);
+    REQUIRE(take != nullptr);
+    REQUIRE_EQ(take->args.size(), 1);
+    const auto *argumentCopy = dynamic_cast<const HirCopyExpr *>(take->args.front().get());
+    REQUIRE(argumentCopy != nullptr);
+    REQUIRE(returnCopy != nullptr);
+    CHECK_EQ(localCopy->plan.kind, HirCopyPlan::Kind::Structure);
+    REQUIRE_EQ(localCopy->plan.components.size(), 2);
+    CHECK_EQ(localCopy->plan.components[0].kind, HirCopyPlan::Kind::Custom);
+    const std::string copySymbol = localCopy->plan.components[0].customCallee;
+    CHECK_FALSE(copySymbol.empty());
+    CHECK_EQ(argumentCopy->plan.components[0].customCallee, copySymbol);
+    CHECK_EQ(returnCopy->plan.components[0].customCallee, copySymbol);
+
+    const HirFunc &direct = RequireFunction(hir, "Direct");
+    REQUIRE(direct.body.has_value());
+    const auto *directReturn = dynamic_cast<const HirReturnStmt *>(direct.body->stmts[0].get());
+    REQUIRE(directReturn != nullptr);
+    REQUIRE(directReturn->value.has_value());
+    CHECK(dynamic_cast<const HirCopyExpr *>((*directReturn->value).get()) == nullptr);
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 3);
+}
+
+TEST_CASE("cross-source copy assignment constructs scratch before replacing the destination") {
+    const std::string source = R"(
+        interface Drop {}
+
+        struct Seed { value: int32; }
+        struct Cell { value: int32; }
+        extend Cell : Drop {}
+        extend Cell {
+            func =(self: &var Cell, other: &Cell) {
+                self.value = other.value;
+            }
+            func =(self: &var Cell, other: &Seed) {
+                self.value = other.value;
+            }
+        }
+
+        func Replace(var destination: Cell, source: Seed) {
+            destination = source;
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &replace = RequireFunction(hir, "Replace");
+    REQUIRE(replace.body.has_value());
+    const auto *statement = dynamic_cast<const HirExprStmt *>(replace.body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+    REQUIRE(assignment->overwriteCleanup.has_value());
+    const auto *copy = dynamic_cast<const HirCopyExpr *>(assignment->value.get());
+    REQUIRE(copy != nullptr);
+    CHECK_EQ(copy->type, TypeRef::MakeNamed("Cell"));
+    CHECK_EQ(copy->value->type, TypeRef::MakeNamed("Seed"));
+    CHECK_EQ(copy->plan.kind, HirCopyPlan::Kind::Custom);
+    CHECK_FALSE(copy->plan.customCallee.empty());
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copy->plan.customCallee), 1);
 }
 
 TEST_CASE("move-only values are consumed in every by-value context") {

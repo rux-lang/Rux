@@ -442,7 +442,23 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
         deferredConsumptions[currentFunctionDecl].push_back({&expression, kind, type, location});
         return;
     }
-    if (!ClassifyTypeProperties(type).IsMoveOnly()) {
+    const TypeProperties properties = ClassifyTypeProperties(type);
+    if (properties.IsCopy()) {
+        const MovePlace place = AnalyzeMovePlace(expression);
+        const bool storedAggregate =
+            type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple;
+        if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
+            const FuncDecl *custom = nullptr;
+            if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
+                if (const FuncDecl *operation = LookupMethod(type, "=", {type}); operation && operation->body) {
+                    custom = operation;
+                }
+            }
+            valueCopies.insert_or_assign(&expression, ValueCopy{kind, type, custom, location});
+        }
+        return;
+    }
+    if (!properties.IsMoveOnly()) {
         return;
     }
     if (!ValidateMoveSource(expression, location)) {

@@ -176,6 +176,29 @@ struct HirBinaryExpr : HirExpr {
     HirExprPtr right;
 };
 
+/// Recursive recipe for constructing an independent value from a named source place. Trivial leaves are copied as
+/// bits; custom leaves call the selected `=` operation; aggregate nodes visit their components in declaration order.
+struct HirCopyPlan {
+    enum class Kind {
+        Trivial,
+        Custom,
+        Structure,
+        Array,
+        Tuple,
+    };
+
+    Kind kind = Kind::Trivial;
+    TypeRef type;
+    std::string customCallee;
+    std::vector<std::string> componentNames;
+    std::vector<HirCopyPlan> components;
+};
+
+struct HirCopyExpr : HirExpr {
+    HirExprPtr value;
+    HirCopyPlan plan;
+};
+
 /// a = b, a <- b, a += b, etc.
 struct HirAssignExpr : HirExpr {
     TokenKind op;

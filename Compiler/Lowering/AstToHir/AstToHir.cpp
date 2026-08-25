@@ -320,6 +320,18 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
                 lowered->consumption = consumption->kind;
                 lowered->consumedBindingId = ConsumedBindingId(*lowered);
             }
+            if (const ValueCopy *copy = model.TryGetCopy(expr)) {
+                const TypeRef targetType = SubstituteCurrentType(copy->targetType);
+                HirCopyPlan plan = BuildCopyPlan(targetType, copy->customOperation);
+                if (plan.kind != HirCopyPlan::Kind::Trivial) {
+                    auto copied = std::make_unique<HirCopyExpr>();
+                    copied->location = lowered->location;
+                    copied->type = targetType;
+                    copied->plan = std::move(plan);
+                    copied->value = std::move(lowered);
+                    lowered = std::move(copied);
+                }
+            }
         }
         return lowered;
     };

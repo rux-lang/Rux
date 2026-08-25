@@ -30,6 +30,7 @@ public:
                             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
                             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
                             std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
+                            std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
@@ -311,6 +312,7 @@ protected:
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
+    std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
