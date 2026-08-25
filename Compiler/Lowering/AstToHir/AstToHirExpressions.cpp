@@ -110,6 +110,10 @@ TypeRef AstToHirContext::ResolvedExpressionType(const Expr &expression) const {
     return substituted;
 }
 
+TypeRef AstToHirContext::SubstituteCurrentType(TypeRef type) const {
+    return RestoreEnumLayoutMarkers(SubstituteType(std::move(type), currentSubstitutions));
+}
+
 /// The name to lower an identifier under, which for one naming a function is that function's linker name.
 ///
 /// A call says which function it means through its binding, but an identifier used as a value carried only what was

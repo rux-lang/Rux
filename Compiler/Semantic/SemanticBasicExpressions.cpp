@@ -273,6 +273,26 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
             }
         }
         else if (isAssignable) {
+            const FuncDecl *copyOperation = nullptr;
+            if (assignment->op == TokenKind::Assign && target.kind != TypeRef::Kind::Reference) {
+                copyOperation = LookupMethod(target, "=", {value});
+            }
+            if (copyOperation) {
+                if (!copyOperation->body) {
+                    EmitError(assignment->location, std::format("copying type '{}' is prohibited", target.ToString()),
+                              {"the type declares its canonical copy operation without a body"},
+                              "use '<-' if ownership should move instead");
+                    return TypeRef::MakeOpaque();
+                }
+                if (RejectSelfMove(*assignment->target, *assignment->value, value, assignment->location, false)) {
+                    return TypeRef::MakeOpaque();
+                }
+                valueCopies.insert_or_assign(
+                    assignment->value.get(),
+                    ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
+                MarkTrackedAssignment(*assignment->target, assignment->location);
+                return TypeRef::MakeOpaque();
+            }
             const bool nullReference = target.kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
@@ -379,11 +399,29 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
     }
     if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {
         for (const DeferredConsumption &deferred : it->second) {
-            // What the parameter stands for decides. A copyable argument consumes nothing and needs no fact
-            // recorded; a move-only one hands its value over, and the fact is what tells lowering not to destroy the
-            // source afterwards.
             const TypeRef resolved = SubstituteTypeParameters(deferred.type, substitutions);
-            if (deferred.kind != ValueConsumptionKind::ExplicitMove && !ClassifyTypeProperties(resolved).IsMoveOnly()) {
+            const TypeProperties properties = ClassifyTypeProperties(resolved);
+            if (deferred.kind != ValueConsumptionKind::ExplicitMove && properties.IsCopy()) {
+                const MovePlace place = AnalyzeMovePlace(*deferred.expression);
+                const bool storedAggregate = resolved.kind == TypeRef::Kind::Named ||
+                                             resolved.kind == TypeRef::Kind::Array ||
+                                             resolved.kind == TypeRef::Kind::Tuple;
+                if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
+                    const FuncDecl *custom = nullptr;
+                    if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
+                        if (const FuncDecl *operation = LookupMethod(resolved, "=", {resolved});
+                            operation && operation->body) {
+                            custom = operation;
+                        }
+                    }
+                    valueCopies.insert_or_assign(deferred.expression,
+                                                 ValueCopy{deferred.kind, resolved, custom, deferred.location});
+                }
+                continue;
+            }
+            // What the parameter stands for decides. A move-only argument hands its value over, and the fact is what
+            // tells lowering not to destroy the source afterwards.
+            if (deferred.kind != ValueConsumptionKind::ExplicitMove && !properties.IsMoveOnly()) {
                 continue;
             }
             // Recorded without asking whether the source was a legal place to move from. That question is answered

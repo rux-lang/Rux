@@ -41,7 +41,7 @@ void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, c
         return left == right;
     };
     const bool copy = method.name == "=";
-    const auto canonicalSignature = [&] {
+    const auto operationSignature = [&] {
         if (!method.typeParams.empty() || method.params.size() != 2 || method.returnType ||
             method.params[0].name != "self" || method.params[1].name != "other" || method.params[0].isMut ||
             method.params[1].isMut || method.params[0].isVariadic || method.params[1].isVariadic ||
@@ -58,16 +58,21 @@ void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, c
         if (!copy) {
             return other.kind != TypeRef::Kind::Reference && sameValueType(other, extendedType);
         }
-        return other.kind == TypeRef::Kind::Reference && !other.inner.empty() && !other.inner.front().isMut &&
-               sameValueType(other.inner.front(), extendedType);
+        if (other.kind != TypeRef::Kind::Reference || other.inner.empty() || other.inner.front().isMut) {
+            return false;
+        }
+        // A body-bearing copy overload may construct T from another source type. Only the exact T-from-T signature
+        // has the bodyless meaning "copy prohibited".
+        return method.body || sameValueType(other.inner.front(), extendedType);
     }();
-    if (canonicalSignature) {
+    if (operationSignature) {
         return;
     }
 
     const std::string type = extendedType.ToString();
-    const std::string expected = copy ? std::format("func =(self: &var {0}, other: &{0})", type)
-                                      : std::format("func <-(self: &var {0}, other: {0})", type);
+    const std::string expected = copy && method.body ? std::format("func =(self: &var {0}, other: &Source)", type)
+                               : copy                ? std::format("func =(self: &var {0}, other: &{0})", type)
+                                                     : std::format("func <-(self: &var {0}, other: {0})", type);
     EmitError(method.location, std::format("{} special operation for type '{}' must have signature '{}'",
                                            copy ? "copy" : "move", type, expected));
 }

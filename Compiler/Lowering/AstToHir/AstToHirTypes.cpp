@@ -879,6 +879,72 @@ std::string AstToHirContext::ConcreteMethodCalleeName(const std::string &typeNam
     return name;
 }
 
+HirCopyPlan AstToHirContext::BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation) {
+    HirCopyPlan plan;
+    plan.type = type;
+
+    const TypeProperties *properties = model.TryGetProperties(type);
+    if (!customOperation && properties && properties->copyOperation == TypeProperties::SpecialOperationState::Custom) {
+        if (const FuncDecl *operation = LookupMethod(type, "=", {type}); operation && operation->body) {
+            customOperation = operation;
+        }
+    }
+    if (customOperation) {
+        plan.kind = HirCopyPlan::Kind::Custom;
+        plan.customCallee = ConcreteMethodCalleeName(NamedBaseTypeName(type), type, *customOperation);
+        return plan;
+    }
+
+    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
+        HirCopyPlan element = BuildCopyPlan(type.inner.front());
+        if (element.kind != HirCopyPlan::Kind::Trivial) {
+            plan.kind = HirCopyPlan::Kind::Array;
+            plan.components.push_back(std::move(element));
+        }
+        return plan;
+    }
+    if (type.kind == TypeRef::Kind::Tuple) {
+        for (const TypeRef &element : type.inner) {
+            plan.components.push_back(BuildCopyPlan(element));
+        }
+        if (std::ranges::any_of(plan.components, [](const HirCopyPlan &component) {
+                return component.kind != HirCopyPlan::Kind::Trivial;
+            })) {
+            plan.kind = HirCopyPlan::Kind::Tuple;
+        }
+        else {
+            plan.components.clear();
+        }
+        return plan;
+    }
+    if (type.kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type.name);
+        if (const auto declaration = structDecls.find(base); declaration != structDecls.end()) {
+            std::unordered_map<std::string, TypeRef> substitutions;
+            const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+            const std::size_t count = std::min(arguments.size(), declaration->second->typeParams.size());
+            for (std::size_t index = 0; index < count; ++index) {
+                substitutions.emplace(declaration->second->typeParams[index].name, arguments[index]);
+            }
+            for (const StructDecl::Field &field : declaration->second->fields) {
+                plan.componentNames.push_back(field.name);
+                plan.components.push_back(BuildCopyPlan(ResolveTypeWithSubstitution(*field.type, substitutions)));
+            }
+            if (std::ranges::any_of(plan.components, [](const HirCopyPlan &component) {
+                    return component.kind != HirCopyPlan::Kind::Trivial;
+                })) {
+                plan.kind = HirCopyPlan::Kind::Structure;
+            }
+            else {
+                plan.componentNames.clear();
+                plan.components.clear();
+            }
+            return plan;
+        }
+    }
+    return plan;
+}
+
 const std::string &AstToHirContext::FunctionCalleeName(const FuncDecl &decl) const {
     return RequireSemanticFact(model.TryGetSymbolIdentity(decl)).linkerName;
 }

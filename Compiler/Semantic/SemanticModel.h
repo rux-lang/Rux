@@ -161,6 +161,15 @@ struct ValueConsumption {
     SourceLocation location;
 };
 
+/// A named place copied into a by-value destination. Generated copies are represented without a declaration; custom
+/// copies retain the exact special operation selected by analysis so lowering does not repeat overload resolution.
+struct ValueCopy {
+    ValueConsumptionKind kind;
+    TypeRef targetType;
+    const FuncDecl *customOperation = nullptr;
+    SourceLocation location;
+};
+
 /**
  * @brief Persistent output of semantic analysis.
  *
@@ -183,6 +192,7 @@ struct SemanticModel {
                   std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                   std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                   std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
+                  std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
@@ -204,6 +214,9 @@ struct SemanticModel {
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
     [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;
+
+    /// Returns null for direct temporary transfers, moves, borrows, and observations.
+    [[nodiscard]] const ValueCopy *TryGetCopy(const Expr &expression) const noexcept;
 
     /// Returns null for rejected calls and nodes outside the analyzed modules. Returned pointers remain valid for the
     /// lifetime of this model.
@@ -253,6 +266,7 @@ private:
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
+    std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;

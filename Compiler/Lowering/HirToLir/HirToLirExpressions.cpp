@@ -77,6 +77,9 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirBinaryExpr *>(&expr)) {
         return LowerBinary(*e);
     }
+    if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
+        return LowerCopy(*e);
+    }
     if (auto *e = dynamic_cast<const HirAssignExpr *>(&expr)) {
         return LowerAssign(*e);
     }

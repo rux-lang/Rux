@@ -130,6 +130,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                              std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                              std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
+                             std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                              std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
@@ -148,6 +149,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , typeNodeTypes(std::move(inputTypeNodeTypes))
     , patternTypes(std::move(inputPatternTypes))
     , valueConsumptions(std::move(inputValueConsumptions))
+    , valueCopies(std::move(inputValueCopies))
     , callableBindings(std::move(inputCallableBindings))
     , symbolIdentities(std::move(inputSymbolIdentities))
     , vtableIdentities(std::move(inputVtableIdentities))
@@ -183,6 +185,11 @@ const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept 
 const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression) const noexcept {
     const auto consumption = valueConsumptions.find(&expression);
     return consumption == valueConsumptions.end() ? nullptr : &consumption->second;
+}
+
+const ValueCopy *SemanticModel::TryGetCopy(const Expr &expression) const noexcept {
+    const auto copy = valueCopies.find(&expression);
+    return copy == valueCopies.end() ? nullptr : &copy->second;
 }
 
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
