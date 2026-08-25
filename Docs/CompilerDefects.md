@@ -8,30 +8,6 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### An interface value holds its own copy of what was coerced into it
-
-*Silent.* `let source: I = value;` takes a copy; a call that mutates through `source` leaves `value` untouched. The copy is stable — repeated calls through the interface accumulate on it, and passing the interface value to a function keeps mutating the same copy — so this is coherent value semantics rather than a broken one. What makes it a hazard is that it is silent: the call reports success, nothing warns, and code written expecting reference semantics simply loses every mutation. Found in `Rux/Entropy`, where a test source that counted its own calls counted them where nobody could see. Confirmed identical in workspace and standalone builds.
-
-The workaround is the one `ArenaHandle`, `PoolHandle` and `FixedBufferHandle` already use: keep everything mutable behind a pointer inside the implementing struct, so copying the struct copies a pointer and the state stays where its owner put it. **Every implementor of an interface in these packages must follow it.**
-
-A generic bound is the other way out and the better one where it fits: `func F<H: Hasher>(hasher: *var H)` takes the implementor by pointer, resolves at instantiation, and mutates the caller's own value. Prefer a bound over an interface value wherever the type is known at the call site.
-
-### Coercing a move-only value to an interface moves it
-
-*Loud.* An `Arena` handed to something expecting an `Allocator` can no longer be reset or released by its owner. Found in `Rux/Allocator`. Diagnosed at compile time rather than silently, so it is a limitation rather than a hazard, and the handle pattern above is the answer to it as well.
-
-### A `Drop` method in a plain `extend` is silently an ordinary method
-
-*Silent.* Writing `extend T { func Drop(self: *var T) { ... } }` compiles, lints and reads exactly like a destructor, and is never called; only `extend T : Drop { ... }` registers one. Found in `Rux/Storage`, after `File` and `DirectoryIterator` had already shipped with safety nets that did not exist — and the failure is invisible, because the type still behaves correctly in every path that calls the method explicitly.
-
-Worth a diagnostic: a method named `Drop` taking `*var Self` outside a `Drop` implementation is a mistake essentially every time. Note also that fixing it changes the type's semantics, since a droppable type becomes move-only, which is how the second half of that bug surfaced.
-
-### Compiler-synthesized drop glue for a recursive type crashes
-
-*Silent.* A struct holding a `Vector` of itself — `JsonValue` with `elements: Vector<JsonValue>` — with no explicit `Drop` implementation produced an access violation once four such values were live in one frame; two were fine. Adding an explicit `extend JsonValue : Drop` made it go away entirely, which locates the fault in the glue the compiler generates rather than in the ownership itself.
-
-Narrowed and worked around in `Rux/Json`, and again in `Rux/Toml` (the explicit destructor is better design anyway, so the workaround is not a loss). Ruled out along the way: missing stack probes for large frames, and both ascending and far-end-first access patterns, which all behave correctly. Worth a proper fix, since the failure is silent, non-local and depends on how many values happen to be live.
-
 ### An untyped `const` imported from another package fails inside a generic that a third package instantiates
 
 *Loud, but only from a distance.* `Math::Tau` used in a generic function of `Rux/Random` reports "cannot determine the type of this expression" at the constant — but only when a test package instantiates that generic, so `rux check` passes and `rux test` fails. Narrowed by probe: a local untyped const works, an imported one works, a nested generic call works, and the generic living in a dependency package rather than the root is what breaks it, so the instantiation appears not to carry the imported-constant scope. Worked around in `Rux/Random` by declaring a typed constant inside the package. Annotating the `let` does not help, since the constant itself is what fails to resolve.
@@ -52,7 +28,7 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 
 ### A generic argument is never inferred
 
-*Loud, and merely verbose.* Every type parameter must be written at the call site: `MulWrapping(a, b)` fails where `MulWrapping<uint64>(a, b)` succeeds, and a type parameter behind a pointer (`hasher: *var H`) is not deduced from `*var Counter` either.
+*Loud, and merely verbose.* Every type parameter must be written at the call site: `MulWrapping(a, b)` fails where `MulWrapping<uint64>(a, b)` succeeds, and a type parameter behind a reference (`hasher: &var H`) is not deduced from `&var Counter` either.
 
 ### A method with its own type parameter on a non-generic type does not resolve at the call site
 
@@ -66,6 +42,18 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 
 Kept because they explain why some packages are written the way they are, and because two of them are the shape of the worst defect this code can surface: silent, wrong, and invisible to any test that does not check the data itself.
 
+### Interface coercion could copy or consume the implementor — fixed in `2f8ec825`
+
+An ordinary by-value interface still has value semantics, but callers that need the original object can now borrow a concrete value directly as `&Interface` or `&var Interface`. The resulting fat reference points at the original data and its vtable without copying or consuming the implementor. `Rux/Entropy`, `Rux/Random`, allocator call sites, and stream helpers use borrowed interface views; stored handles remain raw only where a non-escaping reference cannot be a field.
+
+### Lifecycle declarations depended on `Core::Drop` placement — fixed in `bc3202e5`
+
+The canonical destructor is now `func ~T(self: &var T)` inside `extend T`. It is a distinct special operation rather than an ordinary method whose meaning depends on an implemented interface, so the old silent `func Drop` mistake has no equivalent in the final syntax. First-party resource owners use type destructors; `Core::Drop` remains accepted only for the short compiler-compatibility window.
+
+### Recursive and partial drop glue could miss or corrupt cleanup — fixed in `4ab7a38d`
+
+Drop planning now handles recursive owners, partially constructed aggregates, non-generic enum payloads, generic destructors, and control-flow exits through branches, loops, returns, and `?`. The explicit `JsonValue` and `TomlValue` destructors remain because they state ownership clearly, not because synthesized recursive glue needs a workaround.
+
 ### A `const` array crossing a file boundary read garbage — fixed in `f090653`
 
 A `const` array declared in one file of a package and read from another was not matched across objects at link time, so the reference pointed wherever the relocation landed and read plausible garbage — neither its values nor zeroes, and with nothing reported. Scalars were unaffected because they are folded into their use, which is why this survived until `Rux/Hash` published a lookup table.
@@ -74,7 +62,7 @@ A `const` array declared in one file of a package and read from another was not 
 
 Storing a `T` into a generic container's storage was not recognized as consuming it, so the container kept a copy and the caller's value was destroyed where it stood — a use-after-free for any element owning memory. Consumption is now recorded as a question where it is asked and answered at each instantiation, and methods and associated functions of generic types are queued as instantiations at all, which they never were.
 
-What is still not answered per instantiation is whether the move was *legal*: a container taking a value out of storage it owns and a caller moving out of a borrowed slice are indistinguishable, so the check is left where a concrete type makes it decidable. Saying which is which needs a way to name an owned pointer.
+Reference provenance and explicit move operands now answer the public legality question: ownership cannot move through a reference or caller-visible raw pointer merely because the pointee type is movable. Named transfers use `<-`, so source invalidation is visible where it occurs. Containers retain a narrow internal raw-relocation compatibility path until the language can name an owned raw place; their public borrowed views never transfer ownership.
 
 ### A match-arm payload was destroyed twice, then not at all — fixed in `30d464a8` and `85d5d402`
 
