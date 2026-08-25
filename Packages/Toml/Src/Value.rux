@@ -11,7 +11,7 @@
 
 import Allocator::Allocator;
 import Collections::{ CollectionError, Vector };
-import Core::{ Drop, Slice };
+import Core::Slice;
 import Text::{ String, StringView, TextError };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
@@ -466,14 +466,4 @@ extend TomlEntry {
     func ~TomlEntry(self: &var TomlEntry) {
         self.key.Clear();
     }
-}
-
-// Temporary recursive-capability compatibility. Destruction is owned by the `~Type` methods above; these
-// markers disappear at the compatibility cutover once recursive generated moves resolve without `Drop`.
-extend TomlValue : Drop {
-    func Drop(self: &var TomlValue) {}
-}
-
-extend TomlEntry : Drop {
-    func Drop(self: &var TomlEntry) {}
 }

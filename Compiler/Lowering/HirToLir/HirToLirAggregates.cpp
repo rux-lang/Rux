@@ -3,6 +3,7 @@
 #include "Lowering/HirToLir/HirToLirContext.h"
 #include "Semantic/PrimitiveCatalog.h"
 
+#include <algorithm>
 #include <cassert>
 #include <format>
 #include <utility>
@@ -465,6 +466,57 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             EmitCopyPlan(element, EmitIndexPtr(source, offset, element.type),
                          EmitIndexPtr(destination, offset, element.type));
+        }
+        return;
+    }
+    if (plan.kind == HirCopyPlan::Kind::Enum) {
+        // Preserve the tag, inactive storage, and every trivial payload first. The active variant then replaces only
+        // the payloads that require a recursive or custom copy. Custom copy operations initialize scratch storage, so
+        // the shallow bits temporarily present in the destination are never observed or destroyed.
+        EmitStore(EmitLoad(source, plan.type), destination, plan.type);
+        const TypeRef tagType = EnumTagType(plan.type);
+        const LirReg tag = EmitLoad(source, tagType);
+        const std::size_t variantCount = std::min(
+            {plan.variantDiscriminants.size(), plan.variantPayloadTypes.size(), plan.variantComponents.size()});
+        for (std::size_t variantIndex = 0; variantIndex < variantCount; ++variantIndex) {
+            const auto &payloadTypes = plan.variantPayloadTypes[variantIndex];
+            const auto &payloadPlans = plan.variantComponents[variantIndex];
+            if (std::ranges::none_of(payloadPlans, [](const HirCopyPlan &component) {
+                    return component.kind != HirCopyPlan::Kind::Trivial;
+                })) {
+                continue;
+            }
+
+            const std::uint32_t payloadBlock = NewBlock("copy.variant");
+            const std::uint32_t afterBlock = NewBlock("copy.variant.after");
+            Branch(EmitBinary(LirOpcode::CmpEq, tag, EmitConst(plan.variantDiscriminants[variantIndex], tagType),
+                              TypeRef::MakeBool()),
+                   payloadBlock, afterBlock);
+            SetBlock(payloadBlock);
+            std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+            const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
+            for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
+                const TypeRef &payloadType = payloadTypes[payloadIndex];
+                const std::uint64_t size = payloadType.SizeInBytes().value_or(8);
+                const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+                offset = (offset + alignment - 1) / alignment * alignment;
+                const HirCopyPlan &component = payloadPlans[payloadIndex];
+                if (component.kind != HirCopyPlan::Kind::Trivial) {
+                    const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+                    const LirReg sourceBytes = EmitIndexPtr(source, byteOffset, TypeRef::MakeChar8());
+                    const LirReg destinationBytes = EmitIndexPtr(destination, byteOffset, TypeRef::MakeChar8());
+                    EmitCopyPlan(component,
+                                 EmitCast(sourceBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                          TypeRef::MakePointer(payloadType)),
+                                 EmitCast(destinationBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                          TypeRef::MakePointer(payloadType)));
+                }
+                offset += size;
+            }
+            if (!IsTerminated()) {
+                Jump(afterBlock);
+            }
+            SetBlock(afterBlock);
         }
         return;
     }

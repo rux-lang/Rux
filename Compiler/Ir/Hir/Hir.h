@@ -185,6 +185,7 @@ struct HirCopyPlan {
         Structure,
         Array,
         Tuple,
+        Enum,
     };
 
     Kind kind = Kind::Trivial;
@@ -192,6 +193,9 @@ struct HirCopyPlan {
     std::string customCallee;
     std::vector<std::string> componentNames;
     std::vector<HirCopyPlan> components;
+    std::vector<std::string> variantDiscriminants;
+    std::vector<std::vector<TypeRef>> variantPayloadTypes;
+    std::vector<std::vector<HirCopyPlan>> variantComponents;
 };
 
 struct HirCopyExpr : HirExpr {

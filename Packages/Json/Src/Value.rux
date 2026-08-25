@@ -13,7 +13,7 @@
 
 import Allocator::Allocator;
 import Collections::{ CollectionError, Vector };
-import Core::{ Drop, Ordering, Slice };
+import Core::{ Ordering, Slice };
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
@@ -446,14 +446,4 @@ extend JsonMember {
     func ~JsonMember(self: &var JsonMember) {
         self.name.Clear();
     }
-}
-
-// Temporary recursive-capability compatibility. Destruction is owned by the `~Type` methods above; these
-// markers disappear at the compatibility cutover once recursive generated moves resolve without `Drop`.
-extend JsonValue : Drop {
-    func Drop(self: &var JsonValue) {}
-}
-
-extend JsonMember : Drop {
-    func Drop(self: &var JsonMember) {}
 }

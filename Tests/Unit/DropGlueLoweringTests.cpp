@@ -17,14 +17,8 @@
 using namespace Rux;
 
 namespace {
-constexpr const char *DropInterface = R"(
-    interface Drop {
-        func Drop();
-    }
-)";
-
 LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(std::string(DropInterface) + source, "drop.rux");
+    Lexer lexer(source, "drop.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
     Parser parser(std::move(lexed.tokens), "drop.rux");
@@ -81,19 +75,8 @@ const char *HandleSource = R"(
         slot: int32;
     }
 
-    extend Handle : Drop {
-        func Drop(self: *var Handle) {
-            self.slot = 0i32;
-        }
-    }
-)";
-
-const char *DestructorHandleSource = R"(
-    struct Handle {
-        slot: int32;
-    }
-
     extend Handle {
+        func =(self: &var Handle, other: &Handle);
         func ~Handle(self: &var Handle) {
             self.slot = 0i32;
         }
@@ -103,7 +86,7 @@ const char *DestructorHandleSource = R"(
 
 TEST_SUITE("DropGlueLowering") {
     TEST_CASE("a type-named destructor is invoked by synthesized glue") {
-        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+        const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
                 let held = Handle { slot: 1i32 };
                 let copied = held;
@@ -113,7 +96,6 @@ TEST_SUITE("DropGlueLowering") {
 
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Handle"));
         CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
-        CHECK_EQ(CallCount(glue, "Handle::Drop"), 0);
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Handle")), 2);
     }
 
@@ -138,25 +120,6 @@ TEST_SUITE("DropGlueLowering") {
         RequireFunction(package, plan->steps.front().dropSymbol);
     }
 
-    TEST_CASE("type-named destruction takes precedence during Drop compatibility") {
-        const LirPackage package = CompileToLir(R"(
-            struct Compatible { value: int32; }
-            extend Compatible : Drop {
-                func Drop(self: *var Compatible) {}
-                func ~Compatible(self: &var Compatible) {}
-            }
-
-            func Main() -> int {
-                let value = Compatible { value: 1i32 };
-                return 0;
-            }
-        )");
-
-        const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Compatible"));
-        CHECK_EQ(CallCount(glue, "Compatible::~Compatible"), 1);
-        CHECK_EQ(CallCount(glue, "Compatible::Drop"), 0);
-    }
-
     TEST_CASE("glue is one function taking the value's address") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {
@@ -170,7 +133,7 @@ TEST_SUITE("DropGlueLowering") {
         CHECK_EQ(glue.params.front().type.kind, TypeRef::Kind::Pointer);
         REQUIRE_FALSE(glue.params.front().type.inner.empty());
         CHECK_EQ(glue.params.front().type.inner.front().name, "Handle");
-        CHECK_EQ(CallCount(glue, "Handle::Drop"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
     }
 
     TEST_CASE("a scope's end calls the glue once, behind the binding's flag") {
@@ -214,16 +177,16 @@ TEST_SUITE("DropGlueLowering") {
             }
         )");
 
-        // A plan carries the whole recipe rather than deferring to the field's own glue, so the field's `Drop` is
+        // A plan carries the whole recipe rather than deferring to the field's own glue, so the field's destructor is
         // reached directly and destroying an owner costs one call per droppable part instead of one per level.
         const LirFunc &glue = RequireFunction(package, GlueSymbol(package, "Owner"));
-        CHECK_EQ(CallCount(glue, "Handle::Drop"), 1);
+        CHECK_EQ(CallCount(glue, "Handle::~Handle"), 1);
         CHECK_EQ(CallCount(glue, GlueSymbol(package, "Handle")), 0);
         CHECK_EQ(CallCount(RequireFunction(package, "Main"), GlueSymbol(package, "Owner")), 1);
     }
 
     TEST_CASE("drop glue recursively reaches nested fields and array elements") {
-        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+        const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             struct Inner {
                 handle: Handle;
             }
@@ -249,7 +212,7 @@ TEST_SUITE("DropGlueLowering") {
     }
 
     TEST_CASE("small payload enums retain addressable storage for destruction") {
-        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+        const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             enum Tiny: uint8 {
                 Empty,
                 Some(Handle)
@@ -268,7 +231,7 @@ TEST_SUITE("DropGlueLowering") {
     }
 
     TEST_CASE("propagation rolls back completed aggregate components") {
-        const LirPackage package = CompileToLir(std::string(DestructorHandleSource) + R"(
+        const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             enum Error: uint8 { Bad }
             enum Result<T, E> { Success(T), Error(E) }
             struct Pair {

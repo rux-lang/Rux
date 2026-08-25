@@ -5,7 +5,7 @@ Version = 1
 Name = "Interfaces"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Core: Drop, Equatable, Comparable, Hashable and the iteration protocol"
+Description = "Package test for Core: Equatable, Comparable, Hashable and the iteration protocol"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

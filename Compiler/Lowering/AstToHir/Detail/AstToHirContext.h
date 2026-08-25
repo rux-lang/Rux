@@ -281,12 +281,13 @@ private:
     [[nodiscard]] std::string ConcreteMethodCalleeName(const std::string &typeName, const TypeRef &receiverType,
                                                        const FuncDecl &method);
     [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
+    [[nodiscard]] HirCopyPlan BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration);
     [[nodiscard]] HirMovePlan BuildMovePlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
     [[nodiscard]] bool DropGlueTypeIsConcrete(const TypeRef &type);
     void ResolveDropGlueSteps(std::vector<DropGlueStep> &steps);
-    [[nodiscard]] std::string DropMethodSymbol(const TypeRef &type);
+    [[nodiscard]] std::string DestructorSymbol(const TypeRef &type);
 
     [[nodiscard]] static std::uint32_t DecodeUtf8CodePoint(const std::string &text, std::size_t index);
     static void AppendUtf8(std::string &output, std::uint32_t codePoint);

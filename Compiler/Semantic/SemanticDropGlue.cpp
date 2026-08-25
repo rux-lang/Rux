@@ -31,17 +31,13 @@ DropGlueStep AggregateStep(const DropGlueStep::Kind kind, TypeRef type, std::str
 } // namespace
 
 bool SemanticAnalyzerContext::TypeHasDirectDestructor(const std::string &baseName) const {
-    if (const auto methods = methodsByType.find(baseName); methods != methodsByType.end()) {
-        const auto destructors = methods->second.find("~" + baseName);
-        if (destructors != methods->second.end() &&
-            std::ranges::any_of(destructors->second, [](const FuncDecl *method) { return method->body != nullptr; })) {
-            return true;
-        }
+    const auto methods = methodsByType.find(baseName);
+    if (methods == methodsByType.end()) {
+        return false;
     }
-    const auto implementations = typeImplementsInterfaces.find(baseName);
-    return implementations != typeImplementsInterfaces.end() &&
-           std::ranges::any_of(implementations->second,
-                               [](const std::string &name) { return name == "Drop" || name.ends_with("::Drop"); });
+    const auto destructors = methods->second.find("~" + baseName);
+    return destructors != methods->second.end() &&
+           std::ranges::any_of(destructors->second, [](const FuncDecl *method) { return method->body != nullptr; });
 }
 
 std::string SemanticAnalyzerContext::DropGlueSymbol(const TypeRef &type) {

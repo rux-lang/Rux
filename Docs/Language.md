@@ -125,8 +125,8 @@ extend String {
 
 The compiler invokes it exactly once for each initialized value that still owns its state, then destroys contained fields, elements, and payloads in reverse construction order. Destruction runs at ordinary scope exit, replacement, `return`, `break`, `continue`, and failure propagation through `?`. A moved-from or never-initialized value is not destroyed. Panic and process termination do not unwind.
 
-The existing `Core::Drop` interface remains accepted only as a compiler compatibility spelling. First-party packages and positive examples use `~Type`; the compatibility interface and its semantic recognition are removed at the final cutover.
+`Core::Drop` is not part of the language or Core package. Lifecycle cleanup is expressed only by `~Type`, and an ordinary interface or method named `Drop` has no compiler-defined ownership meaning.
 
 ## Compatibility Boundary
 
-The remaining compatibility surface consists of `Core::Drop`, implicit consumption of named move-only values, and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Exact-type forwarding `New` wrappers have already been removed; fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.
+The remaining compatibility surface consists of implicit consumption of named move-only values and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Exact-type forwarding `New` wrappers and `Core::Drop` have already been removed; fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.

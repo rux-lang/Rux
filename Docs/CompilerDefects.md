@@ -48,7 +48,7 @@ An ordinary by-value interface still has value semantics, but callers that need 
 
 ### Lifecycle declarations depended on `Core::Drop` placement — fixed in `bc3202e5`
 
-The canonical destructor is now `func ~T(self: &var T)` inside `extend T`. It is a distinct special operation rather than an ordinary method whose meaning depends on an implemented interface, so the old silent `func Drop` mistake has no equivalent in the final syntax. First-party resource owners use type destructors; `Core::Drop` remains accepted only for the short compiler-compatibility window.
+The canonical destructor is `func ~T(self: &var T)` inside `extend T`. It is a distinct special operation rather than an ordinary method whose meaning depends on an implemented interface, so the old silent `func Drop` mistake has no equivalent in the final syntax. First-party resource owners use type destructors, and the temporary `Core::Drop` compatibility path has been removed.
 
 ### Recursive and partial drop glue could miss or corrupt cleanup — fixed in `4ab7a38d`
 

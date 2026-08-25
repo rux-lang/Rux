@@ -3488,9 +3488,6 @@ private:
             const std::string destructorName = "~" + NamedBaseTypeName(type);
             const FuncDecl *destructor = LookupMethod(type, destructorName);
             if (destructor == nullptr) {
-                destructor = LookupMethod(type, "Drop");
-            }
-            if (destructor == nullptr) {
                 return;
             }
             QueueGenericInstantiation(*destructor, MethodTypeSubstitutions(type));
