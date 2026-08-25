@@ -13,7 +13,7 @@ import Text::{ StringView, TextError };
 func Matches(allocator: Allocator, rendered: Slice<char8>, expected: Slice<char8>) -> bool {
     let got = StringView::FromValidated(rendered);
     let wanted = StringView::FromValidated(expected);
-    return got.Equals(@wanted);
+    return got.Equals(wanted);
 }
 
 func Main() -> int {

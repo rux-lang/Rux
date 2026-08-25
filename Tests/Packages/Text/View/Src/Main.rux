@@ -15,7 +15,7 @@ func Main() -> int {
     let view = StringView::FromBytes(text);
     Assert(view.IsSome(), "well-formed bytes make a view");
 
-    let held = view.ValueOr(StringView::New());
+    let held = view.ValueOr(StringView());
     Assert(held.Length() == 11, "the view spans every byte");
     Assert(held.ScalarCount() == 5, "and holds five characters, which is not the same number");
     Assert(!held.IsEmpty(), "and is not empty");
@@ -34,8 +34,8 @@ func Main() -> int {
     // Cutting: only on boundaries, and half-open so two cuts meeting at one cover the whole.
     let ascii = held.Part(0, 2);
     Assert(ascii.IsSome(), "a cut on two boundaries is allowed");
-    Assert(ascii.ValueOr(StringView::New()).Length() == 2, "and spans what lies between them");
-    Assert(ascii.ValueOr(StringView::New()).ScalarCount() == 2, "which here is two characters");
+    Assert(ascii.ValueOr(StringView()).Length() == 2, "and spans what lies between them");
+    Assert(ascii.ValueOr(StringView()).ScalarCount() == 2, "which here is two characters");
 
     Assert(held.Part(0, 3).IsNone(), "a cut through the middle of a character is refused");
     Assert(held.Part(3, 4).IsNone(), "from either side of it");
@@ -43,8 +43,8 @@ func Main() -> int {
     Assert(held.Part(0, 12).IsNone(), "and one past the end");
     Assert(held.Part(2, 2).ValueOr(held).IsEmpty(), "a cut at one point is empty rather than refused");
 
-    let front = held.Part(0, 4).ValueOr(StringView::New());
-    let back = held.Part(4, 11).ValueOr(StringView::New());
+    let front = held.Part(0, 4).ValueOr(StringView());
+    let back = held.Part(4, 11).ValueOr(StringView());
     Assert(front.Length() + back.Length() == held.Length(), "two cuts meeting at a boundary cover every byte");
     Assert(front.ScalarCount() + back.ScalarCount() == held.ScalarCount(), "and every character, once each");
 
@@ -85,18 +85,18 @@ func Main() -> int {
     Assert(StringView::FromBytes(broken[0..2]).IsNone(), "and neither does a sequence that runs out");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
-    let same = StringView::FromBytes(text).ValueOr(StringView::New());
-    let shorter = held.Part(0, 2).ValueOr(StringView::New());
-    Assert(held.Equals(@same), "a view equals one over the same bytes");
-    Assert(!held.Equals(@shorter), "and not one over fewer of them");
-    Assert(held.Compare(@same) == Ordering::Equal, "equal bytes order equal");
-    Assert(shorter.Compare(@held) == Ordering::Less, "a prefix orders before what extends it");
-    Assert(held.Compare(@shorter) == Ordering::Greater, "and the other way round");
+    let same = StringView::FromBytes(text).ValueOr(StringView());
+    let shorter = held.Part(0, 2).ValueOr(StringView());
+    Assert(held.Equals(same), "a view equals one over the same bytes");
+    Assert(!held.Equals(shorter), "and not one over fewer of them");
+    Assert(held.Compare(same) == Ordering::Equal, "equal bytes order equal");
+    Assert(shorter.Compare(held) == Ordering::Less, "a prefix orders before what extends it");
+    Assert(held.Compare(shorter) == Ordering::Greater, "and the other way round");
 
-    let empty = StringView::New();
+    let empty = StringView();
     Assert(empty.IsEmpty() && empty.Length() == 0 && empty.ScalarCount() == 0, "the empty view holds nothing");
     Assert(empty.IsBoundary(0), "its start is a boundary");
-    Assert(empty.Compare(@held) == Ordering::Less, "and it orders before anything with bytes in it");
+    Assert(empty.Compare(held) == Ordering::Less, "and it orders before anything with bytes in it");
 
     return 0;
 }

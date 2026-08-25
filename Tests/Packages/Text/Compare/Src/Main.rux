@@ -11,11 +11,11 @@ import Text::{ String, StringView, TextError };
 // what a container keying on text wants.
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -25,37 +25,37 @@ func Main() -> int {
     let alsoA = View("apple");
     let prefix = View("app");
 
-    Assert(a.Equals(@alsoA), "the same bytes are equal");
-    Assert(!a.Equals(@b), "different bytes are not");
-    Assert(!a.Equals(@prefix), "and neither is a prefix of them");
-    Assert(a.Compare(@alsoA) == Ordering::Equal, "equal bytes order equal");
-    Assert(a.Compare(@b) == Ordering::Less, "and order by the first byte that differs");
-    Assert(b.Compare(@a) == Ordering::Greater, "in both directions");
-    Assert(prefix.Compare(@a) == Ordering::Less, "a prefix orders before what extends it");
-    Assert(empty.Compare(@a) == Ordering::Less, "and the empty view before everything");
-    Assert(empty.Compare(@empty) == Ordering::Equal, "though it equals itself");
+    Assert(a.Equals(alsoA), "the same bytes are equal");
+    Assert(!a.Equals(b), "different bytes are not");
+    Assert(!a.Equals(prefix), "and neither is a prefix of them");
+    Assert(a.Compare(alsoA) == Ordering::Equal, "equal bytes order equal");
+    Assert(a.Compare(b) == Ordering::Less, "and order by the first byte that differs");
+    Assert(b.Compare(a) == Ordering::Greater, "in both directions");
+    Assert(prefix.Compare(a) == Ordering::Less, "a prefix orders before what extends it");
+    Assert(empty.Compare(a) == Ordering::Less, "and the empty view before everything");
+    Assert(empty.Compare(empty) == Ordering::Equal, "though it equals itself");
 
     // Characters of different encoded lengths, where a byte comparison could have disagreed with a code point one.
     let ascii = View("z");
     let twoByte = View("é");
     let threeByte = View("€");
     let fourByte = View("😀");
-    Assert(ascii.Compare(@twoByte) == Ordering::Less, "a one-byte character orders before a two-byte one");
-    Assert(twoByte.Compare(@threeByte) == Ordering::Less, "a two-byte one before a three-byte one");
-    Assert(threeByte.Compare(@fourByte) == Ordering::Less, "and a three-byte one before a four-byte one");
+    Assert(ascii.Compare(twoByte) == Ordering::Less, "a one-byte character orders before a two-byte one");
+    Assert(twoByte.Compare(threeByte) == Ordering::Less, "a two-byte one before a three-byte one");
+    Assert(threeByte.Compare(fourByte) == Ordering::Less, "and a three-byte one before a four-byte one");
 
     // Case is not considered, which is a choice rather than an oversight.
     let lower = View("apple");
     let upper = View("APPLE");
-    Assert(!lower.Equals(@upper), "case makes two strings different");
-    Assert(upper.Compare(@lower) == Ordering::Less, "and upper case orders first, because its bytes are smaller");
+    Assert(!lower.Equals(upper), "case makes two strings different");
+    Assert(upper.Compare(lower) == Ordering::Less, "and upper case orders first, because its bytes are smaller");
 
     // A string compares as its view does, since that is what it is made of.
     let owned = String::FromBytes(allocator, "apple", @error);
     let other = String::FromBytes(allocator, "banana", @error);
     Assert(error == TextError::None, "the strings are built");
-    Assert(owned.Compare(@other) == Ordering::Less, "an owning string orders the same way");
-    Assert(owned.Equals(@owned), "and equals itself");
+    Assert(owned.Compare(other) == Ordering::Less, "an owning string orders the same way");
+    Assert(owned.Equals(owned), "and equals itself");
 
     return 0;
 }

@@ -16,7 +16,7 @@ func Main() -> int {
 
     let expected = StringView::FromValidated("Integer: 255, Float: 3.14159265358979");
     let renderedView = rendered.View();
-    Assert(renderedView.Equals(@expected), "and fills both placeholders in order");
+    Assert(renderedView.Equals(expected), "and fills both placeholders in order");
 
     return 0;
 }

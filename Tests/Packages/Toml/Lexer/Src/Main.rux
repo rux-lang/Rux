@@ -33,7 +33,7 @@ func FirstText(text: Slice<char8>) -> String {
     return TomlDecodeText(allocator, span, token.form, @error, @bad);
 }
 
-func Same(value: *String, expected: Slice<char8>) -> bool {
+func Same(value: &String, expected: Slice<char8>) -> bool {
     let bytes = value.Bytes();
     if bytes.length != expected.length {
         return false;
@@ -130,40 +130,40 @@ func Main() -> int {
     var literal = FirstToken("'C:\\windows'");
     Assert(literal.form == TomlTextForm::Literal, "a literal string");
     var literalText = FirstText("'C:\\windows'");
-    Assert(Same(@literalText, "C:\\windows"), "keeps its backslash rather than reading it as an escape");
+    Assert(Same(literalText, "C:\\windows"), "keeps its backslash rather than reading it as an escape");
 
     var multi = FirstToken("\"\"\"\nfirst\nsecond\"\"\"");
     Assert(multi.form == TomlTextForm::MultiLineBasic, "a multi-line basic string");
     var multiText = FirstText("\"\"\"\nfirst\nsecond\"\"\"");
-    Assert(Same(@multiText, "first\nsecond"), "drops the newline that follows its opening delimiter");
+    Assert(Same(multiText, "first\nsecond"), "drops the newline that follows its opening delimiter");
 
     var multiLiteral = FirstToken("'''\na\\tb'''");
     Assert(multiLiteral.form == TomlTextForm::MultiLineLiteral, "a multi-line literal string");
     var multiLiteralText = FirstText("'''\na\\tb'''");
-    Assert(Same(@multiLiteralText, "a\\tb"), "and it too takes its backslashes literally");
+    Assert(Same(multiLiteralText, "a\\tb"), "and it too takes its backslashes literally");
 
     // Escapes, including the one TOML 1.1 adds.
     var escaped = FirstText("\"a\\tb\\nc\"");
-    Assert(Same(@escaped, "a\tb\nc"), "a tab and a newline escape");
+    Assert(Same(escaped, "a\tb\nc"), "a tab and a newline escape");
     var quoted = FirstText("\"she\\\"said\\\"\"");
-    Assert(Same(@quoted, "she\"said\""), "an escaped quote does not close the string");
+    Assert(Same(quoted, "she\"said\""), "an escaped quote does not close the string");
     var unicode = FirstText("\"\\u00E9\"");
-    Assert(Same(@unicode, "\u{E9}"), "a short unicode escape names a scalar value");
+    Assert(Same(unicode, "\u{E9}"), "a short unicode escape names a scalar value");
     var astral = FirstText("\"\\U0001F600\"");
-    Assert(Same(@astral, "\u{1F600}"), "and a long one names a scalar above the basic plane");
+    Assert(Same(astral, "\u{1F600}"), "and a long one names a scalar above the basic plane");
     var escape = FirstText("\"\\e\"");
-    Assert(Same(@escape, "\u{1B}"), "TOML 1.1 spells the escape character");
+    Assert(Same(escape, "\u{1B}"), "TOML 1.1 spells the escape character");
     var hex = FirstText("\"\\x41\"");
-    Assert(Same(@hex, "A"), "and TOML 1.1 spells a scalar below 256 in two digits");
+    Assert(Same(hex, "A"), "and TOML 1.1 spells a scalar below 256 in two digits");
 
     // A raw character outside ASCII beside an escape: decoding a byte at a time would hand a builder half
     // of a multi-byte scalar, and a builder that validates what it is given refuses half of one.
     var accented = FirstText("\"caf\u{E9}\\ttab\"");
-    Assert(Same(@accented, "caf\u{E9}\ttab"), "an accent survives the escape beside it");
+    Assert(Same(accented, "caf\u{E9}\ttab"), "an accent survives the escape beside it");
 
     // A line-ending backslash in a multi-line string swallows the wrapping it was used to introduce.
     var folded = FirstText("\"\"\"\na\\ \n   b\"\"\"");
-    Assert(Same(@folded, "ab"), "a line-ending backslash folds away the whitespace after it");
+    Assert(Same(folded, "ab"), "a line-ending backslash folds away the whitespace after it");
 
     // Refusals: the forms a lenient lexer would let through.
     Assert(FirstError("\"unterminated\n") == TomlLexError::NewlineInText,

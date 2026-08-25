@@ -9,7 +9,7 @@ import Storage::{ File, OpenOptions };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {
@@ -79,23 +79,23 @@ func Main() -> int {
     let backSource: Reader = back.Stream();
     var buffered = BufferedReader::New(allocator, backSource, 8, @error);
     Assert(error.IsOk(), "a buffered reader wraps the file");
-    var builder = StringBuilder::New(allocator);
-    Assert(ReadTextLine(@buffered, @builder, 64).IsOk(), "the first line reads");
+    var builder = StringBuilder(allocator);
+    Assert(ReadTextLine(@buffered, builder, 64).IsOk(), "the first line reads");
     let alpha = builder.IntoString();
     let alphaWant = View("alpha");
-    Assert(alpha.View().Equals(@alphaWant), "normalized across the CRLF");
-    var second = StringBuilder::New(allocator);
-    Assert(ReadTextLine(@buffered, @second, 64).IsOk(), "the second follows");
+    Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
+    var second = StringBuilder(allocator);
+    Assert(ReadTextLine(@buffered, second, 64).IsOk(), "the second follows");
     let beta = second.IntoString();
     let betaWant = View("beta");
-    Assert(beta.View().Equals(@betaWant), "exactly");
-    var third = StringBuilder::New(allocator);
-    Assert(ReadTextLine(@buffered, @third, 64).IsOk(), "the unterminated last line is a line");
+    Assert(beta.View().Equals(betaWant), "exactly");
+    var third = StringBuilder(allocator);
+    Assert(ReadTextLine(@buffered, third, 64).IsOk(), "the unterminated last line is a line");
     let gamma = third.IntoString();
     let gammaWant = View("gamma");
-    Assert(gamma.View().Equals(@gammaWant), "with everything before the end");
-    var last = StringBuilder::New(allocator);
-    Assert(ReadTextLine(@buffered, @last, 64).IsEnd(), "and then the end");
+    Assert(gamma.View().Equals(gammaWant), "with everything before the end");
+    var last = StringBuilder(allocator);
+    Assert(ReadTextLine(@buffered, last, 64).IsEnd(), "and then the end");
     last.Release();
     buffered.Release();
     Assert(back.Close().IsOk(), "the line reader closes");

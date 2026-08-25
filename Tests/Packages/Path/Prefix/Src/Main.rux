@@ -21,10 +21,10 @@ func Main() -> int {
     let view = owned.View();
     let round = view.ToText(allocator, @error);
     Assert(round.IsSome() && error == TextError::None, "text goes native and comes back");
-    let text = round.ValueOr(String::New(allocator));
+    let text = round.ValueOr(String(allocator));
     let wanted = StringView::FromValidated("héllo/wörld");
     let textView = text.View();
-    Assert(textView.Equals(@wanted), "unchanged");
+    Assert(textView.Equals(wanted), "unchanged");
 
     // The units no text can spell refuse to convert, each platform's own kind.
     var hostile: OsUnit[3];

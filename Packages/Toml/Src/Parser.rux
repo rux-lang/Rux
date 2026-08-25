@@ -376,7 +376,7 @@ extend TomlParser {
 
     // One key part: a bare key, or a quoted one in either single-line string form. A multi-line string is not a
     // key, which is the one place TOML's two quoting systems do not line up.
-    func ParseKeyPart(self: *var TomlParser, into: *var String) -> bool {
+    func ParseKeyPart(self: *var TomlParser, into: &var String) -> bool {
         let token = self.ahead;
         if token.kind == TomlTokenKind::Error {
             self.Stop(TomlParseError::Lexical);
@@ -399,8 +399,7 @@ extend TomlParser {
         // A key made of digits -- `1234 = "x"` -- lexes as an integer and is a perfectly good bare key, so the
         // form for anything that is not a quoted string is the one that copies the bytes unchanged.
         let form = token.kind == TomlTokenKind::Text ? token.form : TomlTextForm::Bare;
-        into.Clear();
-        *into = TomlDecodeText(self.allocator, span, form, @textError, @bad);
+        into.ReplaceWith(TomlDecodeText(self.allocator, span, form, @textError, @bad));
         if bad {
             self.Stop(TomlParseError::BadText);
             return false;
@@ -411,8 +410,8 @@ extend TomlParser {
     // A dotted key path, collected into `parts`.
     func ParseKeyPath(self: *var TomlParser, parts: *var Vector<String>) -> bool {
         while true {
-            var part = String::New(self.allocator);
-            if !self.ParseKeyPart(@part) {
+            var part = String(self.allocator);
+            if !self.ParseKeyPart(part) {
                 part.Clear();
                 return false;
             }

@@ -68,7 +68,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = StringView::FromBytes("3.5").ValueOr(StringView::New());
+    var text = StringView::FromBytes("3.5").ValueOr(StringView());
     let parsed = ParseFloat64(text);
     let code = match parsed {
         Result::Success(value) => value == 3.5 ? 0 : 120,
@@ -83,12 +83,12 @@ func CheckParseOverloads() -> int {
     if value != 6.25 { return 124; }
     if TryParseFloat64("1.0", null) { return 125; }
 
-    text = StringView::FromBytes("-4.5").ValueOr(StringView::New());
+    text = StringView::FromBytes("-4.5").ValueOr(StringView());
     let ok = TryParseFloat64(text, @value);
     if !ok { return 126; }
     if value != -4.5 { return 127; }
 
-    text = StringView::FromBytes("bad").ValueOr(StringView::New());
+    text = StringView::FromBytes("bad").ValueOr(StringView());
     let failed = TryParseFloat64(text, @value);
     if failed { return 128; }
     if value != -4.5 { return 129; }

@@ -7,11 +7,11 @@ import Text::{ Concat, Repeat, String, StringView, TextError };
 // of its own, and the empty cases cost nothing.
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -23,13 +23,13 @@ func Main() -> int {
     Assert(joined.Length() == 13, "into text spanning both");
     let expected = View("Hello, world!");
     let joinedView = joined.View();
-    Assert(joinedView.Equals(@expected), "in order, left then right");
+    Assert(joinedView.Equals(expected), "in order, left then right");
 
     // The empty view is the identity, on either side.
     let leftEmpty = Concat(allocator, View(""), world, @error);
-    Assert(error == TextError::None && leftEmpty.View().Equals(@world), "the empty view joins as nothing, on the left");
+    Assert(error == TextError::None && leftEmpty.View().Equals(world), "the empty view joins as nothing, on the left");
     let rightEmpty = Concat(allocator, world, View(""), @error);
-    Assert(error == TextError::None && rightEmpty.View().Equals(@world), "and on the right");
+    Assert(error == TextError::None && rightEmpty.View().Equals(world), "and on the right");
     let bothEmpty = Concat(allocator, View(""), View(""), @error);
     Assert(error == TextError::None && bothEmpty.IsEmpty(), "and two of them join into nothing");
 
@@ -43,7 +43,7 @@ func Main() -> int {
     Assert(error == TextError::None && thrice.Length() == 6, "a view is repeated");
     let abab = View("ababab");
     let thriceView = thrice.View();
-    Assert(thriceView.Equals(@abab), "in order, however many times");
+    Assert(thriceView.Equals(abab), "in order, however many times");
     let none = Repeat(allocator, View("ab"), 0, @error);
     Assert(error == TextError::None && none.IsEmpty(), "zero times is empty text");
     let emptyRepeated = Repeat(allocator, View(""), 1000, @error);

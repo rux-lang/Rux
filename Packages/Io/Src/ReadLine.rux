@@ -15,7 +15,7 @@ import Text::StringBuilder;
 /// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.
 ///
 /// https://rux-lang.dev/docs/api/io/read-line
-func ReadLine(builder: *var StringBuilder) -> IoError {
+func ReadLine(builder: &var StringBuilder) -> IoError {
     var input = StandardIn::Acquire();
     var byte: char8[1];
     let room = MutableSlice::From<char8>(@byte[0], 1);

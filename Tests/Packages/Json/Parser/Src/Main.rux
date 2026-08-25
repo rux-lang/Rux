@@ -8,7 +8,7 @@ import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParse
 import Text::{ StringView, TextError };
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Refuses(allocator: Allocator, text: Slice<char8>, expected: JsonParseError, what: Slice<char8>) {
@@ -38,7 +38,7 @@ func Main() -> int {
     Assert(number.Kind() == JsonKind::Number, "as a number");
     var text = Accepts(allocator, "\"hello\"", "a string parses");
     let hello = View("hello");
-    Assert(text.AsText().Equals(@hello), "with its contents");
+    Assert(text.AsText().Equals(hello), "with its contents");
 
     // Containers.
     var array = Accepts(allocator, "[1,2,3]", "an array parses");
@@ -114,8 +114,8 @@ func Main() -> int {
     var ordered = Accepts(allocator, "{\"zeta\":1,\"alpha\":2}", "an object with several members parses");
     let zeta = View("zeta");
     let alpha = View("alpha");
-    Assert(ordered.MemberAt(0u).name.View().Equals(@zeta), "the first member is the first written");
-    Assert(ordered.MemberAt(1u).name.View().Equals(@alpha), "and the second the second");
+    Assert(ordered.MemberAt(0u).name.View().Equals(zeta), "the first member is the first written");
+    Assert(ordered.MemberAt(1u).name.View().Equals(alpha), "and the second the second");
 
     // The limits, reached through the parser rather than the lexer.
     var shallow = JsonLimits::Default();
@@ -160,9 +160,9 @@ func Main() -> int {
     let three = View("three");
     let two = View("two");
     let one = View("one");
-    Assert(reversed.MemberAt(0u).name.View().Equals(@three), "with its first member first");
-    Assert(reversed.MemberAt(1u).name.View().Equals(@two), "its second second");
-    Assert(reversed.MemberAt(2u).name.View().Equals(@one), "and its third third");
+    Assert(reversed.MemberAt(0u).name.View().Equals(three), "with its first member first");
+    Assert(reversed.MemberAt(1u).name.View().Equals(two), "its second second");
+    Assert(reversed.MemberAt(2u).name.View().Equals(one), "and its third third");
 
 
     // A string carrying an escape and a raw character outside ASCII: the two together are what caught a

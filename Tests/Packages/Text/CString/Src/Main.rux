@@ -8,7 +8,7 @@ import Text::{ CString, StringView, TextError };
 // it, and the bytes are validated because nothing about C promises text.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -17,15 +17,15 @@ func Main() -> int {
     let out = CString::FromView(allocator, text, @error);
     Assert(out.IsSome() && error == TextError::None, "ordinary text crosses the boundary");
     var kept = CString::FromView(allocator, text, @error).ValueOr(CString::FromView(allocator,
-        StringView::New(), @error).ValueOr(CString { data: null, length: 0, allocator: allocator }));
+        StringView(), @error).ValueOr(CString { data: null, length: 0, allocator: allocator }));
     Assert(kept.Length() == 5, "the length counts the text alone");
     Assert((kept.Raw()[5] as uint32) == 0, "with the terminator sitting just past it");
     Assert((kept.Raw()[0] as uint32) == 0x68, "and the text itself unmoved");
     let roundTrip = kept.View();
-    Assert(roundTrip.Equals(@text), "the view reads back without the terminator");
+    Assert(roundTrip.Equals(text), "the view reads back without the terminator");
 
     // Empty text is one byte of terminator, not a null pointer.
-    let empty = CString::FromView(allocator, StringView::New(), @error);
+    let empty = CString::FromView(allocator, StringView(), @error);
     Assert(empty.IsSome() && error == TextError::None, "empty text crosses too");
 
     // A zero byte in the middle is refused, not truncated.
@@ -38,7 +38,7 @@ func Main() -> int {
     smuggled[5] = c8'e';
     smuggled[6] = c8'x';
     smuggled[7] = c8'e';
-    let hidden = StringView::FromBytes(smuggled[0..8]).ValueOr(StringView::New());
+    let hidden = StringView::FromBytes(smuggled[0..8]).ValueOr(StringView());
     Assert(hidden.Length() == 8, "a zero byte is valid UTF-8 and makes a view");
     let refused = CString::FromView(allocator, hidden, @error);
     Assert(refused.IsNone(), "but it does not cross the boundary");

@@ -9,7 +9,7 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlKind, TomlValue };
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {

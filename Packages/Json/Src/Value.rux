@@ -177,8 +177,8 @@ extend JsonValue {
         return JsonValue {
             kind: JsonKind::Null,
             boolean: false,
-            number: JsonNumber { text: String::New(allocator) },
-            text: String::New(allocator),
+            number: JsonNumber { text: String(allocator) },
+            text: String(allocator),
             elements: Vector::New<JsonValue>(allocator),
             members: Vector::New<JsonMember>(allocator),
             allocator: allocator
@@ -271,7 +271,7 @@ extend JsonValue {
     /// https://rux-lang.dev/docs/api/json/json-value/as-text
     func AsText(self: *JsonValue) -> StringView {
         if self.kind != JsonKind::Text {
-            return StringView::New();
+            return StringView();
         }
         return self.text.View();
     }
@@ -344,7 +344,7 @@ extend JsonValue {
         var index: uint = 0;
         while index < slice.length {
             var held = name;
-            if slice.data[index].name.View().Equals(@held) {
+            if slice.data[index].name.View().Equals(held) {
                 return @slice.data[index].value;
             }
             index = index + 1;
@@ -384,7 +384,7 @@ extend JsonValue {
         var index: uint = 0;
         while index < slice.length {
             var held = name;
-            if slice.data[index].name.View().Equals(@held) {
+            if slice.data[index].name.View().Equals(held) {
                 target = index;
                 index = slice.length;
             }
@@ -397,17 +397,17 @@ extend JsonValue {
         }
         var tail = Vector::New<JsonMember>(self.allocator);
         while self.members.Length() > target + 1u {
-            var moved = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+            var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !self.members.TryPop(@moved) {
                 break;
             }
             tail.Push(moved);
         }
-        var discarded = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+        var discarded = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
         self.members.TryPop(@discarded);
         // `discarded` dies here, taking its name and value with it.
         while tail.Length() > 0u {
-            var restored = JsonMember { name: String::New(self.allocator), value: JsonValue::Null(self.allocator) };
+            var restored = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !tail.TryPop(@restored) {
                 break;
             }

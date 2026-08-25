@@ -6,11 +6,11 @@ import Text::{ Replace, StringView, TextError, ToAsciiLower, ToAsciiUpper };
 // end, a replacement that contains the needle, and bytes that are not ASCII passing through case conversion whole.
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
@@ -19,7 +19,7 @@ func Main() -> int {
     Assert(error == TextError::None, "a separator is replaced");
     let spaced = View("one - two -  - three");
     let replacedView = replaced.View();
-    Assert(replacedView.Equals(@spaced), "everywhere it occurs, including twice in a row");
+    Assert(replacedView.Equals(spaced), "everywhere it occurs, including twice in a row");
 
     // A replacement containing the needle is not searched again, which is what makes this terminate.
     let grown = Replace(allocator, View("aaa"), View("a"), View("aa"), @error);
@@ -28,34 +28,34 @@ func Main() -> int {
     let removed = Replace(allocator, View("a-b-c"), View("-"), View(""), @error);
     let squeezed = View("abc");
     let removedView = removed.View();
-    Assert(error == TextError::None && removedView.Equals(@squeezed), "an empty replacement removes the needle");
+    Assert(error == TextError::None && removedView.Equals(squeezed), "an empty replacement removes the needle");
 
     let missing = Replace(allocator, View("abc"), View("x"), View("y"), @error);
     let untouched = View("abc");
     let missingView = missing.View();
-    Assert(error == TextError::None && missingView.Equals(@untouched), "a needle that is not there changes nothing");
+    Assert(error == TextError::None && missingView.Equals(untouched), "a needle that is not there changes nothing");
 
     let degenerate = Replace(allocator, View("abc"), View(""), View("y"), @error);
     let stillSame = View("abc");
     let degenerateView = degenerate.View();
-    Assert(error == TextError::None && degenerateView.Equals(@stillSame), "and the empty needle matches nothing");
+    Assert(error == TextError::None && degenerateView.Equals(stillSame), "and the empty needle matches nothing");
 
     // Case, ASCII only: letters shift, and everything else -- digits, punctuation, multi-byte characters -- passes
     // through untouched, which is what keeps the result the same length and still text.
     let upper = ToAsciiUpper(allocator, View("Hello, World 123 é!"), @error);
     let allUpper = View("HELLO, WORLD 123 é!");
     let upperView = upper.View();
-    Assert(error == TextError::None && upperView.Equals(@allUpper), "upper-casing raises the ASCII letters alone");
+    Assert(error == TextError::None && upperView.Equals(allUpper), "upper-casing raises the ASCII letters alone");
 
     let lower = ToAsciiLower(allocator, View("Hello, World 123 É!"), @error);
     let allLower = View("hello, world 123 É!");
     let lowerView = lower.View();
-    Assert(error == TextError::None && lowerView.Equals(@allLower), "and lower-casing lowers them alone");
+    Assert(error == TextError::None && lowerView.Equals(allLower), "and lower-casing lowers them alone");
 
     let roundTrip = ToAsciiLower(allocator, ToAsciiUpper(allocator, View("MiXeD"), @error).View(), @error);
     let flat = View("mixed");
     let roundView = roundTrip.View();
-    Assert(error == TextError::None && roundView.Equals(@flat), "a round trip flattens case and changes nothing else");
+    Assert(error == TextError::None && roundView.Equals(flat), "a round trip flattens case and changes nothing else");
 
     return 0;
 }

@@ -102,7 +102,7 @@ extend TomlValue {
             boolean: false,
             integer: 0i64,
             number: 0.0,
-            text: String::New(allocator),
+            text: String(allocator),
             date: Date { year: 1970, month: 1u8, day: 1u8 },
             time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
             offset: UtcOffset::Utc(),
@@ -272,7 +272,7 @@ extend TomlValue {
     /// https://rux-lang.dev/docs/api/toml/value/as-text
     func AsText(self: *TomlValue) -> StringView {
         if self.kind != TomlKind::Text {
-            return StringView::New();
+            return StringView();
         }
         return self.text.View();
     }
@@ -394,7 +394,7 @@ extend TomlValue {
         var index: uint = 0;
         while index < slice.length {
             var held = key;
-            if slice.data[index].key.View().Equals(@held) {
+            if slice.data[index].key.View().Equals(held) {
                 return @slice.data[index].value;
             }
             index = index + 1u;
@@ -413,7 +413,7 @@ extend TomlValue {
         var index: uint = 0;
         while index < slice.length {
             var held = key;
-            if slice.data[index].key.View().Equals(@held) {
+            if slice.data[index].key.View().Equals(held) {
                 return @slice.data[index].value;
             }
             index = index + 1u;
@@ -443,7 +443,12 @@ extend TomlValue : Drop {
     /// https://rux-lang.dev/docs/api/toml/value/drop
     func Drop(self: *var TomlValue) {
         self.text.Clear();
-        self.elements.Clear();
+        while self.elements.Length() > 0u {
+            var element = TomlValue::Table(self.allocator);
+            if !self.elements.TryPop(@element) {
+                break;
+            }
+        }
         self.entries.Clear();
     }
 }
