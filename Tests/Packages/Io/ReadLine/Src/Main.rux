@@ -6,7 +6,7 @@ import Text::StringBuilder;
 // stream with nothing before it is EndOfStream, not an empty line, so an echo loop stops rather than spins.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var count: uint = 0;
     var reading = true;

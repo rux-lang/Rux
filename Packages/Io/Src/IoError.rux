@@ -79,28 +79,28 @@ extend IoError {
     /// Whether nothing went wrong.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-ok
-    func IsOk(self: *IoError) -> bool {
+    func IsOk(self: &IoError) -> bool {
         return self.kind == IoErrorKind::None;
     }
 
     /// Whether something did.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-error
-    func IsError(self: *IoError) -> bool {
+    func IsError(self: &IoError) -> bool {
         return self.kind != IoErrorKind::None;
     }
 
     /// Whether the stream ended, which is the one report that is not a failure.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-end
-    func IsEnd(self: *IoError) -> bool {
+    func IsEnd(self: &IoError) -> bool {
         return self.kind == IoErrorKind::EndOfStream;
     }
 
     /// Whether going again is the right response: an interruption or a would-block.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-transient
-    func IsTransient(self: *IoError) -> bool {
+    func IsTransient(self: &IoError) -> bool {
         return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
     }
 }

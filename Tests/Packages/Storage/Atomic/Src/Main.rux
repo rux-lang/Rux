@@ -14,7 +14,7 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
-    return Path::FromView(holder.View());
+    return Path::FromView((*holder).View());
 }
 
 // Reads the whole file and checks it against `expected`, length included.
@@ -26,7 +26,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "and is exactly as long as expected");
     var storage: char8[64];
     let room = MutableSlice::From<char8>(@storage[0], expected.length);
-    let source: Reader = file.Stream();
+    var source: Reader = file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads whole");
     var index: uint = 0;
     while index < expected.length {
@@ -74,7 +74,7 @@ func Main() -> int {
     // Part-way through a replacement, the target still holds the old contents.
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a replacement begins");
-    let sink: Writer = replacement.Stream();
+    var sink: Writer = replacement.Stream();
     Assert(WriteAll(sink, "second contents, longer").IsOk(), "and takes the new contents");
     CheckWhole(allocator, target, "first contents");
     Assert(CountEntries(allocator, dir) == 2, "with the partial file alongside, not on top");
@@ -88,7 +88,7 @@ func Main() -> int {
     // Abandoning leaves the target exactly as it was, and cleans up after itself.
     var discarded = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a second replacement begins");
-    let discardedSink: Writer = discarded.Stream();
+    var discardedSink: Writer = discarded.Stream();
     Assert(WriteAll(discardedSink, "never published").IsOk(), "and takes contents");
     Assert(discarded.Abandon(allocator).IsOk(), "abandoning reports success");
     CheckWhole(allocator, target, "second contents, longer");
@@ -114,6 +114,6 @@ func Dropped(allocator: Allocator, target: Path) {
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "the undecided replacement begins");
-    let sink: Writer = replacement.Stream();
+    var sink: Writer = replacement.Stream();
     Assert(WriteAll(sink, "abandoned by scope").IsOk(), "and takes contents");
 }

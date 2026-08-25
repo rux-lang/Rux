@@ -21,7 +21,7 @@ struct ScriptHandle {
 }
 
 extend ScriptHandle : Reader {
-    func Read(self: *var ScriptHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var ScriptHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
@@ -52,7 +52,7 @@ func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: ui
     var reader = BufferedReader::New(allocator, source, 16, @error);
     Assert(error.IsOk(), "the reader takes its buffer");
     var builder = StringBuilder(allocator);
-    let outcome = ReadTextLine(@reader, builder, limit);
+    let outcome = ReadTextLine(reader, builder, limit);
     Assert(outcome.kind == expectedKind, "the outcome names the reason");
     let line = builder.IntoString();
     let want = View(expected);
@@ -62,7 +62,7 @@ func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: ui
 
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // A plain line, whole and in one piece.
@@ -102,22 +102,22 @@ func Main() -> int {
     var error = IoError::Ok();
     var reader = BufferedReader::New(allocator, source, 16, @error);
     var builder = StringBuilder(allocator);
-    Assert(ReadTextLine(@reader, builder, 64).IsOk(), "the first line reads");
+    Assert(ReadTextLine(reader, builder, 64).IsOk(), "the first line reads");
     let one = builder.IntoString();
     let oneExpected = View("one");
     Assert(one.View().Equals(oneExpected), "and is the first");
     var second = StringBuilder(allocator);
-    Assert(ReadTextLine(@reader, second, 64).IsOk(), "the second follows");
+    Assert(ReadTextLine(reader, second, 64).IsOk(), "the second follows");
     let two = second.IntoString();
     let twoExpected = View("two");
     Assert(two.View().Equals(twoExpected), "from exactly where the first ended");
     var third = StringBuilder(allocator);
-    Assert(ReadTextLine(@reader, third, 64).IsOk(), "the unterminated last line is a line");
+    Assert(ReadTextLine(reader, third, 64).IsOk(), "the unterminated last line is a line");
     let three = third.IntoString();
     let threeExpected = View("three");
     Assert(three.View().Equals(threeExpected), "with everything before the end");
     var fourth = StringBuilder(allocator);
-    Assert(ReadTextLine(@reader, fourth, 64).IsEnd(), "and after it, the end");
+    Assert(ReadTextLine(reader, fourth, 64).IsEnd(), "and after it, the end");
     fourth.Release();
     reader.Release();
 

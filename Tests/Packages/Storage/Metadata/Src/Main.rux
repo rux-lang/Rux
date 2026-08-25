@@ -15,7 +15,7 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
-    return Path::FromView(holder.View());
+    return Path::FromView((*holder).View());
 }
 
 func Main() -> int {
@@ -36,7 +36,7 @@ func Main() -> int {
     // A file of known length reports that length and calls itself a file.
     var written = File::Open(allocator, file, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the file opens for writing");
-    let sink: Writer = written.Stream();
+    var sink: Writer = written.Stream();
     Assert(WriteAll(sink, "0123456789").IsOk(), "ten bytes are written");
     let openMetadata = written.Metadata(@error);
     Assert(error.IsOk(), "the open handle describes itself");

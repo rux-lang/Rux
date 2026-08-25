@@ -6,8 +6,9 @@
 // written once: `ReadExact` and `WriteAll` loop over partial progress, retry the transient reports, and refuse to
 // spin on a stream that makes none.
 //
-// The implementations hold their state behind a pointer, as every stateful interface here does: an interface value
-// is copied when it is passed, and a reader whose position lived in the copy would read the same bytes forever.
+// Call-time streams are borrowed as interface references, so concrete readers and writers can be used directly
+// without copying their state or manufacturing an adapter. An interface value is still useful when a stream must
+// be stored, because references deliberately cannot escape into fields.
 
 import Core::{ MutableSlice, Slice };
 
@@ -67,13 +68,12 @@ const ZeroProgressLimit: uint = 3;
 /// partly written -- how much is not reported, because a caller who needs the count reads incrementally.
 ///
 /// https://rux-lang.dev/docs/api/io/read-exact
-func ReadExact(reader: Reader, into: MutableSlice<char8>) -> IoError {
-    var source = reader;
+func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
     var at: uint = 0;
     while at < into.length {
         let rest = MutableSlice<char8> { data: @into.data[at], length: into.length - at };
         var filled: uint = 0;
-        let outcome = source.Read(rest, @filled);
+        let outcome = reader.Read(rest, @filled);
         if outcome.IsError() {
             if outcome.IsTransient() {
                 continue;
@@ -95,14 +95,13 @@ func ReadExact(reader: Reader, into: MutableSlice<char8>) -> IoError {
 /// that spins on it would hang the caller on a stream that will never take the rest.
 ///
 /// https://rux-lang.dev/docs/api/io/write-all
-func WriteAll(writer: Writer, bytes: Slice<char8>) -> IoError {
-    var sink = writer;
+func WriteAll(writer: &var Writer, bytes: Slice<char8>) -> IoError {
     var at: uint = 0;
     var stalled: uint = 0;
     while at < bytes.length {
         let rest = Slice<char8> { data: @bytes.data[at], length: bytes.length - at };
         var taken: uint = 0;
-        let outcome = sink.Write(rest, @taken);
+        let outcome = writer.Write(rest, @taken);
         if outcome.IsError() {
             if outcome.IsTransient() {
                 continue;

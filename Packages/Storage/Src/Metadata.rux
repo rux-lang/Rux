@@ -404,7 +404,7 @@ func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var
     };
     var native: *var OsUnit = null;
     *error = NativePath(allocator, path, @native);
-    if error.IsError() {
+    if (*error).IsError() {
         return result;
     }
     var buffer: char8[256];

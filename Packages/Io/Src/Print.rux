@@ -11,8 +11,7 @@ import Text::{ String, StringView, TextError };
 // The one write under everything here.
 func PrintBytes(bytes: Slice<char8>) -> IoError {
     var out = StandardOut::Acquire();
-    let sink: Writer = out;
-    return WriteAll(sink, bytes);
+    return WriteAll(out, bytes);
 }
 
 /// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
@@ -32,8 +31,13 @@ extend ConsoleWriter {
     /// A writer over standard output, recording into `failure`.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/new
-    func New(failure: *var IoError) -> ConsoleWriter {
+    func ConsoleWriter(failure: *var IoError) -> ConsoleWriter {
         return ConsoleWriter { failure: failure };
+    }
+
+    /// Temporary compatibility spelling for `ConsoleWriter(failure)`.
+    func New(failure: *var IoError) -> ConsoleWriter {
+        return ConsoleWriter(failure);
     }
 }
 
@@ -42,7 +46,7 @@ extend ConsoleWriter : TextWriter {
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
     func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
-        if self.failure.IsError() {
+        if (*self.failure).IsError() {
             return TextError::None;
         }
         let outcome = PrintBytes(bytes);
@@ -67,7 +71,7 @@ func OfTextFailure(failure: TextError) -> IoError {
 /// https://rux-lang.dev/docs/api/io/print-value
 func PrintValue(value: Display) -> IoError {
     var failure = IoError::Ok();
-    var sink = ConsoleWriter::New(@failure);
+    var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = value.Format(writer, FormatSpec::Plain());
     if failure.IsError() {
@@ -111,7 +115,7 @@ func Print(value: Slice<char8>) -> IoError {
 /// https://rux-lang.dev/docs/api/io/print-format
 func Print(format: Slice<char8>, args: Display...) -> IoError {
     var failure = IoError::Ok();
-    var sink = ConsoleWriter::New(@failure);
+    var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
     if failure.IsError() {
