@@ -21,14 +21,12 @@ public:
     using MethodsByType =
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<const FuncDecl *>>>;
 
-    TypePropertyClassifier(
-        const std::unordered_map<std::string, const StructDecl *> &inputStructs,
-        const std::unordered_map<std::string, const EnumDecl *> &inputEnums,
-        const std::unordered_map<std::string, const UnionDecl *> &inputUnions,
-        const std::unordered_map<std::string, const InterfaceDecl *> &inputInterfaces,
-        const std::unordered_map<std::string, std::unordered_set<std::string>> &inputInterfacesByType,
-        const MethodsByType &inputMethodsByType, ResolveType inputResolveType,
-        ParseTypeArguments inputParseTypeArguments);
+    TypePropertyClassifier(const std::unordered_map<std::string, const StructDecl *> &inputStructs,
+                           const std::unordered_map<std::string, const EnumDecl *> &inputEnums,
+                           const std::unordered_map<std::string, const UnionDecl *> &inputUnions,
+                           const std::unordered_map<std::string, const InterfaceDecl *> &inputInterfaces,
+                           const MethodsByType &inputMethodsByType, ResolveType inputResolveType,
+                           ParseTypeArguments inputParseTypeArguments);
 
     /// Classifies one concrete type, caching recursive aggregate results for subsequent queries.
     [[nodiscard]] TypeProperties Classify(const TypeRef &type);
@@ -38,7 +36,6 @@ private:
     const std::unordered_map<std::string, const EnumDecl *> &enums;
     const std::unordered_map<std::string, const UnionDecl *> &unions;
     const std::unordered_map<std::string, const InterfaceDecl *> &interfaces;
-    const std::unordered_map<std::string, std::unordered_set<std::string>> &interfacesByType;
     const MethodsByType &methodsByType;
     ResolveType resolveType;
     ParseTypeArguments parseTypeArguments;
@@ -49,7 +46,6 @@ private:
     [[nodiscard]] TypeProperties ClassifyStruct(const StructDecl &declaration, const std::vector<TypeRef> &arguments);
     [[nodiscard]] TypeProperties ClassifyEnum(const EnumDecl &declaration, const std::vector<TypeRef> &arguments);
     [[nodiscard]] TypeProperties ClassifyUnion(const UnionDecl &declaration);
-    [[nodiscard]] bool ImplementsDrop(const std::string &baseName) const;
     [[nodiscard]] bool DeclaresDestructor(const TypeRef &type, const std::vector<TypeRef> &arguments) const;
     [[nodiscard]] std::optional<TypeProperties::SpecialOperationState>
     DeclaredSpecialOperation(const TypeRef &type, const std::vector<TypeRef> &arguments, std::string_view name) const;

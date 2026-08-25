@@ -63,7 +63,6 @@ const HirReturnStmt &RequireEarlyReturn(const HirMatchExpr &match) {
 }
 
 const std::string kPropagationPrelude = R"(
-    interface Drop {}
     enum ParseError: int32 { Bad }
     enum Result<T, E> { Success(T), Error(E) }
     enum Option<T> { Some(T), None }
@@ -136,7 +135,10 @@ TEST_CASE("the failure arm returns the enclosing function's failure variant carr
 TEST_CASE("a propagated failure destroys every local that was live when it left") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         func Guarded(ok: bool) -> Result<int32, ParseError> {
             let handle = Handle { value: 1i32 };
             let value = Read(ok)?;
@@ -155,7 +157,10 @@ TEST_CASE("a propagated failure destroys every local that was live when it left"
 TEST_CASE("a local declared after the propagation is not destroyed by it") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         func Later(ok: bool) -> Result<int32, ParseError> {
             let value = Read(ok)?;
             let handle = Handle { value: 1i32 };

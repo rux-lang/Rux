@@ -173,7 +173,7 @@ TypeProperties SemanticAnalyzerContext::ClassifyTypeProperties(const TypeRef &ty
     }
 
     TypePropertyClassifier classifier(
-        structDecls, enumDecls, unionDecls, interfaceDecls, typeImplementsInterfaces, methodsByType,
+        structDecls, enumDecls, unionDecls, interfaceDecls, methodsByType,
         [this](const TypeExpr &type, const TypePropertyClassifier::Substitutions &substitutions) {
             if (!typeNodeTypes.contains(&type)) {
                 return TypeRef::MakeUnknown();

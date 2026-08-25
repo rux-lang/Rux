@@ -174,25 +174,24 @@ TEST_CASE("borrowed enum values can be inspected by match") {
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("references cannot destroy or transfer borrowed ownership") {
+TEST_CASE("references cannot transfer borrowed ownership") {
     const auto diagnostics = AnalyzeReferences(R"(
-        interface Drop {}
         struct Resource { value: int32; }
-        extend Resource : Drop {}
+        extend Resource {
+            func =(self: &var Resource, other: &Resource);
+            func ~Resource(self: &var Resource) {}
+        }
         struct Holder { resource: Resource; }
         extend Holder {
-            func Drop(self: &var Holder) {}
             func Take(self: Holder) {}
         }
         func Consume(value: Resource) {}
-        func Test(shared: &Holder, exclusive: &var Holder) {
+        func Test(shared: &Holder) {
             Consume(shared.resource);
             shared.Take();
-            exclusive.Drop();
         }
     )");
 
     CHECK(HasErrorContaining(diagnostics, "out of borrowed reference storage"));
     CHECK(HasErrorContaining(diagnostics, "to by-value receiver"));
-    CHECK(HasErrorContaining(diagnostics, "cannot destroy value through reference"));
 }

@@ -10,13 +10,13 @@ using namespace Rux;
 
 TEST_CASE("semantic model recursively classifies copy move-only and droppable types") {
     Lexer lexer(R"(
-        interface Drop {}
-
         struct Handle {
             value: int32;
         }
-
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         struct Wrapper {
             handle: Handle;
@@ -30,7 +30,10 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
         struct GenericOwner<T> {
             value: T;
         }
-        extend GenericOwner<T> : Drop {}
+        extend GenericOwner<T> {
+            func =(self: &var GenericOwner<T>, other: &GenericOwner<T>);
+            func ~GenericOwner(self: &var GenericOwner<T>) {}
+        }
 
         enum Maybe<T> {
             None,
@@ -91,10 +94,10 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
     CHECK_FALSE(unresolved.IsDroppable());
 
     REQUIRE_EQ(transferGenericOwner->params.size(), 1);
-    const TypeProperties &legacyGenericOwner = propertiesOf(transferGenericOwner->params[0]);
-    CHECK(legacyGenericOwner.IsMoveOnly());
-    CHECK(legacyGenericOwner.IsMovable());
-    CHECK(legacyGenericOwner.IsDroppable());
+    const TypeProperties &genericOwner = propertiesOf(transferGenericOwner->params[0]);
+    CHECK(genericOwner.IsMoveOnly());
+    CHECK(genericOwner.IsMovable());
+    CHECK(genericOwner.IsDroppable());
 
     REQUIRE_EQ(observe->params.size(), 8);
     const TypeProperties &copy = propertiesOf(observe->params[0]);
@@ -116,10 +119,49 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
     CHECK(model.TryGetProperties(TypeRef::MakeNamed("NeverObserved")) == nullptr);
 }
 
+TEST_CASE("an interface named Drop has no lifecycle semantics") {
+    Lexer lexer(R"(
+        interface Drop {
+            func Drop();
+        }
+
+        struct Plain {
+            value: int32;
+        }
+        extend Plain : Drop {
+            func Drop(self: &var Plain) {}
+        }
+
+        func Observe(value: Plain) {}
+    )",
+                "ordinary_drop_interface.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "ordinary_drop_interface.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const FuncDecl *observe = nullptr;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+            function && function->name == "Observe") {
+            observe = function;
+        }
+    }
+    REQUIRE(observe != nullptr);
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const TypeProperties *properties = model.TryGetProperties(*observe->params[0].type);
+    REQUIRE(properties != nullptr);
+    CHECK(properties->IsCopy());
+    CHECK_FALSE(properties->IsDroppable());
+    CHECK(model.TryGetDropGlue(TypeRef::MakeNamed("Plain")) == nullptr);
+}
+
 TEST_CASE("special operations classify generated custom and prohibited capabilities") {
     Lexer lexer(R"(
-        interface Drop {}
-
         interface Assignable {
             func =(self: &var Self, other: &Self);
         }
@@ -127,7 +169,10 @@ TEST_CASE("special operations classify generated custom and prohibited capabilit
         struct Handle {
             value: int32;
         }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         struct Generated {
             value: int32;
@@ -314,10 +359,11 @@ TEST_CASE("type-named destructors require the canonical owning signature") {
 
 TEST_CASE("drop glue expands concrete aggregates in reverse construction order") {
     Lexer lexer(R"(
-        interface Drop {}
-
         struct Leaf { value: int32; }
-        extend Leaf : Drop {}
+        extend Leaf {
+            func =(self: &var Leaf, other: &Leaf);
+            func ~Leaf(self: &var Leaf) {}
+        }
 
         struct Pair<T> {
             first: T;
@@ -326,7 +372,9 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
         }
 
         struct Owner { leaf: Leaf; }
-        extend Owner : Drop {}
+        extend Owner {
+            func ~Owner(self: &var Owner) {}
+        }
 
         struct Unused { leaf: Leaf; }
 

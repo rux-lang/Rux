@@ -85,8 +85,8 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     if (package.modules.empty()) {
         return;
     }
-    // Every name the package already emitted, so a compatibility `Drop` call site already instantiated
-    // resolves to that body instead of lowering a second one under the same symbol.
+    // Every name the package already emitted, so a destructor already instantiated by another use resolves to that
+    // body instead of lowering a second one under the same symbol.
     generatedMonomorphizedFuncNames.clear();
     for (const HirModule &module : package.modules) {
         for (const HirFunc &function : module.funcs) {
@@ -116,7 +116,7 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
 void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
     for (DropGlueStep &step : steps) {
         if (step.kind == DropGlueStep::Kind::InvokeDrop) {
-            step.dropSymbol = DropMethodSymbol(step.type);
+            step.dropSymbol = DestructorSymbol(step.type);
         }
         else if (step.kind == DropGlueStep::Kind::EnumVariant) {
             step.discriminant = LookupEnumVariantDiscriminant(NamedBaseTypeName(step.type), step.name)
@@ -165,20 +165,16 @@ bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) {
     return true;
 }
 
-std::string AstToHirContext::DropMethodSymbol(const TypeRef &type) {
+std::string AstToHirContext::DestructorSymbol(const TypeRef &type) {
     const std::string typeName = NamedBaseTypeName(type);
     const auto byType = methodsByType.find(typeName);
     if (byType == methodsByType.end()) {
         return {};
     }
     const auto destructor = byType->second.find("~" + typeName);
-    if (destructor != byType->second.end() && !destructor->second.empty()) {
-        return ConcreteMethodCalleeName(typeName, type, *destructor->second.front());
-    }
-    const auto legacyDrop = byType->second.find("Drop");
-    return legacyDrop == byType->second.end() || legacyDrop->second.empty()
+    return destructor == byType->second.end() || destructor->second.empty()
              ? std::string{}
-             : ConcreteMethodCalleeName(typeName, type, *legacyDrop->second.front());
+             : ConcreteMethodCalleeName(typeName, type, *destructor->second.front());
 }
 
 void AstToHirContext::PushScope() {
@@ -555,5 +551,50 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         currentModulePath = savedModulePath;
         declModulePath = savedDeclModulePath;
     }
+}
+
+HirCopyPlan AstToHirContext::BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration) {
+    HirCopyPlan plan;
+    plan.type = type;
+
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
+    }
+
+    bool needsPlan = false;
+    const std::string base = BaseTypeName(type.name);
+    for (const EnumDecl::Variant &variant : declaration.variants) {
+        plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
+        std::vector<TypeRef> payloadTypes;
+        std::vector<HirCopyPlan> payloadPlans;
+        payloadTypes.reserve(variant.fields.size() + variant.namedFields.size());
+        payloadPlans.reserve(variant.fields.size() + variant.namedFields.size());
+        for (const TypeExprPtr &field : variant.fields) {
+            TypeRef fieldType = ResolveTypeWithSubstitution(*field, substitutions);
+            payloadTypes.push_back(fieldType);
+            payloadPlans.push_back(BuildCopyPlan(fieldType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirCopyPlan::Kind::Trivial;
+        }
+        for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
+            TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
+            payloadTypes.push_back(fieldType);
+            payloadPlans.push_back(BuildCopyPlan(fieldType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirCopyPlan::Kind::Trivial;
+        }
+        plan.variantPayloadTypes.push_back(std::move(payloadTypes));
+        plan.variantComponents.push_back(std::move(payloadPlans));
+    }
+    if (needsPlan) {
+        plan.kind = HirCopyPlan::Kind::Enum;
+    }
+    else {
+        plan.variantDiscriminants.clear();
+        plan.variantPayloadTypes.clear();
+        plan.variantComponents.clear();
+    }
+    return plan;
 }
 } // namespace Rux::AstToHirDetail

@@ -941,6 +941,9 @@ HirCopyPlan AstToHirContext::BuildCopyPlan(const TypeRef &type, const FuncDecl *
             }
             return plan;
         }
+        if (const auto declaration = enumDecls.find(base); declaration != enumDecls.end()) {
+            return BuildEnumCopyPlan(type, *declaration->second);
+        }
     }
     return plan;
 }

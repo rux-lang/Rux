@@ -406,12 +406,6 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
     if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {
         TypeRef receiverType = CheckExpr(*field->object);
         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
-        if (receiverType.kind == TypeRef::Kind::Reference && field->field == "Drop") {
-            EmitError(
-                field->location, std::format("cannot destroy value through reference '{}'", receiverType.ToString()),
-                {"a reference does not own the value it borrows"}, "destroy the owning value or let it leave scope");
-            return TypeRef::MakeUnknown();
-        }
 
         // A receiver whose type is a generic parameter carries exactly the operations its bounds declare. The concrete
         // method is chosen per instantiation, so the call is checked against the interface's signature here and the

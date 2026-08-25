@@ -135,10 +135,12 @@ TEST_CASE("explicit move syntax parses in bindings assignments calls and returns
 
 TEST_CASE("explicit moves invalidate copyable places and reject invalid ownership sources") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
-        interface Drop {}
         struct Pair { first: int32; second: int32; }
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func ThroughPointer(pointer: *Pair) {
             let pointee <- *pointer;
@@ -203,9 +205,11 @@ TEST_CASE("explicit moves invalidate copyable places and reject invalid ownershi
 
 TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func Transfer(source: Handle) -> Handle {
             let local <- source;
@@ -259,11 +263,11 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
 
 TEST_CASE("named moves invoke recursive custom operations while temporaries transfer directly") {
     const std::string source = R"(
-        interface Drop {}
 
         struct Cell { value: int32; }
-        extend Cell : Drop {}
         extend Cell {
+            func =(self: &var Cell, other: &Cell);
+            func ~Cell(self: &var Cell) {}
             func <-(self: &var Cell, other: Cell) {
                 self.value = other.value;
             }
@@ -314,10 +318,10 @@ TEST_CASE("named moves invoke recursive custom operations while temporaries tran
 
 TEST_CASE("custom move assignment reuses conditional destination cleanup") {
     const std::string source = R"(
-        interface Drop {}
         struct Cell { value: int32; }
-        extend Cell : Drop {}
         extend Cell {
+            func =(self: &var Cell, other: &Cell);
+            func ~Cell(self: &var Cell) {}
             func <-(self: &var Cell, other: Cell) {
                 self.value = other.value;
             }
@@ -369,11 +373,10 @@ TEST_CASE("prohibited move operations reject explicit ownership transfer") {
 
 TEST_CASE("named by-value sources use recursive custom copies while temporaries transfer directly") {
     const std::string source = R"(
-        interface Drop {}
 
         struct Cell { value: int32; }
-        extend Cell : Drop {}
         extend Cell {
+            func ~Cell(self: &var Cell) {}
             func =(self: &var Cell, other: &Cell) {
                 self.value = other.value;
             }
@@ -435,12 +438,11 @@ TEST_CASE("named by-value sources use recursive custom copies while temporaries 
 
 TEST_CASE("cross-source copy assignment constructs scratch before replacing the destination") {
     const std::string source = R"(
-        interface Drop {}
 
         struct Seed { value: int32; }
         struct Cell { value: int32; }
-        extend Cell : Drop {}
         extend Cell {
+            func ~Cell(self: &var Cell) {}
             func =(self: &var Cell, other: &Cell) {
                 self.value = other.value;
             }
@@ -473,12 +475,54 @@ TEST_CASE("cross-source copy assignment constructs scratch before replacing the 
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copy->plan.customCallee), 1);
 }
 
+TEST_CASE("generated enum copies recursively copy the active owning payload") {
+    const std::string source = R"(
+
+        struct Cell { value: int32; }
+        extend Cell {
+            func ~Cell(self: &var Cell) {}
+            func =(self: &var Cell, other: &Cell) {
+                self.value = other.value;
+            }
+        }
+
+        enum Maybe<T> { Some(T), None }
+
+        func Take(value: Maybe<Cell>) {}
+        func Clone(source: Maybe<Cell>) {
+            Take(source);
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &clone = RequireFunction(hir, "Clone");
+    REQUIRE(clone.body.has_value());
+    const auto *statement = dynamic_cast<const HirExprStmt *>(clone.body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *call = dynamic_cast<const HirCallExpr *>(statement->expr.get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    const auto *copy = dynamic_cast<const HirCopyExpr *>(call->args.front().get());
+    REQUIRE(copy != nullptr);
+    CHECK_EQ(copy->plan.kind, HirCopyPlan::Kind::Enum);
+    REQUIRE_EQ(copy->plan.variantComponents.size(), 2);
+    REQUIRE_EQ(copy->plan.variantComponents[0].size(), 1);
+    CHECK_EQ(copy->plan.variantComponents[0][0].kind, HirCopyPlan::Kind::Custom);
+    const std::string copySymbol = copy->plan.variantComponents[0][0].customCallee;
+    CHECK_FALSE(copySymbol.empty());
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 1);
+}
+
 TEST_CASE("move-only values are consumed in every by-value context") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
-        interface Drop {}
 
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         extend Handle {
             func Consume(self: Handle) {}
         }
@@ -492,44 +536,44 @@ TEST_CASE("move-only values are consumed in every by-value context") {
 
         func Main(flag: bool) {
             let initialized = NewHandle(1);
-            let movedByInitialization = initialized;
+            let movedByInitialization <- initialized;
             initialized;
 
             var assigned = NewHandle(2);
             var destination = NewHandle(3);
-            destination = assigned;
+            destination <- assigned;
             assigned;
 
             let argument = NewHandle(4);
-            Take(argument);
+            Take(<-argument);
             argument;
 
             let field = NewHandle(5);
-            let owner = Owner { handle: field };
+            let owner = Owner { handle: <-field };
             field;
 
             let arrayValue = NewHandle(6);
-            let values = [arrayValue];
+            let values = [<-arrayValue];
             arrayValue;
 
             let tupleValue = NewHandle(7);
-            let tuple = (tupleValue, 1);
+            let tuple = (<-tupleValue, 1);
             tupleValue;
 
             let receiver = NewHandle(8);
-            receiver.Consume();
+            (<-receiver).Consume();
             receiver;
 
             var ternaryLeft = NewHandle(9);
             var ternaryRight = NewHandle(10);
-            let selected = flag ? ternaryLeft : ternaryRight;
+            let selected = flag ? <-ternaryLeft : <-ternaryRight;
             ternaryLeft;
             ternaryRight;
 
             var reusable = NewHandle(11);
-            let consumed = reusable;
-            reusable = NewHandle(12);
-            Take(reusable);
+            let consumed <- reusable;
+            reusable <- NewHandle(12);
+            Take(<-reusable);
             reusable;
 
             let copy = 12;
@@ -558,18 +602,20 @@ TEST_CASE("move-only values are consumed in every by-value context") {
 
 TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts") {
     Lexer lexer(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func ReturnHandle(value: Handle) -> Handle {
-            return value;
+            return <-value;
         }
 
         func Main() {
             let first = Handle { value: 1 };
-            let second = first;
-            ReturnHandle(second);
+            let second <- first;
+            ReturnHandle(<-second);
         }
     )",
                 "move_consumption_facts.rux");
@@ -583,21 +629,25 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
     const SemanticModel model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
 
-    const auto *returnFunction = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
+    const auto *returnFunction = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
     const auto *returnStatement = dynamic_cast<const ReturnStmt *>(returnFunction->body->stmts[0].get());
     REQUIRE(returnStatement != nullptr);
     const Expr &returned = **returnStatement->value;
-    const ValueConsumption *returnFact = model.TryGetConsumption(returned);
+    const auto *returnedMove = dynamic_cast<const MoveExpr *>(&returned);
+    REQUIRE(returnedMove != nullptr);
+    const ValueConsumption *returnFact = model.TryGetConsumption(*returnedMove->operand);
     REQUIRE(returnFact != nullptr);
-    CHECK_EQ(returnFact->kind, ValueConsumptionKind::Return);
+    CHECK_EQ(returnFact->kind, ValueConsumptionKind::ExplicitMove);
     CHECK_EQ(returnFact->type, TypeRef::MakeNamed("Handle"));
 
-    const auto *mainFunction = dynamic_cast<const FuncDecl *>(parsed.module.items[4].get());
+    const auto *mainFunction = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
     const auto *second = dynamic_cast<const LetStmt *>(mainFunction->body->stmts[1].get());
     REQUIRE(second != nullptr);
-    const ValueConsumption *initializationFact = model.TryGetConsumption(*second->init);
+    const auto *initializationMove = dynamic_cast<const MoveExpr *>(second->init.get());
+    REQUIRE(initializationMove != nullptr);
+    const ValueConsumption *initializationFact = model.TryGetConsumption(*initializationMove->operand);
     REQUIRE(initializationFact != nullptr);
-    CHECK_EQ(initializationFact->kind, ValueConsumptionKind::Initialization);
+    CHECK_EQ(initializationFact->kind, ValueConsumptionKind::ExplicitMove);
 
     const HirPackage package = AstToHirLowering(model).Generate();
     REQUIRE_EQ(package.modules.size(), 1);
@@ -607,27 +657,26 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
     const auto *loweredSecond = dynamic_cast<const HirLetStmt *>(loweredMain.body->stmts[1].get());
     REQUIRE(loweredSecond != nullptr);
     REQUIRE(loweredSecond->init->consumption.has_value());
-    CHECK_EQ(*loweredSecond->init->consumption, ValueConsumptionKind::Initialization);
+    CHECK_EQ(*loweredSecond->init->consumption, ValueConsumptionKind::ExplicitMove);
 }
 
-TEST_CASE("a generic body's stores are consumed once an instantiation says what the parameter is") {
-    // Whether storing a `T` hands ownership over depends on what `T` stands for, which the body cannot know. The
-    // question is recorded where it is asked and answered at each instantiation; before it was, a generic container
-    // kept a copy of what it was given and the caller's value was destroyed where it stood.
+TEST_CASE("an explicit generic store retains ownership transfer for its instantiation") {
+    // `<-` states that the generic value is transferred, and the concrete instantiation records which owning type
+    // crosses the store.
     Lexer lexer(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func Store<T>(slot: *var T, value: T) {
-            *slot = value;
+            *slot <- value;
         }
 
         func Main() {
             var room = Handle { value: 0 };
             Store<Handle>(@room, Handle { value: 1 });
-            var counted: int32 = 0;
-            Store<int32>(@counted, 2i32);
         }
     )",
                 "generic_consumption.rux");
@@ -641,32 +690,33 @@ TEST_CASE("a generic body's stores are consumed once an instantiation says what 
     const SemanticModel model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
 
-    const auto *store = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
+    const auto *store = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
     REQUIRE(store != nullptr);
     const auto *statement = dynamic_cast<const ExprStmt *>(store->body->stmts[0].get());
     REQUIRE(statement != nullptr);
     const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
     REQUIRE(assignment != nullptr);
 
-    // One instantiation is move-only and one is not, so the fact exists and names the type that needed it.
     const ValueConsumption *fact = model.TryGetConsumption(*assignment->value);
     REQUIRE(fact != nullptr);
-    CHECK_EQ(fact->kind, ValueConsumptionKind::Assignment);
+    CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
     CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
 }
 
-TEST_CASE("a match that binds part of its subject consumes the subject") {
+TEST_CASE("an explicit move into a match consumes its subject") {
     // Taking a payload out of an option and destroying the option as well would destroy the payload twice, which is
     // what every unwrap in the standard packages did. Only a subject that is a value in its own right is consumed:
     // one read through a borrow has nothing taken from it, and a pattern that binds nothing takes nothing.
     Lexer lexer(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         enum Held { Full(Handle), Empty }
 
         func Discard(held: Held) {
-            match held {
+            match <-held {
                 .Full(handle) => {},
                 .Empty => {}
             }
@@ -705,18 +755,22 @@ TEST_CASE("a match that binds part of its subject consumes the subject") {
         return *statement->subject;
     };
 
-    const ValueConsumption *taken = model.TryGetConsumption(subjectOf(4));
+    const auto *movedSubject = dynamic_cast<const MoveExpr *>(&subjectOf(3));
+    REQUIRE(movedSubject != nullptr);
+    const ValueConsumption *taken = model.TryGetConsumption(*movedSubject->operand);
     REQUIRE(taken != nullptr);
-    CHECK_EQ(taken->kind, ValueConsumptionKind::Receiver);
+    CHECK_EQ(taken->kind, ValueConsumptionKind::ExplicitMove);
+    CHECK(model.TryGetConsumption(subjectOf(4)) == nullptr);
     CHECK(model.TryGetConsumption(subjectOf(5)) == nullptr);
-    CHECK(model.TryGetConsumption(subjectOf(6)) == nullptr);
 }
 
 TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         struct Number { value: int32; }
 
         func Take(value: int32) {}
@@ -744,9 +798,11 @@ TEST_CASE("rejected by-value contexts do not move their operands") {
 
 TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration order") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func Take(value: Handle) {}
 
@@ -806,9 +862,11 @@ TEST_CASE("ordinary scope exits destroy live bindings in reverse declaration ord
 
 TEST_CASE("returns evaluate their value before conditionally destroying every live scope") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func Choose(parameter: Handle, selectNested: bool) -> Handle {
             let outer = Handle { value: 1 };
@@ -855,9 +913,11 @@ TEST_CASE("returns evaluate their value before conditionally destroying every li
 
 TEST_CASE("loop exits carry every cleanup between the statement and its selected loop boundary") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func Run(flag: bool) {
             outer: loop {
@@ -898,24 +958,26 @@ TEST_CASE("loop exits carry every cleanup between the statement and its selected
     CHECK_EQ(continued->label, "inner");
 }
 
-TEST_CASE("plain assignment schedules conditional destruction before replacing droppable storage") {
+TEST_CASE("move assignment schedules conditional destruction before replacing droppable storage") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         struct Owner { handle: Handle; }
 
         func Replace(var destination: Handle, source: Handle) {
-            destination = source;
+            destination <- source;
         }
 
         func ReplaceField(var owner: Owner, source: Handle) {
-            owner.handle = source;
+            owner.handle <- source;
         }
 
         func Initialize(source: Handle) {
             var destination: Handle;
-            destination = source;
+            destination <- source;
         }
     )");
 
@@ -956,9 +1018,11 @@ TEST_CASE("plain assignment schedules conditional destruction before replacing d
 
 TEST_CASE("aggregate initialization records reverse rollback prefixes for completed droppable components") {
     const HirPackage package = LowerConsumptionHir(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         struct Owner { first: Handle; copy: int32; last: Handle; }
         enum Choice { Both(Handle, Handle) }
 
@@ -1011,19 +1075,21 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
 
 TEST_CASE("partial and self moves are rejected before ownership state changes") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
         struct Owner { handle: Handle; }
 
         func Take(value: Handle) {}
 
         func Invalid(var handle: Handle, var owner: Owner, values: Handle[2], pointer: *Handle) {
-            Take(owner.handle);
-            Take(values[0]);
-            Take(*pointer);
-            handle = handle;
-            owner.handle = owner.handle;
+            Take(<-owner.handle);
+            Take(<-values[0]);
+            Take(<-*pointer);
+            handle <- handle;
+            owner.handle <- owner.handle;
         }
     )");
 
@@ -1042,22 +1108,24 @@ TEST_CASE("partial and self moves are rejected before ownership state changes") 
 
 TEST_CASE("complete moved bindings can be reinitialized and consumed again") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
-        interface Drop {}
         struct Handle { value: int32; }
-        extend Handle : Drop {}
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
 
         func NewHandle(value: int32) -> Handle { return Handle { value: value }; }
         func Take(value: Handle) {}
 
         func Valid() {
             var reused = NewHandle(1);
-            Take(reused);
-            reused = NewHandle(2);
-            Take(reused);
+            Take(<-reused);
+            reused <- NewHandle(2);
+            Take(<-reused);
 
             var initializedLater: Handle;
-            initializedLater = NewHandle(3);
-            Take(initializedLater);
+            initializedLater <- NewHandle(3);
+            Take(<-initializedLater);
         }
     )");
 

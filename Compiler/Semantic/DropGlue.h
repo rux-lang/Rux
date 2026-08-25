@@ -24,8 +24,8 @@ struct DropGlueStep {
     std::uint64_t ordinal = 0;
     std::uint64_t count = 0;
     bool reverse = false;
-    /// Linker name of the type's destructor (or compatibility `Drop::Drop`), resolved while lowering because a generic
-    /// implementation is instantiated. Empty for every kind but InvokeDrop.
+    /// Linker name of the type's destructor, resolved while lowering because a generic implementation is
+    /// instantiated. Empty for every kind but InvokeDrop.
     std::string dropSymbol;
     /// The tag value an EnumVariant step tests for, resolved with the same lookup a construction of that variant uses.
     std::string discriminant;
