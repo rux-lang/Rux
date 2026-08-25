@@ -99,7 +99,7 @@ func Main() -> int {
         let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 64 };
         var split: uint = 0;
         while split <= length {
-            var incremental = Sha512::New();
+            var incremental = Sha512();
             incremental.Update(Slice<char8> { data: @message[0], length: split });
             incremental.Update(Slice<char8> { data: @message[split], length: length - split });
             var got: char8[64];
@@ -112,7 +112,7 @@ func Main() -> int {
     }
 
     // The reported sizes.
-    var sizes = Sha512::New();
+    var sizes = Sha512();
     Assert(sizes.DigestLength() == 64u && sizes.BlockLength() == 128u, "SHA-512 reports its own sizes");
     var shortSizes = Sha512::NewTrunc224();
     Assert(shortSizes.DigestLength() == 28u && shortSizes.BlockLength() == 128u,

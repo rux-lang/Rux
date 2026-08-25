@@ -43,6 +43,8 @@ func RotateRight32(value: uint32, amount: uint32) -> uint32 {
 
 /// An incremental SHA-256 or SHA-224.
 ///
+/// Structural `Copy`; copying takes an independent snapshot of the digest state.
+///
 /// https://rux-lang.dev/docs/api/crypto/sha256
 struct Sha256 {
     /// The eight working words.
@@ -61,14 +63,19 @@ extend Sha256 {
     /// A SHA-256 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/new
+    func Sha256() -> Sha256 {
+        var buffer: char8[64];
+        var index: uint = 0;
+        while index < 64u {
+            buffer[index] = 0u8 as char8;
+            index = index + 1u;
+        }
+        return Sha256 { state: Sha256InitialState, buffer: buffer, buffered: 0, length: 0, outputLength: 32 };
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Sha256()`.
     func New() -> Sha256 {
-        // The buffer is left as it lies: nothing reads a byte of it that `buffered` has not accounted for.
-        var digest: Sha256;
-        digest.state = Sha256InitialState;
-        digest.buffered = 0;
-        digest.length = 0;
-        digest.outputLength = 32;
-        return digest;
+        return Sha256();
     }
 
     /// A SHA-224 state: the same compression function from a different start, keeping seven words of the result.
@@ -84,7 +91,7 @@ extend Sha256 {
     }
 
     // One block of sixty-four bytes, mixed into the state.
-    func Compress(self: *var Sha256, block: *char8) {
+    func Compress(self: &var Sha256, block: *char8) {
         var schedule: uint32[64];
         var index: uint = 0;
         while index < 16u {
@@ -149,7 +156,7 @@ extend Sha256 : Digest {
     /// the buffer is only compressed once it is full.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/update
-    func Update(self: *var Sha256, bytes: Slice<char8>) {
+    func Update(self: &var Sha256, bytes: Slice<char8>) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         // Finish whatever partial block is already held before taking whole blocks directly.
@@ -183,7 +190,7 @@ extend Sha256 : Digest {
     /// implementation from one that passes the short vectors.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/finish
-    func Finish(self: *var Sha256, into: MutableSlice<char8>) {
+    func Finish(self: &var Sha256, into: MutableSlice<char8>) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -221,14 +228,14 @@ extend Sha256 : Digest {
     /// Thirty-two bytes for SHA-256, twenty-eight for SHA-224.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/digest-length
-    func DigestLength(self: *Sha256) -> uint {
+    func DigestLength(self: &Sha256) -> uint {
         return self.outputLength;
     }
 
     /// Sixty-four bytes, for both.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/block-length
-    func BlockLength(self: *Sha256) -> uint {
+    func BlockLength(self: &Sha256) -> uint {
         return 64u;
     }
 }
@@ -237,7 +244,7 @@ extend Sha256 : Digest {
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha256-of
 func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
-    var digest = Sha256::New();
+    var digest = Sha256();
     digest.Update(bytes);
     digest.Finish(into);
 }

@@ -67,7 +67,7 @@ func Main() -> int {
                 var s: uint = 0;
                 while s < 6u {
                     let split = splits[s] <= length ? splits[s] : length;
-                    var incremental = Blake3::New();
+                    var incremental = Blake3();
                     let first = Slice<char8> { data: @message[0], length: split };
                     incremental.Update(first);
                     let second = Slice<char8> { data: @message[split], length: length - split };
@@ -86,7 +86,7 @@ func Main() -> int {
     }
 
     // Byte-at-a-time across two chunk boundaries, which drives the chunk state through every flag transition.
-    var byteAtATime = Blake3::New();
+    var byteAtATime = Blake3();
     index = 0;
     while index < 2500u {
         let single = Slice<char8> { data: @message[index], length: 1 };
@@ -131,7 +131,7 @@ func Main() -> int {
                  Slice<char8> { data: @longOut[0], length: 32 }),
            "a short output is the start of a long one");
 
-    var sizes = Blake3::New();
+    var sizes = Blake3();
     Assert(sizes.DigestLength() == 32u && sizes.BlockLength() == 64u, "BLAKE3 reports its conventional sizes");
 
     return 0;

@@ -51,7 +51,12 @@ struct Fnv1a32 {
 }
 
 extend Fnv1a32 {
-    /// A hasher with nothing written into it yet.
+    /// Constructs a hasher with nothing written into it yet.
+    func Fnv1a32() -> Fnv1a32 {
+        return Fnv1a32 { state: FnvOffsetBasis32 };
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Fnv1a32()`.
     ///
     /// Takes nothing and cannot fail. `Finish` on a fresh hasher gives the offset basis, which is the defined hash
     /// of the empty input rather than an accident of the construction.
@@ -60,17 +65,17 @@ extend Fnv1a32 {
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/new
     func New() -> Fnv1a32 {
-        return Fnv1a32 { state: FnvOffsetBasis32 };
+        return Fnv1a32();
     }
 
-    /// Puts the hasher back to where `New` leaves one.
+    /// Puts the hasher back to where `Fnv1a32()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/reset
-    func Reset(self: *var Fnv1a32) {
+    func Reset(self: &var Fnv1a32) {
         self.state = FnvOffsetBasis32;
     }
 
@@ -82,7 +87,7 @@ extend Fnv1a32 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/value
-    func Value(self: *Fnv1a32) -> uint32 {
+    func Value(self: &Fnv1a32) -> uint32 {
         return self.state;
     }
 }
@@ -101,7 +106,7 @@ extend Fnv1a32 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/write
-    func Write(self: *var Fnv1a32, bytes: *byte, length: uint) {
+    func Write(self: &var Fnv1a32, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -122,7 +127,7 @@ extend Fnv1a32 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/finish
-    func Finish(self: *var Fnv1a32) -> uint64 {
+    func Finish(self: &var Fnv1a32) -> uint64 {
         return self.state as uint64;
     }
 }
@@ -131,6 +136,7 @@ extend Fnv1a32 : Hasher {
 ///
 /// The width to prefer: the same cost per byte as the 32-bit form on any 64-bit machine, and far enough from a
 /// birthday collision that an ordinary table will never see one by accident.
+/// Structural `Copy`; copying takes an independent snapshot of the accumulator.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a64
 struct Fnv1a64 {
@@ -139,7 +145,12 @@ struct Fnv1a64 {
 }
 
 extend Fnv1a64 {
-    /// A hasher with nothing written into it yet.
+    /// Constructs a hasher with nothing written into it yet.
+    func Fnv1a64() -> Fnv1a64 {
+        return Fnv1a64 { state: FnvOffsetBasis64 };
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Fnv1a64()`.
     ///
     /// Takes nothing and cannot fail. `Finish` on a fresh hasher gives the offset basis, which is the defined hash
     /// of the empty input.
@@ -148,17 +159,17 @@ extend Fnv1a64 {
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/new
     func New() -> Fnv1a64 {
-        return Fnv1a64 { state: FnvOffsetBasis64 };
+        return Fnv1a64();
     }
 
-    /// Puts the hasher back to where `New` leaves one.
+    /// Puts the hasher back to where `Fnv1a64()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/reset
-    func Reset(self: *var Fnv1a64) {
+    func Reset(self: &var Fnv1a64) {
         self.state = FnvOffsetBasis64;
     }
 }
@@ -176,7 +187,7 @@ extend Fnv1a64 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/write
-    func Write(self: *var Fnv1a64, bytes: *byte, length: uint) {
+    func Write(self: &var Fnv1a64, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -196,7 +207,7 @@ extend Fnv1a64 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/finish
-    func Finish(self: *var Fnv1a64) -> uint64 {
+    func Finish(self: &var Fnv1a64) -> uint64 {
         return self.state;
     }
 }
@@ -216,7 +227,7 @@ extend Fnv1a64 : Hasher {
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a32-of
 func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
-    var hasher = Fnv1a32::New();
+    var hasher = Fnv1a32();
     hasher.Write(bytes, length);
     return hasher.Value();
 }
@@ -234,7 +245,7 @@ func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a64-of
 func Fnv1a64Of(bytes: *byte, length: uint) -> uint64 {
-    var hasher = Fnv1a64::New();
+    var hasher = Fnv1a64();
     hasher.Write(bytes, length);
     return hasher.Finish();
 }

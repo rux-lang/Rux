@@ -132,7 +132,12 @@ struct Crc32 {
 }
 
 extend Crc32 {
-    /// A checksum with nothing written into it yet.
+    /// Constructs a checksum with nothing written into it yet.
+    func Crc32() -> Crc32 {
+        return Crc32 { register: Crc32Initial };
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Crc32()`.
     ///
     /// Takes nothing and cannot fail. `Value` on a fresh one is zero, which is the CRC of the empty message.
     ///
@@ -140,17 +145,17 @@ extend Crc32 {
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/new
     func New() -> Crc32 {
-        return Crc32 { register: Crc32Initial };
+        return Crc32();
     }
 
-    /// Puts the checksum back to where `New` leaves one.
+    /// Puts the checksum back to where `Crc32()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/reset
-    func Reset(self: *var Crc32) {
+    func Reset(self: &var Crc32) {
         self.register = Crc32Initial;
     }
 
@@ -162,7 +167,7 @@ extend Crc32 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/value
-    func Value(self: *Crc32) -> uint32 {
+    func Value(self: &Crc32) -> uint32 {
         return self.register ^ Crc32Initial;
     }
 }
@@ -180,7 +185,7 @@ extend Crc32 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/write
-    func Write(self: *var Crc32, bytes: *byte, length: uint) {
+    func Write(self: &var Crc32, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -200,7 +205,7 @@ extend Crc32 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/finish
-    func Finish(self: *var Crc32) -> uint64 {
+    func Finish(self: &var Crc32) -> uint64 {
         return self.Value() as uint64;
     }
 }
@@ -210,6 +215,7 @@ extend Crc32 : Hasher {
 /// The variant to prefer for new work: it detects more of the double-bit errors that appear at storage-record
 /// lengths, and it is the one both supported architectures implement in hardware. Choose `Crc32` only when an
 /// existing format requires it.
+/// Structural `Copy`; copying takes an independent snapshot of the register.
 ///
 /// https://rux-lang.dev/docs/api/hash/crc32c
 struct Crc32c {
@@ -218,7 +224,12 @@ struct Crc32c {
 }
 
 extend Crc32c {
-    /// A checksum with nothing written into it yet.
+    /// Constructs a checksum with nothing written into it yet.
+    func Crc32c() -> Crc32c {
+        return Crc32c { register: Crc32Initial };
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Crc32c()`.
     ///
     /// Takes nothing and cannot fail. `Value` on a fresh one is zero, which is the CRC of the empty message.
     ///
@@ -226,17 +237,17 @@ extend Crc32c {
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/new
     func New() -> Crc32c {
-        return Crc32c { register: Crc32Initial };
+        return Crc32c();
     }
 
-    /// Puts the checksum back to where `New` leaves one.
+    /// Puts the checksum back to where `Crc32c()` leaves one.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/reset
-    func Reset(self: *var Crc32c) {
+    func Reset(self: &var Crc32c) {
         self.register = Crc32Initial;
     }
 
@@ -247,7 +258,7 @@ extend Crc32c {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/value
-    func Value(self: *Crc32c) -> uint32 {
+    func Value(self: &Crc32c) -> uint32 {
         return self.register ^ Crc32Initial;
     }
 }
@@ -265,7 +276,7 @@ extend Crc32c : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/write
-    func Write(self: *var Crc32c, bytes: *byte, length: uint) {
+    func Write(self: &var Crc32c, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -284,7 +295,7 @@ extend Crc32c : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/finish
-    func Finish(self: *var Crc32c) -> uint64 {
+    func Finish(self: &var Crc32c) -> uint64 {
         return self.Value() as uint64;
     }
 }
@@ -302,7 +313,7 @@ extend Crc32c : Hasher {
 ///
 /// https://rux-lang.dev/docs/api/hash/crc32-of
 func Crc32Of(bytes: *byte, length: uint) -> uint32 {
-    var checksum = Crc32::New();
+    var checksum = Crc32();
     checksum.Write(bytes, length);
     return checksum.Value();
 }
@@ -320,7 +331,7 @@ func Crc32Of(bytes: *byte, length: uint) -> uint32 {
 ///
 /// https://rux-lang.dev/docs/api/hash/crc32c-of
 func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
-    var checksum = Crc32c::New();
+    var checksum = Crc32c();
     checksum.Write(bytes, length);
     return checksum.Value();
 }

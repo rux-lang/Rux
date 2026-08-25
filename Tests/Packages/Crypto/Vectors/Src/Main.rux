@@ -162,7 +162,7 @@ func Main() -> int {
         let whole = Slice<char8> { data: @message[0], length: length };
         var direct: char8[32];
         Blake3Of(whole, MutableSlice::From<char8>(@direct[0], 32));
-        var pieced = Blake3::New();
+        var pieced = Blake3();
         var offset: uint = 0;
         while offset < length {
             var step = 337u;

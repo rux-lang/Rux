@@ -90,7 +90,7 @@ func Main() -> int {
 
         var split: uint = 0;
         while split <= length {
-            var digest = Sha256::New();
+            var digest = Sha256();
             let first = Slice<char8> { data: @message[0], length: split };
             digest.Update(first);
             let second = Slice<char8> { data: @message[split], length: length - split };
@@ -106,7 +106,7 @@ func Main() -> int {
     }
 
     // Feeding one byte at a time, which exercises the buffering path on every block boundary.
-    var byteAtATime = Sha256::New();
+    var byteAtATime = Sha256();
     index = 0;
     while index < 200u {
         let single = Slice<char8> { data: @message[index], length: 1 };
@@ -124,7 +124,7 @@ func Main() -> int {
            "a byte-at-a-time digest matches the one-shot digest");
 
     // An empty update changes nothing.
-    var withEmpties = Sha256::New();
+    var withEmpties = Sha256();
     withEmpties.Update("");
     withEmpties.Update("abc");
     withEmpties.Update("");
@@ -137,8 +137,30 @@ func Main() -> int {
     Assert(Equal(Slice<char8> { data: @emptied[0], length: 32 }, Slice<char8> { data: @plain[0], length: 32 }),
            "empty updates change nothing");
 
+    // Digest states are structural Copy values. Copies branch from one prefix without sharing later mutations.
+    var prefix = Sha256();
+    prefix.Update("ab");
+    var abc = prefix;
+    var abd = prefix;
+    abc.Update("c");
+    abd.Update("d");
+    var abcDigest: char8[32];
+    var abdDigest: char8[32];
+    abc.Finish(MutableSlice::From<char8>(@abcDigest[0], 32));
+    abd.Finish(MutableSlice::From<char8>(@abdDigest[0], 32));
+    var abcExpected: char8[32];
+    var abdExpected: char8[32];
+    Sha256Of("abc", MutableSlice::From<char8>(@abcExpected[0], 32));
+    Sha256Of("abd", MutableSlice::From<char8>(@abdExpected[0], 32));
+    Assert(Equal(Slice<char8> { data: @abcDigest[0], length: 32 },
+                 Slice<char8> { data: @abcExpected[0], length: 32 }),
+           "a digest copy continues independently from its prefix");
+    Assert(Equal(Slice<char8> { data: @abdDigest[0], length: 32 },
+                 Slice<char8> { data: @abdExpected[0], length: 32 }),
+           "and a second copy keeps its own later writes");
+
     // The reported lengths.
-    var lengths = Sha256::New();
+    var lengths = Sha256();
     Assert(lengths.DigestLength() == 32u && lengths.BlockLength() == 64u, "SHA-256 reports its own sizes");
     var narrowLengths = Sha256::New224();
     Assert(narrowLengths.DigestLength() == 28u, "and SHA-224 reports its shorter digest");

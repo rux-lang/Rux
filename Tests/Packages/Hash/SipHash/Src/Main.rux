@@ -108,7 +108,7 @@ func Main() -> int {
 
     // Usable through the bound, which is what puts it in a hash table.
     var bounded = SipHash24::WithKeyBytes(keyBytes);
-    Assert(HashBytes<SipHash24>(@bounded, bytes, 40) == expected, "SipHash is usable through the hashing bound");
+    Assert(HashBytes<SipHash24>(bounded, bytes, 40) == expected, "SipHash is usable through the hashing bound");
 
     return 0;
 }
