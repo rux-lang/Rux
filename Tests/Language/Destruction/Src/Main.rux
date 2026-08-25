@@ -75,7 +75,7 @@ func HoldNested(counter: *var Counter) {
 
 // Matching an option by value takes its payload out: the arm's binding owns it and destroys it when the arm ends.
 func MatchAndDiscard(held: Option<Tracked>) {
-    match held {
+    match <-held {
         .Some(value) => {
         },
         .None => {

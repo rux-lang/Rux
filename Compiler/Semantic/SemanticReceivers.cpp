@@ -45,7 +45,7 @@ TypeRef SemanticAnalyzerContext::DeclareReceiver(const FuncDecl &declaration, co
         self.name = "self";
         self.location = receiver ? receiver->location : declaration.location;
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
-        self.isMut = receiver != nullptr && receiver->isMut;
+        self.isMut = false;
         DefineTrackedLocal(std::move(self), true);
     }
     return savedSelfType;

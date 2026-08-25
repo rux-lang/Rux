@@ -955,18 +955,12 @@ TEST_CASE("let and var independently control binding and pointee mutability") {
                                      "declare 'immutable' with 'var' for a '*var T'");
 }
 
-TEST_CASE("function parameters are immutable unless declared var") {
+TEST_CASE("function parameters are immutable") {
     const auto diagnostics = AnalyzeSource(R"(
         func Immutable(x: int, ptr: *var int) {
             x = 1;
             ptr = ptr;
             *ptr = 2;
-        }
-
-        func Mutable(var x: int, var ptr: *var int) {
-            x = 3;
-            ptr = ptr;
-            *ptr = 4;
         }
     )");
 

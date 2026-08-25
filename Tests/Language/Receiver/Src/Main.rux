@@ -18,12 +18,12 @@ extend Vector {
         self.y *= factor;
     }
 
-    // The copy is the method's own, so scaling it leaves the receiver alone. It
-    // takes `var` for the same reason any other parameter does: a copy is not
-    // writable until the declaration says so.
-    func Scaled(var self: Vector, factor: float64) -> Vector {
-        self.Scale(factor);
-        return self;
+    // The receiver is immutable like every parameter. A writable local copy is
+    // what scaling changes, so the caller's value remains untouched.
+    func Scaled(self: Vector, factor: float64) -> Vector {
+        var result = self;
+        result.Scale(factor);
+        return result;
     }
 }
 

@@ -1,6 +1,6 @@
 # Language Ownership and Lifecycle Contract
 
-This page is the settled contract for Rux values, borrowing, copying, moving, construction, and destruction. The compiler, first-party packages, and positive language examples use this model. A narrow compatibility window still accepts selected old spellings while the final removal checks land; those spellings are not part of the finished language.
+This page is the settled contract for Rux values, borrowing, copying, moving, construction, and destruction. The compiler, first-party packages, and positive language examples use this model. Removed ownership spellings are accepted only in negative diagnostic fixtures.
 
 The design favors locally visible ownership effects, explicit signatures, and separate syntax for safe borrowing and raw addresses. Declarations and members remain private by default and use `pub` for public API. A `struct` declares layout, while functions, operators, constructors, destructors, and interface implementations live in `extend` blocks.
 
@@ -21,6 +21,8 @@ func Read(self: &Buffer)
 func Clear(self: &var Buffer)
 func Consume(self: Buffer)
 ```
+
+The removed `var value: T` parameter form is an error. A function that needs mutable local storage moves the parameter into a local with `var local <- value`; a function that mutates caller-owned storage instead accepts `value: &var T`.
 
 Members are always named through their value, such as `self.length`; a receiver never enables implicit field lookup. `Self` remains available only where an interface must name the unknown concrete implementing type.
 
@@ -61,7 +63,7 @@ Copy and move are different operations:
 <-    move or move assignment
 ```
 
-A named source is copied unless the source expression is prefixed by `<-`. A fresh temporary transfers directly because no visible source remains afterwards:
+A named source is copied unless the source expression is prefixed by `<-`. A named move-only source in any by-value context is therefore an error without `<-`; the diagnostic shows the transfer syntax for that binding, argument, return, assignment, aggregate, or conditional arm. A fresh temporary transfers directly because no visible source remains afterwards:
 
 ```rux
 let copy = value;
@@ -127,6 +129,6 @@ The compiler invokes it exactly once for each initialized value that still owns 
 
 `Core::Drop` is not part of the language or Core package. Lifecycle cleanup is expressed only by `~Type`, and an ordinary interface or method named `Drop` has no compiler-defined ownership meaning.
 
-## Compatibility Boundary
+## Final Ownership Boundary
 
-The remaining compatibility surface consists of implicit consumption of named move-only values and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Exact-type forwarding `New` wrappers and `Core::Drop` have already been removed; fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.
+Implicit consumption of named move-only values, mutable-parameter prefixes, exact-type forwarding `New` wrappers, and `Core::Drop` are removed. Fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent parts of the language and packages rather than compatibility syntax.

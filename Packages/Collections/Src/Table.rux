@@ -259,8 +259,8 @@ extend Table<K, V> {
                 // The occupant is closer to home than what is being carried, so it gives up the slot and travels on.
                 // Taking the richer entry's place is the whole of Robin Hood: it is the one that can best afford the
                 // extra step.
-                let displacedKey = self.keys[index];
-                let displacedValue = self.values[index];
+                let displacedKey <- self.keys[index];
+                let displacedValue <- self.values[index];
                 self.keys[index] <- carriedKey;
                 self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
@@ -292,8 +292,8 @@ extend Table<K, V> {
                 // Nothing follows, or what follows is already home and would be wrong to move back past it.
                 break;
             }
-            self.keys[hole] = self.keys[next];
-            self.values[hole] = self.values[next];
+            self.keys[hole] <- self.keys[next];
+            self.values[hole] <- self.values[next];
             self.states[hole] = (state as uint8) - 1;
             hole = next;
             next = self.NextOf(hole);
@@ -375,7 +375,7 @@ extend Table<K, V> {
         while index < oldCapacity {
             if oldStates[index] != SlotEmpty {
                 // Relocated rather than copied: each entry has exactly one home afterwards, in the new run.
-                self.Place(oldKeys[index], oldValues[index], hash);
+                self.Place(<-oldKeys[index], <-oldValues[index], hash);
             }
             index++;
         }
@@ -468,8 +468,8 @@ extend Table<K, V> {
             if self.states[index] != SlotEmpty {
                 // Moving each into a local destroys it when the local's life ends, which is the only way a container
                 // has to destroy something it does not know is droppable.
-                let takenKey = self.keys[index];
-                let takenValue = self.values[index];
+                let takenKey <- self.keys[index];
+                let takenValue <- self.values[index];
                 self.states[index] = SlotEmpty;
             }
             index++;
