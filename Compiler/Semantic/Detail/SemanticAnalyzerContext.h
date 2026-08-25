@@ -77,7 +77,9 @@ protected:
                                       SourceLocation location, bool explicitMove = false);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
+    [[nodiscard]] static bool IsDestructorName(std::string_view name);
     void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
+    void ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
     [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> ConstructorCandidates(const TypeRef &type);
@@ -550,7 +552,7 @@ private:
     virtual void ResolveModuleSignaturesInScope(const Module &module, Scope &scope) = 0;
     virtual void CheckModule(const Module &module) = 0;
     virtual void CheckModuleInScope(const Module &module, Scope &scope) = 0;
-    /// Queues the `Drop` of every droppable type recorded, so a destructor's body is analyzed at each type it will
+    /// Queues the destructor of every droppable type recorded, so its body is analyzed at each type it will
     /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type
     /// arguments were known is never answered.
@@ -562,7 +564,7 @@ private:
     void SynthesizeResolvedDropGlue();
     [[nodiscard]] std::vector<DropGlueStep> BuildDropGlueSteps(const TypeRef &type,
                                                                std::unordered_set<std::string> &activeTypes);
-    [[nodiscard]] bool TypeImplementsDrop(const std::string &baseName) const;
+    [[nodiscard]] bool TypeHasDirectDestructor(const std::string &baseName) const;
     [[nodiscard]] static std::string DropGlueSymbol(const TypeRef &type);
     virtual void BuildFinalSymbolIdentities() = 0;
 

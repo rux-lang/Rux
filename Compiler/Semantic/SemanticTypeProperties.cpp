@@ -30,6 +30,10 @@ bool SemanticAnalyzerContext::IsSpecialOperationName(const std::string_view name
     return name == "=" || name == "<-";
 }
 
+bool SemanticAnalyzerContext::IsDestructorName(const std::string_view name) {
+    return name.size() > 1 && name.front() == '~';
+}
+
 void SemanticAnalyzerContext::ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType) {
     const std::string typeName = NamedBaseTypeName(extendedType);
     if (typeName.empty() || method.name != typeName) {
@@ -77,6 +81,42 @@ std::vector<const FuncDecl *> SemanticAnalyzerContext::ConstructorCandidates(con
         }
     }
     return result;
+}
+
+void SemanticAnalyzerContext::ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType) {
+    if (!IsDestructorName(method.name)) {
+        return;
+    }
+
+    const std::string typeName = NamedBaseTypeName(extendedType);
+    const std::string expectedName = "~" + typeName;
+    if (method.name != expectedName) {
+        EmitError(method.location,
+                  std::format("destructor '{}' must be named '{}' for type '{}'", method.name, expectedName, typeName));
+    }
+
+    const bool canonical = [&] {
+        if (!method.typeParams.empty() || method.params.size() != 1 || method.returnType ||
+            method.params[0].name != "self" || method.params[0].isMut || method.params[0].isVariadic ||
+            method.params[0].defaultValue) {
+            return false;
+        }
+        TypeRef receiver = ResolveType(*method.params[0].type);
+        TypeRef expected = extendedType;
+        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() || !receiver.inner.front().isMut) {
+            return false;
+        }
+        receiver.inner.front().isMut = false;
+        expected.isMut = false;
+        return receiver.inner.front() == expected;
+    }();
+    if (!canonical) {
+        EmitError(method.location, std::format("destructor for type '{}' must have signature 'func {}(self: &var {})'",
+                                               typeName, expectedName, extendedType.ToString()));
+    }
+    if (!method.body) {
+        EmitError(method.location, std::format("destructor '{}' must have a body", expectedName));
+    }
 }
 
 void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType) {

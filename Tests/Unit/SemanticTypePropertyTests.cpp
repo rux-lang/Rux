@@ -277,6 +277,41 @@ TEST_CASE("special operations require canonical implementation signatures") {
     CHECK(hasMessage("special operation '=' may only be declared in an extend block"));
 }
 
+TEST_CASE("type-named destructors require the canonical owning signature") {
+    Lexer lexer(R"(
+        struct Bad { value: int32; }
+        extend Bad {
+            func ~Other(self: &var Bad) {}
+            func ~Bad(self: &Bad);
+        }
+        func ~Bad(self: &var Bad) {}
+    )",
+                "invalid_destructors.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "invalid_destructors.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto *implementation = dynamic_cast<const ImplDecl *>(parsed.module.items[1].get());
+    REQUIRE(implementation != nullptr);
+    REQUIRE_EQ(implementation->methods.size(), 2);
+    CHECK_EQ(implementation->methods[0]->name, "~Other");
+    CHECK_EQ(implementation->methods[1]->name, "~Bad");
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE(model.HasErrors());
+    const auto hasMessage = [&](const std::string_view message) {
+        return std::ranges::any_of(model.diagnostics,
+                                   [&](const Diagnostic &diagnostic) { return diagnostic.message == message; });
+    };
+    CHECK(hasMessage("destructor '~Other' must be named '~Bad' for type 'Bad'"));
+    CHECK(hasMessage("destructor for type 'Bad' must have signature 'func ~Bad(self: &var Bad)'"));
+    CHECK(hasMessage("destructor '~Bad' must have a body"));
+    CHECK(hasMessage("destructor '~Bad' may only be declared in an extend block"));
+}
+
 TEST_CASE("drop glue expands concrete aggregates in reverse construction order") {
     Lexer lexer(R"(
         interface Drop {}

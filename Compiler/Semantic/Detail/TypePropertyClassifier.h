@@ -50,6 +50,7 @@ private:
     [[nodiscard]] TypeProperties ClassifyEnum(const EnumDecl &declaration, const std::vector<TypeRef> &arguments);
     [[nodiscard]] TypeProperties ClassifyUnion(const UnionDecl &declaration);
     [[nodiscard]] bool ImplementsDrop(const std::string &baseName) const;
+    [[nodiscard]] bool DeclaresDestructor(const TypeRef &type, const std::vector<TypeRef> &arguments) const;
     [[nodiscard]] std::optional<TypeProperties::SpecialOperationState>
     DeclaredSpecialOperation(const TypeRef &type, const std::vector<TypeRef> &arguments, std::string_view name) const;
     [[nodiscard]] bool IsCanonicalSpecialOperation(const FuncDecl &method, const TypeRef &type,

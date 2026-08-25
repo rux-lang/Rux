@@ -68,7 +68,7 @@ void HirToLirContext::EmitDropGlueSteps(const std::vector<DropGlueStep> &steps, 
 void HirToLirContext::EmitDropGlueStep(const DropGlueStep &step, const LirReg base) {
     switch (step.kind) {
     case DropGlueStep::Kind::InvokeDrop:
-        // A type whose `Drop` lowering could not name has nothing to call. The steps around it still run, so the
+        // A type whose destructor lowering could not name has nothing to call. The steps around it still run, so the
         // fields of a half-resolved type are released even when its own body is missing.
         if (!step.dropSymbol.empty()) {
             EmitDropGlueCall(step.dropSymbol, base);

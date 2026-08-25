@@ -30,7 +30,14 @@ DropGlueStep AggregateStep(const DropGlueStep::Kind kind, TypeRef type, std::str
 }
 } // namespace
 
-bool SemanticAnalyzerContext::TypeImplementsDrop(const std::string &baseName) const {
+bool SemanticAnalyzerContext::TypeHasDirectDestructor(const std::string &baseName) const {
+    if (const auto methods = methodsByType.find(baseName); methods != methodsByType.end()) {
+        const auto destructors = methods->second.find("~" + baseName);
+        if (destructors != methods->second.end() &&
+            std::ranges::any_of(destructors->second, [](const FuncDecl *method) { return method->body != nullptr; })) {
+            return true;
+        }
+    }
     const auto implementations = typeImplementsInterfaces.find(baseName);
     return implementations != typeImplementsInterfaces.end() &&
            std::ranges::any_of(implementations->second,
@@ -91,7 +98,7 @@ std::vector<DropGlueStep> SemanticAnalyzerContext::BuildDropGlueSteps(const Type
     }
     else if (type.kind == TypeRef::Kind::Named) {
         const std::string baseName = NamedBaseTypeName(type);
-        if (TypeImplementsDrop(baseName)) {
+        if (TypeHasDirectDestructor(baseName)) {
             DropGlueStep invoke;
             invoke.kind = DropGlueStep::Kind::InvokeDrop;
             invoke.type = type;
