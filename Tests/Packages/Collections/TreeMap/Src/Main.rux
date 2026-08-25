@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, CompareInt32, KeyValue, TreeMap };
-import Core::{ Assert, Drop, Option };
+import Core::{ Assert, Option };
 
 // What a `TreeMap` has that a `HashMap` does not is order, so that is what this leans on: the walk comes out sorted
 // whatever order the keys arrived in, the nearest key above or below a bound is found without a scan, and a range
@@ -20,8 +20,10 @@ struct Tracked {
     value: int32;
 }
 
-extend Tracked : Drop {
-    func Drop(self: *var Tracked) {
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
         if self.counter != null {
             *self.counter = *self.counter + 1i32;
         }
@@ -30,7 +32,7 @@ extend Tracked : Drop {
 
 // A scope for a map of tracked values, so its destruction happens somewhere observable.
 func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterInserting: *var int32) {
-    var map = TreeMap::New<int32, Tracked>(allocator, CompareInt32);
+    var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter: counter, value: key });
@@ -43,14 +45,14 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // A consuming walk stopped part-way: what was handed out is destroyed by whoever received it, and what was not is
 // destroyed by the iterator. Every value exactly once, either way.
 func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
-    var map = TreeMap::New<int32, Tracked>(allocator, CompareInt32);
+    var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
         map.Insert(key, Tracked { counter: counter, value: key });
         key = key + 1;
     }
 
-    var walker = map.IntoIterator();
+    var walker = (<-map).IntoIterator();
     var taken: int32 = 0;
     while taken < take {
         match walker.Next() {
@@ -67,7 +69,7 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
 }
 
 // Counts what a range hands back, checking on the way that it is sorted and that both bounds are respected.
-func CountRange(map: *TreeMap<int32, int32>, start: int32, end: int32) -> uint {
+func CountRange(map: &TreeMap<int32, int32>, start: int32, end: int32) -> uint {
     var walker = map.Range(start, end);
     var seen: uint = 0;
     var previous: int32 = -1;
@@ -91,12 +93,12 @@ func CountRange(map: *TreeMap<int32, int32>, start: int32, end: int32) -> uint {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     let missing = Missing();
 
     // Fifty keys arriving in a stride coprime with the count, so nothing about the order helps them come out sorted.
-    var map = TreeMap::New<int32, int32>(allocator, CompareInt32);
+    var map = TreeMap<int32, int32>(allocator, CompareInt32);
     var step: int32 = 0;
     while step < 50 {
         let key = (step * 23) % 50;
@@ -176,17 +178,17 @@ func Main() -> int {
     Assert(previous == 49, "ending at the largest key");
 
     // Half-open at both ends, so two ranges meeting at a bound cover everything once.
-    Assert(CountRange(@map, 10, 20) == 10, "a range hands back what lies between its bounds");
-    Assert(CountRange(@map, 0, 25) + CountRange(@map, 25, 50) == 48,
+    Assert(CountRange(map, 10, 20) == 10, "a range hands back what lies between its bounds");
+    Assert(CountRange(map, 0, 25) + CountRange(map, 25, 50) == 48,
            "and two ranges meeting at a bound cover the map exactly once");
-    Assert(CountRange(@map, 28, 34) == 4, "a range steps over the keys that were removed");
-    Assert(CountRange(@map, 20, 20) == 0, "a range whose bounds are equal is empty");
-    Assert(CountRange(@map, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
-    Assert(CountRange(@map, 100, 200) == 0, "a range past every key is empty");
-    Assert(CountRange(@map, 47, 100) == 3, "and one running past the end stops at the largest key");
+    Assert(CountRange(map, 28, 34) == 4, "a range steps over the keys that were removed");
+    Assert(CountRange(map, 20, 20) == 0, "a range whose bounds are equal is empty");
+    Assert(CountRange(map, 30, 10) == 0, "and so is one whose bounds are the wrong way round");
+    Assert(CountRange(map, 100, 200) == 0, "a range past every key is empty");
+    Assert(CountRange(map, 47, 100) == 3, "and one running past the end stops at the largest key");
 
     // Cleared and used again. A tree keeps no capacity back, so an emptied map is exactly a fresh one.
-    var reused = TreeMap::New<int32, int32>(allocator, CompareInt32);
+    var reused = TreeMap<int32, int32>(allocator, CompareInt32);
     reused.Insert(1, 10);
     reused.Insert(2, 20);
     reused.Clear();
@@ -195,7 +197,7 @@ func Main() -> int {
     Assert(reused.Length() == 1 && reused.First().ValueOr(missing).key == 3, "holding only what came after");
 
     // The consuming walk hands out ownership one entry at a time, in the same order.
-    var consuming = map.IntoIterator();
+    var consuming = (<-map).IntoIterator();
     var consumed: uint = 0;
     var last: int32 = -1;
     var draining = true;

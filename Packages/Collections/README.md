@@ -10,13 +10,15 @@ rux add Rux/Collections
 
 ## What it provides
 
-| Type              | Role                                          | Also known as |
-| ----------------- | --------------------------------------------- | ------------- |
-| `Array<T>`        | Fixed-length owned heap storage, allocator-injected |         |
-| `Vector<T>`       | Growable contiguous sequence                  | the stack     |
-| `Deque<T>`        | Double-ended queue over a circular buffer, allocator-injected | the queue |
-| `HashMap<K, V>`   | Open-addressed associative table              |               |
-| `HashSet<T>`      | Open-addressed set of distinct values         |               |
+| Type            | Role                                              | Also known as |
+| --------------- | ------------------------------------------------- | ------------- |
+| `Array<T>`      | Fixed-length owned heap storage                   |               |
+| `Vector<T>`     | Growable contiguous sequence                      | the stack     |
+| `Deque<T>`      | Double-ended queue over a circular buffer         | the queue     |
+| `HashMap<K, V>` | Open-addressed associative table                  |               |
+| `HashSet<T>`    | Open-addressed set of distinct values             |               |
+| `TreeMap<K, V>` | Ordered red-black-tree map                        |               |
+| `TreeSet<T>`    | Ordered red-black-tree set                        |               |
 
 There is no `Stack` or `Queue` type. `Vector` already is the stack — `Push` and `TryPop` work at the end that costs nothing to reach — and `Deque` already is the queue, with `PushBack` and `TryPopFront`. Wrapper types would duplicate them to add no safety Rux can enforce. There is no `Dictionary` either: `HashMap` is the one associative name.
 
@@ -36,7 +38,8 @@ There are no linked lists. They cost a pointer chase per element and an allocati
 
 `AsSlice` and `AsMutableSlice` hand out a borrowed view of a container's elements without copying them, which is how a container reaches [`Rux/Algorithms`](../Algorithms). A `Vector` view covers its initialized elements only, never its spare capacity.
 
-Only `Slice` supports `values[i]`, `values[1..3]` and `for x in`; those are compiler built-ins, not methods. Every container here offers `At` and `Set` instead, which are unchecked like slice indexing, plus `TryGet` and `TrySet`, which are not.
+Only `Slice` supports `values[i]` and `values[1..3]` directly. Containers use bounds-checked `Get`, `Set`, and
+`Reference` methods and provide iterator values for `for` loops.
 
 ## Failure model
 
@@ -62,9 +65,12 @@ refused the same way next time. `FromAllocError` is what maps an allocator's own
 An operation that **cannot** allocate reports an ordinary miss with a `bool`, through the `Try*` prefix and an out-parameter. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation.
 
 ```rux
+import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, Vector };
 
-var numbers = Vector::New<int32>();
+var system = SystemAllocator();
+let allocator: Allocator = system;
+var numbers = Vector<int32>(allocator);
 if !(numbers.Push(1) == CollectionError::None) {
     return;
 }
@@ -73,7 +79,6 @@ var last: int32 = 0;
 if numbers.TryPop(@last) {
     // ...
 }
-numbers.Free();
 ```
 
 **A failed operation changes nothing.** Capacity arithmetic is checked before anything is allocated, and a reallocated block lands in a local before it replaces the owned pointer — so a failure leaves the original allocation valid and owned, rather than leaking it and nulling the container.
@@ -82,10 +87,15 @@ Every count is checked for overflow. `count * sizeof(T)` is the most dangerous e
 
 ## Ownership
 
-`Array<T>` owns its storage and its elements, so it implements `Drop` and is move-only. Handing one to a function
-transfers it, and reading the source afterwards is rejected while compiling rather than discovered later. Destruction
-destroys every element and then releases the block — in that order, because an element destroyed after its storage
-was released would be read from freed memory.
+Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later
+reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same
+capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also
+move-only.
+
+Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`,
+`HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Temporary `New` forwarding methods remain while
+downstream packages migrate. Descriptive or fallible factories such as `FromSlice`, `WithCapacity`, and `Filled`
+retain their names.
 
 The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one
 built from a pool comes back to the pool.
@@ -94,15 +104,16 @@ Every constructor *copies* its elements into the storage, which means an array o
 built this way: copying such an element would give two owners to a value that promises one. `Vector<T>` and its
 `Push` is the shape that works, since each element is moved in exactly once.
 
-A container destroys an element it does not know is droppable by reading it into a local and letting the local's life
-end. That is the only mechanism the language offers, it costs nothing for an element type that owns nothing, and it
-is what `Array::Drop` does.
+A container destroys an element it does not know is droppable by relocating it from raw backing storage into a local
+and letting the local's life end. This raw-storage boundary is deliberate: safe references cannot transfer ownership
+through borrowed storage. It costs nothing for an element type that owns nothing and is what `~Array` does.
 
 ## Elements that own something
 
-`Vector::Push` moves its argument in rather than copying it, so a vector is how a sequence of owning elements is
-built: each is moved in exactly once, and destroyed exactly once, when the vector is. `TryPop` moves one back out,
-which is how an element leaves without being destroyed.
+`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named
+move-only element explicitly, for example `values.Push(<-value)`. Each element is destroyed exactly once, when it is
+removed without being returned or when its container dies. `TryPop`, removals, and consuming iterators move elements
+back out.
 
 `Array`'s constructors copy, so an array of owning elements has to be built through a vector first.
 
@@ -120,6 +131,10 @@ one would give two owners to a value that promises one.
 
 Both borrow. Neither owns what it walks, and neither may outlive the container it came from or survive that container
 growing, rehashing or being freed.
+
+`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as
+`(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators
+retain raw storage addresses because references cannot be stored in fields or returned.
 
 A `for` loop over an iterator *value* walks a copy of it, so the iterator the caller holds is left where it was. A
 loop is not a way to advance an iterator someone else is also reading.
@@ -256,20 +271,25 @@ Algorithms takes a pointer and a length, so a container passes the fields of a v
 import Algorithms::Unique;
 
 let view = numbers.AsMutableSlice();
-let kept = Unique<int32>(view.data, view.length);
+let kept = Unique<int32>(view);
 numbers.Truncate(kept);
 ```
 
 ## Guarantees and limitations
 
-- **Manual ownership.** Rux has no destructors, no move semantics, and no borrow checking. `Free` exactly once for every allocation.
-- **Assignment aliases.** Copying a container value copies the struct, so both name one allocation and freeing both is a double free. `Clone` is what makes an independent copy. Nothing enforces this.
-- **`Clone` is shallow.** Element bytes are copied verbatim. An element that owns a resource ends up referenced by both copies, and releasing it stays the element owner's job. Removing an entry from a table is the only chance to reclaim what it owned.
-- **Elements are relocated bytewise.** Growth moves them with a byte copy. An element holding a pointer into itself would not survive that.
-- **Views borrow, never own.** A view must not outlive the container's allocation. Growth invalidates every pointer and view; so does `Free`, and so does `Deque::MakeContiguous`, which moves elements without reallocating.
-- **Unchecked indexing** in `At` and `Set`, matching `Slice`: an index past the end is undefined behavior, not a reported error. `TryGet` and `TrySet` check.
-- **This is not memory safety.** The package reports allocation failure and checks its arithmetic. Use-after-free, double-free, and dangling views remain possible and undetected, because Rux's ownership model cannot express otherwise.
-- **Constructor out-parameters must not be null.** A `result` pointer is the whole point of the call, unlike the optional out-parameters elsewhere, and it is not checked.
+- **Owners are move-only.** Their copy operation is prohibited and their canonical destructor releases elements and
+  storage. `Clone` is explicit and copies elements, so it is available only when the instantiated element operations
+  permit it.
+- **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, pointer-returning
+  element borrows, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
+- **Views borrow, never own.** Growth, rehashing, destruction, and `Deque::MakeContiguous` invalidate relevant views
+  and raw element pointers. The compiler tracks reference loans, but deliberately raw addresses remain the caller's
+  responsibility.
+- **Relocation uses the raw-storage compatibility boundary.** Explicit moves are used for named owners and elements;
+  internal relocation through allocator memory remains an intentional raw operation until ownership-aware raw places
+  are expressible.
+- **Indexing is checked.** `Get`, `Set`, and `Reference` report a miss or `IndexOutOfRange` rather than indexing past
+  the allocation.
 
 ## Documentation
 

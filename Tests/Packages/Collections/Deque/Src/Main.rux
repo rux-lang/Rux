@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, Deque, MinimumDequeCapacity };
-import Core::{ Assert, Drop };
+import Core::Assert;
 
 // A ring buffer is where off-by-one errors live, so what is checked is the wrapping: elements pushed at one end and
 // taken from the other until the ring has wrapped several times over, and the answers compared against what a queue
@@ -11,8 +11,10 @@ struct Tracked {
     value: int32;
 }
 
-extend Tracked : Drop {
-    func Drop(self: *var Tracked) {
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
         if self.counter != null {
             *self.counter = *self.counter + 1i32;
         }
@@ -21,7 +23,7 @@ extend Tracked : Drop {
 
 // A scope for a deque of tracked elements. `afterPushing` reports what the counter read once everything was in.
 func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPushing: *var int32) {
-    var deque = Deque::New<Tracked>(allocator);
+    var deque = Deque<Tracked>(allocator);
     var index: uint = 0;
     while index < count {
         deque.PushBack(Tracked { counter: counter, value: index as int32 });
@@ -32,11 +34,11 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterPu
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // A new deque allocates nothing.
-    var queue = Deque::New<int32>(allocator);
+    var queue = Deque<int32>(allocator);
     Assert(queue.IsEmpty(), "a new deque is empty");
     Assert(queue.Capacity() == 0, "and has no storage");
     Assert(queue.PopFront().IsNone(), "with nothing to take from either end");
@@ -180,7 +182,7 @@ func Main() -> int {
 
     // Clearing destroys what it holds, and growth relocates rather than copying.
     destroyed = 0;
-    var owning = Deque::New<Tracked>(allocator);
+    var owning = Deque<Tracked>(allocator);
     var index: uint = 0;
     while index < 20 {
         owning.PushFront(Tracked { counter: @destroyed, value: index as int32 });

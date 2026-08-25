@@ -48,8 +48,8 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-ok
-    func IsOk(self: *CollectionError) -> bool {
-        return *self == CollectionError::None;
+    func IsOk(self: CollectionError) -> bool {
+        return self == CollectionError::None;
     }
 
     /// Whether this reports a failure.
@@ -60,8 +60,8 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-error
-    func IsError(self: *CollectionError) -> bool {
-        return *self != CollectionError::None;
+    func IsError(self: CollectionError) -> bool {
+        return self != CollectionError::None;
     }
 
     /// Whether the same operation might succeed later.
@@ -74,8 +74,8 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-transient
-    func IsTransient(self: *CollectionError) -> bool {
-        return *self == CollectionError::OutOfMemory;
+    func IsTransient(self: CollectionError) -> bool {
+        return self == CollectionError::OutOfMemory;
     }
 }
 

@@ -34,7 +34,7 @@ func Main() -> int {
     Assert(FromAllocError(AllocError::InvalidBlock) == CollectionError::Unsupported,
            "and so does a block the allocator did not hand out, which is the same thing from here");
 
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // Storage for a count of elements, sized from the element type rather than from anything the caller says.
@@ -90,7 +90,7 @@ func Main() -> int {
     }
     let items = Slice<int32> { data: @values[0], length: 5 };
 
-    var byValue = ValueIterator::New<int32>(items);
+    var byValue = ValueIterator<int32>(items);
     var seen: uint = 0;
     var total: int32 = 0;
     for value in byValue {
@@ -101,7 +101,7 @@ func Main() -> int {
     Assert(total == 100, "and yields the elements themselves");
 
     // An iterator driven to its end keeps reporting nothing.
-    var drained = ValueIterator::New<int32>(items);
+    var drained = ValueIterator<int32>(items);
     var drawn: int32 = 0;
     seen = 0;
     while drained.Next().TryIntoValue(@drawn) {
@@ -112,18 +112,18 @@ func Main() -> int {
 
     // A `for` loop over an iterator walks a copy of it, so the iterator the caller holds is where it was. Worth
     // knowing rather than discovering: a loop is not a way to advance an iterator someone else is also reading.
-    var untouched = ValueIterator::New<int32>(items);
+    var untouched = ValueIterator<int32>(items);
     for value in untouched {
         seen = seen + 1;
     }
     Assert(untouched.Next().IsSome(), "a loop over an iterator leaves the caller's own where it was");
 
     // Nothing to walk yields nothing, rather than one of something.
-    var nothing = ValueIterator::New<int32>(Slice<int32> { data: null, length: 0 });
+    var nothing = ValueIterator<int32>(Slice<int32> { data: null, length: 0 });
     Assert(nothing.Next().IsNone(), "an empty run yields nothing at once");
 
     // The reference iterator borrows each element where it sits.
-    var byReference = ReferenceIterator::New<int32>(items);
+    var byReference = ReferenceIterator<int32>(items);
     seen = 0;
     var readBack: int32 = 0;
     for element in byReference {
@@ -134,8 +134,8 @@ func Main() -> int {
     Assert(readBack == 100, "and each pointer reads the element it borrowed");
 
     // Both iterators walk the same run and agree about what is in it, which is the one thing they must.
-    var counted = ValueIterator::New<int32>(items);
-    var borrowed = ReferenceIterator::New<int32>(items);
+    var counted = ValueIterator<int32>(items);
+    var borrowed = ReferenceIterator<int32>(items);
     var value: int32 = 0;
     var element: *int32 = null;
     while counted.Next().TryIntoValue(@value) {
