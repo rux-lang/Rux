@@ -42,6 +42,7 @@ struct ResolvedCallableBinding {
     enum class DispatchKind {
         Direct,
         Method,
+        Constructor,
         Interface,
         Indirect,
         EnumVariant,
@@ -77,6 +78,13 @@ struct ResolvedCallableBinding {
     LinkerNameFor(const std::unordered_map<std::string, TypeRef> &concreteSubstitutions) const;
     [[nodiscard]] ResolvedCallableBinding
     Instantiate(const std::unordered_map<std::string, TypeRef> &contextSubstitutions) const;
+};
+
+/// A typed local declaration whose omitted initializer resolves to the type's accessible zero-argument constructor.
+/// Lowering synthesizes the call from this selected declaration rather than repeating constructor lookup.
+struct ResolvedDefaultConstructor {
+    const FuncDecl *declaration = nullptr;
+    TypeRef type;
 };
 
 /// Which concrete method satisfies each operation of one interface bound, for one type argument that satisfied it.
@@ -196,6 +204,7 @@ struct SemanticModel {
                   std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                   std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
+                  std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> inputDefaultConstructors,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
@@ -223,6 +232,9 @@ struct SemanticModel {
     /// Returns null for rejected calls and nodes outside the analyzed modules. Returned pointers remain valid for the
     /// lifetime of this model.
     [[nodiscard]] const ResolvedCallableBinding *TryGetCallableBinding(const CallExpr &call) const noexcept;
+
+    /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
+    [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;
 
     /// Returns null for declarations that do not emit/import a symbol and for nodes outside the analyzed modules.
     [[nodiscard]] const ResolvedSymbolIdentity *TryGetSymbolIdentity(const Decl &declaration) const noexcept;
@@ -270,6 +282,7 @@ private:
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
+    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;

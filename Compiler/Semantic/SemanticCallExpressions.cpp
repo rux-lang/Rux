@@ -293,6 +293,114 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
             return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
         }
+
+        if (Symbol *sym = currentScope->Lookup(ident->name); sym && sym->kind == Symbol::Kind::Type) {
+            TypeRef constructedType = sym->type.IsUnknown() ? TypeRef::MakeNamed(sym->name) : sym->type;
+            const std::vector<TypeParameter> *typeParameters = AggregateTypeParams(ident->name);
+            const std::size_t expectedTypeArguments = typeParameters ? typeParameters->size() : 0;
+            if (e->typeArgs.size() != expectedTypeArguments) {
+                EmitError(e->location,
+                          std::format("constructor for '{}' requires {}, but {} provided", ident->name,
+                                      Counted(expectedTypeArguments, "type argument"),
+                                      e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
+                return TypeRef::MakeUnknown();
+            }
+            if (typeParameters) {
+                CheckWrittenTypeArgumentConstraints(*typeParameters, e->typeArgs, e->location,
+                                                    std::format("type '{}'", ident->name));
+            }
+            constructedType = InstantiateAssociatedReceiver(std::move(constructedType), e->typeArgs);
+            const std::vector<const FuncDecl *> candidates = ConstructorCandidates(constructedType);
+            if (candidates.empty()) {
+                EmitError(e->location,
+                          std::format("type '{}' cannot be called because it has no declared constructor",
+                                      constructedType.ToString()),
+                          {}, "declare a receiverless constructor in its extend block or use explicit initialization");
+                return constructedType;
+            }
+
+            const auto candidateMatches = [&](const FuncDecl &candidate) {
+                const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
+                const std::size_t parameterCount = functionType.inner.empty() ? 0 : functionType.inner.size() - 1;
+                const bool variadic = !candidate.params.empty() && candidate.params.back().isVariadic;
+                std::size_t requiredCount = 0;
+                for (const Param &parameter : candidate.params) {
+                    if (!parameter.isVariadic && !parameter.defaultValue) {
+                        ++requiredCount;
+                    }
+                }
+                if (argTypes.size() < requiredCount || (!variadic && argTypes.size() > parameterCount)) {
+                    return false;
+                }
+                for (std::size_t index = 0; index < std::min(argTypes.size(), parameterCount); ++index) {
+                    if (!canPassArgument(index, argTypes[index], functionType.inner[index])) {
+                        return false;
+                    }
+                }
+                if (variadic && argTypes.size() > parameterCount) {
+                    const TypeRef elementType = ResolveTypeWithSubstitution(*candidate.params.back().type,
+                                                                            MethodTypeSubstitutions(constructedType));
+                    for (std::size_t index = parameterCount; index < argTypes.size(); ++index) {
+                        if (!canPassArgument(index, argTypes[index], elementType)) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            };
+
+            const FuncDecl *constructor = nullptr;
+            for (const FuncDecl *candidate : candidates) {
+                if (candidateMatches(*candidate)) {
+                    constructor = candidate;
+                    break;
+                }
+            }
+            if (!constructor) {
+                if (candidates.size() > 1) {
+                    emitOverloadError(ident->name, argTypes, candidates);
+                }
+                else {
+                    const FuncDecl &candidate = *candidates.front();
+                    const TypeRef functionType = AssociatedFunctionType(constructedType, candidate);
+                    const std::size_t parameterCount = functionType.inner.size() - 1;
+                    const bool variadic = !candidate.params.empty() && candidate.params.back().isVariadic;
+                    std::size_t requiredCount = 0;
+                    for (const Param &parameter : candidate.params) {
+                        if (!parameter.isVariadic && !parameter.defaultValue) {
+                            ++requiredCount;
+                        }
+                    }
+                    if (argTypes.size() < requiredCount || (!variadic && argTypes.size() > parameterCount)) {
+                        emitArityError(ident->name, requiredCount, parameterCount, variadic, argTypes.size(),
+                                       &candidate);
+                    }
+                    else {
+                        const auto parameters = VisibleParameters(candidate, false);
+                        for (std::size_t index = 0; index < std::min(argTypes.size(), parameterCount); ++index) {
+                            if (!canPassArgument(index, argTypes[index], functionType.inner[index])) {
+                                emitArgumentTypeError(ident->name, index, argTypes[index], functionType.inner[index],
+                                                      index < parameters.size() ? parameters[index] : nullptr,
+                                                      &candidate);
+                                break;
+                            }
+                        }
+                    }
+                }
+                return constructedType;
+            }
+
+            const auto substitutions = MethodTypeSubstitutions(constructedType);
+            QueueGenericInstantiation(*constructor, substitutions);
+            const TypeRef functionType = AssociatedFunctionType(constructedType, *constructor);
+            const std::size_t parameterCount = functionType.inner.size() - 1;
+            const std::vector<TypeRef> parameterTypes(functionType.inner.begin(),
+                                                      functionType.inner.begin() + parameterCount);
+            ConsumeCallArguments(*e, argTypes, &parameterTypes);
+            RecordFunctionBinding(*e, *constructor, ResolvedCallableBinding::DispatchKind::Constructor, substitutions,
+                                  constructedType);
+            return constructedType;
+        }
     }
 
     if (auto *field = dynamic_cast<const FieldExpr *>(e->callee.get())) {

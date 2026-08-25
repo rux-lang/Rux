@@ -30,6 +30,55 @@ bool SemanticAnalyzerContext::IsSpecialOperationName(const std::string_view name
     return name == "=" || name == "<-";
 }
 
+void SemanticAnalyzerContext::ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType) {
+    const std::string typeName = NamedBaseTypeName(extendedType);
+    if (typeName.empty() || method.name != typeName) {
+        return;
+    }
+    if (method.Receiver()) {
+        EmitError(method.location, std::format("constructor '{}' must not declare a 'self' receiver", typeName));
+    }
+    if (!method.typeParams.empty()) {
+        EmitError(method.location, std::format("constructor '{}' cannot declare function type parameters", typeName),
+                  {}, "write type arguments on the constructed type instead");
+    }
+    const TypeRef returnType = ResolveMethodReturnType(extendedType, method);
+    if (!method.returnType || returnType != extendedType) {
+        EmitError(method.location,
+                  std::format("constructor '{}' must return exactly '{}'", typeName, extendedType.ToString()));
+    }
+    if (!method.body) {
+        EmitError(method.location, std::format("constructor '{}' must have a body", typeName));
+    }
+}
+
+bool SemanticAnalyzerContext::IsConstructorCandidate(const FuncDecl &method, const TypeRef &type) {
+    const std::string typeName = NamedBaseTypeName(type);
+    return !typeName.empty() && method.name == typeName && !method.Receiver() && method.typeParams.empty() &&
+           method.body && method.returnType && ResolveMethodReturnType(type, method) == type;
+}
+
+std::vector<const FuncDecl *> SemanticAnalyzerContext::ConstructorCandidates(const TypeRef &type) {
+    const std::string typeName = NamedBaseTypeName(type);
+    const auto methods = methodsByType.find(typeName);
+    if (methods == methodsByType.end()) {
+        return {};
+    }
+    const auto named = methods->second.find(typeName);
+    if (named == methods->second.end()) {
+        return {};
+    }
+    std::vector<const FuncDecl *> result;
+    for (const FuncDecl *method : named->second) {
+        const auto source = functionDeclFiles.find(method);
+        const bool accessible = method->isPublic || source == functionDeclFiles.end() || source->second == currentFile;
+        if (accessible && IsConstructorCandidate(*method, type)) {
+            result.push_back(method);
+        }
+    }
+    return result;
+}
+
 void SemanticAnalyzerContext::ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType) {
     if (!IsSpecialOperationName(method.name)) {
         return;

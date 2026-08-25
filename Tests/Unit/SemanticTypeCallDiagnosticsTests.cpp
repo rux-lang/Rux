@@ -1,7 +1,9 @@
 #include "Lexer/Lexer.h"
+#include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <string>
 #include <utility>
@@ -20,7 +22,114 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
     return analyzer.Analyze().diagnostics;
 }
+
+HirPackage LowerSource(const std::string &source) {
+    Lexer lexer(source, "constructor-lowering.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "constructor-lowering.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    return AstToHirLowering(model).Generate();
+}
 } // namespace
+
+TEST_CASE("type-named constructors lower overloads generic calls and default initialization") {
+    const HirPackage package = LowerSource(R"(
+        struct Point { value: int32; }
+        extend Point {
+            func Point() -> Point { return Point { value: 0i32 }; }
+            func Point(value: int32) -> Point { return Point { value: value }; }
+        }
+
+        struct Box<T> { value: T; }
+        extend Box<T> {
+            func Box(value: T) -> Box<T> { return Box<T> { value: value }; }
+        }
+
+        func Build() -> int32 {
+            var origin: Point;
+            let point = Point(2i32);
+            let box = Box<int32>(3i32);
+            return origin.value + point.value + box.value;
+        }
+    )");
+
+    REQUIRE_EQ(package.modules.size(), 1);
+    const auto function = std::ranges::find(package.modules.front().funcs, "Build", &HirFunc::name);
+    REQUIRE(function != package.modules.front().funcs.end());
+    REQUIRE(function->body.has_value());
+    REQUIRE(function->body->stmts.size() >= 3);
+    const auto *origin = dynamic_cast<const HirLetStmt *>(function->body->stmts[0].get());
+    const auto *point = dynamic_cast<const HirLetStmt *>(function->body->stmts[1].get());
+    const auto *box = dynamic_cast<const HirLetStmt *>(function->body->stmts[2].get());
+    REQUIRE(origin != nullptr);
+    REQUIRE(point != nullptr);
+    REQUIRE(box != nullptr);
+    const auto *defaultCall = dynamic_cast<const HirCallExpr *>(origin->init.get());
+    const auto *pointCall = dynamic_cast<const HirCallExpr *>(point->init.get());
+    const auto *boxCall = dynamic_cast<const HirCallExpr *>(box->init.get());
+    REQUIRE(defaultCall != nullptr);
+    REQUIRE(pointCall != nullptr);
+    REQUIRE(boxCall != nullptr);
+    CHECK_EQ(defaultCall->type, TypeRef::MakeNamed("Point"));
+    CHECK_EQ(pointCall->type, TypeRef::MakeNamed("Point"));
+    CHECK_EQ(boxCall->type, TypeRef::MakeNamed("Box<int32>"));
+    CHECK(defaultCall->args.empty());
+    REQUIRE_EQ(pointCall->args.size(), 1);
+    REQUIRE_EQ(boxCall->args.size(), 1);
+    const auto *defaultCallee = dynamic_cast<const HirVarExpr *>(defaultCall->callee.get());
+    const auto *pointCallee = dynamic_cast<const HirVarExpr *>(pointCall->callee.get());
+    const auto *boxCallee = dynamic_cast<const HirVarExpr *>(boxCall->callee.get());
+    REQUIRE(defaultCallee != nullptr);
+    REQUIRE(pointCallee != nullptr);
+    REQUIRE(boxCallee != nullptr);
+    CHECK_NE(defaultCallee->name, pointCallee->name);
+    CHECK(boxCallee->name.contains("Box"));
+}
+
+TEST_CASE("type calls require declared constructors and never provide hidden conversions") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Point { value: int32; }
+        func Build() {
+            let called = Point(1i32);
+            let converted: Point = 1i32;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "type 'Point' cannot be called because it has no declared constructor");
+    CHECK_EQ(diagnostics[1].message, "cannot assign 'int32' to 'Point'");
+}
+
+TEST_CASE("constructor declarations enforce receiverless exact-type results") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Item { value: int32; }
+        extend Item {
+            func Item(self: &Item) -> Item { return Item { value: 0i32 }; }
+            func Item(value: int32) -> int32 { return value; }
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "constructor 'Item' must not declare a 'self' receiver");
+    CHECK_EQ(diagnostics[1].message, "constructor 'Item' must return exactly 'Item'");
+}
+
+TEST_CASE("omitted initialization stays tracked when no default constructor exists") {
+    const auto initializationDiagnostics = AnalyzeSource(R"(
+        struct Pending { value: int32; }
+        func Build() {
+            var pending: Pending;
+            let read = pending;
+        }
+    )");
+    REQUIRE_EQ(initializationDiagnostics.size(), 1);
+    CHECK_EQ(initializationDiagnostics[0].message, "variable 'pending' is used before it is initialized");
+}
 
 TEST_CASE("call diagnostics identify the argument and named parameter that disagree") {
     const auto diagnostics = AnalyzeSource(R"(

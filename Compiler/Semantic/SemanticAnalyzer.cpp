@@ -31,24 +31,26 @@ using SemanticDetail::Symbol;
 
 class SemanticAnalyzerImplementation final : public SemanticAnalyzerContext {
 public:
-    SemanticAnalyzerImplementation(std::vector<const Module *> &inputModules,
-                                   std::vector<DepPackage> &inputDependencies, const std::string &inputPackageName,
-                                   std::vector<SemanticDiagnostic> &inputDiagnostics,
-                                   std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
-                                   std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
-                                   std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
-                                   std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
-                                   std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
-                                   std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
-                                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
-                                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
-                                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
-                                   std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
-                                   std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
+    SemanticAnalyzerImplementation(
+        std::vector<const Module *> &inputModules, std::vector<DepPackage> &inputDependencies,
+        const std::string &inputPackageName, std::vector<SemanticDiagnostic> &inputDiagnostics,
+        std::vector<SemanticSymbol> &inputSymbols, const CompileTimeContext &inputContext,
+        std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
+        std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
+        std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+        std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
+        std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
+        std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
+        std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &inputDefaultConstructors,
+        std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
+        std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
+        std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
+        std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
         : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
                                   inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
                                   inputValueConsumptions, inputValueCopies, inputCallableBindings,
-                                  inputSymbolIdentities, inputVtableIdentities, inputTypeLayouts, inputSizeOfValues) {
+                                  inputDefaultConstructors, inputSymbolIdentities, inputVtableIdentities,
+                                  inputTypeLayouts, inputSizeOfValues) {
     }
 
 private:
@@ -258,7 +260,7 @@ private:
     /// program declaring its own `Option` displaces `Core`'s, and `Core`'s own `extend Option<T>` would then read the
     /// wrong arity and reject its own parameter. An `extend` block is written beside the type it extends, so the
     /// declaration in the same file is the one it means.
-    const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const {
+    const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const override {
         if (const std::vector<TypeParameter> *local = programIndex.TypeParamsIn(currentFile, name)) {
             return local;
         }
@@ -1494,7 +1496,7 @@ private:
         return ResolveMethodReturnType(receiverType, method);
     }
 
-    TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
+    TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) override {
         TypeRef savedSelfType = currentSelfType;
         currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
                             ? receiverType
@@ -2539,6 +2541,7 @@ private:
                 }
             }
             ValidateSpecialOperation(*m, currentExtendedType);
+            ValidateConstructor(*m, currentExtendedType);
             CheckFuncDecl(*m, /*isMethod=*/true);
         }
         currentSelfType = savedSelfType;
@@ -3108,7 +3111,10 @@ private:
                 continue;
             }
             const auto *function = dynamic_cast<const FuncDecl *>(binding.selectedDeclaration);
-            if (function && binding.dispatch == ResolvedCallableBinding::DispatchKind::Method && binding.receiverType) {
+            if (function &&
+                (binding.dispatch == ResolvedCallableBinding::DispatchKind::Method ||
+                 binding.dispatch == ResolvedCallableBinding::DispatchKind::Constructor) &&
+                binding.receiverType) {
                 binding.linkerName = MethodLinkerName(*function, *binding.receiverType, binding.substitutions);
                 RecordMethodIdentityRecipe(binding, *function);
                 continue;
@@ -3635,14 +3641,15 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
+    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
     SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
                                             expressionTypes, typeNodeTypes, patternTypes, valueConsumptions,
-                                            valueCopies, callableBindings, symbolIdentities, vtableIdentities,
-                                            typeLayouts, typeQueryValues);
+                                            valueCopies, callableBindings, defaultConstructors, symbolIdentities,
+                                            vtableIdentities, typeLayouts, typeQueryValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -3661,6 +3668,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(valueConsumptions),
                          std::move(valueCopies),
                          std::move(callableBindings),
+                         std::move(defaultConstructors),
                          std::move(symbolIdentities),
                          std::move(vtableIdentities),
                          analyzer.TakeConstraintWitnesses(),

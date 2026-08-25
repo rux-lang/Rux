@@ -32,6 +32,7 @@ public:
                             std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
                             std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
+                            std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &inputDefaultConstructors,
                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> &inputSymbolIdentities,
                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &inputVtableIdentities,
                             std::unordered_map<std::string, ResolvedTypeLayout> &inputTypeLayouts,
@@ -77,6 +78,9 @@ protected:
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
     void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
+    void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
+    [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
+    [[nodiscard]] std::vector<const FuncDecl *> ConstructorCandidates(const TypeRef &type);
 
     struct BorrowPlace {
         const Symbol *root = nullptr;
@@ -314,6 +318,7 @@ protected:
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
+    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> &defaultConstructors;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> &symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> &vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> &typeLayouts;
@@ -494,8 +499,10 @@ private:
                                                        const std::vector<TypeRef> &argumentTypes) = 0;
     [[nodiscard]] virtual std::unordered_map<std::string, TypeRef>
     MethodTypeSubstitutions(const TypeRef &receiverType) const = 0;
+    [[nodiscard]] virtual const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const = 0;
     [[nodiscard]] virtual TypeRef InstantiateAssociatedReceiver(TypeRef receiverType,
                                                                 const std::vector<TypeExprPtr> &typeArguments) = 0;
+    [[nodiscard]] virtual TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     [[nodiscard]] virtual TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType,
                                                                        const FuncDecl &method) = 0;

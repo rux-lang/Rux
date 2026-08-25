@@ -278,6 +278,26 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
     return lowered;
 }
 
+HirExprPtr AstToHirContext::LowerBoundConstructorCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
+    const FuncDecl &constructor = SelectedFunction(binding);
+    assert(binding.receiverType && !binding.linkerName.empty() &&
+           "constructor binding is missing its constructed type or linker name");
+    EnsureBoundMethodInstance(constructor, binding);
+
+    auto lowered = std::make_unique<HirCallExpr>();
+    lowered->location = call.location;
+    lowered->isNoReturn = constructor.isNoReturn;
+    auto callee = std::make_unique<HirVarExpr>();
+    callee->location = call.callee->location;
+    callee->name = binding.linkerName;
+    callee->type = AssociatedFunctionType(*binding.receiverType, constructor);
+    const TypeRef functionType = callee->type;
+    lowered->type = callee->type.inner.back();
+    lowered->callee = std::move(callee);
+    lowered->args = LowerBoundArguments(call, constructor, binding, functionType, false);
+    return lowered;
+}
+
 HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
     const FuncDecl &method = SelectedFunction(binding);
     const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get());
@@ -436,6 +456,8 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         return LowerBoundDirectCall(call, binding);
     case Dispatch::Method:
         return LowerBoundMethodCall(call, binding);
+    case Dispatch::Constructor:
+        return LowerBoundConstructorCall(call, binding);
     case Dispatch::Interface:
         return LowerBoundInterfaceCall(call, binding);
     case Dispatch::Constrained:
