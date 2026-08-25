@@ -8,7 +8,7 @@ import Text::{ String, StringBuilder, StringView, TextError };
 
 func Matches(actual: StringView, expected: Slice<char8>) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return actual.Equals(@wanted);
+    return actual.Equals(wanted);
 }
 
 func Main() -> int {
@@ -37,9 +37,9 @@ func Main() -> int {
     if hello.Length() != 12 { return 14; }
 
     // Debug quotes; Display does not. The difference is what makes an empty string visible.
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     let writer: TextWriter = BuilderWriter::Of(@builder);
-    let empty = String::New(allocator);
+    let empty = String(allocator);
     let shownPlain: Display = empty.View();
     if shownPlain.Format(writer, FormatSpec::Plain()) != TextError::None { return 20; }
     if builder.Length() != 0 { return 21; }

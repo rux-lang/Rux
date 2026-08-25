@@ -11,11 +11,11 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // whole character rather than by checking afterwards.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     Assert(builder.IsEmpty() && builder.Length() == 0, "a new builder holds nothing");
     Assert(builder.Capacity() == 0, "and has taken no room");
 

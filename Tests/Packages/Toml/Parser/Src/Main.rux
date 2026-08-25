@@ -9,7 +9,7 @@ import Text::{ String, StringView, TextError };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue };
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Accepts(allocator: Allocator, text: Slice<char8>, note: Slice<char8>) -> TomlValue {

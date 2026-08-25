@@ -11,8 +11,8 @@ func Main() -> int {
     var count: uint = 0;
     var reading = true;
     while reading && count < 8 {
-        var builder = StringBuilder::New(allocator);
-        let outcome = ReadLine(@builder);
+        var builder = StringBuilder(allocator);
+        let outcome = ReadLine(builder);
         if outcome.IsEnd() {
             reading = false;
             builder.Release();

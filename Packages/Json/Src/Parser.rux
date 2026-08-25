@@ -133,7 +133,7 @@ extend JsonParser {
         if !token.escaped {
             return String::FromBytes(self.allocator, span, error);
         }
-        var builder = StringBuilder::New(self.allocator);
+        var builder = StringBuilder(self.allocator);
         var index: uint = 0;
         while index < span.length {
             let c = span.data[index] as uint8;

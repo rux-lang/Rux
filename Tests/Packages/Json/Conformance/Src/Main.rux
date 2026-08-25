@@ -213,7 +213,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     var value = Parse(allocator, text, parsed);
     Assert(parsed.error == JsonParseError::None, "a well-formed document parses");
 
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     let sink: TextWriter = BuilderWriter::Of(@builder);
     *wrote = WriteValue(sink, @value, JsonStyle::Compact());
     Assert(*wrote == JsonWriteError::None, "and writes");
@@ -221,11 +221,12 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
 
     var again = Parse(allocator, once.View().Bytes(), parsed);
     Assert(parsed.error == JsonParseError::None, "and the written form parses");
-    var secondBuilder = StringBuilder::New(allocator);
+    var secondBuilder = StringBuilder(allocator);
     let secondSink: TextWriter = BuilderWriter::Of(@secondBuilder);
     *wrote = WriteValue(secondSink, @again, JsonStyle::Compact());
     var twice = secondBuilder.IntoString();
-    Assert(once.View().Equals(@twice.View()), "to the same text, so the round trip is settled after one pass");
+    let twiceView = twice.View();
+    Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
 
     // The two parsers must agree about the document's shape.
     var streamScalars: uint = 0;

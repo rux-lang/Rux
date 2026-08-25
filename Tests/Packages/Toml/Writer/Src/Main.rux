@@ -19,7 +19,7 @@ func Render(value: *TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
 }
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Same(left: Slice<char8>, right: Slice<char8>) -> bool {

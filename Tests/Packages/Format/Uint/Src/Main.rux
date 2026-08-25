@@ -53,7 +53,7 @@ func Main() -> int {
 
     // Text reports its length as a uint, so this is the overload a caller lands on when printing one, with no
     // annotation anywhere to steer it.
-    let text = StringView::FromBytes("Hello").ValueOr(StringView::New());
+    let text = StringView::FromBytes("Hello").ValueOr(StringView());
     code = Check(text.Length(), "5", 21);
     if code != 0 { return code; }
 

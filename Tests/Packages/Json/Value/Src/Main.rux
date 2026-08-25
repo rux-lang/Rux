@@ -8,7 +8,7 @@ import Json::{ JsonKind, JsonValue };
 import Text::{ String, StringView, TextError };
 
 func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView::New());
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {
@@ -42,7 +42,7 @@ func Main() -> int {
     var written = JsonValue::Number(allocator, "1.2000", @textError);
     let writtenText = written.AsNumber().Text();
     let expectedText = View("1.2000");
-    Assert(writtenText.Equals(@expectedText), "a number keeps the text it was written with, trailing zeros too");
+    Assert(writtenText.Equals(expectedText), "a number keeps the text it was written with, trailing zeros too");
 
     // Integral means no fraction and no exponent, which is a statement about the text rather than the value.
     var whole = JsonValue::Number(allocator, "42", @textError);
@@ -68,7 +68,7 @@ func Main() -> int {
     var text = JsonValue::Text(allocator, "hello", @textError);
     Assert(text.Kind() == JsonKind::Text, "a string is a string");
     let expectedHello = View("hello");
-    Assert(text.AsText().Equals(@expectedHello), "and reads back");
+    Assert(text.AsText().Equals(expectedHello), "and reads back");
     Assert(nullValue.AsText().IsEmpty(), "while a non-string reads as empty rather than reinterpreting bytes");
 
     // Arrays own their elements and keep their order.
@@ -109,18 +109,18 @@ func Main() -> int {
 
     let firstMember = object.MemberAt(0u);
     let zeta = View("zeta");
-    Assert(firstMember != null && firstMember.name.View().Equals(@zeta),
+    Assert(firstMember != null && firstMember.name.View().Equals(zeta),
            "the first member is the first one added, not the alphabetically first");
     let secondMember = object.MemberAt(1u);
     let alpha = View("alpha");
-    Assert(secondMember != null && secondMember.name.View().Equals(@alpha), "and insertion order is kept");
+    Assert(secondMember != null && secondMember.name.View().Equals(alpha), "and insertion order is kept");
 
     // Lookup by name.
     let mu = View("mu");
     let found = object.Find(mu);
     Assert(found != null && found.Kind() == JsonKind::Text, "a member is found by name");
     let foundText = View("found");
-    Assert(found.AsText().Equals(@foundText), "with the value it was given");
+    Assert(found.AsText().Equals(foundText), "with the value it was given");
     let missing = View("absent");
     Assert(object.Find(missing) == null, "and a name that is not there is not found");
     Assert(array.Find(mu) == null, "looking for a member in an array finds nothing rather than misreading it");

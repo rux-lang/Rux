@@ -27,15 +27,15 @@ extend TextError {
     /// Whether this reports success.
     ///
     /// https://rux-lang.dev/docs/api/text/text-error/is-ok
-    func IsOk(self: *TextError) -> bool {
-        return *self == TextError::None;
+    func IsOk(self: TextError) -> bool {
+        return self == TextError::None;
     }
 
     /// Whether this reports a failure.
     ///
     /// https://rux-lang.dev/docs/api/text/text-error/is-error
-    func IsError(self: *TextError) -> bool {
-        return *self != TextError::None;
+    func IsError(self: TextError) -> bool {
+        return self != TextError::None;
     }
 }
 

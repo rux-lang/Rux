@@ -22,7 +22,7 @@ func Main() -> int {
 
     let expected = StringView::FromValidated("One join Two");
     let joinedView = joined.View();
-    Assert(joinedView.Equals(@expected), "the joined text reads left to right");
+    Assert(joinedView.Equals(expected), "the joined text reads left to right");
     Assert(first.Length() == 3 && second.Length() == 3, "and both inputs are untouched");
 
     return 0;

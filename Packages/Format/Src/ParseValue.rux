@@ -23,10 +23,10 @@ func ParseBool(str: Slice<char8>) -> Result<bool, ParseError> {
     let text = StringView::FromValidated(str);
     let yes = StringView::FromValidated("true");
     let no = StringView::FromValidated("false");
-    if text.Equals(@yes) {
+    if text.Equals(yes) {
         return Result::Success<bool, ParseError>(true);
     }
-    if text.Equals(@no) {
+    if text.Equals(no) {
         return Result::Success<bool, ParseError>(false);
     }
     return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(0));

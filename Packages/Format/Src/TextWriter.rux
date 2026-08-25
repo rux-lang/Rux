@@ -12,7 +12,7 @@
 // relies on that; a builder's promise that it holds text at every moment is exactly this promise passed along.
 
 import Core::{ MutableSlice, Slice };
-import Text::{ Encode, StringBuilder, TextError };
+import Text::{ AppendValidatedRaw, Encode, StringBuilder, TextError };
 
 /// Somewhere formatted text can be written.
 ///
@@ -99,7 +99,7 @@ extend BuilderWriter : TextWriter {
     ///
     /// https://rux-lang.dev/docs/api/format/builder-writer/write
     func Write(self: *var BuilderWriter, bytes: Slice<char8>) -> TextError {
-        return self.builder.AppendValidated(bytes);
+        return AppendValidatedRaw(self.builder, bytes);
     }
 }
 

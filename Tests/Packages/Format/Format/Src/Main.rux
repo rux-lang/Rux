@@ -49,7 +49,7 @@ extend Filler : Display {
 
 func Matches(actual: StringView, expected: Slice<char8>) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return actual.Equals(@wanted);
+    return actual.Equals(wanted);
 }
 
 func Main() -> int {

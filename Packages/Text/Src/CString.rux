@@ -15,13 +15,13 @@
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Drop, Option, Slice };
+import Core::{ Option, Slice };
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
 ///
-/// Move-only: it owns its block and gives it back when it dies. The terminator is part of the block and not part of
-/// the text, so `Length` answers without it.
+/// Move-only: it explicitly prohibits copying, owns its block, and gives it back when it dies. The terminator is
+/// part of the block and not part of the text, so `Length` answers without it.
 ///
 /// https://rux-lang.dev/docs/api/text/c-string
 struct CString {
@@ -35,6 +35,9 @@ struct CString {
 }
 
 extend CString {
+    /// Copying a C string would give two owners of one terminated block.
+    func =(self: &var CString, other: &CString);
+
     /// A terminated copy of `view`, or nothing when the text cannot cross the boundary.
     ///
     /// Reports `InvalidUtf8` through `error` when the text contains a zero byte -- refused rather than truncated,
@@ -128,7 +131,7 @@ extend CString {
     /// How many bytes of text come before the terminator.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/length
-    func Length(self: *CString) -> uint {
+    func Length(self: &CString) -> uint {
         return self.length;
     }
 
@@ -138,7 +141,7 @@ extend CString {
     /// keeping a pointer into a freed block.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/raw
-    func Raw(self: *CString) -> *char8 {
+    func Raw(self: &CString) -> *char8 {
         return self.data;
     }
 
@@ -147,7 +150,7 @@ extend CString {
     /// The view borrows this `CString` and must not outlive it.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/view
-    func View(self: *CString) -> StringView {
+    func View(self: &CString) -> StringView {
         return StringView::FromValidated(Slice<char8> { data: self.data, length: self.length });
     }
 
@@ -156,7 +159,7 @@ extend CString {
     /// Safe to call twice, since what it leaves behind owns nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/clear
-    func Clear(self: *var CString) {
+    func Clear(self: &var CString) {
         if self.data != null {
             let layout = Layout::New(self.length + 1, 1);
             var borrowed = self.allocator;
@@ -168,11 +171,11 @@ extend CString {
     }
 }
 
-extend CString : Drop {
+extend CString {
     /// Gives the block back.
     ///
-    /// https://rux-lang.dev/docs/api/text/c-string/drop
-    func Drop(self: *var CString) {
+    /// https://rux-lang.dev/docs/api/text/c-string/destructor
+    func ~CString(self: &var CString) {
         self.Clear();
     }
 }

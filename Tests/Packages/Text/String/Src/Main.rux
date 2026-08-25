@@ -11,11 +11,11 @@ import Text::{ String, StringView, TextError };
 // the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 
-    let empty = String::New(allocator);
+    let empty = String(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "a new string holds nothing");
     Assert(empty.ScalarCount() == 0, "and no characters");
 
@@ -24,6 +24,15 @@ func Main() -> int {
     Assert(error == TextError::None, "well-formed bytes make a string");
     Assert(text.Length() == 11, "which spans every byte");
     Assert(text.ScalarCount() == 5, "and holds five characters, which is not the same number");
+
+    // Ordinary language copying is deep: both values remain live and each owns a different block.
+    let automatic = text;
+    Assert(automatic.Equals(text), "an ordinary string copy preserves the text");
+    Assert(automatic.Bytes().data != text.Bytes().data, "in independent storage");
+    var assigned = String(allocator);
+    assigned = text;
+    Assert(assigned.Equals(text) && assigned.Bytes().data != text.Bytes().data,
+           "copy assignment also installs an independent value");
 
     // Bytes that are not text make no string, and say why.
     var broken: char8[3];
@@ -34,10 +43,10 @@ func Main() -> int {
     Assert(error == TextError::InvalidUtf8, "a surrogate half is refused");
     Assert(refused.IsEmpty(), "and nothing is built from it");
 
-    // A copy is independent: it has its own block, and releasing one leaves the other alone.
+    // Fallible cloning offers the same independent value semantics when allocation failure must be handled.
     var copy = text.Clone(@error);
     Assert(error == TextError::None, "a string can be copied");
-    Assert(copy.Equals(@text), "and the copy holds what the original holds");
+    Assert(copy.Equals(text), "and the copy holds what the original holds");
     Assert(copy.Bytes().data != text.Bytes().data, "in a block of its own");
     copy.Clear();
     Assert(copy.IsEmpty(), "releasing the copy empties it");
@@ -63,14 +72,14 @@ func Main() -> int {
     Assert(view.Length() == text.Length(), "a view spans the same bytes");
     Assert(view.Bytes().data == text.Bytes().data, "without copying any of them");
     let rebuilt = String::FromView(allocator, view, @error);
-    Assert(error == TextError::None && rebuilt.Equals(@text), "and a string built from it holds the same text");
+    Assert(error == TextError::None && rebuilt.Equals(text), "and a string built from it holds the same text");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
     let shorter = String::FromBytes(allocator, "hi", @error);
-    Assert(!shorter.Equals(@text), "different text is not equal");
-    Assert(shorter.Compare(@text).IsLess(), "a prefix orders before what extends it");
-    Assert(text.Compare(@shorter).IsGreater(), "and the other way round");
-    Assert(text.Compare(@text).IsEqual(), "text equals itself");
+    Assert(!shorter.Equals(text), "different text is not equal");
+    Assert(shorter.Compare(text).IsLess(), "a prefix orders before what extends it");
+    Assert(text.Compare(shorter).IsGreater(), "and the other way round");
+    Assert(text.Compare(text).IsEqual(), "text equals itself");
 
     return 0;
 }

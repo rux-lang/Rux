@@ -300,7 +300,7 @@ extend Vector<T> {
                 return room;
             }
         }
-        self.data[self.length] = value;
+        self.data[self.length] <- value;
         self.length = self.length + 1;
         return CollectionError::None;
     }

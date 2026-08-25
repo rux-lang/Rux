@@ -93,7 +93,7 @@ func WriteFormat(writer: TextWriter, format: Slice<char8>, args: Display...) -> 
 ///
 /// https://rux-lang.dev/docs/api/format/format
 func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, args: Display...) -> String {
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
     // builder is there to absorb; the short calls that most of them are fill in without one.
     *error = builder.Reserve(format.length + args.length * 8);

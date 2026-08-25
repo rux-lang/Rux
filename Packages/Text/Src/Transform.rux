@@ -18,7 +18,7 @@ import Core::{ Option, Slice };
 ///
 /// https://rux-lang.dev/docs/api/text/concat
 func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     *error = builder.Reserve(left.bytes.length + right.bytes.length);
     if error.IsError() {
         return builder.IntoString();
@@ -38,7 +38,7 @@ func Concat(allocator: Allocator, left: StringView, right: StringView, error: *v
 ///
 /// https://rux-lang.dev/docs/api/text/repeat
 func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
         if count > 0xFFFFFFFFFFFFFFFFu / view.bytes.length {
             *error = TextError::LengthOverflow;
@@ -70,7 +70,7 @@ func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var Tex
 /// https://rux-lang.dev/docs/api/text/replace
 func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
              error: *var TextError) -> String {
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
         *error = builder.Append(view);
         return builder.IntoString();
@@ -81,7 +81,7 @@ func Replace(allocator: Allocator, view: StringView, needle: StringView, replace
     while walking {
         match rest.IndexOf(needle) {
             .Some(at) => {
-                let before = rest.Part(0, at).ValueOr(StringView::New());
+                let before = rest.Part(0, at).ValueOr(StringView());
                 *error = builder.Append(before);
                 if error.IsError() {
                     return builder.IntoString();
@@ -90,7 +90,7 @@ func Replace(allocator: Allocator, view: StringView, needle: StringView, replace
                 if error.IsError() {
                     return builder.IntoString();
                 }
-                rest = rest.Part(at + needle.bytes.length, rest.bytes.length).ValueOr(StringView::New());
+                rest = rest.Part(at + needle.bytes.length, rest.bytes.length).ValueOr(StringView());
             },
             .None => {
                 walking = false;
@@ -130,7 +130,7 @@ func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError)
 // moves and in which direction, so the copy loop is written once.
 func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32,
               error: *var TextError) -> String {
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     *error = builder.Reserve(view.bytes.length);
     if error.IsError() {
         return builder.IntoString();

@@ -546,7 +546,7 @@ func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm
         return String::FromBytes(allocator, span, error);
     }
     let multiline = form == TomlTextForm::MultiLineBasic;
-    var builder = StringBuilder::New(allocator);
+    var builder = StringBuilder(allocator);
     var index: uint = 0;
     while index < span.length {
         let c = span.data[index] as uint8;

@@ -63,15 +63,15 @@ extend Utf8Error {
     /// Whether this reports well-formed bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/utf8-error/is-ok
-    func IsOk(self: *Utf8Error) -> bool {
-        return *self == Utf8Error::None;
+    func IsOk(self: Utf8Error) -> bool {
+        return self == Utf8Error::None;
     }
 
     /// Whether this reports a problem.
     ///
     /// https://rux-lang.dev/docs/api/text/utf8-error/is-error
-    func IsError(self: *Utf8Error) -> bool {
-        return *self != Utf8Error::None;
+    func IsError(self: Utf8Error) -> bool {
+        return self != Utf8Error::None;
     }
 }
 
