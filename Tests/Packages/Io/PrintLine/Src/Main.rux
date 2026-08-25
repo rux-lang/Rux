@@ -43,7 +43,7 @@ func Main() -> int {
     PrintLine(c16'B');
     PrintLine(c32'C');
 
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
     let text = String::FromBytes(allocator, "string-value", @error);

@@ -12,7 +12,7 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
-    return Path::FromView(holder.View());
+    return Path::FromView((*holder).View());
 }
 
 func Touch(allocator: Allocator, path: Path) {
@@ -26,7 +26,7 @@ func NameOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the expected name converts");
-    return holder.View();
+    return (*holder).View();
 }
 
 func Main() -> int {
@@ -74,13 +74,13 @@ func Main() -> int {
     while iterator.Next(@entry, @error) {
         count = count + 1;
         let view = entry.View();
-        if view.Equals(@oneWant) {
+        if view.Equals(oneWant) {
             seenOne = true;
         }
-        else if view.Equals(@twoWant) {
+        else if view.Equals(twoWant) {
             seenTwo = true;
         }
-        else if view.Equals(@accentWant) {
+        else if view.Equals(accentWant) {
             seenAccent = true;
         }
         entry.Clear();

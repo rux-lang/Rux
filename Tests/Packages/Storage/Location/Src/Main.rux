@@ -13,7 +13,7 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
-    return Path::FromView(holder.View());
+    return Path::FromView((*holder).View());
 }
 
 func Touch(allocator: Allocator, path: Path) {
@@ -25,7 +25,7 @@ func Touch(allocator: Allocator, path: Path) {
 
 // Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
 func EndsWith(buffer: *PathBuffer, tail: Slice<char8>) -> bool {
-    let units = buffer.AsPath().name.Units();
+    let units = (*buffer).AsPath().name.Units();
     if units.length < tail.length {
         return false;
     }

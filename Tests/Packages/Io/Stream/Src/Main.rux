@@ -16,19 +16,8 @@ struct ScriptedReader {
     pendingInterruption: bool;
 }
 
-// The handle that implements the interface: an interface value is a copy, so the state lives behind the pointer.
-struct ReaderHandle {
-    state: *var ScriptedReader;
-}
-
-extend ReaderHandle : Reader {
-    func Read(self: *var ReaderHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
-        return self.state.Read(into, filled);
-    }
-}
-
-extend ScriptedReader {
-    func Read(self: *var ScriptedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+extend ScriptedReader : Reader {
+    func Read(self: &var ScriptedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         if self.pendingInterruption && self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
@@ -65,22 +54,8 @@ struct ScriptedWriter {
     stalling: bool;
 }
 
-struct WriterHandle {
-    state: *var ScriptedWriter;
-}
-
-extend WriterHandle : Writer {
-    func Write(self: *var WriterHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
-        return self.state.Write(bytes, taken);
-    }
-
-    func Flush(self: *var WriterHandle) -> IoError {
-        return IoError::Ok();
-    }
-}
-
-extend ScriptedWriter {
-    func Write(self: *var ScriptedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
+extend ScriptedWriter : Writer {
+    func Write(self: &var ScriptedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
         *taken = 0;
         if self.stalling {
             return IoError::Ok();
@@ -102,6 +77,9 @@ extend ScriptedWriter {
         return IoError::Ok();
     }
 
+    func Flush(self: &var ScriptedWriter) -> IoError {
+        return IoError::Ok();
+    }
 }
 
 func Main() -> int {
@@ -115,8 +93,7 @@ func Main() -> int {
     };
     var storage: char8[8];
     let into = MutableSlice::From<char8>(@storage[0], 8);
-    let sourceHandle: Reader = ReaderHandle { state: @source };
-    let outcome = ReadExact(sourceHandle, into);
+    let outcome = ReadExact(source, into);
     Assert(outcome.IsOk(), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
 
@@ -130,8 +107,7 @@ func Main() -> int {
     };
     var bigStorage: char8[8];
     let big = MutableSlice::From<char8>(@bigStorage[0], 8);
-    let shortHandle: Reader = ReaderHandle { state: @short };
-    let ended = ReadExact(shortHandle, big);
+    let ended = ReadExact(short, big);
     Assert(ended.IsEnd(), "a stream that ends mid-buffer reports the end");
 
     // WriteAll pushes everything through three-byte writes.
@@ -142,8 +118,7 @@ func Main() -> int {
         chunk: 3,
         stalling: false
     };
-    let sinkHandle: Writer = WriterHandle { state: @sink };
-    let sent = WriteAll(sinkHandle, "hello world");
+    let sent = WriteAll(sink, "hello world");
     Assert(sent.IsOk(), "the whole write goes through partial writes");
 
     // A writer that takes nothing while claiming success is refused rather than spun on.
@@ -154,8 +129,7 @@ func Main() -> int {
         chunk: 4,
         stalling: true
     };
-    let stalledHandle: Writer = WriterHandle { state: @stalled };
-    let refused = WriteAll(stalledHandle, "data");
+    let refused = WriteAll(stalled, "data");
     Assert(refused.IsError() && refused.kind == IoErrorKind::WriteZero,
            "a stream making no progress is refused, not spun on");
 

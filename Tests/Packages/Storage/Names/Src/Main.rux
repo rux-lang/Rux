@@ -19,7 +19,7 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
-    return Path::FromView(holder.View());
+    return Path::FromView((*holder).View());
 }
 
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
@@ -43,7 +43,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     var entry = OsString::New(allocator);
     while walk.Next(@entry, @error) {
         let view = entry.View();
-        if view.Equals(@name) {
+        if view.Equals(name) {
             found = true;
             reported = OsString::FromView(allocator, view, @textError);
             Assert(textError == TextError::None, "and the reported name copies");

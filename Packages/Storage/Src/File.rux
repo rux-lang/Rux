@@ -191,12 +191,12 @@ extend File {
     func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
         *error = options.Validate();
         var file = File { handle: NoFile(), open: false };
-        if error.IsError() {
+        if (*error).IsError() {
             return file;
         }
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
-        if error.IsError() {
+        if (*error).IsError() {
             return file;
         }
         when #target.os == .Windows {

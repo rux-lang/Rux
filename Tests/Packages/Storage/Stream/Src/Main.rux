@@ -23,7 +23,7 @@ func Main() -> int {
     // Write a known body and make it durable.
     var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the scratch file opens for writing");
-    let sink: Writer = written.Stream();
+    var sink: Writer = written.Stream();
     Assert(WriteAll(sink, "0123456789").IsOk(), "the body writes");
     var size: uint64 = 0;
     Assert(written.Sync().IsOk(), "and reaches the device");
@@ -35,7 +35,7 @@ func Main() -> int {
     Assert(reading.IsOpen() && error.IsOk(), "it reopens for reading");
     var storage: char8[16];
     let head = MutableSlice::From<char8>(@storage[0], 4);
-    let source: Reader = reading.Stream();
+    var source: Reader = reading.Stream();
     Assert(ReadExact(source, head).IsOk(), "the first four bytes read");
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
@@ -64,7 +64,7 @@ func Main() -> int {
     var appending = File::Open(allocator, scratch, OpenOptions::Appending(), @error);
     Assert(appending.IsOpen() && error.IsOk(), "it reopens for appending");
     Assert(appending.Seek(SeekFrom::Start, 0, @position).IsOk(), "the position moves to the start");
-    let appendSink: Writer = appending.Stream();
+    var appendSink: Writer = appending.Stream();
     Assert(WriteAll(appendSink, "XY").IsOk(), "but the append writes");
     Assert(appending.Size(@size).IsOk() && size == 6u64, "at the end, not the position");
     Assert(appending.Close().IsOk(), "and the appender closes");
@@ -72,7 +72,7 @@ func Main() -> int {
     // The buffered machinery stacks on a file without knowing it left memory.
     var lines = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(lines.IsOpen(), "the file opens once more for line content");
-    let lineSink: Writer = lines.Stream();
+    var lineSink: Writer = lines.Stream();
     Assert(WriteAll(lineSink, "alpha\r\nbeta\ngamma").IsOk(), "three lines write");
     Assert(lines.Close().IsOk(), "and close");
     var back = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
@@ -80,22 +80,22 @@ func Main() -> int {
     var buffered = BufferedReader::New(allocator, backSource, 8, @error);
     Assert(error.IsOk(), "a buffered reader wraps the file");
     var builder = StringBuilder(allocator);
-    Assert(ReadTextLine(@buffered, builder, 64).IsOk(), "the first line reads");
+    Assert(ReadTextLine(buffered, builder, 64).IsOk(), "the first line reads");
     let alpha = builder.IntoString();
     let alphaWant = View("alpha");
     Assert(alpha.View().Equals(alphaWant), "normalized across the CRLF");
     var second = StringBuilder(allocator);
-    Assert(ReadTextLine(@buffered, second, 64).IsOk(), "the second follows");
+    Assert(ReadTextLine(buffered, second, 64).IsOk(), "the second follows");
     let beta = second.IntoString();
     let betaWant = View("beta");
     Assert(beta.View().Equals(betaWant), "exactly");
     var third = StringBuilder(allocator);
-    Assert(ReadTextLine(@buffered, third, 64).IsOk(), "the unterminated last line is a line");
+    Assert(ReadTextLine(buffered, third, 64).IsOk(), "the unterminated last line is a line");
     let gamma = third.IntoString();
     let gammaWant = View("gamma");
     Assert(gamma.View().Equals(gammaWant), "with everything before the end");
     var last = StringBuilder(allocator);
-    Assert(ReadTextLine(@buffered, last, 64).IsEnd(), "and then the end");
+    Assert(ReadTextLine(buffered, last, 64).IsEnd(), "and then the end");
     last.Release();
     buffered.Release();
     Assert(back.Close().IsOk(), "the line reader closes");

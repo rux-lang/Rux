@@ -154,7 +154,7 @@ extend TemporaryFile {
                 return result;
             }
             var name = RandomName(allocator, prefix, error);
-            if error.IsError() {
+            if (*error).IsError() {
                 candidate.Release();
                 return result;
             }
@@ -165,7 +165,7 @@ extend TemporaryFile {
                 return result;
             }
             var opened = File::Open(allocator, candidate.AsPath(), options, error);
-            if error.IsOk() {
+            if (*error).IsOk() {
                 result.file = opened;
                 result.path <- candidate;
                 result.owned = true;
@@ -248,7 +248,7 @@ extend TemporaryDirectoryHandle {
                 return result;
             }
             var name = RandomName(allocator, prefix, error);
-            if error.IsError() {
+            if (*error).IsError() {
                 candidate.Release();
                 return result;
             }

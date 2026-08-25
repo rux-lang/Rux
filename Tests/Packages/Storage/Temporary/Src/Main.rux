@@ -33,14 +33,15 @@ func Exists(allocator: Allocator, path: Path) -> bool {
 }
 
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.
-func Abandon(allocator: Allocator, directory: Path, remembered: *var PathBuffer) {
+func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     var error = IoError::Ok();
     var scratch = TemporaryFile::Create(allocator, directory, "abandoned-", @error);
     Assert(error.IsOk(), "the abandoned file is created");
     var textError = TextError::None;
-    *remembered = PathBuffer::FromPath(allocator, scratch.AsPath(), @textError);
+    var remembered = PathBuffer::FromPath(allocator, scratch.AsPath(), @textError);
     Assert(textError == TextError::None, "and its name is remembered");
     Assert(Exists(allocator, scratch.AsPath()), "and it exists while it is held");
+    return <-remembered;
 }
 
 func Main() -> int {
@@ -67,26 +68,25 @@ func Main() -> int {
     Assert(Exists(allocator, first.AsPath()) && Exists(allocator, second.AsPath()), "both exist");
 
     // It is a real file, open for reading and writing.
-    let sink: Writer = first.file.Stream();
+    var sink: Writer = first.file.Stream();
     Assert(WriteAll(sink, "held briefly").IsOk(), "the temporary file takes content");
     var position: uint64 = 0;
     Assert(first.file.Seek(SeekFrom::Start, 0, @position).IsOk(), "and rewinds");
     var storage: char8[16];
     let room = MutableSlice::From<char8>(@storage[0], 12);
-    let source: Reader = first.file.Stream();
+    var source: Reader = first.file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads back what was written");
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 
     // Close deletes it and says so; the name is free afterwards.
     var firstPathHolder = PathBuffer::New(allocator);
     var textError = TextError::None;
-    firstPathHolder = PathBuffer::FromPath(allocator, first.AsPath(), @textError);
+    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath(), @textError);
     Assert(first.Close(allocator).IsOk(), "closing reports success");
     Assert(!Exists(allocator, firstPathHolder.AsPath()), "and the file is gone");
 
     // A handle that simply goes out of scope cleans up too -- the reason the type exists.
-    var abandonedPath = PathBuffer::New(allocator);
-    Abandon(allocator, home.AsPath(), @abandonedPath);
+    var abandonedPath = Abandon(allocator, home.AsPath());
     Assert(!Exists(allocator, abandonedPath.AsPath()), "an abandoned temporary file is deleted on the way out");
 
     // Keep gives up ownership: the file stays, and cleaning it up becomes the caller's business.

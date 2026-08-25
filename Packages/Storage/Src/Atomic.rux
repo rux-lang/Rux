@@ -91,7 +91,7 @@ extend AtomicWrite {
         }
         var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-", error);
         directory.Release();
-        if error.IsError() {
+        if (*error).IsError() {
             held.Release();
             return result;
         }
@@ -197,7 +197,7 @@ func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>)
     if error.IsError() {
         return error;
     }
-    let sink: Writer = replacement.Stream();
+    var sink: Writer = replacement.Stream();
     let wrote = WriteAll(sink, contents);
     if wrote.IsError() {
         replacement.Abandon(allocator);

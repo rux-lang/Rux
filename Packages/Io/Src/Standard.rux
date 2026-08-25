@@ -192,7 +192,7 @@ extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-in/read
-    func Read(self: *var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 {
             return IoError::Ok();
@@ -256,7 +256,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(self: *var StandardIn, into: MutableSlice<char8>, served: uint, filled: *var uint)
+        func ReadConsole(self: &var StandardIn, into: MutableSlice<char8>, served: uint, filled: *var uint)
             -> IoError {
             var wide: char16[257];
             var base: uint = 0;
@@ -363,14 +363,14 @@ extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/write
-    func Write(self: *var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    func Write(self: &var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/flush
-    func Flush(self: *var StandardOut) -> IoError {
+    func Flush(self: &var StandardOut) -> IoError {
         return IoError::Ok();
     }
 }
@@ -406,14 +406,14 @@ extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/write
-    func Write(self: *var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    func Write(self: &var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/flush
-    func Flush(self: *var StandardError) -> IoError {
+    func Flush(self: &var StandardError) -> IoError {
         return IoError::Ok();
     }
 }

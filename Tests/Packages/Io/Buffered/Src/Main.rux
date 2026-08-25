@@ -18,7 +18,7 @@ struct SourceHandle {
 }
 
 extend SourceHandle : Reader {
-    func Read(self: *var SourceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var SourceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         state.calls = state.calls + 1;
@@ -53,7 +53,7 @@ struct SinkHandle {
 }
 
 extend SinkHandle : Writer {
-    func Write(self: *var SinkHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    func Write(self: &var SinkHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
         let state = self.state;
         state.calls = state.calls + 1;
         var take = bytes.length;
@@ -70,21 +70,22 @@ extend SinkHandle : Writer {
         return IoError::Ok();
     }
 
-    func Flush(self: *var SinkHandle) -> IoError {
+    func Flush(self: &var SinkHandle) -> IoError {
         self.state.flushes = self.state.flushes + 1;
         return IoError::Ok();
     }
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
     // Sixty-four one-byte reads out of a 16-byte buffer cost the source four calls, not sixty-four.
     var source = CountingSource { served: 0, calls: 0, limit: 64 };
     let sourceHandle: Reader = SourceHandle { state: @source };
-    var reader = BufferedReader::New(allocator, sourceHandle, 16, @error);
+    var createdReader = BufferedReader::New(allocator, sourceHandle, 16, @error);
+    var reader <- createdReader;
     Assert(error.IsOk(), "the reader takes its buffer");
     var one: char8[1];
     let oneRoom = MutableSlice::From<char8>(@one[0], 1);
@@ -138,7 +139,8 @@ func Main() -> int {
         flushes: 0
     };
     let sinkHandle: Writer = SinkHandle { state: @sink };
-    var writer = BufferedWriter::New(allocator, sinkHandle, 32, @error);
+    var createdWriter = BufferedWriter::New(allocator, sinkHandle, 32, @error);
+    var writer <- createdWriter;
     Assert(error.IsOk(), "the writer takes its buffer");
     var piece: uint = 0;
     while piece < 8 {

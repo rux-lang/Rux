@@ -132,7 +132,7 @@ func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuff
         return simplified;
     }
     var here = CurrentDirectory(allocator, error);
-    if error.IsError() {
+    if (*error).IsError() {
         return PathBuffer::New(allocator);
     }
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()), @textError);
@@ -305,7 +305,7 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         // carries no access rights, which is enough here and works on a file this process may not read.
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
-        if error.IsError() {
+        if (*error).IsError() {
             return PathBuffer::New(allocator);
         }
         let handle = OpenForQuery(native, true);
