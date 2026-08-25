@@ -198,7 +198,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     if (const auto *statement = dynamic_cast<const MatchStmt *>(&stmt)) {
         auto lowered = std::make_unique<HirMatchStmt>();
         lowered->location = statement->location;
-        lowered->subject = LowerExpr(*statement->subject);
+        lowered->subject = LowerMatchSubject(*statement->subject);
         // An arm's bindings own what they took only if the subject was handed over. Matching a subject that is
         // borrowed copies the payload out of something that still owns it, and destroying both is the double
         // destruction this is here to avoid.

@@ -26,7 +26,7 @@ extend Config {
     /// Cannot fail. Costs nothing in the built program.
     ///
     /// https://rux-lang.dev/docs/api/core/config/get
-    intrinsic func Get(self: *Config, name: Slice<char8>) -> Slice<char8>;
+    intrinsic func Get(self: &Config, name: Slice<char8>) -> Slice<char8>;
 
     /// Whether `name` was defined at all, whatever its value.
     ///
@@ -35,7 +35,7 @@ extend Config {
     /// Cannot fail. Costs nothing in the built program.
     ///
     /// https://rux-lang.dev/docs/api/core/config/has
-    intrinsic func Has(self: *Config, name: Slice<char8>) -> bool;
+    intrinsic func Has(self: &Config, name: Slice<char8>) -> bool;
 }
 
 /// The build's user-defined values, as a compile-time value.

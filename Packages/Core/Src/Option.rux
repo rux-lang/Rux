@@ -25,8 +25,8 @@ extend Option<T> {
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
     /// https://rux-lang.dev/docs/api/core/option/is-some
-    func IsSome(self: *Option<T>) -> bool {
-        return match *self {
+    func IsSome(self: &Option<T>) -> bool {
+        return match self {
             .Some(_) => true,
             .None => false
         };
@@ -39,7 +39,7 @@ extend Option<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/option/is-none
-    func IsNone(self: *Option<T>) -> bool {
+    func IsNone(self: &Option<T>) -> bool {
         return !self.IsSome();
     }
 
@@ -55,9 +55,9 @@ extend Option<T> {
     ///
     /// https://rux-lang.dev/docs/api/core/option/value-or
     func ValueOr(self: Option<T>, fallback: T) -> T {
-        return match self {
-            .Some(value) => value,
-            .None => fallback
+        return match <-self {
+            .Some(value) => <-value,
+            .None => <-fallback
         };
     }
 
@@ -79,9 +79,9 @@ extend Option<T> {
             return false;
         }
 
-        match self {
+        match <-self {
             .Some(held) => {
-                *value = held;
+                *value <- held;
                 return true;
             },
             .None => {

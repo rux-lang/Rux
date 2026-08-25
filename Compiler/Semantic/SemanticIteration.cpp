@@ -28,10 +28,13 @@ constexpr std::string_view kOptionNoneVariant = "None";
     return count;
 }
 
-[[nodiscard]] bool ReceiverIsMutablePointer(const FuncDecl &declaration) {
+[[nodiscard]] bool ReceiverIsMutableBorrow(const FuncDecl &declaration) {
     const Param *receiver = declaration.Receiver();
     if (!receiver) {
         return false;
+    }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+        return reference->pointeeMut;
     }
     const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get());
     return pointer != nullptr && pointer->pointeeMut;
@@ -52,7 +55,7 @@ const FuncDecl *SemanticAnalyzerContext::LookupIteratorAdvance(const TypeRef &ty
         return nullptr;
     }
     for (const FuncDecl *candidate : named->second) {
-        if (WrittenParameterCount(*candidate) != 0 || !ReceiverIsMutablePointer(*candidate)) {
+        if (WrittenParameterCount(*candidate) != 0 || !ReceiverIsMutableBorrow(*candidate)) {
             continue;
         }
         return candidate;
@@ -177,7 +180,7 @@ void SemanticAnalyzerContext::EmitNotIterable(const SourceLocation location, con
     const std::string typeName = NamedBaseTypeName(subject);
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
-            notes.push_back(std::format("type '{}' declares 'Next', but not as 'func Next(self: *var {}) -> Option<T>'",
+            notes.push_back(std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> Option<T>'",
                                         subject.ToString(), typeName));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
@@ -209,12 +212,12 @@ void SemanticAnalyzerContext::ValidateIteratorConvention(const FuncDecl &declara
                                   currentExtendedType.ToString()),
                       {"'for' calls 'Next' with no arguments"});
         }
-        if (!ReceiverIsMutablePointer(declaration)) {
+        if (!ReceiverIsMutableBorrow(declaration)) {
             EmitError(declaration.location,
                       std::format("iterator method 'Next' on '{}' must take a mutable receiver",
                                   currentExtendedType.ToString()),
                       {"advancing an iterator writes it, so 'Next' cannot borrow its receiver read-only"},
-                      std::format("write the receiver as 'self: *var {}'", NamedBaseTypeName(currentExtendedType)));
+                      std::format("write the receiver as 'self: &var {}'", NamedBaseTypeName(currentExtendedType)));
         }
         return;
     }
@@ -235,7 +238,7 @@ void SemanticAnalyzerContext::ValidateIteratorConvention(const FuncDecl &declara
             declaration.location,
             std::format("iterator method 'Iterate' on '{}' must return an iterator", currentExtendedType.ToString()),
             {std::format("type '{}' has no 'Next' returning an 'Option'", iteratorType.ToString())},
-            "give the returned type 'func Next(self: *var T) -> Option<Item>'");
+            "give the returned type 'func Next(self: &var T) -> Option<Item>'");
     }
 }
 } // namespace Rux::SemanticDetail

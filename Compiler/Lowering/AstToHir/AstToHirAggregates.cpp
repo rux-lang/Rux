@@ -89,6 +89,20 @@ bool CompilerHasFeature(const std::string_view feature) {
 }
 } // namespace
 
+HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression) {
+    HirExprPtr lowered = LowerExpr(expression);
+    if (lowered->type.kind != TypeRef::Kind::Reference || lowered->type.inner.empty()) {
+        return lowered;
+    }
+
+    auto dereference = std::make_unique<HirUnaryExpr>();
+    dereference->location = expression.location;
+    dereference->op = TokenKind::Star;
+    dereference->type = lowered->type.inner.front();
+    dereference->operand = std::move(lowered);
+    return dereference;
+}
+
 std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression) {
     if (const std::uint64_t *value = model.TryGetTypeQueryValue(expression)) {
         return *value;
@@ -806,7 +820,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         auto lowered = std::make_unique<HirMatchExpr>();
         lowered->location = match->location;
         lowered->type = ResolvedExpressionType(*match);
-        lowered->subject = LowerExpr(*match->subject);
+        lowered->subject = LowerMatchSubject(*match->subject);
         // As in the statement form: an arm's bindings own what they took only if the subject was handed over.
         const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : match->arms) {

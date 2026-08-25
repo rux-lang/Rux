@@ -152,6 +152,28 @@ TEST_CASE("references reject pointer-only operations") {
     CHECK(HasErrorContaining(diagnostics, "requires '&Item'"));
 }
 
+TEST_CASE("borrowed enum values can be inspected by match") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        enum Choice<T> { Some(T), None }
+        extend Choice<T> {
+            func IsSome(self: &Choice<T>) -> bool {
+                return match self {
+                    .Some(_) => true,
+                    .None => false
+                };
+            }
+        }
+        func Inspect(value: &Choice<int32>) -> bool {
+            return match value {
+                .Some(_) => value.IsSome(),
+                .None => false
+            };
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("references cannot destroy or transfer borrowed ownership") {
     const auto diagnostics = AnalyzeReferences(R"(
         interface Drop {}

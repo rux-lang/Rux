@@ -14,8 +14,13 @@ extend Unit {
     ///
     /// Cannot fail. Runs in constant time, allocates nothing, and reads no storage.
     ///
-    /// https://rux-lang.dev/docs/api/core/unit/new
-    func New() -> Unit {
+    /// https://rux-lang.dev/docs/api/core/unit
+    func Unit() -> Unit {
         return Unit {};
+    }
+
+    /// Temporary compatibility spelling for downstream packages. Prefer `Unit()`.
+    func New() -> Unit {
+        return Unit();
     }
 }

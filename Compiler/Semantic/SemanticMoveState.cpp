@@ -260,9 +260,12 @@ template void SemanticAnalyzerContext::ConsumeMatchSubject<MatchStmt::Arm>(const
                                                                            SourceLocation);
 
 TypeRef SemanticAnalyzerContext::CheckMatchExpression(const MatchExpr &expression) {
-    const TypeRef subjectType = CheckExpr(*expression.subject);
+    const TypeRef expressionType = CheckExpr(*expression.subject);
+    const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
+                                  ? expressionType.inner.front()
+                                  : expressionType;
 
-    ConsumeMatchSubject(*expression.subject, subjectType, expression.arms, expression.location);
+    ConsumeMatchSubject(*expression.subject, expressionType, expression.arms, expression.location);
 
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;

@@ -21,8 +21,11 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-less
-    func IsLess(self: *Ordering) -> bool {
-        return *self == Ordering::Less;
+    func IsLess(self: &Ordering) -> bool {
+        return match self {
+            .Less => true,
+            else => false
+        };
     }
 
     /// Reports whether the two sides compared equal.
@@ -32,8 +35,11 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-equal
-    func IsEqual(self: *Ordering) -> bool {
-        return *self == Ordering::Equal;
+    func IsEqual(self: &Ordering) -> bool {
+        return match self {
+            .Equal => true,
+            else => false
+        };
     }
 
     /// Reports whether the left side of the comparison was the larger one.
@@ -43,8 +49,11 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-greater
-    func IsGreater(self: *Ordering) -> bool {
-        return *self == Ordering::Greater;
+    func IsGreater(self: &Ordering) -> bool {
+        return match self {
+            .Greater => true,
+            else => false
+        };
     }
 
     /// Reports whether the left side was smaller than or equal to the right.
@@ -55,8 +64,11 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
-    func IsLessOrEqual(self: *Ordering) -> bool {
-        return *self != Ordering::Greater;
+    func IsLessOrEqual(self: &Ordering) -> bool {
+        return match self {
+            .Greater => false,
+            else => true
+        };
     }
 
     /// Reports whether the left side was larger than or equal to the right.
@@ -66,8 +78,11 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
-    func IsGreaterOrEqual(self: *Ordering) -> bool {
-        return *self != Ordering::Less;
+    func IsGreaterOrEqual(self: &Ordering) -> bool {
+        return match self {
+            .Less => false,
+            else => true
+        };
     }
 
     /// The ordering the same comparison would have given with its two sides swapped.
