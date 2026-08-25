@@ -56,7 +56,15 @@ Type = "Executable"
 [Build]
 Output = "Artifacts"
 )");
-    WriteTextFile(root / "Src" / "Nested" / "Main.rux", "func Main() -> int { return 0; }\n");
+    WriteTextFile(root / "Src" / "Nested" / "Main.rux", R"(func Main() -> int { return 0; }
+struct Cell { value: int32; }
+extend Cell {
+    func =(self: &var Cell, other: &Cell);
+    func <-(self: &var Cell, other: Cell) {}
+    func ~Cell(self: &var Cell) {}
+}
+func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
+)");
     const std::string manifest = manifestPath.string();
 
     struct EmissionCase {
@@ -80,9 +88,13 @@ Output = "Artifacts"
         const auto emitted = Run(std::array<std::string_view, 8>{"--manifest", manifest, "--color=never", "build",
                                                                  "--target", target, "--emit", test.kind});
         CAPTURE(test.kind);
+        INFO(emitted.output);
         CHECK(emitted.exitCode == 0);
         CHECK(emitted.output.contains("Emitted " + std::string(test.heading)));
         CHECK(emitted.output.contains("Description: "));
+        if (test.kind == "sema") {
+            CHECK(emitted.output.contains("resolved symbols, signatures, type capabilities, and diagnostics"));
+        }
         CHECK(emitted.output.contains("Output: " + std::filesystem::path(test.output).make_preferred().string()));
         CHECK(std::filesystem::is_regular_file(root / test.output));
     }
@@ -100,17 +112,21 @@ Output = "Artifacts"
 
     const auto tokens = ReadTextFile(root / "Temp" / "Tokens" / "Nested" / "Main.tokens");
     const auto ast = ReadTextFile(root / "Temp" / "Ast" / "Nested" / "Main.ast");
+    const auto sema = ReadTextFile(root / "Temp" / "Sema" / "sema.txt");
     const auto hir = ReadTextFile(root / "Temp" / "Hir" / "hir.txt");
     const auto lir = ReadTextFile(root / "Temp" / "Lir" / "lir.txt");
     const auto assembly = ReadTextFile(root / "Temp" / "Asm" / "out.asm");
     const auto rcu = ReadTextFile(root / "Temp" / "Rcu" / "Main.rcu.txt");
     CHECK(tokens.starts_with("   1:1     FuncKeyword"));
     CHECK(ast.starts_with("Module \""));
+    CHECK(ast.contains("FuncDecl '~Cell' (self: &var Cell)"));
+    CHECK(sema.contains("func Borrow(shared: &Cell, exclusive: &var Cell) -> int"));
+    CHECK(sema.contains("Cell                          copy=prohibited move=custom drop=yes"));
     CHECK(hir.starts_with("=== High-level Intermediate Representation ==="));
     CHECK(lir.starts_with("=== Low-level Intermediate Representation ==="));
     CHECK_FALSE(assembly.starts_with("Emitted"));
     CHECK(rcu.starts_with("; RCU  Rux Compiled Unit  v1.0"));
-    for (const std::string_view payload : {tokens, ast, hir, lir, assembly, rcu}) {
+    for (const std::string_view payload : {tokens, ast, sema, hir, lir, assembly, rcu}) {
         CHECK_FALSE(payload.contains("Description:"));
     }
 

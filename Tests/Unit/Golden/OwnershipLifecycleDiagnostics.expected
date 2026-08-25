@@ -1,0 +1,5 @@
+4:5: error: copy special operation for type 'Cell' must have signature 'func =(self: &var Cell, other: &Cell)'
+5:5: error: move special operation for type 'Cell' must have signature 'func <-(self: &var Cell, other: Cell)'
+6:5: error: destructor '~Other' must be named '~Cell' for type 'Cell'
+9:30: error: function return type cannot store reference type '&Cell'
+10:5: error: reference value '&Cell' cannot escape through a return

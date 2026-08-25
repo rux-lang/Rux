@@ -1,0 +1,11 @@
+struct Cell { value: int32; }
+
+extend Cell {
+    func =(self: &Cell, other: &Cell);
+    func <-(self: &var Cell, other: &Cell);
+    func ~Other(self: &var Cell) {}
+}
+
+func Escape(value: &Cell) -> &Cell {
+    return value;
+}

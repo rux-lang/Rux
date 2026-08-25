@@ -297,6 +297,12 @@ bool IsSymbolicOperatorName(const std::string_view name) {
     });
 }
 
+/// A destructor is named after its type, prefixed with `~`; applying ordinary function-name casing to the complete
+/// spelling would incorrectly reject every canonical destructor.
+bool IsDestructorName(const std::string_view name) {
+    return name.size() > 1 && name.front() == '~';
+}
+
 class LinterVisitor {
 public:
     explicit LinterVisitor(std::string inputSourceName)
@@ -363,7 +369,8 @@ private:
     void VisitDecl(const Decl &decl, const std::span<const std::string> siblingNames) {
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             CheckDocumentation(decl, "function", fn->name);
-            if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsPascalCase(fn->name)) {
+            if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsDestructorName(fn->name) &&
+                !IsPascalCase(fn->name)) {
                 WarnNaming(fn->location, "function name", fn->name, NamingConvention::PascalCase, siblingNames);
             }
             const auto parameterNames = Names(fn->params);
