@@ -73,11 +73,6 @@ extend Sha256 {
         return Sha256 { state: Sha256InitialState, buffer: buffer, buffered: 0, length: 0, outputLength: 32 };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Sha256()`.
-    func New() -> Sha256 {
-        return Sha256();
-    }
-
     /// A SHA-224 state: the same compression function from a different start, keeping seven words of the result.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/new-224

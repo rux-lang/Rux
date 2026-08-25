@@ -45,22 +45,22 @@ func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    var dirHolder = OsString::New(allocator);
+    var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/StorageXfer.tmp", @dirHolder);
-    var aHolder = OsString::New(allocator);
+    var aHolder = OsString(allocator);
     let a = PathOf(allocator, "Bin/StorageXfer.tmp/a.txt", @aHolder);
-    var bHolder = OsString::New(allocator);
+    var bHolder = OsString(allocator);
     let b = PathOf(allocator, "Bin/StorageXfer.tmp/b.txt", @bHolder);
-    var cHolder = OsString::New(allocator);
+    var cHolder = OsString(allocator);
     let c = PathOf(allocator, "Bin/StorageXfer.tmp/c.txt", @cHolder);
-    var dHolder = OsString::New(allocator);
+    var dHolder = OsString(allocator);
     let d = PathOf(allocator, "Bin/StorageXfer.tmp/d.txt", @dHolder);
-    var hHolder = OsString::New(allocator);
+    var hHolder = OsString(allocator);
     let h = PathOf(allocator, "Bin/StorageXfer.tmp/h.txt", @hHolder);
-    var sHolder = OsString::New(allocator);
+    var sHolder = OsString(allocator);
     let s = PathOf(allocator, "Bin/StorageXfer.tmp/s.txt", @sHolder);
 
     // Fresh ground.
@@ -99,7 +99,7 @@ func Main() -> int {
 
     // A symbolic link follows on open and deletes as itself. Creation is privilege-gated on Windows, so a
     // PermissionDenied here is an environment, not a defect -- the rest is skipped, not faked.
-    var linkNameHolder = OsString::New(allocator);
+    var linkNameHolder = OsString(allocator);
     let linkTarget = PathOf(allocator, "h.txt", @linkNameHolder);
     let linked = CreateSymbolicLink(allocator, linkTarget, s, false);
     if linked.IsOk() {

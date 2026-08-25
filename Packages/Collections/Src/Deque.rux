@@ -61,11 +61,6 @@ extend Deque<T> {
         return Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `Deque<T>(allocator)`.
-    func New(allocator: Allocator) -> Deque<T> {
-        return Deque<T>(allocator);
-    }
-
     /// An empty deque with room for `capacity` elements already taken.
     ///
     /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The

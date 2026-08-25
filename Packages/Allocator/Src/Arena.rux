@@ -87,11 +87,6 @@ extend Arena {
         };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Arena(backing, blockSize)`.
-    func New(backing: Allocator, blockSize: uint) -> Arena {
-        return Arena(backing, blockSize);
-    }
-
     /// A copyable interface adapter pointing at this arena.
     ///
     /// `self` stays the caller's. Allocations through the handle update this arena rather than copied state.

@@ -104,11 +104,6 @@ extend Sha512 {
         return Sha512::Start(Sha512InitialState, 64u);
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `Sha512()`.
-    func New() -> Sha512 {
-        return Sha512();
-    }
-
     /// A SHA-384 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/new-384

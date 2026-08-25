@@ -8,7 +8,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, MutableSlice, Slice };
-import Format::{ ByteCursor, CursorWriter, TextWriter };
+import Format::{ ByteCursor, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
                TomlWriteDocument, TomlWriteError };
 
@@ -958,8 +958,8 @@ func Differential(index: uint) -> Slice<char8> {
     return "differential vector past the end";
 }
 func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
-    var cursor = ByteCursor::New(storage);
-    let writer: TextWriter = CursorWriter::Of(@cursor);
+    var cursor = ByteCursor(storage);
+    let writer: &var TextWriter = cursor;
     let failure = TomlWriteDocument(writer, value);
     Assert(failure == TomlWriteError::None, "every accepted document can be written back out");
     return cursor.Written();
@@ -1027,7 +1027,7 @@ func TreeScalars(value: &TomlValue) -> uint {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var storage: char8[8192];
     var second: char8[8192];

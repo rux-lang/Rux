@@ -23,7 +23,7 @@ struct SemanticVersion {
     patch: uint;
 }
 extend SemanticVersion {
-    func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+    func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
         return SemanticVersion { major: major, minor: minor, patch: patch };
     }
 }

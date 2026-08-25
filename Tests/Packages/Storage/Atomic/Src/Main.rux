@@ -42,7 +42,7 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
     var walk = ReadDirectory(allocator, directory, @error);
     Assert(error.IsOk(), "the directory opens for counting");
     var count: uint = 0;
-    var name = OsString::New(allocator);
+    var name = OsString(allocator);
     while walk.Next(@name, @error) {
         count = count + 1;
         name.Clear();
@@ -53,13 +53,13 @@ func CountEntries(allocator: Allocator, directory: Path) -> uint {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
-    var dirHolder = OsString::New(allocator);
+    var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/StorageAtomic.tmp", @dirHolder);
-    var targetHolder = OsString::New(allocator);
+    var targetHolder = OsString(allocator);
     let target = PathOf(allocator, "Bin/StorageAtomic.tmp/settled.txt", @targetHolder);
 
     DeleteFile(allocator, target);

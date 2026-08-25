@@ -44,7 +44,7 @@ func EndsWith(buffer: *PathBuffer, tail: Slice<char8>) -> bool {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
@@ -54,9 +54,9 @@ func Main() -> int {
     Assert(!here.IsEmpty(), "and is not empty");
     Assert(IsAbsolute(Path::FromView(here.View())), "and is absolute");
 
-    var dirHolder = OsString::New(allocator);
+    var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/StorageLoc.tmp", @dirHolder);
-    var fileHolder = OsString::New(allocator);
+    var fileHolder = OsString(allocator);
     let file = PathOf(allocator, "Bin/StorageLoc.tmp/real.txt", @fileHolder);
     DeleteFile(allocator, file);
     DeleteDirectory(allocator, dir);
@@ -69,14 +69,14 @@ func Main() -> int {
     Assert(IsAbsolute(made.AsPath()), "and is absolute");
     Assert(EndsWith(@made, "StorageLoc.tmp/real.txt"), "ending in what was asked for");
 
-    var absentHolder = OsString::New(allocator);
+    var absentHolder = OsString(allocator);
     let absent = PathOf(allocator, "Bin/StorageLoc.tmp/never-existed.txt", @absentHolder);
     var imagined = Absolute(allocator, absent, @error);
     Assert(error.IsOk(), "a path that does not exist is still made absolute");
     Assert(EndsWith(@imagined, "never-existed.txt"), "keeping the name it was given");
 
     // The dot segments are simplified lexically, without asking anything.
-    var noisyHolder = OsString::New(allocator);
+    var noisyHolder = OsString(allocator);
     let noisy = PathOf(allocator, "Bin/./StorageLoc.tmp/../StorageLoc.tmp/real.txt", @noisyHolder);
     var tidied = Absolute(allocator, noisy, @error);
     Assert(error.IsOk() && EndsWith(@tidied, "StorageLoc.tmp/real.txt"), "the dot segments simplify away");

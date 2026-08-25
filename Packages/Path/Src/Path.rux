@@ -56,11 +56,6 @@ extend Path {
         return Path { name: OsStringView() };
     }
 
-    /// Temporary compatibility spelling for `Path()`.
-    func New() -> Path {
-        return Path();
-    }
-
     /// A path over `view`'s units as they stand.
     ///
     /// https://rux-lang.dev/docs/api/path/path/from-view

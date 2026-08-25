@@ -56,10 +56,6 @@ extend SystemEntropy {
         return SystemEntropy {};
     }
 
-    /// Temporary compatibility spelling for `SystemEntropy()`.
-    func New() -> SystemEntropy {
-        return SystemEntropy();
-    }
 }
 
 extend SystemEntropy : EntropySource {

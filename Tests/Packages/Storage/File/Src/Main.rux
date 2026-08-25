@@ -17,18 +17,18 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
-    var missingHolder = OsString::New(allocator);
+    var missingHolder = OsString(allocator);
     let missing = PathOf(allocator, "Bin/StorageNoSuchFile.tmp", @missingHolder);
     var absent = File::Open(allocator, missing, OpenOptions::Reading(), @error);
     Assert(!absent.IsOpen() && error.kind == IoErrorKind::NotFound, "reading a missing file is NotFound");
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
-    var scratchHolder = OsString::New(allocator);
+    var scratchHolder = OsString(allocator);
     let scratch = PathOf(allocator, "Bin/StorageOpen.tmp", @scratchHolder);
     var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "writing creates the missing file");

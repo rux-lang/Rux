@@ -45,7 +45,7 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
@@ -79,7 +79,7 @@ func Main() -> int {
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 
     // Close deletes it and says so; the name is free afterwards.
-    var firstPathHolder = PathBuffer::New(allocator);
+    var firstPathHolder = PathBuffer(allocator);
     var textError = TextError::None;
     firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath(), @textError);
     Assert(first.Close(allocator).IsOk(), "closing reports success");

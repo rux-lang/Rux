@@ -129,4 +129,4 @@ The existing `Core::Drop` interface remains accepted only as a compiler compatib
 
 ## Compatibility Boundary
 
-The remaining compatibility surface consists of temporary forwarding `New` wrappers for exact-type constructors, `Core::Drop`, implicit consumption of named move-only values, and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.
+The remaining compatibility surface consists of `Core::Drop`, implicit consumption of named move-only values, and mutable-parameter prefixes. It exists only so older source can cross the compiler transition. The cutover removes those forms and adds repository policy guards against their return. Exact-type forwarding `New` wrappers have already been removed; fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent and are not compatibility syntax.

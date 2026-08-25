@@ -33,11 +33,6 @@ extend SemanticVersion {
         return SemanticVersion { major: major, minor: minor, patch: patch };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `SemanticVersion(major, minor, patch)`.
-    func New(major: uint, minor: uint, patch: uint) -> SemanticVersion {
-        return SemanticVersion(major, minor, patch);
-    }
-
     /// Compares precedence with `other`.
     ///
     /// `self` is borrowed and `other` is read by value. Returns a negative value when `self` precedes `other`, zero

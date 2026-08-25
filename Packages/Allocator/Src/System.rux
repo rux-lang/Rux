@@ -65,15 +65,6 @@ extend SystemAllocator {
         return SystemAllocator { reserved: 0 };
     }
 
-    /// Temporary compatibility spelling for `SystemAllocator()`.
-    ///
-    /// Takes nothing and returns the allocator by copy. Cannot fail and allocates nothing: the storage comes when a
-    /// layout is asked for, not now.
-    ///
-    /// https://rux-lang.dev/docs/api/allocator/system-allocator/new
-    func New() -> SystemAllocator {
-        return SystemAllocator();
-    }
 }
 
 extend SystemAllocator : Allocator {

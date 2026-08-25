@@ -93,9 +93,8 @@ capability is derived through generic fields, so a map or consuming iterator con
 move-only.
 
 Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`,
-`HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Temporary `New` forwarding methods remain while
-downstream packages migrate. Descriptive or fallible factories such as `FromSlice`, `WithCapacity`, and `Filled`
-retain their names.
+`HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive or fallible factories such as
+`FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
 The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one
 built from a pool comes back to the pool.

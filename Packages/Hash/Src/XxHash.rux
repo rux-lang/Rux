@@ -193,18 +193,6 @@ extend XxHash64 {
         };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `XxHash64()`.
-    ///
-    /// Takes nothing and cannot fail. The seed most callers want, and the one every published xxHash64 test vector
-    /// uses.
-    ///
-    /// Runs in constant time and allocates nothing.
-    ///
-    /// https://rux-lang.dev/docs/api/hash/xx-hash64/new
-    func New() -> XxHash64 {
-        return XxHash64();
-    }
-
     /// Puts the hasher back to where it started, keeping its seed.
     ///
     /// `self` is borrowed mutably. Everything written so far is forgotten; the seed is not.

@@ -87,6 +87,6 @@ func Main() -> int {
 
     // Unit fills a type position for an operation with nothing to report.
     var unitOut = Unit();
-    Assert(Result::Success<Unit, Failure>(Unit::New()).TryIntoValue(@unitOut), "Unit extraction and legacy constructor");
+    Assert(Result::Success<Unit, Failure>(Unit()).TryIntoValue(@unitOut), "Unit extraction and type constructor");
     return 0;
 }

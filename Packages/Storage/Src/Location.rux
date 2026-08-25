@@ -52,11 +52,11 @@ func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
         let written = GetCurrentDirectoryW(4096, @units[0] as *var char16);
         if written == 0u32 {
             *error = TranslateNative(GetLastError() as int32);
-            return OsString::New(allocator);
+            return OsString(allocator);
         }
         if written > 4096u32 {
             *error = IoError::Of(IoErrorKind::LimitExceeded);
-            return OsString::New(allocator);
+            return OsString(allocator);
         }
         let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
         var textError = TextError::None;
@@ -70,7 +70,7 @@ func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
         let outcome = Getcwd(@units[0], 4096);
         if outcome < 0 {
             *error = TranslateNative((0i64 - outcome) as int32);
-            return OsString::New(allocator);
+            return OsString(allocator);
         }
         var length: uint = 0;
         while length < 4096u && units[length] != (0u8 as char8) {
@@ -133,7 +133,7 @@ func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuff
     }
     var here = CurrentDirectory(allocator, error);
     if (*error).IsError() {
-        return PathBuffer::New(allocator);
+        return PathBuffer(allocator);
     }
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()), @textError);
     if textError == TextError::None {
@@ -247,7 +247,7 @@ when #target.os != .Windows {
                 stepping = false;
             }
             else {
-                let segment = step.ValueOr(OsStringView::New());
+                let segment = step.ValueOr(OsStringView());
                 if segment.IsEmpty() || SegmentIs(segment, 1) {
                     // The root component and a bare `.` both add nothing.
                 }
@@ -261,7 +261,7 @@ when #target.os != .Windows {
                     if textError != TextError::None {
                         return IoError::Of(IoErrorKind::Other);
                     }
-                    var target = OsString::New(allocator);
+                    var target = OsString(allocator);
                     var linked = false;
                     let read = ReadLinkText(allocator, resolved.AsPath(), @target, @linked);
                     if read.IsError() {
@@ -306,24 +306,24 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
         if (*error).IsError() {
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         let handle = OpenForQuery(native, true);
         ReleaseNativePath(allocator, native, path.name.units.length);
         if (handle as uint64) == InvalidHandleValue {
             *error = TranslateNative(GetLastError() as int32);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         var units: OsUnit[4096];
         let written = GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0);
         CloseHandle(handle);
         if written == 0u32 {
             *error = TranslateNative(GetLastError() as int32);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         if written >= 4096u32 {
             *error = IoError::Of(IoErrorKind::LimitExceeded);
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
         var textError = TextError::None;
@@ -340,13 +340,13 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         if error.IsError() {
             return <-started;
         }
-        var resolved = PathBuffer::New(allocator);
+        var resolved = PathBuffer(allocator);
         var followed: uint = 0;
         *error = ResolveInto(allocator, started.AsPath(), @resolved, @followed);
         started.Release();
         if error.IsError() {
             resolved.Release();
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
@@ -355,7 +355,7 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         if missing.IsError() {
             *error = missing;
             resolved.Release();
-            return PathBuffer::New(allocator);
+            return PathBuffer(allocator);
         }
         return <-resolved;
     }

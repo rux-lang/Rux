@@ -92,11 +92,6 @@ extend MonotonicUuid {
         return MonotonicUuid { previous: Uuid::Nil(), started: false };
     }
 
-    /// Temporary compatibility spelling for `MonotonicUuid()`.
-    func New() -> MonotonicUuid {
-        return MonotonicUuid();
-    }
-
     /// The next identifier, strictly greater than the one before it.
     ///
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next

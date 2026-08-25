@@ -149,11 +149,6 @@ func LayoutOf<T>() -> Layout {
     return Layout { size: sizeof(T), alignment: NaturalAlignment(sizeof(T)) };
 }
 
-/// Temporary compatibility spelling that infers `T` from `sample`. Prefer `LayoutOf<T>()` for owning values.
-func LayoutOf<T>(sample: T) -> Layout {
-    return LayoutOf<T>();
-}
-
 /// A layout for `count` values of `T` laid out one after another, or nothing when that many do not fit.
 ///
 /// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Reports `None` when
@@ -169,9 +164,4 @@ func LayoutOfArray<T>(count: uint) -> Option<Layout> {
         return Option::None<Layout>();
     }
     return Layout::New(stride * count, NaturalAlignment(stride));
-}
-
-/// Temporary compatibility spelling that infers `T` from `sample`. Prefer `LayoutOfArray<T>(count)` for owners.
-func LayoutOfArray<T>(sample: T, count: uint) -> Option<Layout> {
-    return LayoutOfArray<T>(count);
 }

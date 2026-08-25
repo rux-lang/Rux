@@ -25,7 +25,7 @@ func Accepts(allocator: Allocator, text: Slice<char8>, what: Slice<char8>) -> Js
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
 
     // The scalars.

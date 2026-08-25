@@ -73,11 +73,6 @@ extend Tree<K, V> {
         return Tree<K, V> { root: null, length: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `Tree<K, V>(allocator)`.
-    func New(allocator: Allocator) -> Tree<K, V> {
-        return Tree<K, V>(allocator);
-    }
-
     /// How many entries the tree holds.
     ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.

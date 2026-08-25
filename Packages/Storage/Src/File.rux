@@ -77,11 +77,6 @@ extend OpenOptions {
         return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New() -> OpenOptions {
-        return OpenOptions();
-    }
-
     /// Reading an existing file.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/reading

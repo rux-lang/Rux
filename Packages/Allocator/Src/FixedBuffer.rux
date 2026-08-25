@@ -57,11 +57,6 @@ extend FixedBuffer {
         };
     }
 
-    /// Temporary compatibility spelling for downstream packages. Prefer `FixedBuffer(storage, capacity)`.
-    func New(storage: *var opaque, capacity: uint) -> FixedBuffer {
-        return FixedBuffer(storage, capacity);
-    }
-
     /// A copyable interface adapter pointing at this allocator.
     ///
     /// `self` is borrowed mutably and stays the caller's. Everything allocated through the handle advances this

@@ -37,12 +37,6 @@ extend HashSet<T> {
         return HashSet::WithSeed<T>(allocator, TableSeed::Random(), hash, equals);
     }
 
-    /// Temporary compatibility spelling for `HashSet<T>(allocator, hash, equals)`.
-    func New(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
-             equals: func(T, T) -> bool) -> HashSet<T> {
-        return HashSet<T>(allocator, hash, equals);
-    }
-
     /// An empty set that has not allocated anything, hashing with `seed`.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/with-seed

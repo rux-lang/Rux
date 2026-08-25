@@ -23,7 +23,7 @@ func Main() -> int {
     Assert(version101 <= version110, "less-than-or-equal operator");
     Assert(version200 > version110, "greater-than operator");
     Assert(version200 >= SemanticVersion(2, 0, 0), "greater-than-or-equal operator");
-    Assert(SemanticVersion::New(3, 2, 1) == SemanticVersion(3, 2, 1), "legacy constructor forwards");
+    Assert(SemanticVersion(3, 2, 1) == SemanticVersion(3, 2, 1), "type construction is structural");
 
     when #compiler.version >= MinimumCompiler {
         Assert(true, "compiler satisfies minimum version");

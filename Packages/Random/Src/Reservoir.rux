@@ -28,11 +28,6 @@ extend Reservoir<T> {
         return Reservoir<T> { room: room, seen: 0 };
     }
 
-    /// Temporary compatibility spelling for `Reservoir<T>(room)`.
-    func New(room: MutableSlice<T>) -> Reservoir<T> {
-        return Reservoir<T>(room);
-    }
-
     /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
     /// offered.
     ///

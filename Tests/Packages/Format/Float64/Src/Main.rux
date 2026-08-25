@@ -1,5 +1,5 @@
 import Text::StringView;
-import Format::{ ByteCursor, FormatSpec, CursorWriter, Display, TextWriter, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
+import Format::{ ByteCursor, FormatSpec, Display, TextWriter, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
 import Core::Result;
 import Core::{ MutableSlice, Slice };
 
@@ -12,7 +12,7 @@ import Core::{ MutableSlice, Slice };
 func Check(value: float64, expected: Slice<char8>, code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
-    var sink = CursorWriter::Of(@cursor);
+    let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     let shown: Display = value;
     if shown.Format(writer, FormatSpec::Plain()).IsError() {

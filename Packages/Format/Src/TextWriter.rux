@@ -12,7 +12,7 @@
 // relies on that; a builder's promise that it holds text at every moment is exactly this promise passed along.
 
 import Core::{ MutableSlice, Slice };
-import Text::{ AppendValidatedRaw, Encode, StringBuilder, TextError };
+import Text::{ Encode, StringBuilder, TextError };
 
 /// Somewhere formatted text can be written.
 ///
@@ -66,72 +66,23 @@ func WriteScalar(writer: &var TextWriter, scalar: char32) -> TextError {
     return WriteBytes(writer, Slice<char8> { data: @encoded[0], length: written });
 }
 
-/// A writer that appends to a `StringBuilder`.
-///
-/// Holds the builder behind a pointer rather than by value, for the reason the allocator handles do: an interface
-/// value is copied when it is passed, and a builder copied mid-write would leave what was written behind.
-///
-/// https://rux-lang.dev/docs/api/format/builder-writer
-struct BuilderWriter {
-    /// The builder being appended to. Never null for a writer `Of` produced.
-    builder: *var StringBuilder;
-}
-
-extend BuilderWriter {
-    /// A writer over `builder`.
-    ///
-    /// # Safety
-    ///
-    /// The builder must outlive the writer and must not be moved while it is in use.
-    ///
-    /// https://rux-lang.dev/docs/api/format/builder-writer/of
-    func Of(builder: *var StringBuilder) -> BuilderWriter {
-        return BuilderWriter { builder: builder };
-    }
-}
-
-extend BuilderWriter : TextWriter {
+extend StringBuilder : TextWriter {
     /// Appends `bytes` to the builder.
     ///
     /// Reports `OutOfMemory` when the builder cannot make room, having appended nothing.
     ///
-    /// https://rux-lang.dev/docs/api/format/builder-writer/write
-    func Write(self: &var BuilderWriter, bytes: Slice<char8>) -> TextError {
-        return AppendValidatedRaw(self.builder, bytes);
+    /// https://rux-lang.dev/docs/api/text/string-builder/write
+    func Write(self: &var StringBuilder, bytes: Slice<char8>) -> TextError {
+        return self.AppendValidated(bytes);
     }
 }
 
-/// A writer that fills a fixed buffer.
-///
-/// Allocates nothing and cannot fail for want of memory, which is what makes it the writer to reach for where there
-/// is no allocator: an early startup path, a signal handler, a test that would rather not depend on one. A write
-/// that does not fit is refused rather than truncated, and the cursor remembers that it happened.
-///
-/// https://rux-lang.dev/docs/api/format/cursor-writer
-struct CursorWriter {
-    /// The cursor being filled. Never null for a writer `Of` produced.
-    cursor: *var ByteCursor;
-}
-
-extend CursorWriter {
-    /// A writer over `cursor`.
-    ///
-    /// # Safety
-    ///
-    /// The cursor must outlive the writer and must not be moved while it is in use.
-    ///
-    /// https://rux-lang.dev/docs/api/format/cursor-writer/of
-    func Of(cursor: *var ByteCursor) -> CursorWriter {
-        return CursorWriter { cursor: cursor };
-    }
-}
-
-extend CursorWriter : TextWriter {
+extend ByteCursor : TextWriter {
     /// Writes `bytes` into the buffer, reporting `LengthOverflow` when they do not fit.
     ///
-    /// https://rux-lang.dev/docs/api/format/cursor-writer/write
-    func Write(self: &var CursorWriter, bytes: Slice<char8>) -> TextError {
-        (*self.cursor).PushBytes(bytes);
-        return (*self.cursor).Overran() ? TextError::LengthOverflow : TextError::None;
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/write
+    func Write(self: &var ByteCursor, bytes: Slice<char8>) -> TextError {
+        self.PushBytes(bytes);
+        return self.Overran() ? TextError::LengthOverflow : TextError::None;
     }
 }

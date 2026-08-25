@@ -136,11 +136,6 @@ extend TomlLexer {
         return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
     }
 
-    /// Temporary compatibility spelling for the receiverless constructor.
-    func New(input: Slice<char8>) -> TomlLexer {
-        return TomlLexer(input);
-    }
-
     func Make(self: &TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
         return TomlToken {
             kind: kind, form: form, start: start, end: end, line: self.line,

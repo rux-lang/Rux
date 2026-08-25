@@ -36,11 +36,6 @@ extend PathBuffer {
         return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
-    /// Temporary compatibility spelling for `PathBuffer(allocator)`.
-    func New(allocator: Allocator) -> PathBuffer {
-        return PathBuffer(allocator);
-    }
-
     /// A buffer opening with `path`'s units.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/from-path

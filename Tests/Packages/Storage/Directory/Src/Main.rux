@@ -30,17 +30,17 @@ func NameOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
 
-    var dirHolder = OsString::New(allocator);
+    var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/StorageDir.tmp", @dirHolder);
-    var oneHolder = OsString::New(allocator);
+    var oneHolder = OsString(allocator);
     let one = PathOf(allocator, "Bin/StorageDir.tmp/one.txt", @oneHolder);
-    var twoHolder = OsString::New(allocator);
+    var twoHolder = OsString(allocator);
     let two = PathOf(allocator, "Bin/StorageDir.tmp/two.txt", @twoHolder);
-    var accentHolder = OsString::New(allocator);
+    var accentHolder = OsString(allocator);
     let accent = PathOf(allocator, "Bin/StorageDir.tmp/caf\u{00E9}.txt", @accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
@@ -60,17 +60,17 @@ func Main() -> int {
     // Read back: three names, each one expected, the accent intact in the system's own units.
     var iterator = ReadDirectory(allocator, dir, @error);
     Assert(error.IsOk(), "the directory opens for reading");
-    var oneWantHolder = OsString::New(allocator);
+    var oneWantHolder = OsString(allocator);
     let oneWant = NameOf(allocator, "one.txt", @oneWantHolder);
-    var twoWantHolder = OsString::New(allocator);
+    var twoWantHolder = OsString(allocator);
     let twoWant = NameOf(allocator, "two.txt", @twoWantHolder);
-    var accentWantHolder = OsString::New(allocator);
+    var accentWantHolder = OsString(allocator);
     let accentWant = NameOf(allocator, "caf\u{00E9}.txt", @accentWantHolder);
     var seenOne = false;
     var seenTwo = false;
     var seenAccent = false;
     var count: uint = 0;
-    var entry = OsString::New(allocator);
+    var entry = OsString(allocator);
     while iterator.Next(@entry, @error) {
         count = count + 1;
         let view = entry.View();
@@ -99,7 +99,7 @@ func Main() -> int {
 
     var emptied = ReadDirectory(allocator, dir, @error);
     Assert(error.IsOk(), "the emptied directory still opens");
-    var nothing = OsString::New(allocator);
+    var nothing = OsString(allocator);
     Assert(!emptied.Next(@nothing, @error) && error.IsOk(), "and holds nothing");
     emptied.Release();
     nothing.Clear();

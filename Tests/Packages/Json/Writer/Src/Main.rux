@@ -3,7 +3,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
-import Format::{ BuilderWriter, TextWriter };
+import Format::{ TextWriter };
 import Json::{ JsonKind, JsonLexError, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError,
                Parse, WriteValue };
 import Text::{ String, StringBuilder, StringView, TextError };
@@ -15,13 +15,13 @@ func View(bytes: Slice<char8>) -> StringView {
 // Writes a value and returns the text.
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: *var JsonWriteError) -> String {
     var builder = StringBuilder(allocator);
-    let sink: TextWriter = BuilderWriter::Of(@builder);
+    let sink: &var TextWriter = builder;
     *outcome = WriteValue(sink, value, style);
     return builder.IntoString();
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var parsed = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var wrote = JsonWriteError::None;

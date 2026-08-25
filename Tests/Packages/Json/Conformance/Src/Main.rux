@@ -7,7 +7,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, MutableSlice, Slice };
-import Format::{ BuilderWriter, TextWriter };
+import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome,
                JsonStyle, JsonValue, JsonWriteError, DuplicateKeyPolicy, Parse, ParseWith, WriteValue };
@@ -100,7 +100,7 @@ func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: 
 }
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var parsed = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var wrote = JsonWriteError::None;
@@ -214,7 +214,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     Assert(parsed.error == JsonParseError::None, "a well-formed document parses");
 
     var builder = StringBuilder(allocator);
-    let sink: TextWriter = BuilderWriter::Of(@builder);
+    let sink: &var TextWriter = builder;
     *wrote = WriteValue(sink, value, JsonStyle::Compact());
     Assert(*wrote == JsonWriteError::None, "and writes");
     var once = builder.IntoString();
@@ -222,7 +222,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     var again = Parse(allocator, once.View().Bytes(), parsed);
     Assert(parsed.error == JsonParseError::None, "and the written form parses");
     var secondBuilder = StringBuilder(allocator);
-    let secondSink: TextWriter = BuilderWriter::Of(@secondBuilder);
+    let secondSink: &var TextWriter = secondBuilder;
     *wrote = WriteValue(secondSink, again, JsonStyle::Compact());
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
