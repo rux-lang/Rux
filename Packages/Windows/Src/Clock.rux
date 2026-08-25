@@ -57,12 +57,12 @@ extern {
 
 /// The whole 64-bit value a `FileTime` splits across two fields.
 ///
-/// `time` is borrowed and read. Win32 splits the count into a high and a low word because the structure predates
-/// 64-bit alignment guarantees; this puts it back together.
+/// `time` is borrowed and read, so callers pass the value directly. Win32 splits the count into a high and a low
+/// word because the structure predates 64-bit alignment guarantees; this puts it back together.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/windows/file-time-ticks
-func FileTimeTicks(time: *FileTime) -> uint64 {
+func FileTimeTicks(time: &FileTime) -> uint64 {
     return ((time.highDateTime as uint64) << 32) | (time.lowDateTime as uint64);
 }

@@ -41,6 +41,14 @@ There is no `Brk`: Darwin's `brk` and `sbrk` have been unavailable to 64-bit cod
 `Pipe2`: Darwin has only `pipe`, so close-on-exec must be set afterwards. And `Fsync` is weaker here than elsewhere —
 it does not wait for the device to commit, which `F_FULLFSYNC` through `fcntl` is what does.
 
+## Values and pointers
+
+Darwin records such as `Timespec` and `Timeval` are structural values and copy by value. Typed, non-null clock
+operations borrow them, so callers write `GetTimeOfDay(time)` rather than taking an address. libSystem declarations
+retain raw pointers for nullable parameters, byte buffers, loader handles, and OS-owned storage. These pointers do
+not express ownership; use the documented close or unmap operation, or prefer `Rux/Io` and `Rux/Memory` for managed
+interfaces.
+
 ## Platform
 
 macOS only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

@@ -36,7 +36,7 @@ func Main() -> int {
     // The runtime filling the structure is the check that matters: a nanosecond count read four bytes too wide comes
     // back as stale padding in its upper half, which no size assertion would catch.
     var stamp = timespec { tv_sec: -1, tv_nsec: -1 };
-    Assert(TimespecGet(@stamp, TIME_UTC) == TIME_UTC, "the current time is reported on the UTC base");
+    Assert(TimespecGet(stamp, TIME_UTC) == TIME_UTC, "the current time is reported on the UTC base");
     Assert(stamp.tv_sec > 1700000000, "the seconds are a plausible epoch value");
     Assert(stamp.tv_nsec >= 0 && stamp.tv_nsec <= 999999999, "and the nanoseconds are within one second");
 

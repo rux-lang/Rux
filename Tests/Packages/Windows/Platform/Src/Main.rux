@@ -109,13 +109,17 @@ when #target.os == OperatingSystem::Windows {
         // plausible present-day instant once the epochs are reconciled.
         var stamp = FileTime { lowDateTime: 0, highDateTime: 0 };
         GetSystemTimePreciseAsFileTime(@stamp);
-        let ticks = FileTimeTicks(@stamp);
-        if ticks == 0 {
+        let copiedStamp = stamp;
+        let ticks = FileTimeTicks(stamp);
+        if FileTimeTicks(copiedStamp) != ticks {
             return 16;
+        }
+        if ticks == 0 {
+            return 17;
         }
         let unixSeconds = ticks / FileTimeTicksPerSecond - FileTimeToUnixEpochSeconds;
         if unixSeconds < 1700000000u64 || unixSeconds > 4000000000u64 {
-            return 17;
+            return 18;
         }
 
         // A path that does not exist reports the invalid-attributes sentinel rather than an attribute value.
@@ -131,7 +135,7 @@ when #target.os == OperatingSystem::Windows {
             '8' as char16, 'c' as char16, '1' as char16, 'e' as char16, '\0' as char16, '\0' as char16
         ];
         if GetFileAttributesW(@path[0]) != 0xFFFFFFFFu32 {
-            return 18;
+            return 19;
         }
 
         return 0;

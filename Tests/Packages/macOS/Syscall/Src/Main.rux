@@ -51,42 +51,46 @@ when #target.os == OperatingSystem::macOS {
 
         // A successful call must not be mistaken for a failure by the same fold.
         var time: Timeval;
-        if GetTimeOfDay(@time) != 0 || time.seconds <= 0 ||
+        if GetTimeOfDay(time) != 0 || time.seconds <= 0 ||
             time.microseconds < 0 || time.microseconds >= 1000000 {
             return 5;
+        }
+        let copiedTime = time;
+        if copiedTime.seconds != time.seconds || copiedTime.microseconds != time.microseconds {
+            return 6;
         }
 
         const PageSize: uint = 4096;
         let mapping = Mmap(null, PageSize, ProtectionRead | ProtectionWrite,
             MapPrivate | MapAnonymous, -1, 0);
         if IsError(mapping) {
-            return 6;
+            return 7;
         }
 
         let bytes = mapping as *var char8;
         *bytes = 42 as char8;
         if *bytes != 42 as char8 {
-            return 7;
+            return 8;
         }
 
         if Munmap(mapping as *opaque, PageSize) != 0 {
-            return 8;
+            return 9;
         }
 
         // The entropy source cannot fail and has no count to check, so what is checked is that it wrote something.
         var seed: uint64[4] = [0, 0, 0, 0];
         GetRandom(@seed[0] as *var opaque, 32);
         if seed[0] == 0 && seed[1] == 0 && seed[2] == 0 && seed[3] == 0 {
-            return 9;
+            return 10;
         }
 
         // Normalize leaves a value alone and only folds the failure sentinel.
         if Normalize(7) != 7 || Normalize(0) != 0 {
-            return 10;
+            return 11;
         }
 
         if Close(-1) == 0 {
-            return 11;
+            return 12;
         }
 
         return 0;

@@ -153,15 +153,15 @@ extern {
     //
     // Available since macOS 10.12. Earlier releases have only gettimeofday and the mach clock.
     // https://keith.github.io/xcode-man-pages/clock_gettime.3.html
-    func clock_gettime(clockId: int32, time: *var opaque) -> int32;
+    func clock_gettime(clockId: int32, time: &var Timespec) -> int32;
 
     // Reads the wall clock into a timeval; returns zero, or -1
     // https://keith.github.io/xcode-man-pages/gettimeofday.2.html
-    func gettimeofday(time: *var opaque, timezone: *var opaque) -> int32;
+    func gettimeofday(time: &var Timeval, timezone: *var opaque) -> int32;
 
     // Suspends the caller for a duration; returns zero, or -1 with EINTR
     // https://keith.github.io/xcode-man-pages/nanosleep.2.html
-    func nanosleep(request: *opaque, remaining: *var opaque) -> int32;
+    func nanosleep(request: &Timespec, remaining: *var Timespec) -> int32;
 
     // Fills a buffer with unpredictable bytes; cannot fail
     //

@@ -26,31 +26,26 @@ const ClockMonotonicRaw: int32 = 4;
 
 /// Reads `clockId` into `time`.
 ///
-/// Returns zero, or a negative error number.
+/// `time` is borrowed and written, so callers pass the value directly. Returns zero, or a negative error number.
 ///
-/// # Safety
-///
-/// `time` must be non-null and writable. The call itself needs macOS 10.12 or later; an older release has no such
-/// symbol and the program will not launch.
+/// The call itself needs macOS 10.12 or later; an older release has no such symbol and the program will not launch.
 ///
 /// https://rux-lang.dev/docs/api/macos/clock-get-time
-func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
-    return Normalize(clock_gettime(clockId, time as *var opaque) as int64);
+func ClockGetTime(clockId: int32, time: &var Timespec) -> int64 {
+    return Normalize(clock_gettime(clockId, time) as int64);
 }
 
 /// Reads the wall clock into `time`, to microsecond resolution.
 ///
-/// Returns zero, or a negative error number. The second argument of the underlying call is an obsolete time-zone
-/// output that this passes as null.
+/// `time` is borrowed and written, so callers pass the value directly. Returns zero, or a negative error number. The
+/// second argument of the underlying call is an obsolete time-zone output that this passes as null.
 ///
-/// # Safety
-///
-/// `time` must be non-null and writable, and its layout is Darwin's: an eight-byte second count and a four-byte
-/// microsecond count, not two 64-bit fields.
+/// `Timeval` has Darwin's layout: an eight-byte second count and a four-byte microsecond count, not two 64-bit
+/// fields.
 ///
 /// https://rux-lang.dev/docs/api/macos/get-time-of-day
-func GetTimeOfDay(time: *var Timeval) -> int64 {
-    return Normalize(gettimeofday(time as *var opaque, null) as int64);
+func GetTimeOfDay(time: &var Timeval) -> int64 {
+    return Normalize(gettimeofday(time, null) as int64);
 }
 
 /// Suspends the caller for the requested duration.
@@ -63,6 +58,6 @@ func GetTimeOfDay(time: *var Timeval) -> int64 {
 /// `request` must be non-null, and its nanoseconds must be under one second.
 ///
 /// https://rux-lang.dev/docs/api/macos/nanosleep
-func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
-    return Normalize(nanosleep(request as *opaque, remaining as *var opaque) as int64);
+func Nanosleep(request: &Timespec, remaining: *var Timespec) -> int64 {
+    return Normalize(nanosleep(request, remaining) as int64);
 }
