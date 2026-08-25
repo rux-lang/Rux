@@ -36,10 +36,11 @@ func Main() -> int {
     Assert(!written.IsOpen() && written.Close().IsOk(), "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
-    var readable = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
+    var opened = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
+    var readable <- opened;
     Assert(readable.IsOpen() && error.IsOk(), "the created file reads");
-    Assert(readable.Close().IsOk(), "and closes");
-    var claimed = OpenOptions::New();
+    Assert(readable.Close().IsOk(), "and an explicitly moved handle closes once");
+    var claimed = OpenOptions();
     claimed.write = true;
     claimed.createNew = true;
     var exclusive = File::Open(allocator, scratch, claimed, @error);
@@ -52,7 +53,7 @@ func Main() -> int {
     Assert(appended.Close().IsOk(), "and closes");
 
     // The contradictions are refused before the platform is asked.
-    var nothing = OpenOptions::New();
+    var nothing = OpenOptions();
     var refusedNothing = File::Open(allocator, scratch, nothing, @error);
     Assert(!refusedNothing.IsOpen() && error.kind == IoErrorKind::InvalidInput, "no access at all is refused");
     var readTruncate = OpenOptions::Reading();

@@ -163,7 +163,7 @@ extend File {
     /// failure, and the one a caller who just wrote something they cannot lose actually wants.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/sync
-    func Sync(self: *var File) -> IoError {
+    func Sync(self: &var File) -> IoError {
         if !self.open {
             return ClosedFile();
         }
@@ -189,7 +189,7 @@ extend File {
     /// arrives with the metadata work.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/size
-    func Size(self: *var File, size: *var uint64) -> IoError {
+    func Size(self: &var File, size: *var uint64) -> IoError {
         *size = 0;
         if !self.open {
             return ClosedFile();
@@ -226,7 +226,7 @@ extend File {
     /// grows the file again -- the same rule as seeking past the end.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/set-length
-    func SetLength(self: *var File, length: uint64) -> IoError {
+    func SetLength(self: &var File, length: uint64) -> IoError {
         if !self.open {
             return ClosedFile();
         }

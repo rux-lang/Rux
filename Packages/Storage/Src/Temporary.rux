@@ -12,7 +12,7 @@
 // and the Unix trick of unlinking immediately leaves nothing a caller could pass to another process by name.
 
 import Allocator::Allocator;
-import Core::{ #target, Drop, Slice };
+import Core::{ #target, Slice };
 import Entropy::{ EntropyError, NextUint64 };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
@@ -61,7 +61,7 @@ func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return held;
+        return <-held;
     }
     else {
         var name = OsString::FromText(allocator, "/tmp", @textError);
@@ -73,7 +73,7 @@ func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
         }
-        return held;
+        return <-held;
     }
 }
 
@@ -105,12 +105,12 @@ func RandomName(allocator: Allocator, prefix: Slice<char8>, error: *var IoError)
     if textError != TextError::None {
         *error = IoError::Of(IoErrorKind::Other);
     }
-    return name;
+    return <-name;
 }
 
 /// A temporary file that owns both its contents and its name.
 ///
-/// Move-only. `Close` deletes the file and reports what the deletion said; `Drop` does the same with the outcome
+/// Move-only. `Close` deletes the file and reports what the deletion said; destruction does the same with the outcome
 /// discarded. `Keep` gives up ownership of the name instead, for the caller who has decided the file should
 /// outlive this value -- which is what a rename into place is built on.
 ///
@@ -125,6 +125,9 @@ struct TemporaryFile {
 }
 
 extend TemporaryFile {
+    /// The owned file and path cannot be duplicated.
+    func =(self: &var TemporaryFile, other: &TemporaryFile);
+
     /// Creates a new temporary file in `directory`, named from `prefix` and sixteen hex digits of entropy.
     ///
     /// The file is opened for reading and writing and is created, never opened: a name that already exists is a
@@ -139,7 +142,7 @@ extend TemporaryFile {
             path: PathBuffer::New(allocator),
             owned: false
         };
-        var options = OpenOptions::New();
+        var options = OpenOptions();
         options.read = true;
         options.write = true;
         options.createNew = true;
@@ -151,49 +154,49 @@ extend TemporaryFile {
             if textError != TextError::None {
                 *error = IoError::Of(IoErrorKind::Other);
                 candidate.Release();
-                return result;
+                return <-result;
             }
             var name = RandomName(allocator, prefix, error);
             if (*error).IsError() {
                 candidate.Release();
-                return result;
+                return <-result;
             }
             textError = candidate.Push(name.View());
             if textError != TextError::None {
                 *error = IoError::Of(IoErrorKind::Other);
                 candidate.Release();
-                return result;
+                return <-result;
             }
             var opened = File::Open(allocator, candidate.AsPath(), options, error);
             if (*error).IsOk() {
-                result.file = opened;
+                result.file <- opened;
                 result.path <- candidate;
                 result.owned = true;
-                return result;
+                return <-result;
             }
             if error.kind != IoErrorKind::AlreadyExists {
                 // Anything but a collision is the caller's problem, not something another name would fix.
                 candidate.Release();
-                return result;
+                return <-result;
             }
             candidate.Release();
             attempt = attempt + 1;
         }
         *error = IoError::Of(IoErrorKind::AlreadyExists);
-        return result;
+        return <-result;
     }
 
     /// The file's path, for handing to something that needs a name.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-file/path
-    func AsPath(self: *TemporaryFile) -> Path {
+    func AsPath(self: &TemporaryFile) -> Path {
         return self.path.AsPath();
     }
 
     /// Closes the file and deletes it, reporting the first thing that went wrong.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-file/close
-    func Close(self: *var TemporaryFile, allocator: Allocator) -> IoError {
+    func Close(self: &var TemporaryFile, allocator: Allocator) -> IoError {
         var outcome = self.file.Close();
         if self.owned {
             self.owned = false;
@@ -209,7 +212,7 @@ extend TemporaryFile {
     /// Closes the file and leaves it where it is, giving up the name.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-file/keep
-    func Keep(self: *var TemporaryFile) -> IoError {
+    func Keep(self: &var TemporaryFile) -> IoError {
         self.owned = false;
         return self.file.Close();
     }
@@ -217,7 +220,7 @@ extend TemporaryFile {
 
 /// A temporary directory that owns its name.
 ///
-/// Move-only, with the same contract as `TemporaryFile`: `Close` removes it and reports, `Drop` removes it
+/// Move-only, with the same contract as `TemporaryFile`: `Close` removes it and reports, destruction removes it
 /// quietly, `Keep` gives up ownership. Removal is of the directory itself and requires it to be empty -- nothing
 /// here deletes a tree, because a temporary directory that silently erased whatever a caller put inside it
 /// would be a worse surprise than a refusal.
@@ -231,6 +234,9 @@ struct TemporaryDirectoryHandle {
 }
 
 extend TemporaryDirectoryHandle {
+    /// The owned directory path cannot be duplicated.
+    func =(self: &var TemporaryDirectoryHandle, other: &TemporaryDirectoryHandle);
+
     /// Creates a new temporary directory in `directory`, named from `prefix` and sixteen hex digits of entropy.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/create
@@ -245,49 +251,49 @@ extend TemporaryDirectoryHandle {
             if textError != TextError::None {
                 *error = IoError::Of(IoErrorKind::Other);
                 candidate.Release();
-                return result;
+                return <-result;
             }
             var name = RandomName(allocator, prefix, error);
             if (*error).IsError() {
                 candidate.Release();
-                return result;
+                return <-result;
             }
             textError = candidate.Push(name.View());
             if textError != TextError::None {
                 *error = IoError::Of(IoErrorKind::Other);
                 candidate.Release();
-                return result;
+                return <-result;
             }
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
             let made = MakeDirectory(allocator, candidate.AsPath());
             if made.IsOk() {
                 result.path <- candidate;
                 result.owned = true;
-                return result;
+                return <-result;
             }
             if made.kind != IoErrorKind::AlreadyExists {
                 *error = made;
                 candidate.Release();
-                return result;
+                return <-result;
             }
             candidate.Release();
             attempt = attempt + 1;
         }
         *error = IoError::Of(IoErrorKind::AlreadyExists);
-        return result;
+        return <-result;
     }
 
     /// The directory's path, for building names inside it.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/path
-    func AsPath(self: *TemporaryDirectoryHandle) -> Path {
+    func AsPath(self: &TemporaryDirectoryHandle) -> Path {
         return self.path.AsPath();
     }
 
     /// Removes the directory and reports what the removal said.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/close
-    func Close(self: *var TemporaryDirectoryHandle, allocator: Allocator) -> IoError {
+    func Close(self: &var TemporaryDirectoryHandle, allocator: Allocator) -> IoError {
         var outcome = IoError::Ok();
         if self.owned {
             self.owned = false;
@@ -300,20 +306,20 @@ extend TemporaryDirectoryHandle {
     /// Leaves the directory where it is, giving up the name.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/keep
-    func Keep(self: *var TemporaryDirectoryHandle) {
+    func Keep(self: &var TemporaryDirectoryHandle) {
         self.owned = false;
     }
 }
 
-extend TemporaryFile : Drop {
+extend TemporaryFile {
     /// Closes and deletes with the outcome discarded: the safety net, not the contract.
     ///
     /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
     /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
     /// is the reason the type exists.
     ///
-    /// https://rux-lang.dev/docs/api/storage/temporary-file/drop
-    func Drop(self: *var TemporaryFile) {
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/destructor
+    func ~TemporaryFile(self: &var TemporaryFile) {
         self.file.Close();
         if self.owned {
             self.owned = false;
@@ -323,11 +329,11 @@ extend TemporaryFile : Drop {
     }
 }
 
-extend TemporaryDirectoryHandle : Drop {
+extend TemporaryDirectoryHandle {
     /// Removes the directory with the outcome discarded: the safety net, not the contract.
     ///
-    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/drop
-    func Drop(self: *var TemporaryDirectoryHandle) {
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/destructor
+    func ~TemporaryDirectoryHandle(self: &var TemporaryDirectoryHandle) {
         if self.owned {
             self.owned = false;
             DeleteDirectory(self.path.allocator, self.path.AsPath());

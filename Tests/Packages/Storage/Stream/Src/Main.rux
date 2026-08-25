@@ -52,7 +52,7 @@ func Main() -> int {
     Assert(reading.Close().IsOk(), "the reader closes");
 
     // Cutting the file discards the tail and nothing else.
-    var cutOptions = OpenOptions::New();
+    var cutOptions = OpenOptions();
     cutOptions.write = true;
     var cutting = File::Open(allocator, scratch, cutOptions, @error);
     Assert(cutting.IsOpen() && error.IsOk(), "it reopens for cutting");

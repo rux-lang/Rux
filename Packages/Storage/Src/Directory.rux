@@ -6,7 +6,7 @@
 // chooses; nothing here sorts, because a sorted walk is a policy and this is a primitive.
 
 import Allocator::Allocator;
-import Core::{ #target, Drop, Slice };
+import Core::{ #target, Slice };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path };
 import Text::TextError;
@@ -109,7 +109,7 @@ func DeleteFile(allocator: Allocator, path: Path) -> IoError {
 
 /// A directory read one entry at a time.
 ///
-/// Move-only: `Release` (or `Drop`) gives back the platform handle and the record buffer. `Next` hands each
+/// Move-only: `Release` (or destruction) gives back the platform handle and the record buffer. `Next` hands each
 /// name over as a fresh `OsString` owned by the caller.
 ///
 /// https://rux-lang.dev/docs/api/storage/directory-iterator
@@ -163,7 +163,7 @@ func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> Dir
     var block: *var opaque = null;
     if borrowed.Allocate(layout, @block) != AllocError::None {
         *error = IoError::Of(IoErrorKind::Other);
-        return iterator;
+        return <-iterator;
     }
     iterator.data = block as *var char8;
     iterator.capacity = wanted;
@@ -176,7 +176,7 @@ func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> Dir
         if borrowed.Allocate(patternLayout, @raw) != AllocError::None {
             iterator.Release();
             *error = IoError::Of(IoErrorKind::Other);
-            return iterator;
+            return <-iterator;
         }
         let pattern = raw as *var uint16;
         var index: uint = 0;
@@ -186,7 +186,7 @@ func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> Dir
                 borrowed.Deallocate(raw, patternLayout);
                 iterator.Release();
                 *error = IoError::Of(IoErrorKind::InvalidInput);
-                return iterator;
+                return <-iterator;
             }
             pattern[length] = units.data[index];
             length = length + 1;
@@ -204,12 +204,12 @@ func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> Dir
             let raw = GetLastError() as int32;
             iterator.Release();
             *error = TranslateNative(raw);
-            return iterator;
+            return <-iterator;
         }
         iterator.handle = found;
         iterator.pending = true;
         iterator.open = true;
-        return iterator;
+        return <-iterator;
     }
     else {
         var native: *var OsUnit = null;
@@ -217,29 +217,32 @@ func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> Dir
         if converted.IsError() {
             iterator.Release();
             *error = converted;
-            return iterator;
+            return <-iterator;
         }
         let opened = OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0);
         ReleaseNativePath(allocator, native, path.name.units.length);
         if opened < 0 {
             iterator.Release();
             *error = TranslateNative((0i64 - opened) as int32);
-            return iterator;
+            return <-iterator;
         }
         iterator.handle = opened as int32;
         iterator.open = true;
-        return iterator;
+        return <-iterator;
     }
 }
 
 extend DirectoryIterator {
+    /// The enumeration handle and record buffer cannot be duplicated.
+    func =(self: &var DirectoryIterator, other: &DirectoryIterator);
+
     /// Hands over the next entry's name, or reports that the directory is done.
     ///
     /// Reports `true` with `name` freshly owned by the caller; `false` at the end with `failure` still `None`,
     /// or `false` with `failure` saying what went wrong. The `.` and `..` entries are skipped.
     ///
     /// https://rux-lang.dev/docs/api/storage/directory-iterator/next
-    func Next(self: *var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
+    func Next(self: &var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
         *failure = IoError::Ok();
         if !self.open {
             *failure = IoError::Of(IoErrorKind::InvalidHandle);
@@ -349,7 +352,7 @@ extend DirectoryIterator {
     /// Gives back the handle and the buffer.
     ///
     /// https://rux-lang.dev/docs/api/storage/directory-iterator/release
-    func Release(self: *var DirectoryIterator) {
+    func Release(self: &var DirectoryIterator) {
         if self.open {
             self.open = false;
             when #target.os == .Windows {
@@ -366,6 +369,13 @@ extend DirectoryIterator {
             self.capacity = 0;
         }
     }
+
+    /// `Release`, as the safety net.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/directory-iterator/destructor
+    func ~DirectoryIterator(self: &var DirectoryIterator) {
+        self.Release();
+    }
 }
 
 func IsDotEntry8(name: *char8, length: uint) -> bool {
@@ -380,13 +390,4 @@ func IsDotEntry16(name: *uint16, length: uint) -> bool {
         return name[0] == 0x2Eu16;
     }
     return length == 2 && name[0] == 0x2Eu16 && name[1] == 0x2Eu16;
-}
-
-extend DirectoryIterator : Drop {
-    /// `Release`, as the safety net.
-    ///
-    /// https://rux-lang.dev/docs/api/storage/directory-iterator/drop
-    func Drop(self: *var DirectoryIterator) {
-        self.Release();
-    }
 }
