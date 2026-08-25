@@ -317,8 +317,21 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     const auto finish = [&](HirExprPtr lowered) {
         if (lowered) {
             if (const ValueConsumption *consumption = model.TryGetConsumption(expr)) {
+                const std::uint64_t bindingId = ConsumedBindingId(*lowered);
+                if (consumption->constructsDestination) {
+                    const TypeRef targetType = SubstituteCurrentType(consumption->type);
+                    HirMovePlan plan = BuildMovePlan(targetType, consumption->customOperation);
+                    if (plan.kind != HirMovePlan::Kind::Trivial) {
+                        auto moved = std::make_unique<HirMoveExpr>();
+                        moved->location = lowered->location;
+                        moved->type = targetType;
+                        moved->plan = std::move(plan);
+                        moved->value = std::move(lowered);
+                        lowered = std::move(moved);
+                    }
+                }
                 lowered->consumption = consumption->kind;
-                lowered->consumedBindingId = ConsumedBindingId(*lowered);
+                lowered->consumedBindingId = bindingId;
             }
             if (const ValueCopy *copy = model.TryGetCopy(expr)) {
                 const TypeRef targetType = SubstituteCurrentType(copy->targetType);

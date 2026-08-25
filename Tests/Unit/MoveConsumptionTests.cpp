@@ -257,6 +257,116 @@ TEST_CASE("explicit moves retain source drop-flag transfers in HIR") {
     CHECK_EQ((*freshReturn->value)->consumedBindingId, 0);
 }
 
+TEST_CASE("named moves invoke recursive custom operations while temporaries transfer directly") {
+    const std::string source = R"(
+        interface Drop {}
+
+        struct Cell { value: int32; }
+        extend Cell : Drop {}
+        extend Cell {
+            func <-(self: &var Cell, other: Cell) {
+                self.value = other.value;
+            }
+        }
+
+        struct Wrapper { cell: Cell; tag: int32; }
+
+        func Move(source: Wrapper) -> Wrapper {
+            let local <- source;
+            return <- local;
+        }
+        func Fresh() -> Wrapper {
+            return Wrapper { cell: Cell { value: 1 }, tag: 2 };
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &move = RequireFunction(hir, "Move");
+    REQUIRE(move.body.has_value());
+    const auto *local = dynamic_cast<const HirLetStmt *>(move.body->stmts[0].get());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(move.body->stmts[1].get());
+    REQUIRE(local != nullptr);
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *localMove = dynamic_cast<const HirMoveExpr *>(local->init.get());
+    const auto *returnMove = dynamic_cast<const HirMoveExpr *>((*returned->value).get());
+    REQUIRE(localMove != nullptr);
+    REQUIRE(returnMove != nullptr);
+    CHECK_EQ(localMove->consumedBindingId, move.params[0].bindingId);
+    CHECK_EQ(returnMove->consumedBindingId, local->bindingId);
+    CHECK_EQ(localMove->plan.kind, HirMovePlan::Kind::Structure);
+    REQUIRE_EQ(localMove->plan.components.size(), 2);
+    CHECK_EQ(localMove->plan.components[0].kind, HirMovePlan::Kind::Custom);
+    const std::string moveSymbol = localMove->plan.components[0].customCallee;
+    CHECK_FALSE(moveSymbol.empty());
+    CHECK_EQ(returnMove->plan.components[0].customCallee, moveSymbol);
+
+    const HirFunc &fresh = RequireFunction(hir, "Fresh");
+    REQUIRE(fresh.body.has_value());
+    const auto *freshReturn = dynamic_cast<const HirReturnStmt *>(fresh.body->stmts[0].get());
+    REQUIRE(freshReturn != nullptr);
+    REQUIRE(freshReturn->value.has_value());
+    CHECK(dynamic_cast<const HirMoveExpr *>((*freshReturn->value).get()) == nullptr);
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Move"), moveSymbol), 2);
+}
+
+TEST_CASE("custom move assignment reuses conditional destination cleanup") {
+    const std::string source = R"(
+        interface Drop {}
+        struct Cell { value: int32; }
+        extend Cell : Drop {}
+        extend Cell {
+            func <-(self: &var Cell, other: Cell) {
+                self.value = other.value;
+            }
+        }
+
+        func Replace(var destination: Cell, source: Cell) {
+            destination <- source;
+        }
+        func Initialize(source: Cell) {
+            var destination: Cell;
+            destination <- source;
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    for (const std::string name : {"Replace", "Initialize"}) {
+        const HirFunc &function = RequireFunction(hir, name);
+        REQUIRE(function.body.has_value());
+        const std::size_t statementIndex = name == "Replace" ? 0 : 1;
+        const auto *statement = dynamic_cast<const HirExprStmt *>(function.body->stmts[statementIndex].get());
+        REQUIRE(statement != nullptr);
+        const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
+        REQUIRE(assignment != nullptr);
+        REQUIRE(assignment->overwriteCleanup.has_value());
+        CHECK_NE(assignment->overwriteCleanup->bindingId, 0);
+        const auto *move = dynamic_cast<const HirMoveExpr *>(assignment->value.get());
+        REQUIRE(move != nullptr);
+        CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Custom);
+        CHECK_FALSE(move->plan.customCallee.empty());
+    }
+}
+
+TEST_CASE("prohibited move operations reject explicit ownership transfer") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Pinned { value: int32; }
+        extend Pinned {
+            func =(self: &var Pinned, other: &Pinned);
+            func <-(self: &var Pinned, other: Pinned);
+        }
+
+        func Transfer(source: Pinned) {
+            let destination <- source;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "moving type 'Pinned' is prohibited");
+}
+
 TEST_CASE("named by-value sources use recursive custom copies while temporaries transfer directly") {
     const std::string source = R"(
         interface Drop {}

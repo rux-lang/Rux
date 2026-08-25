@@ -377,6 +377,10 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         OptimizeExpr(copy->value, false);
         InvalidateAll();
     }
+    else if (auto *move = dynamic_cast<HirMoveExpr *>(expr.get())) {
+        OptimizeExpr(move->value, false);
+        InvalidateAll();
+    }
     else if (auto *assignment = dynamic_cast<HirAssignExpr *>(expr.get())) {
         OptimizeExpr(assignment->target, false);
         OptimizeExpr(assignment->value, allowSubstitution);

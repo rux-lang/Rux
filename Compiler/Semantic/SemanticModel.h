@@ -159,6 +159,8 @@ struct ValueConsumption {
     ValueConsumptionKind kind;
     TypeRef type;
     SourceLocation location;
+    const FuncDecl *customOperation = nullptr;
+    bool constructsDestination = false;
 };
 
 /// A named place copied into a by-value destination. Generated copies are represented without a declaration; custom
