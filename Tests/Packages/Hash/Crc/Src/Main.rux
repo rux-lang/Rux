@@ -67,12 +67,12 @@ func Main() -> int {
     // A message split across writes is the same message.
     let message: Slice<char8> = "123456789";
     let bytes = message.data as *byte;
-    var split = Crc32::New();
+    var split = Crc32();
     split.Write(bytes, 4);
     split.Write(bytes + 4, 5);
     Assert(split.Value() == 0xCBF43926, "writing in two parts agrees with writing at once");
 
-    var byByte = Crc32c::New();
+    var byByte = Crc32c();
     index = 0;
     while index < 9 {
         byByte.Write(bytes + index, 1);
@@ -81,14 +81,14 @@ func Main() -> int {
     Assert(byByte.Value() == 0xE3069283, "and so does writing one byte at a time");
 
     // A zero-length write changes nothing, wherever it lands.
-    var padded = Crc32::New();
+    var padded = Crc32();
     padded.Write(null, 0);
     padded.Write(bytes, 9);
     padded.Write(null, 0);
     Assert(padded.Value() == 0xCBF43926, "a zero-length write changes nothing");
 
     // Reading the value does not consume it, and writing afterwards continues rather than restarting.
-    var kept = Crc32::New();
+    var kept = Crc32();
     kept.Write(bytes, 4);
     let partial = kept.Value();
     Assert(kept.Value() == partial, "reading the value twice gives the same answer");
@@ -103,8 +103,8 @@ func Main() -> int {
     Assert(kept.Value() == 0xCBF43926, "and checksumming after a reset agrees with a fresh one");
 
     // Both types are usable through the bound, which is what puts them in generic code.
-    var bounded = Crc32c::New();
-    Assert(HashBytes<Crc32c>(@bounded, bytes, 9) == 0xE3069283u64, "a CRC is usable through the hashing bound");
+    var bounded = Crc32c();
+    Assert(HashBytes<Crc32c>(bounded, bytes, 9) == 0xE3069283u64, "a CRC is usable through the hashing bound");
 
     // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken
     // table would most plausibly still fail.
@@ -114,14 +114,14 @@ func Main() -> int {
 
     // Leading and trailing zero bytes change the answer, which is exactly what the initial ones and the final
     // complement are there to guarantee. A register starting at zero would give the same answer for both of these.
-    var lead = Crc32::New();
+    var lead = Crc32();
     var zero: byte[1];
     zero[0] = 0;
     lead.Write(@zero[0] as *byte, 1);
     lead.Write(bytes, 9);
     Assert(lead.Value() != 0xCBF43926, "a leading zero byte is not invisible");
 
-    var trail = Crc32::New();
+    var trail = Crc32();
     trail.Write(bytes, 9);
     trail.Write(@zero[0] as *byte, 1);
     Assert(trail.Value() != 0xCBF43926, "and neither is a trailing one");

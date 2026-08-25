@@ -94,7 +94,7 @@ extend SipState {
     /// Cannot fail. Runs in time proportional to `count` and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/sip-state/round
-    func Round(self: *var SipState, count: uint) {
+    func Round(self: &var SipState, count: uint) {
         var remaining = count;
         while remaining > 0 {
             self.first = self.first + self.second;
@@ -120,7 +120,7 @@ extend SipState {
     }
 
     // One eight-byte word of input, mixed in and compressed.
-    func Absorb(self: *var SipState, word: uint64) {
+    func Absorb(self: &var SipState, word: uint64) {
         self.fourth = self.fourth ^ word;
         self.Round(SipCompressionRounds);
         self.first = self.first ^ word;
@@ -200,7 +200,7 @@ extend SipHash24 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/sip-hash24/reset
-    func Reset(self: *var SipHash24) {
+    func Reset(self: &var SipHash24) {
         self.state = SipState::FromKey(self.keyLow, self.keyHigh);
         self.total = 0;
         self.buffered = 0;
@@ -221,7 +221,7 @@ extend SipHash24 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/sip-hash24/write
-    func Write(self: *var SipHash24, bytes: *byte, length: uint) {
+    func Write(self: &var SipHash24, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -270,7 +270,7 @@ extend SipHash24 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/sip-hash24/finish
-    func Finish(self: *var SipHash24) -> uint64 {
+    func Finish(self: &var SipHash24) -> uint64 {
         // The last word is the trailing bytes with the length's low byte on top, which is what keeps two inputs that
         // differ only in trailing zeroes from hashing alike.
         var last: uint64 = (self.total & 0xFF) << 56;

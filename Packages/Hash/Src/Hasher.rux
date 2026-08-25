@@ -4,9 +4,8 @@
 // answer. That shape is what lets a value be hashed without first being turned into a contiguous buffer -- a struct
 // writes each of its fields in turn, and a collection writes each of its elements, with nothing copied anywhere.
 //
-// Take a hasher by generic bound rather than as an interface value: `func Digest<H: Hasher>(hasher: *var H)` takes
-// the caller's own hasher by pointer and resolves at instantiation, while an interface value would silently take a
-// copy and leave the caller's hasher exactly where it started. The interface exists to be the bound.
+// Take a hasher by generic bound rather than as an owning interface value: `func Digest<H: Hasher>(hasher: &var H)`
+// borrows the caller's own hasher and resolves at instantiation. The interface exists to be the bound.
 //
 // None of these are cryptographic. They are fast, they are named, and they are documented -- but an adversary who
 // gets to choose the input can find collisions in any of them except `SipHash`, and even `SipHash` promises only
@@ -14,8 +13,8 @@
 
 /// A hash being computed, one write at a time.
 ///
-/// Written as an interface so a generic can require it. Take an implementation by pointer under a bound rather than
-/// coercing one to an interface value, which copies it.
+/// Written as an interface so a generic can require it. Borrow an implementation under a bound so mutations apply
+/// to the caller's state without copying it.
 ///
 /// An implementation must give the same answer for the same sequence of bytes, whatever the writes were split into:
 /// writing eight bytes at once and writing them one at a time must agree. It must not read anything but the bytes it
@@ -51,7 +50,7 @@ interface Hasher {
 /// Writes `length` bytes and returns the hash, for a caller with nothing else to add.
 ///
 /// `hasher` is borrowed mutably and left holding what it hashed; `bytes` is borrowed and read. The type argument
-/// must be written out -- `HashBytes<Fnv1a64>(@hasher, data, length)` -- because a generic argument is never
+/// must be written out -- `HashBytes<Fnv1a64>(hasher, data, length)` -- because a generic argument is never
 /// inferred.
 ///
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
@@ -61,7 +60,7 @@ interface Hasher {
 /// `bytes` must be readable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/hash/hash-bytes
-func HashBytes<H: Hasher>(hasher: *var H, bytes: *byte, length: uint) -> uint64 {
+func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
     hasher.Write(bytes, length);
     return hasher.Finish();
 }
@@ -73,7 +72,7 @@ func HashBytes<H: Hasher>(hasher: *var H, bytes: *byte, length: uint) -> uint64 
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-byte
-func WriteByte<H: Hasher>(hasher: *var H, value: byte) {
+func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
     var storage = value;
     hasher.Write(@storage as *byte, 1);
 }
@@ -86,7 +85,7 @@ func WriteByte<H: Hasher>(hasher: *var H, value: byte) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-uint32
-func WriteUint32<H: Hasher>(hasher: *var H, value: uint32) {
+func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
     var storage: byte[4];
     var index: uint = 0;
     while index < 4 {
@@ -104,7 +103,7 @@ func WriteUint32<H: Hasher>(hasher: *var H, value: uint32) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-uint64
-func WriteUint64<H: Hasher>(hasher: *var H, value: uint64) {
+func WriteUint64<H: Hasher>(hasher: &var H, value: uint64) {
     var storage: byte[8];
     var index: uint = 0;
     while index < 8 {

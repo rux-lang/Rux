@@ -144,8 +144,8 @@ func XxAvalanche(hash: uint64) -> uint64 {
 
 /// xxHash64 over a stream of bytes, in as many writes as the caller has.
 ///
-/// Copy, but large: thirty-two bytes of pending input plus its accumulators. Pass one by pointer rather than by
-/// value unless a snapshot of the hash so far is what is wanted.
+/// Copy, but large: thirty-two bytes of pending input plus its accumulators. Borrow one by reference unless a
+/// snapshot of the hash so far is what is wanted.
 ///
 /// https://rux-lang.dev/docs/api/hash/xx-hash64
 struct XxHash64 {
@@ -165,6 +165,11 @@ struct XxHash64 {
 }
 
 extend XxHash64 {
+    /// Constructs an unseeded hasher with nothing written into it yet.
+    func XxHash64() -> XxHash64 {
+        return XxHash64::WithSeed(0);
+    }
+
     /// A hasher with nothing written into it yet, using `seed`.
     ///
     /// `seed` is read by value. Two hashers with different seeds give unrelated answers for the same input, which is
@@ -188,7 +193,7 @@ extend XxHash64 {
         };
     }
 
-    /// A hasher with nothing written into it yet, seeded with zero.
+    /// Temporary compatibility spelling for downstream packages. Prefer `XxHash64()`.
     ///
     /// Takes nothing and cannot fail. The seed most callers want, and the one every published xxHash64 test vector
     /// uses.
@@ -197,7 +202,7 @@ extend XxHash64 {
     ///
     /// https://rux-lang.dev/docs/api/hash/xx-hash64/new
     func New() -> XxHash64 {
-        return XxHash64::WithSeed(0);
+        return XxHash64();
     }
 
     /// Puts the hasher back to where it started, keeping its seed.
@@ -207,7 +212,7 @@ extend XxHash64 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/xx-hash64/reset
-    func Reset(self: *var XxHash64) {
+    func Reset(self: &var XxHash64) {
         let seed = self.seed;
         self.first = seed + XxPrime1 + XxPrime2;
         self.second = seed + XxPrime2;
@@ -218,7 +223,7 @@ extend XxHash64 {
     }
 
     // One 32-byte block, four lanes at once.
-    func Consume(self: *var XxHash64, block: *byte) {
+    func Consume(self: &var XxHash64, block: *byte) {
         self.first = XxRound(self.first, ReadLittleEndian64(block));
         self.second = XxRound(self.second, ReadLittleEndian64(block + 8));
         self.third = XxRound(self.third, ReadLittleEndian64(block + 16));
@@ -240,7 +245,7 @@ extend XxHash64 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/xx-hash64/write
-    func Write(self: *var XxHash64, bytes: *byte, length: uint) {
+    func Write(self: &var XxHash64, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -293,7 +298,7 @@ extend XxHash64 : Hasher {
     /// Cannot fail. Runs in time proportional to what is held pending, which is under one block. Allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/xx-hash64/finish
-    func Finish(self: *var XxHash64) -> uint64 {
+    func Finish(self: &var XxHash64) -> uint64 {
         var hash: uint64 = 0;
         if self.total >= (XxBlockSize as uint64) {
             // At least one block ran, so the four accumulators hold the answer and are folded together.

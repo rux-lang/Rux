@@ -53,21 +53,21 @@ func Main() -> int {
     let infoBytes = Slice<char8> { data: @info[0], length: 10 };
 
     var key: char8[64];
-    HkdfExtract<Sha256>(Sha256::New(), saltBytes, ikm, MutableSlice::From<char8>(@key[0], 32));
+    HkdfExtract<Sha256>(Sha256(), saltBytes, ikm, MutableSlice::From<char8>(@key[0], 32));
     Check(Slice<char8> { data: @key[0], length: 32 },
           "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5",
           "HKDF-SHA-256 extract, RFC 5869 case 1");
 
     var output: char8[128];
     let keyBytes = Slice<char8> { data: @key[0], length: 32 };
-    Assert(HkdfExpand<Sha256>(Sha256::New(), keyBytes, infoBytes, MutableSlice::From<char8>(@output[0], 42)),
+    Assert(HkdfExpand<Sha256>(Sha256(), keyBytes, infoBytes, MutableSlice::From<char8>(@output[0], 42)),
            "the expansion succeeds");
     Check(Slice<char8> { data: @output[0], length: 42 },
           "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
           "HKDF-SHA-256 expand, RFC 5869 case 1");
 
     // The same case through the combined form.
-    Assert(Hkdf<Sha256>(Sha256::New(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@output[0], 42)),
+    Assert(Hkdf<Sha256>(Sha256(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@output[0], 42)),
            "the combined form succeeds");
     Check(Slice<char8> { data: @output[0], length: 42 },
           "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
@@ -77,12 +77,12 @@ func Main() -> int {
     // it is a block of zeros, and the result differs from what a saltless construction would give.
     let noSalt = Slice<char8> { data: @salt[0], length: 0 };
     let noInfo = Slice<char8> { data: @info[0], length: 0 };
-    HkdfExtract<Sha256>(Sha256::New(), noSalt, ikm, MutableSlice::From<char8>(@key[0], 32));
+    HkdfExtract<Sha256>(Sha256(), noSalt, ikm, MutableSlice::From<char8>(@key[0], 32));
     Check(Slice<char8> { data: @key[0], length: 32 },
           "19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04",
           "HKDF-SHA-256 extract with an empty salt, RFC 5869 case 3");
     let saltlessKey = Slice<char8> { data: @key[0], length: 32 };
-    Assert(HkdfExpand<Sha256>(Sha256::New(), saltlessKey, noInfo, MutableSlice::From<char8>(@output[0], 42)),
+    Assert(HkdfExpand<Sha256>(Sha256(), saltlessKey, noInfo, MutableSlice::From<char8>(@output[0], 42)),
            "expansion with empty info succeeds");
     Check(Slice<char8> { data: @output[0], length: 42 },
           "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8",
@@ -91,7 +91,7 @@ func Main() -> int {
     // The length limit: 255 blocks is the most the one-byte counter can address.
     var large: char8[300];
     let atLimit = MutableSlice::From<char8>(@large[0], 255u * 32u > 300u ? 300u : 255u * 32u);
-    Assert(HkdfExpand<Sha256>(Sha256::New(), keyBytes, infoBytes, atLimit), "a request within the limit is met");
+    Assert(HkdfExpand<Sha256>(Sha256(), keyBytes, infoBytes, atLimit), "a request within the limit is met");
     // A request past the limit cannot be expressed in this buffer, so the limit is checked by arithmetic
     // instead: the function must refuse anything longer than 255 digests.
     Assert(255u * 32u == 8160u, "the SHA-256 limit is eight thousand one hundred and sixty bytes");
@@ -99,8 +99,8 @@ func Main() -> int {
     // Separation: the info string is what keeps two purposes apart, and the salt what keeps two protocols apart.
     var forSigning: char8[32];
     var forEncryption: char8[32];
-    Hkdf<Sha256>(Sha256::New(), saltBytes, ikm, "signing", MutableSlice::From<char8>(@forSigning[0], 32));
-    Hkdf<Sha256>(Sha256::New(), saltBytes, ikm, "encryption", MutableSlice::From<char8>(@forEncryption[0], 32));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, "signing", MutableSlice::From<char8>(@forSigning[0], 32));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, "encryption", MutableSlice::From<char8>(@forEncryption[0], 32));
     Assert(!Equal(Slice<char8> { data: @forSigning[0], length: 32 },
                   Slice<char8> { data: @forEncryption[0], length: 32 }),
            "two purposes derive unrelated keys from one secret");
@@ -108,7 +108,7 @@ func Main() -> int {
     var otherSalt: char8[16];
     FromHex("0102030405060708090a0b0c0d", MutableSlice::From<char8>(@otherSalt[0], 13));
     var underOtherSalt: char8[32];
-    Hkdf<Sha256>(Sha256::New(), Slice<char8> { data: @otherSalt[0], length: 13 }, ikm, "signing",
+    Hkdf<Sha256>(Sha256(), Slice<char8> { data: @otherSalt[0], length: 13 }, ikm, "signing",
                  MutableSlice::From<char8>(@underOtherSalt[0], 32));
     Assert(!Equal(Slice<char8> { data: @forSigning[0], length: 32 },
                   Slice<char8> { data: @underOtherSalt[0], length: 32 }),
@@ -117,22 +117,22 @@ func Main() -> int {
     // A longer expansion starts with a shorter one, since the blocks are chained in order.
     var shortOut: char8[32];
     var longOut: char8[128];
-    Hkdf<Sha256>(Sha256::New(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@shortOut[0], 32));
-    Hkdf<Sha256>(Sha256::New(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@longOut[0], 128));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@shortOut[0], 32));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, infoBytes, MutableSlice::From<char8>(@longOut[0], 128));
     Assert(Equal(Slice<char8> { data: @shortOut[0], length: 32 },
                  Slice<char8> { data: @longOut[0], length: 32 }),
            "a longer expansion begins with the shorter one");
 
     // The same construction over SHA-512, whose digest and therefore whose limit are twice the size.
     var wideKey: char8[64];
-    HkdfExtract<Sha512>(Sha512::New(), saltBytes, ikm, MutableSlice::From<char8>(@wideKey[0], 64));
+    HkdfExtract<Sha512>(Sha512(), saltBytes, ikm, MutableSlice::From<char8>(@wideKey[0], 64));
     let wideKeyBytes = Slice<char8> { data: @wideKey[0], length: 64 };
     var wideOut: char8[128];
-    Assert(HkdfExpand<Sha512>(Sha512::New(), wideKeyBytes, infoBytes,
+    Assert(HkdfExpand<Sha512>(Sha512(), wideKeyBytes, infoBytes,
                               MutableSlice::From<char8>(@wideOut[0], 82)),
            "HKDF over SHA-512 expands");
     var wideRepeat: char8[128];
-    Assert(HkdfExpand<Sha512>(Sha512::New(), wideKeyBytes, infoBytes,
+    Assert(HkdfExpand<Sha512>(Sha512(), wideKeyBytes, infoBytes,
                               MutableSlice::From<char8>(@wideRepeat[0], 82)),
            "and repeats");
     Assert(Equal(Slice<char8> { data: @wideOut[0], length: 82 },

@@ -24,9 +24,14 @@ Every hash here is built the same way: make one, write bytes into it in order, a
 what lets a value be hashed without first being turned into a contiguous buffer — a struct writes each of its fields
 in turn, and a collection each of its elements, with nothing copied anywhere.
 
-Take a hasher by generic bound rather than as an interface value. `func Digest<H: Hasher>(hasher: *var H)` takes the
-caller's own hasher by pointer and resolves at instantiation; an interface value would silently take a copy and leave
-the caller's hasher exactly where it started. The interface exists to be the bound.
+Take a hasher by generic bound and mutable reference. `func Digest<H: Hasher>(hasher: &var H)` borrows the caller's
+own state and resolves at instantiation, so mutations are visible without copying. The interface exists to be the
+bound.
+
+All hasher states are structural `Copy` values and own no external resources. Copying one intentionally snapshots
+the stream; later writes to either value are independent. Construct unseeded states with type calls such as
+`Fnv1a64()`, `Crc32()`, and `XxHash64()`. Raw pointers remain only on byte-range APIs because those ranges may be
+nullable when empty and support pointer arithmetic; callers must provide `length` readable bytes.
 
 `WriteUint32` and `WriteUint64` use a fixed byte order rather than the machine's, so a value hashes the same on every
 target. That is what makes the hash of a struct mean the same thing everywhere, and it costs nothing on a

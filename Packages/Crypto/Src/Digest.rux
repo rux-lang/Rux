@@ -23,8 +23,8 @@ import Core::{ #target, #Error, MutableSlice, Slice };
 
 /// An incremental digest.
 ///
-/// Take one by generic bound rather than as an interface value -- `func Sum<D: Digest>(digest: *var D)` -- since
-/// an interface value holds a copy and would leave the caller's state unchanged.
+/// Take one by generic bound and mutable reference -- `func Sum<D: Digest>(digest: &var D)` -- so work applies to
+/// the caller's state without copying it.
 ///
 /// https://rux-lang.dev/docs/api/crypto/digest
 interface Digest {
@@ -34,7 +34,7 @@ interface Digest {
     /// legal and changes nothing.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/update
-    func Update(self: *var Digest, bytes: Slice<char8>);
+    func Update(self: &var Digest, bytes: Slice<char8>);
 
     /// Writes the digest into `into` and leaves the state unusable for further updates.
     ///
@@ -43,12 +43,12 @@ interface Digest {
     /// and an implementation is free to consume its state producing one.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/finish
-    func Finish(self: *var Digest, into: MutableSlice<char8>);
+    func Finish(self: &var Digest, into: MutableSlice<char8>);
 
     /// How many bytes `Finish` writes.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/digest-length
-    func DigestLength(self: *Digest) -> uint;
+    func DigestLength(self: &Digest) -> uint;
 
     /// How many bytes the algorithm processes at a time.
     ///
@@ -56,7 +56,7 @@ interface Digest {
     /// choosing a buffer size that avoids splitting work.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/block-length
-    func BlockLength(self: *Digest) -> uint;
+    func BlockLength(self: &Digest) -> uint;
 }
 
 /// Whether two byte sequences are equal, in time that does not depend on where they differ.

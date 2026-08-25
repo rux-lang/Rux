@@ -63,7 +63,7 @@ func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char8>,
     var written: uint = 0;
     var counter = 1u8;
     while written < into.length {
-        var round = Hmac::New<D>(prototype, key);
+        var round = Hmac<D>(prototype, key);
         if previousLength > 0u {
             // Every block after the first is chained from the one before it.
             round.Update(Slice<char8> { data: @previous[0], length: previousLength });

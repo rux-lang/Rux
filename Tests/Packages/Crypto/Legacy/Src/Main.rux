@@ -85,7 +85,7 @@ func Main() -> int {
 
         var split: uint = 0;
         while split <= length {
-            var md5 = LegacyMd5::New();
+            var md5 = LegacyMd5();
             md5.Update(Slice<char8> { data: @message[0], length: split });
             md5.Update(Slice<char8> { data: @message[split], length: length - split });
             var md5Got: char8[16];
@@ -94,7 +94,7 @@ func Main() -> int {
                          Slice<char8> { data: @md5OneShot[0], length: 16 }),
                    "every split gives the same MD5");
 
-            var sha1 = LegacySha1::New();
+            var sha1 = LegacySha1();
             sha1.Update(Slice<char8> { data: @message[0], length: split });
             sha1.Update(Slice<char8> { data: @message[split], length: length - split });
             var sha1Got: char8[20];

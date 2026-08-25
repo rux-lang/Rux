@@ -106,6 +106,8 @@ func KeccakPermute(lanes: *var uint64) {
 
 /// An incremental SHA-3 hash at any of its four sizes.
 ///
+/// Structural `Copy`; copying takes an independent snapshot of the sponge state.
+///
 /// https://rux-lang.dev/docs/api/crypto/sha3
 struct Sha3 {
     /// The state, as twenty-five sixty-four bit lanes.
@@ -167,7 +169,7 @@ extend Sha3 {
 
     // Exclusive-ors one byte into the state at the given position, which is how absorption works: the message
     // is mixed into the state rather than replacing any of it.
-    func AbsorbByte(self: *var Sha3, position: uint, value: uint8) {
+    func AbsorbByte(self: &var Sha3, position: uint, value: uint8) {
         let lane = position / 8u;
         let shift = ((position % 8u) * 8u) as uint64;
         self.lanes[lane] = self.lanes[lane] ^ ((value as uint64) << shift);
@@ -178,7 +180,7 @@ extend Sha3 : Digest {
     /// Absorbs `bytes` into the state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/update
-    func Update(self: *var Sha3, bytes: Slice<char8>) {
+    func Update(self: &var Sha3, bytes: Slice<char8>) {
         var index: uint = 0;
         while index < bytes.length {
             self.AbsorbByte(self.absorbed, bytes.data[index] as uint8);
@@ -198,7 +200,7 @@ extend Sha3 : Digest {
     /// from one that works at every other length.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/finish
-    func Finish(self: *var Sha3, into: MutableSlice<char8>) {
+    func Finish(self: &var Sha3, into: MutableSlice<char8>) {
         self.AbsorbByte(self.absorbed, self.domain);
         self.AbsorbByte(self.rate - 1u, 0x80u8);
         KeccakPermute(@self.lanes[0]);
@@ -224,14 +226,14 @@ extend Sha3 : Digest {
     /// Twenty-eight, thirty-two, forty-eight or sixty-four bytes.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/digest-length
-    func DigestLength(self: *Sha3) -> uint {
+    func DigestLength(self: &Sha3) -> uint {
         return self.outputLength;
     }
 
     /// The rate, which differs per size -- unlike the SHA-2 family, whose block is fixed.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/block-length
-    func BlockLength(self: *Sha3) -> uint {
+    func BlockLength(self: &Sha3) -> uint {
         return self.rate;
     }
 }

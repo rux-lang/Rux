@@ -40,12 +40,12 @@ func Main() -> int {
 
     // Splitting the writes must not change the answer. There is no block to align to, so this is a property of the
     // algorithm rather than of any buffering, and it is what lets a struct hash its fields one at a time.
-    var split = Fnv1a64::New();
+    var split = Fnv1a64();
     split.Write(bytes, 3);
     split.Write(bytes + 3, 3);
     Assert(split.Finish() == 0x85944171F73967E8, "writing in two halves agrees with writing at once");
 
-    var byByte = Fnv1a64::New();
+    var byByte = Fnv1a64();
     var index: uint = 0;
     while index < 6 {
         byByte.Write(bytes + index, 1);
@@ -54,19 +54,27 @@ func Main() -> int {
     Assert(byByte.Finish() == 0x85944171F73967E8, "and so does writing one byte at a time");
 
     // A zero-length write changes nothing, wherever it lands.
-    var padded = Fnv1a64::New();
+    var padded = Fnv1a64();
     padded.Write(null, 0);
     padded.Write(bytes, 6);
     padded.Write(null, 0);
     Assert(padded.Finish() == 0x85944171F73967E8, "a zero-length write changes nothing");
 
     // Finishing does not consume: the answer is the same twice, and writing more continues rather than restarts.
-    var kept = Fnv1a64::New();
+    var kept = Fnv1a64();
     kept.Write(bytes, 3);
     let once = kept.Finish();
     Assert(kept.Finish() == once, "finishing twice gives the same answer");
     kept.Write(bytes + 3, 3);
     Assert(kept.Finish() == 0x85944171F73967E8, "and writing afterwards continues from there");
+
+    // Hash states are ordinary Copy values. A copy snapshots the stream and later writes are independent.
+    var copySource = Fnv1a64();
+    copySource.Write(bytes, 3);
+    var snapshot = copySource;
+    snapshot.Write(bytes + 3, 3);
+    Assert(snapshot.Finish() == 0x85944171F73967E8, "a copied hasher can continue independently");
+    Assert(copySource.Finish() == Fnv1a64Of(bytes, 3), "and leaves the source at its original prefix");
 
     // A reset really starts over.
     kept.Reset();
@@ -74,24 +82,23 @@ func Main() -> int {
     kept.Write(bytes, 6);
     Assert(kept.Finish() == 0x85944171F73967E8, "and hashing after a reset agrees with a fresh hasher");
 
-    var kept32 = Fnv1a32::New();
+    var kept32 = Fnv1a32();
     kept32.Write(bytes, 6);
     Assert(kept32.Value() == 0xBF9CF968, "the 32-bit hasher reports its own width");
     Assert(kept32.Finish() == 0xBF9CF968u64, "and widens it without changing it");
     kept32.Reset();
     Assert(kept32.Value() == FnvOffsetBasis32, "and resets to the 32-bit offset basis");
 
-    // The generic helper takes the caller's own hasher by pointer, so what it hashed is still in there afterwards.
-    // An interface value would have taken a copy and left this hasher empty.
-    var helped = Fnv1a64::New();
-    Assert(HashBytes<Fnv1a64>(@helped, bytes, 6) == 0x85944171F73967E8, "the generic helper hashes what it is given");
+    // The generic helper borrows the caller's own hasher, so what it hashed is still in there afterwards.
+    var helped = Fnv1a64();
+    Assert(HashBytes<Fnv1a64>(helped, bytes, 6) == 0x85944171F73967E8, "the generic helper hashes what it is given");
     Assert(helped.Finish() == 0x85944171F73967E8, "leaving the caller's hasher holding it");
 
     // The fixed-width writers use a fixed byte order, so a value hashes the same on every target. What is checked is
     // that they agree with writing those bytes out by hand.
     var buffer: byte[8];
-    var written = Fnv1a64::New();
-    WriteUint32<Fnv1a64>(@written, 0x04030201);
+    var written = Fnv1a64();
+    WriteUint32<Fnv1a64>(written, 0x04030201);
     buffer[0] = 0x01;
     buffer[1] = 0x02;
     buffer[2] = 0x03;
@@ -99,8 +106,8 @@ func Main() -> int {
     Assert(written.Finish() == Fnv1a64Of(@buffer[0] as *byte, 4),
            "a 32-bit write is its four bytes, least significant first");
 
-    var written64 = Fnv1a64::New();
-    WriteUint64<Fnv1a64>(@written64, 0x0807060504030201);
+    var written64 = Fnv1a64();
+    WriteUint64<Fnv1a64>(written64, 0x0807060504030201);
     index = 0;
     while index < 8 {
         buffer[index] = (index + 1) as byte;
@@ -108,8 +115,8 @@ func Main() -> int {
     }
     Assert(written64.Finish() == Fnv1a64Of(@buffer[0] as *byte, 8), "and a 64-bit write is its eight");
 
-    var writtenByte = Fnv1a64::New();
-    WriteByte<Fnv1a64>(@writtenByte, 0x61);
+    var writtenByte = Fnv1a64();
+    WriteByte<Fnv1a64>(writtenByte, 0x61);
     Assert(writtenByte.Finish() == Hash64("a"), "and a single byte is that byte");
 
     // Different inputs give different hashes. Not a proof of anything, but a hash that collided on these would be
