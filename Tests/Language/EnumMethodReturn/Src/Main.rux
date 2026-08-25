@@ -17,7 +17,7 @@ struct Counter {
 }
 
 extend Counter {
-    func Next(self: *var Counter) -> Option<int32> {
+    func Next(self: &var Counter) -> Option<int32> {
         if self.value >= self.limit {
             return Option::None<int32>();
         }
@@ -33,7 +33,7 @@ struct Pairs {
 
 extend Pairs {
     // Two payloads put the second one past the first, which only an aggregate has room for.
-    func Next(self: *var Pairs) -> Option<int64> {
+    func Next(self: &var Pairs) -> Option<int64> {
         if self.index >= 2i32 {
             return Option::None<int64>();
         }
@@ -43,7 +43,7 @@ extend Pairs {
     }
 }
 
-func Sum(counter: *var Counter) -> int {
+func Sum(counter: &var Counter) -> int {
     var total = 0;
     var seen = 0;
     while seen < 4 {
@@ -71,7 +71,7 @@ func Main() -> int {
 
     // The same again inside a loop, where the calls share one match site.
     var looped = Counter { value: 0i32, limit: 3i32 };
-    Assert(Sum(@looped) == 3, "Expected a repeated match in a loop to sum 0 + 1 + 2");
+    Assert(Sum(looped) == 3, "Expected a repeated match in a loop to sum 0 + 1 + 2");
 
     // A returned value bound to a local first is the same shape as one matched straight away.
     var bound = Counter { value: 7i32, limit: 9i32 };

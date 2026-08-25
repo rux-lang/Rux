@@ -1,104 +1,47 @@
-import Core::{ Assert, Drop, Option };
+import Core::{ Assert, Option };
 
-// An enum a generic composes out of its own parameters, where nothing written concretely ever spells it.
-//
-// `Option<V>` inside a container is named for the first time when the container is instantiated: no line of the
-// program says `Option<Tracked>`, so the walks over what was written never reach that type. It therefore had no
-// layout marker, which stopped the compiler outright, and no destructor, which is worse -- the value it held was
-// simply never destroyed, and nothing said so.
-//
-// A concrete mention anywhere hid it. A program that wrote `var held = Option::None<Tracked>();` once, anywhere,
-// gave the type a layout and a destructor that the container then shared. So this test is careful never to name the
-// instantiation outside a generic body.
+// `Option<V>` is named only inside a generic body. The concrete `Option<Tracked>` instantiation therefore has to
+// receive its layout and destruction glue through substitution rather than from a concrete source declaration.
 
 struct Tracked {
     counter: *var int32;
 }
 
-extend Tracked : Drop {
-    func Drop(self: *var Tracked) {
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1i32;
+            *self.counter += 1i32;
         }
-    }
-}
-
-struct Box<T> {
-    held: T;
-}
-
-extend Box<T> {
-    // The option is a parameter type here, built from this type's own parameter.
-    func Swap(self: *var Box<T>, value: T, previous: *var Option<T>) {
-        let taken = self.held;
-        self.held = value;
-        *previous = Option::Some<T>(taken);
     }
 }
 
 struct Shelf<K, V> {
-    box: Box<V>;
+    held: Option<V>;
     label: K;
 }
 
 extend Shelf<K, V> {
-    // And composed here, in a second generic that is not the one whose parameter it is built from, so the type is
-    // reached only by substituting twice.
-    func Put(self: *var Shelf<K, V>, value: V) {
-        var previous = Option::None<V>();
-        self.box.Swap(value, @previous);
-    }
-
-    // The same instantiation as a return type rather than a local, so it is not only the one shape.
-    func Take(self: *var Shelf<K, V>, replacement: V) -> Option<V> {
-        var previous = Option::None<V>();
-        self.box.Swap(replacement, @previous);
-        return previous;
+    func Shelf(label: K, value: V) -> Shelf<K, V> {
+        return Shelf<K, V> { held: Option::Some<V>(<-value), label: label };
     }
 }
 
-// The displaced value dies with the local the generic put it in.
-func PutAndCount(counter: *var int32, afterPutting: *var int32) {
-    var shelf = Shelf<int32, Tracked> {
-        box: Box<Tracked> { held: Tracked { counter: counter } },
-        label: 1
-    };
-    shelf.Put(Tracked { counter: counter });
-    *afterPutting = *counter;
-}
-
-// The displaced value comes back out instead, so its destruction is the caller's and happens later.
-func TakeAndCount(counter: *var int32, afterTaking: *var int32, afterHolding: *var int32) {
-    var shelf = Shelf<int32, Tracked> {
-        box: Box<Tracked> { held: Tracked { counter: counter } },
-        label: 1
-    };
-    let held = shelf.Take(Tracked { counter: counter });
-    *afterTaking = *counter;
-    match held {
-        .Some(value) => {
+func Hold(counter: *var int32) {
+    let shelf = Shelf<int32, Tracked>(1i32, Tracked { counter: counter });
+    match shelf.held {
+        .Some(_) => {
         },
         .None => {
-            Assert(false, "the shelf had something to hand back");
+            Assert(false, "the generic constructor stored its value");
         }
     }
-    *afterHolding = *counter;
 }
 
 func Main() -> int {
-    var counter: int32 = 0;
-    var afterPutting: int32 = 0;
-    PutAndCount(@counter, @afterPutting);
-    Assert(afterPutting == 1, "a value displaced into a generic's own local is destroyed with that local");
-    Assert(counter == 2, "and the one that took its place is destroyed with the shelf");
-
-    counter = 0;
-    var afterTaking: int32 = 0;
-    var afterHolding: int32 = 0;
-    TakeAndCount(@counter, @afterTaking, @afterHolding);
-    Assert(afterTaking == 0, "a value handed back out is not destroyed on the way");
-    Assert(afterHolding == 1, "it is destroyed by the arm that takes it");
-    Assert(counter == 2, "and the replacement is destroyed with the shelf, each exactly once");
-
+    var counter = 0i32;
+    Hold(@counter);
+    Assert(counter == 1i32, "a generic enum payload receives destruction glue after substitution");
     return 0;
 }

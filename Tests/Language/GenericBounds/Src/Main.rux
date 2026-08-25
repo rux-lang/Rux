@@ -21,13 +21,13 @@ struct Square {
 }
 
 extend Square : Measured {
-    func Measure(self: *Square) -> int {
+    func Measure(self: &Square) -> int {
         return self.size * self.size;
     }
 }
 
 extend Square : Scaled {
-    func Times(self: *Square, factor: int) -> int {
+    func Times(self: &Square, factor: int) -> int {
         return self.size * factor;
     }
 }
@@ -39,7 +39,7 @@ struct Segment {
 // Conformance by declaring the required method: no `extend Segment : Measured` is written, and the bound below is
 // still satisfied, because the operations a constraint names are the ones a constrained generic can call.
 extend Segment {
-    func Measure(self: *Segment) -> int {
+    func Measure(self: &Segment) -> int {
         return self.length;
     }
 }
@@ -71,7 +71,7 @@ struct Cell<T: Measured> {
 
 // A method of a generic extend block calls the bound the extended type declared.
 extend Cell<T> {
-    func Inside(self: *Cell<T>) -> int {
+    func Inside(self: &Cell<T>) -> int {
         return self.item.Measure();
     }
 }
@@ -80,12 +80,12 @@ extend Cell<T> {
 // interface can say that an operand is the same type as its receiver: there are
 // no generic interfaces, so `Equatable<T>` cannot be written.
 interface Equatable {
-    func Equals(other: *Self) -> bool;
+    func Equals(other: &Self) -> bool;
 }
 
 interface Ranked {
     func Rank() -> int;
-    func Better(other: *Self) -> Self;
+    func Better(other: &Self) -> Self;
 }
 
 struct Card {
@@ -93,28 +93,28 @@ struct Card {
 }
 
 extend Card : Equatable {
-    func Equals(self: *Card, other: *Card) -> bool {
+    func Equals(self: &Card, other: &Card) -> bool {
         return self.value == other.value;
     }
 }
 
 extend Card : Ranked {
-    func Rank(self: *Card) -> int {
+    func Rank(self: &Card) -> int {
         return self.value;
     }
 
-    func Better(self: *Card, other: *Card) -> Card {
-        return self.value >= other.value ? *self : *other;
+    func Better(self: &Card, other: &Card) -> Card {
+        return Card { value: self.value >= other.value ? self.value : other.value };
     }
 }
 
 // The bound carries the operation, and `Self` in it resolves to the type argument.
-func Matches<T: Equatable>(left: *T, right: *T) -> bool {
+func Matches<T: Equatable>(left: &T, right: &T) -> bool {
     return left.Equals(right);
 }
 
 // `Self` as a return type as well as a parameter, and a second bound alongside it.
-func Best<T: Ranked>(left: *T, right: *T) -> int {
+func Best<T: Ranked>(left: &T, right: &T) -> int {
     let winner = left.Better(right);
     return winner.Rank();
 }
@@ -140,10 +140,10 @@ func Main() -> int {
     let low = Card { value: 3 };
     let alsoLow = Card { value: 3 };
     let high = Card { value: 9 };
-    Assert(Matches<Card>(@low, @alsoLow), "Self-typed operand compares equal");
-    Assert(!Matches<Card>(@low, @high), "Self-typed operand compares unequal");
-    Assert(Best<Card>(@low, @high) == 9, "Self-typed result keeps the type argument");
-    Assert(Best<Card>(@high, @low) == 9, "Self-typed result is order independent");
+    Assert(Matches<Card>(low, alsoLow), "Self-typed operand compares equal");
+    Assert(!Matches<Card>(low, high), "Self-typed operand compares unequal");
+    Assert(Best<Card>(low, high) == 9, "Self-typed result keeps the type argument");
+    Assert(Best<Card>(high, low) == 9, "Self-typed result is order independent");
 
     return 0;
 }

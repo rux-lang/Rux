@@ -39,26 +39,26 @@ struct Holder<T> {
 
 extend Holder<T> {
     // The type argument is built here, out of the parameter this method is instantiated with.
-    func Size(self: *Holder<T>) -> uint {
+    func Size(self: &Holder<T>) -> uint {
         return Width<Node<T>>();
     }
 
-    func Alignment(self: *Holder<T>) -> uint {
+    func Alignment(self: &Holder<T>) -> uint {
         return Align<Node<T>>();
     }
 
     // Two levels of nesting, so the rebuilt name has to be walked into rather than matched.
-    func NestedSize(self: *Holder<T>) -> uint {
+    func NestedSize(self: &Holder<T>) -> uint {
         return Width<Node<Node<T>>>();
     }
 
     // The same generic reached with an argument that is not built from the parameter at all, so the substitution
     // cannot simply replace everything it finds.
-    func FixedSize(self: *Holder<T>) -> uint {
+    func FixedSize(self: &Holder<T>) -> uint {
         return Width<Node<int32>>();
     }
 
-    func Bytes(self: *Holder<T>, many: uint) -> uint {
+    func Bytes(self: &Holder<T>, many: uint) -> uint {
         return Count<Node<T>>(many);
     }
 }

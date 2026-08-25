@@ -1,10 +1,10 @@
 // Destruction has to run, run once, and run only where the value still lives.
 //
-// A `Drop` body has no way to report anything, so every check below counts instead: each tracked value holds a pointer
+// A destructor body has no way to report anything, so every check below counts instead: each tracked value holds a pointer
 // to a counter and bumps it as it is destroyed. The count after a construct is what says destruction happened at the
 // right place -- and, for a value that was moved away, that it did not happen twice.
 
-import Core::{ Assert, Drop, Option };
+import Core::{ Assert, Option };
 
 struct Counter {
     count: int32;
@@ -14,8 +14,10 @@ struct Tracked {
     counter: *var Counter;
 }
 
-extend Tracked : Drop {
-    func Drop(self: *var Tracked) {
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
         self.counter.count = self.counter.count + 1;
     }
 }
@@ -34,14 +36,14 @@ struct Holder<T> {
 }
 
 extend Holder<T> {
-    func Put(self: *var Holder<T>, value: T) {
-        *self.slot = value;
+    func Put(self: &var Holder<T>, value: T) {
+        *self.slot <- value;
         self.filled = true;
     }
 }
 
 func PutThroughGeneric<T>(slot: *var T, value: T) {
-    *slot = value;
+    *slot <- value;
 }
 
 // A payload with something ahead of the part that has to be destroyed, so the destruction of an option's payload has
@@ -92,8 +94,8 @@ func MatchWithoutBinding(held: Option<Tracked>) {
 }
 
 // Matching through a borrow takes nothing either: the option belongs to somebody else and still owns its payload.
-func MatchThroughBorrow(held: *Option<Tracked>) -> bool {
-    match *held {
+func MatchThroughBorrow(held: &Option<Tracked>) -> bool {
+    match held {
         .Some(value) => {
             return true;
         },
@@ -115,20 +117,20 @@ func ScopeExit(counter: *var Counter) {
 // A value handed to another binding has one owner, so it is destroyed once.
 func MoveToBinding(counter: *var Counter) {
     let first = MakeTracked(counter);
-    let second = first;
+    let second <- first;
 }
 
 // A value returned to the caller is not destroyed in the callee.
 func MoveOut(counter: *var Counter) -> Tracked {
     let tracked = MakeTracked(counter);
-    return tracked;
+    return <-tracked;
 }
 
 // A value moved away on one path only: the flag, not the source text, decides whether the scope destroys it.
 func ConditionalMove(counter: *var Counter, away: bool) {
     let tracked = MakeTracked(counter);
     if away {
-        let taken = tracked;
+        let taken <- tracked;
         return;
     }
 }
@@ -141,7 +143,7 @@ func NestedFields(counter: *var Counter) {
 // A value left behind by an assignment is destroyed before the new one takes its place.
 func Overwrite(counter: *var Counter) {
     var tracked = MakeTracked(counter);
-    tracked = MakeTracked(counter);
+    tracked <- MakeTracked(counter);
 }
 
 // Every element of an array is destroyed, and the array's own length is what says how many.
@@ -230,7 +232,7 @@ func Main() -> int {
     // A match through a borrow takes nothing either. The option is somebody else's and still owns what it holds.
     counter.count = 0;
     var borrowed = Option::Some<Tracked>(MakeTracked(@counter));
-    Assert(MatchThroughBorrow(@borrowed), "a borrowed option can be looked at");
+    Assert(MatchThroughBorrow(borrowed), "a borrowed option can be looked at");
     Assert(counter.count == 0, "and looking at one destroys nothing");
 
     // An option whose payload is an aggregate destroys the aggregate's fields where they are. The payload address is

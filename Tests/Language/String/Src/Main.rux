@@ -6,7 +6,7 @@ import Text::{ Concat, String, StringView, TextError };
 // and both inputs stay whole and are destroyed exactly once when the function ends.
 
 func Main() -> int {
-    var system = SystemAllocator::New();
+    var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = TextError::None;
 

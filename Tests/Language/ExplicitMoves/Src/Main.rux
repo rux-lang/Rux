@@ -2,10 +2,78 @@ func Take(value: int32) -> int32 {
     return value;
 }
 
+struct CopyOnly {
+    value: int32;
+    copies: *var int32;
+}
+
+extend CopyOnly {
+    func =(self: &var CopyOnly, other: &CopyOnly) {
+        self.value = other.value;
+        self.copies = other.copies;
+        *self.copies += 1i32;
+    }
+
+    func <-(self: &var CopyOnly, other: CopyOnly);
+}
+
+struct MoveOnly {
+    value: int32;
+}
+
+extend MoveOnly {
+    func =(self: &var MoveOnly, other: &MoveOnly);
+
+    func MoveOnly(value: int32) -> MoveOnly {
+        return MoveOnly { value: value };
+    }
+
+    func ~MoveOnly(self: &var MoveOnly) {}
+}
+
+struct Immovable {
+    value: int32;
+}
+
+extend Immovable {
+    func =(self: &var Immovable, other: &Immovable);
+    func <-(self: &var Immovable, other: Immovable);
+}
+
+func Consume(value: MoveOnly) -> int32 {
+    return value.value;
+}
+
+func MoveNamed() -> int32 {
+    let source = MoveOnly { value: 17i32 };
+    let moved <- source;
+    return moved.value;
+}
+
 func Main() -> int {
     let first = 40i32;
     let second <- first;
     var destination = 0i32;
     destination <- second;
-    return Take(<-destination) == 40i32 ? 0 : 1;
+    if Take(<-destination) != 40i32 {
+        return 1;
+    }
+
+    var copies = 0i32;
+    let original = CopyOnly { value: 11i32, copies: @copies };
+    let copied = original;
+    if copied.value != 11i32 || original.value != 11i32 || copies != 1i32 {
+        return 2;
+    }
+
+    if MoveNamed() != 17i32 {
+        return 3;
+    }
+    if Consume(MoveOnly(23i32)) != 23i32 {
+        return 4;
+    }
+    if sizeof(Immovable) != sizeof(int32) {
+        return 5;
+    }
+    return 0;
 }
