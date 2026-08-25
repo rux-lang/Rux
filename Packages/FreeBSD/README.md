@@ -34,6 +34,14 @@ monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTN
 does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other
 compiles and means something else.
 
+## Values and pointers
+
+Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw
+pointers because the kernel consumes untyped integer addresses, buffers carry separate lengths, and optional outputs
+may be null. Pass addresses explicitly, for example `ClockGetTime(ClockMonotonic, @time)`, and uphold each function's
+safety contract. The package does not own raw addresses or descriptors; release them explicitly or use the
+higher-level `Rux/Memory` and `Rux/Io` packages.
+
 ## Platform
 
 FreeBSD only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

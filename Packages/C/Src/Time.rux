@@ -152,7 +152,7 @@ when #target.os {
         extern {
             // Fills a timespec with the current time on the given base
             // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/timespec-get-timespec32-get
-            func _timespec64_get(ts: *var timespec, base: c_int) -> c_int;
+            func _timespec64_get(ts: &var timespec, base: c_int) -> c_int;
         }
     }
     else => {
@@ -160,7 +160,7 @@ when #target.os {
         extern {
             // Fills a timespec with the current time on the given base
             // https://en.cppreference.com/c/chrono/timespec_get
-            func timespec_get(ts: *var timespec, base: c_int) -> c_int;
+            func timespec_get(ts: &var timespec, base: c_int) -> c_int;
         }
     }
 }
@@ -192,17 +192,13 @@ when #target.os {
 
 /// Fills `ts` with the current time on the given base.
 ///
-/// `ts` is borrowed and written; `base` is read by value and `TIME_UTC` is the only base C defines. Returns `base`
-/// on success and zero on failure, which is the one way this reports one.
+/// `ts` is borrowed and written, so callers pass the value directly. `base` is read by value and `TIME_UTC` is the
+/// only base C defines. Returns `base` on success and zero on failure, which is the one way this reports one.
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// # Safety
-///
-/// `ts` must be non-null.
-///
 /// https://rux-lang.dev/docs/api/c/timespec-get
-func TimespecGet(ts: *var timespec, base: c_int) -> c_int {
+func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
     when #target.os {
         .Windows => { return _timespec64_get(ts, base); }
         else => { return timespec_get(ts, base); }

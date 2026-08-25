@@ -56,7 +56,7 @@ extend Timestamp {
             // whole conversion.
             var time = FileTime { lowDateTime: 0, highDateTime: 0 };
             GetSystemTimePreciseAsFileTime(@time);
-            let ticks = FileTimeTicks(@time);
+            let ticks = FileTimeTicks(time);
             let seconds = ticks / FileTimeTicksPerSecond;
             let rest = ticks % FileTimeTicksPerSecond;
             return Timestamp {
@@ -66,7 +66,12 @@ extend Timestamp {
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
-            ClockGetTime(ClockRealtime, @time);
+            when #target.os == .macOS {
+                ClockGetTime(ClockRealtime, time);
+            }
+            else {
+                ClockGetTime(ClockRealtime, @time);
+            }
             return Timestamp { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
         }
     }

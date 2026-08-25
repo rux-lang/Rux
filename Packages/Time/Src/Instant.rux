@@ -52,7 +52,12 @@ extend Instant {
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
-            ClockGetTime(ClockMonotonic, @time);
+            when #target.os == .macOS {
+                ClockGetTime(ClockMonotonic, time);
+            }
+            else {
+                ClockGetTime(ClockMonotonic, @time);
+            }
             return Instant { ticks: (time.seconds as uint64) * 1000000000u64 + time.nanoseconds as uint64 };
         }
     }
@@ -114,12 +119,25 @@ func SleepFor(span: Duration) {
         var remaining = Timespec { seconds: 0, nanoseconds: 0 };
         // Interrupted sleeps hand back what is left, and the loop asks again for exactly that. Any other failure
         // means the request itself was bad, which a normalized non-negative span cannot be, so the loop ends.
-        while Nanosleep(@request, @remaining) != 0i64 {
+        var status = 0i64;
+        when #target.os == .macOS {
+            status = Nanosleep(request, @remaining);
+        }
+        else {
+            status = Nanosleep(@request, @remaining);
+        }
+        while status != 0i64 {
             if remaining.seconds == 0i64 && remaining.nanoseconds == 0i64 {
                 return;
             }
             request = remaining;
             remaining = Timespec { seconds: 0, nanoseconds: 0 };
+            when #target.os == .macOS {
+                status = Nanosleep(request, @remaining);
+            }
+            else {
+                status = Nanosleep(@request, @remaining);
+            }
         }
     }
 }

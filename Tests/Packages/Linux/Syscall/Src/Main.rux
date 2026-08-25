@@ -43,22 +43,26 @@ func Main() -> int {
     if ClockGetTime(ClockMonotonic, @time) != 0 || time.seconds < 0 {
         return 5;
     }
+    let copiedTime = time;
+    if copiedTime.seconds != time.seconds || copiedTime.nanoseconds != time.nanoseconds {
+        return 6;
+    }
 
     const PageSize: uint = 4096;
     let mapping = Mmap(null, PageSize, ProtectionRead | ProtectionWrite,
         MapPrivate | MapAnonymous, -1, 0);
     if IsError(mapping) {
-        return 6;
+        return 7;
     }
 
     let bytes = mapping as *var char8;
     *bytes = 42 as char8;
     if *bytes != 42 as char8 {
-        return 7;
+        return 8;
     }
 
     if Munmap(mapping as *opaque, PageSize) != 0 {
-        return 8;
+        return 9;
     }
 
     let rawMapping = Syscall6(
@@ -71,10 +75,10 @@ func Main() -> int {
         0
     );
     if IsError(rawMapping) {
-        return 9;
+        return 10;
     }
     if Munmap(rawMapping as *opaque, PageSize) != 0 {
-        return 10;
+        return 11;
     }
 
     return 0;

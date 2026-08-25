@@ -1,5 +1,6 @@
 import Core::{ Assert, OperatingSystem, #target };
-import C::{ time, clock, difftime, gmtime, localtime, mktime, malloc, free };
+import C::{ CLOCKS_PER_SEC, TIME_UTC, TimespecGet, clock, difftime, free, gmtime, localtime, malloc, mktime,
+            time, timespec };
 
 func Main() -> int {
     // difftime is the plain numeric difference of two calendar times.
@@ -8,6 +9,14 @@ func Main() -> int {
 
     // The processor clock never reports a negative tick count.
     Assert(clock() >= 0, "clock() is non-negative");
+    Assert(CLOCKS_PER_SEC > 0, "the processor clock has a positive rate");
+
+    // The safe wrapper borrows one exact timespec, while the C declaration beneath it remains a raw ABI pointer.
+    var current = timespec { tv_sec: 0, tv_nsec: 0 };
+    Assert(TimespecGet(current, TIME_UTC) == TIME_UTC, "TimespecGet accepts a writable value");
+    let copied = current;
+    Assert(copied.tv_sec == current.tv_sec && copied.tv_nsec == current.tv_nsec,
+           "C value records are structurally copyable");
 
     // The current time is well past the epoch, and passing a pointer stores the
     // same value that is returned.

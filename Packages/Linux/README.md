@@ -37,6 +37,14 @@ The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because
 and what a reader porting code will look for. The rest of the constants use Rux names, which is what they were
 published under.
 
+## Values and pointers
+
+Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw
+pointers: the kernel receives untyped integer addresses, buffers carry separate byte counts, and optional outputs may
+be null. Callers must therefore pass explicit addresses such as `ClockGetTime(ClockMonotonic, @time)` and uphold each
+function's safety contract. No wrapper owns an address or descriptor; release mappings and close descriptors
+explicitly, or prefer the higher-level `Rux/Memory` and `Rux/Io` packages.
+
 ## Platform
 
 Linux only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

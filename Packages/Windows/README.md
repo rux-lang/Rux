@@ -35,6 +35,14 @@ Windows separates reserving address space from committing storage to it, which n
 reserved page may not be touched; committing is what makes it usable. `MEM_RELEASE` requires a size of zero and the
 exact base address the reservation returned.
 
+## Values and pointers
+
+Win32 records such as `FileTime` and `SystemTime` are structural values and copy by value. Package-owned inspection
+helpers borrow them, so call `FileTimeTicks(stamp)` with the value itself. Imported Win32 declarations retain raw
+pointers for handles, optional arguments, buffers, and OS-owned addresses because null and sentinel values are part
+of those contracts. A raw handle or pointer never transfers ownership automatically; close or release it with the
+matching Win32 function.
+
 ## Platform
 
 Windows only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:

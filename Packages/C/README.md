@@ -51,6 +51,14 @@ program.
 
 Each module selects the right declarations for the target at compile time, so the same import works across the supported platforms. `rux check --target <triple>` resolves every declaration here on all eight supported cells, and the `Layout` test checks the sizes and the runtime-filled structures on whichever one it runs.
 
+## Values and pointers
+
+C ABI records such as `timespec` are ordinary structural values and copy by value. Safe package helpers borrow them:
+`TimespecGet(value, TIME_UTC)` takes a mutable reference, so callers pass the value itself. C declarations keep raw
+pointers where the ABI permits null, returns an address, accepts an untyped buffer, or relies on pointer arithmetic.
+Those calls inherit C's validity, lifetime, alignment, and overlap requirements; use `Rux/Memory`, `Rux/Text`, or
+`Rux/Io` when a checked interface exists.
+
 Two things are absent from `Math` on purpose. `fabsf`, `frexpf`, `ldexpf` and `hypotf` are header inlines in the Universal CRT rather than exported symbols, so declaring them would link on Unix and fail on Windows. The `nexttoward` pair takes a `long double`, which is a different type on every target — 64 bits under the Universal CRT, an 80-bit x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere. `Rux/Math` computes at every width without a C runtime and is the portable answer.
 
 The module names above describe where each declaration comes from; they are not part of an import path.
