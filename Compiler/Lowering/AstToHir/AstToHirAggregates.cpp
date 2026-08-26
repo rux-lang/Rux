@@ -575,10 +575,18 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     HirExprPtr lowered = LowerExpr(expression);
     if (targetType.kind == TypeRef::Kind::Reference) {
+        if (lowered->type.kind == TypeRef::Kind::Reference) {
+            lowered->type = targetType;
+            return lowered;
+        }
         const TypeRef &referent = targetType.inner.front();
+        TypeRef expressionValueType = lowered->type;
+        TypeRef referentValueType = referent;
+        expressionValueType.isMut = false;
+        referentValueType.isMut = false;
         if (referent.kind == TypeRef::Kind::Named) {
             if (HirSymbol *symbol = currentScope->Lookup(referent.name);
-                symbol && symbol->kind == HirSymbol::Kind::Interface && lowered->type != targetType) {
+                symbol && symbol->kind == HirSymbol::Kind::Interface && expressionValueType != referentValueType) {
                 std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
                 if (!implementationType) {
                     implementationType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
@@ -600,10 +608,6 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                 coercion->value = std::move(lowered);
                 return coercion;
             }
-        }
-        if (lowered->type.kind == TypeRef::Kind::Reference) {
-            lowered->type = targetType;
-            return lowered;
         }
         auto borrow = std::make_unique<HirUnaryExpr>();
         borrow->location = expression.location;
