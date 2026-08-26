@@ -50,7 +50,7 @@ when #target.os == OperatingSystem::macOS {
         }
 
         // A successful call must not be mistaken for a failure by the same fold.
-        var time: Timeval;
+        var time = Timeval { seconds: 0, microseconds: 0 };
         if GetTimeOfDay(time) != 0 || time.seconds <= 0 ||
             time.microseconds < 0 || time.microseconds >= 1000000 {
             return 5;

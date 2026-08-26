@@ -4,6 +4,7 @@
 // count or a small negative error number. A short count is not an error and not an end of file -- a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
+import Core::{ #target, #Error };
 import Linux::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, SysClose, SysDup3, SysFstat,
                 SysGetcwd, SysReadlinkAt,
                 SysFchmodAt, SysFsync, SysFtruncate, SysGetdents64, SysLinkAt, SysLseek, SysMkdirAt, SysNewFstatAt,
@@ -133,8 +134,20 @@ const OpenCloseOnExec: int32 = 524288;
 
 /// `O_DIRECTORY`: fail unless the target is a directory.
 ///
+/// The one open flag whose bit the architectures assign differently: x86-64 kept the number it had before the
+/// generic table was drawn up, and AArch64 uses the generic one, where x86-64's bit means `O_DIRECT` instead --
+/// so a directory opened with the wrong number fails with `EINVAL` rather than opening.
+///
 /// https://rux-lang.dev/docs/api/linux/open-directory
-const OpenDirectory: int32 = 65536;
+when #target.arch {
+    .X86_64 => {
+        const OpenDirectory: int32 = 65536;
+    }
+    .AArch64 => {
+        const OpenDirectory: int32 = 16384;
+    }
+    else => #Error("Unsupported Linux architecture")
+}
 
 /// `SEEK_SET`: measure the new offset from the start of the file.
 ///
