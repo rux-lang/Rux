@@ -337,14 +337,14 @@ func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> Path
         // No Unix kernel resolves a whole path for a caller -- `realpath` is library code over `readlink` -- so
         // the walk is done here, component by component, against what each link actually points at.
         var started = Absolute(allocator, path, error);
-        if error.IsError() {
+        if (*error).IsError() {
             return <-started;
         }
         var resolved = PathBuffer(allocator);
         var followed: uint = 0;
-        *error = ResolveInto(allocator, started.AsPath(), @resolved, @followed);
+        *error = ResolveInto(allocator, started.AsPath(), resolved, @followed);
         started.Release();
-        if error.IsError() {
+        if (*error).IsError() {
             resolved.Release();
             return PathBuffer(allocator);
         }

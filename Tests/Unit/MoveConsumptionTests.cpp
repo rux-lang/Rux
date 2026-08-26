@@ -698,8 +698,10 @@ TEST_CASE("accepted ownership transfers are retained as semantic and HIR facts")
 }
 
 TEST_CASE("an explicit generic store retains ownership transfer for its instantiation") {
-    // `<-` states that the generic value is transferred, and the concrete instantiation records which owning type
-    // crosses the store.
+    // `<-` states that the generic value is transferred. The record is keyed by the generic expression that every
+    // instantiation shares, so it keeps the unsubstituted type: each instantiation substitutes its own type argument
+    // when lowering builds the move plan. Recording one instantiation's concrete type here would hand that type's
+    // move operation to every other instantiation of the same body.
     Lexer lexer(R"(
         struct Handle { value: int32; }
         extend Handle {
@@ -737,7 +739,8 @@ TEST_CASE("an explicit generic store retains ownership transfer for its instanti
     const ValueConsumption *fact = model.TryGetConsumption(*assignment->value);
     REQUIRE(fact != nullptr);
     CHECK_EQ(fact->kind, ValueConsumptionKind::ExplicitMove);
-    CHECK_EQ(fact->type, TypeRef::MakeNamed("Handle"));
+    CHECK_EQ(fact->type, TypeRef::MakeTypeParam("T"));
+    CHECK_EQ(fact->customOperation, nullptr);
 }
 
 TEST_CASE("an explicit move into a match consumes its subject") {

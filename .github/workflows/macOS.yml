@@ -43,9 +43,13 @@ jobs:
           persist-credentials: false
 
       # macOS ships Apple Clang, which lags upstream and lacks full C++26
-      # support, so install LLVM Clang 22 from Homebrew to match Linux.
+      # support, so install LLVM Clang 22 from Homebrew to match Linux. The
+      # runner image ships with third-party taps Homebrew no longer trusts by
+      # default; nothing here uses them, so drop them rather than trusting
+      # them or silencing the check.
       - name: Install Clang 22
         run: |
+          brew untap aws/tap || true
           brew install llvm@22
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
 

@@ -172,7 +172,10 @@ struct ValueConsumption {
 };
 
 /// A named place copied into a by-value destination. Generated copies are represented without a declaration; custom
-/// copies retain the exact special operation selected by analysis so lowering does not repeat overload resolution.
+/// copies in concrete code retain the exact special operation selected by analysis so lowering does not repeat
+/// overload resolution. A record made for a generic body keeps the unsubstituted type and no operation instead,
+/// because it is shared by every instantiation: each one substitutes its own type argument and resolves its own
+/// operation when its copy plan is built.
 struct ValueCopy {
     ValueConsumptionKind kind;
     TypeRef targetType;
