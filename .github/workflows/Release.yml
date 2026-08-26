@@ -279,9 +279,13 @@ jobs:
           persist-credentials: false
 
       # Apple Clang lacks the C++26 support Rux needs, so use the same
-      # upstream LLVM release as the Linux and FreeBSD builds.
+      # upstream LLVM release as the Linux and FreeBSD builds. The runner
+      # image ships with third-party taps Homebrew no longer trusts by
+      # default; nothing here uses them, so drop them rather than trusting
+      # them or silencing the check.
       - name: Install Clang 22
         run: |
+          brew untap aws/tap || true
           brew install llvm@22
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
 

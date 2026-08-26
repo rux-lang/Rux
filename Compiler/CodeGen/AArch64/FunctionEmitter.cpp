@@ -482,6 +482,18 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             Must(encoder.Fcmp(operands->lhs, operands->rhs), LirOpcodeName(instruction.op));
             condition = FloatCondition(instruction.op);
         }
+        else if (operandType.kind == TypeRef::Kind::Named && !operandType.IsRange() && !IsRegisterValue(operandType) &&
+                 (instruction.op == LirOpcode::CmpEq || instruction.op == LirOpcode::CmpNe)) {
+            // Equality on a named value too wide for one register — an enum whose payload does not pack beside its
+            // tag is the shape the frontend emits — compares the leading doubleword of each operand's slot, which
+            // is the discriminant word. This matches what the x86-64 backend generates for the same LIR; wide
+            // integers and software floats never reach here because EmitWideArithmetic already claimed them, and a
+            // tuple stays refused below rather than quietly comparing only its first element.
+            const A64Reg lhs = hooks.ReadRawOperand(instruction.srcs[0], 8, A64::Xn(kTemp));
+            const A64Reg rhs = hooks.ReadRawOperand(instruction.srcs[1], 8, A64::Xn(kTemp2));
+            Must(encoder.Cmp(lhs, rhs), LirOpcodeName(instruction.op));
+            condition = IntegerCondition(instruction.op, false);
+        }
         else {
             const auto operands = LoadBinaryOperands(instruction, operandType, operandType);
             if (!operands) {
@@ -646,6 +658,11 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         }
         const TypeRef &type = instruction.type;
         const int size = RuntimeSize(type);
+        // A value occupying no bytes has nothing to read, and the eight-byte fallback the unknown-width case uses
+        // would reach past the end of what was allocated.
+        if (IsAggregate(type) && size == 0) {
+            return true;
+        }
         if (!instruction.strArg.empty()) {
             const A64Reg value = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
             hooks.LoadNamedDataSymbol(value, instruction.strArg);
@@ -676,6 +693,13 @@ bool AArch64FunctionEmitter::EmitMemory(const LirInstr &instruction) {
         const LirReg valueReg = instruction.srcs[0];
         const TypeRef &type = instruction.type;
         const int size = RuntimeSize(type);
+        // A value occupying no bytes has nothing to move, and the eight-byte fallback the unknown-width case uses
+        // is for a width the back end could not work out, which is a different thing. Storing a word for a
+        // zero-sized field wrote over whatever followed it -- for a node whose value sits between its key and its
+        // links, that is the links.
+        if (IsAggregate(type) && size == 0) {
+            return true;
+        }
         const A64Reg address = hooks.ReadPointerOperand(instruction.srcs[1], A64::Xn(kAddr));
         if (IsAggregate(type) && size > 8) {
             A64Reg source = A64::Xn(kSrcAddr);

@@ -34,6 +34,10 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 
 *Loud.* Found in `Rux/Memory`; `Layout::ForValue<T>` had to become the free function `LayoutOf<T>`.
 
+### Equality on a multiword aggregate compares only its leading doubleword
+
+*Silent.* `==` between two values wider than one register loads the first eight bytes of each side and compares those. For an enum whose payload does not pack beside its tag that is the discriminant alone: `ParseError::InvalidCharacter(3) == ParseError::InvalidCharacter(4)` is true. The x86-64 backend has always done this; the AArch64 backend now does the same for such enums deliberately so the two targets agree, and still refuses a tuple comparison rather than quietly answering from its first element — x86-64 silently does the latter. Compact payload enums whose tag and payload share one word compare fully, which hides the defect in most code. A correct comparison cannot be a byte comparison either, because a variant that carries no payload leaves those bytes unwritten; it has to branch on the variant, which is frontend work. Until then, a test that compares payload-carrying variants is only comparing which variant it is.
+
 ### A captured-output unit test is load-dependent
 
 `CliProcessTests` "test keeps failed rows, reasons, diagnostics, and captured output together" fails roughly one run in six of the *full* unit suite, while the same case run alone passed 20 times out of 20 — so it is load-dependent, not logic-dependent. The child it captures panics and traps on `ud2`, and the panic's three `WriteFile` calls to the inherited pipe happen before the trap, so the bytes should already be buffered; `RunCaptured` in `Compiler/System/Process.cpp` then closes its write end and reads to EOF, which also looks right. The compiler binary was byte-identical across a clean full-suite run and a failing one. Worth chasing before it costs someone a red CI run they cannot reproduce.
@@ -41,6 +45,14 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 ## Fixed
 
 Kept because they explain why some packages are written the way they are, and because two of them are the shape of the worst defect this code can surface: silent, wrong, and invisible to any test that does not check the data itself.
+
+### One instantiation's copy or move operation leaked into every other — fixed with the windows-aarch64 bring-up
+
+*Silent on x86-64, loud on AArch64.* The record saying "this generic store copies through a custom `=`" is keyed by the expression in the generic body, which every instantiation shares, and each instantiation's validation overwrote it with its own resolution — the last one won for all of them. Instantiating `Filled<Tracked>` and `Filled<int32>` from one program made `Filled_int32` call `Tracked::=` on an `int32` slot and patch the type mismatch with a cast; the AArch64 backend refused that cast ("cannot generate a cast from 'Tracked' to 'int32'"), which is how the first windows-aarch64 CI run surfaced it, while x86-64 emitted the same wrong LIR and happened to produce the right value because the cast read back the field the copy had just written. The record now keeps the unsubstituted type and no operation, and each instantiation substitutes its own type argument and resolves its own operation when its plan is built.
+
+### An AArch64 store or load of a zero-sized value moved eight bytes — fixed with the windows-aarch64 bring-up
+
+The x86-64 guard from `ace30585` never reached the AArch64 backend: a zero-sized store fell through to the same eight-byte fallback an unknown width gets and wrote over whatever followed the field, and a zero-sized load read past what was allocated. `Tests/Language/ZeroSizedField` fails at its first assertion on any AArch64 target without the guard. Both backends now skip the move entirely when a known width is zero.
 
 ### Interface coercion could copy or consume the implementor — fixed in `2f8ec825`
 

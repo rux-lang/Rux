@@ -403,15 +403,12 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
                                              resolved.kind == TypeRef::Kind::Array ||
                                              resolved.kind == TypeRef::Kind::Tuple;
                 if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
-                    const FuncDecl *custom = nullptr;
-                    if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
-                        if (const FuncDecl *operation = LookupMethod(resolved, "=", {resolved});
-                            operation && operation->body) {
-                            custom = operation;
-                        }
-                    }
+                    // Recorded with the unsubstituted type and no resolved operation: the record is keyed by the
+                    // shared generic expression, so every instantiation reads it, and each one must substitute its
+                    // own type argument and resolve its own copy operation when the plan is built. Baking this
+                    // instantiation's resolution in would hand its operation to every other instantiation.
                     valueCopies.insert_or_assign(deferred.expression,
-                                                 ValueCopy{deferred.kind, resolved, custom, deferred.location});
+                                                 ValueCopy{deferred.kind, deferred.type, nullptr, deferred.location});
                 }
                 continue;
             }
@@ -442,16 +439,11 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             // is which; until there is one, this records what to consume and leaves the legality alone.
             const MovePlace place = AnalyzeMovePlace(*deferred.expression);
             const bool constructsDestination = place.IsNamedStorage();
-            const FuncDecl *custom = nullptr;
-            if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
-                if (const FuncDecl *operation = LookupMethod(resolved, "<-", {resolved});
-                    operation && operation->body) {
-                    custom = operation;
-                }
-            }
+            // The unsubstituted type for the same reason as the copy record above: lowering substitutes the
+            // instantiation's own type argument and resolves its own move operation.
             valueConsumptions.insert_or_assign(
                 deferred.expression,
-                ValueConsumption{deferred.kind, resolved, deferred.location, custom, constructsDestination});
+                ValueConsumption{deferred.kind, deferred.type, deferred.location, nullptr, constructsDestination});
         }
     }
 }
