@@ -574,20 +574,23 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     std::size_t declared = 0;
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
-        auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
-        // A path that is already relative, or one the root does not contain, has no relative form; falling through
-        // to an empty string is how a rendered location loses its file and a diagnostic loses its source.
+        // A name that is already relative is shown as written: measuring it against the root would drag the working
+        // directory into the result. An absolute path is shown relative to the package root, and one the root does
+        // not contain keeps only its file name rather than a chain of parent steps.
         std::string source;
-        if (!ec && !relative.empty()) {
-            source = relative.generic_string();
-        }
-        else if (!sourcePath.is_absolute()) {
+        if (!sourcePath.is_absolute()) {
             source = sourcePath.generic_string();
         }
         else {
-            source = sourcePath.filename().generic_string();
+            const auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
+            if (!ec && !relative.empty() && *relative.begin() != "..") {
+                source = relative.generic_string();
+            }
+            else {
+                source = sourcePath.filename().generic_string();
+            }
+            ec.clear();
         }
-        ec.clear();
         const std::string moduleName = sourcePath.stem().string();
         declared = declared + module.module.items.size();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";

@@ -71,15 +71,21 @@ require_output 'Installing latest Rux release (linux-x86_64)'
 require_output "PATH already contains '$fixture_root/install-latest'"
 [ ! -e "$fixture_root/home-latest/.bashrc" ] || fail 'existing PATH entry rewrote .bashrc'
 
-# AArch64 uses its native release asset, and login-shell selection remains stable.
-RUX_TEST_ARCH=aarch64 RUX_TEST_SHELL=/bin/zsh \
+# AArch64 uses its native release asset, and login-shell selection remains stable. The overrides are exported from a
+# subshell because an assignment prefixed to a function call reaches child processes in bash but not in FreeBSD sh.
+(
+    export RUX_TEST_ARCH=aarch64 RUX_TEST_SHELL=/bin/zsh
     run_installer "$fixture_root/home-arm" --version 1.2.3 --dir "$fixture_root/install-arm"
+)
 require_output 'Installing Rux v1.2.3 (linux-aarch64)'
 require_output 'rux-linux-aarch64.tar.gz'
 require_output "$fixture_root/home-arm/.zshrc'"
 
 set +e
-RUX_TEST_ARCH=riscv64 run_installer "$fixture_root/home-bad-arch" --dir "$fixture_root/install-bad" 
+(
+    export RUX_TEST_ARCH=riscv64
+    run_installer "$fixture_root/home-bad-arch" --dir "$fixture_root/install-bad"
+)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail 'installer accepted an unsupported architecture'
@@ -87,7 +93,10 @@ require_output "error: architecture 'riscv64' is not supported by the Linux inst
 require_output "help: build Rux from source: 'https://github.com/rux-lang/Rux'"
 
 set +e
-RUX_TEST_DOWNLOAD_FAIL=1 run_installer "$fixture_root/home-download" --version 9.9.9 --dir "$fixture_root/install-download"
+(
+    export RUX_TEST_DOWNLOAD_FAIL=1
+    run_installer "$fixture_root/home-download" --version 9.9.9 --dir "$fixture_root/install-download"
+)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail 'installer accepted a failed download'
@@ -95,7 +104,10 @@ require_output "error: failed to download 'https://github.com/rux-lang/Rux/relea
 require_output "help: download the release manually from 'https://github.com/rux-lang/Rux/releases'"
 
 set +e
-RUX_TEST_EXTRACT_FAIL=1 run_installer "$fixture_root/home-extract" --dir "$fixture_root/install-extract"
+(
+    export RUX_TEST_EXTRACT_FAIL=1
+    run_installer "$fixture_root/home-extract" --dir "$fixture_root/install-extract"
+)
 status=$?
 set -e
 [ "$status" -ne 0 ] || fail 'installer accepted a failed extraction'
