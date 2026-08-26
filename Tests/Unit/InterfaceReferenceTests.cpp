@@ -207,6 +207,46 @@ TEST_CASE("interface-typed fields borrow their existing fat pointer") {
     CHECK(dynamic_cast<const HirFieldExpr *>(borrow->operand.get()) != nullptr);
 }
 
+TEST_CASE("interface dispatch excludes explicit self from lowered arguments") {
+    Lexer lexer(R"(
+        interface CounterView {
+            func Read(self: &CounterView) -> int32;
+        }
+        struct Counter { value: int32; }
+        extend Counter : CounterView {
+            func Read(self: &Counter) -> int32 { return self.value; }
+        }
+        func Observe(view: &CounterView) -> int32 { return view.Read(); }
+    )",
+                "interface-explicit-self.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "interface-explicit-self.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    SemanticModel model = analyzer.Analyze();
+    for (const SemanticDiagnostic &diagnostic : model.diagnostics) {
+        INFO("unexpected diagnostic: ", diagnostic.message);
+        CHECK_NE(diagnostic.severity, Diagnostic::Severity::Error);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+
+    const HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    const auto observe =
+        std::ranges::find_if(hir.modules[0].funcs, [](const HirFunc &function) { return function.name == "Observe"; });
+    REQUIRE(observe != hir.modules[0].funcs.end());
+    REQUIRE(observe->body.has_value());
+    REQUIRE_EQ(observe->body->stmts.size(), 1);
+    const auto *returnStatement = dynamic_cast<const HirReturnStmt *>(observe->body->stmts.front().get());
+    REQUIRE(returnStatement != nullptr);
+    REQUIRE(returnStatement->value.has_value());
+    const auto *call = dynamic_cast<const HirInterfaceCallExpr *>(returnStatement->value->get());
+    REQUIRE(call != nullptr);
+    CHECK(call->args.empty());
+}
+
 TEST_CASE("AArch64 lowers borrowed interface reference dispatch") {
     const LirPackage package = CompileToAArch64Lir(R"(
         interface CounterView { func Read() -> int32; }

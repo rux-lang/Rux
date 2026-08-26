@@ -320,7 +320,8 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
     lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
     lowered->type = functionType.inner.back();
     lowered->fatPtrExpr = LowerExpr(*field->object);
-    lowered->args = LowerBoundArguments(call, method, binding, functionType, false);
+    // The fat pointer supplies the explicit `self` slot; only source-level arguments belong in the ordinary list.
+    lowered->args = LowerBoundArguments(call, method, binding, functionType, true);
     return lowered;
 }
 
