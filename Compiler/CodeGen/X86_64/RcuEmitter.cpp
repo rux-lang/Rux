@@ -974,7 +974,11 @@ private:
                         }
                     }
                 }
-                else if (IsAggregate(p.type) && sz == 16) {
+                // Measured as the running program lays it out, exactly as the caller measures it: SizeOf answers 8
+                // for a named struct it has no layout for, and a callee classifying by that spilled one register of
+                // a two-register aggregate — the second half of every by-value 16-byte struct arrived as garbage on
+                // System V targets.
+                else if (IsAggregate(p.type) && SizeOfRuntime(p.type) == 16) {
                     if (intIdx <= 4) {
                         enc.MovArgStore(intIdx++, d);
                         enc.MovArgStore(intIdx++, d + 8);
