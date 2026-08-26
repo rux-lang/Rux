@@ -58,39 +58,40 @@ The current architecture is protected by focused unit and regression tests plus 
 - Checked LIR construction and verification stop malformed control flow before code generation. Release optimization uses overflow-safe constants, conservative effect analysis, bounded fixed points, and artifact-aware whole-program reachability; Debug remains transformation-free apart from verification.
 - Both native back ends use the shared RCU module builder. All image writers consume one deterministic link graph and common aligned-section layout before applying PE, ELF, or Mach-O container rules.
 - Parser, semantic, lowering, code-generation, assembler, object-writer, linker, manifest, package-command, and test implementations have named owners and narrow private interfaces. The oversized-file policy rejects unreviewed implementation files above 1,200 lines and growth beyond each reviewed exception.
+- Positive first-party Rux source uses only the final ownership and lifecycle contract. The language-cutover policy rejects mutable parameters, legacy Drop lifecycle forms, and infallible exact-type `New` factories, and pins the compiler enforcement that named move-only values require `<-`.
 
 These are maintained contracts, not a one-time migration record. Changes to them belong in this guide and in the tests or policy checks that enforce the affected boundary.
 
 ## Component Ownership
 
-| Component              | Owns                                                                                                      | May depend on                         |
-| ---------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `SourceModel`          | Source locations and loaded-file identity values                                                          | Standard library only                 |
-| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                 |
-| `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                 |
-| `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics           |
-| `CliReporting`         | Stream-scoped CLI messages, suppression, tables, summaries, and terminal color policy                     | Reporting and System                  |
-| `Diagnostics`          | Structured diagnostic values plus canonical human and JSON rendering                                      | SourceModel and Reporting             |
-| `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics           |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs   |
-| `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                           |
-| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                                  | Crypto and Target                     |
-| `Numeric`              | Exact wide integers; binary float formats/encodings; numeric-literal suffix, base, and range models        | None                                  |
-| `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel, Numeric, and Diagnostics |
-| `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target        |
+| Component              | Owns                                                                                                      | May depend on                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `SourceModel`          | Source locations and loaded-file identity values                                                          | Standard library only                   |
+| `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                   |
+| `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                   |
+| `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics             |
+| `CliReporting`         | Stream-scoped CLI messages, suppression, tables, summaries, and terminal color policy                     | Reporting and System                    |
+| `Diagnostics`          | Structured diagnostic values plus canonical human and JSON rendering                                      | SourceModel and Reporting               |
+| `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics             |
+| `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs     |
+| `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                             |
+| `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                                  | Crypto and Target                       |
+| `Numeric`              | Exact wide integers; binary float formats/encodings; numeric-literal suffix, base, and range models       | None                                    |
+| `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel, Numeric, and Diagnostics   |
+| `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target          |
 | `Semantic`             | Symbols, types, conditional compilation, borrow/value analysis, and validated semantic model              | BuildInfo, Numeric, Syntax, Diagnostics |
-| `Ir/Hir`               | High-level IR and its transformations                                                                     | Semantic, Lexer, SourceModel, Target  |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                                                        | Semantic                              |
-| `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability                          | BuildInfo, Diagnostics, HIR, and LIR  |
-| `Lowering`             | AST/semantic model → ownership-explicit HIR → control-flow-explicit LIR; private lowering contexts        | Frontend and IR components            |
-| `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics          |
-| `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction                        | BuildInfo, LIR, Object, Diagnostics   |
-| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction                      | BuildInfo, LIR, Object, Diagnostics   |
-| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                                            | BuildInfo and Target                  |
-| `Archive`              | Deterministic native archive containers and symbol indexes                                                | Object                                |
-| `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output                  | Object, Archive, and System           |
-| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution                         | All compiler stages                   |
-| `Formatter` / `Linter` | Source formatting and lint diagnostics                                                                    | Syntax; the linter also uses Semantic |
+| `Ir/Hir`               | High-level IR and its transformations                                                                     | Semantic, Lexer, SourceModel, Target    |
+| `Ir/Lir`               | Control-flow-explicit low-level IR                                                                        | Semantic                                |
+| `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability                          | BuildInfo, Diagnostics, HIR, and LIR    |
+| `Lowering`             | AST/semantic model → ownership-explicit HIR → control-flow-explicit LIR; private lowering contexts        | Frontend and IR components              |
+| `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics            |
+| `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction                        | BuildInfo, LIR, Object, Diagnostics     |
+| `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction                      | BuildInfo, LIR, Object, Diagnostics     |
+| `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                                            | BuildInfo and Target                    |
+| `Archive`              | Deterministic native archive containers and symbol indexes                                                | Object                                  |
+| `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output                  | Object, Archive, and System             |
+| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution                         | All compiler stages                     |
+| `Formatter` / `Linter` | Source formatting and lint diagnostics                                                                    | Syntax; the linter also uses Semantic   |
 
 `Parser::DumpAst` is the public AST-dump facade. Its implementation shares private stream and indentation state through `ParserDumpDetail::AstDumpWriter`; the declaration printer is the single owner of declaration dispatch and type-expression text, while the statement printer owns blocks, statement dispatch, and pattern formatting. The two focused printers call back into the facade for nested expressions and into each other at declaration/block boundaries, keeping dump text stable while expression printers are split into their own owner incrementally.
 

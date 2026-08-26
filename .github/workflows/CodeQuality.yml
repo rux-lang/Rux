@@ -49,6 +49,22 @@ jobs:
       - name: Check for external toolchain use
         run: sh Tests/Policy/NoExternalToolchain/Check.sh
 
+  language-cutover:
+    name: Language ownership cutover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Test language ownership cutover policy
+        run: sh Tests/Policy/LanguageCutover/Test.sh
+
+      - name: Check language ownership cutover
+        run: sh Tests/Policy/LanguageCutover/Check.sh
+
   oversized-files:
     name: Oversized files
     runs-on: ubuntu-24.04

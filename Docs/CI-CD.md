@@ -19,7 +19,7 @@ Their status is shown by the badges at the top of the [README](../README.md).
 
 Two repository-policy workflows run alongside the per-OS matrix:
 
-- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), the oversized-file architecture guard (`Tests/Policy/OversizedFiles/Check.sh`), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
+- **`CodeQuality.yml`** — repository-wide checks: the platform-isolation guard (`Tests/Policy/PlatformIsolation/Check.sh`, which fails when OS APIs like `getenv`/`<windows.h>`/`fork` are used outside `Compiler/System/`), the external-toolchain guard (`Tests/Policy/NoExternalToolchain/Check.sh`, described below), the final language ownership guard (`Tests/Policy/LanguageCutover/Check.sh`), the oversized-file architecture guard (`Tests/Policy/OversizedFiles/Check.sh`), a `clang-format-22 --dry-run -Werror` pass, and parallel `clang-tidy-22` static analysis over the maintained C++ translation units in CMake's compilation database.
 - **`BranchPolicy.yml`** — rejects pull requests targeting `main` and directs contributors to the `dev` integration branch.
 
 ### The External-Toolchain Guard
@@ -32,6 +32,10 @@ Two repository-policy workflows run alongside the per-OS matrix:
 No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
 
 The guard runs as its own job in `CodeQuality.yml` and as the first step of `sh Run.sh test` and `./Run.ps1 test`, beside the platform-isolation check. The FreeBSD build job runs the same complete guard set through `sh Run.sh policy` before configuring, so the one VM that has no dedicated policy job still enforces every source-tree invariant.
+
+### The Language Ownership Cutover Guard
+
+`Tests/Policy/LanguageCutover/Check.sh` scans positive first-party package and test source for removed mutable parameters, `Core::Drop` lifecycle forms, and infallible exact-type `New` factories. Copyability itself remains a semantic property, so the guard additionally pins the parser diagnostic for mutable parameters and the semantic rejection path for named move-only values without `<-`, while the compiler unit tests exercise their exact migration help. `Test.sh` seeds passing source and one failure for every rule. The guard runs through both repository entry points and as its own `CodeQuality.yml` job.
 
 ### The Oversized-File Architecture Guard
 

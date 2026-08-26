@@ -163,6 +163,50 @@ TEST_CASE("exclusive interface views require mutable implementing places") {
     CHECK(HasErrorContaining(diagnostics, "has type 'Plain'"));
 }
 
+TEST_CASE("interface-typed fields borrow their existing fat pointer") {
+    Lexer lexer(R"(
+        interface CounterView { func Read() -> int32; }
+        struct Counter { value: int32; }
+        struct Holder { view: CounterView; }
+        extend Counter : CounterView {
+            func Read(self: &Counter) -> int32 { return self.value; }
+        }
+        func Observe(view: &var CounterView) -> int32 { return view.Read(); }
+        func Use(holder: &var Holder) -> int32 { return Observe(holder.view); }
+    )",
+                "interface-field-reference.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "interface-field-reference.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    SemanticModel model = analyzer.Analyze();
+    for (const SemanticDiagnostic &diagnostic : model.diagnostics) {
+        INFO("unexpected diagnostic: ", diagnostic.message);
+        CHECK_NE(diagnostic.severity, Diagnostic::Severity::Error);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+
+    const HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    const auto use =
+        std::ranges::find_if(hir.modules[0].funcs, [](const HirFunc &function) { return function.name == "Use"; });
+    REQUIRE(use != hir.modules[0].funcs.end());
+    REQUIRE(use->body.has_value());
+    REQUIRE_EQ(use->body->stmts.size(), 1);
+    const auto *returnStatement = dynamic_cast<const HirReturnStmt *>(use->body->stmts.front().get());
+    REQUIRE(returnStatement != nullptr);
+    REQUIRE(returnStatement->value.has_value());
+    const auto *call = dynamic_cast<const HirCallExpr *>(returnStatement->value->get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    const auto *borrow = dynamic_cast<const HirUnaryExpr *>(call->args.front().get());
+    REQUIRE(borrow != nullptr);
+    CHECK_EQ(borrow->op, TokenKind::At);
+    CHECK(dynamic_cast<const HirFieldExpr *>(borrow->operand.get()) != nullptr);
+}
+
 TEST_CASE("AArch64 lowers borrowed interface reference dispatch") {
     const LirPackage package = CompileToAArch64Lir(R"(
         interface CounterView { func Read() -> int32; }

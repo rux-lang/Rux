@@ -20,6 +20,8 @@ Every executable Rux test contains `Rux.toml` and `Src/Main.rux`. Exit code `0` 
 
 To run the complete repository workflow—including policy, formatting, build, CTest, workspace checks, lint, and these packages—use `./Run.ps1 test` on Windows or `sh Run.sh test` on Linux, macOS, and FreeBSD.
 
+The language-cutover policy under `Policy/LanguageCutover/` keeps positive first-party source on the final ownership model: parameters use `name: Type`, named ownership transfers use `<-`, destructors use `~Type`, and infallible exact-type construction uses `Type(...)`. Its fixture script verifies every guarded failure mode without compiling a package.
+
 Test manifests are intentionally uniform:
 
 - `[Manifest] Version = 1` opens every file.
