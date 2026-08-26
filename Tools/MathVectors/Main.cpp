@@ -201,8 +201,8 @@ void SinCosSeries(const Fixed &x, Fixed &sine, Fixed &cosine) {
     Fixed sum = x;
     Fixed squared = x.Multiplied(x);
     for (int n = 1; n <= 45; ++n) {
-        const auto a = static_cast<std::int64_t>(2 * n);
-        const auto b = static_cast<std::int64_t>(2 * n + 1);
+        const auto a = static_cast<std::int64_t>(n) * 2;
+        const auto b = static_cast<std::int64_t>(n) * 2 + 1;
         term = term.Multiplied(squared).Divided(Fixed::FromInt(a)).Divided(Fixed::FromInt(b)).Negated();
         sum = sum.Added(term);
     }
@@ -211,8 +211,8 @@ void SinCosSeries(const Fixed &x, Fixed &sine, Fixed &cosine) {
     term = Fixed::FromInt(1);
     Fixed cosineSum = Fixed::FromInt(1);
     for (int n = 1; n <= 45; ++n) {
-        const auto a = static_cast<std::int64_t>(2 * n - 1);
-        const auto b = static_cast<std::int64_t>(2 * n);
+        const auto a = static_cast<std::int64_t>(n) * 2 - 1;
+        const auto b = static_cast<std::int64_t>(n) * 2;
         term = term.Multiplied(squared).Divided(Fixed::FromInt(a)).Divided(Fixed::FromInt(b)).Negated();
         cosineSum = cosineSum.Added(term);
     }

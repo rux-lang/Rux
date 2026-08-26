@@ -115,17 +115,19 @@ TEST_CASE("a zeroizing store survives dead-store elimination") {
     )");
 
     LirPackage lir = HirToLirLowering(std::move(hir), TargetContext::CreateNative()).Generate();
-    const std::vector<const LirInstr *> before = StoresOf(lir, "Clear");
     const auto volatileCount = [](const std::vector<const LirInstr *> &stores) {
         return std::ranges::count_if(stores, [](const LirInstr *store) { return store->isVolatile; });
     };
-    REQUIRE_GT(volatileCount(before), 0);
+    // Counted before the pipeline runs and compared by value afterwards: the passes rewrite the instruction
+    // vectors, so pointers taken now would not survive to the comparison.
+    const auto requiredStores = volatileCount(StoresOf(lir, "Clear"));
+    REQUIRE_GT(requiredStores, 0);
 
     // Nothing reads the cleared bytes back, so without the marking the store is exactly what this pass removes.
     auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
     const auto result = pipeline.RunLir(lir);
     REQUIRE(result.reachedFixedPoint);
-    CHECK_EQ(volatileCount(StoresOf(lir, "Clear")), volatileCount(before));
+    CHECK_EQ(volatileCount(StoresOf(lir, "Clear")), requiredStores);
 }
 
 TEST_CASE("a zeroization intrinsic declared with the wrong signature is rejected") {

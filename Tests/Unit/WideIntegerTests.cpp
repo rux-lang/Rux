@@ -1,6 +1,8 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Numeric/WideInteger.h"
 
+#include <array>
+#include <cstdint>
 #include <doctest.h>
 #include <string>
 
@@ -113,8 +115,8 @@ TEST_CASE("wide addition and subtraction carry across every limb and wrap at the
 }
 
 TEST_CASE("wide bitwise operations normalize their result") {
-    constexpr std::array leftWords{0xFFFF0000FFFF0000ULL, 0xAAAAAAAAAAAAAAAAULL};
-    constexpr std::array rightWords{0x0F0F0F0F0F0F0F0FULL, 0x5555555555555555ULL};
+    constexpr std::array<std::uint64_t, 2> leftWords{0xFFFF0000FFFF0000ULL, 0xAAAAAAAAAAAAAAAAULL};
+    constexpr std::array<std::uint64_t, 2> rightWords{0x0F0F0F0F0F0F0F0FULL, 0x5555555555555555ULL};
     const WideInteger left = WideInteger::FromWords(leftWords, 100);
     const WideInteger right = WideInteger::FromWords(rightWords, 100);
 
@@ -334,7 +336,7 @@ TEST_CASE("a value reads back as words and as a machine word when it fits") {
 }
 
 TEST_CASE("little-endian words are normalized to the requested width") {
-    constexpr std::array words{0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL, 0xFFFFFFFFFFFFFFFFULL};
+    constexpr std::array<std::uint64_t, 3> words{0x0123456789ABCDEFULL, 0xFEDCBA9876543210ULL, 0xFFFFFFFFFFFFFFFFULL};
     const WideInteger value = WideInteger::FromWords(words, 100);
     CHECK_EQ(value.Width(), 100);
     CHECK_EQ(value.Word64(0), words[0]);

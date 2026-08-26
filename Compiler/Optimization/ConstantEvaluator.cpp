@@ -10,8 +10,8 @@
 namespace Rux::Optimization {
 class TypedConstantFactory {
 public:
-    static TypedConstant Make(const TypeRef &type, const TypedConstant::Kind kind, WideInteger bits) {
-        return TypedConstant(type, kind, std::move(bits));
+    static TypedConstant Make(const TypeRef &type, const TypedConstant::Kind kind, const WideInteger bits) {
+        return TypedConstant(type, kind, bits);
     }
 };
 
@@ -95,7 +95,7 @@ TypedConstant::TypedConstant(TypeRef inputType, const Kind inputKind, WideIntege
     : type(std::move(inputType))
     , kind(inputKind)
     , width(inputBits.Width())
-    , bits(std::move(inputBits)) {
+    , bits(inputBits) {
 }
 
 std::optional<bool> TypedConstant::BooleanValue() const noexcept {

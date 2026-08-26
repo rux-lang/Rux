@@ -236,7 +236,7 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
 
         ZeroWide(destination, size);
         ZeroWide(remainder, size);
-        Must(encoder.LoadImm64(A64::Xn(kCount), static_cast<std::uint64_t>(size * 8)), "a wide-integer division count");
+        Must(encoder.LoadImm64(A64::Xn(kCount), static_cast<std::uint64_t>(size) * 8), "a wide-integer division count");
         const auto shiftLeft = [&](const std::int32_t value) {
             for (int word = words - 1; word > 0; --word) {
                 hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(value) + word * 8, 8, false);
