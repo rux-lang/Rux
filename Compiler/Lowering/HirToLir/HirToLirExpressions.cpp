@@ -403,10 +403,31 @@ LirReg HirToLirContext::LowerInterfaceCall(const HirInterfaceCallExpr &e) {
     ci.callConv = CallingConvention::Default;
     ci.srcs = {fnPtr, dataPtr};
     for (const auto &arg : e.args) {
-        ci.srcs.push_back(LowerExpr(*arg));
+        ci.srcs.push_back(LowerArgument(*arg));
     }
     Emit(std::move(ci));
     return dst;
+}
+
+LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
+    // A slice parameter is lowered as a pointer to the {data, length} pair, so the argument is the pair's address. The
+    // implementation behind a vtable is an ordinary method with that same parameter, so an interface call passes the
+    // address too: handing over the 16-byte value put `data` and `length` in two registers on System V and AAPCS64,
+    // and the callee read `data` as the pointer to the pair. Win64 passes such a value by reference to a copy, which
+    // is the one ABI where the two happened to agree.
+    if (IsSliceType(argument.type)) {
+        return LowerLValue(argument);
+    }
+    // An array or tuple parameter is a value, like a struct parameter, and the back ends place a value by its own
+    // size: on System V an aggregate wider than sixteen bytes goes to the caller's stack slots. A literal lowers to
+    // the slot it was built in, and a slot is a pointer — which is what a caller handed over for `Start([...], 64)`,
+    // so the callee read the pointer as the array's first word and the array's stack slots as whatever the caller
+    // happened to leave there. Win64 and AAPCS64 pass a wide aggregate by reference to a copy, so a pointer was
+    // indistinguishable from the value there. Loading the value makes the argument what the parameter is.
+    if (argument.type.kind == TypeRef::Kind::Array || argument.type.kind == TypeRef::Kind::Tuple) {
+        return EmitLoad(LowerLValue(argument), argument.type);
+    }
+    return LowerExpr(argument);
 }
 
 LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
@@ -469,15 +490,7 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     std::vector<LirReg> argRegs;
     argRegs.reserve(e.args.size());
     for (const auto &arg : e.args) {
-        // Slice types are 16-byte {data, length} structs. The callee
-        // expects a POINTER to the struct (not the 16-byte value, which
-        // wouldn't fit in a single ABI register), so take the lvalue.
-        if (IsSliceType(arg->type)) {
-            argRegs.push_back(LowerLValue(*arg));
-        }
-        else {
-            argRegs.push_back(LowerExpr(*arg));
-        }
+        argRegs.push_back(LowerArgument(*arg));
     }
     const LirReg dst = e.type.IsOpaque() ? LirNoReg : NewReg();
     LirInstr ci;

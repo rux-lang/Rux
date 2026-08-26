@@ -162,6 +162,7 @@ private:
     LirReg LowerMove(const HirMoveExpr &expression);
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
     LirReg LowerCall(const HirCallExpr &expression);
+    LirReg LowerArgument(const HirExpr &argument);
     LirReg LowerSliceDataPtr(const HirExpr &object, const TypeRef &elementType);
     LirReg LowerRangeIndex(const HirIndexExpr &expression);
     LirReg LowerLValue(const HirExpr &expression);

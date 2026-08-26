@@ -97,8 +97,11 @@ func Main() -> int {
     let combining = PathOf(allocator, "café.txt", @combiningHolder);
     RoundTripCombining(allocator, dir, combining.name);
 
-    when #target.os != .Windows {
-        // A Unix name need not be text. This one is not: 0xFF can begin no UTF-8 sequence.
+    // A Unix name need not be text -- except on Darwin, whose filesystems take only valid UTF-8 and refuse the
+    // rest with `EILSEQ`, or percent-encode what an older volume let through, so neither half of the round trip
+    // holds there.
+    when #target.os != .Windows && #target.os != .macOS {
+        // This one is not text: 0xFF can begin no UTF-8 sequence.
         var raw: OsUnit[10];
         raw[0] = c8'b';
         raw[1] = 0xFFu8 as char8;

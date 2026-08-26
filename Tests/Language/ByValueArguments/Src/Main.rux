@@ -1,0 +1,73 @@
+// An aggregate argument is placed by its own size, and the calling conventions disagree about where a wide one
+// goes: System V copies it onto the stack, Win64 and AAPCS64 pass the address of a copy. A literal array or tuple
+// used to be handed over as the address of the slot it was built in, which is only what the callee expects on the
+// two conventions that pass by address -- on System V the callee read the address as the first element and the
+// scalar after it from a slot nobody had written. The named-variable form always went by value, so each case here
+// is written as a literal, as a constant and as a local, and each puts a scalar after the aggregate, which is the
+// argument that lands in the wrong place when the aggregate consumes registers it should not.
+//
+// A slice parameter is the one aggregate lowered as an address on every convention, and an interface call passed
+// the 16-byte value instead, so the method read `data` as the address of the pair. The sink at the end checks a
+// slice arrives intact through the vtable.
+
+import Core::{ Assert, Slice };
+
+const Seeds: uint64[4] = [11, 22, 33, 44];
+
+func SumArray(values: uint64[4], tail: uint64) -> uint64 {
+    return values[0] + values[1] + values[2] + values[3] + tail;
+}
+
+func SumTriple(triple: (uint64, uint64, uint64), tail: uint64) -> uint64 {
+    return triple.0 + triple.1 + triple.2 + tail;
+}
+
+func SumPair(pair: (uint64, uint64), tail: uint64) -> uint64 {
+    return pair.0 + pair.1 + tail;
+}
+
+func SumBytes(values: uint8[3], tail: uint64) -> uint64 {
+    return (values[0] as uint64) + (values[1] as uint64) + (values[2] as uint64) + tail;
+}
+
+interface Sink {
+    func Put(bytes: Slice<char8>) -> uint;
+}
+
+struct Counter {
+    total: uint;
+}
+
+extend Counter : Sink {
+    // Folds the length and the first byte together, so a slice whose `data` or `length` arrived as something else
+    // cannot produce the number the caller checks for.
+    func Put(self: &var Counter, bytes: Slice<char8>) -> uint {
+        self.total = self.total + bytes.length;
+        return bytes.length * 256u + (bytes.data[0] as uint8 as uint);
+    }
+}
+
+func Main() -> int {
+    // Thirty-two bytes: memory class on System V, by address on Win64 and AAPCS64.
+    Assert(SumArray([1u64, 2u64, 3u64, 4u64], 100u64) == 110u64, "an array literal is passed whole with the scalar after it");
+    Assert(SumArray(Seeds, 1u64) == 111u64, "a constant array is passed whole with the scalar after it");
+    var local: uint64[4] = [5, 6, 7, 8];
+    Assert(SumArray(local, 0u64) == 26u64, "a local array is passed whole with the scalar after it");
+
+    // Twenty-four bytes: the same classes as the array.
+    Assert(SumTriple((1u64, 2u64, 3u64), 100u64) == 106u64, "a tuple literal is passed whole with the scalar after it");
+    let triple: (uint64, uint64, uint64) = (10, 20, 30);
+    Assert(SumTriple(triple, 1u64) == 61u64, "a local tuple is passed whole with the scalar after it");
+
+    // Sixteen bytes: two registers on System V and AAPCS64, by address on Win64.
+    Assert(SumPair((7u64, 8u64), 100u64) == 115u64, "a two-word tuple literal is passed whole with the scalar after it");
+
+    // Three bytes: one register everywhere, and the tail must not be read from the next one.
+    Assert(SumBytes([1u8, 2u8, 3u8], 100u64) == 106u64, "a three-byte array literal is passed whole with the scalar after it");
+
+    var counter = Counter { total: 0 };
+    var sink: Sink = counter;
+    Assert(sink.Put("hello") == 5u * 256u + 104u, "a slice reaches an interface method whole");
+    Assert(sink.Put("ab") == 2u * 256u + 97u, "and so does the next one");
+    return 0;
+}
