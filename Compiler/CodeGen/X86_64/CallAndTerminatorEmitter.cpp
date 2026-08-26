@@ -190,6 +190,12 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
                 ++floatIndex;
             }
         }
+        else if (IsSysVMemoryAggregate(type)) {
+            // Already written to its stack slots by StoreSysVStackArguments, and it consumes no integer register:
+            // the callee prologue reads it from the stack without advancing its register count, so treating it as
+            // a scalar here handed a byte of the aggregate to a register and shifted every later argument one
+            // register over from where the callee looks for it.
+        }
         else if (hooks.IsAggregate(type) && hooks.SizeOfRuntime(type) == 16) {
             if (integerIndex <= 4) {
                 encoder.MovRaxLoad(displacement);
