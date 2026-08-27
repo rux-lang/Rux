@@ -28,7 +28,6 @@ InstructionEffect EffectOf(const LirOpcode opcode) {
     case LirOpcode::Add:
     case LirOpcode::Sub:
     case LirOpcode::Mul:
-    case LirOpcode::Pow:
     case LirOpcode::And:
     case LirOpcode::Or:
     case LirOpcode::Xor:

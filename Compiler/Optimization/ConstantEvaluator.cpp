@@ -280,20 +280,6 @@ std::optional<TypedConstant> EvaluateBinary(const TokenKind op, const TypedConst
         return Make(left.Type(), lhs.Subtracted(rhs));
     case TokenKind::Star:
         return Make(left.Type(), lhs.MultipliedWrapping(rhs));
-    case TokenKind::StarStar: {
-        if (right.GetKind() == TypedConstant::Kind::SignedInteger && rhs.IsNegative()) {
-            return Make(left.Type(), 0);
-        }
-        WideInteger base = lhs;
-        WideInteger result = WideInteger::FromUnsigned(1, left.Width());
-        for (std::uint32_t bit = 0; bit < right.Width(); ++bit) {
-            if (rhs.BitSet(bit)) {
-                result = result.MultipliedWrapping(base);
-            }
-            base = base.MultipliedWrapping(base);
-        }
-        return Make(left.Type(), result);
-    }
     case TokenKind::Slash:
     case TokenKind::Percent: {
         const WideIntegerDivision division = lhs.Divided(rhs, isSigned);

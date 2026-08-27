@@ -1,5 +1,4 @@
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Ir/Lir/Lir.h"
 
 #include <doctest.h>
@@ -8,7 +7,7 @@
 
 using namespace Rux;
 
-TEST_CASE("x86-64 assembly module printing owns deterministic sections and reachable helpers") {
+TEST_CASE("x86-64 assembly module printing owns deterministic sections") {
     AssemblyModulePrinter printer(Target::OS::Linux);
 
     LirModule module;
@@ -40,8 +39,6 @@ TEST_CASE("x86-64 assembly module printing owns deterministic sections and reach
     CHECK(printer.InternFloat64("2.5") == "__f64_2");
     printer.TextLabel("Main");
     printer.TextInstruction("ret");
-    printer.RequestHelper(X86_64RuntimeHelper::FloatPower32);
-
     const std::string output = printer.Finalize();
     const std::size_t rodata = output.find("section .rodata");
     const std::size_t data = output.find("section .data");
@@ -57,21 +54,4 @@ TEST_CASE("x86-64 assembly module printing owns deterministic sections and reach
     CHECK(output.find("global PublishedValue\nPublishedValue:  ; int64 = 42") != std::string::npos);
     CHECK(output.find("Widget_vtable:\n    dq Widget_Draw\n    dq Widget_Drop") != std::string::npos);
     CHECK(output.find("__str0:\n    db    115, 104, 97, 114, 101, 100, 0") != std::string::npos);
-    CHECK(output.find("__rux_ipow:") == std::string::npos);
-    const std::size_t float64Helper = output.find("__rux_powf64:");
-    const std::size_t float32Helper = output.find("__rux_powf32:");
-    REQUIRE(float64Helper != std::string::npos);
-    REQUIRE(float32Helper != std::string::npos);
-    CHECK(float64Helper < float32Helper);
-}
-
-TEST_CASE("x86-64 assembly module printing emits no unreachable helpers") {
-    AssemblyModulePrinter printer(Target::OS::Linux);
-    printer.TextLabel("Main");
-    printer.TextInstruction("ret");
-
-    const std::string output = printer.Finalize();
-    CHECK(output.find("__rux_ipow:") == std::string::npos);
-    CHECK(output.find("__rux_powf64:") == std::string::npos);
-    CHECK(output.find("__rux_powf32:") == std::string::npos);
 }

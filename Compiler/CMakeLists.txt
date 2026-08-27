@@ -241,7 +241,6 @@ rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/FunctionEmitter.cpp
     CodeGen/X86_64/WideIntegerEmitter.cpp
     CodeGen/X86_64/RcuEmitter.cpp
-    CodeGen/X86_64/RuntimeHelpers.cpp
     CodeGen/X86_64/SoftwareFloatEmitter.cpp)
 target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
@@ -265,8 +264,7 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/FunctionEmitter.cpp
     CodeGen/AArch64/SoftwareFloatEmitter.cpp
     CodeGen/AArch64/WideIntegerEmitter.cpp
-    CodeGen/AArch64/RcuEmitter.cpp
-    CodeGen/AArch64/RuntimeHelpers.cpp)
+    CodeGen/AArch64/RcuEmitter.cpp)
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
 rux_add_component(RuxLinker

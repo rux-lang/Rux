@@ -24,8 +24,6 @@ namespace {
         return "/";
     case TokenKind::Percent:
         return "%";
-    case TokenKind::StarStar:
-        return "**";
     case TokenKind::Amp:
         return "&";
     case TokenKind::At:

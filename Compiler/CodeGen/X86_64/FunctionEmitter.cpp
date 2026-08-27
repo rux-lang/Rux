@@ -12,14 +12,11 @@ namespace Rux {
 using namespace Layout;
 
 X86_64FunctionEmitter::X86_64FunctionEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan,
-                                             X86_64RuntimeHelperEmitter &runtimeHelpers,
-                                             const CallingConvention defaultConvention, const LayoutMap &layouts,
+                                             const LayoutMap &layouts,
                                              const std::unordered_set<std::string> &interfaceNames,
                                              X86_64FunctionEmitterHooks &hooks)
     : encoder(encoder)
     , framePlan(framePlan)
-    , runtimeHelpers(runtimeHelpers)
-    , defaultConvention(defaultConvention)
     , layouts(layouts)
     , interfaceNames(interfaceNames)
     , hooks(hooks) {
@@ -275,90 +272,6 @@ bool X86_64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
             NegateWide(destination, size);
             PatchHere(positive);
         }
-        return true;
-    }
-    case LirOpcode::Pow: {
-        const std::int32_t base = -framePlan.WideTemporaryOffset(0);
-        const std::int32_t exponent = -framePlan.WideTemporaryOffset(1);
-        const std::int32_t product = -framePlan.WideTemporaryOffset(2);
-        ZeroWide(destination, size);
-        encoder.MovEaxImm32(1);
-        encoder.MovRaxStore(destination);
-        if (wideType.IsSigned()) {
-            encoder.MovRaxLoad(source(1) + size - 8);
-            encoder.TestRaxRax();
-            const std::uint32_t nonNegative = JumpIf(0x89);
-            ZeroWide(destination, size);
-            std::uint32_t done;
-            encoder.Jmp(done);
-            PatchHere(nonNegative);
-            CopyWide(source(0), base, size);
-            CopyWide(source(1), exponent, size);
-            const std::uint32_t loop = encoder.Size();
-            encoder.MovEaxImm32(0);
-            for (int word = 0; word < words; ++word) {
-                encoder.MovR10Load(exponent + word * 8);
-                encoder.OrRaxR10();
-            }
-            encoder.TestRaxRax();
-            const std::uint32_t exponentZero = JumpIf(0x84);
-            encoder.Byte(0x48);
-            encoder.Byte(0xF7);
-            encoder.Byte(0x85); // test qword [rbp + exponent], 1
-            encoder.Dword(static_cast<std::uint32_t>(exponent));
-            encoder.Dword(1);
-            const std::uint32_t skipMultiply = JumpIf(0x84);
-            MultiplyWide(destination, base, product, size);
-            CopyWide(product, destination, size);
-            PatchHere(skipMultiply);
-            MultiplyWide(base, base, product, size);
-            CopyWide(product, base, size);
-            for (int word = words - 1; word >= 0; --word) {
-                encoder.Byte(0x48);
-                encoder.Byte(0xD1);
-                encoder.Byte(word == words - 1 ? 0xAD : 0x9D); // shr/rcr exponent
-                encoder.Dword(static_cast<std::uint32_t>(exponent + word * 8));
-            }
-            encoder.Byte(0xE9);
-            const std::uint32_t repeat = encoder.Size();
-            encoder.Dword(0);
-            encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
-            PatchHere(exponentZero);
-            PatchHere(done);
-            return true;
-        }
-        CopyWide(source(0), base, size);
-        CopyWide(source(1), exponent, size);
-        const std::uint32_t loop = encoder.Size();
-        encoder.MovEaxImm32(0);
-        for (int word = 0; word < words; ++word) {
-            encoder.MovR10Load(exponent + word * 8);
-            encoder.OrRaxR10();
-        }
-        encoder.TestRaxRax();
-        const std::uint32_t done = JumpIf(0x84);
-        encoder.Byte(0x48);
-        encoder.Byte(0xF7);
-        encoder.Byte(0x85);
-        encoder.Dword(static_cast<std::uint32_t>(exponent));
-        encoder.Dword(1);
-        const std::uint32_t skipMultiply = JumpIf(0x84);
-        MultiplyWide(destination, base, product, size);
-        CopyWide(product, destination, size);
-        PatchHere(skipMultiply);
-        MultiplyWide(base, base, product, size);
-        CopyWide(product, base, size);
-        for (int word = words - 1; word >= 0; --word) {
-            encoder.Byte(0x48);
-            encoder.Byte(0xD1);
-            encoder.Byte(word == words - 1 ? 0xAD : 0x9D);
-            encoder.Dword(static_cast<std::uint32_t>(exponent + word * 8));
-        }
-        encoder.Byte(0xE9);
-        const std::uint32_t repeat = encoder.Size();
-        encoder.Dword(0);
-        encoder.Patch32(repeat, static_cast<std::int32_t>(loop) - static_cast<std::int32_t>(repeat + 4));
-        PatchHere(done);
         return true;
     }
     case LirOpcode::Neg:
@@ -639,31 +552,6 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
             if (instruction.op == LirOpcode::Mod) {
                 encoder.MovRaxRdx();
             }
-        }
-        hooks.StoreA(instruction.dst, type);
-        return true;
-    }
-    case LirOpcode::Pow: {
-        const TypeRef &type = instruction.type;
-        const bool win64Call = defaultConvention == CallingConvention::Win64;
-        const std::size_t stackArguments = instruction.srcs.size() > 4 ? instruction.srcs.size() - 4 : 0;
-        const int callFrameSize = win64Call ? AlignUp(static_cast<int>(32 + stackArguments * 8), 16) : 0;
-        if (win64Call) {
-            encoder.SubRspImm32(callFrameSize);
-        }
-        hooks.EmitCallArguments(instruction.srcs);
-        std::uint32_t relocationOffset;
-        encoder.Call(relocationOffset);
-        if (IsFloat(type)) {
-            runtimeHelpers.AddCallRelocation(relocationOffset, type.kind == TypeRef::Kind::Float32
-                                                                   ? X86_64RuntimeHelper::FloatPower32
-                                                                   : X86_64RuntimeHelper::FloatPower64);
-        }
-        else {
-            runtimeHelpers.AddCallRelocation(relocationOffset, X86_64RuntimeHelper::IntegerPower);
-        }
-        if (win64Call) {
-            encoder.AddRspImm32(callFrameSize);
         }
         hooks.StoreA(instruction.dst, type);
         return true;

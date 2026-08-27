@@ -3,7 +3,6 @@
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
 
 #include "CodeGen/FloatLiteral.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Ir/Lir/Lir.h"
 #include "Target/Platform.h"
 
@@ -115,21 +114,6 @@ std::string AssemblyModulePrinter::CreateLocalLabel(const std::string_view prefi
     return std::format("{}{}", prefix, constantIndex++);
 }
 
-void AssemblyModulePrinter::RequestHelper(const X86_64RuntimeHelper helper) {
-    switch (helper) {
-    case X86_64RuntimeHelper::IntegerPower:
-        needsIntegerPower = true;
-        break;
-    case X86_64RuntimeHelper::FloatPower64:
-        needsFloatPower64 = true;
-        break;
-    case X86_64RuntimeHelper::FloatPower32:
-        needsFloatPower64 = true;
-        needsFloatPower32 = true;
-        break;
-    }
-}
-
 void AssemblyModulePrinter::TextLine(const std::string_view line) {
     text << line << '\n';
 }
@@ -154,135 +138,7 @@ bool AssemblyModulePrinter::UsesWin64Convention() const {
     return PlatformDefaultConvention(targetOs, Target::Arch::X86_64) == CallingConvention::Win64;
 }
 
-void AssemblyModulePrinter::EmitRequestedHelpers() {
-    if (needsIntegerPower) {
-        EmitIntegerPowerHelper();
-    }
-    if (needsFloatPower64) {
-        EmitFloatPower64Helper();
-    }
-    if (needsFloatPower32) {
-        EmitFloatPower32Helper();
-    }
-}
-
-void AssemblyModulePrinter::EmitIntegerPowerHelper() {
-    TextBlank();
-    TextLabel("__rux_ipow");
-    TextInstruction("test    rdx, rdx");
-    TextInstruction("js      .negative");
-    TextInstruction("mov     eax, 1");
-    TextLabel(".loop");
-    TextInstruction("test    rdx, rdx");
-    TextInstruction("jz      .done");
-    TextInstruction("test    rdx, 1");
-    TextInstruction("jz      .square");
-    TextInstruction("imul    rax, rcx");
-    TextLabel(".square");
-    TextInstruction("imul    rcx, rcx");
-    TextInstruction("sar     rdx, 1");
-    TextInstruction("jmp     .loop");
-    TextLabel(".negative");
-    TextInstruction("xor     eax, eax");
-    TextLabel(".done");
-    TextInstruction("ret");
-}
-
-void AssemblyModulePrinter::EmitFloatPower64Helper() {
-    TextBlank();
-    TextLabel("__rux_powf64");
-    TextInstruction("sub     rsp, 16");
-    TextInstruction("movsd   [rsp], xmm0");
-    TextInstruction("movsd   [rsp + 8], xmm1");
-    TextInstruction("mov     rax, [rsp + 8]");
-    TextInstruction("add     rax, rax");
-    TextInstruction("jnz     .not_exp0");
-    TextInstruction("mov     rax, 0x3FF0000000000000");
-    TextInstruction("mov     [rsp], rax");
-    TextInstruction("movsd   xmm0, [rsp]");
-    TextInstruction("add     rsp, 16");
-    TextInstruction("ret");
-    TextLabel(".not_exp0");
-    TextInstruction("mov     rax, [rsp]");
-    TextInstruction("add     rax, rax");
-    TextInstruction("jnz     .base_nonzero");
-    TextInstruction("mov     rax, [rsp + 8]");
-    TextInstruction("test    rax, rax");
-    TextInstruction("js      .base0_neg");
-    TextInstruction("xor     eax, eax");
-    TextInstruction("mov     [rsp], rax");
-    TextInstruction("movsd   xmm0, [rsp]");
-    TextInstruction("add     rsp, 16");
-    TextInstruction("ret");
-    TextLabel(".base0_neg");
-    TextInstruction("mov     rax, 0x7FF0000000000000");
-    TextInstruction("mov     [rsp], rax");
-    TextInstruction("movsd   xmm0, [rsp]");
-    TextInstruction("add     rsp, 16");
-    TextInstruction("ret");
-    TextLabel(".base_nonzero");
-    TextInstruction("xor     edx, edx");
-    TextInstruction("mov     rax, [rsp]");
-    TextInstruction("test    rax, rax");
-    TextInstruction("jns     .magnitude");
-    TextInstruction("movsd   xmm2, [rsp + 8]");
-    TextInstruction("cvttsd2si rax, xmm2");
-    TextInstruction("cvtsi2sd xmm3, rax");
-    TextInstruction("ucomisd xmm2, xmm3");
-    TextInstruction("jne     .nonint");
-    TextInstruction("and     eax, 1");
-    TextInstruction("mov     edx, eax");
-    TextInstruction("jmp     .magnitude");
-    TextLabel(".nonint");
-    TextInstruction("mov     edx, 2");
-    TextLabel(".magnitude");
-    TextInstruction("fld     qword [rsp + 8]");
-    TextInstruction("fld     qword [rsp]");
-    TextInstruction("fabs");
-    TextInstruction("fyl2x");
-    TextInstruction("fld     st0");
-    TextInstruction("frndint");
-    TextInstruction("fsub    st1, st0");
-    TextInstruction("fxch");
-    TextInstruction("f2xm1");
-    TextInstruction("fld1");
-    TextInstruction("faddp   st1, st0");
-    TextInstruction("fscale");
-    TextInstruction("fstp    st1");
-    TextInstruction("test    edx, edx");
-    TextInstruction("jz      .store");
-    TextInstruction("cmp     edx, 2");
-    TextInstruction("jz      .nan");
-    TextInstruction("fchs");
-    TextLabel(".store");
-    TextInstruction("fstp    qword [rsp]");
-    TextInstruction("movsd   xmm0, [rsp]");
-    TextInstruction("add     rsp, 16");
-    TextInstruction("ret");
-    TextLabel(".nan");
-    TextInstruction("fstp    st0");
-    TextInstruction("mov     rax, 0x7FF8000000000000");
-    TextInstruction("mov     [rsp], rax");
-    TextInstruction("movsd   xmm0, [rsp]");
-    TextInstruction("add     rsp, 16");
-    TextInstruction("ret");
-}
-
-void AssemblyModulePrinter::EmitFloatPower32Helper() {
-    TextBlank();
-    TextLabel("__rux_powf32");
-    TextInstruction("cvtss2sd xmm0, xmm0");
-    TextInstruction("cvtss2sd xmm1, xmm1");
-    TextInstruction("sub     rsp, 8");
-    TextInstruction("call    __rux_powf64");
-    TextInstruction("add     rsp, 8");
-    TextInstruction("cvtsd2ss xmm0, xmm0");
-    TextInstruction("ret");
-}
-
 std::string AssemblyModulePrinter::Finalize() {
-    EmitRequestedHelpers();
-
     std::ostringstream output;
     output << "; Generated by Rux Compiler\n";
     if (UsesWin64Convention()) {

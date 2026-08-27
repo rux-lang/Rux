@@ -95,14 +95,14 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
     const auto package = CompileToLir(R"(
         func Sink(text: Slice<char8>, value: float32) {}
 
-        func Power(base: int, exponent: int) -> int {
+        func Product(left: int, right: int) -> int {
             Sink("shared", 1.25f32);
             Sink("shared", 1.25f32);
-            return base ** exponent;
+            return left * right;
         }
 
         func Main() -> int {
-            return Power(2, 3);
+            return Product(2, 3);
         }
     )");
     RcuEmitter emitter(package, "test", Target::OS::Linux);
@@ -121,10 +121,6 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
     };
     CHECK(countSymbols("__str") == 1);
     CHECK(countSymbols("__f32_") == 1);
-    const auto helper = std::ranges::find(object.symbols, "__rux_ipow", &RcuSymbol::name);
-    REQUIRE(helper != object.symbols.end());
-    CHECK(helper->sectionIdx == RCU_TEXT_IDX);
-    CHECK(helper->size > 0);
     const auto sink = std::ranges::find(object.symbols, "Sink", &RcuSymbol::name);
     REQUIRE(sink != object.symbols.end());
     CHECK(sink->sectionIdx == RCU_TEXT_IDX);
@@ -139,14 +135,14 @@ TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
     const auto package = CompileToLir(R"(
         func Sink(text: Slice<char8>, value: float32) {}
 
-        func Power(base: int, exponent: int) -> int {
+        func Product(left: int, right: int) -> int {
             Sink("shared", 1.3f32);
             Sink("shared", 1.3f32);
-            return base ** exponent;
+            return left * right;
         }
 
         func Main() -> int {
-            return Power(2, 3);
+            return Product(2, 3);
         }
     )");
     RcuEmitter x86Emitter(package, "test", Target::OS::Linux);
@@ -176,11 +172,6 @@ TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
     };
     CHECK(countSymbols("__str") == 1);
     CHECK(countSymbols("__f32_") == 1);
-    const auto helper = std::ranges::find(aarch64.symbols, "__rux_ipow", &RcuSymbol::name);
-    REQUIRE(helper != aarch64.symbols.end());
-    CHECK(helper->sectionIdx == RCU_TEXT_IDX);
-    CHECK(helper->size > 0);
-
     std::unordered_set<std::string> names;
     for (const auto &symbol : aarch64.symbols) {
         CHECK(names.insert(symbol.name).second);

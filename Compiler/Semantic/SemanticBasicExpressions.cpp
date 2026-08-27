@@ -40,8 +40,6 @@ std::string_view OperatorName(const TokenKind op) noexcept {
         return "/";
     case TK::Percent:
         return "%";
-    case TK::StarStar:
-        return "**";
     case TK::Amp:
         return "&";
     case TK::At:
@@ -613,8 +611,7 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     }
     case TK::Star:
     case TK::Slash:
-    case TK::Percent:
-    case TK::StarStar: {
+    case TK::Percent: {
         if (isNumericOrChar(left) && isNumericOrChar(right)) {
             if (const auto result = compatibleType(leftExpression, left, rightExpression, right)) {
                 return *result;

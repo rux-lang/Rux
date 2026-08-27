@@ -74,8 +74,6 @@ std::optional<TokenKind> BinaryToken(const LirOpcode opcode) {
         return TokenKind::Slash;
     case LirOpcode::Mod:
         return TokenKind::Percent;
-    case LirOpcode::Pow:
-        return TokenKind::StarStar;
     case LirOpcode::And:
         return TokenKind::Amp;
     case LirOpcode::Or:

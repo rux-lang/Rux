@@ -14,7 +14,6 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/FunctionEmitter.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Object/Rcu/RcuMetadata.h"
 
 #include <array>
@@ -47,8 +46,7 @@ public:
                          .packageName = pkgName,
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
-        , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
-        , runtimeHelpers(moduleBuilder, PlatformDefaultConvention(inputTargetOs, Target::Arch::X86_64)) {
+        , enc(moduleBuilder.SectionData(RcuModuleSection::Text)) {
     }
 
     RcuFile Generate();
@@ -75,8 +73,6 @@ private:
     RcuModuleBuilder moduleBuilder;
 
     X64Enc enc;
-
-    X86_64RuntimeHelperEmitter runtimeHelpers;
 
     int constIdx = 0;
 
@@ -852,8 +848,7 @@ private:
         X86_64CallEmitter callEmitter(enc, framePlan, targetOs, *this);
         X86_64TerminatorEmitter terminatorEmitter(enc, framePlan, *this);
         activeCallEmitter = &callEmitter;
-        X86_64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, EffectiveConv(CallingConvention::Default),
-                                              layouts, interfaceNames, *this);
+        X86_64FunctionEmitter functionEmitter(enc, framePlan, layouts, interfaceNames, *this);
         const auto &usedPhysicalRegisters = framePlan.UsedPhysicalRegisters();
         const auto &physicalRegisters = framePlan.PhysicalRegisters();
         const uint32_t symIdx = funcSyms.contains(func.name)
@@ -1168,7 +1163,6 @@ private:
         for (const auto &func : mod.funcs) {
             GenFunc(func);
         }
-        runtimeHelpers.EmitRequested();
     }
 };
 

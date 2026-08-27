@@ -134,9 +134,6 @@ private:
     program.Expect(program.Binary(LirOpcode::Shl, one, shift65, uint128), "36893488147419103232");
     program.Expect(program.Binary(LirOpcode::Lshr, topBit, shift127, uint128), "1");
 
-    const LirReg three = program.Constant(uint128, "3");
-    const LirReg twenty = program.Constant(uint128, "20");
-    program.Expect(program.Binary(LirOpcode::Pow, three, twenty, uint128), "3486784401");
     program.ExpectTrue(program.Binary(LirOpcode::CmpGt, maximum, one, TypeRef::MakeBool()));
 
     const TypeRef int128 = TypeRef::MakePrimitive(TypeRef::Kind::Int128);

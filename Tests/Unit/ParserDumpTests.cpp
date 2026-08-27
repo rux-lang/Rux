@@ -168,6 +168,38 @@ func Transfer(source: Cell) -> Cell {
     CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
 }
 
+TEST_CASE("AST dumps adjacent stars as multiplication followed by dereference") {
+    constexpr std::string_view source = R"(
+func Main(value: int, pointer: *int) -> int {
+    let tight = value**pointer;
+    let spaced = value * *pointer;
+    return tight + spaced;
+}
+)";
+
+    Lexer lexer(std::string(source), "adjacent-stars.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "adjacent-stars.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-adjacent-stars.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    constexpr std::string_view multiplicationAndDereference = R"(BinaryExpr *
+          IdentExpr 'value'
+          UnaryExpr *
+            IdentExpr 'pointer')";
+    const std::size_t tight = output.find(multiplicationAndDereference);
+    REQUIRE_NE(tight, std::string::npos);
+    CHECK_NE(output.find(multiplicationAndDereference, tight + 1), std::string::npos);
+}
+
 TEST_CASE("AST dumps render generic interface bounds in declaration order") {
     constexpr std::string_view source = R"(
 func Convert<T: Display + Core::Debug, U>(value: T) -> U;

@@ -21,7 +21,6 @@ set(RUX_TEST_SOURCES
     AArch64RcuIntegerTests.cpp
     AArch64RcuRuntimeTests.cpp
     AArch64RcuVariadicAbiTests.cpp
-    AArch64RuntimeHelperTests.cpp
     AArch64SoftwareFloatTests.cpp
     AArch64WideIntegerTests.cpp
     AllocationMathTests.cpp
@@ -117,7 +116,6 @@ set(RUX_TEST_SOURCES
     X86_64AssemblyModulePrinterTests.cpp
     X86_64FramePlanTests.cpp
     X86_64WideIntegerTests.cpp
-    X86_64RuntimeHelperTests.cpp
     X86_64SoftwareFloatTests.cpp
 )
 

@@ -86,8 +86,6 @@ TEST_CASE("integer arithmetic wraps to every declared unsigned width") {
         CHECK(Binary(TokenKind::Plus, max, one).ToLiteral() == "0");
         CHECK(Binary(TokenKind::Minus, zero, one).ToLiteral() == maximum);
     }
-    CHECK(Binary(TokenKind::StarStar, Constant("3", TypeRef::MakeUInt8()), Constant("5", TypeRef::MakeUInt8()))
-              .ToLiteral() == "243");
 }
 
 TEST_CASE("constant evaluation uses the same arithmetic through 512 bits") {
@@ -113,8 +111,6 @@ TEST_CASE("constant evaluation uses the same arithmetic through 512 bits") {
     CHECK(Binary(TokenKind::Slash, Constant(uint128Maximum, uint128), Constant("10", uint128)).ToLiteral() ==
           "34028236692093846346337460743176821145");
     CHECK(Binary(TokenKind::Percent, Constant(uint128Maximum, uint128), Constant("10", uint128)).ToLiteral() == "5");
-    CHECK(Binary(TokenKind::StarStar, Constant("2", uint128), Constant("127", uint128)).ToLiteral() ==
-          "170141183460469231731687303715884105728");
     CHECK(Binary(TokenKind::Greater, Constant(uint512Maximum, uint512), Constant(uint128Maximum, uint512))
               .BooleanValue() == true);
 }
