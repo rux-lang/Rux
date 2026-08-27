@@ -18,7 +18,7 @@
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/target-is-little-endian
-func TargetIsLittleEndian() -> bool {
+pub func TargetIsLittleEndian() -> bool {
     var probe = 1u16;
     let raw = @probe as *byte;
     return raw[0] == 1;
@@ -33,7 +33,7 @@ func TargetIsLittleEndian() -> bool {
 /// linear in the type's width at worst and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/to-little-endian
-func ToLittleEndian<T>(value: T) -> T {
+pub func ToLittleEndian<T>(value: T) -> T {
     return TargetIsLittleEndian() ? value : ReverseBytes<T>(value);
 }
 
@@ -45,7 +45,7 @@ func ToLittleEndian<T>(value: T) -> T {
 /// Cannot fail. Costs exactly what `ToLittleEndian` costs and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/from-little-endian
-func FromLittleEndian<T>(value: T) -> T {
+pub func FromLittleEndian<T>(value: T) -> T {
     return ToLittleEndian<T>(value);
 }
 
@@ -58,7 +58,7 @@ func FromLittleEndian<T>(value: T) -> T {
 /// linear in the type's width at worst and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/to-big-endian
-func ToBigEndian<T>(value: T) -> T {
+pub func ToBigEndian<T>(value: T) -> T {
     return TargetIsLittleEndian() ? ReverseBytes<T>(value) : value;
 }
 
@@ -70,7 +70,7 @@ func ToBigEndian<T>(value: T) -> T {
 /// Cannot fail. Costs exactly what `ToBigEndian` costs and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/from-big-endian
-func FromBigEndian<T>(value: T) -> T {
+pub func FromBigEndian<T>(value: T) -> T {
     return ToBigEndian<T>(value);
 }
 
@@ -86,7 +86,7 @@ func FromBigEndian<T>(value: T) -> T {
 /// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
 ///
 /// https://rux-lang.dev/docs/api/core/store-little-endian
-func StoreLittleEndian<T>(value: T, destination: *var byte) {
+pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
     var ordered = ToLittleEndian<T>(value);
     // Reading the ordered value back as bytes is what makes this work at any width without knowing the type: the
     // reversal above has already put them in the order they are to be written.
@@ -110,7 +110,7 @@ func StoreLittleEndian<T>(value: T, destination: *var byte) {
 /// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
 ///
 /// https://rux-lang.dev/docs/api/core/store-big-endian
-func StoreBigEndian<T>(value: T, destination: *var byte) {
+pub func StoreBigEndian<T>(value: T, destination: *var byte) {
     var ordered = ToBigEndian<T>(value);
     let source = @ordered as *byte;
     var index = 0u64;
@@ -134,7 +134,7 @@ func StoreBigEndian<T>(value: T, destination: *var byte) {
 /// checked.
 ///
 /// https://rux-lang.dev/docs/api/core/load-little-endian
-func LoadLittleEndian<T>(source: *byte, destination: *var T) {
+pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
     var index = 0u64;
     while index < sizeof(T) {
@@ -157,7 +157,7 @@ func LoadLittleEndian<T>(source: *byte, destination: *var T) {
 /// checked.
 ///
 /// https://rux-lang.dev/docs/api/core/load-big-endian
-func LoadBigEndian<T>(source: *byte, destination: *var T) {
+pub func LoadBigEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
     var index = 0u64;
     while index < sizeof(T) {

@@ -24,11 +24,17 @@ when #target.arch {
         const SysRead: uint64 = 0;
         const SysWrite: uint64 = 1;
         const SysClose: uint64 = 3;
-        const SysMmap: uint64 = 9;
+        /// `mmap(2)`'s system-call number.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/sys-mmap
+        pub const SysMmap: uint64 = 9;
         const SysMunmap: uint64 = 11;
         const SysBrk: uint64 = 12;
         const SysNanosleep: uint64 = 35;
-        const SysGetPid: uint64 = 39;
+        /// `getpid(2)`'s system-call number.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/sys-get-pid
+        pub const SysGetPid: uint64 = 39;
         const SysExit: uint64 = 60;
         const SysClockGetTime: uint64 = 228;
         const SysOpenAt: uint64 = 257;
@@ -60,11 +66,17 @@ when #target.arch {
         const SysRead: uint64 = 63;
         const SysWrite: uint64 = 64;
         const SysClose: uint64 = 57;
-        const SysMmap: uint64 = 222;
+        /// `mmap(2)`'s system-call number.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/sys-mmap
+        pub const SysMmap: uint64 = 222;
         const SysMunmap: uint64 = 215;
         const SysBrk: uint64 = 214;
         const SysNanosleep: uint64 = 101;
-        const SysGetPid: uint64 = 172;
+        /// `getpid(2)`'s system-call number.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/sys-get-pid
+        pub const SysGetPid: uint64 = 172;
         const SysExit: uint64 = 93;
         const SysClockGetTime: uint64 = 113;
         const SysOpenAt: uint64 = 56;
@@ -111,7 +123,10 @@ when #target.arch {
 when #target.arch {
     .X86_64 => {
         // Executes a raw Linux system call without arguments.
-        asm func Syscall0(number: uint64) -> int64 {
+        /// Executes a raw Linux system call without arguments.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/syscall-0
+        pub asm func Syscall0(number: uint64) -> int64 {
             mov rax, rdi
             syscall
             ret
@@ -168,7 +183,10 @@ when #target.arch {
         }
 
         // Executes a raw Linux system call with six arguments.
-        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+        /// Executes a raw Linux system call with six arguments.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/syscall-6
+        pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov rax, rdi
             mov rdi, rsi
             mov rsi, rdx
@@ -182,7 +200,10 @@ when #target.arch {
     },
     .AArch64 => {
         // Executes a raw Linux system call without arguments.
-        asm func Syscall0(number: uint64) -> int64 {
+        /// Executes a raw Linux system call without arguments.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/syscall-0
+        pub asm func Syscall0(number: uint64) -> int64 {
             mov x8, x0
             svc #0
             ret
@@ -239,7 +260,10 @@ when #target.arch {
         }
 
         // Executes a raw Linux system call with six arguments.
-        asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
+        /// Executes a raw Linux system call with six arguments.
+        ///
+        /// https://rux-lang.dev/docs/api/linux/syscall-6
+        pub asm func Syscall6(number: uint64, arg0: uint64, arg1: uint64, arg2: uint64, arg3: uint64, arg4: uint64, arg5: uint64) -> int64 {
             mov x8, x0
             mov x0, x1
             mov x1, x2
@@ -262,6 +286,6 @@ when #target.arch {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/linux/sign-extend-fd
-func SignExtendFd(fd: int32) -> uint64 {
+pub func SignExtendFd(fd: int32) -> uint64 {
     return (fd as int64) as uint64;
 }

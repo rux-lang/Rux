@@ -7,7 +7,7 @@
 /// `Ordering` is a `Copy` value, so reading one never consumes it.
 ///
 /// https://rux-lang.dev/docs/api/core/ordering
-enum Ordering: int8 {
+pub enum Ordering: int8 {
     Less = -1,
     Equal = 0,
     Greater = 1
@@ -21,7 +21,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-less
-    func IsLess(self: &Ordering) -> bool {
+    pub func IsLess(self: &Ordering) -> bool {
         return match self {
             .Less => true,
             else => false
@@ -35,7 +35,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-equal
-    func IsEqual(self: &Ordering) -> bool {
+    pub func IsEqual(self: &Ordering) -> bool {
         return match self {
             .Equal => true,
             else => false
@@ -49,7 +49,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-greater
-    func IsGreater(self: &Ordering) -> bool {
+    pub func IsGreater(self: &Ordering) -> bool {
         return match self {
             .Greater => true,
             else => false
@@ -64,7 +64,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
-    func IsLessOrEqual(self: &Ordering) -> bool {
+    pub func IsLessOrEqual(self: &Ordering) -> bool {
         return match self {
             .Greater => false,
             else => true
@@ -78,7 +78,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
-    func IsGreaterOrEqual(self: &Ordering) -> bool {
+    pub func IsGreaterOrEqual(self: &Ordering) -> bool {
         return match self {
             .Less => false,
             else => true
@@ -93,7 +93,7 @@ extend Ordering {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/ordering/reverse
-    func Reverse(self: Ordering) -> Ordering {
+    pub func Reverse(self: Ordering) -> Ordering {
         return match self {
             .Less => Ordering::Greater,
             .Equal => Ordering::Equal,

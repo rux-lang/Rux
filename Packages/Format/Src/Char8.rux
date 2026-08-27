@@ -12,13 +12,13 @@ import Text::TextError;
 /// The character written in place of anything that is not one.
 ///
 /// https://rux-lang.dev/docs/api/format/replacement-character
-const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
+pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
 extend char8 : Display {
     /// Writes this byte, or the replacement character when it is not a whole one.
     ///
     /// https://rux-lang.dev/docs/api/format/char8/format
-    func Format(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         if (*self as uint32) > 0x7F {
             return FormatScalar(writer, spec, ReplacementCharacter);
         }
@@ -32,7 +32,7 @@ extend char8 : Debug {
     /// The same byte, quoted, as a character literal is written.
     ///
     /// https://rux-lang.dev/docs/api/format/char8/format-debug
-    func FormatDebug(self: *char8, writer: &var TextWriter) -> TextError {
+    pub func FormatDebug(self: *char8, writer: &var TextWriter) -> TextError {
         let opening = WriteAscii(writer, c8'\'');
         if opening.IsError() {
             return opening;
@@ -53,7 +53,7 @@ extend Slice<char8> : Display {
     /// The bytes must be well-formed UTF-8; a slice is not checked, which is what `StringView` is for.
     ///
     /// https://rux-lang.dev/docs/api/format/slice-char8/format
-    func Format(self: Slice<char8>, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: Slice<char8>, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteAligned(writer, spec, self, false);
     }
 }

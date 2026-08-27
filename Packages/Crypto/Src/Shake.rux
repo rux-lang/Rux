@@ -20,7 +20,7 @@ import Core::{ MutableSlice, Slice };
 /// Structural `Copy`; copying takes an independent snapshot of the sponge and read position.
 ///
 /// https://rux-lang.dev/docs/api/crypto/shake
-struct Shake {
+pub struct Shake {
     /// The sponge state, as twenty-five lanes.
     lanes: uint64[25];
     /// How many bytes of the state the message reaches.
@@ -49,14 +49,14 @@ extend Shake {
     /// A SHAKE128 state: 128 bits of security, absorbing 168 bytes at a time.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/new-128
-    func New128() -> Shake {
+    pub func New128() -> Shake {
         return Shake::Start(168u);
     }
 
     /// A SHAKE256 state: 256 bits of security, absorbing 136 bytes at a time.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/new-256
-    func New256() -> Shake {
+    pub func New256() -> Shake {
         return Shake::Start(136u);
     }
 
@@ -67,7 +67,7 @@ extend Shake {
     /// ignores such a call rather than corrupting the stream.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/update
-    func Update(self: &var Shake, bytes: Slice<char8>) {
+    pub func Update(self: &var Shake, bytes: Slice<char8>) {
         if self.reading {
             return;
         }
@@ -106,7 +106,7 @@ extend Shake {
     /// The first read applies the padding, after which `Update` does nothing.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/read
-    func Read(self: &var Shake, into: MutableSlice<char8>) {
+    pub func Read(self: &var Shake, into: MutableSlice<char8>) {
         if !self.reading {
             self.BeginReading();
         }
@@ -128,7 +128,7 @@ extend Shake {
     /// How many bytes the state absorbs or squeezes before permuting.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/rate
-    func Rate(self: &Shake) -> uint {
+    pub func Rate(self: &Shake) -> uint {
         return self.rate;
     }
 }
@@ -136,7 +136,7 @@ extend Shake {
 /// `into.length` bytes of SHAKE128 over `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/shake128-of
-func Shake128Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Shake128Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var state = Shake::New128();
     state.Update(bytes);
     state.Read(into);
@@ -145,7 +145,7 @@ func Shake128Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// `into.length` bytes of SHAKE256 over `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/shake256-of
-func Shake256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Shake256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var state = Shake::New256();
     state.Update(bytes);
     state.Read(into);

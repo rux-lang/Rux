@@ -13,7 +13,7 @@ import Windows::{ Dword, Handle };
 ///
 /// https://rux-lang.dev/docs/api/windows/mem-commit
 #Allow("naming.const")
-const MEM_COMMIT: uint32 = 0x00001000;
+pub const MEM_COMMIT: uint32 = 0x00001000;
 
 /// `MEM_RESERVE`: take the address space without backing it.
 ///
@@ -22,55 +22,55 @@ const MEM_COMMIT: uint32 = 0x00001000;
 ///
 /// https://rux-lang.dev/docs/api/windows/mem-reserve
 #Allow("naming.const")
-const MEM_RESERVE: uint32 = 0x00002000;
+pub const MEM_RESERVE: uint32 = 0x00002000;
 
 /// `MEM_RESET`: the contents are no longer of interest and need not be written to the page file.
 ///
 /// https://rux-lang.dev/docs/api/windows/mem-reset
 #Allow("naming.const")
-const MEM_RESET: uint32 = 0x00080000;
+pub const MEM_RESET: uint32 = 0x00080000;
 
 /// `MEM_RELEASE`: give back the whole reservation, which `VirtualFree` requires a size of zero for.
 ///
 /// https://rux-lang.dev/docs/api/windows/mem-release
 #Allow("naming.const")
-const MEM_RELEASE: uint32 = 0x00008000;
+pub const MEM_RELEASE: uint32 = 0x00008000;
 
 /// `MEM_DECOMMIT`: take back the storage but keep the reservation.
 ///
 /// https://rux-lang.dev/docs/api/windows/mem-decommit
 #Allow("naming.const")
-const MEM_DECOMMIT: uint32 = 0x00004000;
+pub const MEM_DECOMMIT: uint32 = 0x00004000;
 
 /// `PAGE_NOACCESS`: the pages may not be touched at all.
 ///
 /// https://rux-lang.dev/docs/api/windows/page-no-access
 #Allow("naming.const")
-const PAGE_NOACCESS: uint32 = 0x01;
+pub const PAGE_NOACCESS: uint32 = 0x01;
 
 /// `PAGE_READONLY`: the pages may be read.
 ///
 /// https://rux-lang.dev/docs/api/windows/page-read-only
 #Allow("naming.const")
-const PAGE_READONLY: uint32 = 0x02;
+pub const PAGE_READONLY: uint32 = 0x02;
 
 /// `PAGE_READWRITE`: the pages may be read and written.
 ///
 /// https://rux-lang.dev/docs/api/windows/page-read-write
 #Allow("naming.const")
-const PAGE_READWRITE: uint32 = 0x04;
+pub const PAGE_READWRITE: uint32 = 0x04;
 
 /// `PAGE_EXECUTE`: the pages may be executed.
 ///
 /// https://rux-lang.dev/docs/api/windows/page-execute
 #Allow("naming.const")
-const PAGE_EXECUTE: uint32 = 0x10;
+pub const PAGE_EXECUTE: uint32 = 0x10;
 
 /// `PAGE_EXECUTE_READ`: the pages may be executed and read.
 ///
 /// https://rux-lang.dev/docs/api/windows/page-execute-read
 #Allow("naming.const")
-const PAGE_EXECUTE_READ: uint32 = 0x20;
+pub const PAGE_EXECUTE_READ: uint32 = 0x20;
 
 /// `PAGE_EXECUTE_READWRITE`: the pages may be executed, read and written.
 ///
@@ -79,7 +79,7 @@ const PAGE_EXECUTE_READ: uint32 = 0x20;
 ///
 /// https://rux-lang.dev/docs/api/windows/page-execute-read-write
 #Allow("naming.const")
-const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
+pub const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
 
 /// `PAGE_GUARD`: the next touch raises a one-shot guard exception and then clears the flag.
 ///
@@ -87,29 +87,29 @@ const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
 ///
 /// https://rux-lang.dev/docs/api/windows/page-guard
 #Allow("naming.const")
-const PAGE_GUARD: uint32 = 0x100;
+pub const PAGE_GUARD: uint32 = 0x100;
 
 #Link("Kernel32.dll")
-extern {
+pub extern {
     // Reserves, commits, or changes the state of a region of pages
     //
     // Returns the base address of the region, or null on failure. A null address argument lets the system choose,
     // which it does at 64 KiB granularity rather than page granularity.
     // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
-    func VirtualAlloc(address: *var opaque, size: uint, allocationType: uint32, protect: uint32) -> *var opaque;
+    pub func VirtualAlloc(address: *var opaque, size: uint, allocationType: uint32, protect: uint32) -> *var opaque;
 
     // Releases, decommits, or both, a region of pages
     //
     // Returns zero on failure. MEM_RELEASE requires a size of zero and the exact base address VirtualAlloc returned;
     // giving it anything else fails rather than releasing part of the region.
     // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree
-    func VirtualFree(address: *var opaque, size: uint, freeType: uint32) -> int32;
+    pub func VirtualFree(address: *var opaque, size: uint, freeType: uint32) -> int32;
 
     // Changes the protection on a region of committed pages
     //
     // Writes the previous protection through oldProtect, which must not be null. Returns zero on failure.
     // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
-    func VirtualProtect(address: *var opaque, size: uint, newProtect: uint32,
+    pub func VirtualProtect(address: *var opaque, size: uint, newProtect: uint32,
                         oldProtect: *var uint32) -> int32;
 
     // Locks a region into physical memory so it is never written to the page file

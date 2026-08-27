@@ -25,7 +25,7 @@ import Core::{ MutableSlice, Option };
 /// Move-only: it owns its elements and storage, prohibits copying, and destroys both with `~Array`.
 ///
 /// https://rux-lang.dev/docs/api/collections/array
-struct Array<T> {
+pub struct Array<T> {
     /// The storage. Null only for an array that owns nothing.
     data: *var T;
     /// How many elements it holds. Fixed for the array's whole life.
@@ -53,7 +53,7 @@ extend Array<T> {
     /// Runs in time proportional to `length`.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/filled
-    func Filled(allocator: Allocator, length: uint, value: T, error: *var CollectionError) -> Array<T> {
+    pub func Filled(allocator: Allocator, length: uint, value: T, error: *var CollectionError) -> Array<T> {
         var data: *var T = null;
         let failure = AllocateBlock<T>(allocator, length, @data);
         if failure.IsError() {
@@ -80,7 +80,7 @@ extend Array<T> {
     /// Runs in time proportional to the slice's length.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/from-slice
-    func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Array<T> {
+    pub func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Array<T> {
         var data: *var T = null;
         let failure = AllocateBlock<T>(allocator, items.length, @data);
         if failure.IsError() {
@@ -110,7 +110,7 @@ extend Array<T> {
     /// Runs in time proportional to the length.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/clone
-    func Clone(self: &Array<T>, error: *var CollectionError) -> Array<T> {
+    pub func Clone(self: &Array<T>, error: *var CollectionError) -> Array<T> {
         return Array::FromSlice<T>(self.allocator, self.AsSlice(), error);
     }
 
@@ -119,7 +119,7 @@ extend Array<T> {
     /// `self` is borrowed. Fixed for the array's whole life.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/length
-    func Length(self: &Array<T>) -> uint {
+    pub func Length(self: &Array<T>) -> uint {
         return self.length;
     }
 
@@ -128,7 +128,7 @@ extend Array<T> {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/is-empty
-    func IsEmpty(self: &Array<T>) -> bool {
+    pub func IsEmpty(self: &Array<T>) -> bool {
         return self.length == 0;
     }
 
@@ -138,7 +138,7 @@ extend Array<T> {
     /// indexing the slice directly.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/get
-    func Get(self: &Array<T>, index: uint) -> Option<T> {
+    pub func Get(self: &Array<T>, index: uint) -> Option<T> {
         if index >= self.length {
             return Option::None<T>();
         }
@@ -155,7 +155,7 @@ extend Array<T> {
     /// The pointer is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/reference
-    func Reference(self: &Array<T>, index: uint) -> Option<*T> {
+    pub func Reference(self: &Array<T>, index: uint) -> Option<*T> {
         if index >= self.length {
             return Option::None<*T>();
         }
@@ -172,7 +172,7 @@ extend Array<T> {
     /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/set
-    func Set(self: &var Array<T>, index: uint, value: T) -> CollectionError {
+    pub func Set(self: &var Array<T>, index: uint, value: T) -> CollectionError {
         if index >= self.length {
             return CollectionError::IndexOutOfRange;
         }
@@ -189,7 +189,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-slice
-    func AsSlice(self: &Array<T>) -> Slice<T> {
+    pub func AsSlice(self: &Array<T>) -> Slice<T> {
         return Slice<T> { data: self.data, length: self.length };
     }
 
@@ -203,7 +203,7 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-mutable-slice
-    func AsMutableSlice(self: &var Array<T>) -> MutableSlice<T> {
+    pub func AsMutableSlice(self: &var Array<T>) -> MutableSlice<T> {
         return MutableSlice<T> { data: self.data, length: self.length };
     }
 
@@ -212,7 +212,7 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/iterate
-    func Iterate(self: &Array<T>) -> ValueIterator<T> {
+    pub func Iterate(self: &Array<T>) -> ValueIterator<T> {
         return ValueIterator<T>(self.AsSlice());
     }
 
@@ -221,7 +221,7 @@ extend Array<T> {
     /// `self` is borrowed and must outlive the iterator. This is how elements that own something are walked.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/references
-    func References(self: &Array<T>) -> ReferenceIterator<T> {
+    pub func References(self: &Array<T>) -> ReferenceIterator<T> {
         return ReferenceIterator<T>(self.AsSlice());
     }
 }

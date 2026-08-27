@@ -24,14 +24,14 @@ import Memory::Copy;
 /// part of the block and not part of the text, so `Length` answers without it.
 ///
 /// https://rux-lang.dev/docs/api/text/c-string
-struct CString {
+pub struct CString {
     /// The bytes, ending with the one zero byte the text does not contain. Null only for a `CString` that was
     /// consumed by a move; every constructor allocates, since even empty C text is one byte long.
-    data: *var char8;
+    pub data: *var char8;
     /// How many bytes of text come before the terminator.
-    length: uint;
+    pub length: uint;
     /// Where the block came from, and where it goes back to.
-    allocator: Allocator;
+    pub allocator: Allocator;
 }
 
 extend CString {
@@ -47,7 +47,7 @@ extend CString {
     /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/from-view
-    func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> Option<CString> {
+    pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> Option<CString> {
         let bytes = view.Bytes();
         var index: uint = 0;
         while index < bytes.length {
@@ -92,7 +92,7 @@ extend CString {
     /// not UTF-8 are refused the same way, since nothing about C promises text.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/from-raw
-    func FromRaw(allocator: Allocator, raw: *char8, limit: uint, error: *var TextError) -> Option<CString> {
+    pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint, error: *var TextError) -> Option<CString> {
         if raw == null {
             *error = TextError::InvalidUtf8;
             return Option::None<CString>();
@@ -131,7 +131,7 @@ extend CString {
     /// How many bytes of text come before the terminator.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/length
-    func Length(self: &CString) -> uint {
+    pub func Length(self: &CString) -> uint {
         return self.length;
     }
 
@@ -141,7 +141,7 @@ extend CString {
     /// keeping a pointer into a freed block.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/raw
-    func Raw(self: &CString) -> *char8 {
+    pub func Raw(self: &CString) -> *char8 {
         return self.data;
     }
 
@@ -150,7 +150,7 @@ extend CString {
     /// The view borrows this `CString` and must not outlive it.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/view
-    func View(self: &CString) -> StringView {
+    pub func View(self: &CString) -> StringView {
         return StringView::FromValidated(Slice<char8> { data: self.data, length: self.length });
     }
 
@@ -159,7 +159,7 @@ extend CString {
     /// Safe to call twice, since what it leaves behind owns nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/clear
-    func Clear(self: &var CString) {
+    pub func Clear(self: &var CString) {
         if self.data != null {
             let layout = Layout::New(self.length + 1, 1);
             var borrowed = self.allocator;

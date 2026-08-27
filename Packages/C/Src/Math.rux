@@ -86,7 +86,7 @@ extern {
 
     // Computes cube root
     // https://en.cppreference.com/c/numeric/math/cbrt
-    func cbrt(x: float64) -> float64;
+    pub func cbrt(x: float64) -> float64;
 
     // Computes smallest integer not less than the given value
     // https://en.cppreference.com/c/numeric/math/ceil
@@ -94,7 +94,7 @@ extern {
 
     // Computes smallest integer not less than the given value
     // https://en.cppreference.com/c/numeric/math/ceil
-    func ceil(x: float64) -> float64;
+    pub func ceil(x: float64) -> float64;
 
     // Copies the sign of a floating-point value
     // https://en.cppreference.com/c/numeric/math/copysign
@@ -102,7 +102,7 @@ extern {
 
     // Copies the sign of a floating-point value
     // https://en.cppreference.com/c/numeric/math/copysign
-    func copysign(x: float64, y: float64) -> float64;
+    pub func copysign(x: float64, y: float64) -> float64;
 
     // Computes cosine
     // https://en.cppreference.com/c/numeric/math/cos
@@ -110,7 +110,7 @@ extern {
 
     // Computes cosine
     // https://en.cppreference.com/c/numeric/math/cos
-    func cos(x: float64) -> float64;
+    pub func cos(x: float64) -> float64;
 
     // Computes hyperbolic cosine
     // https://en.cppreference.com/c/numeric/math/cosh
@@ -142,7 +142,7 @@ extern {
 
     // Computes e raised to the given power
     // https://en.cppreference.com/c/numeric/math/exp
-    func exp(x: float64) -> float64;
+    pub func exp(x: float64) -> float64;
 
     // Computes 2 raised to the given power
     // https://en.cppreference.com/c/numeric/math/exp2
@@ -162,7 +162,7 @@ extern {
 
     // Computes the absolute value of a floating-point value
     // https://en.cppreference.com/c/numeric/math/fabs
-    func fabs(x: float64) -> float64;
+    pub func fabs(x: float64) -> float64;
 
     // Computes positive difference of two floating-point values
     // https://en.cppreference.com/c/numeric/math/fdim
@@ -170,7 +170,7 @@ extern {
 
     // Computes positive difference of two floating-point values
     // https://en.cppreference.com/c/numeric/math/fdim
-    func fdim(x: float64, y: float64) -> float64;
+    pub func fdim(x: float64, y: float64) -> float64;
 
     // Computes largest integer not greater than the given value
     // https://en.cppreference.com/c/numeric/math/floor
@@ -178,7 +178,7 @@ extern {
 
     // Computes largest integer not greater than the given value
     // https://en.cppreference.com/c/numeric/math/floor
-    func floor(x: float64) -> float64;
+    pub func floor(x: float64) -> float64;
 
     // Computes fused multiply-add
     // https://en.cppreference.com/c/numeric/math/fma
@@ -194,7 +194,7 @@ extern {
 
     // Computes larger of two floating-point values
     // https://en.cppreference.com/c/numeric/math/fmax
-    func fmax(x: float64, y: float64) -> float64;
+    pub func fmax(x: float64, y: float64) -> float64;
 
     // Computes smaller of two floating-point values
     // https://en.cppreference.com/c/numeric/math/fmin
@@ -202,7 +202,7 @@ extern {
 
     // Computes smaller of two floating-point values
     // https://en.cppreference.com/c/numeric/math/fmin
-    func fmin(x: float64, y: float64) -> float64;
+    pub func fmin(x: float64, y: float64) -> float64;
 
     // Computes remainder of the floating-point division operation
     // https://en.cppreference.com/c/numeric/math/fmod
@@ -210,7 +210,7 @@ extern {
 
     // Computes remainder of the floating-point division operation
     // https://en.cppreference.com/c/numeric/math/fmod
-    func fmod(x: float64, y: float64) -> float64;
+    pub func fmod(x: float64, y: float64) -> float64;
 
     // Decomposes a number into significand and a power of two
     // https://en.cppreference.com/c/numeric/math/frexp
@@ -218,7 +218,7 @@ extern {
 
     // Computes square root of the sum of the squares of two given numbers
     // https://en.cppreference.com/c/numeric/math/hypot
-    func hypot(x: float64, y: float64) -> float64;
+    pub func hypot(x: float64, y: float64) -> float64;
 
     // Extracts exponent of the number
     // https://en.cppreference.com/c/numeric/math/ilogb
@@ -230,7 +230,7 @@ extern {
 
     // Multiplies a number by 2 raised to an integer power
     // https://en.cppreference.com/c/numeric/math/ldexp
-    func ldexp(x: float64, exp: int32) -> float64;
+    pub func ldexp(x: float64, exp: int32) -> float64;
 
     // Computes natural logarithm of the absolute value of the gamma function
     // https://en.cppreference.com/c/numeric/math/lgamma
@@ -262,7 +262,7 @@ extern {
 
     // Computes natural (base e) logarithm
     // https://en.cppreference.com/c/numeric/math/log
-    func log(x: float64) -> float64;
+    pub func log(x: float64) -> float64;
 
     // Computes common (base 10) logarithm
     // https://en.cppreference.com/c/numeric/math/log10
@@ -286,7 +286,7 @@ extern {
 
     // Computes base 2 logarithm
     // https://en.cppreference.com/c/numeric/math/log2
-    func log2(x: float64) -> float64;
+    pub func log2(x: float64) -> float64;
 
     // Extracts exponent of the number
     // https://en.cppreference.com/c/numeric/math/logb
@@ -350,7 +350,7 @@ extern {
 
     // Computes a number raised to the given power
     // https://en.cppreference.com/c/numeric/math/pow
-    func pow(base: float64, exponent: float64) -> float64;
+    pub func pow(base: float64, exponent: float64) -> float64;
 
     // Computes signed remainder of the floating-point division operation
     // https://en.cppreference.com/c/numeric/math/remainder
@@ -382,7 +382,7 @@ extern {
 
     // Rounds to nearest integer, rounding away from zero in halfway cases
     // https://en.cppreference.com/c/numeric/math/round
-    func round(x: float64) -> float64;
+    pub func round(x: float64) -> float64;
 
     // Multiplies a number by FLT_RADIX raised to an integer power
     // https://en.cppreference.com/c/numeric/math/scalbn
@@ -396,17 +396,17 @@ extern {
     // https://en.cppreference.com/c/numeric/math/sin
     // Multiplies a floating-point value by an integral power of two, with a long exponent
     // https://en.cppreference.com/c/numeric/math/scalbn
-    func scalbln(arg: float64, exp: c_long) -> float64;
+    pub func scalbln(arg: float64, exp: c_long) -> float64;
 
     // Multiplies a floating-point value by an integral power of two, with a long exponent
     // https://en.cppreference.com/c/numeric/math/scalbn
-    func scalblnf(arg: float32, exp: c_long) -> float32;
+    pub func scalblnf(arg: float32, exp: c_long) -> float32;
 
     func sinf(x: float32) -> float32;
 
     // Computes sine
     // https://en.cppreference.com/c/numeric/math/sin
-    func sin(x: float64) -> float64;
+    pub func sin(x: float64) -> float64;
 
     // Computes hyperbolic sine
     // https://en.cppreference.com/c/numeric/math/sinh
@@ -418,11 +418,11 @@ extern {
 
     // Computes square root
     // https://en.cppreference.com/c/numeric/math/sqrt
-    func sqrtf(x: float32) -> float32;
+    pub func sqrtf(x: float32) -> float32;
 
     // Computes square root
     // https://en.cppreference.com/c/numeric/math/sqrt
-    func sqrt(x: float64) -> float64;
+    pub func sqrt(x: float64) -> float64;
 
     // Computes tangent
     // https://en.cppreference.com/c/numeric/math/tan
@@ -430,7 +430,7 @@ extern {
 
     // Computes tangent
     // https://en.cppreference.com/c/numeric/math/tan
-    func tan(x: float64) -> float64;
+    pub func tan(x: float64) -> float64;
 
     // Computes hyperbolic tangent
     // https://en.cppreference.com/c/numeric/math/tanh
@@ -454,7 +454,7 @@ extern {
 
     // Rounds to nearest integer not greater in magnitude than the given value
     // https://en.cppreference.com/c/numeric/math/trunc
-    func trunc(x: float64) -> float64;
+    pub func trunc(x: float64) -> float64;
 }
 
 // The constants below are annotated with their primitive types rather than `c_double` and `c_float`: a `const` cannot
@@ -466,13 +466,13 @@ extern {
 ///
 /// https://rux-lang.dev/docs/api/c/huge-val
 #Allow("naming.const")
-const HUGE_VAL: float64 = float64::Infinity;
+pub const HUGE_VAL: float64 = float64::Infinity;
 
 /// `HUGE_VALF`: the `float` form of `HUGE_VAL`.
 ///
 /// https://rux-lang.dev/docs/api/c/huge-valf
 #Allow("naming.const")
-const HUGE_VALF: float32 = float32::Infinity;
+pub const HUGE_VALF: float32 = float32::Infinity;
 
 /// `INFINITY`: a positive infinity, for building a value rather than for testing one.
 ///
@@ -481,7 +481,7 @@ const HUGE_VALF: float32 = float32::Infinity;
 ///
 /// https://rux-lang.dev/docs/api/c/infinity
 #Allow("naming.const")
-const INFINITY: float32 = float32::Infinity;
+pub const INFINITY: float32 = float32::Infinity;
 
 /// `NAN`: a quiet not-a-number, for building a value rather than for testing one.
 ///
@@ -490,4 +490,4 @@ const INFINITY: float32 = float32::Infinity;
 ///
 /// https://rux-lang.dev/docs/api/c/nan
 #Allow("naming.const")
-const NAN: float32 = float32::NaN;
+pub const NAN: float32 = float32::NaN;

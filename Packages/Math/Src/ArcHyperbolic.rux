@@ -14,7 +14,7 @@
 /// gives an infinity of the same sign.
 ///
 /// https://rux-lang.dev/docs/api/math/arc-sinh
-func ArcSinh(x: float64) -> float64 {
+pub func ArcSinh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
     if IsNan(x) || IsInfinite(x) {
         return x;
@@ -41,7 +41,10 @@ func ArcSinh(x: float64) -> float64 {
     return SignBit(x) ? -result : result;
 }
 
-func ArcSinh(x: float32) -> float32 {
+/// Provides the public `ArcSinh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/arc-sinh
+pub func ArcSinh(x: float32) -> float32 {
     return ArcSinh(x as float64) as float32;
 }
 
@@ -51,7 +54,7 @@ func ArcSinh(x: float32) -> float32 {
 /// never negative, since the hyperbolic cosine is even and this returns the branch above zero.
 ///
 /// https://rux-lang.dev/docs/api/math/arc-cosh
-func ArcCosh(x: float64) -> float64 {
+pub func ArcCosh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
     if IsNan(x) {
         return x;
@@ -77,7 +80,10 @@ func ArcCosh(x: float64) -> float64 {
     return Log1p(above + Sqrt(2.0 * above + above * above));
 }
 
-func ArcCosh(x: float32) -> float32 {
+/// Provides the public `ArcCosh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/arc-cosh
+pub func ArcCosh(x: float32) -> float32 {
     return ArcCosh(x as float64) as float32;
 }
 
@@ -87,7 +93,7 @@ func ArcCosh(x: float32) -> float32 {
 /// sign; anything beyond them has no real answer and gives a NaN.
 ///
 /// https://rux-lang.dev/docs/api/math/arc-tanh
-func ArcTanh(x: float64) -> float64 {
+pub func ArcTanh(x: float64) -> float64 {
     if IsNan(x) {
         return x;
     }
@@ -113,6 +119,9 @@ func ArcTanh(x: float64) -> float64 {
     return SignBit(x) ? -result : result;
 }
 
-func ArcTanh(x: float32) -> float32 {
+/// Provides the public `ArcTanh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tanh
+pub func ArcTanh(x: float32) -> float32 {
     return ArcTanh(x as float64) as float32;
 }

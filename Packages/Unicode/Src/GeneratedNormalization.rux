@@ -13,7 +13,7 @@
 /// absent: its decomposition is arithmetic and computed instead.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const CanonicalDecompositionIndex: uint32[6243] = [
+pub const CanonicalDecompositionIndex: uint32[6243] = [
     192, 0, 2, 193, 2, 2, 194, 4, 2, 195, 6, 2,
     196, 8, 2, 197, 10, 2, 199, 12, 2, 200, 14, 2,
     201, 16, 2, 202, 18, 2, 203, 20, 2, 204, 22, 2,
@@ -540,7 +540,7 @@ const CanonicalDecompositionIndex: uint32[6243] = [
 /// Canonical decomposition elements.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const CanonicalDecompositionElements: uint32[3450] = [
+pub const CanonicalDecompositionElements: uint32[3450] = [
     65, 768, 65, 769, 65, 770, 65, 771, 65, 776, 65, 778,
     67, 807, 69, 768, 69, 769, 69, 770, 69, 776, 73, 768,
     73, 769, 73, 770, 73, 776, 78, 771, 79, 768, 79, 769,
@@ -834,7 +834,7 @@ const CanonicalDecompositionElements: uint32[3450] = [
 /// Compatibility decomposition index: code point, offset, length.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const CompatibilityDecompositionIndex: uint32[17742] = [
+pub const CompatibilityDecompositionIndex: uint32[17742] = [
     160, 0, 1, 168, 1, 2, 170, 3, 1, 175, 4, 2,
     178, 6, 1, 179, 7, 1, 180, 8, 2, 181, 10, 1,
     184, 11, 2, 185, 13, 1, 186, 14, 1, 188, 15, 3,
@@ -2319,7 +2319,7 @@ const CompatibilityDecompositionIndex: uint32[17742] = [
 /// Compatibility decomposition elements.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const CompatibilityDecompositionElements: uint32[9193] = [
+pub const CompatibilityDecompositionElements: uint32[9193] = [
     32, 32, 776, 97, 32, 772, 50, 51, 32, 769, 956, 32,
     807, 49, 111, 49, 8260, 52, 49, 8260, 50, 51, 8260, 52,
     65, 768, 65, 769, 65, 770, 65, 771, 65, 776, 65, 778,
@@ -3093,7 +3093,7 @@ const CompatibilityDecompositionElements: uint32[9193] = [
 /// The exclusions and non-starter decompositions are already left out.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const CompositionTriples: uint32[2883] = [
+pub const CompositionTriples: uint32[2883] = [
     60, 824, 8814, 61, 824, 8800, 62, 824, 8815, 65, 768, 192,
     65, 769, 193, 65, 770, 194, 65, 771, 195, 65, 772, 256,
     65, 774, 258, 65, 775, 550, 65, 776, 196, 65, 777, 7842,

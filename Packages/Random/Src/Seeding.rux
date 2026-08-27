@@ -20,7 +20,7 @@ import Entropy::{ EntropyError, NextUint64 };
 /// depends on the seed being unpredictable must check.
 ///
 /// https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
-func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
+pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
     let seed = NextUint64(error);
     if *error != EntropyError::None {
         return Xoshiro256(0u64);
@@ -33,7 +33,7 @@ func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
 /// Fails and recovers exactly as `XoshiroFromEntropy` does.
 ///
 /// https://rux-lang.dev/docs/api/random/pcg-from-entropy
-func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
+pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
     if *error != EntropyError::None {
         return Pcg64Dxsm(0u64);
@@ -47,7 +47,7 @@ func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
 /// independent by construction and the whole run is reproducible from the one seed if it is recorded.
 ///
 /// https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
-func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
+pub func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
     if *error != EntropyError::None {
         return Pcg64Dxsm::WithStream(0u64, stream);

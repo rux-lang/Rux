@@ -12,13 +12,13 @@
 /// Ordered by precedence, major component first, as semantic versioning defines it.
 ///
 /// https://rux-lang.dev/docs/api/core/semantic-version
-struct SemanticVersion {
+pub struct SemanticVersion {
     /// The major component, which changes when compatibility does.
-    major: uint;
+    pub major: uint;
     /// The minor component.
-    minor: uint;
+    pub minor: uint;
     /// The patch component.
-    patch: uint;
+    pub patch: uint;
 }
 
 extend SemanticVersion {
@@ -29,7 +29,7 @@ extend SemanticVersion {
     /// Cannot fail: every triple of components is a version. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version
-    func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+    pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
         return SemanticVersion { major: major, minor: minor, patch: patch };
     }
 
@@ -42,7 +42,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/compare
-    func Compare(self: &SemanticVersion, other: SemanticVersion) -> int {
+    pub func Compare(self: &SemanticVersion, other: SemanticVersion) -> int {
         if self.major < other.major { return -1; }
         if self.major > other.major { return 1; }
         if self.minor < other.minor { return -1; }
@@ -57,7 +57,7 @@ extend SemanticVersion {
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/is-equal-to
-    func IsEqualTo(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsEqualTo(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
@@ -66,7 +66,7 @@ extend SemanticVersion {
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/is-less-than
-    func IsLessThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsLessThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
@@ -75,7 +75,7 @@ extend SemanticVersion {
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/is-at-most
-    func IsAtMost(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsAtMost(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
@@ -84,7 +84,7 @@ extend SemanticVersion {
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/is-greater-than
-    func IsGreaterThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsGreaterThan(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
@@ -93,7 +93,7 @@ extend SemanticVersion {
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/is-at-least
-    func IsAtLeast(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func IsAtLeast(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 
@@ -102,7 +102,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/equals
-    func ==(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func ==(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) == 0;
     }
 
@@ -111,7 +111,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/not-equals
-    func !=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func !=(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) != 0;
     }
 
@@ -120,7 +120,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/less-than
-    func <(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func <(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) < 0;
     }
 
@@ -129,7 +129,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/less-than-or-equal
-    func <=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func <=(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) <= 0;
     }
 
@@ -138,7 +138,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/greater-than
-    func >(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func >(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) > 0;
     }
 
@@ -147,7 +147,7 @@ extend SemanticVersion {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/semantic-version/greater-than-or-equal
-    func >=(self: &SemanticVersion, other: SemanticVersion) -> bool {
+    pub func >=(self: &SemanticVersion, other: SemanticVersion) -> bool {
         return self.Compare(other) >= 0;
     }
 }
@@ -157,9 +157,9 @@ extend SemanticVersion {
 /// Fixed when compiling begins. Reading a field produces no runtime code.
 ///
 /// https://rux-lang.dev/docs/api/core/compiler
-struct Compiler {
+pub struct Compiler {
     /// The compiler's own version.
-    version: SemanticVersion;
+    pub version: SemanticVersion;
 }
 
 extend Compiler {
@@ -172,10 +172,10 @@ extend Compiler {
     /// Cannot fail: an unknown name is absent rather than an error. Costs nothing in the built program.
     ///
     /// https://rux-lang.dev/docs/api/core/compiler/has-feature
-    intrinsic func HasFeature(self: &Compiler, feature: Slice<char8>) -> bool;
+    pub intrinsic func HasFeature(self: &Compiler, feature: Slice<char8>) -> bool;
 }
 
 /// The compiler performing the build, as a compile-time value.
 ///
 /// https://rux-lang.dev/docs/api/core/compiler
-intrinsic #compiler: Compiler;
+pub intrinsic #compiler: Compiler;

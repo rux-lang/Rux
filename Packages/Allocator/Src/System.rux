@@ -23,7 +23,7 @@ import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageError, Pa
 /// pointer into a reported `InvalidBlock` rather than a corrupted heap.
 ///
 /// https://rux-lang.dev/docs/api/allocator/system-block-header
-struct SystemBlockHeader {
+pub struct SystemBlockHeader {
     /// A fixed pattern, checked on release.
     magic: uint64;
     /// The address the page layer gave, which is what has to be released.
@@ -40,7 +40,7 @@ struct SystemBlockHeader {
 /// one. This is a check against a mistake, not against an adversary.
 ///
 /// https://rux-lang.dev/docs/api/allocator/system-block-magic
-const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
+pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 
 /// An allocator that asks the operating system for pages.
 ///
@@ -51,7 +51,7 @@ const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 /// rather than for many small values directly.
 ///
 /// https://rux-lang.dev/docs/api/allocator/system-allocator
-struct SystemAllocator {
+pub struct SystemAllocator {
     /// Present so the type is not empty; carries nothing and is never read.
     reserved: uint8;
 }
@@ -61,7 +61,8 @@ extend SystemAllocator {
     ///
     /// The result is structural and copyable. Borrow it as `&var Allocator` when a temporary interface view is
     /// sufficient; no adapter or owning conversion is required.
-    func SystemAllocator() -> SystemAllocator {
+    /// https://rux-lang.dev/docs/api/allocator/system-allocator/new
+    pub func SystemAllocator() -> SystemAllocator {
         return SystemAllocator { reserved: 0 };
     }
 
@@ -81,7 +82,7 @@ extend SystemAllocator : Allocator {
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
     ///
     /// https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
-    func Allocate(self: &var SystemAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var SystemAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
         if layout.size == 0 {
             *result = EmptyBlockAddress();
             return AllocError::None;
@@ -135,7 +136,7 @@ extend SystemAllocator : Allocator {
     /// Every pointer into the block becomes invalid.
     ///
     /// https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
-    func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> AllocError {
+    pub func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> AllocError {
         if layout.size == 0 {
             return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
         }
@@ -168,7 +169,7 @@ extend SystemAllocator : Allocator {
     /// The old pointer is invalid once this succeeds. On failure it is untouched and still the caller's.
     ///
     /// https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
-    func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+    pub func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         if oldLayout.alignment != newLayout.alignment {
             return AllocError::Unsupported;

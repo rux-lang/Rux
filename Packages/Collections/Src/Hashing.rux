@@ -24,7 +24,7 @@ import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-uint
-func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
+pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
     return hasher.Finish();
@@ -33,7 +33,7 @@ func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
 /// The seeded hash of a `uint64`.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-uint64
-func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
+pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value);
     return hasher.Finish();
@@ -42,7 +42,7 @@ func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
 /// The seeded hash of a `uint32`.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-uint32
-func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
+pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
     return hasher.Finish();
@@ -51,7 +51,7 @@ func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
 /// The seeded hash of an `int64`.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-int64
-func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
+pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, value as uint64);
     return hasher.Finish();
@@ -60,7 +60,7 @@ func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
 /// The seeded hash of an `int32`.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-int32
-func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
+pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, (value as int64) as uint64);
     return hasher.Finish();
@@ -69,7 +69,7 @@ func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 /// The seeded hash of a `char8`.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-char8
-func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
+pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     WriteUint64<SipHash24>(hasher, (value as uint8) as uint64);
     return hasher.Finish();
@@ -83,49 +83,49 @@ func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-slice
-func HashSlice(text: Slice<char8>, low: uint64, high: uint64) -> uint64 {
+pub func HashSlice(text: Slice<char8>, low: uint64, high: uint64) -> uint64 {
     return SipHash24Of(text.data as *byte, text.length, low, high);
 }
 
 /// Whether two `uint` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-uint
-func EqualsUint(left: uint, right: uint) -> bool {
+pub func EqualsUint(left: uint, right: uint) -> bool {
     return left == right;
 }
 
 /// Whether two `uint64` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-uint64
-func EqualsUint64(left: uint64, right: uint64) -> bool {
+pub func EqualsUint64(left: uint64, right: uint64) -> bool {
     return left == right;
 }
 
 /// Whether two `uint32` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-uint32
-func EqualsUint32(left: uint32, right: uint32) -> bool {
+pub func EqualsUint32(left: uint32, right: uint32) -> bool {
     return left == right;
 }
 
 /// Whether two `int64` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-int64
-func EqualsInt64(left: int64, right: int64) -> bool {
+pub func EqualsInt64(left: int64, right: int64) -> bool {
     return left == right;
 }
 
 /// Whether two `int32` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-int32
-func EqualsInt32(left: int32, right: int32) -> bool {
+pub func EqualsInt32(left: int32, right: int32) -> bool {
     return left == right;
 }
 
 /// Whether two `char8` keys are the same.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-char8
-func EqualsChar8(left: char8, right: char8) -> bool {
+pub func EqualsChar8(left: char8, right: char8) -> bool {
     return left == right;
 }
 
@@ -135,7 +135,7 @@ func EqualsChar8(left: char8, right: char8) -> bool {
 /// pointers hold.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-slice
-func EqualsSlice(left: Slice<char8>, right: Slice<char8>) -> bool {
+pub func EqualsSlice(left: Slice<char8>, right: Slice<char8>) -> bool {
     if left.length != right.length {
         return false;
     }

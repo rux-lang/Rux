@@ -27,7 +27,7 @@ import Allocator::{ AllocError, Layout };
 /// caller's allocator and resolves calls at each instantiation with nothing dispatched at run time.
 ///
 /// https://rux-lang.dev/docs/api/allocator/allocator
-interface Allocator {
+pub interface Allocator {
     /// Takes storage matching `layout` and reports where it landed.
     ///
     /// `result` receives the address when this reports `None`, and is left unwritten otherwise. The address
@@ -84,7 +84,7 @@ interface Allocator {
 /// recognizable and its release free.
 ///
 /// https://rux-lang.dev/docs/api/allocator/empty-block
-const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
+pub const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
 
 /// The address a zero-sized allocation reports, as a pointer.
 ///
@@ -93,7 +93,7 @@ const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/allocator/empty-block-address
-func EmptyBlockAddress() -> *var opaque {
+pub func EmptyBlockAddress() -> *var opaque {
     return EmptyBlock as *var opaque;
 }
 
@@ -104,6 +104,6 @@ func EmptyBlockAddress() -> *var opaque {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/allocator/is-empty-block
-func IsEmptyBlock(block: *var opaque) -> bool {
+pub func IsEmptyBlock(block: *var opaque) -> bool {
     return (block as uint) == EmptyBlock;
 }

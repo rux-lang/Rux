@@ -29,7 +29,7 @@ import Core::MutableSlice;
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/fold
-func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+pub func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -49,7 +49,7 @@ func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/fold-right
-func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+pub func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var remaining = items.length;
     while remaining > 0 {
@@ -70,7 +70,7 @@ func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sum
-func Sum<T>(items: Slice<T>, initial: T) -> T {
+pub func Sum<T>(items: Slice<T>, initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -90,7 +90,7 @@ func Sum<T>(items: Slice<T>, initial: T) -> T {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/product
-func Product<T>(items: Slice<T>, initial: T) -> T {
+pub func Product<T>(items: Slice<T>, initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -111,7 +111,7 @@ func Product<T>(items: Slice<T>, initial: T) -> T {
 /// Runs in time proportional to the length and allocates nothing beyond whatever `transform` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/transform
-func Transform<T, U>(destination: MutableSlice<U>, source: Slice<T>, transform: func(T) -> U) -> bool {
+pub func Transform<T, U>(destination: MutableSlice<U>, source: Slice<T>, transform: func(T) -> U) -> bool {
     if destination.length != source.length {
         return false;
     }

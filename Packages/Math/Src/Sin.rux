@@ -2,7 +2,10 @@
 // https://rux-lang.dev/api/math/sin
 // **Accuracy: error at most 1 ulp**, at every argument the type holds --
 // the reduction is exact, so a huge argument is no worse than a small one.
-func Sin(x: float64) -> float64 {
+/// Provides the public `Sin` operation.
+///
+/// https://rux-lang.dev/docs/api/math/sin
+pub func Sin(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if x != x {
         return x;
@@ -47,6 +50,9 @@ func Sin(x: float64) -> float64 {
 
 // Returns the sine of an angle in radians
 // https://rux-lang.dev/api/math/sin
-func Sin(x: float32) -> float32 {
+/// Provides the public `Sin` operation.
+///
+/// https://rux-lang.dev/docs/api/math/sin
+pub func Sin(x: float32) -> float32 {
     return Sin(x as float64) as float32;
 }

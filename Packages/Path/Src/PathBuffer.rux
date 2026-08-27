@@ -14,7 +14,7 @@ import Text::{ FromAllocError, TextError };
 /// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
 ///
 /// https://rux-lang.dev/docs/api/path/path-buffer
-struct PathBuffer {
+pub struct PathBuffer {
     /// The units, or null before the first push.
     data: *var OsUnit;
     /// How many units are in use.
@@ -22,7 +22,7 @@ struct PathBuffer {
     /// How many units the block holds.
     capacity: uint;
     /// Where the block came from, and where it goes back to.
-    allocator: Allocator;
+    pub allocator: Allocator;
 }
 
 extend PathBuffer {
@@ -32,14 +32,14 @@ extend PathBuffer {
     /// An empty buffer that has allocated nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/new
-    func PathBuffer(allocator: Allocator) -> PathBuffer {
+    pub func PathBuffer(allocator: Allocator) -> PathBuffer {
         return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
     /// A buffer opening with `path`'s units.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/from-path
-    func FromPath(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
+    pub func FromPath(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
         var buffer = PathBuffer(allocator);
         *error = buffer.AppendUnits(path.AsView().Units());
         return <-buffer;
@@ -48,14 +48,14 @@ extend PathBuffer {
     /// How many units the buffer holds.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/length
-    func Length(self: &PathBuffer) -> uint {
+    pub func Length(self: &PathBuffer) -> uint {
         return self.length;
     }
 
     /// Whether the buffer holds nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/is-empty
-    func IsEmpty(self: &PathBuffer) -> bool {
+    pub func IsEmpty(self: &PathBuffer) -> bool {
         return self.length == 0;
     }
 
@@ -64,7 +64,7 @@ extend PathBuffer {
     /// The path borrows the buffer and must not outlive it or survive a push.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/as-path
-    func AsPath(self: &PathBuffer) -> Path {
+    pub func AsPath(self: &PathBuffer) -> Path {
         return Path::FromView(OsStringView::FromUnits(Slice<OsUnit> { data: self.data, length: self.length }));
     }
 
@@ -127,7 +127,7 @@ extend PathBuffer {
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/push
-    func Push(self: &var PathBuffer, segment: OsStringView) -> TextError {
+    pub func Push(self: &var PathBuffer, segment: OsStringView) -> TextError {
         let units = segment.Units();
         if units.length == 0 {
             return TextError::None;
@@ -150,7 +150,7 @@ extend PathBuffer {
     /// Gives the block back and leaves an empty buffer.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/release
-    func Release(self: &var PathBuffer) {
+    pub func Release(self: &var PathBuffer) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
             let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
@@ -170,7 +170,7 @@ extend PathBuffer {
 /// replacing `base` entirely.
 ///
 /// https://rux-lang.dev/docs/api/path/join
-func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *var TextError) -> PathBuffer {
+pub func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *var TextError) -> PathBuffer {
     var buffer = PathBuffer::FromPath(allocator, base, error);
     if error.IsError() {
         return <-buffer;
@@ -188,7 +188,7 @@ func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *var T
 /// before it survives in a relative path and vanishes at the root, where there is nowhere further up.
 ///
 /// https://rux-lang.dev/docs/api/path/normalize
-func Normalize(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
+pub func Normalize(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
     var buffer = PathBuffer(allocator);
     *error = TextError::None;
 

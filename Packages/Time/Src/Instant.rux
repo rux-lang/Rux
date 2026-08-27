@@ -25,7 +25,7 @@ when #target.os {
 /// which is the point -- nothing anybody does to the wall clock changes what `Since` answers.
 ///
 /// https://rux-lang.dev/docs/api/time/instant
-struct Instant {
+pub struct Instant {
     /// Nanoseconds since some origin fixed for the life of the process.
     ticks: uint64;
 }
@@ -36,7 +36,7 @@ extend Instant {
     /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
     ///
     /// https://rux-lang.dev/docs/api/time/instant/now
-    func Now() -> Instant {
+    pub func Now() -> Instant {
         when #target.os == .Windows {
             // The counter runs in units the machine chooses, so the frequency turns it into nanoseconds. Splitting
             // the division keeps the intermediate product inside a uint64 for centuries of uptime.
@@ -68,7 +68,7 @@ extend Instant {
     /// visible bug instead of a wildly large duration.
     ///
     /// https://rux-lang.dev/docs/api/time/instant/since
-    func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
+    pub func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
         if self.ticks < earlier.ticks {
             return Option::None<Duration>();
         }
@@ -81,7 +81,7 @@ extend Instant {
     /// The time from this reading to now.
     ///
     /// https://rux-lang.dev/docs/api/time/instant/elapsed
-    func Elapsed(self: &Instant) -> Duration {
+    pub func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
         return now.Since(Instant { ticks: self.ticks }).ValueOr(Duration::Zero());
     }
@@ -95,7 +95,7 @@ extend Instant {
 /// this safe to use for pacing.
 ///
 /// https://rux-lang.dev/docs/api/time/sleep
-func SleepFor(span: Duration) {
+pub func SleepFor(span: Duration) {
     if span.IsNegative() || span.IsZero() {
         return;
     }

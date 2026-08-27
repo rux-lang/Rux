@@ -21,7 +21,7 @@
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-nan
-func IsNaN<T>(value: T) -> bool {
+pub func IsNaN<T>(value: T) -> bool {
     return value != value;
 }
 
@@ -33,7 +33,7 @@ func IsNaN<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-zero
-func IsZero<T>(value: T) -> bool {
+pub func IsZero<T>(value: T) -> bool {
     return value == value - value;
 }
 
@@ -44,7 +44,7 @@ func IsZero<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-infinite
-func IsInfinite<T>(value: T) -> bool {
+pub func IsInfinite<T>(value: T) -> bool {
     return !IsZero<T>(value) && value == value + value;
 }
 
@@ -55,7 +55,7 @@ func IsInfinite<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-finite
-func IsFinite<T>(value: T) -> bool {
+pub func IsFinite<T>(value: T) -> bool {
     return !IsNaN<T>(value) && !IsInfinite<T>(value);
 }
 
@@ -71,7 +71,7 @@ func IsFinite<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-negative-zero
-func IsNegativeZero<T>(value: T) -> bool {
+pub func IsNegativeZero<T>(value: T) -> bool {
     return IsZero<T>(value) && (1 as T) / value < (0 as T);
 }
 
@@ -84,7 +84,7 @@ func IsNegativeZero<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-sign-negative
-func IsSignNegative<T>(value: T) -> bool {
+pub func IsSignNegative<T>(value: T) -> bool {
     return value < (0 as T) || IsNegativeZero<T>(value);
 }
 
@@ -96,7 +96,7 @@ func IsSignNegative<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-sign-positive
-func IsSignPositive<T>(value: T) -> bool {
+pub func IsSignPositive<T>(value: T) -> bool {
     return value > (0 as T) || (IsZero<T>(value) && !IsNegativeZero<T>(value));
 }
 
@@ -108,7 +108,7 @@ func IsSignPositive<T>(value: T) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/sign-of
-func SignOf<T>(value: T) -> T {
+pub func SignOf<T>(value: T) -> T {
     if IsNaN<T>(value) || IsZero<T>(value) {
         return value;
     }

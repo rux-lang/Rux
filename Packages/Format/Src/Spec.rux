@@ -14,7 +14,7 @@ import Core::Slice;
 /// Where the padding goes when the rendering is narrower than the width.
 ///
 /// https://rux-lang.dev/docs/api/format/format-align
-enum FormatAlign: int32 {
+pub enum FormatAlign: int32 {
     /// The type's own default: numbers to the right, text to the left.
     Default = 0,
     /// The value at the start, fill after it.
@@ -28,7 +28,7 @@ enum FormatAlign: int32 {
 /// The base an integer renders in.
 ///
 /// https://rux-lang.dev/docs/api/format/format-base
-enum FormatBase: int32 {
+pub enum FormatBase: int32 {
     /// Base ten, the default.
     Decimal = 0,
     /// Base two, `b`, prefixed `0b` under `#`.
@@ -46,13 +46,13 @@ enum FormatBase: int32 {
 /// `Copy`, and cheap to pass: a spec is read, never held.
 ///
 /// https://rux-lang.dev/docs/api/format/format-spec
-struct FormatSpec {
+pub struct FormatSpec {
     /// The byte that pads, a space unless the spec names one.
     fill: char8;
     /// Where the padding goes.
     align: FormatAlign;
     /// Whether a non-negative number shows a plus sign.
-    showSign: bool;
+    pub showSign: bool;
     /// Whether a based integer carries its base prefix.
     alternate: bool;
     /// Whether a number pads with zeros between its sign and its digits, which is different from filling: the
@@ -62,9 +62,9 @@ struct FormatSpec {
     width: uint;
     /// How many characters of text to keep, or how many digits a float carries. Meaningful only with
     /// `hasPrecision`, since zero is a precision a caller can mean.
-    precision: uint;
+    pub precision: uint;
     /// Whether the spec named a precision.
-    hasPrecision: bool;
+    pub hasPrecision: bool;
     /// The base an integer renders in.
     base: FormatBase;
 }
@@ -73,7 +73,7 @@ extend FormatSpec {
     /// What a bare `{}` asks for: nothing at all.
     ///
     /// https://rux-lang.dev/docs/api/format/format-spec/plain
-    func Plain() -> FormatSpec {
+    pub func Plain() -> FormatSpec {
         return FormatSpec {
             fill: c8' ',
             align: FormatAlign::Default,
@@ -113,7 +113,7 @@ func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
 /// Cannot allocate. Runs in time proportional to the spec, which is a handful of bytes.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-format-spec
-func ParseFormatSpec(text: Slice<char8>, spec: *var FormatSpec) -> bool {
+pub func ParseFormatSpec(text: Slice<char8>, spec: *var FormatSpec) -> bool {
     *spec = FormatSpec::Plain();
     var index: uint = 0;
 

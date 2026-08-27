@@ -18,13 +18,13 @@ when #target.os == .Windows {
     /// The unit a native string is made of: a UTF-16 code unit on Windows.
     ///
     /// https://rux-lang.dev/docs/api/path/os-unit
-    type OsUnit = uint16;
+    pub type OsUnit = uint16;
 }
 else {
     /// The unit a native string is made of: a byte on the Unix systems.
     ///
     /// https://rux-lang.dev/docs/api/path/os-unit
-    type OsUnit = char8;
+    pub type OsUnit = char8;
 }
 
 /// A borrowed run of native units.
@@ -32,44 +32,44 @@ else {
 /// `Copy`, owning nothing. The units it names must outlive it.
 ///
 /// https://rux-lang.dev/docs/api/path/os-string-view
-struct OsStringView {
+pub struct OsStringView {
     /// The units, exactly as the system holds them.
-    units: Slice<OsUnit>;
+    pub units: Slice<OsUnit>;
 }
 
 extend OsStringView {
     /// A view over nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/new
-    func OsStringView() -> OsStringView {
+    pub func OsStringView() -> OsStringView {
         return OsStringView { units: Slice<OsUnit> { data: null, length: 0 } };
     }
 
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/from-units
-    func FromUnits(units: Slice<OsUnit>) -> OsStringView {
+    pub func FromUnits(units: Slice<OsUnit>) -> OsStringView {
         return OsStringView { units: units };
     }
 
     /// How many native units the view spans -- bytes or code units, not characters.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/length
-    func Length(self: &OsStringView) -> uint {
+    pub func Length(self: &OsStringView) -> uint {
         return self.units.length;
     }
 
     /// Whether the view spans nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/is-empty
-    func IsEmpty(self: &OsStringView) -> bool {
+    pub func IsEmpty(self: &OsStringView) -> bool {
         return self.units.length == 0;
     }
 
     /// The units themselves.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/units
-    func Units(self: &OsStringView) -> Slice<OsUnit> {
+    pub func Units(self: &OsStringView) -> Slice<OsUnit> {
         return self.units;
     }
 
@@ -79,7 +79,7 @@ extend OsStringView {
     /// one are still two names here, because which names those are is the filesystem's opinion, not the string's.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/equals
-    func Equals(self: &OsStringView, other: &OsStringView) -> bool {
+    pub func Equals(self: &OsStringView, other: &OsStringView) -> bool {
         if self.units.length != other.units.length {
             return false;
         }
@@ -99,7 +99,7 @@ extend OsStringView {
 /// Copyable with value semantics: each copy owns an independent native-unit block.
 ///
 /// https://rux-lang.dev/docs/api/path/os-string
-struct OsString {
+pub struct OsString {
     /// The units, or null for no length.
     data: *var OsUnit;
     /// How many units there are.
@@ -110,7 +110,9 @@ struct OsString {
 
 extend OsString {
     /// Deep-copies native units into independent storage from the same allocator.
-    func =(self: &var OsString, other: &OsString) {
+    ///
+    /// https://rux-lang.dev/docs/api/path/os-string/copy
+    pub func =(self: &var OsString, other: &OsString) {
         self.data = null;
         self.length = other.length;
         self.allocator = other.allocator;
@@ -131,7 +133,7 @@ extend OsString {
     /// Native text of no length, which has allocated nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/new
-    func OsString(allocator: Allocator) -> OsString {
+    pub func OsString(allocator: Allocator) -> OsString {
         return OsString { data: null, length: 0, allocator: allocator };
     }
 
@@ -141,7 +143,7 @@ extend OsString {
     /// receives `OutOfMemory` when the copy cannot be made.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/from-view
-    func FromView(allocator: Allocator, view: OsStringView, error: *var TextError) -> OsString {
+    pub func FromView(allocator: Allocator, view: OsStringView, error: *var TextError) -> OsString {
         *error = TextError::None;
         let units = view.Units();
         if units.length == 0 {
@@ -167,28 +169,28 @@ extend OsString {
     /// How many native units the text holds.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/length
-    func Length(self: &OsString) -> uint {
+    pub func Length(self: &OsString) -> uint {
         return self.length;
     }
 
     /// Whether the text holds nothing.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/is-empty
-    func IsEmpty(self: &OsString) -> bool {
+    pub func IsEmpty(self: &OsString) -> bool {
         return self.length == 0;
     }
 
     /// A view over this text, which is what everything read-only takes.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/view
-    func View(self: &OsString) -> OsStringView {
+    pub func View(self: &OsString) -> OsStringView {
         return OsStringView { units: Slice<OsUnit> { data: self.data, length: self.length } };
     }
 
     /// Gives the block back and leaves text of no length.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/clear
-    func Clear(self: &var OsString) {
+    pub func Clear(self: &var OsString) {
         if self.data != null {
             let bytes = self.length * (sizeof(OsUnit) as uint);
             let layout = Layout::New(bytes, alignof(OsUnit) as uint);
@@ -220,7 +222,7 @@ extend OsString {
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/from-text
-    func FromText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> OsString {
+    pub func FromText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> OsString {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
             // is a surrogate pair, which is the whole of UTF-16.
@@ -293,7 +295,7 @@ extend OsStringView {
     /// program that must show it anyway shows it lossily by its own policy, knowingly.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/to-text
-    func ToText(self: &OsStringView, allocator: Allocator, error: *var TextError) -> Option<String> {
+    pub func ToText(self: &OsStringView, allocator: Allocator, error: *var TextError) -> Option<String> {
         when #target.os == .Windows {
             // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
             // checked builder so the promise chain stays intact.

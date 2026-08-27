@@ -15,7 +15,7 @@ import Core::MaximumOf;
 /// Which way a value that falls between two integers should go. `Copy`.
 ///
 /// https://rux-lang.dev/docs/api/math/rounding-mode
-enum RoundingMode: int32 {
+pub enum RoundingMode: int32 {
     /// Toward zero, discarding the fraction: `Trunc`.
     TowardZero = 0,
     /// Downward, toward negative infinity: `Floor`.
@@ -36,7 +36,7 @@ enum RoundingMode: int32 {
 /// is preserved, and a NaN or infinity passes through unchanged.
 ///
 /// https://rux-lang.dev/docs/api/math/round-ties-to-even
-func RoundTiesToEven(value: float64) -> float64 {
+pub func RoundTiesToEven(value: float64) -> float64 {
     let whole = Trunc(value);
     let fraction = value - whole;
     // Anything but an exact half is decided by which side it falls on; only the halves consult the neighbour.
@@ -57,7 +57,10 @@ func RoundTiesToEven(value: float64) -> float64 {
     return whole;
 }
 
-func RoundTiesToEven(value: float32) -> float32 {
+/// Provides the public `RoundTiesToEven` operation.
+///
+/// https://rux-lang.dev/docs/api/math/round-ties-to-even
+pub func RoundTiesToEven(value: float32) -> float32 {
     // Widening is exact and the answer is an integer a float32 holds whenever the input was one, so the single
     // narrowing at the end cannot move it.
     return RoundTiesToEven(value as float64) as float32;
@@ -66,7 +69,7 @@ func RoundTiesToEven(value: float32) -> float32 {
 /// `value` rounded to an integer in the named direction.
 ///
 /// https://rux-lang.dev/docs/api/math/round-to
-func RoundTo(value: float64, mode: RoundingMode) -> float64 {
+pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
     if mode == RoundingMode::TowardZero {
         return Trunc(value);
     }
@@ -82,7 +85,10 @@ func RoundTo(value: float64, mode: RoundingMode) -> float64 {
     return RoundTiesToEven(value);
 }
 
-func RoundTo(value: float32, mode: RoundingMode) -> float32 {
+/// Provides the public `RoundTo` operation.
+///
+/// https://rux-lang.dev/docs/api/math/round-to
+pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
     if mode == RoundingMode::TowardZero {
         return Trunc(value);
     }
@@ -112,7 +118,7 @@ func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 /// `result` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/to-integer-checked
-func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
+pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
     *result = zero;
     if IsNan(value) || IsInfinite(value) {

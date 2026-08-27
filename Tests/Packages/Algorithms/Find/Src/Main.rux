@@ -7,17 +7,17 @@ import Core::{ Assert, Ordering };
 // match and the last when there are several.
 
 // Equality covers both fields, so a match on one field alone must not pass for equality.
-struct Record {
+pub struct Record {
     key: int32;
     origin: int32;
 }
 
 extend Record {
-    func ==(self: &Record, other: Record) -> bool {
+    pub func ==(self: &Record, other: Record) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 
-    func !=(self: &Record, other: Record) -> bool {
+    pub func !=(self: &Record, other: Record) -> bool {
         return !(self == other);
     }
 }

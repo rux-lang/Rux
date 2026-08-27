@@ -11,7 +11,7 @@ import Text::TextError;
 /// An x87 extended-precision value, held as its eighty bits.
 ///
 /// https://rux-lang.dev/docs/api/format/float80
-struct Float80 {
+pub struct Float80 {
     /// The bits, in the low eighty of a `uint128`; the top forty-eight are padding and stay zero.
     bits: uint128;
 }
@@ -20,21 +20,21 @@ extend Float80 {
     /// The value these bits encode.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/from-bits
-    func FromBits(bits: uint128) -> Float80 {
+    pub func FromBits(bits: uint128) -> Float80 {
         return Float80 { bits: bits };
     }
 
     /// The bits.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/bits
-    func Bits(self: &Float80) -> uint128 {
+    pub func Bits(self: &Float80) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/layout
-    func Layout() -> FloatLayout {
+    pub func Layout() -> FloatLayout {
         return FloatLayout::Extended80();
     }
 
@@ -46,21 +46,21 @@ extend Float80 {
     /// Whether this is not a number.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/is-nan
-    func IsNan(self: &Float80) -> bool {
+    pub func IsNan(self: &Float80) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/is-infinite
-    func IsInfinite(self: &Float80) -> bool {
+    pub func IsInfinite(self: &Float80) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/is-finite
-    func IsFinite(self: &Float80) -> bool {
+    pub func IsFinite(self: &Float80) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
@@ -68,7 +68,7 @@ extend Float80 {
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/is-negative
-    func IsNegative(self: &Float80) -> bool {
+    pub func IsNegative(self: &Float80) -> bool {
         let layout = FloatLayout::Extended80();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
@@ -76,7 +76,7 @@ extend Float80 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/format-with
-    func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let layout = FloatLayout::Extended80();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -87,7 +87,7 @@ extend Float80 : Display {
     /// asks for.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/format
-    func Format(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -98,7 +98,7 @@ extend Float80 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/format-debug
-    func FormatDebug(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -106,7 +106,7 @@ extend Float80 : Debug {
 /// An IEEE binary128 value, held as its bits.
 ///
 /// https://rux-lang.dev/docs/api/format/float128
-struct Float128 {
+pub struct Float128 {
     /// The bits, all hundred and twenty-eight of them.
     bits: uint128;
 }
@@ -115,21 +115,21 @@ extend Float128 {
     /// The value these bits encode.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/from-bits
-    func FromBits(bits: uint128) -> Float128 {
+    pub func FromBits(bits: uint128) -> Float128 {
         return Float128 { bits: bits };
     }
 
     /// The bits.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/bits
-    func Bits(self: &Float128) -> uint128 {
+    pub func Bits(self: &Float128) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/layout
-    func Layout() -> FloatLayout {
+    pub func Layout() -> FloatLayout {
         return FloatLayout::Binary128();
     }
 
@@ -141,21 +141,21 @@ extend Float128 {
     /// Whether this is not a number.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/is-nan
-    func IsNan(self: &Float128) -> bool {
+    pub func IsNan(self: &Float128) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/is-infinite
-    func IsInfinite(self: &Float128) -> bool {
+    pub func IsInfinite(self: &Float128) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/is-finite
-    func IsFinite(self: &Float128) -> bool {
+    pub func IsFinite(self: &Float128) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
@@ -163,7 +163,7 @@ extend Float128 {
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/is-negative
-    func IsNegative(self: &Float128) -> bool {
+    pub func IsNegative(self: &Float128) -> bool {
         let layout = FloatLayout::Binary128();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
@@ -171,7 +171,7 @@ extend Float128 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/format-with
-    func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let layout = FloatLayout::Binary128();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -182,7 +182,7 @@ extend Float128 : Display {
     /// asks for.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/format
-    func Format(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -193,7 +193,7 @@ extend Float128 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/format-debug
-    func FormatDebug(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -201,7 +201,7 @@ extend Float128 : Debug {
 /// An IEEE binary256 value, held as its bits.
 ///
 /// https://rux-lang.dev/docs/api/format/float256
-struct Float256 {
+pub struct Float256 {
     /// The bits, all two hundred and fifty-six of them.
     bits: uint256;
 }
@@ -210,21 +210,21 @@ extend Float256 {
     /// The value these bits encode.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/from-bits
-    func FromBits(bits: uint256) -> Float256 {
+    pub func FromBits(bits: uint256) -> Float256 {
         return Float256 { bits: bits };
     }
 
     /// The bits.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/bits
-    func Bits(self: &Float256) -> uint256 {
+    pub func Bits(self: &Float256) -> uint256 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/layout
-    func Layout() -> FloatLayout {
+    pub func Layout() -> FloatLayout {
         return FloatLayout::Binary256();
     }
 
@@ -236,21 +236,21 @@ extend Float256 {
     /// Whether this is not a number.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/is-nan
-    func IsNan(self: &Float256) -> bool {
+    pub func IsNan(self: &Float256) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/is-infinite
-    func IsInfinite(self: &Float256) -> bool {
+    pub func IsInfinite(self: &Float256) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/is-finite
-    func IsFinite(self: &Float256) -> bool {
+    pub func IsFinite(self: &Float256) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
@@ -258,7 +258,7 @@ extend Float256 {
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/is-negative
-    func IsNegative(self: &Float256) -> bool {
+    pub func IsNegative(self: &Float256) -> bool {
         let layout = FloatLayout::Binary256();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
@@ -266,7 +266,7 @@ extend Float256 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/format-with
-    func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let layout = FloatLayout::Binary256();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -277,7 +277,7 @@ extend Float256 : Display {
     /// asks for.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/format
-    func Format(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -288,7 +288,7 @@ extend Float256 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/format-debug
-    func FormatDebug(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }
@@ -296,7 +296,7 @@ extend Float256 : Debug {
 /// An IEEE binary512 value, held as its bits.
 ///
 /// https://rux-lang.dev/docs/api/format/float512
-struct Float512 {
+pub struct Float512 {
     /// The bits, all five hundred and twelve of them.
     bits: uint512;
 }
@@ -305,21 +305,21 @@ extend Float512 {
     /// The value these bits encode.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/from-bits
-    func FromBits(bits: uint512) -> Float512 {
+    pub func FromBits(bits: uint512) -> Float512 {
         return Float512 { bits: bits };
     }
 
     /// The bits.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/bits
-    func Bits(self: &Float512) -> uint512 {
+    pub func Bits(self: &Float512) -> uint512 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/layout
-    func Layout() -> FloatLayout {
+    pub func Layout() -> FloatLayout {
         return FloatLayout::Binary512();
     }
 
@@ -331,21 +331,21 @@ extend Float512 {
     /// Whether this is not a number.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/is-nan
-    func IsNan(self: &Float512) -> bool {
+    pub func IsNan(self: &Float512) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/is-infinite
-    func IsInfinite(self: &Float512) -> bool {
+    pub func IsInfinite(self: &Float512) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/is-finite
-    func IsFinite(self: &Float512) -> bool {
+    pub func IsFinite(self: &Float512) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
     }
@@ -353,7 +353,7 @@ extend Float512 {
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/is-negative
-    func IsNegative(self: &Float512) -> bool {
+    pub func IsNegative(self: &Float512) -> bool {
         let layout = FloatLayout::Binary512();
         return UnpackWide(self.bits as uint512, layout).negative;
     }
@@ -361,7 +361,7 @@ extend Float512 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/format-with
-    func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let layout = FloatLayout::Binary512();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -372,7 +372,7 @@ extend Float512 : Display {
     /// asks for.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/format
-    func Format(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -383,7 +383,7 @@ extend Float512 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/format-debug
-    func FormatDebug(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

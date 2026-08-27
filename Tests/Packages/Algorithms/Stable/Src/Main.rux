@@ -6,13 +6,13 @@ import Core::{ Assert, MutableSlice, Ordering };
 // come out in ascending origin order -- which is exactly what a stable sort promises and an unstable one does not.
 
 // Ordered by key alone. Origin is what makes the stability observable.
-struct Ranked {
+pub struct Ranked {
     key: int32;
     origin: int32;
 }
 
 extend Ranked {
-    func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 }

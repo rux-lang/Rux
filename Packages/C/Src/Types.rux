@@ -19,13 +19,13 @@ import Core::{ #target, #Error };
 ///
 /// https://rux-lang.dev/docs/api/c/c-schar
 #Allow("naming.type")
-type c_schar = int8;
+pub type c_schar = int8;
 
 /// C's `unsigned char`, which is also the type a byte of arbitrary storage is read through.
 ///
 /// https://rux-lang.dev/docs/api/c/c-uchar
 #Allow("naming.type")
-type c_uchar = uint8;
+pub type c_uchar = uint8;
 
 /// C's plain `char`, whose signedness the standard leaves to the implementation.
 ///
@@ -34,61 +34,61 @@ type c_uchar = uint8;
 ///
 /// https://rux-lang.dev/docs/api/c/c-char
 #Allow("naming.type")
-type c_char = int8;
+pub type c_char = int8;
 
 /// C's `short`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-short
 #Allow("naming.type")
-type c_short = int16;
+pub type c_short = int16;
 
 /// C's `unsigned short`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-ushort
 #Allow("naming.type")
-type c_ushort = uint16;
+pub type c_ushort = uint16;
 
 /// C's `int`, which is 32 bits on every currently supported target.
 ///
 /// https://rux-lang.dev/docs/api/c/c-int
 #Allow("naming.type")
-type c_int = int32;
+pub type c_int = int32;
 
 /// C's `unsigned int`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-uint
 #Allow("naming.type")
-type c_uint = uint32;
+pub type c_uint = uint32;
 
 /// C's `long long`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-longlong
 #Allow("naming.type")
-type c_longlong = int64;
+pub type c_longlong = int64;
 
 /// C's `unsigned long long`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-ulonglong
 #Allow("naming.type")
-type c_ulonglong = uint64;
+pub type c_ulonglong = uint64;
 
 /// C's `float`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-float
 #Allow("naming.type")
-type c_float = float32;
+pub type c_float = float32;
 
 /// C's `double`.
 ///
 /// https://rux-lang.dev/docs/api/c/c-double
 #Allow("naming.type")
-type c_double = float64;
+pub type c_double = float64;
 
 /// C's `_Bool`, which occupies one byte and holds zero or one.
 ///
 /// https://rux-lang.dev/docs/api/c/c-bool
 #Allow("naming.type")
-type c_bool = bool8;
+pub type c_bool = bool8;
 
 // `long` is the type the two data models disagree about, and the reason a binding cannot assume a width: it is 32 bits
 // under LLP64, which Windows uses, and 64 bits under LP64, which every supported Unix uses. `wchar_t` splits the same
@@ -99,38 +99,38 @@ when #target.dataModel {
         ///
         /// https://rux-lang.dev/docs/api/c/c-long
         #Allow("naming.type")
-        type c_long = int32;
+        pub type c_long = int32;
 
         /// C's `unsigned long`, 32 bits under this target's LLP64 data model.
         ///
         /// https://rux-lang.dev/docs/api/c/c-ulong
         #Allow("naming.type")
-        type c_ulong = uint32;
+        pub type c_ulong = uint32;
 
         /// C's `wchar_t`, a 16-bit UTF-16 code unit on Windows rather than a whole scalar value.
         ///
         /// https://rux-lang.dev/docs/api/c/wchar-t
         #Allow("naming.type")
-        type wchar_t = char16;
+        pub type wchar_t = char16;
     }
     .LP64 => {
         /// C's `long`, 64 bits under this target's LP64 data model.
         ///
         /// https://rux-lang.dev/docs/api/c/c-long
         #Allow("naming.type")
-        type c_long = int64;
+        pub type c_long = int64;
 
         /// C's `unsigned long`, 64 bits under this target's LP64 data model.
         ///
         /// https://rux-lang.dev/docs/api/c/c-ulong
         #Allow("naming.type")
-        type c_ulong = uint64;
+        pub type c_ulong = uint64;
 
         /// C's `wchar_t`, a 32-bit Unicode scalar value on this target.
         ///
         /// https://rux-lang.dev/docs/api/c/wchar-t
         #Allow("naming.type")
-        type wchar_t = char32;
+        pub type wchar_t = char32;
     }
     else => #Error("Unsupported C data model")
 }
@@ -141,7 +141,7 @@ when #target.dataModel {
 ///
 /// https://rux-lang.dev/docs/api/c/size-t
 #Allow("naming.type")
-type size_t = uint;
+pub type size_t = uint;
 
 /// POSIX's `ssize_t`: a size that can also report `-1` for failure.
 ///
@@ -150,25 +150,25 @@ type size_t = uint;
 ///
 /// https://rux-lang.dev/docs/api/c/ssize-t
 #Allow("naming.type")
-type ssize_t = int;
+pub type ssize_t = int;
 
 /// C's `ptrdiff_t`: the signed difference between two pointers into one object.
 ///
 /// https://rux-lang.dev/docs/api/c/ptrdiff-t
 #Allow("naming.type")
-type ptrdiff_t = int;
+pub type ptrdiff_t = int;
 
 /// C's `intptr_t`: a signed integer wide enough to hold any pointer.
 ///
 /// https://rux-lang.dev/docs/api/c/intptr-t
 #Allow("naming.type")
-type intptr_t = int;
+pub type intptr_t = int;
 
 /// C's `uintptr_t`: an unsigned integer wide enough to hold any pointer.
 ///
 /// https://rux-lang.dev/docs/api/c/uintptr-t
 #Allow("naming.type")
-type uintptr_t = uint;
+pub type uintptr_t = uint;
 
 /// C's `FILE`: a stream, whose contents belong to the C runtime.
 ///
@@ -182,7 +182,7 @@ type uintptr_t = uint;
 ///
 /// https://rux-lang.dev/docs/api/c/file
 #Allow("naming.type")
-struct FILE {}
+pub struct FILE {}
 
 /// C's `fpos_t`: an opaque record of a position within a stream.
 ///
@@ -191,7 +191,7 @@ struct FILE {}
 ///
 /// https://rux-lang.dev/docs/api/c/fpos-t
 #Allow("naming.type")
-struct fpos_t {}
+pub struct fpos_t {}
 
 // Which shared object the C runtime lives in. This is the canonical answer for the whole package; each module
 // repeats the selection under its own name only because `#Link` accepts a constant from its own file alone.
@@ -206,7 +206,7 @@ when #target.os {
         /// The shared object this target's C runtime lives in.
         ///
         /// https://rux-lang.dev/docs/api/c/c-runtime
-        const CRuntime = "libc.so.7";
+        pub const CRuntime = "libc.so.7";
 
         const CRuntimeLink = "libc.so.7";
     }
@@ -214,7 +214,7 @@ when #target.os {
         /// The shared object this target's C runtime lives in.
         ///
         /// https://rux-lang.dev/docs/api/c/c-runtime
-        const CRuntime = "libc.so.6";
+        pub const CRuntime = "libc.so.6";
 
         const CRuntimeLink = "libc.so.6";
     }
@@ -222,7 +222,7 @@ when #target.os {
         /// The shared object this target's C runtime lives in.
         ///
         /// https://rux-lang.dev/docs/api/c/c-runtime
-        const CRuntime = "libSystem.B.dylib";
+        pub const CRuntime = "libSystem.B.dylib";
 
         const CRuntimeLink = "libSystem.B.dylib";
     }
@@ -230,7 +230,7 @@ when #target.os {
         /// The shared object this target's C runtime lives in.
         ///
         /// https://rux-lang.dev/docs/api/c/c-runtime
-        const CRuntime = "ucrtbase.dll";
+        pub const CRuntime = "ucrtbase.dll";
 
         const CRuntimeLink = "ucrtbase.dll";
     }
@@ -289,7 +289,7 @@ when #target.os {
 /// The address belongs to the calling thread and must not be handed to another one.
 ///
 /// https://rux-lang.dev/docs/api/c/errno-location
-func ErrnoLocation() -> *var c_int {
+pub func ErrnoLocation() -> *var c_int {
     when #target.os {
         .Linux => { return __errno_location(); }
         .FreeBSD, .macOS => { return __error(); }
@@ -315,19 +315,19 @@ func ErrnoLocation() -> *var c_int {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/c/errno
-func Errno() -> c_int {
+pub func Errno() -> c_int {
     return *ErrnoLocation();
 }
 
 /// `EDOM`: an argument outside the domain over which a math function is defined.
 ///
 /// https://rux-lang.dev/docs/api/c/edom
-const EDOM: c_int = 33;
+pub const EDOM: c_int = 33;
 
 /// `ERANGE`: a result too large or too small for the return type to express.
 ///
 /// https://rux-lang.dev/docs/api/c/erange
-const ERANGE: c_int = 34;
+pub const ERANGE: c_int = 34;
 
 // `EILSEQ` is the third value C mandates, and the one the platforms disagree about: it was added after each had
 // already assigned the numbers around it.
@@ -336,25 +336,25 @@ when #target.os {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
         ///
         /// https://rux-lang.dev/docs/api/c/eilseq
-        const EILSEQ: c_int = 84;
+        pub const EILSEQ: c_int = 84;
     }
     .FreeBSD => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
         ///
         /// https://rux-lang.dev/docs/api/c/eilseq
-        const EILSEQ: c_int = 86;
+        pub const EILSEQ: c_int = 86;
     }
     .macOS => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
         ///
         /// https://rux-lang.dev/docs/api/c/eilseq
-        const EILSEQ: c_int = 92;
+        pub const EILSEQ: c_int = 92;
     }
     .Windows => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
         ///
         /// https://rux-lang.dev/docs/api/c/eilseq
-        const EILSEQ: c_int = 42;
+        pub const EILSEQ: c_int = 42;
     }
     else => #Error("Unsupported operating system")
 }

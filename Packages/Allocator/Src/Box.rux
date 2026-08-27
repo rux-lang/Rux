@@ -29,7 +29,7 @@ import Allocator::{ AllocError, Allocator, LayoutOf };
 /// overwriting assignment the value's life ends at.
 ///
 /// https://rux-lang.dev/docs/api/allocator/box
-struct Box<T> {
+pub struct Box<T> {
     /// The allocation, or null for a box whose value has been taken out.
     pointer: *var T;
     /// The allocator the storage came from, which is the one it must go back to.
@@ -52,7 +52,7 @@ extend Box<T> {
     /// Runs in whatever time the allocator takes, and allocates exactly one block.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/create
-    func Create(allocator: Allocator, value: T, error: *var AllocError) -> Box<T> {
+    pub func Create(allocator: Allocator, value: T, error: *var AllocError) -> Box<T> {
         let layout = LayoutOf<T>();
         var block: *var opaque = null;
         *error = allocator.Allocate(layout, @block);
@@ -76,7 +76,7 @@ extend Box<T> {
     /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/get
-    func Get(self: &Box<T>) -> *var T {
+    pub func Get(self: &Box<T>) -> *var T {
         return self.pointer;
     }
 
@@ -88,7 +88,7 @@ extend Box<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/is-empty
-    func IsEmpty(self: &Box<T>) -> bool {
+    pub func IsEmpty(self: &Box<T>) -> bool {
         return self.pointer == null;
     }
 
@@ -103,7 +103,7 @@ extend Box<T> {
     /// Runs in whatever time the allocator takes.
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/try-take
-    func TryTake(self: &var Box<T>, destination: *var T) -> bool {
+    pub func TryTake(self: &var Box<T>, destination: *var T) -> bool {
         if self.pointer == null || destination == null {
             return false;
         }

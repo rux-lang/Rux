@@ -6,7 +6,10 @@
 // The digits of a finite, non-zero magnitude, and the point placed by the
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
-func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
+/// Provides the public `WriteDecimal` operation.
+///
+/// https://rux-lang.dev/docs/api/format/write-decimal
+pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {
         cursor.Push(c8'-');

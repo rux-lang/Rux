@@ -14,7 +14,7 @@ import Core::{ #target, Slice };
 /// The kind of prefix a path opens with.
 ///
 /// https://rux-lang.dev/docs/api/path/prefix-kind
-enum PrefixKind: int32 {
+pub enum PrefixKind: int32 {
     /// No prefix: the path is a plain name, rooted or not.
     None = 0,
     /// A drive, `C:`, with or without a root after it.
@@ -32,7 +32,7 @@ enum PrefixKind: int32 {
 /// covers its four units plus the drive or share inside it.
 ///
 /// https://rux-lang.dev/docs/api/path/prefix-length
-func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
+pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
     *kind = PrefixKind::None;
     when #target.os == .Windows {
         let units = path.AsView().Units();
@@ -104,7 +104,7 @@ when #target.os == .Windows {
 /// Whether `path` has a root: a separator standing where the segments begin.
 ///
 /// https://rux-lang.dev/docs/api/path/has-root
-func HasRoot(path: Path) -> bool {
+pub func HasRoot(path: Path) -> bool {
     var kind = PrefixKind::None;
     let prefix = PrefixLength(path, @kind);
     if kind == PrefixKind::Share {
@@ -121,7 +121,7 @@ func HasRoot(path: Path) -> bool {
 /// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
 ///
 /// https://rux-lang.dev/docs/api/path/is-absolute
-func IsAbsolute(path: Path) -> bool {
+pub func IsAbsolute(path: Path) -> bool {
     when #target.os == .Windows {
         var kind = PrefixKind::None;
         let prefix = PrefixLength(path, @kind);

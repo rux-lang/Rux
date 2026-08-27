@@ -25,7 +25,7 @@ import Text::TextError;
 /// Why writing stopped.
 ///
 /// https://rux-lang.dev/docs/api/toml/write-error
-enum TomlWriteError: int32 {
+pub enum TomlWriteError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The writer refused the bytes.
@@ -565,7 +565,7 @@ func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
 /// by this writer, which is an equivalent document and not the same file.
 ///
 /// https://rux-lang.dev/docs/api/toml/write-document
-func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
+pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
     if table.Kind() != TomlKind::Table {
         return EmitValue(writer, table);
     }

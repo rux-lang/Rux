@@ -17,7 +17,7 @@ import Core::Slice;
 /// What just happened in the document.
 ///
 /// https://rux-lang.dev/docs/api/toml/event
-enum TomlEvent: int32 {
+pub enum TomlEvent: int32 {
     /// The document is finished.
     End = 0,
     /// Something went wrong; the reason is on the reader.
@@ -65,7 +65,7 @@ enum TomlEventState: int32 {
 /// Reads a document as events, in order, without building a tree.
 ///
 /// https://rux-lang.dev/docs/api/toml/event-reader
-struct TomlEventReader {
+pub struct TomlEventReader {
     /// Where tokens come from.
     lexer: TomlLexer;
     /// The whole document, which spans point into.
@@ -85,7 +85,7 @@ struct TomlEventReader {
     /// How many of those bits are in use.
     depth: uint;
     /// Why reading stopped.
-    error: TomlParseError;
+    pub error: TomlParseError;
     /// The lexer's reason, when `error` is `Lexical`.
     lexical: TomlLexError;
 }
@@ -94,7 +94,7 @@ extend TomlEventReader {
     /// A reader over `input`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/new
-    func TomlEventReader(input: Slice<char8>) -> TomlEventReader {
+    pub func TomlEventReader(input: Slice<char8>) -> TomlEventReader {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
         return TomlEventReader {
@@ -115,14 +115,14 @@ extend TomlEventReader {
     /// Why reading stopped, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/error
-    func Error(self: &TomlEventReader) -> TomlParseError {
+    pub func Error(self: &TomlEventReader) -> TomlParseError {
         return self.error;
     }
 
     /// The lexer's reason, when the error is `Lexical`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/lexical-error
-    func LexicalError(self: &TomlEventReader) -> TomlLexError {
+    pub func LexicalError(self: &TomlEventReader) -> TomlLexError {
         return self.lexical;
     }
 
@@ -130,7 +130,7 @@ extend TomlEventReader {
     /// text.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/span
-    func Span(self: &TomlEventReader) -> Slice<char8> {
+    pub func Span(self: &TomlEventReader) -> Slice<char8> {
         return Slice<char8> {
             data: self.input.data + self.current.start, length: self.current.end - self.current.start
         };
@@ -139,35 +139,35 @@ extend TomlEventReader {
     /// Which string form the current text event was written in, which decoding it needs.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/form
-    func Form(self: &TomlEventReader) -> TomlTextForm {
+    pub func Form(self: &TomlEventReader) -> TomlTextForm {
         return self.current.form;
     }
 
     /// Which line the current event is on, counting from one.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/line
-    func Line(self: &TomlEventReader) -> uint {
+    pub func Line(self: &TomlEventReader) -> uint {
         return self.current.line;
     }
 
     /// Which column the current event is at, counting from one, in bytes.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/column
-    func Column(self: &TomlEventReader) -> uint {
+    pub func Column(self: &TomlEventReader) -> uint {
         return self.current.column;
     }
 
     /// Whether the header being read was written `[[name]]` rather than `[name]`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
-    func IsTableArray(self: &TomlEventReader) -> bool {
+    pub func IsTableArray(self: &TomlEventReader) -> bool {
         return self.tableArray;
     }
 
     /// How deep inside arrays and inline tables the reader is.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/depth
-    func Depth(self: &TomlEventReader) -> uint {
+    pub func Depth(self: &TomlEventReader) -> uint {
         return self.depth;
     }
 }
@@ -258,7 +258,7 @@ extend TomlEventReader {
     /// the document never meant.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/next
-    func Next(self: &var TomlEventReader) -> TomlEvent {
+    pub func Next(self: &var TomlEventReader) -> TomlEvent {
         if self.state == TomlEventState::Finished {
             return TomlEvent::End;
         }

@@ -23,7 +23,7 @@ extend StringView {
     /// Runs in time proportional to the prefix and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/starts-with
-    func StartsWith(self: &StringView, prefix: StringView) -> bool {
+    pub func StartsWith(self: &StringView, prefix: StringView) -> bool {
         if prefix.bytes.length > self.bytes.length {
             return false;
         }
@@ -40,7 +40,7 @@ extend StringView {
     /// Whether this view ends with `suffix`.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/ends-with
-    func EndsWith(self: &StringView, suffix: StringView) -> bool {
+    pub func EndsWith(self: &StringView, suffix: StringView) -> bool {
         if suffix.bytes.length > self.bytes.length {
             return false;
         }
@@ -63,7 +63,7 @@ extend StringView {
     /// is used with is the same as proportional to the text.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/index-of
-    func IndexOf(self: &StringView, needle: StringView) -> Option<uint> {
+    pub func IndexOf(self: &StringView, needle: StringView) -> Option<uint> {
         if needle.bytes.length == 0 {
             return Option::Some<uint>(0);
         }
@@ -95,7 +95,7 @@ extend StringView {
     /// The byte index where `needle` last occurs, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/last-index-of
-    func LastIndexOf(self: &StringView, needle: StringView) -> Option<uint> {
+    pub func LastIndexOf(self: &StringView, needle: StringView) -> Option<uint> {
         if needle.bytes.length == 0 {
             return Option::Some<uint>(self.bytes.length);
         }
@@ -126,7 +126,7 @@ extend StringView {
     /// Whether `needle` occurs anywhere in this view.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/contains
-    func Contains(self: &StringView, needle: StringView) -> bool {
+    pub func Contains(self: &StringView, needle: StringView) -> bool {
         return self.IndexOf(needle).IsSome();
     }
 }
@@ -137,7 +137,7 @@ extend StringView {
 /// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
 ///
 /// https://rux-lang.dev/docs/api/text/is-ascii-space
-func IsAsciiSpace(byte: char8) -> bool {
+pub func IsAsciiSpace(byte: char8) -> bool {
     let value = byte as uint32;
     return value == 0x20 || (value >= 0x09 && value <= 0x0D);
 }
@@ -148,7 +148,7 @@ extend StringView {
     /// Borrows: what comes back names the same bytes, further in.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/trim-start
-    func TrimStart(self: &StringView) -> StringView {
+    pub func TrimStart(self: &StringView) -> StringView {
         var start: uint = 0;
         while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
             start = start + 1;
@@ -159,7 +159,7 @@ extend StringView {
     /// This view without the ASCII whitespace at its end.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/trim-end
-    func TrimEnd(self: &StringView) -> StringView {
+    pub func TrimEnd(self: &StringView) -> StringView {
         var end = self.bytes.length;
         while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
             end = end - 1;
@@ -170,7 +170,7 @@ extend StringView {
     /// This view without the ASCII whitespace at either end.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/trim
-    func Trim(self: &StringView) -> StringView {
+    pub func Trim(self: &StringView) -> StringView {
         let front = self.TrimStart();
         return front.TrimEnd();
     }
@@ -181,7 +181,7 @@ extend StringView {
 /// Every part is a borrow of the original, so splitting allocates nothing however many parts there are.
 ///
 /// https://rux-lang.dev/docs/api/text/split-iterator
-struct SplitIterator {
+pub struct SplitIterator {
     /// What is left to walk.
     rest: StringView;
     /// What separates the parts.
@@ -200,7 +200,7 @@ extend SplitIterator {
     /// endless walk.
     ///
     /// https://rux-lang.dev/docs/api/text/split-iterator/next
-    func Next(self: &var SplitIterator) -> Option<StringView> {
+    pub func Next(self: &var SplitIterator) -> Option<StringView> {
         if self.finished {
             return Option::None<StringView>();
         }
@@ -229,7 +229,7 @@ extend StringView {
     /// `self` is borrowed and must outlive the walk, as must `separator`.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/split
-    func Split(self: &StringView, separator: StringView) -> SplitIterator {
+    pub func Split(self: &StringView, separator: StringView) -> SplitIterator {
         return SplitIterator {
             rest: StringView::FromValidated(self.bytes),
             separator: separator,

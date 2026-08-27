@@ -1,6 +1,9 @@
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 #include "Semantic/Detail/TypePropertyClassifier.h"
 
+#include <algorithm>
+#include <iterator>
+
 namespace Rux {
 std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexcept {
     switch (kind) {
@@ -74,12 +77,27 @@ std::vector<const FuncDecl *> SemanticAnalyzerContext::ConstructorCandidates(con
     }
     std::vector<const FuncDecl *> result;
     for (const FuncDecl *method : named->second) {
-        const auto source = functionDeclFiles.find(method);
-        const bool accessible = method->isPublic || source == functionDeclFiles.end() || source->second == currentFile;
-        if (accessible && IsConstructorCandidate(*method, type)) {
+        if (IsAccessible(*method) && IsConstructorCandidate(*method, type)) {
             result.push_back(method);
         }
     }
+    return result;
+}
+
+std::vector<const FuncDecl *> SemanticAnalyzerContext::AccessibleMethodCandidates(const TypeRef &receiverType,
+                                                                                  const std::string &methodName) const {
+    const std::string typeName = NamedBaseTypeName(receiverType);
+    const auto type = methodsByType.find(typeName);
+    if (type == methodsByType.end()) {
+        return {};
+    }
+    const auto named = type->second.find(methodName);
+    if (named == type->second.end()) {
+        return {};
+    }
+    std::vector<const FuncDecl *> result;
+    std::ranges::copy_if(named->second, std::back_inserter(result),
+                         [this](const FuncDecl *method) { return IsAccessible(*method); });
     return result;
 }
 
@@ -184,6 +202,20 @@ TypeProperties SemanticAnalyzerContext::ClassifyTypeProperties(const TypeRef &ty
         typeProperties.insert_or_assign(key, properties);
     }
     return properties;
+}
+
+const FuncDecl *SemanticAnalyzerContext::LookupSourceSpecialOperation(const TypeRef &type,
+                                                                      const std::string_view operation,
+                                                                      const SourceLocation location) {
+    const std::string name(operation);
+    if (const FuncDecl *accessible = LookupMethod(type, name, {type})) {
+        return accessible;
+    }
+    const FuncDecl *declared = LookupMethod(type, name, {type}, false);
+    if (declared && !IsAccessible(*declared)) {
+        EmitPrivacyError(location, *declared, operation == "=" ? "copy operation" : "move operation", operation);
+    }
+    return nullptr;
 }
 
 void SemanticAnalyzerContext::RecordResolvedTypeProperties() {

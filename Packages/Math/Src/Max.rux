@@ -1,6 +1,9 @@
 // The mirror of Min: a NaN loses to anything else, and when the arguments
 // compare equal the sign of a zero decides, so Max(0.0, -0.0) is 0.0.
-func Max(a: float64, b: float64) -> float64 {
+/// Provides the public `Max` operation.
+///
+/// https://rux-lang.dev/docs/api/math/max
+pub func Max(a: float64, b: float64) -> float64 {
     if a != a {
         return b;
     }
@@ -20,6 +23,9 @@ func Max(a: float64, b: float64) -> float64 {
     return b;
 }
 
-func Max(a: float32, b: float32) -> float32 {
+/// Provides the public `Max` operation.
+///
+/// https://rux-lang.dev/docs/api/math/max
+pub func Max(a: float32, b: float32) -> float32 {
     return Max(a as float64, b as float64) as float32;
 }

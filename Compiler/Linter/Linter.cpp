@@ -322,6 +322,7 @@ public:
 
 private:
     std::string sourceName;
+    bool containingModulesPublic = true;
 
     void Warn(SourceLocation loc, std::string message, std::optional<std::string> help = std::nullopt) {
         Diagnostic d;
@@ -350,7 +351,7 @@ private:
     /// What a published declaration owes its readers: a comment at all, and a link to the page that documents it. Both
     /// are checked here rather than per declaration kind, because the rule is the same for every one of them.
     void CheckDocumentation(const Decl &decl, const std::string_view description, const std::string_view name) {
-        if (!decl.isPublic) {
+        if (!containingModulesPublic || !decl.isPublic) {
             return;
         }
         if (decl.documentation.empty()) {
@@ -466,11 +467,14 @@ private:
                 WarnNaming(mod->location, "module name", mod->name, NamingConvention::PascalCase, siblingNames);
             }
             const auto itemNames = DeclNames(mod->items);
+            const bool savedContainingModulesPublic = containingModulesPublic;
+            containingModulesPublic = containingModulesPublic && mod->isPublic;
             for (const auto &item : mod->items) {
                 if (item) {
                     VisitDecl(*item, itemNames);
                 }
             }
+            containingModulesPublic = savedContainingModulesPublic;
         }
         else if (const auto *cnst = dynamic_cast<const ConstDecl *>(&decl)) {
             CheckDocumentation(decl, "constant", cnst->name);

@@ -44,12 +44,12 @@ when #target.os {
 /// that needs both should write through one protection and execute through another.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-none
-const PageNone: uint32 = 0;
+pub const PageNone: uint32 = 0;
 
 /// The page may be read.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-read
-const PageRead: uint32 = 1;
+pub const PageRead: uint32 = 1;
 
 /// The page may be written.
 ///
@@ -57,12 +57,12 @@ const PageRead: uint32 = 1;
 /// suggest.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-write
-const PageWrite: uint32 = 2;
+pub const PageWrite: uint32 = 2;
 
 /// The page may be executed.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-execute
-const PageExecute: uint32 = 4;
+pub const PageExecute: uint32 = 4;
 
 /// Why a page operation did not do what was asked. `Copy`.
 ///
@@ -71,7 +71,7 @@ const PageExecute: uint32 = 4;
 /// nothing went wrong -- only that this module could not name it.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-error
-enum PageError: uint8 {
+pub enum PageError: uint8 {
     /// Nothing went wrong. This is what a successful call reports, so it is not an error case.
     None = 0,
     /// The length was zero, or too large for the address space to hold.
@@ -103,7 +103,7 @@ enum PageError: uint8 {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-size
-func PageSize() -> uint {
+pub func PageSize() -> uint {
     when #target.os {
         .Windows => {
             var info: SystemInfo;
@@ -139,7 +139,7 @@ func PageSize() -> uint {
 /// an address this did not return, is undefined on Windows and silently partial elsewhere.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-allocate
-func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
+pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
     if length == 0 {
         return PageError::InvalidLength;
     }
@@ -178,7 +178,7 @@ func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) ->
 /// release only that, so a wrong length there silently releases the wrong amount.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-release
-func PageRelease(address: *var opaque, length: uint) -> PageError {
+pub func PageRelease(address: *var opaque, length: uint) -> PageError {
     if address == null {
         return PageError::InvalidAddress;
     }
@@ -217,7 +217,7 @@ func PageRelease(address: *var opaque, length: uint) -> PageError {
 /// Silicon without an entitlement and by policy on hardened systems elsewhere, which arrives as `PermissionDenied`.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-protect
-func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
+pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
     if address == null {
         return PageError::InvalidAddress;
     }
@@ -249,7 +249,7 @@ func PageProtect(address: *var opaque, length: uint, protection: uint32) -> Page
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-align
-func PageAlign(length: uint) -> uint {
+pub func PageAlign(length: uint) -> uint {
     let size = PageSize();
     let rounded = AlignUp(length, size);
     return rounded < length ? length : rounded;

@@ -11,7 +11,7 @@
 /// What an I/O operation reported.
 ///
 /// https://rux-lang.dev/docs/api/io/io-error-kind
-enum IoErrorKind: int32 {
+pub enum IoErrorKind: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The stream ended: not a failure, but it arrives where failures do.
@@ -54,53 +54,53 @@ enum IoErrorKind: int32 {
 /// translation loses detail and the detail is sometimes the diagnosis.
 ///
 /// https://rux-lang.dev/docs/api/io/io-error
-struct IoError {
+pub struct IoError {
     /// The meaning every platform shares.
-    kind: IoErrorKind;
+    pub kind: IoErrorKind;
     /// The platform's own code, zero where none applies.
-    raw: int32;
+    pub raw: int32;
 }
 
 extend IoError {
     /// Nothing went wrong.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/ok
-    func Ok() -> IoError {
+    pub func Ok() -> IoError {
         return IoError { kind: IoErrorKind::None, raw: 0 };
     }
 
     /// A failure of `kind` with no platform code.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/of
-    func Of(kind: IoErrorKind) -> IoError {
+    pub func Of(kind: IoErrorKind) -> IoError {
         return IoError { kind: kind, raw: 0 };
     }
 
     /// Whether nothing went wrong.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-ok
-    func IsOk(self: &IoError) -> bool {
+    pub func IsOk(self: &IoError) -> bool {
         return self.kind == IoErrorKind::None;
     }
 
     /// Whether something did.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-error
-    func IsError(self: &IoError) -> bool {
+    pub func IsError(self: &IoError) -> bool {
         return self.kind != IoErrorKind::None;
     }
 
     /// Whether the stream ended, which is the one report that is not a failure.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-end
-    func IsEnd(self: &IoError) -> bool {
+    pub func IsEnd(self: &IoError) -> bool {
         return self.kind == IoErrorKind::EndOfStream;
     }
 
     /// Whether going again is the right response: an interruption or a would-block.
     ///
     /// https://rux-lang.dev/docs/api/io/io-error/is-transient
-    func IsTransient(self: &IoError) -> bool {
+    pub func IsTransient(self: &IoError) -> bool {
         return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
     }
 }

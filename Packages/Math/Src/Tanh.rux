@@ -1,4 +1,7 @@
-func Tanh(x: float64) -> float64 {
+/// Provides the public `Tanh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/tanh
+pub func Tanh(x: float64) -> float64 {
     if x != x {
         return x;
     }
@@ -26,6 +29,9 @@ func Tanh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-func Tanh(x: float32) -> float32 {
+/// Provides the public `Tanh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/tanh
+pub func Tanh(x: float32) -> float32 {
     return Tanh(x as float64) as float32;
 }

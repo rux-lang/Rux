@@ -16,7 +16,7 @@
 /// has no real logarithm and gives a NaN.
 ///
 /// https://rux-lang.dev/docs/api/math/log1p
-func Log1p(x: float64) -> float64 {
+pub func Log1p(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
 
@@ -72,6 +72,6 @@ func Log1p(x: float64) -> float64 {
 /// `log(1 + x)` at the narrow width.
 ///
 /// https://rux-lang.dev/docs/api/math/log1p-32
-func Log1p(x: float32) -> float32 {
+pub func Log1p(x: float32) -> float32 {
     return Log1p(x as float64) as float32;
 }

@@ -18,12 +18,12 @@
 /// PCG's "cheap" 64-bit multiplier, which the DXSM variant uses in the 128-bit step as well.
 ///
 /// https://rux-lang.dev/docs/api/random/pcg-multiplier
-const PcgMultiplier: uint64 = 0xDA942042E4DD58B5;
+pub const PcgMultiplier: uint64 = 0xDA942042E4DD58B5;
 
 /// A PCG64-DXSM generator.
 ///
 /// https://rux-lang.dev/docs/api/random/pcg64-dxsm
-struct Pcg64Dxsm {
+pub struct Pcg64Dxsm {
     /// The 128-bit linear congruential state.
     state: uint128;
     /// The stream selector, always odd.
@@ -34,7 +34,7 @@ extend Pcg64Dxsm {
     /// A generator seeded by spreading `seed` through `SplitMix64`, on the default stream.
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/new
-    func Pcg64Dxsm(seed: uint64) -> Pcg64Dxsm {
+    pub func Pcg64Dxsm(seed: uint64) -> Pcg64Dxsm {
         return Pcg64Dxsm::WithStream(seed, 0u64);
     }
 
@@ -45,7 +45,7 @@ extend Pcg64Dxsm {
     /// their own index.
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/with-stream
-    func WithStream(seed: uint64, stream: uint64) -> Pcg64Dxsm {
+    pub func WithStream(seed: uint64, stream: uint64) -> Pcg64Dxsm {
         var mixer = SplitMix64(seed);
         let stateHigh = mixer.NextUint64() as uint128;
         let stateLow = mixer.NextUint64() as uint128;
@@ -80,7 +80,7 @@ extend Pcg64Dxsm : RandomGenerator {
     /// value rather than collapsing any of it.
     ///
     /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/next-uint64
-    func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
+    pub func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
         var high = (self.state >> 64u128) as uint64;
         let low = ((self.state as uint64) | 1u64);
         high = high ^ (high >> 32u64);

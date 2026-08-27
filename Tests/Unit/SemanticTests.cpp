@@ -330,6 +330,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         {},
                         {},
                         {},
+                        {},
                         std::move(symbolIdentities),
                         {},
                         {},
@@ -396,6 +397,7 @@ TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
                         {&parsed.module},
                         CompileTimeContext{},
                         std::move(expressionTypes),
+                        {},
                         {},
                         {},
                         {},
@@ -1329,8 +1331,8 @@ TEST_CASE("bare package import binds the eponymous module for qualified access")
         }
     )",
                                             "Platform", R"(
-        module Platform {
-            func Now() -> int { return 7; }
+        pub module Platform {
+            pub func Now() -> int { return 7; }
         }
     )");
 
@@ -1363,8 +1365,8 @@ TEST_CASE("importing a module's item without naming the module is an error") {
         func Main() -> int { return 0; }
     )",
                                             "Foo", R"(
-        module Foo {
-            func Bar() -> int { return 7; }
+        pub module Foo {
+            pub func Bar() -> int { return 7; }
         }
     )");
 
@@ -1384,8 +1386,8 @@ TEST_CASE("importing a module's item through its full path resolves") {
         }
     )",
                                             "Foo", R"(
-        module Foo {
-            func Bar() -> int { return 7; }
+        pub module Foo {
+            pub func Bar() -> int { return 7; }
         }
     )");
 
@@ -1394,8 +1396,8 @@ TEST_CASE("importing a module's item through its full path resolves") {
 
 TEST_CASE("AST-to-HIR uses the recorded binding for an imported function") {
     Lexer dependencyLexer(R"(
-        module Foo {
-            func Bar() -> int { return 7; }
+        pub module Foo {
+            pub func Bar() -> int { return 7; }
         }
     )",
                           "dependency.rux");

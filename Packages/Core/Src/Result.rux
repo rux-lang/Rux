@@ -10,7 +10,7 @@
 /// A `Result<T, E>` is as wide as its tag plus the larger of `T` and `E`, and never allocates on its own.
 ///
 /// https://rux-lang.dev/docs/api/core/result
-enum Result<T, E> {
+pub enum Result<T, E> {
     Success(T),
     Error(E)
 }
@@ -24,7 +24,7 @@ extend Result<T, E> {
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
     /// https://rux-lang.dev/docs/api/core/result/is-success
-    func IsSuccess(self: &Result<T, E>) -> bool {
+    pub func IsSuccess(self: &Result<T, E>) -> bool {
         return match self {
             .Success(_) => true,
             .Error(_) => false
@@ -38,7 +38,7 @@ extend Result<T, E> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/result/is-error
-    func IsError(self: &Result<T, E>) -> bool {
+    pub func IsError(self: &Result<T, E>) -> bool {
         return !self.IsSuccess();
     }
 
@@ -52,7 +52,7 @@ extend Result<T, E> {
     /// nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/result/value-or
-    func ValueOr(self: Result<T, E>, fallback: T) -> T {
+    pub func ValueOr(self: Result<T, E>, fallback: T) -> T {
         return match <-self {
             .Success(value) => <-value,
             .Error(_) => <-fallback
@@ -72,7 +72,7 @@ extend Result<T, E> {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/result/try-into-value
-    func TryIntoValue(self: Result<T, E>, value: *var T) -> bool {
+    pub func TryIntoValue(self: Result<T, E>, value: *var T) -> bool {
         if value == null {
             return false;
         }
@@ -100,7 +100,7 @@ extend Result<T, E> {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/result/try-into-error
-    func TryIntoError(self: Result<T, E>, error: *var E) -> bool {
+    pub func TryIntoError(self: Result<T, E>, error: *var E) -> bool {
         if error == null {
             return false;
         }

@@ -19,7 +19,7 @@ import Memory::ZeroizeBlock;
 /// demand. An implementation either fills the whole buffer and reports `None`, or reports why it did not.
 ///
 /// https://rux-lang.dev/docs/api/entropy/entropy-source
-interface EntropySource {
+pub interface EntropySource {
     /// Fills `length` bytes of `buffer` with unpredictable bytes.
     ///
     /// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
@@ -40,7 +40,7 @@ interface EntropySource {
 /// source can be handed the real one.
 ///
 /// https://rux-lang.dev/docs/api/entropy/system-entropy
-struct SystemEntropy {
+pub struct SystemEntropy {
 }
 
 extend SystemEntropy {
@@ -52,7 +52,7 @@ extend SystemEntropy {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/entropy/system-entropy/new
-    func SystemEntropy() -> SystemEntropy {
+    pub func SystemEntropy() -> SystemEntropy {
         return SystemEntropy {};
     }
 
@@ -70,7 +70,7 @@ extend SystemEntropy : EntropySource {
     /// `buffer` must be writable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/entropy/system-entropy/fill
-    func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
+    pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
         return FillFromSource(buffer, length);
     }
 }
@@ -92,7 +92,7 @@ extend SystemEntropy : EntropySource {
 /// earlier call filled successfully.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-from
-func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
+pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
     if length == 0 {
         return EntropyError::None;
     }
@@ -132,7 +132,7 @@ func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> 
 /// exhausts the attempts leaves zeros.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-with-retries
-func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
+pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
     var error = FillFrom(source, buffer, length);
     var remaining = attempts;
     while error.IsTransient() && remaining > 0 {
@@ -154,7 +154,7 @@ func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: ui
 /// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill
-func Fill(buffer: *var opaque, length: uint) -> EntropyError {
+pub func Fill(buffer: *var opaque, length: uint) -> EntropyError {
     var system = SystemEntropy();
     let source: &var EntropySource = system;
     return FillFrom(source, buffer, length);
@@ -168,7 +168,7 @@ func Fill(buffer: *var opaque, length: uint) -> EntropyError {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/entropy/next-uint64
-func NextUint64(error: *var EntropyError) -> uint64 {
+pub func NextUint64(error: *var EntropyError) -> uint64 {
     var value: uint64 = 0;
     *error = Fill(@value as *var opaque, 8);
     if error.IsError() {

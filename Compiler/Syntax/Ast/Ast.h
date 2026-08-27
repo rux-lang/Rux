@@ -645,6 +645,7 @@ struct UnionDecl : Decl {
 
     struct Field {
         SourceLocation location;
+        bool isPublic = false;
         std::string documentation;
         std::string name;
         TypeExprPtr type;

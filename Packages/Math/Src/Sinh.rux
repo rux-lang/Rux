@@ -1,4 +1,7 @@
-func Sinh(x: float64) -> float64 {
+/// Provides the public `Sinh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/sinh
+pub func Sinh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
     let overflow = 710.4758600739439; // ln(2 * maxfloat)
 
@@ -35,6 +38,9 @@ func Sinh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-func Sinh(x: float32) -> float32 {
+/// Provides the public `Sinh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/sinh
+pub func Sinh(x: float32) -> float32 {
     return Sinh(x as float64) as float32;
 }

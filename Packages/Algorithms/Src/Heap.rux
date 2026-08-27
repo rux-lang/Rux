@@ -27,7 +27,7 @@ import Core::{ MutableSlice, Ordering };
 /// does most of its work on the short subtrees near the leaves. Allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/make-heap
-func MakeHeap<T>(items: MutableSlice<T>) {
+pub func MakeHeap<T>(items: MutableSlice<T>) {
     if items.length < 2 {
         return;
     }
@@ -50,7 +50,7 @@ func MakeHeap<T>(items: MutableSlice<T>) {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/push-heap
-func PushHeap<T>(items: MutableSlice<T>) {
+pub func PushHeap<T>(items: MutableSlice<T>) {
     if items.length < 2 {
         return;
     }
@@ -68,7 +68,7 @@ func PushHeap<T>(items: MutableSlice<T>) {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/pop-heap
-func PopHeap<T>(items: MutableSlice<T>) {
+pub func PopHeap<T>(items: MutableSlice<T>) {
     if items.length < 2 {
         return;
     }
@@ -91,7 +91,7 @@ func PopHeap<T>(items: MutableSlice<T>) {
 /// Cannot fail. Makes O(n log n) comparisons and allocates nothing. Equal elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort-heap
-func SortHeap<T>(items: MutableSlice<T>) {
+pub func SortHeap<T>(items: MutableSlice<T>) {
     var remaining = items.length;
     while remaining > 1 {
         PopHeap<T>(MutableSlice<T> { data: items.data, length: remaining });
@@ -109,7 +109,7 @@ func SortHeap<T>(items: MutableSlice<T>) {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-heap
-func IsHeap<T>(items: Slice<T>) -> bool {
+pub func IsHeap<T>(items: Slice<T>) -> bool {
     return IsHeapUntil<T>(items) == items.length;
 }
 
@@ -123,7 +123,7 @@ func IsHeap<T>(items: Slice<T>) -> bool {
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-heap-until
-func IsHeapUntil<T>(items: Slice<T>) -> uint {
+pub func IsHeapUntil<T>(items: Slice<T>) -> uint {
     var child: uint = 1;
     while child < items.length {
         if items.data[(child - 1) / 2] < items.data[child] {
@@ -180,7 +180,7 @@ func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/make-heap-by
-func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     if items.length < 2 {
         return;
     }
@@ -199,7 +199,7 @@ func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/push-heap-by
-func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     if items.length < 2 {
         return;
     }
@@ -214,7 +214,7 @@ func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/pop-heap-by
-func PopHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func PopHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     if items.length < 2 {
         return;
     }
@@ -233,7 +233,7 @@ func PopHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
 /// elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort-heap-by
-func SortHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func SortHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     var remaining = items.length;
     while remaining > 1 {
         PopHeapBy<T>(MutableSlice<T> { data: items.data, length: remaining }, compare);
@@ -248,7 +248,7 @@ func SortHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-heap-by
-func IsHeapBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
+pub func IsHeapBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
     return IsHeapUntilBy<T>(items, compare) == items.length;
 }
 
@@ -260,7 +260,7 @@ func IsHeapBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-heap-until-by
-func IsHeapUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
+pub func IsHeapUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
     var child: uint = 1;
     while child < items.length {
         if compare(items.data[(child - 1) / 2], items.data[child]).IsLess() {

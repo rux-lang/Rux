@@ -748,7 +748,7 @@ Output = "Artifacts"
 )";
     manifestFile.close();
     std::ofstream source(root / "Src" / "Widget.rux", std::ios::binary);
-    source << "module Widget {\n    pub func Answer() -> int { return 42; }\n}\n";
+    source << "pub module Widget {\n    pub func Answer() -> int { return 42; }\n}\n";
     source.close();
     REQUIRE(manifestFile);
     REQUIRE(source);

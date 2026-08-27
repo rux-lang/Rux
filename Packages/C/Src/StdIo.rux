@@ -47,7 +47,7 @@ extern {
 
     // Closes the given file stream
     // https://en.cppreference.com/c/io/fclose
-    func fclose(stream: *FILE) -> c_int;
+    pub func fclose(stream: *FILE) -> c_int;
 
     // Checks if the end-of-file indicator is set for the given stream
     // https://en.cppreference.com/c/io/feof
@@ -63,7 +63,7 @@ extern {
 
     // Reads the next character from the given stream
     // https://en.cppreference.com/c/io/fgetc
-    func fgetc(stream: *FILE) -> c_int;
+    pub func fgetc(stream: *FILE) -> c_int;
 
     // Gets the current file position of the stream
     // https://en.cppreference.com/c/io/fgetpos
@@ -75,7 +75,7 @@ extern {
 
     // Opens a file indicated by filename with the given mode
     // https://en.cppreference.com/c/io/fopen
-    func fopen(filename: *char8, mode: *char8) -> *FILE;
+    pub func fopen(filename: *char8, mode: *char8) -> *FILE;
 
     // Prints formatted output to a file stream
     // https://en.cppreference.com/c/io/fprintf
@@ -103,7 +103,7 @@ extern {
 
     // Sets the file position indicator for the stream
     // https://en.cppreference.com/c/io/fseek
-    func fseek(stream: *FILE, offset: int64, origin: c_int) -> c_int;
+    pub func fseek(stream: *FILE, offset: int64, origin: c_int) -> c_int;
 
     // Sets the file position of the stream to the given position
     // https://en.cppreference.com/c/io/fsetpos
@@ -111,11 +111,11 @@ extern {
 
     // Returns the current file position of the stream
     // https://en.cppreference.com/c/io/ftell
-    func ftell(stream: *FILE) -> int64;
+    pub func ftell(stream: *FILE) -> int64;
 
     // Writes count objects of the given size from a buffer to the stream
     // https://en.cppreference.com/c/io/fwrite
-    func fwrite(buffer: *opaque, size: size_t, count: size_t, stream: *FILE) -> size_t;
+    pub func fwrite(buffer: *opaque, size: size_t, count: size_t, stream: *FILE) -> size_t;
 
     // Reads the next character from the given stream
     // https://en.cppreference.com/c/io/fgetc
@@ -139,15 +139,15 @@ extern {
 
     // Writes a character to stdout
     // https://en.cppreference.com/c/io/putchar
-    func putchar(ch: c_int) -> c_int;
+    pub func putchar(ch: c_int) -> c_int;
 
     // Writes a string followed by a newline to stdout
     // https://en.cppreference.com/c/io/puts
-    func puts(str: *char8) -> c_int;
+    pub func puts(str: *char8) -> c_int;
 
     // Deletes the file identified by the given path
     // https://en.cppreference.com/c/io/remove
-    func remove(pathname: *char8) -> c_int;
+    pub func remove(pathname: *char8) -> c_int;
 
     // Renames a file, moving it if necessary
     // https://en.cppreference.com/c/io/rename
@@ -177,14 +177,14 @@ extern {
     // Never told the size of the buffer, so a longer result than it holds is an overrun. Rux/Format writes into a
     // destination that knows its own length.
     // https://en.cppreference.com/c/io/sprintf
-    func sprintf(buffer: *char8, format: *char8, ...) -> c_int;
+    pub func sprintf(buffer: *char8, format: *char8, ...) -> c_int;
 
     // Reads formatted input from a string
     //
     // A '%s' conversion is never told the size of what it writes into, so a longer field than it holds is an
     // overrun; give every string conversion an explicit width.
     // https://en.cppreference.com/c/io/sscanf
-    func sscanf(buffer: *char8, format: *char8, ...) -> c_int;
+    pub func sscanf(buffer: *char8, format: *char8, ...) -> c_int;
 
     // Creates and opens a temporary file with a unique name
     // https://en.cppreference.com/c/io/tmpfile
@@ -212,25 +212,25 @@ extern {
 ///
 /// https://rux-lang.dev/docs/api/c/eof
 #Allow("naming.const")
-const EOF: int32 = -1;
+pub const EOF: int32 = -1;
 
 /// `SEEK_SET`: measure the new stream position from the beginning.
 ///
 /// https://rux-lang.dev/docs/api/c/seek-set
 #Allow("naming.const")
-const SEEK_SET: int32 = 0;
+pub const SEEK_SET: int32 = 0;
 
 /// `SEEK_CUR`: measure the new stream position from the current one.
 ///
 /// https://rux-lang.dev/docs/api/c/seek-cur
 #Allow("naming.const")
-const SEEK_CUR: int32 = 1;
+pub const SEEK_CUR: int32 = 1;
 
 /// `SEEK_END`: measure the new stream position from the end.
 ///
 /// https://rux-lang.dev/docs/api/c/seek-end
 #Allow("naming.const")
-const SEEK_END: int32 = 2;
+pub const SEEK_END: int32 = 2;
 
 // The buffering modes and the sizes are where the platforms part company. Every value below is what the target's own
 // header defines, and the numbers differ enough that assuming any of them would be wrong somewhere.
@@ -240,146 +240,146 @@ when #target.os {
         ///
         /// https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
-        const _IOFBF: int32 = 0;
+        pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
         /// https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
-        const _IOLBF: int32 = 64;
+        pub const _IOLBF: int32 = 64;
 
         /// `_IONBF`: do not buffer.
         ///
         /// https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
-        const _IONBF: int32 = 4;
+        pub const _IONBF: int32 = 4;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
         /// https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
-        const BUFSIZ: int32 = 512;
+        pub const BUFSIZ: int32 = 512;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
         /// https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
-        const FOPEN_MAX: int32 = 20;
+        pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
         /// https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
-        const FILENAME_MAX: int32 = 260;
+        pub const FILENAME_MAX: int32 = 260;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
         /// https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
-        const L_tmpnam: int32 = 260;
+        pub const L_tmpnam: int32 = 260;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
         /// https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
-        const TMP_MAX: int32 = 32767;
+        pub const TMP_MAX: int32 = 32767;
     }
     .Linux => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         ///
         /// https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
-        const _IOFBF: int32 = 0;
+        pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
         /// https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
-        const _IOLBF: int32 = 1;
+        pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
         ///
         /// https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
-        const _IONBF: int32 = 2;
+        pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
         /// https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
-        const BUFSIZ: int32 = 8192;
+        pub const BUFSIZ: int32 = 8192;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
         /// https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
-        const FOPEN_MAX: int32 = 16;
+        pub const FOPEN_MAX: int32 = 16;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
         /// https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
-        const FILENAME_MAX: int32 = 4096;
+        pub const FILENAME_MAX: int32 = 4096;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
         /// https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
-        const L_tmpnam: int32 = 20;
+        pub const L_tmpnam: int32 = 20;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
         /// https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
-        const TMP_MAX: int32 = 238328;
+        pub const TMP_MAX: int32 = 238328;
     }
     else => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         ///
         /// https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
-        const _IOFBF: int32 = 0;
+        pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
         /// https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
-        const _IOLBF: int32 = 1;
+        pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
         ///
         /// https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
-        const _IONBF: int32 = 2;
+        pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
         /// https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
-        const BUFSIZ: int32 = 1024;
+        pub const BUFSIZ: int32 = 1024;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
         /// https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
-        const FOPEN_MAX: int32 = 20;
+        pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
         /// https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
-        const FILENAME_MAX: int32 = 1024;
+        pub const FILENAME_MAX: int32 = 1024;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
         /// https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
-        const L_tmpnam: int32 = 1024;
+        pub const L_tmpnam: int32 = 1024;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
         /// https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
-        const TMP_MAX: int32 = 308915776;
+        pub const TMP_MAX: int32 = 308915776;
     }
 }

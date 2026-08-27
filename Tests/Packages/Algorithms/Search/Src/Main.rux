@@ -11,13 +11,13 @@ import Core::{ Assert, Ordering };
 // merely look plausible.
 
 // Ordered by key alone, so equivalent-but-distinct elements exist and which one a search finds is observable.
-struct Ranked {
+pub struct Ranked {
     key: int32;
     origin: int32;
 }
 
 extend Ranked {
-    func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 }

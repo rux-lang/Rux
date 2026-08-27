@@ -12,7 +12,7 @@
 /// documented algorithms for that, and `Rux/Crypto` the ones that must resist an adversary.
 ///
 /// https://rux-lang.dev/docs/api/core/hashable
-interface Hashable {
+pub interface Hashable {
     /// The hash of this value.
     ///
     /// Borrows the value and takes ownership of nothing, so hashing leaves it usable.

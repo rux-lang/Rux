@@ -12,7 +12,7 @@
 /// A type that also implements `Hashable` must keep the two agreeable: equal values hash the same.
 ///
 /// https://rux-lang.dev/docs/api/core/equatable
-interface Equatable {
+pub interface Equatable {
     /// Reports whether this value and `other` are equal.
     ///
     /// Borrows both operands and takes ownership of neither, so comparing costs nothing and leaves both usable.

@@ -208,6 +208,7 @@ struct SemanticModel {
                   std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
                   std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> inputDefaultConstructors,
+                  std::unordered_map<const Decl *, bool> inputEffectiveVisibilities,
                   std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
@@ -238,6 +239,9 @@ struct SemanticModel {
 
     /// Returns null for initialized declarations and declarations whose type has no eligible default constructor.
     [[nodiscard]] const ResolvedDefaultConstructor *TryGetDefaultConstructor(const LetStmt &statement) const noexcept;
+
+    /// Whether a declaration is public after every containing module and owning type has capped its visibility.
+    [[nodiscard]] bool IsEffectivelyPublic(const Decl &declaration) const noexcept;
 
     /// Returns null for declarations that do not emit/import a symbol and for nodes outside the analyzed modules.
     [[nodiscard]] const ResolvedSymbolIdentity *TryGetSymbolIdentity(const Decl &declaration) const noexcept;
@@ -286,6 +290,7 @@ private:
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
+    std::unordered_map<const Decl *, bool> effectiveVisibilities;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;

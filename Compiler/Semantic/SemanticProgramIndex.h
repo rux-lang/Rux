@@ -30,6 +30,9 @@ struct Symbol {
     TypeRef type;
     bool isMut = false;
     bool isPublic = false;
+    bool isEffectivelyPublic = false;
+    std::string ownerPackage;
+    std::string modulePath;
     std::string intrinsicName;
     std::vector<const FuncDecl *> funcOverloads;
     const ExternFuncDecl *externDecl = nullptr;
@@ -60,6 +63,13 @@ private:
 /// because aliases and typed constants still use its in-progress type context.
 class SemanticProgramIndex {
 public:
+    struct DeclarationInfo {
+        std::string ownerPackage;
+        std::string modulePath;
+        std::string sourceName;
+        bool isEffectivelyPublic = false;
+    };
+
     using PackageScopes = std::unordered_map<std::string, std::unordered_map<std::string, Scope *>>;
     using ResolveType = std::function<TypeRef(const TypeExpr &)>;
 
@@ -74,7 +84,10 @@ public:
     void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
     void CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                             const ResolveType &resolveType, const std::string *packageName = nullptr,
-                            const std::string &modulePath = {});
+                            const std::string &modulePath = {}, bool containingModulesPublic = true);
+    void FinalizeVisibility();
+
+    [[nodiscard]] const DeclarationInfo *InfoFor(const Decl &declaration) const;
 
     [[nodiscard]] const auto &Packages() const {
         return packageScopes;
@@ -152,6 +165,10 @@ public:
         return functionSources;
     }
 
+    [[nodiscard]] const auto &DeclarationInfos() const {
+        return declarationInfos;
+    }
+
 private:
     std::vector<SemanticDiagnostic> &diagnostics;
     std::vector<SemanticSymbol> &publicSymbols;
@@ -174,5 +191,6 @@ private:
     std::unordered_map<std::string, std::unordered_set<std::string>> implementedInterfaces;
     std::unordered_map<const FuncDecl *, Scope *> functionScopes;
     std::unordered_map<const FuncDecl *, std::string> functionSources;
+    std::unordered_map<const Decl *, DeclarationInfo> declarationInfos;
 };
 } // namespace Rux::SemanticDetail

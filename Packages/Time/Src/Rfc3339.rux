@@ -35,7 +35,7 @@ func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
 /// header states.
 ///
 /// https://rux-lang.dev/docs/api/time/parse-rfc3339
-func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
+pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
     if text.length < 20 {
         return false;
     }
@@ -182,7 +182,7 @@ func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
 /// this module deliberately does not speak.
 ///
 /// https://rux-lang.dev/docs/api/time/format-rfc3339
-func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice<char8>,
+pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice<char8>,
                    written: *var uint) -> bool {
     *written = 0;
     if dateTime.date.year < 0i32 || dateTime.date.year > 9999i32 {

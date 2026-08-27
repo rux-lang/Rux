@@ -2,7 +2,10 @@
 // the binary point does it in one step, and it costs nothing to be right on
 // the awkward inputs: Trunc(-0.4) keeps its sign and is -0.0, and an
 // infinity or a NaN falls out of the first test untouched.
-func Trunc(x: float64) -> float64 {
+/// Provides the public `Trunc` operation.
+///
+/// https://rux-lang.dev/docs/api/math/trunc
+pub func Trunc(x: float64) -> float64 {
     let bits = FloatBits(x);
     let e = (((bits >> 52u64) & 0x7FFu64) as int64) - 1023i64;
 
@@ -26,6 +29,9 @@ func Trunc(x: float64) -> float64 {
 
 // The result is an integer no larger in magnitude than x, so rounding it
 // once to float32 is exact.
-func Trunc(x: float32) -> float32 {
+/// Provides the public `Trunc` operation.
+///
+/// https://rux-lang.dev/docs/api/math/trunc
+pub func Trunc(x: float32) -> float32 {
     return Trunc(x as float64) as float32;
 }

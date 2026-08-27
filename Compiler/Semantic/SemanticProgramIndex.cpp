@@ -85,6 +85,7 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
                 iterator->second.externDecl = symbol.externDecl;
             }
             iterator->second.isPublic = iterator->second.isPublic || symbol.isPublic;
+            iterator->second.isEffectivelyPublic = iterator->second.isEffectivelyPublic || symbol.isEffectivelyPublic;
             return true;
         }
         const Symbol &previous = iterator->second;
@@ -185,8 +186,12 @@ void SemanticProgramIndex::CollectModule(const Module &module, const std::string
 
 void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                                               const ResolveType &resolveType, const std::string *packageName,
-                                              const std::string &modulePath) {
+                                              const std::string &modulePath, const bool containingModulesPublic) {
     const bool isGlobal = &scope == &globalScope;
+    const std::string ownerPackage = packageName ? *packageName : std::string{};
+    const bool isEffectivelyPublic = containingModulesPublic && declaration.isPublic;
+    declarationInfos.insert_or_assign(&declaration,
+                                      DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic});
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
         Symbol symbol;
@@ -195,6 +200,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.location = declaration.location;
         symbol.isMut = isMut;
         symbol.isPublic = declaration.isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {publicKind, name, sourceName, declaration.location, std::move(resolvedType), isMut});
@@ -217,6 +225,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = function->name;
         symbol.location = function->location;
         symbol.isPublic = function->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         symbol.intrinsicName = function->intrinsicName;
         symbol.funcOverloads.push_back(function);
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
@@ -245,6 +256,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = interface->name;
         symbol.location = interface->location;
         symbol.isPublic = interface->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         for (const auto &method : interface->methods) {
             symbol.interfaceMethods.push_back(method->name);
         }
@@ -259,6 +273,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = constant->name;
         symbol.location = constant->location;
         symbol.isPublic = constant->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         symbol.intrinsicName = constant->intrinsicName;
         if (constant->type) {
             symbol.type = resolveType(**constant->type);
@@ -274,6 +291,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = alias->name;
         symbol.location = alias->location;
         symbol.isPublic = alias->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         symbol.type = resolveType(*alias->type);
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
@@ -287,6 +307,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.name = externFunction->name;
         symbol.location = externFunction->location;
         symbol.isPublic = externFunction->isPublic;
+        symbol.isEffectivelyPublic = isEffectivelyPublic;
+        symbol.ownerPackage = ownerPackage;
+        symbol.modulePath = modulePath;
         symbol.externDecl = externFunction;
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Func, externFunction->name, sourceName,
@@ -298,14 +321,17 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
     else if (const auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&declaration)) {
         for (const auto &item : externBlock->items) {
-            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath);
+            CollectDeclaration(*item, scope, sourceName, resolveType, packageName, modulePath, containingModulesPublic);
         }
     }
     else if (const auto *module = dynamic_cast<const ModuleDecl *>(&declaration)) {
+        const std::string childPath = JoinModulePath(modulePath, module->name);
         Scope *moduleScope = nullptr;
         if (Symbol *existing = scope.Lookup(module->name);
             existing && existing->kind == Symbol::Kind::Module && existing->moduleScope) {
             moduleScope = existing->moduleScope;
+            existing->isPublic = existing->isPublic || module->isPublic;
+            existing->isEffectivelyPublic = existing->isEffectivelyPublic || isEffectivelyPublic;
         }
         else {
             moduleScope = &CreateScope(scope);
@@ -314,18 +340,21 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             symbol.name = module->name;
             symbol.location = declaration.location;
             symbol.isPublic = module->isPublic;
+            symbol.isEffectivelyPublic = isEffectivelyPublic;
+            symbol.ownerPackage = ownerPackage;
+            symbol.modulePath = childPath;
             symbol.moduleScope = moduleScope;
             if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
                 publicSymbols.push_back(
                     {SemanticSymbol::Kind::Module, module->name, sourceName, declaration.location, {}, false});
             }
         }
-        const std::string childPath = JoinModulePath(modulePath, module->name);
         if (packageName) {
             packageScopes[*packageName][childPath] = moduleScope;
         }
         for (const auto &item : module->items) {
-            CollectDeclaration(*item, *moduleScope, sourceName, resolveType, packageName, childPath);
+            CollectDeclaration(*item, *moduleScope, sourceName, resolveType, packageName, childPath,
+                               isEffectivelyPublic);
         }
     }
     else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
@@ -333,13 +362,97 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         const std::string typeName = implementation->typeName.starts_with("Slice<")
                                        ? implementation->typeName
                                        : BaseTypeName(implementation->typeName);
+        const Symbol *extendedSymbol = scope.Lookup(typeName);
+        const bool extendedTypePublic = !extendedSymbol || extendedSymbol->isEffectivelyPublic;
         for (const auto &method : implementation->methods) {
             methods[typeName][method->name].push_back(method.get());
             methodImplementations[method.get()] = implementation;
+            functionScopes[method.get()] = &scope;
+            functionSources[method.get()] = sourceName;
+            functionModulePaths[method.get()] =
+                packageName && !packageName->empty() ? JoinModulePath(*packageName, modulePath) : modulePath;
+            declarationInfos.insert_or_assign(
+                method.get(), DeclarationInfo{ownerPackage, modulePath, sourceName,
+                                              containingModulesPublic && extendedTypePublic && method->isPublic});
         }
         if (implementation->interfaceName) {
             implementedInterfaces[typeName].insert(*implementation->interfaceName);
         }
+    }
+}
+
+const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::InfoFor(const Decl &declaration) const {
+    const auto found = declarationInfos.find(&declaration);
+    return found == declarationInfos.end() ? nullptr : &found->second;
+}
+
+void SemanticProgramIndex::FinalizeVisibility() {
+    const auto finalizeScope = [&](auto &&self, Scope &scope, const bool containingModulesPublic) -> void {
+        for (const auto &[name, unused] : scope.Table()) {
+            (void)unused;
+            Symbol *symbol = scope.LookupLocal(name);
+            if (!symbol || symbol->ownerPackage == "<builtin>") {
+                continue;
+            }
+            symbol->isEffectivelyPublic = containingModulesPublic && symbol->isPublic;
+            if (symbol->kind == Symbol::Kind::Module && symbol->moduleScope) {
+                self(self, *symbol->moduleScope, symbol->isEffectivelyPublic);
+            }
+        }
+    };
+    for (const auto &[package, scopesByPath] : packageScopes) {
+        (void)package;
+        if (const auto root = scopesByPath.find(""); root != scopesByPath.end()) {
+            finalizeScope(finalizeScope, *root->second, true);
+        }
+    }
+
+    const auto containingModulesArePublic = [&](const DeclarationInfo &info) {
+        if (info.modulePath.empty()) {
+            return true;
+        }
+        const auto package = packageScopes.find(info.ownerPackage);
+        if (package == packageScopes.end()) {
+            return false;
+        }
+        const auto root = package->second.find("");
+        if (root == package->second.end()) {
+            return false;
+        }
+        Scope *scope = root->second;
+        std::size_t start = 0;
+        while (start < info.modulePath.size()) {
+            const std::size_t separator = info.modulePath.find("::", start);
+            const std::string name = info.modulePath.substr(start, separator - start);
+            const Symbol *module = scope->LookupLocal(name);
+            if (!module || module->kind != Symbol::Kind::Module || !module->moduleScope ||
+                !module->isEffectivelyPublic) {
+                return false;
+            }
+            scope = module->moduleScope;
+            if (separator == std::string::npos) {
+                break;
+            }
+            start = separator + 2;
+        }
+        return true;
+    };
+    for (auto &[declaration, info] : declarationInfos) {
+        info.isEffectivelyPublic = declaration->isPublic && containingModulesArePublic(info);
+    }
+
+    for (const auto &[method, implementation] : methodImplementations) {
+        const auto info = declarationInfos.find(method);
+        const auto scope = functionScopes.find(method);
+        if (info == declarationInfos.end() || scope == functionScopes.end()) {
+            continue;
+        }
+        const std::string typeName = implementation->typeName.starts_with("Slice<")
+                                       ? implementation->typeName
+                                       : BaseTypeName(implementation->typeName);
+        const Symbol *extendedType = scope->second->Lookup(typeName);
+        info->second.isEffectivelyPublic =
+            info->second.isEffectivelyPublic && extendedType && extendedType->isEffectivelyPublic;
     }
 }
 

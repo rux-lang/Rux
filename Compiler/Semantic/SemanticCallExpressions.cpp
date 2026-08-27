@@ -312,6 +312,20 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             constructedType = InstantiateAssociatedReceiver(std::move(constructedType), e->typeArgs);
             const std::vector<const FuncDecl *> candidates = ConstructorCandidates(constructedType);
             if (candidates.empty()) {
+                const std::string typeName = NamedBaseTypeName(constructedType);
+                if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
+                    if (const auto constructors = methods->second.find(typeName);
+                        constructors != methods->second.end()) {
+                        const auto privateConstructor = std::ranges::find_if(
+                            constructors->second, [this, &constructedType](const FuncDecl *candidate) {
+                                return !IsAccessible(*candidate) && IsConstructorCandidate(*candidate, constructedType);
+                            });
+                        if (privateConstructor != constructors->second.end()) {
+                            EmitPrivacyError(e->location, **privateConstructor, "constructor", typeName);
+                            return constructedType;
+                        }
+                    }
+                }
                 EmitError(e->location,
                           std::format("type '{}' cannot be called because it has no declared constructor",
                                       constructedType.ToString()),
@@ -492,7 +506,11 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
         if (const auto typeMethods = methodsByType.find(receiverName); typeMethods != methodsByType.end()) {
             if (const auto namedMethods = typeMethods->second.find(field->field);
                 namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
-                const auto &candidates = namedMethods->second;
+                const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(receiverType, field->field);
+                if (candidates.empty()) {
+                    EmitPrivacyError(field->location, *namedMethods->second.front(), "method", field->field);
+                    return TypeRef::MakeUnknown();
+                }
                 if (candidates.size() == 1) {
                     const FuncDecl &candidate = *candidates.front();
                     const std::vector<TypeRef> parameterTypes = ResolveMethodParamTypes(receiverType, candidate);
@@ -688,7 +706,13 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                     if (const auto namedMethods = typeMethods->second.find(methodName);
                         namedMethods != typeMethods->second.end() && !namedMethods->second.empty()) {
                         const std::string callable = std::format("{}::{}", path->segments[0], methodName);
-                        const auto &candidates = namedMethods->second;
+                        const std::vector<const FuncDecl *> candidates =
+                            AccessibleMethodCandidates(receiverType, methodName);
+                        if (candidates.empty()) {
+                            EmitPrivacyError(e->location, *namedMethods->second.front(), "associated function",
+                                             methodName);
+                            return TypeRef::MakeUnknown();
+                        }
                         if (candidates.size() == 1) {
                             const FuncDecl &candidate = *candidates.front();
                             const auto parameterTypes = ResolveMethodParamTypes(receiverType, candidate);

@@ -23,22 +23,22 @@ import Core::{ MutableSlice, Option, Slice };
 /// The largest Unicode scalar value.
 ///
 /// https://rux-lang.dev/docs/api/text/max-scalar-value
-const MaxScalarValue: uint32 = 0x10FFFF;
+pub const MaxScalarValue: uint32 = 0x10FFFF;
 
 /// The first value of the surrogate range, which holds no scalar values.
 ///
 /// https://rux-lang.dev/docs/api/text/first-surrogate
-const FirstSurrogate: uint32 = 0xD800;
+pub const FirstSurrogate: uint32 = 0xD800;
 
 /// The last value of the surrogate range.
 ///
 /// https://rux-lang.dev/docs/api/text/last-surrogate
-const LastSurrogate: uint32 = 0xDFFF;
+pub const LastSurrogate: uint32 = 0xDFFF;
 
 /// The most bytes any one scalar value takes in UTF-8.
 ///
 /// https://rux-lang.dev/docs/api/text/max-encoded-length
-const MaxEncodedLength: uint = 4;
+pub const MaxEncodedLength: uint = 4;
 
 /// What was wrong with a byte sequence, or `None` when nothing was.
 ///
@@ -47,7 +47,7 @@ const MaxEncodedLength: uint = 4;
 /// amount of reading will change that.
 ///
 /// https://rux-lang.dev/docs/api/text/utf8-error
-enum Utf8Error: int32 {
+pub enum Utf8Error: int32 {
     /// The bytes are well-formed.
     None = 0,
     /// A sequence starts but the bytes run out before it ends.
@@ -63,14 +63,14 @@ extend Utf8Error {
     /// Whether this reports well-formed bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/utf8-error/is-ok
-    func IsOk(self: Utf8Error) -> bool {
+    pub func IsOk(self: Utf8Error) -> bool {
         return self == Utf8Error::None;
     }
 
     /// Whether this reports a problem.
     ///
     /// https://rux-lang.dev/docs/api/text/utf8-error/is-error
-    func IsError(self: Utf8Error) -> bool {
+    pub func IsError(self: Utf8Error) -> bool {
         return self != Utf8Error::None;
     }
 }
@@ -80,7 +80,7 @@ extend Utf8Error {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/is-scalar-value
-func IsScalarValue(value: uint32) -> bool {
+pub func IsScalarValue(value: uint32) -> bool {
     return value <= MaxScalarValue && (value < FirstSurrogate || value > LastSurrogate);
 }
 
@@ -89,7 +89,7 @@ func IsScalarValue(value: uint32) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/encoded-length
-func EncodedLength(scalar: char32) -> uint {
+pub func EncodedLength(scalar: char32) -> uint {
     let value = scalar as uint32;
     if !IsScalarValue(value) {
         return 0;
@@ -109,7 +109,7 @@ func EncodedLength(scalar: char32) -> uint {
 /// Whether `byte` is a continuation byte, the `10xxxxxx` shape every byte after a leading one has.
 ///
 /// https://rux-lang.dev/docs/api/text/is-continuation
-func IsContinuation(byte: char8) -> bool {
+pub func IsContinuation(byte: char8) -> bool {
     return ((byte as uint32) & 0xC0) == 0x80;
 }
 
@@ -122,7 +122,7 @@ func IsContinuation(byte: char8) -> bool {
 /// Cannot allocate. Runs in constant time.
 ///
 /// https://rux-lang.dev/docs/api/text/encode
-func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -> Utf8Error {
+pub func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -> Utf8Error {
     *written = 0;
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
@@ -211,7 +211,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// Cannot allocate. Runs in constant time.
 ///
 /// https://rux-lang.dev/docs/api/text/decode-at
-func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
+pub func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
     *scalar = 0u32 as char32;
     *width = 0;
     if index >= bytes.length {
@@ -266,7 +266,7 @@ func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var
 /// Cannot allocate. Runs in time proportional to the length.
 ///
 /// https://rux-lang.dev/docs/api/text/validate
-func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
+pub func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
     var index: uint = 0;
     while index < bytes.length {
         var scalar = 0u32 as char32;
@@ -289,7 +289,7 @@ func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/is-boundary
-func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
+pub func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
     if index > bytes.length {
         return false;
     }
@@ -307,7 +307,7 @@ func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/count-scalars
-func CountScalars(bytes: Slice<char8>) -> uint {
+pub func CountScalars(bytes: Slice<char8>) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
     while index < bytes.length {
@@ -325,7 +325,7 @@ func CountScalars(bytes: Slice<char8>) -> uint {
 /// arbitrary byte offset needs. An index at or past the length gives the length.
 ///
 /// https://rux-lang.dev/docs/api/text/boundary-at-or-below
-func BoundaryAtOrBelow(bytes: Slice<char8>, index: uint) -> uint {
+pub func BoundaryAtOrBelow(bytes: Slice<char8>, index: uint) -> uint {
     if index >= bytes.length {
         return bytes.length;
     }

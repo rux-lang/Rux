@@ -14,7 +14,7 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 /// Why a scalar could not be read.
 ///
 /// https://rux-lang.dev/docs/api/toml/scalar-error
-enum TomlScalarError: int32 {
+pub enum TomlScalarError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The digits do not form a number of the shape TOML defines.
@@ -68,7 +68,7 @@ func IsBaseDigit(c: uint8) -> bool {
 /// reason -- the grammar does not offer one, so accepting it would be inventing a dialect.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-integer
-func TomlParseInteger(text: Slice<char8>, result: *var int64) -> TomlScalarError {
+pub func TomlParseInteger(text: Slice<char8>, result: *var int64) -> TomlScalarError {
     if text.length == 0u {
         return TomlScalarError::Malformed;
     }
@@ -157,7 +157,7 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// accept and some do not, so a document containing one means different things in different places.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-float
-func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarError {
+pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarError {
     if text.length == 0u {
         return TomlScalarError::Malformed;
     }
@@ -281,7 +281,7 @@ func IsDecimal(c: uint8) -> bool {
 /// Which of the four date-time shapes a token turned out to be.
 ///
 /// https://rux-lang.dev/docs/api/toml/date-time-shape
-enum TomlDateTimeShape: int32 {
+pub enum TomlDateTimeShape: int32 {
     /// The text is not a date-time at all.
     NotDateTime = 0,
     /// A date and a time with an offset, which names a moment.
@@ -302,7 +302,7 @@ enum TomlDateTimeShape: int32 {
 /// did not.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-date-time
-func TomlParseDateTime(text: Slice<char8>, date: *var Date, time: *var TimeOfDay,
+pub func TomlParseDateTime(text: Slice<char8>, date: *var Date, time: *var TimeOfDay,
                        offset: *var UtcOffset) -> TomlDateTimeShape {
     *offset = UtcOffset::Utc();
     if text.length >= 5u && (text.data[2] as uint8) == 0x3Au8 {

@@ -23,7 +23,7 @@ import Core::{ Option, Ordering };
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/contains
-func Contains<T>(items: Slice<T>, value: T) -> bool {
+pub func Contains<T>(items: Slice<T>, value: T) -> bool {
     return IndexOf<T>(items, value).IsSome();
 }
 
@@ -34,7 +34,7 @@ func Contains<T>(items: Slice<T>, value: T) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/count
-func Count<T>(items: Slice<T>, value: T) -> uint {
+pub func Count<T>(items: Slice<T>, value: T) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -54,7 +54,7 @@ func Count<T>(items: Slice<T>, value: T) -> uint {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/index-of
-func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+pub func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
         if items.data[index] == value {
@@ -73,7 +73,7 @@ func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
 /// nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/last-index-of
-func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+pub func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
@@ -92,7 +92,7 @@ func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/index-where
-func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+pub func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
         if predicate(items.data[index]) {
@@ -111,7 +111,7 @@ func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> 
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/last-index-where
-func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+pub func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
@@ -129,7 +129,7 @@ func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<ui
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/count-where
-func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
+pub func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -150,7 +150,7 @@ func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/all-of
-func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
     var index: uint = 0;
     while index < items.length {
         if !predicate(items.data[index]) {
@@ -169,7 +169,7 @@ func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/any-of
-func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
     return IndexWhere<T>(items, predicate).IsSome();
 }
 
@@ -181,7 +181,7 @@ func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/none-of
-func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
     return !AnyOf<T>(items, predicate);
 }
 
@@ -194,7 +194,7 @@ func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/mismatch
-func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
+pub func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
@@ -217,7 +217,7 @@ func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sequence-equal
-func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
+pub func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
     if left.length != right.length {
         return false;
     }
@@ -236,7 +236,7 @@ func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/compare
-func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
+pub func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
@@ -266,7 +266,7 @@ func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/compare-by
-func CompareBy<T>(left: Slice<T>, right: Slice<T>, compare: func(T, T) -> Ordering) -> Ordering {
+pub func CompareBy<T>(left: Slice<T>, right: Slice<T>, compare: func(T, T) -> Ordering) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {

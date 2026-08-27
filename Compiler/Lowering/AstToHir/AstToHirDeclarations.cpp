@@ -316,7 +316,9 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     }
     HirFunc hf;
     hf.name = overrideName.empty() ? d.name : overrideName;
-    hf.isPublic = d.isPublic;
+    // A generic source declaration is public API, but each concrete instantiation is emitted into the object that
+    // needs it. Keeping those copies local avoids exporting the same monomorphized symbol from several objects.
+    hf.isPublic = model.IsEffectivelyPublic(d) && substitutions.empty();
     hf.isAsm = d.isAsm;
     hf.isNoReturn = d.isNoReturn;
     hf.asmBody = d.asmBody;
@@ -350,7 +352,7 @@ HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
     }
     HirStruct hs;
     hs.name = d.name;
-    hs.isPublic = d.isPublic;
+    hs.isPublic = model.IsEffectivelyPublic(d);
     hs.typeParams = TypeParameterNames(d.typeParams);
     hs.location = d.location;
     for (const auto &f : d.fields) {
@@ -424,7 +426,7 @@ HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
     AppendTypeParameterNames(currentTypeParams, d.typeParams);
     HirEnum he;
     he.name = d.name;
-    he.isPublic = d.isPublic;
+    he.isPublic = model.IsEffectivelyPublic(d);
     he.typeParams = TypeParameterNames(d.typeParams);
     he.baseType = EnumBaseType(d);
     he.location = d.location;
@@ -455,7 +457,7 @@ HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
 HirUnion AstToHirContext::LowerUnion(const UnionDecl &d) {
     HirUnion hu;
     hu.name = d.name;
-    hu.isPublic = d.isPublic;
+    hu.isPublic = model.IsEffectivelyPublic(d);
     hu.location = d.location;
     for (const auto &f : d.fields) {
         HirUnionField hf;
@@ -469,7 +471,7 @@ HirUnion AstToHirContext::LowerUnion(const UnionDecl &d) {
 HirInterface AstToHirContext::LowerInterface(const InterfaceDecl &d) {
     HirInterface hi;
     hi.name = d.name;
-    hi.isPublic = d.isPublic;
+    hi.isPublic = model.IsEffectivelyPublic(d);
     hi.location = d.location;
     for (const auto &m : d.methods) {
         HirInterfaceMethod hm;
@@ -536,7 +538,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
 HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
     HirConst hc;
     hc.name = d.name;
-    hc.isPublic = d.isPublic;
+    hc.isPublic = model.IsEffectivelyPublic(d);
     const std::optional<TypeRef> explicitType =
         d.type ? std::optional<TypeRef>(ResolveType(*d.type->get())) : std::nullopt;
     hc.value = explicitType ? LowerExprAs(*d.value, *explicitType) : LowerExpr(*d.value);
@@ -556,7 +558,7 @@ HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
     if (const auto *identity = model.TryGetSymbolIdentity(d); identity && identity->linkerName != d.name) {
         hef.symbolName = identity->linkerName;
     }
-    hef.isPublic = d.isPublic;
+    hef.isPublic = model.IsEffectivelyPublic(d);
     hef.isNoReturn = d.isNoReturn;
     hef.callConv = d.callConv;
     hef.isVariadic = d.isVariadic;
@@ -569,7 +571,7 @@ HirExternFunc AstToHirContext::LowerExternFunc(const ExternFuncDecl &d) {
 HirExternVar AstToHirContext::LowerExternVar(const ExternVarDecl &d) {
     HirExternVar hev;
     hev.name = d.name;
-    hev.isPublic = d.isPublic;
+    hev.isPublic = model.IsEffectivelyPublic(d);
     hev.type = ResolveType(*d.type);
     hev.location = d.location;
     return hev;
@@ -578,7 +580,7 @@ HirExternVar AstToHirContext::LowerExternVar(const ExternVarDecl &d) {
 HirTypeAlias AstToHirContext::LowerTypeAlias(const TypeAliasDecl &d) {
     HirTypeAlias hta;
     hta.name = d.name;
-    hta.isPublic = d.isPublic;
+    hta.isPublic = model.IsEffectivelyPublic(d);
     hta.type = ResolveType(*d.type);
     hta.location = d.location;
     return hta;

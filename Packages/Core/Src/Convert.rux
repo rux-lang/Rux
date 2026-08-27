@@ -24,7 +24,7 @@
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-signed-type
-func IsSignedType<T>(sample: T) -> bool {
+pub func IsSignedType<T>(sample: T) -> bool {
     let zero = sample - sample;
     return (zero - 1) < zero;
 }
@@ -47,7 +47,7 @@ func IsSignedType<T>(sample: T) -> bool {
 /// `result` must be non-null. This is not checked.
 ///
 /// https://rux-lang.dev/docs/api/core/convert-checked
-func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
+pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
     // Converting back lands on the value it started from exactly when nothing was lost on the way out -- with one
     // exception, below, that the round trip cannot see.
@@ -72,7 +72,7 @@ func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 /// `result` must be non-null. This is not checked.
 ///
 /// https://rux-lang.dev/docs/api/core/convert-wrapping
-func ConvertWrapping<From, To>(value: From, result: *var To) {
+pub func ConvertWrapping<From, To>(value: From, result: *var To) {
     *result = value as To;
 }
 
@@ -92,7 +92,7 @@ func ConvertWrapping<From, To>(value: From, result: *var To) {
 /// `result` must be non-null. This is not checked.
 ///
 /// https://rux-lang.dev/docs/api/core/convert-saturating
-func ConvertSaturating<From, To>(value: From, result: *var To) {
+pub func ConvertSaturating<From, To>(value: From, result: *var To) {
     if !ConvertChecked<From, To>(value, result) {
         return;
     }

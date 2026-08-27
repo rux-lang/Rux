@@ -1,0 +1,48 @@
+// Package-private declarations remain available from every source file in the
+// same package.
+struct PackageCounter {
+    value: int;
+}
+
+extend PackageCounter {
+    func PackageCounter(value: int) -> PackageCounter {
+        return PackageCounter { value: value };
+    }
+
+    func Read(self: &PackageCounter) -> int {
+        return self.value;
+    }
+}
+
+func MakePackageCounter(value: int) -> PackageCounter {
+    return PackageCounter(value);
+}
+
+// Public declarations still choose their public members individually.
+pub struct PublicCounter {
+    pub value: int;
+    hidden: int;
+}
+
+extend PublicCounter {
+    pub func PublicCounter(value: int) -> PublicCounter {
+        return PublicCounter { value: value, hidden: 1 };
+    }
+
+    pub func Zero() -> PublicCounter {
+        return PublicCounter(0);
+    }
+
+    pub func Read(self: &PublicCounter) -> int {
+        return self.value + self.hidden;
+    }
+
+    pub func +(self: &PublicCounter, other: PublicCounter) -> PublicCounter {
+        return PublicCounter(self.value + other.value);
+    }
+}
+
+pub union PublicBits {
+    pub signed: int32,
+    raw: uint32
+}

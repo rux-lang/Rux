@@ -16,7 +16,7 @@ import Text::TextError;
 /// Writes `bits`, read under `layout`, as text under `spec`.
 ///
 /// https://rux-lang.dev/docs/api/format/write-wide-float
-func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
+pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
                     layout: &FloatLayout) -> TextError {
     let value = UnpackWide(bits, layout);
     if value.class == WideClass::NaN {

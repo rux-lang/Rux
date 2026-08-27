@@ -17,13 +17,13 @@ import Windows::NtStatus;
 ///
 /// https://rux-lang.dev/docs/api/windows/bcrypt-use-system-preferred-rng
 #Allow("naming.const")
-const BCRYPT_USE_SYSTEM_PREFERRED_RNG: uint32 = 0x00000002;
+pub const BCRYPT_USE_SYSTEM_PREFERRED_RNG: uint32 = 0x00000002;
 
 /// `STATUS_SUCCESS`: the status an `NtStatus`-reporting call gives when it worked.
 ///
 /// https://rux-lang.dev/docs/api/windows/status-success
 #Allow("naming.const")
-const STATUS_SUCCESS: int32 = 0;
+pub const STATUS_SUCCESS: int32 = 0;
 
 #Link("bcrypt.dll")
 extern {
@@ -49,7 +49,7 @@ extern {
 /// gigabytes is refused rather than truncated.
 ///
 /// https://rux-lang.dev/docs/api/windows/get-random
-func GetRandom(buffer: *var opaque, length: uint) -> bool {
+pub func GetRandom(buffer: *var opaque, length: uint) -> bool {
     if length > 4294967295u64 {
         return false;
     }

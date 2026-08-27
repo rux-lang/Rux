@@ -16,7 +16,7 @@ import Core::Slice;
 /// The ordinals match the generated table and must not be reordered.
 ///
 /// https://rux-lang.dev/docs/api/unicode/grapheme-break
-enum GraphemeBreak: int32 {
+pub enum GraphemeBreak: int32 {
     /// Everything with no class of its own.
     Any = 0,
     /// A carriage return, which joins only the line feed after it.
@@ -50,14 +50,14 @@ enum GraphemeBreak: int32 {
 /// The break class of `scalar`.
 ///
 /// https://rux-lang.dev/docs/api/unicode/grapheme-break-of
-func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
+pub func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
     return RangeValue(GraphemeBreakRanges[..], scalar as uint32, 0) as GraphemeBreak;
 }
 
 /// Whether `scalar` is an extended pictograph: the emoji and everything reserved to become one.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-pictographic
-func IsPictographic(scalar: char32) -> bool {
+pub func IsPictographic(scalar: char32) -> bool {
     return InRangePairs(PictographicRanges[..], scalar as uint32);
 }
 
@@ -83,7 +83,7 @@ func IsConjunctExtend(scalar: char32) -> bool {
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
-func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
+pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
     if index == 0 || index >= text.length {
         return true;
     }
@@ -181,7 +181,7 @@ func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
 /// How many grapheme clusters `text` holds.
 ///
 /// https://rux-lang.dev/docs/api/unicode/count-graphemes
-func CountGraphemes(text: Slice<char32>) -> uint {
+pub func CountGraphemes(text: Slice<char32>) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
     while index < text.length {

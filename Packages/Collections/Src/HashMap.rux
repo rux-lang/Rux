@@ -24,7 +24,7 @@ import Core::{ Iterator, Option };
 /// Move-only: it owns its entries and storage and prohibits copying.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-map
-struct HashMap<K, V> {
+pub struct HashMap<K, V> {
     /// The slots, the probing and the entries.
     table: Table<K, V>;
     /// What a key's hash is, given the table's seed.
@@ -43,7 +43,7 @@ extend HashMap<K, V> {
     /// `TableSeed::Random` and use `WithSeed`, since each draw here is a system call.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/new
-    func HashMap(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
+    pub func HashMap(allocator: Allocator, hash: func(K, uint64, uint64) -> uint64,
                  equals: func(K, K) -> bool) -> HashMap<K, V> {
         return HashMap::WithSeed<K, V>(allocator, TableSeed::Random(), hash, equals);
     }
@@ -55,7 +55,7 @@ extend HashMap<K, V> {
     /// needs.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/with-seed
-    func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(K, uint64, uint64) -> uint64,
+    pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(K, uint64, uint64) -> uint64,
                   equals: func(K, K) -> bool) -> HashMap<K, V> {
         return HashMap<K, V> { table: Table<K, V>(allocator, seed), hash: hash, equals: equals };
     }
@@ -66,7 +66,7 @@ extend HashMap<K, V> {
     /// of two above the load factor, so it is larger than asked for.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/with-capacity
-    func WithCapacity(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
+    pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(K, uint64, uint64) -> uint64,
                       equals: func(K, K) -> bool, error: *var CollectionError) -> HashMap<K, V> {
         var map = HashMap<K, V>(allocator, hash, equals);
         *error = map.Reserve(capacity);
@@ -76,7 +76,7 @@ extend HashMap<K, V> {
     /// How many entries the map holds.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/length
-    func Length(self: &HashMap<K, V>) -> uint {
+    pub func Length(self: &HashMap<K, V>) -> uint {
         return self.table.Length();
     }
 
@@ -86,14 +86,14 @@ extend HashMap<K, V> {
     /// displacing entries rather than storing them.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/capacity
-    func Capacity(self: &HashMap<K, V>) -> uint {
+    pub func Capacity(self: &HashMap<K, V>) -> uint {
         return self.table.Capacity();
     }
 
     /// Whether the map holds no entries.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/is-empty
-    func IsEmpty(self: &HashMap<K, V>) -> bool {
+    pub func IsEmpty(self: &HashMap<K, V>) -> bool {
         return self.table.IsEmpty();
     }
 
@@ -104,7 +104,7 @@ extend HashMap<K, V> {
     /// Runs in constant expected time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/contains-key
-    func ContainsKey(self: &HashMap<K, V>, key: K) -> bool {
+    pub func ContainsKey(self: &HashMap<K, V>, key: K) -> bool {
         return self.table.Find(key, self.hash, self.equals).IsSome();
     }
 
@@ -113,7 +113,7 @@ extend HashMap<K, V> {
     /// `self` is borrowed; the value is returned by copy.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/get
-    func Get(self: &HashMap<K, V>, key: K) -> Option<V> {
+    pub func Get(self: &HashMap<K, V>, key: K) -> Option<V> {
         var slot: uint = 0;
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<V>();
@@ -131,7 +131,7 @@ extend HashMap<K, V> {
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/reference
-    func Reference(self: &HashMap<K, V>, key: K) -> Option<*V> {
+    pub func Reference(self: &HashMap<K, V>, key: K) -> Option<*V> {
         var slot: uint = 0;
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<*V>();
@@ -152,7 +152,7 @@ extend HashMap<K, V> {
     /// it replaces the value without destroying what was there.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/try-reference-mutable
-    func TryReferenceMutable(self: &var HashMap<K, V>, key: K, value: *var *var V) -> bool {
+    pub func TryReferenceMutable(self: &var HashMap<K, V>, key: K, value: *var *var V) -> bool {
         var slot: uint = 0;
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return false;
@@ -173,7 +173,7 @@ extend HashMap<K, V> {
     /// Runs in constant expected time.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/insert
-    func Insert(self: &var HashMap<K, V>, key: K, value: V) -> CollectionError {
+    pub func Insert(self: &var HashMap<K, V>, key: K, value: V) -> CollectionError {
         var slot: uint = 0;
         if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             // Reading the old value into a local destroys it when the local's life ends, which is what keeps a
@@ -205,7 +205,7 @@ extend HashMap<K, V> {
     /// Runs in constant expected time.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/remove
-    func Remove(self: &var HashMap<K, V>, key: K) -> Option<V> {
+    pub func Remove(self: &var HashMap<K, V>, key: K) -> Option<V> {
         var slot: uint = 0;
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<V>();
@@ -221,7 +221,7 @@ extend HashMap<K, V> {
     /// `self` is borrowed mutably; the length does not change. A failure leaves the map exactly as it was.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/reserve
-    func Reserve(self: &var HashMap<K, V>, additional: uint) -> CollectionError {
+    pub func Reserve(self: &var HashMap<K, V>, additional: uint) -> CollectionError {
         return self.table.Reserve(additional, self.hash);
     }
 
@@ -230,7 +230,7 @@ extend HashMap<K, V> {
     /// `self` is borrowed mutably. An empty map gives up its storage entirely.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/shrink-to-fit
-    func ShrinkToFit(self: &var HashMap<K, V>) -> CollectionError {
+    pub func ShrinkToFit(self: &var HashMap<K, V>) -> CollectionError {
         return self.table.ShrinkToFit(self.hash);
     }
 
@@ -239,7 +239,7 @@ extend HashMap<K, V> {
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/clear
-    func Clear(self: &var HashMap<K, V>) {
+    pub func Clear(self: &var HashMap<K, V>) {
         self.table.Clear();
     }
 
@@ -252,7 +252,7 @@ extend HashMap<K, V> {
     /// while a walk is in progress: either moves entries between slots, and a cursor is a slot.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/try-next-entry
-    func TryNextEntry(self: &HashMap<K, V>, cursor: *var uint, key: *var K, value: *var V) -> bool {
+    pub func TryNextEntry(self: &HashMap<K, V>, cursor: *var uint, key: *var K, value: *var V) -> bool {
         var index = *cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
@@ -278,11 +278,11 @@ extend HashMap<K, V> {
 /// says which is which and `entry.0` does not.
 ///
 /// https://rux-lang.dev/docs/api/collections/key-value
-struct KeyValue<K, V> {
+pub struct KeyValue<K, V> {
     /// The key the entry was stored under.
-    key: K;
+    pub key: K;
     /// The value stored under it.
-    value: V;
+    pub value: V;
 }
 
 extend HashMap<K, V> {
@@ -303,7 +303,7 @@ extend HashMap<K, V> {
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/get-or-insert
-    func GetOrInsert(self: &var HashMap<K, V>, key: K, value: V, existing: *var *var V,
+    pub func GetOrInsert(self: &var HashMap<K, V>, key: K, value: V, existing: *var *var V,
                      inserted: *var bool) -> CollectionError {
         var slot: uint = 0;
         if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
@@ -344,7 +344,7 @@ extend HashMap<K, V> {
     /// absence.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/replace
-    func Replace(self: &var HashMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
+    pub func Replace(self: &var HashMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
         var slot: uint = 0;
         if self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             let previous <- self.table.values[slot];
@@ -376,7 +376,7 @@ extend HashMap<K, V> {
     /// carrying anything the equality ignores makes them different values, and the map's is the one that was kept.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/remove-entry
-    func RemoveEntry(self: &var HashMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
+    pub func RemoveEntry(self: &var HashMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         var slot: uint = 0;
         if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<KeyValue<K, V>>();
@@ -394,7 +394,7 @@ extend HashMap<K, V> {
 /// either moves entries between slots, and this walks slots.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-map-iterator
-struct HashMapIterator<K, V> {
+pub struct HashMapIterator<K, V> {
     /// Raw borrowed table storage. Kept raw because references cannot be fields.
     keys: *K;
     values: *V;
@@ -411,7 +411,7 @@ extend HashMapIterator<K, V> {
     /// walked with `TryNextEntry` and a pointer instead.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map-iterator/next
-    func Next(self: &var HashMapIterator<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Next(self: &var HashMapIterator<K, V>) -> Option<KeyValue<K, V>> {
         var index = self.cursor;
         while index < self.capacity {
             if self.states[index] != SlotEmpty {
@@ -434,7 +434,7 @@ extend HashMapIterator<K, V> : Iterator {}
 /// what makes stopping part-way safe.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-map-into-iterator
-struct HashMapIntoIterator<K, V> {
+pub struct HashMapIntoIterator<K, V> {
     /// The table taken from the map.
     table: Table<K, V>;
     /// The slot to look at next.
@@ -451,7 +451,7 @@ extend HashMapIntoIterator<K, V> {
     /// destructor is exactly what nobody took.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map-into-iterator/next
-    func Next(self: &var HashMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Next(self: &var HashMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
@@ -482,7 +482,7 @@ extend HashMap<K, V> {
     /// Nothing may be inserted or removed while the iterator is alive.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/iterate
-    func Iterate(self: &HashMap<K, V>) -> HashMapIterator<K, V> {
+    pub func Iterate(self: &HashMap<K, V>) -> HashMapIterator<K, V> {
         return HashMapIterator<K, V> {
             keys: self.table.keys,
             values: self.table.values,
@@ -501,7 +501,7 @@ extend HashMap<K, V> {
     /// Whatever is not taken is destroyed when the iterator's life ends.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-map/into-iterator
-    func IntoIterator(self: HashMap<K, V>) -> HashMapIntoIterator<K, V> {
+    pub func IntoIterator(self: HashMap<K, V>) -> HashMapIntoIterator<K, V> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a map left holding the runs would have its destructor release the very storage the
         // iterator was handed.

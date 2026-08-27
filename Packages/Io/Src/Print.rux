@@ -22,7 +22,7 @@ func PrintBytes(bytes: Slice<char8>) -> IoError {
 /// is done writing itself.
 ///
 /// https://rux-lang.dev/docs/api/io/console-writer
-struct ConsoleWriter {
+pub struct ConsoleWriter {
     /// Where the first stream failure is recorded.
     failure: *var IoError;
 }
@@ -31,7 +31,7 @@ extend ConsoleWriter {
     /// A writer over standard output, recording into `failure`.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/new
-    func ConsoleWriter(failure: *var IoError) -> ConsoleWriter {
+    pub func ConsoleWriter(failure: *var IoError) -> ConsoleWriter {
         return ConsoleWriter { failure: failure };
     }
 
@@ -41,7 +41,7 @@ extend ConsoleWriter : TextWriter {
     /// Writes `bytes` to standard output, unless a failure has already been recorded.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
-    func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
+    pub func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
         if (*self.failure).IsError() {
             return TextError::None;
         }
@@ -65,7 +65,7 @@ func OfTextFailure(failure: TextError) -> IoError {
 /// formatting failure on a healthy stream comes back as `InvalidText` with the `TextError` in `raw`.
 ///
 /// https://rux-lang.dev/docs/api/io/print-value
-func PrintValue(value: Display) -> IoError {
+pub func PrintValue(value: Display) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
@@ -82,7 +82,7 @@ func PrintValue(value: Display) -> IoError {
 /// Writes a value's text to standard output, then a newline.
 ///
 /// https://rux-lang.dev/docs/api/io/print-value-line
-func PrintValueLine(value: Display) -> IoError {
+pub func PrintValueLine(value: Display) -> IoError {
     let first = PrintValue(value);
     let second = PrintLine();
     return first.IsError() ? first : second;
@@ -91,15 +91,21 @@ func PrintValueLine(value: Display) -> IoError {
 /// Writes a string to standard output.
 ///
 /// https://rux-lang.dev/docs/api/io/print
-func Print(value: String) -> IoError {
+pub func Print(value: String) -> IoError {
     return PrintBytes(Slice<char8> { data: value.data, length: value.length });
 }
 
-func Print(value: StringView) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: StringView) -> IoError {
     return PrintBytes(value.Bytes());
 }
 
-func Print(value: Slice<char8>) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: Slice<char8>) -> IoError {
     return PrintBytes(value);
 }
 
@@ -109,7 +115,7 @@ func Print(value: Slice<char8>) -> IoError {
 /// `PrintValue`'s do.
 ///
 /// https://rux-lang.dev/docs/api/io/print-format
-func Print(format: Slice<char8>, args: Display...) -> IoError {
+pub func Print(format: Slice<char8>, args: Display...) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
@@ -123,92 +129,146 @@ func Print(format: Slice<char8>, args: Display...) -> IoError {
     return IoError::Ok();
 }
 
-func Print(value: bool8) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: bool16) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: bool32) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: bool32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: char8) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: char16) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: char32) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: char32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: int8) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: int16) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: int32) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: int64) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: uint8) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: uint16) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: uint32) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: uint64) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: int) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: int) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: uint) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: uint) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: float32) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }
 
-func Print(value: float64) -> IoError {
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: float64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
 }

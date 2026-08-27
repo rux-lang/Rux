@@ -11,7 +11,7 @@ import FreeBSD::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
 /// out.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/exit
-func Exit(code: int32) {
+pub func Exit(code: int32) {
     Syscall1(SysExit, (code as int64) as uint64);
 }
 
@@ -20,6 +20,6 @@ func Exit(code: int32) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/get-pid
-func GetPid() -> ProcessId {
+pub func GetPid() -> ProcessId {
     return Syscall0(SysGetPid) as ProcessId;
 }

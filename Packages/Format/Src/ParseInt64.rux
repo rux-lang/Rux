@@ -3,7 +3,10 @@ import Text::StringView;
 
 // Parses into value and reports only whether conversion succeeded. On failure,
 // value is left unchanged. A null output pointer also reports failure.
-func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
+/// Provides the public `TryParseInt64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/try-parse-int64
+pub func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
     if value == null {
         return false;
     }
@@ -20,6 +23,9 @@ func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
 }
 
 // The same for a view, which is what a caller holding text has.
-func TryParseInt64(str: StringView, value: *var int64) -> bool {
+/// Provides the public `TryParseInt64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/try-parse-int64
+pub func TryParseInt64(str: StringView, value: *var int64) -> bool {
     return TryParseInt64(str.Bytes(), value);
 }

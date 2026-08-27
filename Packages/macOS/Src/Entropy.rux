@@ -20,6 +20,6 @@ import macOS::arc4random_buf;
 /// `buffer` must be writable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/macos/get-random
-func GetRandom(buffer: *var opaque, length: uint) {
+pub func GetRandom(buffer: *var opaque, length: uint) {
     arc4random_buf(buffer, length);
 }

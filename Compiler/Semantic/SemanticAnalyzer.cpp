@@ -78,135 +78,6 @@ private:
     std::unordered_set<const FuncDecl *> reportedRunawayInstantiations;
     std::unordered_set<std::string> activeLayoutTypes;
 
-    struct FunctionSignature {
-        std::size_t typeParamCount = 0;
-        std::vector<TypeRef> paramTypes;
-        std::vector<bool> variadicParams;
-    };
-
-    TypeRef MakeFuncType(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                         const std::vector<std::string> &typeParams = {}, bool cVariadic = false) {
-        auto savedTypeParams = currentTypeParams;
-        currentTypeParams = typeParams;
-
-        std::vector<TypeRef> paramTypes;
-        bool variadic = cVariadic;
-        for (const auto &param : params) {
-            if (!param.isVariadic) {
-                paramTypes.push_back(ResolveType(*param.type));
-            }
-            else {
-                variadic = true;
-            }
-        }
-        TypeRef ret = returnType ? ResolveType(*returnType->get()) : TypeRef::MakeOpaque();
-
-        currentTypeParams = savedTypeParams;
-        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
-        funcType.isVariadic = variadic;
-        return funcType;
-    }
-
-    TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &params, const std::optional<TypeExprPtr> &returnType,
-                                         const std::unordered_map<std::string, TypeRef> &substitutions,
-                                         const std::vector<std::string> &typeParams = {},
-                                         bool cVariadic = false) override {
-        auto savedTypeParams = currentTypeParams;
-        currentTypeParams = typeParams;
-
-        std::vector<TypeRef> paramTypes;
-        bool variadic = cVariadic;
-        for (const auto &param : params) {
-            if (!param.isVariadic) {
-                paramTypes.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
-            }
-            else {
-                variadic = true;
-            }
-        }
-        TypeRef ret = returnType ? ResolveTypeWithSubstitution(**returnType, substitutions) : TypeRef::MakeOpaque();
-
-        currentTypeParams = savedTypeParams;
-        TypeRef funcType = TypeRef::MakeFunc(std::move(paramTypes), std::move(ret));
-        funcType.isVariadic = variadic;
-        return funcType;
-    }
-
-    void ResolveModuleSignatures(const Module &mod) override {
-        currentFile = mod.name;
-        for (const auto &decl : mod.items) {
-            ResolveDeclSignature(*decl);
-        }
-    }
-
-    void ResolveDeclSignature(const Decl &decl) {
-        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (Symbol *sym = globalScope.Lookup(fn->name)) {
-                sym->type = MakeFuncType(fn->params, fn->returnType, TypeParameterNames(fn->typeParams));
-            }
-        }
-        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-            if (Symbol *sym = globalScope.Lookup(enumDecl->name)) {
-                sym->type = EnumType(*enumDecl);
-            }
-        }
-        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            if (Symbol *sym = globalScope.Lookup(externFn->name)) {
-                sym->type = MakeFuncType(externFn->params, externFn->returnType, {}, externFn->isVariadic);
-            }
-        }
-        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (const auto &item : externBlock->items) {
-                ResolveDeclSignature(*item);
-            }
-        }
-        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            Scope &moduleScope = ModuleScopeFor(modDecl->name, globalScope);
-            for (const auto &item : modDecl->items) {
-                ResolveDeclSignatureInScope(*item, moduleScope);
-            }
-        }
-    }
-
-    void ResolveModuleSignaturesInScope(const Module &mod, Scope &scope) override {
-        Scope *savedScope = currentScope;
-        currentScope = &scope;
-        currentFile = mod.name;
-        for (const auto &decl : mod.items) {
-            ResolveDeclSignatureInScope(*decl, scope);
-        }
-        currentScope = savedScope;
-    }
-
-    void ResolveDeclSignatureInScope(const Decl &decl, Scope &scope) {
-        if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
-            if (Symbol *sym = scope.Lookup(fn->name)) {
-                sym->type = MakeFuncType(fn->params, fn->returnType, TypeParameterNames(fn->typeParams));
-            }
-        }
-        else if (auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-            if (Symbol *sym = scope.Lookup(enumDecl->name)) {
-                sym->type = EnumType(*enumDecl);
-            }
-        }
-        else if (auto *externFn = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-            if (Symbol *sym = scope.Lookup(externFn->name)) {
-                sym->type = MakeFuncType(externFn->params, externFn->returnType, {}, externFn->isVariadic);
-            }
-        }
-        else if (auto *externBlock = dynamic_cast<const ExternBlockDecl *>(&decl)) {
-            for (const auto &item : externBlock->items) {
-                ResolveDeclSignatureInScope(*item, scope);
-            }
-        }
-        else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
-            Scope &moduleScope = ModuleScopeFor(modDecl->name, scope);
-            for (const auto &item : modDecl->items) {
-                ResolveDeclSignatureInScope(*item, moduleScope);
-            }
-        }
-    }
-
     void ApplyModuleImports(const Module &mod) override {
         currentFile = mod.name;
         for (const auto &decl : mod.items) {
@@ -1353,7 +1224,8 @@ private:
     }
 
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
-                                               const std::vector<TypeRef> &argTypes = {}) override {
+                                               const std::vector<TypeRef> &argTypes = {},
+                                               const bool requireAccessible = true) override {
         const std::string typeName = NamedBaseTypeName(receiverType);
         if (typeName.empty()) {
             return nullptr;
@@ -1366,7 +1238,9 @@ private:
         if (methodIt == typeIt->second.end()) {
             return nullptr;
         }
-        const auto &overloads = methodIt->second;
+        const std::vector<const FuncDecl *> accessible =
+            requireAccessible ? AccessibleMethodCandidates(receiverType, methodName) : methodIt->second;
+        const auto &overloads = accessible;
         if (overloads.empty()) {
             return nullptr;
         }
@@ -2043,82 +1917,6 @@ private:
         }
     }
 
-    std::optional<FunctionSignature> ResolveFunctionSignature(const FuncDecl &decl, const bool isMethod) {
-        auto savedTypeParams = currentTypeParams;
-        if (!isMethod) {
-            currentTypeParams.clear();
-        }
-        AppendTypeParameterNames(currentTypeParams, decl.typeParams);
-
-        std::unordered_map<std::string, TypeRef> substitutions;
-        for (std::size_t i = 0; i < decl.typeParams.size(); ++i) {
-            substitutions.emplace(decl.typeParams[i].name, TypeRef::MakeTypeParam(std::format("${}", i)));
-        }
-
-        FunctionSignature signature;
-        signature.typeParamCount = decl.typeParams.size();
-        for (const auto &param : decl.params) {
-            if (isMethod && param.name == "self") {
-                continue;
-            }
-            TypeRef type = ResolveTypeWithSubstitution(*param.type, substitutions);
-            if (type.IsUnknown()) {
-                currentTypeParams = savedTypeParams;
-                return std::nullopt;
-            }
-            signature.paramTypes.push_back(std::move(type));
-            signature.variadicParams.push_back(param.isVariadic);
-        }
-
-        currentTypeParams = savedTypeParams;
-        return signature;
-    }
-
-    static bool SameFunctionSignature(const FunctionSignature &lhs, const FunctionSignature &rhs) {
-        return lhs.typeParamCount == rhs.typeParamCount && lhs.paramTypes == rhs.paramTypes &&
-               lhs.variadicParams == rhs.variadicParams;
-    }
-
-    void ValidateFunctionSignature(const FuncDecl &decl, const std::vector<const FuncDecl *> &overloads,
-                                   const bool isMethod = false) {
-        const auto signature = ResolveFunctionSignature(decl, isMethod);
-        if (!signature) {
-            return;
-        }
-
-        for (const FuncDecl *previous : overloads) {
-            if (previous == &decl) {
-                break;
-            }
-            const auto previousSignature = ResolveFunctionSignature(*previous, isMethod);
-            if (previousSignature && SameFunctionSignature(*signature, *previousSignature)) {
-                const auto source = functionDeclFiles.find(previous);
-                const std::string &previousFile = source == functionDeclFiles.end() ? currentFile : source->second;
-                EmitError(
-                    decl.location,
-                    std::format("function '{}' has the same parameter signature as an earlier overload", decl.name),
-                    {std::format("the earlier overload was declared at '{}':{}:{}", previousFile,
-                                 previous->location.line, previous->location.column)});
-                return;
-            }
-        }
-    }
-
-    // Second pass: check declarations
-    void CheckModule(const Module &mod) override {
-        currentFile = mod.name;
-        for (const auto &decl : mod.items) {
-            CheckDecl(*decl);
-        }
-    }
-
-    void CheckModuleInScope(const Module &mod, Scope &scope) override {
-        Scope *savedScope = currentScope;
-        currentScope = &scope;
-        CheckModule(mod);
-        currentScope = savedScope;
-    }
-
     void CheckDecl(const Decl &decl) override {
         if (auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             if (const Symbol *symbol = currentScope->LookupLocal(fn->name);
@@ -2186,6 +1984,7 @@ private:
         else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
             CheckUseDecl(*useDecl);
         }
+        ValidatePublicDeclaration(decl);
     }
 
     void CheckFuncDecl(const FuncDecl &d, bool isMethod = false) {
@@ -2548,6 +2347,7 @@ private:
             ValidateDestructor(*m, currentExtendedType);
             ValidateConstructor(*m, currentExtendedType);
             CheckFuncDecl(*m, /*isMethod=*/true);
+            ValidatePublicFunction(*m, std::format("public method '{}.{}'", typeName, m->name), d.extendedType.get());
         }
         currentSelfType = savedSelfType;
         currentExtendedType = savedExtendedType;
@@ -2676,6 +2476,8 @@ private:
     struct ImportScope {
         const std::unordered_map<std::string, Symbol> *table = nullptr;
         std::string displayName;
+        std::string ownerPackage;
+        std::string modulePath;
     };
 
     static std::string ImportScopeDisplayName(const std::string &pkgName, const std::string &modulePath) {
@@ -2689,7 +2491,7 @@ private:
         const std::string logicalModulePath = LogicalModulePathForImport(d);
         if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
             if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
-                return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath)};
+                return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath), pkgName, modulePath};
             }
         }
 
@@ -2716,7 +2518,8 @@ private:
             return {};
         }
         if (!matches.empty()) {
-            return {&matches[0].second->Table(), ImportScopeDisplayName(matches[0].first, logicalModulePath)};
+            return {&matches[0].second->Table(), ImportScopeDisplayName(matches[0].first, logicalModulePath),
+                    matches[0].first, logicalModulePath};
         }
 
         if (!packageModuleScopes.contains(pkgName)) {
@@ -2728,10 +2531,62 @@ private:
         return {};
     }
 
+    [[nodiscard]] const Symbol *InaccessibleModule(const std::string &package, const std::string &path) const {
+        if (package == currentPackage || path.empty()) {
+            return nullptr;
+        }
+        const auto packageIt = packageModuleScopes.find(package);
+        if (packageIt == packageModuleScopes.end()) {
+            return nullptr;
+        }
+        const auto rootIt = packageIt->second.find("");
+        if (rootIt == packageIt->second.end()) {
+            return nullptr;
+        }
+        const Scope *scope = rootIt->second;
+        std::size_t begin = 0;
+        while (begin < path.size()) {
+            const std::size_t separator = path.find("::", begin);
+            const std::string segment =
+                path.substr(begin, separator == std::string::npos ? std::string::npos : separator - begin);
+            const auto found = scope->Table().find(segment);
+            if (found == scope->Table().end() || found->second.kind != Symbol::Kind::Module) {
+                return nullptr;
+            }
+            if (!IsAccessible(found->second)) {
+                return &found->second;
+            }
+            scope = found->second.moduleScope;
+            if (!scope || separator == std::string::npos) {
+                break;
+            }
+            begin = separator + 2;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] std::optional<Symbol> AccessibleImport(const Symbol &symbol) const {
+        if (symbol.kind != Symbol::Kind::Func || symbol.funcOverloads.empty()) {
+            return IsAccessible(symbol) ? std::optional<Symbol>(symbol) : std::nullopt;
+        }
+        Symbol accessible = symbol;
+        std::erase_if(accessible.funcOverloads, [this](const FuncDecl *overload) { return !IsAccessible(*overload); });
+        if (accessible.funcOverloads.empty()) {
+            return std::nullopt;
+        }
+        accessible.isPublic = true;
+        accessible.isEffectivelyPublic = true;
+        return accessible;
+    }
+
     void PromoteFromPackage(const UseDecl &d, const std::string &pkgName, const std::string &name) {
         const std::string modulePath = ModulePathForImport(d);
         ImportScope scope = ResolveImportScope(d, pkgName, modulePath);
         if (!scope.table) {
+            return;
+        }
+        if (const Symbol *module = InaccessibleModule(scope.ownerPackage, scope.modulePath)) {
+            EmitPrivacyError(d.location, *module);
             return;
         }
         auto sym_it = scope.table->find(name);
@@ -2751,8 +2606,13 @@ private:
             EmitError(d.location, std::move(message), {}, std::move(help));
             return;
         }
-        DefineImportedSymbol(sym_it->second);
-        ImportSignatureDependencies(sym_it->second, *scope.table);
+        const std::optional<Symbol> accessible = AccessibleImport(sym_it->second);
+        if (!accessible) {
+            EmitPrivacyError(d.location, sym_it->second);
+            return;
+        }
+        DefineImportedSymbol(*accessible);
+        ImportSignatureDependencies(*accessible, *scope.table);
     }
 
     void DefineImportedSymbol(const Symbol &sym) {
@@ -2807,7 +2667,9 @@ private:
                 return;
             }
             if (dep->kind == Symbol::Kind::Type || dep->kind == Symbol::Kind::Interface) {
-                DefineImportedSymbol(*dep);
+                if (const std::optional<Symbol> accessible = AccessibleImport(*dep)) {
+                    DefineImportedSymbol(*accessible);
+                }
             }
         };
 
@@ -2871,12 +2733,19 @@ private:
                 if (modIt == pkgIt->second.end()) {
                     return false;
                 }
-                Symbol sym;
-                sym.kind = Symbol::Kind::Module;
-                sym.name = moduleName;
-                sym.location = d.location;
-                sym.moduleScope = modIt->second;
-                DefineImportedSymbol(sym);
+                const auto root = pkgIt->second.find("");
+                if (root == pkgIt->second.end()) {
+                    return false;
+                }
+                const auto module = root->second->Table().find(moduleName);
+                if (module == root->second->Table().end() || module->second.kind != Symbol::Kind::Module) {
+                    return false;
+                }
+                if (!IsAccessible(module->second)) {
+                    EmitPrivacyError(d.location, module->second);
+                    return true;
+                }
+                DefineImportedSymbol(module->second);
                 return true;
             };
 
@@ -2911,8 +2780,14 @@ private:
             if (!scope.table) {
                 return;
             }
+            if (const Symbol *module = InaccessibleModule(scope.ownerPackage, scope.modulePath)) {
+                EmitPrivacyError(d.location, *module);
+                return;
+            }
             for (const auto &[name, sym] : *scope.table) {
-                DefineImportedSymbol(sym);
+                if (const std::optional<Symbol> accessible = AccessibleImport(sym)) {
+                    DefineImportedSymbol(*accessible);
+                }
             }
         }
     }
@@ -3223,6 +3098,19 @@ private:
                 const std::string &methodName = e->segments[1];
                 const FuncDecl *method = LookupMethod(receiverType, methodName);
                 if (!method) {
+                    const std::vector<const FuncDecl *> accessible =
+                        AccessibleMethodCandidates(receiverType, methodName);
+                    if (accessible.empty()) {
+                        const auto methods = methodsByType.find(NamedBaseTypeName(receiverType));
+                        if (methods != methodsByType.end()) {
+                            const auto named = methods->second.find(methodName);
+                            if (named != methods->second.end() && !named->second.empty()) {
+                                EmitPrivacyError(e->location, *named->second.front(), "associated function",
+                                                 methodName);
+                                return TypeRef::MakeUnknown();
+                            }
+                        }
+                    }
                     EmitError(e->location,
                               std::format("'{}' not found in extend for type '{}'", methodName, first->name));
                     return TypeRef::MakeUnknown();
@@ -3244,10 +3132,14 @@ private:
                     return TypeRef::MakeUnknown();
                 }
                 moduleScope = current->moduleScope;
-                Symbol *item = moduleScope->Lookup(e->segments[i]);
+                Symbol *item = moduleScope->LookupLocal(e->segments[i]);
                 if (!item) {
                     EmitError(e->location,
                               std::format("'{}' not found in module '{}'", e->segments[i], e->segments[i - 1]));
+                    return TypeRef::MakeUnknown();
+                }
+                if (!IsAccessible(*item)) {
+                    EmitPrivacyError(e->location, *item);
                     return TypeRef::MakeUnknown();
                 }
                 current = item;
@@ -3486,7 +3378,7 @@ private:
                 return;
             }
             const std::string destructorName = "~" + NamedBaseTypeName(type);
-            const FuncDecl *destructor = LookupMethod(type, destructorName);
+            const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
             if (destructor == nullptr) {
                 return;
             }
@@ -3555,12 +3447,16 @@ private:
 
             Scope *savedScope = currentScope;
             const std::string savedFile = currentFile;
+            const std::string savedPackage = currentPackage;
             const FuncDecl *savedFunctionDecl = currentFunctionDecl;
             if (const auto it = functionDeclScopes.find(instantiation.decl); it != functionDeclScopes.end()) {
                 currentScope = it->second;
             }
             if (const auto it = functionDeclFiles.find(instantiation.decl); it != functionDeclFiles.end()) {
                 currentFile = it->second;
+            }
+            if (const auto it = declarationInfos.find(instantiation.decl); it != declarationInfos.end()) {
+                currentPackage = it->second.ownerPackage;
             }
             currentFunctionDecl = nullptr;
 
@@ -3596,6 +3492,7 @@ private:
             }
 
             currentFunctionDecl = savedFunctionDecl;
+            currentPackage = savedPackage;
             currentFile = savedFile;
             currentScope = savedScope;
         }
@@ -3675,6 +3572,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(valueCopies),
                          std::move(callableBindings),
                          std::move(defaultConstructors),
+                         analyzer.EffectiveVisibilities(),
                          std::move(symbolIdentities),
                          std::move(vtableIdentities),
                          analyzer.TakeConstraintWitnesses(),

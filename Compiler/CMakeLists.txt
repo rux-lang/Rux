@@ -151,11 +151,13 @@ rux_add_component(RuxSemantic
     Semantic/SemanticConstraints.cpp
     Semantic/SemanticMoveState.cpp
     Semantic/SemanticDropGlue.cpp
+    Semantic/SemanticFunctionSignatures.cpp
     Semantic/SemanticIteration.cpp
     Semantic/SemanticStatements.cpp
     Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
     Semantic/SemanticPropagation.cpp
+    Semantic/SemanticPublicApi.cpp
     Semantic/SemanticReceivers.cpp
     Semantic/SemanticTypeProperties.cpp
     Semantic/SemanticPrinter.cpp)

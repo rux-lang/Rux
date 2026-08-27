@@ -22,7 +22,7 @@ import Entropy::{ EntropyError, Fill };
 /// wrong.
 ///
 /// https://rux-lang.dev/docs/api/uuid/random
-func Random(error: *var EntropyError) -> Uuid {
+pub func Random(error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
     if *error != EntropyError::None {
@@ -42,7 +42,7 @@ func Random(error: *var EntropyError) -> Uuid {
 /// version 4 UUID.
 ///
 /// https://rux-lang.dev/docs/api/uuid/random-from-bytes
-func RandomFromBytes(bytes: Slice<char8>) -> Uuid {
+pub func RandomFromBytes(bytes: Slice<char8>) -> Uuid {
     var value = Uuid::FromBytes(bytes);
     value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
     value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
@@ -57,7 +57,7 @@ func RandomFromBytes(bytes: Slice<char8>) -> Uuid {
 /// well-formed identifier that refers to something else entirely.
 ///
 /// https://rux-lang.dev/docs/api/uuid/swap-guid-order
-func SwapGuidOrder(value: &Uuid) -> Uuid {
+pub func SwapGuidOrder(value: &Uuid) -> Uuid {
     var swapped = Uuid::FromBytes(value.Bytes());
     // The first field is four bytes, the next two are two bytes each; the remaining eight are a byte array in
     // both layouts and are left alone.

@@ -37,36 +37,36 @@ extern {
 
     // Computes the absolute value of an integer value
     // https://en.cppreference.com/c/numeric/math/abs
-    func abs(n: c_int) -> c_int;
+    pub func abs(n: c_int) -> c_int;
 
     // Converts a byte string to a floating point value
     //
     // Cannot report failure: a string that is not a number gives zero, and a value out of range is undefined rather
     // than reported. Use strtod, which reports both.
     // https://en.cppreference.com/c/string/byte/atof
-    func atof(str: *char8) -> c_double;
+    pub func atof(str: *char8) -> c_double;
 
     // Converts a byte string to an integer value
     //
     // Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
     // https://en.cppreference.com/c/string/byte/atoi
-    func atoi(str: *char8) -> c_int;
+    pub func atoi(str: *char8) -> c_int;
 
     // Converts a byte string to a long integer value
     //
     // Cannot report failure. Use strtol.
     // https://en.cppreference.com/c/string/byte/atoi
-    func atol(str: *char8) -> int64;
+    pub func atol(str: *char8) -> int64;
 
     // Converts a byte string to a long long integer value
     //
     // Cannot report failure. Use strtoll.
     // https://en.cppreference.com/c/string/byte/atoi
-    func atoll(str: *char8) -> int64;
+    pub func atoll(str: *char8) -> int64;
 
     // Allocates memory for an array of num objects of size and zero-initializes it
     // https://en.cppreference.com/c/memory/calloc
-    func calloc(num: size_t, size: size_t) -> *var opaque;
+    pub func calloc(num: size_t, size: size_t) -> *var opaque;
 
     // Causes normal program termination with cleanup
     // https://en.cppreference.com/c/program/exit
@@ -74,7 +74,7 @@ extern {
 
     // Deallocates the memory previously allocated by malloc, calloc or realloc
     // https://en.cppreference.com/c/memory/free
-    func free(ptr: *var opaque);
+    pub func free(ptr: *var opaque);
 
     // Returns the value of an environment variable
     //
@@ -85,62 +85,62 @@ extern {
 
     // Computes the absolute value of a long integer value
     // https://en.cppreference.com/c/numeric/math/abs
-    func labs(n: int64) -> int64;
+    pub func labs(n: int64) -> int64;
 
     // Computes the absolute value of a long long integer value
     // https://en.cppreference.com/c/numeric/math/abs
-    func llabs(n: int64) -> int64;
+    pub func llabs(n: int64) -> int64;
 
     // Allocates size bytes of uninitialized memory
     // https://en.cppreference.com/c/memory/malloc
-    func malloc(size: size_t) -> *var opaque;
+    pub func malloc(size: size_t) -> *var opaque;
 
     // Returns a pseudo-random integer value between 0 and RAND_MAX
     //
     // Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
     // would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
     // https://en.cppreference.com/c/numeric/random/rand
-    func rand() -> c_int;
+    pub func rand() -> c_int;
 
     // Changes the size of the memory block pointed to by ptr to size bytes
     // https://en.cppreference.com/c/memory/realloc
-    func realloc(ptr: *var opaque, size: size_t) -> *var opaque;
+    pub func realloc(ptr: *var opaque, size: size_t) -> *var opaque;
 
     // Seeds the pseudo-random number generator used by rand
     // https://en.cppreference.com/c/numeric/random/srand
-    func srand(seed: c_uint);
+    pub func srand(seed: c_uint);
 
     // Converts a byte string to a long integer, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtol
-    func strtol(str: *char8, endptr: *var *char8, base: c_int) -> c_long;
+    pub func strtol(str: *char8, endptr: *var *char8, base: c_int) -> c_long;
 
     // Converts a byte string to an unsigned long integer, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtoul
-    func strtoul(str: *char8, endptr: *var *char8, base: c_int) -> c_ulong;
+    pub func strtoul(str: *char8, endptr: *var *char8, base: c_int) -> c_ulong;
 
     // Converts a byte string to a long long integer, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtol
-    func strtoll(str: *char8, endptr: *var *char8, base: c_int) -> c_longlong;
+    pub func strtoll(str: *char8, endptr: *var *char8, base: c_int) -> c_longlong;
 
     // Converts a byte string to an unsigned long long integer, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtoul
-    func strtoull(str: *char8, endptr: *var *char8, base: c_int) -> c_ulonglong;
+    pub func strtoull(str: *char8, endptr: *var *char8, base: c_int) -> c_ulonglong;
 
     // Converts a byte string to a double, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtof
-    func strtod(str: *char8, endptr: *var *char8) -> c_double;
+    pub func strtod(str: *char8, endptr: *var *char8) -> c_double;
 
     // Converts a byte string to a float, reporting where it stopped
     // https://en.cppreference.com/c/string/byte/strtof
-    func strtof(str: *char8, endptr: *var *char8) -> c_float;
+    pub func strtof(str: *char8, endptr: *var *char8) -> c_float;
 
     // Sorts an array in place; the comparison must be a strict weak ordering and the sort is not stable
     // https://en.cppreference.com/c/algorithm/qsort
-    func qsort(base: *var opaque, num: size_t, size: size_t, compare: func(*opaque, *opaque) -> c_int);
+    pub func qsort(base: *var opaque, num: size_t, size: size_t, compare: func(*opaque, *opaque) -> c_int);
 
     // Finds an element of a sorted array; the array must already be ordered by the same comparison
     // https://en.cppreference.com/c/algorithm/bsearch
-    func bsearch(key: *opaque, base: *opaque, num: size_t, size: size_t,
+    pub func bsearch(key: *opaque, base: *opaque, num: size_t, size: size_t,
                  compare: func(*opaque, *opaque) -> c_int) -> *opaque;
 
     // Terminates normally without running any handler registered with atexit and without flushing streams
@@ -189,13 +189,13 @@ when #target.os {
 ///
 /// https://rux-lang.dev/docs/api/c/exit-success
 #Allow("naming.const")
-const EXIT_SUCCESS: int32 = 0;
+pub const EXIT_SUCCESS: int32 = 0;
 
 /// `EXIT_FAILURE`: the status a program returns to mean it did not.
 ///
 /// https://rux-lang.dev/docs/api/c/exit-failure
 #Allow("naming.const")
-const EXIT_FAILURE: int32 = 1;
+pub const EXIT_FAILURE: int32 = 1;
 
 // `RAND_MAX` is where the platforms part company: the Universal CRT keeps the smallest value the standard permits,
 // while every supported Unix uses the whole positive range of an `int`.
@@ -205,13 +205,13 @@ when #target.os {
         ///
         /// https://rux-lang.dev/docs/api/c/rand-max
         #Allow("naming.const")
-        const RAND_MAX: int32 = 32767;
+        pub const RAND_MAX: int32 = 32767;
     }
     else => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
         ///
         /// https://rux-lang.dev/docs/api/c/rand-max
         #Allow("naming.const")
-        const RAND_MAX: int32 = 2147483647;
+        pub const RAND_MAX: int32 = 2147483647;
     }
 }

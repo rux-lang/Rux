@@ -16,17 +16,17 @@ import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/std-in
-const StdIn: int32 = 0;
+pub const StdIn: int32 = 0;
 
 /// The descriptor a process writes its output to.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/std-out
-const StdOut: int32 = 1;
+pub const StdOut: int32 = 1;
 
 /// The descriptor a process writes its diagnostics to.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/std-err
-const StdErr: int32 = 2;
+pub const StdErr: int32 = 2;
 
 /// Reads up to `count` bytes from `fd` into `buffer`.
 ///
@@ -38,7 +38,7 @@ const StdErr: int32 = 2;
 /// `buffer` must be writable for `count` bytes.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/read
-func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
+pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
     return Syscall3(SysRead, SignExtendFd(fd), buffer as uint64, count as uint64);
 }
 
@@ -52,7 +52,7 @@ func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
 /// `buffer` must be readable for `count` bytes.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/write
-func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
+pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
     return Syscall3(SysWrite, SignExtendFd(fd), buffer as uint64, count as uint64);
 }
 
@@ -62,7 +62,7 @@ func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 /// failed close can close one another thread has since opened under the same number.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/close
-func Close(fd: FileDescriptor) -> int64 {
+pub func Close(fd: FileDescriptor) -> int64 {
     return Syscall1(SysClose, SignExtendFd(fd));
 }
 
@@ -71,22 +71,22 @@ func Close(fd: FileDescriptor) -> int64 {
 /// FreeBSD spells this `-100`, the same value Linux uses, which is one of the few places the two agree exactly.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/at-fd-cwd
-const AtFdCwd: int32 = -100;
+pub const AtFdCwd: int32 = -100;
 
 /// `O_RDONLY`: open for reading only.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-read-only
-const OpenReadOnly: int32 = 0x0000;
+pub const OpenReadOnly: int32 = 0x0000;
 
 /// `O_WRONLY`: open for writing only.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-write-only
-const OpenWriteOnly: int32 = 0x0001;
+pub const OpenWriteOnly: int32 = 0x0001;
 
 /// `O_RDWR`: open for both reading and writing.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-read-write
-const OpenReadWrite: int32 = 0x0002;
+pub const OpenReadWrite: int32 = 0x0002;
 
 /// `O_CREAT`: create the file when it does not exist, which is when the mode argument is read.
 ///
@@ -94,57 +94,57 @@ const OpenReadWrite: int32 = 0x0002;
 /// value must never be carried between the two packages.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-create
-const OpenCreate: int32 = 0x0200;
+pub const OpenCreate: int32 = 0x0200;
 
 /// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-exclusive
-const OpenExclusive: int32 = 0x0800;
+pub const OpenExclusive: int32 = 0x0800;
 
 /// `O_TRUNC`: truncate the file to nothing when opening it for writing.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-truncate
-const OpenTruncate: int32 = 0x0400;
+pub const OpenTruncate: int32 = 0x0400;
 
 /// `O_APPEND`: every write goes to the end.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-append
-const OpenAppend: int32 = 0x0008;
+pub const OpenAppend: int32 = 0x0008;
 
 /// `O_NONBLOCK`: reads and writes report `EAGAIN` rather than waiting.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-non-blocking
-const OpenNonBlocking: int32 = 0x0004;
+pub const OpenNonBlocking: int32 = 0x0004;
 
 /// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-close-on-exec
-const OpenCloseOnExec: int32 = 0x00100000;
+pub const OpenCloseOnExec: int32 = 0x00100000;
 
 /// `O_DIRECTORY`: fail unless the target is a directory.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-directory
-const OpenDirectory: int32 = 0x00020000;
+pub const OpenDirectory: int32 = 0x00020000;
 
 /// `SEEK_SET`: measure the new offset from the start of the file.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/seek-set
-const SeekSet: int32 = 0;
+pub const SeekSet: int32 = 0;
 
 /// `SEEK_CUR`: measure the new offset from the current one.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/seek-current
-const SeekCurrent: int32 = 1;
+pub const SeekCurrent: int32 = 1;
 
 /// `SEEK_END`: measure the new offset from the end of the file.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/seek-end
-const SeekEnd: int32 = 2;
+pub const SeekEnd: int32 = 2;
 
 /// `AT_REMOVEDIR`: make `UnlinkAt` remove a directory rather than a file.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/remove-directory
-const RemoveDirectory: int32 = 0x0800;
+pub const RemoveDirectory: int32 = 0x0800;
 
 /// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
 ///
@@ -155,7 +155,7 @@ const RemoveDirectory: int32 = 0x0800;
 /// `path` must be non-null and terminated. The mode is masked by the process umask.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/open-at
-func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
+pub func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileMode) -> int64 {
     return Syscall4(SysOpenAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64,
                     mode as uint64);
 }
@@ -165,7 +165,7 @@ func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: FileM
 /// Seeking past the end creates a hole when something is later written there. A pipe reports `ESPIPE`.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/lseek
-func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
+pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
     return Syscall3(SysLseek, SignExtendFd(fd), offset as uint64, (whence as int64) as uint64);
 }
 
@@ -179,7 +179,7 @@ func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 /// `buffer` must be writable for `size` bytes.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/getcwd
-func Getcwd(buffer: *var char8, size: uint) -> int64 {
+pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
     return Syscall2(SysGetcwd, buffer as uint64, size as uint64);
 }
 
@@ -188,7 +188,7 @@ func Getcwd(buffer: *var char8, size: uint) -> int64 {
 /// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/chdir
-func Chdir(path: *char8) -> int64 {
+pub func Chdir(path: *char8) -> int64 {
     return Syscall1(SysChdir, path as uint64);
 }
 
@@ -198,14 +198,14 @@ func Chdir(path: *char8) -> int64 {
 /// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/readlink-at
-func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
+pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char8, size: uint) -> int64 {
     return Syscall4(SysReadlinkAt, SignExtendFd(directoryFd), path as uint64, buffer as uint64, size as uint64);
 }
 
 /// `AT_SYMLINK_NOFOLLOW`: act on a symbolic link itself rather than on what it points at.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/symlink-no-follow
-const SymlinkNoFollow: int32 = 0x0200;
+pub const SymlinkNoFollow: int32 = 0x0200;
 
 /// Fills `statBuffer` with what the kernel knows about the file `path` names.
 ///
@@ -218,7 +218,7 @@ const SymlinkNoFollow: int32 = 0x0200;
 /// package does not model.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/fstat-at
-func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque, flags: int32) -> int64 {
+pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque, flags: int32) -> int64 {
     return Syscall4(SysFstatAt, SignExtendFd(directoryFd), path as uint64, statBuffer as uint64,
                     (flags as int64) as uint64);
 }
@@ -229,7 +229,7 @@ func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opaque,
 /// negative error number.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/fchmod-at
-func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: int32) -> int64 {
+pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: int32) -> int64 {
     return Syscall4(SysFchmodAt, SignExtendFd(directoryFd), path as uint64, (mode as int64) as uint64,
                     (flags as int64) as uint64);
 }
@@ -241,7 +241,7 @@ func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, flags: 
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/utimens-at
-func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
+pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags: int32) -> int64 {
     return Syscall4(SysUtimensAt, SignExtendFd(directoryFd), path as uint64, times as uint64,
                     (flags as int64) as uint64);
 }
@@ -252,7 +252,7 @@ func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, flags:
 /// or `FollowSymlinks` to link what it points at.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/linkat
-func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor, newPath: *char8,
+pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor, newPath: *char8,
             flags: int32) -> int64 {
     return Syscall5(SysLinkAt, SignExtendFd(oldDirectoryFd), oldPath as uint64, SignExtendFd(newDirectoryFd),
                     newPath as uint64, (flags as int64) as uint64);
@@ -261,7 +261,7 @@ func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: Fil
 /// `AT_SYMLINK_FOLLOW`: make `LinkAt` link a symbolic link's target rather than the link.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/follow-symlinks
-const FollowSymlinks: int32 = 0x0400;
+pub const FollowSymlinks: int32 = 0x0400;
 
 /// Creates a symbolic link at `linkPath` holding `target` as its text.
 ///
@@ -269,7 +269,7 @@ const FollowSymlinks: int32 = 0x0400;
 /// readily as a good one, which is a property callers rely on.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/symlinkat
-func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
+pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8) -> int64 {
     return Syscall3(SysSymlinkAt, target as uint64, SignExtendFd(newDirectoryFd), linkPath as uint64);
 }
 
@@ -283,7 +283,7 @@ func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *char8)
 /// `base`, when not null, receives the position of the block read.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/getdirentries
-func Getdirentries(fd: FileDescriptor, buffer: *var opaque, count: uint, base: *var int64) -> int64 {
+pub func Getdirentries(fd: FileDescriptor, buffer: *var opaque, count: uint, base: *var int64) -> int64 {
     return Syscall4(SysGetdirentries, SignExtendFd(fd), buffer as uint64, count as uint64, base as uint64);
 }
 
@@ -292,7 +292,7 @@ func Getdirentries(fd: FileDescriptor, buffer: *var opaque, count: uint, base: *
 /// Returns zero, or a negative error number. Without it, data a successful `Write` reported may still be lost.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/fsync
-func Fsync(fd: FileDescriptor) -> int64 {
+pub func Fsync(fd: FileDescriptor) -> int64 {
     return Syscall1(SysFsync, SignExtendFd(fd));
 }
 
@@ -301,7 +301,7 @@ func Fsync(fd: FileDescriptor) -> int64 {
 /// Growing creates a hole rather than allocating, so a later write into it can still fail with `ENOSPC`.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/ftruncate
-func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
+pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
     return Syscall2(SysFtruncate, SignExtendFd(fd), length as uint64);
 }
 
@@ -315,7 +315,7 @@ func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 /// `path` must be non-null and terminated.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/unlink-at
-func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
+pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 {
     return Syscall3(SysUnlinkAt, SignExtendFd(directoryFd), path as uint64, (flags as int64) as uint64);
 }
 
@@ -328,7 +328,7 @@ func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> int64 
 /// `path` must be non-null and terminated.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/mkdir-at
-func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
+pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64 {
     return Syscall3(SysMkdirAt, SignExtendFd(directoryFd), path as uint64, mode as uint64);
 }
 
@@ -342,7 +342,7 @@ func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> int64
 /// Both paths must be non-null and terminated.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/rename-at
-func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
+pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: FileDescriptor,
               newPath: *char8) -> int64 {
     return Syscall4(SysRenameAt, SignExtendFd(oldDirectoryFd), oldPath as uint64, SignExtendFd(newDirectoryFd),
                     newPath as uint64);
@@ -358,7 +358,7 @@ func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd: F
 /// `statBuffer` must be writable for the whole of FreeBSD's `struct stat`, which this does not check.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/fstat
-func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
+pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
     return Syscall2(SysFstat, SignExtendFd(fd), statBuffer as uint64);
 }
 
@@ -370,7 +370,7 @@ func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 /// close-on-exec is a separate `fcntl` this package does not wrap.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/dup2
-func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
+pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
     return Syscall2(SysDup2, SignExtendFd(oldFd), SignExtendFd(newFd));
 }
 
@@ -384,6 +384,6 @@ func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 /// `descriptors` must be writable for two `int32` values.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/pipe2
-func Pipe2(descriptors: *var int32, flags: int32) -> int64 {
+pub func Pipe2(descriptors: *var int32, flags: int32) -> int64 {
     return Syscall2(SysPipe2, descriptors as uint64, (flags as int64) as uint64);
 }

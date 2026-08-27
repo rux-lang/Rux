@@ -20,7 +20,7 @@
 /// and reading it afterwards is undefined. Finish with the iterator before touching the container.
 ///
 /// https://rux-lang.dev/docs/api/core/iterator
-interface Iterator {}
+pub interface Iterator {}
 
 /// A value that can hand out an `Iterator` over its contents.
 ///
@@ -37,4 +37,4 @@ interface Iterator {}
 /// is alive. See `Iterator`.
 ///
 /// https://rux-lang.dev/docs/api/core/iterable
-interface Iterable {}
+pub interface Iterable {}

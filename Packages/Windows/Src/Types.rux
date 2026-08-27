@@ -14,12 +14,12 @@
 /// be reused by the next object opened -- so a stale handle does not fail, it addresses something else.
 ///
 /// https://rux-lang.dev/docs/api/windows/handle
-type Handle = *var opaque;
+pub type Handle = *var opaque;
 
 /// A module reference, as `LoadLibraryW` returns one.
 ///
 /// https://rux-lang.dev/docs/api/windows/module-handle
-type ModuleHandle = *var opaque;
+pub type ModuleHandle = *var opaque;
 
 /// Win32's `BOOL`: a 32-bit integer where zero is false and anything else is true.
 ///
@@ -27,19 +27,19 @@ type ModuleHandle = *var opaque;
 /// else, which is why comparing against `1` is wrong.
 ///
 /// https://rux-lang.dev/docs/api/windows/bool
-type Bool = int32;
+pub type Bool = int32;
 
 /// Win32's `DWORD`: a 32-bit unsigned integer.
 ///
 /// https://rux-lang.dev/docs/api/windows/dword
-type Dword = uint32;
+pub type Dword = uint32;
 
 /// A UTF-16 code unit, which is what every `*W` entry point takes.
 ///
 /// Not a character: a scalar outside the basic plane occupies two of these.
 ///
 /// https://rux-lang.dev/docs/api/windows/wide-char
-type WideChar = char16;
+pub type WideChar = char16;
 
 /// An `NTSTATUS`: the status code the native and cryptographic interfaces report with.
 ///
@@ -47,7 +47,7 @@ type WideChar = char16;
 /// one must never be read as the other.
 ///
 /// https://rux-lang.dev/docs/api/windows/nt-status
-type NtStatus = int32;
+pub type NtStatus = int32;
 
 /// The value a handle-returning call reports failure with.
 ///
@@ -55,32 +55,45 @@ type NtStatus = int32;
 /// memory-returning call such as `VirtualAlloc` reports null instead.
 ///
 /// https://rux-lang.dev/docs/api/windows/invalid-handle-value
-const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
+pub const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
 
 // Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
 // https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
-struct FileTime {
-    lowDateTime: uint32;
-    highDateTime: uint32;
+///
+/// https://rux-lang.dev/docs/api/windows/file-time
+pub struct FileTime {
+    pub lowDateTime: uint32;
+    pub highDateTime: uint32;
 }
 
 // The standard input device. Initially, this is the console input buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-const StdInputHandle: uint32 = 0xFFFFFFF6;
+/// The public `StdInputHandle` value.
+///
+/// https://rux-lang.dev/docs/api/windows/std-input-handle
+pub const StdInputHandle: uint32 = 0xFFFFFFF6;
 
 // The standard output device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-const StdOutputHandle: uint32 = 0xFFFFFFF5;
+/// The public `StdOutputHandle` value.
+///
+/// https://rux-lang.dev/docs/api/windows/std-output-handle
+pub const StdOutputHandle: uint32 = 0xFFFFFFF5;
 
 // The standard error device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-const StdErrorHandle: uint32 = 0xFFFFFFF4;
+/// The public `StdErrorHandle` value.
+///
+/// https://rux-lang.dev/docs/api/windows/std-error-handle
+pub const StdErrorHandle: uint32 = 0xFFFFFFF4;
 
 // Specifies a date and time, using individual members for the month, day, year, weekday, hour, minute, second,
 // and millisecond.
 // The time is either in coordinated universal time (UTC) or local time, depending on the function that is being called.
 // https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime
-struct SystemTime {
+///
+/// https://rux-lang.dev/docs/api/windows/system-time
+pub struct SystemTime {
     year: uint16;
     month: uint16;
     dayOfWeek: uint16;
@@ -93,7 +106,9 @@ struct SystemTime {
 
 // Contains information about the file that is found by the FindFirstFile, FindFirstFileEx, or FindNextFile function.
 // https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
-struct Win32FindDataA {
+///
+/// https://rux-lang.dev/docs/api/windows/win32-find-data-a
+pub struct Win32FindDataA {
     fileAttributes: uint32;
     creationTime: FileTime;
     lastAccessTime: FileTime;
@@ -113,11 +128,11 @@ struct Win32FindDataA {
 /// is 64 KiB rather than a page. A reservation therefore wastes address space that a page-granular system would not.
 ///
 /// https://rux-lang.dev/docs/api/windows/system-info
-struct SystemInfo {
+pub struct SystemInfo {
     /// The processor architecture, or a union member on the oldest releases; not read by this package.
     processorArchitecture: uint32;
     /// The size of a page, which is what memory protection is applied at.
-    pageSize: uint32;
+    pub pageSize: uint32;
     /// The lowest address an application may have.
     minimumApplicationAddress: *var opaque;
     /// The highest address an application may have.

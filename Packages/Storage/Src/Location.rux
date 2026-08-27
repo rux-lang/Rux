@@ -38,12 +38,12 @@ when #target.os {
 /// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
 ///
 /// https://rux-lang.dev/docs/api/storage/symbolic-link-limit
-const SymbolicLinkLimit: uint = 40;
+pub const SymbolicLinkLimit: uint = 40;
 
 /// The process's working directory, as an absolute path.
 ///
 /// https://rux-lang.dev/docs/api/storage/current-directory
-func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
+pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
     *error = IoError::Ok();
     var units: OsUnit[4096];
     when #target.os == .Windows {
@@ -92,7 +92,7 @@ func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
 /// about to resolve. Nothing in this package calls it.
 ///
 /// https://rux-lang.dev/docs/api/storage/set-current-directory
-func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
+pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
     if converted.IsError() {
@@ -121,7 +121,7 @@ func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
 /// operation that tells the truth about links, at the cost of requiring the file to be there.
 ///
 /// https://rux-lang.dev/docs/api/storage/absolute
-func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
+pub func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
     var textError = TextError::None;
     if IsAbsolute(path) {
@@ -298,7 +298,7 @@ when #target.os != .Windows {
 /// this package guessing.
 ///
 /// https://rux-lang.dev/docs/api/storage/canonicalize
-func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
+pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle

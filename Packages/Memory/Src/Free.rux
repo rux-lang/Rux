@@ -15,7 +15,7 @@ when #target.os {
 /// becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
 ///
 /// https://rux-lang.dev/docs/api/memory/free
-func Free(ptr: *opaque) {
+pub func Free(ptr: *opaque) {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
             if ptr == null {

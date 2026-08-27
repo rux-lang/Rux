@@ -25,7 +25,7 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 /// condemned: where the buffer happens to end is not a property of the text.
 ///
 /// https://rux-lang.dev/docs/api/io/read-text-line
-func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> IoError {
+pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> IoError {
     var appended: uint = 0;
     var failure = IoErrorKind::None;
     var carry: char8[4];

@@ -1,7 +1,10 @@
 // **Accuracy: error at most 1 ulp, and exact for an exact power of two.**
 // Sharing the natural logarithm's series and scaling the result would lose
 // that exactness, since the scaling factor is not representable.
-func Log2(x: float64) -> float64 {
+/// Provides the public `Log2` operation.
+///
+/// https://rux-lang.dev/docs/api/math/log2
+pub func Log2(x: float64) -> float64 {
     let ivln2Hi = 1.44269504072144627571e+00;
     let ivln2Lo = 1.67517131648865118353e-10;
 
@@ -45,6 +48,9 @@ func Log2(x: float64) -> float64 {
     return valLo + valHi;
 }
 
-func Log2(x: float32) -> float32 {
+/// Provides the public `Log2` operation.
+///
+/// https://rux-lang.dev/docs/api/math/log2
+pub func Log2(x: float32) -> float32 {
     return Log2(x as float64) as float32;
 }

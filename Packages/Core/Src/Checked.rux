@@ -10,7 +10,7 @@
 /// written rather than calling out to a helper.
 ///
 /// https://rux-lang.dev/docs/api/core/checked-add
-intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Subtracts one unsigned 64-bit value from another and reports whether the true difference is representable.
 ///
@@ -23,7 +23,7 @@ intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> b
 /// written rather than calling out to a helper.
 ///
 /// https://rux-lang.dev/docs/api/core/checked-sub
-intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Multiplies two unsigned 64-bit values and reports whether the true product is representable.
 ///
@@ -38,4 +38,4 @@ intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> b
 /// written rather than calling out to a helper.
 ///
 /// https://rux-lang.dev/docs/api/core/checked-mul
-intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;

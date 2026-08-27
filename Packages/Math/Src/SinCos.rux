@@ -16,7 +16,7 @@
 /// `sine` and `cosine` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/sin-cos
-func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
+pub func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
     // NaN propagates into both.
     if angle != angle {
         *sine = angle;
@@ -81,7 +81,7 @@ func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
 /// `sine` and `cosine` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/math/sin-cos-32
-func SinCos(angle: float32, sine: *var float32, cosine: *var float32) {
+pub func SinCos(angle: float32, sine: *var float32, cosine: *var float32) {
     var wideSine = 0.0;
     var wideCosine = 0.0;
     SinCos(angle as float64, @wideSine, @wideCosine);

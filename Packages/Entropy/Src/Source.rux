@@ -33,7 +33,7 @@ when #target.os {
 /// which says exactly that and leaves trying again to the caller, who knows whether it is worth it.
 ///
 /// https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
-const MaxEntropyAttempts: uint = 16;
+pub const MaxEntropyAttempts: uint = 16;
 
 /// The largest request the source accepts in a single call.
 ///
@@ -41,7 +41,7 @@ const MaxEntropyAttempts: uint = 16;
 /// asking more than once, which `Fill` does.
 ///
 /// https://rux-lang.dev/docs/api/entropy/max-entropy-request
-const MaxEntropyRequest: uint = 0xFFFFFFFF;
+pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 
 /// Fills `length` bytes of `buffer` from the system's generator, in one pass.
 ///
@@ -63,7 +63,7 @@ const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// result gets zeros rather than a partly random buffer that would pass a glance.
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-from-source
-func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
+pub func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
     if length == 0 {
         return EntropyError::None;
     }

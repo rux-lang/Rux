@@ -17,7 +17,7 @@ import Text::TextError;
 /// Why writing stopped.
 ///
 /// https://rux-lang.dev/docs/api/json/write-error
-enum JsonWriteError: int32 {
+pub enum JsonWriteError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The writer refused the bytes.
@@ -31,7 +31,7 @@ enum JsonWriteError: int32 {
 /// How a document should be laid out.
 ///
 /// https://rux-lang.dev/docs/api/json/json-style
-struct JsonStyle {
+pub struct JsonStyle {
     /// Spaces of indentation per level; zero writes everything on one line.
     indent: uint;
     /// Whether a space follows the colon after a member name. Ignored when indenting, which always adds one.
@@ -42,14 +42,14 @@ extend JsonStyle {
     /// The compact style: no whitespace anywhere. What a document on a wire should be.
     ///
     /// https://rux-lang.dev/docs/api/json/json-style/compact
-    func Compact() -> JsonStyle {
+    pub func Compact() -> JsonStyle {
         return JsonStyle { indent: 0, spaceAfterColon: false };
     }
 
     /// The readable style: two spaces per level.
     ///
     /// https://rux-lang.dev/docs/api/json/json-style/pretty
-    func Pretty() -> JsonStyle {
+    pub func Pretty() -> JsonStyle {
         return JsonStyle { indent: 2, spaceAfterColon: true };
     }
 }
@@ -64,7 +64,7 @@ const JsonHexDigits: Slice<char8> = "0123456789abcdef";
 /// into escapes -- which is legal but makes output several times larger for no gain.
 ///
 /// https://rux-lang.dev/docs/api/json/write-escaped
-func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteError {
+pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteError {
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
@@ -194,7 +194,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
 /// Writes `value` to `writer` in the given style.
 ///
 /// https://rux-lang.dev/docs/api/json/write-value
-func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
+pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
     return WriteAtLevel(writer, value, style, 0u);
 }
 

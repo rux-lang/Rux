@@ -44,7 +44,7 @@ public:
         dependency.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(dependency.Save(depRoot / "Rux.toml"));
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
-module Api {
+pub module Api {
     pub func Answer() -> int {
         return 42;
     }
@@ -98,7 +98,7 @@ func Main() -> int {
         nonTarget.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(nonTarget.Save(nonTargetRoot / "Rux.toml"));
         REQUIRE(WriteFile(nonTargetRoot / "Src" / "Api.rux", R"(
-module Api {
+pub module Api {
     pub func Answer() -> int {
         return 7;
     }
@@ -129,7 +129,7 @@ func Main() -> int {
         nonTarget.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(nonTarget.Save(nonTargetRoot / "Rux.toml"));
         REQUIRE(WriteFile(nonTargetRoot / "Src" / "Api.rux", R"(
-module Api {
+pub module Api {
     pub func Answer() -> int {
         return MissingWindowsImplementation;
     }
@@ -162,7 +162,7 @@ func Main() -> int {
         transitive.package.type = ManifestPackageType::SourceLibrary;
         REQUIRE(transitive.Save(transitiveRoot / "Rux.toml"));
         REQUIRE(WriteFile(transitiveRoot / "Src" / "Api.rux", R"(
-module Api {
+pub module Api {
     pub func Value() -> int {
         return 42;
     }
@@ -176,7 +176,7 @@ module Api {
         REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
 import Transitive::Api::Value;
 
-module Api {
+pub module Api {
     pub func Answer() -> int {
         return Value();
     }

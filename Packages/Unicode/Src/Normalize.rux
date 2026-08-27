@@ -18,7 +18,7 @@ import Core::{ MutableSlice, Slice };
 /// The first Hangul syllable, LV and LVT composition's base.
 ///
 /// https://rux-lang.dev/docs/api/unicode/hangul-base
-const HangulBase: uint32 = 0xAC00;
+pub const HangulBase: uint32 = 0xAC00;
 
 // The jamo bases and counts the arithmetic runs on.
 const HangulLeadBase: uint32 = 0x1100;
@@ -120,7 +120,7 @@ func CanonicalOrder(items: MutableSlice<char32>, length: uint) {
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/decompose-canonical
-func DecomposeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func DecomposeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     return Decompose(text, false, into, written);
 }
 
@@ -131,7 +131,7 @@ func DecomposeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/decompose-compatibility
-func DecomposeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func DecomposeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     return Decompose(text, true, into, written);
 }
 
@@ -251,7 +251,7 @@ func Compose(items: MutableSlice<char32>, length: uint) -> uint {
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/normalize-canonical
-func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCanonical(text, into, @length) {
         return false;
@@ -267,7 +267,7 @@ func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/normalize-compatibility
-func NormalizeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func NormalizeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCompatibility(text, into, @length) {
         return false;

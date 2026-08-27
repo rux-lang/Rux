@@ -5,7 +5,10 @@
 
 // Code page identifiers
 // https://learn.microsoft.com/en-us/windows/win32/Intl/code-page-identifiers
-enum CodePage: uint32 {
+/// The `CodePage` values exposed by this package.
+///
+/// https://rux-lang.dev/docs/api/windows/code-page
+pub enum CodePage: uint32 {
     IbmEbcdicUsCanada = 37,
     OemUnitedStates = 437,
     IbmEbcdicInternational = 500,
@@ -149,7 +152,10 @@ enum CodePage: uint32 {
 
 // An action to take on a file or device that exists or does not exist.
 // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
-enum CreationDisposition: uint32 {
+/// The `CreationDisposition` values exposed by this package.
+///
+/// https://rux-lang.dev/docs/api/windows/creation-disposition
+pub enum CreationDisposition: uint32 {
     CreateNew = 1,
     CreateAlways = 2,
     OpenExisting = 3,

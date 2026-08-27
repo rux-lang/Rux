@@ -16,13 +16,13 @@ import Text::TextError;
 /// The shape of one binary interchange format: where its fields are and what they mean.
 ///
 /// https://rux-lang.dev/docs/api/format/float-layout
-struct FloatLayout {
+pub struct FloatLayout {
     /// How many bits the value occupies, which is not always its storage.
     bits: uint;
     /// The width of the exponent field.
     exponentBits: uint;
     /// The significand precision, counting the leading bit whether or not it is stored.
-    precision: uint;
+    pub precision: uint;
     /// What the exponent field is offset by.
     bias: int;
     /// Whether the leading significand bit is stored, as it is in the x87 extended format and nowhere else.
@@ -33,56 +33,56 @@ extend FloatLayout {
     /// The x87 extended format: sixty-four significand bits with the integer bit written out, in eighty bits.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/extended80
-    func Extended80() -> FloatLayout {
+    pub func Extended80() -> FloatLayout {
         return FloatLayout { bits: 80, exponentBits: 15, precision: 64, bias: 16383, explicitInteger: true };
     }
 
     /// IEEE binary128: a hundred and thirteen bits of precision.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/binary128
-    func Binary128() -> FloatLayout {
+    pub func Binary128() -> FloatLayout {
         return FloatLayout { bits: 128, exponentBits: 15, precision: 113, bias: 16383, explicitInteger: false };
     }
 
     /// IEEE binary256: two hundred and thirty-seven bits of precision.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/binary256
-    func Binary256() -> FloatLayout {
+    pub func Binary256() -> FloatLayout {
         return FloatLayout { bits: 256, exponentBits: 19, precision: 237, bias: 262143, explicitInteger: false };
     }
 
     /// IEEE binary512: four hundred and eighty-nine bits of precision.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/binary512
-    func Binary512() -> FloatLayout {
+    pub func Binary512() -> FloatLayout {
         return FloatLayout { bits: 512, exponentBits: 23, precision: 489, bias: 4194303, explicitInteger: false };
     }
 
     /// How many bits the stored significand field has: the precision, less the leading bit unless it is written.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/significand-field-bits
-    func SignificandFieldBits(self: &FloatLayout) -> uint {
+    pub func SignificandFieldBits(self: &FloatLayout) -> uint {
         return self.explicitInteger ? self.precision : self.precision - 1u;
     }
 
     /// The smallest exponent a normal value has, as the power of two its integer significand is scaled by.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/minimum-exponent
-    func MinimumExponent(self: &FloatLayout) -> int {
+    pub func MinimumExponent(self: &FloatLayout) -> int {
         return 1 - self.bias - (self.precision as int - 1);
     }
 
     /// The largest exponent a finite value has, on the same scale.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/maximum-exponent
-    func MaximumExponent(self: &FloatLayout) -> int {
+    pub func MaximumExponent(self: &FloatLayout) -> int {
         return self.bias - (self.precision as int - 1);
     }
 
     /// How many decimal digits the shortest exact rendering can need: one more than the precision is worth.
     ///
     /// https://rux-lang.dev/docs/api/format/float-layout/decimal-digits
-    func DecimalDigits(self: &FloatLayout) -> uint {
+    pub func DecimalDigits(self: &FloatLayout) -> uint {
         return (self.precision * 30103u) / 100000u + 2u;
     }
 }
@@ -90,7 +90,7 @@ extend FloatLayout {
 /// What kind of value a bit pattern holds.
 ///
 /// https://rux-lang.dev/docs/api/format/wide-class
-enum WideClass: int32 {
+pub enum WideClass: int32 {
     /// Zero of either sign.
     Zero = 0,
     /// A value below the normal range, with no leading bit.
@@ -106,9 +106,9 @@ enum WideClass: int32 {
 /// A finite value taken apart: `significand` times two to the `exponent`.
 ///
 /// https://rux-lang.dev/docs/api/format/unpacked-wide
-struct UnpackedWide {
+pub struct UnpackedWide {
     /// Which kind of value this came from.
-    class: WideClass;
+    pub class: WideClass;
     /// Whether the sign bit is set.
     negative: bool;
     /// The integer significand, below two to the precision.
@@ -120,7 +120,7 @@ struct UnpackedWide {
 /// Takes a bit pattern apart under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/unpack-wide
-func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
+pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
     let fieldBits = layout.SignificandFieldBits();
     let negative = ((bits >> (layout.bits - 1u)) & 1u512) == 1u512;
     let exponentField = ((bits >> fieldBits) & ((1u512 << layout.exponentBits) - 1u512)) as uint64;
@@ -176,7 +176,7 @@ func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
 /// Puts a finite value back together under `layout`, which must already be within range and precision.
 ///
 /// https://rux-lang.dev/docs/api/format/pack-wide
-func PackWide(negative: bool, significand: uint512, exponent: int, layout: &FloatLayout) -> uint512 {
+pub func PackWide(negative: bool, significand: uint512, exponent: int, layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = 0u512;
     if negative {
@@ -198,7 +198,7 @@ func PackWide(negative: bool, significand: uint512, exponent: int, layout: &Floa
 /// The bits of infinity under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/infinity-bits
-func InfinityBits(negative: bool, layout: &FloatLayout) -> uint512 {
+pub func InfinityBits(negative: bool, layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = ((1u512 << layout.exponentBits) - 1u512) << fieldBits;
     if layout.explicitInteger {
@@ -213,7 +213,7 @@ func InfinityBits(negative: bool, layout: &FloatLayout) -> uint512 {
 /// The bits of a quiet NaN under `layout`.
 ///
 /// https://rux-lang.dev/docs/api/format/nan-bits
-func NanBits(layout: &FloatLayout) -> uint512 {
+pub func NanBits(layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
     var bits = ((1u512 << layout.exponentBits) - 1u512) << fieldBits;
     bits = bits | (1u512 << (layout.precision - 2u));

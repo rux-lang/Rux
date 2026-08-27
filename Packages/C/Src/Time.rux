@@ -3,8 +3,11 @@ import C::{ c_int, c_long, c_ulong };
 
 // Arithmetic type capable of representing a calendar time
 // https://en.cppreference.com/c/chrono/time_t
+/// The public `time_t` type.
+///
+/// https://rux-lang.dev/docs/api/c/time-t
 #Allow("naming.type")
-type time_t = int64;
+pub type time_t = int64;
 
 // Arithmetic type capable of representing processor time
 //
@@ -21,15 +24,15 @@ type time_t = int64;
 when #target.os {
     .Windows => {
         #Allow("naming.type")
-        type clock_t = int32;
+        pub type clock_t = int32;
     }
     .macOS => {
         #Allow("naming.type")
-        type clock_t = uint64;
+        pub type clock_t = uint64;
     }
     else => {
         #Allow("naming.type")
-        type clock_t = int64;
+        pub type clock_t = int64;
     }
 }
 
@@ -38,29 +41,29 @@ when #target.os {
 when #target.os {
     .Windows => {
         #Allow("naming.type")
-        struct tm {
-            tm_sec: int32;   // seconds after the minute [0, 60]
-            tm_min: int32;   // minutes after the hour [0, 59]
-            tm_hour: int32;  // hours since midnight [0, 23]
-            tm_mday: int32;  // day of the month [1, 31]
-            tm_mon: int32;   // months since January [0, 11]
-            tm_year: int32;  // years since 1900
-            tm_wday: int32;  // days since Sunday [0, 6]
-            tm_yday: int32;  // days since January 1 [0, 365]
+        pub struct tm {
+            pub tm_sec: int32;   // seconds after the minute [0, 60]
+            pub tm_min: int32;   // minutes after the hour [0, 59]
+            pub tm_hour: int32;  // hours since midnight [0, 23]
+            pub tm_mday: int32;  // day of the month [1, 31]
+            pub tm_mon: int32;   // months since January [0, 11]
+            pub tm_year: int32;  // years since 1900
+            pub tm_wday: int32;  // days since Sunday [0, 6]
+            pub tm_yday: int32;  // days since January 1 [0, 365]
             tm_isdst: int32; // daylight saving time flag
         }
     }
     else => {
         #Allow("naming.type")
-        struct tm {
-            tm_sec: int32;          // seconds after the minute [0, 60]
-            tm_min: int32;          // minutes after the hour [0, 59]
-            tm_hour: int32;         // hours since midnight [0, 23]
-            tm_mday: int32;         // day of the month [1, 31]
-            tm_mon: int32;          // months since January [0, 11]
-            tm_year: int32;         // years since 1900
-            tm_wday: int32;         // days since Sunday [0, 6]
-            tm_yday: int32;         // days since January 1 [0, 365]
+        pub struct tm {
+            pub tm_sec: int32;          // seconds after the minute [0, 60]
+            pub tm_min: int32;          // minutes after the hour [0, 59]
+            pub tm_hour: int32;         // hours since midnight [0, 23]
+            pub tm_mday: int32;         // day of the month [1, 31]
+            pub tm_mon: int32;          // months since January [0, 11]
+            pub tm_year: int32;         // years since 1900
+            pub tm_wday: int32;         // days since Sunday [0, 6]
+            pub tm_yday: int32;         // days since January 1 [0, 365]
             tm_isdst: int32;        // daylight saving time flag
             tm_gmtoff: int64;       // seconds east of UTC
             tm_zone: *char8;  // timezone abbreviation
@@ -74,10 +77,13 @@ when #target.os {
 // Windows is not the runtime's to write. Declared as a fixed 64-bit integer, as this was, a nanosecond count filled
 // in by the runtime read four bytes of stale padding as its upper half.
 // https://en.cppreference.com/c/chrono/timespec
+/// The public `timespec` data layout.
+///
+/// https://rux-lang.dev/docs/api/c/timespec
 #Allow("naming.type")
-struct timespec {
-    tv_sec: time_t;  // whole seconds
-    tv_nsec: c_long; // nanoseconds [0, 999999999]
+pub struct timespec {
+    pub tv_sec: time_t;  // whole seconds
+    pub tv_nsec: c_long; // nanoseconds [0, 999999999]
 }
 
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
@@ -107,7 +113,7 @@ extern {
 
     // Returns the approximate processor time used by the program
     // https://en.cppreference.com/c/chrono/clock
-    func clock() -> clock_t;
+    pub func clock() -> clock_t;
 
     // Converts a time_t object to a textual representation
     // https://en.cppreference.com/c/chrono/ctime
@@ -115,19 +121,19 @@ extern {
 
     // Computes the difference in seconds between two calendar times
     // https://en.cppreference.com/c/chrono/difftime
-    func difftime(time_end: time_t, time_beg: time_t) -> float64;
+    pub func difftime(time_end: time_t, time_beg: time_t) -> float64;
 
     // Converts a time_t object to calendar time expressed as UTC
     // https://en.cppreference.com/c/chrono/gmtime
-    func gmtime(timer: *time_t) -> *tm;
+    pub func gmtime(timer: *time_t) -> *tm;
 
     // Converts a time_t object to calendar time expressed as local time
     // https://en.cppreference.com/c/chrono/localtime
-    func localtime(timer: *time_t) -> *tm;
+    pub func localtime(timer: *time_t) -> *tm;
 
     // Converts calendar time to a time_t object, normalizing the tm structure
     // https://en.cppreference.com/c/chrono/mktime
-    func mktime(time_ptr: *tm) -> time_t;
+    pub func mktime(time_ptr: *tm) -> time_t;
 
     // Converts a tm object to a custom textual representation
     // https://en.cppreference.com/c/chrono/strftime
@@ -135,7 +141,7 @@ extern {
 
     // Returns the current calendar time since the epoch
     // https://en.cppreference.com/c/chrono/time
-    func time(timer: *time_t) -> time_t;
+    pub func time(timer: *time_t) -> time_t;
 }
 
 // C11's `timespec_get`, which the Universal CRT does not export under that name: `timespec_get` is a header inline
@@ -169,7 +175,7 @@ when #target.os {
 ///
 /// https://rux-lang.dev/docs/api/c/time-utc
 #Allow("naming.const")
-const TIME_UTC: int32 = 1;
+pub const TIME_UTC: int32 = 1;
 
 // `CLOCKS_PER_SEC` is what a `clock_t` difference has to be divided by to become seconds, and the platforms do not
 // agree: the Universal CRT counts milliseconds, while every supported Unix counts by the POSIX-mandated million.
@@ -179,14 +185,14 @@ when #target.os {
         ///
         /// https://rux-lang.dev/docs/api/c/clocks-per-sec
         #Allow("naming.const")
-        const CLOCKS_PER_SEC: int64 = 1000;
+        pub const CLOCKS_PER_SEC: int64 = 1000;
     }
     else => {
         /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
         ///
         /// https://rux-lang.dev/docs/api/c/clocks-per-sec
         #Allow("naming.const")
-        const CLOCKS_PER_SEC: int64 = 1000000;
+        pub const CLOCKS_PER_SEC: int64 = 1000000;
     }
 }
 
@@ -198,7 +204,7 @@ when #target.os {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/c/timespec-get
-func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
+pub func TimespecGet(ts: &var timespec, base: c_int) -> c_int {
     when #target.os {
         .Windows => { return _timespec64_get(ts, base); }
         else => { return timespec_get(ts, base); }

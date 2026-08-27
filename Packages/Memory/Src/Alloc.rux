@@ -29,7 +29,7 @@ when #target.os {
 /// after it is released is invalid.
 ///
 /// https://rux-lang.dev/docs/api/memory/alloc
-func Alloc(size: uint) -> *var opaque {
+pub func Alloc(size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
             // Two machine words keep the returned address aligned to 16 bytes.

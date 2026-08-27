@@ -29,19 +29,19 @@ import Core::{ Option, Ordering };
 /// Its own allocation, so its address survives any rearrangement of the tree around it.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-node
-struct TreeNode<K, V> {
+pub struct TreeNode<K, V> {
     /// The key this node is ordered by.
-    key: K;
+    pub key: K;
     /// The value stored under that key.
-    value: V;
+    pub value: V;
     /// The subtree of smaller keys, or null.
-    left: *var TreeNode<K, V>;
+    pub left: *var TreeNode<K, V>;
     /// The subtree of larger keys, or null.
-    right: *var TreeNode<K, V>;
+    pub right: *var TreeNode<K, V>;
     /// The node this one hangs from, null only for the root.
-    parent: *var TreeNode<K, V>;
+    pub parent: *var TreeNode<K, V>;
     /// Whether this node is red. A missing child counts as black, which is what makes null a colour and not a gap.
-    red: bool;
+    pub red: bool;
 }
 
 /// An ordered collection of entries, kept balanced by colouring.
@@ -49,11 +49,11 @@ struct TreeNode<K, V> {
 /// Owns every node and everything in them, so it prohibits copying and destroys them with `~Tree`.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree
-struct Tree<K, V> {
+pub struct Tree<K, V> {
     /// The topmost node, or null for an empty tree. Always black.
-    root: *var TreeNode<K, V>;
+    pub root: *var TreeNode<K, V>;
     /// How many nodes the tree holds.
-    length: uint;
+    pub length: uint;
     /// Where nodes come from, and where they go back to.
     allocator: Allocator;
 }
@@ -69,7 +69,7 @@ extend Tree<K, V> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/new
-    func Tree(allocator: Allocator) -> Tree<K, V> {
+    pub func Tree(allocator: Allocator) -> Tree<K, V> {
         return Tree<K, V> { root: null, length: 0, allocator: allocator };
     }
 
@@ -78,7 +78,7 @@ extend Tree<K, V> {
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/length
-    func Length(self: &Tree<K, V>) -> uint {
+    pub func Length(self: &Tree<K, V>) -> uint {
         return self.length;
     }
 
@@ -87,7 +87,7 @@ extend Tree<K, V> {
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/is-empty
-    func IsEmpty(self: &Tree<K, V>) -> bool {
+    pub func IsEmpty(self: &Tree<K, V>) -> bool {
         return self.length == 0;
     }
 
@@ -157,7 +157,7 @@ extend Tree<K, V> {
     /// length. Allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/find
-    func Find(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+    pub func Find(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var walk = self.root;
         while walk != null {
             let order = compare(key, walk.key);
@@ -186,7 +186,7 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/above
-    func Above(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+    pub func Above(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.root;
         while walk != null {
@@ -206,7 +206,7 @@ extend Tree<K, V> {
     /// The mirror of `Above`, with the same costs and the same use.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/below
-    func Below(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
+    pub func Below(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.root;
         while walk != null {
@@ -226,7 +226,7 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/minimum
-    func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.left != null {
             walk = walk.left;
@@ -239,7 +239,7 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/maximum
-    func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.right != null {
             walk = walk.right;
@@ -256,7 +256,7 @@ extend Tree<K, V> {
     /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/successor
-    func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null {
             return null;
         }
@@ -277,7 +277,7 @@ extend Tree<K, V> {
     /// The mirror of `Successor`, with the same costs.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/predecessor
-    func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
+    pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null {
             return null;
         }
@@ -364,7 +364,7 @@ extend Tree<K, V> {
     /// nothing at all for one already present.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/attach
-    func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering,
+    pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering,
                 replaced: *var Option<V>) -> CollectionError {
         *replaced = Option::None<V>();
 
@@ -541,7 +541,7 @@ extend Tree<K, V> {
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/detach
-    func Detach(self: &var Tree<K, V>, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
+    pub func Detach(self: &var Tree<K, V>, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
         // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
         // black, so the fix-up is only run when a black one goes.
         var vacatedWasRed = node.red;
@@ -599,7 +599,7 @@ extend Tree<K, V> {
     /// Cannot fail. Runs in time proportional to the length and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/clear
-    func Clear(self: &var Tree<K, V>) {
+    pub func Clear(self: &var Tree<K, V>) {
         // Down the left, then the right, then free and step up -- every node reached after both its subtrees are
         // gone. The child link is cut on the way up so the parent does not descend into a node that is already
         // freed. Walking the links rather than recursing is what keeps a tree of a million entries off the stack.

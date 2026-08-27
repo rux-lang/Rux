@@ -6,27 +6,27 @@
 /// A process identifier, as `getpid` reports one.
 ///
 /// https://rux-lang.dev/docs/api/macos/process-id
-type ProcessId = int32;
+pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
 ///
 /// https://rux-lang.dev/docs/api/macos/file-descriptor
-type FileDescriptor = int32;
+pub type FileDescriptor = int32;
 
 /// A byte offset within a file, 64 bits on every supported Apple target.
 ///
 /// https://rux-lang.dev/docs/api/macos/file-offset
-type FileOffset = int64;
+pub type FileOffset = int64;
 
 /// A file's type and permission bits.
 ///
 /// https://rux-lang.dev/docs/api/macos/file-mode
-type FileMode = uint16;
+pub type FileMode = uint16;
 
 /// A duration or an instant, as seconds and nanoseconds.
 ///
 /// https://rux-lang.dev/docs/api/macos/timespec
-struct Timespec {
+pub struct Timespec {
     /// Whole seconds.
     seconds: int64;
     /// Nanoseconds within the second, in `[0, 999999999]`.
@@ -40,7 +40,7 @@ struct Timespec {
 /// but reads back a microsecond count that is half stale.
 ///
 /// https://rux-lang.dev/docs/api/macos/timeval
-struct Timeval {
+pub struct Timeval {
     /// Whole seconds.
     seconds: int64;
     /// Microseconds within the second, in `[0, 999999]`.

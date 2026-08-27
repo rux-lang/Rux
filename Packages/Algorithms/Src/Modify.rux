@@ -24,7 +24,7 @@ import Core::MutableSlice;
 /// Both pointers must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/swap
-func Swap<T>(left: *var T, right: *var T) {
+pub func Swap<T>(left: *var T, right: *var T) {
     let held = *left;
     *left = *right;
     *right = held;
@@ -38,7 +38,7 @@ func Swap<T>(left: *var T, right: *var T) {
 /// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/reverse
-func Reverse<T>(items: MutableSlice<T>) {
+pub func Reverse<T>(items: MutableSlice<T>) {
     if items.length < 2 {
         return;
     }
@@ -64,7 +64,7 @@ func Reverse<T>(items: MutableSlice<T>) {
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/rotate
-func Rotate<T>(items: MutableSlice<T>, middle: uint) -> bool {
+pub func Rotate<T>(items: MutableSlice<T>, middle: uint) -> bool {
     if middle > items.length {
         return false;
     }
@@ -85,7 +85,7 @@ func Rotate<T>(items: MutableSlice<T>, middle: uint) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/fill
-func Fill<T>(items: MutableSlice<T>, value: T) {
+pub func Fill<T>(items: MutableSlice<T>, value: T) {
     var index: uint = 0;
     while index < items.length {
         items.data[index] = value;
@@ -108,7 +108,7 @@ func Fill<T>(items: MutableSlice<T>, value: T) {
 /// Overlapping the wrong way silently copies elements that were already overwritten.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/copy-to
-func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
+pub func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
     if destination.length != source.length {
         return false;
     }
@@ -131,7 +131,7 @@ func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/move-to
-func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
+pub func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
     if destination.length != source.length {
         return false;
     }
@@ -160,7 +160,7 @@ func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/unique
-func Unique<T>(items: MutableSlice<T>) -> uint {
+pub func Unique<T>(items: MutableSlice<T>) -> uint {
     if items.length < 2 {
         return items.length;
     }
@@ -186,7 +186,7 @@ func Unique<T>(items: MutableSlice<T>) -> uint {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/remove-value
-func RemoveValue<T>(items: MutableSlice<T>, value: T) -> uint {
+pub func RemoveValue<T>(items: MutableSlice<T>, value: T) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -207,7 +207,7 @@ func RemoveValue<T>(items: MutableSlice<T>, value: T) -> uint {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/remove-where
-func RemoveWhere<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
+pub func RemoveWhere<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -232,7 +232,7 @@ func RemoveWhere<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint 
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/partition
-func Partition<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
+pub func Partition<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -259,7 +259,7 @@ func Partition<T>(items: MutableSlice<T>, predicate: func(T) -> bool) -> uint {
 /// `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/partition-point
-func PartitionPoint<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
+pub func PartitionPoint<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {

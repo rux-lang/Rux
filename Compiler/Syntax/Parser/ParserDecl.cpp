@@ -603,6 +603,7 @@ std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
         UnionDecl::Field field;
         field.documentation = ParseDocumentation();
         field.location = CurrentLocation();
+        field.isPublic = Match(TokenKind::PubKeyword);
         if (!Check(TokenKind::Ident)) {
             EmitExpected(CurrentLocation(), "a union field name");
             while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
@@ -761,14 +762,14 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
 
     auto nested = std::make_unique<ModuleDecl>();
     nested->location = loc;
-    nested->isPublic = path.size() == 1 ? isPublic : false;
+    nested->isPublic = isPublic;
     nested->name = std::move(path.back());
     nested->items = std::move(items);
 
     for (std::size_t i = path.size() - 1; i-- > 0;) {
         auto decl = std::make_unique<ModuleDecl>();
         decl->location = loc;
-        decl->isPublic = (i == 0) ? isPublic : false;
+        decl->isPublic = isPublic;
         decl->name = std::move(path[i]);
         decl->items.push_back(std::move(nested));
         nested = std::move(decl);
@@ -1080,11 +1081,12 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 Match(TokenKind::Semicolon);
                 continue;
             }
+            const bool memberIsPublic = Match(TokenKind::PubKeyword);
             if (Check(TokenKind::FuncKeyword)) {
                 Advance(); // consume 'func'
                 auto fd = std::make_unique<ExternFuncDecl>();
                 fd->location = CurrentLocation();
-                fd->isPublic = isPublic;
+                fd->isPublic = isPublic || memberIsPublic;
                 fd->dll = attrs.importLib;
                 fd->dllConst = attrs.importLibConst;
                 fd->callConv = attrs.callConv;
@@ -1109,7 +1111,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
             else if (Check(TokenKind::Ident)) {
                 auto vd = std::make_unique<ExternVarDecl>();
                 vd->location = CurrentLocation();
-                vd->isPublic = isPublic;
+                vd->isPublic = isPublic || memberIsPublic;
                 vd->name = Advance().text;
                 ExpectBefore(TokenKind::Colon, "':' after the external variable name",
                              "write external variables as 'Name: Type;'");

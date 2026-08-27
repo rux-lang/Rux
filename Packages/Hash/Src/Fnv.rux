@@ -22,22 +22,22 @@ import Hash::Hasher;
 /// The 32-bit FNV-1a offset basis, which is what an empty input hashes to.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv-offset-basis32
-const FnvOffsetBasis32: uint32 = 0x811C9DC5;
+pub const FnvOffsetBasis32: uint32 = 0x811C9DC5;
 
 /// The 32-bit FNV prime.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv-prime32
-const FnvPrime32: uint32 = 16777619;
+pub const FnvPrime32: uint32 = 16777619;
 
 /// The 64-bit FNV-1a offset basis, which is what an empty input hashes to.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv-offset-basis64
-const FnvOffsetBasis64: uint64 = 0xCBF29CE484222325;
+pub const FnvOffsetBasis64: uint64 = 0xCBF29CE484222325;
 
 /// The 64-bit FNV prime.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv-prime64
-const FnvPrime64: uint64 = 0x100000001B3;
+pub const FnvPrime64: uint64 = 0x100000001B3;
 
 /// FNV-1a over 32 bits, computed one byte at a time.
 ///
@@ -45,14 +45,16 @@ const FnvPrime64: uint64 = 0x100000001B3;
 /// occasionally useful and never surprising, since there is nothing else in it.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a32
-struct Fnv1a32 {
+pub struct Fnv1a32 {
     /// The accumulator, starting at the offset basis.
     state: uint32;
 }
 
 extend Fnv1a32 {
     /// Constructs a hasher with nothing written into it yet.
-    func Fnv1a32() -> Fnv1a32 {
+    ///
+    /// https://rux-lang.dev/docs/api/hash/fnv1a32
+    pub func Fnv1a32() -> Fnv1a32 {
         return Fnv1a32 { state: FnvOffsetBasis32 };
     }
 
@@ -63,7 +65,7 @@ extend Fnv1a32 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/reset
-    func Reset(self: &var Fnv1a32) {
+    pub func Reset(self: &var Fnv1a32) {
         self.state = FnvOffsetBasis32;
     }
 
@@ -75,7 +77,7 @@ extend Fnv1a32 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/value
-    func Value(self: &Fnv1a32) -> uint32 {
+    pub func Value(self: &Fnv1a32) -> uint32 {
         return self.state;
     }
 }
@@ -94,7 +96,7 @@ extend Fnv1a32 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/write
-    func Write(self: &var Fnv1a32, bytes: *byte, length: uint) {
+    pub func Write(self: &var Fnv1a32, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -115,7 +117,7 @@ extend Fnv1a32 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/finish
-    func Finish(self: &var Fnv1a32) -> uint64 {
+    pub func Finish(self: &var Fnv1a32) -> uint64 {
         return self.state as uint64;
     }
 }
@@ -127,14 +129,16 @@ extend Fnv1a32 : Hasher {
 /// Structural `Copy`; copying takes an independent snapshot of the accumulator.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a64
-struct Fnv1a64 {
+pub struct Fnv1a64 {
     /// The accumulator, starting at the offset basis.
     state: uint64;
 }
 
 extend Fnv1a64 {
     /// Constructs a hasher with nothing written into it yet.
-    func Fnv1a64() -> Fnv1a64 {
+    ///
+    /// https://rux-lang.dev/docs/api/hash/fnv1a64
+    pub func Fnv1a64() -> Fnv1a64 {
         return Fnv1a64 { state: FnvOffsetBasis64 };
     }
 
@@ -145,7 +149,7 @@ extend Fnv1a64 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/reset
-    func Reset(self: &var Fnv1a64) {
+    pub func Reset(self: &var Fnv1a64) {
         self.state = FnvOffsetBasis64;
     }
 }
@@ -163,7 +167,7 @@ extend Fnv1a64 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/write
-    func Write(self: &var Fnv1a64, bytes: *byte, length: uint) {
+    pub func Write(self: &var Fnv1a64, bytes: *byte, length: uint) {
         if length == 0 {
             return;
         }
@@ -183,7 +187,7 @@ extend Fnv1a64 : Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/finish
-    func Finish(self: &var Fnv1a64) -> uint64 {
+    pub func Finish(self: &var Fnv1a64) -> uint64 {
         return self.state;
     }
 }
@@ -202,7 +206,7 @@ extend Fnv1a64 : Hasher {
 /// `bytes` must be readable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a32-of
-func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
+pub func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
     var hasher = Fnv1a32();
     hasher.Write(bytes, length);
     return hasher.Value();
@@ -220,7 +224,7 @@ func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
 /// `bytes` must be readable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a64-of
-func Fnv1a64Of(bytes: *byte, length: uint) -> uint64 {
+pub func Fnv1a64Of(bytes: *byte, length: uint) -> uint64 {
     var hasher = Fnv1a64();
     hasher.Write(bytes, length);
     return hasher.Finish();

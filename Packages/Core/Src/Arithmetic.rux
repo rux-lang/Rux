@@ -25,7 +25,7 @@
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/maximum-of
-func MaximumOf<T>(sample: T) -> T {
+pub func MaximumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
     // A signed type gives up its top bit to the sign, so its maximum is every bit below that one. An unsigned type
@@ -42,7 +42,7 @@ func MaximumOf<T>(sample: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/minimum-of
-func MinimumOf<T>(sample: T) -> T {
+pub func MinimumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
     // The sign bit alone is the most negative value; an unsigned type has nothing below zero.
@@ -61,7 +61,7 @@ func MinimumOf<T>(sample: T) -> T {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/add-checked
-func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
+pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
     let sum = left + right;
     *result = sum;
     let zero = left - left;
@@ -83,7 +83,7 @@ func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/sub-checked
-func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
+pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
     let difference = left - right;
     *result = difference;
     let zero = left - left;
@@ -108,7 +108,7 @@ func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/mul-checked
-func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
+pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
     let product = left * right;
     *result = product;
     let zero = left - left;
@@ -140,7 +140,7 @@ func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/add-wrapping
-func AddWrapping<T>(left: T, right: T) -> T {
+pub func AddWrapping<T>(left: T, right: T) -> T {
     return left + right;
 }
 
@@ -151,7 +151,7 @@ func AddWrapping<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/sub-wrapping
-func SubWrapping<T>(left: T, right: T) -> T {
+pub func SubWrapping<T>(left: T, right: T) -> T {
     return left - right;
 }
 
@@ -162,7 +162,7 @@ func SubWrapping<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/mul-wrapping
-func MulWrapping<T>(left: T, right: T) -> T {
+pub func MulWrapping<T>(left: T, right: T) -> T {
     return left * right;
 }
 
@@ -175,7 +175,7 @@ func MulWrapping<T>(left: T, right: T) -> T {
 /// allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/add-saturating
-func AddSaturating<T>(left: T, right: T) -> T {
+pub func AddSaturating<T>(left: T, right: T) -> T {
     var sum = left - left;
     if !AddChecked<T>(left, right, @sum) {
         return sum;
@@ -196,7 +196,7 @@ func AddSaturating<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/sub-saturating
-func SubSaturating<T>(left: T, right: T) -> T {
+pub func SubSaturating<T>(left: T, right: T) -> T {
     var difference = left - left;
     if !SubChecked<T>(left, right, @difference) {
         return difference;
@@ -217,7 +217,7 @@ func SubSaturating<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/mul-saturating
-func MulSaturating<T>(left: T, right: T) -> T {
+pub func MulSaturating<T>(left: T, right: T) -> T {
     var product = left - left;
     if !MulChecked<T>(left, right, @product) {
         return product;

@@ -27,7 +27,7 @@ import Core::{ #target, #Error, MutableSlice, Slice };
 /// the caller's state without copying it.
 ///
 /// https://rux-lang.dev/docs/api/crypto/digest
-interface Digest {
+pub interface Digest {
     /// Adds `bytes` to what is being hashed.
     ///
     /// Any split of the same byte sequence across any number of calls gives the same digest. An empty slice is
@@ -70,7 +70,7 @@ interface Digest {
 /// pretending otherwise would mean reading past one of them.
 ///
 /// https://rux-lang.dev/docs/api/crypto/equal
-func Equal(left: Slice<char8>, right: Slice<char8>) -> bool {
+pub func Equal(left: Slice<char8>, right: Slice<char8>) -> bool {
     if left.length != right.length {
         return false;
     }
@@ -109,7 +109,7 @@ when #target.arch {
 /// have happened before it runs and the call cannot be dropped.
 ///
 /// https://rux-lang.dev/docs/api/crypto/wipe
-func Wipe(bytes: MutableSlice<char8>) {
+pub func Wipe(bytes: MutableSlice<char8>) {
     var index: uint = 0;
     while index < bytes.length {
         bytes.data[index] = 0u8 as char8;

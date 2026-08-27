@@ -18,7 +18,7 @@ import Text::TextError;
 /// The text a value has for a reader.
 ///
 /// https://rux-lang.dev/docs/api/format/display
-interface Display {
+pub interface Display {
     /// Writes this value's text under `spec`, reporting what stopped it.
     func Format(writer: &var TextWriter, spec: FormatSpec) -> TextError;
 }
@@ -26,7 +26,7 @@ interface Display {
 /// The text a value has for whoever is inspecting a program.
 ///
 /// https://rux-lang.dev/docs/api/format/debug
-interface Debug {
+pub interface Debug {
     /// Writes this value's inspection text under `spec`, reporting what stopped it.
     func FormatDebug(writer: &var TextWriter, spec: FormatSpec) -> TextError;
 }
