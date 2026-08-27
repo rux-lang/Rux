@@ -31,7 +31,30 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
             expressionStatement && IsDiagnosticIntrinsicCall(*expressionStatement->expr)) {
             continue;
         }
+        if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(statement.get())) {
+            if (!deferStack.empty() && deferStatement->deferredStmt) {
+                deferStack.back().push_back(deferStatement);
+            }
+            continue;
+        }
+        if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(statement.get())) {
+            (void)returnStatement;
+            for (auto scopeIt = deferStack.rbegin(); scopeIt != deferStack.rend(); ++scopeIt) {
+                for (auto defIt = scopeIt->rbegin(); defIt != scopeIt->rend(); ++defIt) {
+                    if ((*defIt)->deferredStmt) {
+                        loweredBlock.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
+                    }
+                }
+            }
+        }
         loweredBlock.stmts.push_back(LowerStmt(*statement));
+    }
+    if (!deferStack.empty()) {
+        for (auto defIt = deferStack.back().rbegin(); defIt != deferStack.back().rend(); ++defIt) {
+            if ((*defIt)->deferredStmt) {
+                loweredBlock.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
+            }
+        }
     }
     AppendCurrentScopeCleanups(loweredBlock);
     PopScope();
@@ -242,6 +265,12 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = stmt.location;
         lowered->label = statement->label;
         lowered->cleanups = cleanupPlanner.LoopExitActions(statement->label);
+        return lowered;
+    }
+
+    if (const auto *statement = dynamic_cast<const DeferStmt *>(&stmt)) {
+        auto lowered = std::make_unique<HirExprStmt>();
+        lowered->location = statement->location;
         return lowered;
     }
 

@@ -19,6 +19,7 @@ TokenKind KeywordKind(const std::string_view text) noexcept {
         {"continue", TokenKind::ContinueKeyword},
         {"return", TokenKind::ReturnKeyword},
         {"match", TokenKind::MatchKeyword},
+        {"defer", TokenKind::DeferKeyword},
         {"intrinsic", TokenKind::IntrinsicKeyword},
         {"func", TokenKind::FuncKeyword},
         {"let", TokenKind::LetKeyword},
@@ -86,6 +87,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "ReturnKeyword";
     case TokenKind::MatchKeyword:
         return "MatchKeyword";
+    case TokenKind::DeferKeyword:
+        return "DeferKeyword";
     case TokenKind::IntrinsicKeyword:
         return "IntrinsicKeyword";
     case TokenKind::FuncKeyword:

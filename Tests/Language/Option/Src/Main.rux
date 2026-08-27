@@ -1,0 +1,29 @@
+import Core::Assert;
+import Core::Option;
+
+func Main() -> int {
+    let optSome = Option::Some<int>(42);
+    let optNone = Option::None<int>();
+
+    Assert(optSome.IsSome(), "optSome should be Some");
+    Assert(!optSome.IsNone(), "optSome should not be None");
+    Assert(optNone.IsNone(), "optNone should be None");
+    Assert(!optNone.IsSome(), "optNone should not be Some");
+
+    Assert(optSome.ValueOr(0) == 42, "ValueOr should return 42");
+    Assert(optNone.ValueOr(100) == 100, "ValueOr should return fallback 100");
+
+    let val = match optSome {
+        .Some(v) => v,
+        .None => 0
+    };
+    Assert(val == 42, "match on optSome should be 42");
+
+    let noneVal = match optNone {
+        .Some(v) => v,
+        .None => 999
+    };
+    Assert(noneVal == 999, "match on optNone should be 999");
+
+    return 0;
+}

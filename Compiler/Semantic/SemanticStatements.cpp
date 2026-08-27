@@ -540,6 +540,11 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
                                         [this](const TypeExpr &type) { return ResolveType(type); });
         CheckDecl(*declarationStatement->decl);
     }
+    else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {
+        if (deferStatement->deferredStmt) {
+            CheckStatement(*deferStatement->deferredStmt);
+        }
+    }
 }
 
 void SemanticAnalyzerContext::CheckLetPattern(const Pattern &pattern, const TypeRef &type, const bool isMutable) {
