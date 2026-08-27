@@ -460,6 +460,11 @@ struct MatchStmt : Stmt {
     std::vector<Arm> arms;
 };
 
+// defer stmt; or defer { ... }
+struct DeferStmt : Stmt {
+    StmtPtr deferredStmt;
+};
+
 // return [expr];
 struct ReturnStmt : Stmt {
     std::optional<ExprPtr> value;

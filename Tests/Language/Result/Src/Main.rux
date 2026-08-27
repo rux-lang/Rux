@@ -1,0 +1,29 @@
+import Core::Assert;
+import Core::Result;
+
+func Main() -> int {
+    let resSuccess = Result::Success<int, int>(42);
+    let resError = Result::Error<int, int>(500);
+
+    Assert(resSuccess.IsSuccess(), "resSuccess should be Success");
+    Assert(!resSuccess.IsError(), "resSuccess should not be Error");
+    Assert(resError.IsError(), "resError should be Error");
+    Assert(!resError.IsSuccess(), "resError should not be Success");
+
+    Assert(resSuccess.ValueOr(0) == 42, "ValueOr on Success should return 42");
+    Assert(resError.ValueOr(100) == 100, "ValueOr on Error should return fallback 100");
+
+    let val = match resSuccess {
+        .Success(v) => v,
+        .Error(_) => 0
+    };
+    Assert(val == 42, "match on resSuccess should be 42");
+
+    let errVal = match resError {
+        .Success(_) => 0,
+        .Error(e) => e
+    };
+    Assert(errVal == 500, "match on resError should be 500");
+
+    return 0;
+}

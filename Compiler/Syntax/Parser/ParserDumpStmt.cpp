@@ -50,6 +50,9 @@ void StatementPrinter::Print(const Stmt &statement) {
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
         PrintReturnStmt(*returnStatement);
     }
+    else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {
+        PrintDeferStmt(*deferStatement);
+    }
     else if (dynamic_cast<const BreakStmt *>(&statement)) {
         Pad();
         out << "BreakStmt\n";
@@ -208,6 +211,16 @@ void StatementPrinter::PrintReturnStmt(const ReturnStmt &statement) {
     if (statement.value) {
         ++indent;
         printExpression(**statement.value);
+        --indent;
+    }
+}
+
+void StatementPrinter::PrintDeferStmt(const DeferStmt &statement) {
+    Pad();
+    out << "DeferStmt\n";
+    if (statement.deferredStmt) {
+        ++indent;
+        Print(*statement.deferredStmt);
         --indent;
     }
 }

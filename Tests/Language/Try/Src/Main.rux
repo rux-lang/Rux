@@ -1,0 +1,46 @@
+import Core::Assert;
+import Core::Option;
+import Core::Result;
+
+func ParseVal(x: int) -> Option<int> {
+    if x > 0 {
+        return Option::Some<int>(x * 2);
+    }
+    return Option::None<int>();
+}
+
+func ComputeOption(x: int) -> Option<int> {
+    let v = ParseVal(x)?;
+    return Option::Some<int>(v + 10);
+}
+
+func ParseResult(x: int) -> Result<int, int> {
+    if x > 0 {
+        return Result::Success<int, int>(x * 2);
+    }
+    return Result::Error<int, int>(-1);
+}
+
+func ComputeResult(x: int) -> Result<int, int> {
+    let v = ParseResult(x)?;
+    return Result::Success<int, int>(v + 10);
+}
+
+func Main() -> int {
+    let resSome = ComputeOption(5);
+    Assert(resSome.IsSome(), "ComputeOption(5) should be Some");
+    Assert(resSome.ValueOr(0) == 20, "ComputeOption(5) value should be 20");
+
+    let resNone = ComputeOption(-1);
+    Assert(resNone.IsNone(), "ComputeOption(-1) should be None");
+
+    let resSuccess = ComputeResult(5);
+    Assert(resSuccess.IsSuccess(), "ComputeResult(5) should be Success");
+    Assert(resSuccess.ValueOr(0) == 20, "ComputeResult(5) value should be 20");
+
+    let resError = ComputeResult(-1);
+    Assert(resError.IsError(), "ComputeResult(-1) should be Error");
+    Assert(resError.ValueOr(999) == 999, "ComputeResult(-1) should return fallback");
+
+    return 0;
+}

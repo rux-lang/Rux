@@ -111,5 +111,6 @@ private:
     void PrintForStmt(const ForStmt &statement);
     void PrintMatchStmt(const MatchStmt &statement);
     void PrintReturnStmt(const ReturnStmt &statement);
+    void PrintDeferStmt(const DeferStmt &statement);
 };
 } // namespace Rux::ParserDumpDetail

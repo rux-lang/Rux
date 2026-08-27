@@ -179,6 +179,7 @@ private:
     std::unique_ptr<ForStmt> ParseForStmt();
     std::unique_ptr<MatchStmt> ParseMatchStmt();
     std::unique_ptr<ReturnStmt> ParseReturnStmt();
+    std::unique_ptr<DeferStmt> ParseDeferStmt();
 
     // Expressions (Pratt / precedence-climbing)
     ExprPtr ParseExpr();
