@@ -21,7 +21,7 @@
 /// is given -- no address, no counter, no clock.
 ///
 /// https://rux-lang.dev/docs/api/hash/hasher
-interface Hasher {
+pub interface Hasher {
     /// Adds `length` bytes at `bytes` to what is being hashed.
     ///
     /// `bytes` is borrowed and read; `length` is read by value. A zero length is legal and changes nothing, and is
@@ -60,7 +60,7 @@ interface Hasher {
 /// `bytes` must be readable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/hash/hash-bytes
-func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
+pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
     hasher.Write(bytes, length);
     return hasher.Finish();
 }
@@ -72,7 +72,7 @@ func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-byte
-func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
+pub func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
     var storage = value;
     hasher.Write(@storage as *byte, 1);
 }
@@ -85,7 +85,7 @@ func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-uint32
-func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
+pub func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
     var storage: byte[4];
     var index: uint = 0;
     while index < 4 {
@@ -103,7 +103,7 @@ func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/hash/write-uint64
-func WriteUint64<H: Hasher>(hasher: &var H, value: uint64) {
+pub func WriteUint64<H: Hasher>(hasher: &var H, value: uint64) {
     var storage: byte[8];
     var index: uint = 0;
     while index < 8 {

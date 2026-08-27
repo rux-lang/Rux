@@ -13,7 +13,7 @@
 /// knowing which profiles a project defined.
 ///
 /// https://rux-lang.dev/docs/api/core/build-mode
-enum BuildMode: uint8 {
+pub enum BuildMode: uint8 {
     /// Unoptimized, with debug assertions and debug information on by default.
     Debug = 0,
     /// Optimized, with debug assertions removed by default.
@@ -23,7 +23,7 @@ enum BuildMode: uint8 {
 /// What the active build asked the optimizer to favor.
 ///
 /// https://rux-lang.dev/docs/api/core/optimization-mode
-enum OptimizationMode: uint8 {
+pub enum OptimizationMode: uint8 {
     /// No optimization: the output follows the source as closely as it can.
     None = 0,
     /// Smaller output preferred where it costs speed.
@@ -35,7 +35,7 @@ enum OptimizationMode: uint8 {
 /// The kind of artifact the active build produces.
 ///
 /// https://rux-lang.dev/docs/api/core/output-kind
-enum OutputKind: uint8 {
+pub enum OutputKind: uint8 {
     /// A program with an entry point.
     Executable = 0,
     /// A library linked at load time and shipped as its own file.
@@ -52,29 +52,29 @@ enum OutputKind: uint8 {
 /// runtime code, so a branch on a field is decided while compiling and the untaken side is not emitted.
 ///
 /// https://rux-lang.dev/docs/api/core/build
-struct Build {
+pub struct Build {
     /// The profile's name as the project spelled it, which may be a project-defined profile rather than one of the
     /// two standard ones.
-    profile: Slice<char8>;
+    pub profile: Slice<char8>;
     /// The mode the profile implies, which is what a package should branch on.
-    mode: BuildMode;
+    pub mode: BuildMode;
     /// What the profile asked the optimizer to favor.
-    optimization: OptimizationMode;
+    pub optimization: OptimizationMode;
     /// Whether `DebugAssert` checks are kept. False means they are removed without their arguments being evaluated.
     debugAssertions: bool;
     /// Whether debug information is emitted alongside the output.
     debugInfo: bool;
     /// Whether this build is a test build, which is how a package tells a test-only path from a shipped one.
-    isTest: bool;
+    pub isTest: bool;
     /// The artifact being produced.
-    outputKind: OutputKind;
+    pub outputKind: OutputKind;
     /// When the build started, in seconds since the Unix epoch. Fixed once per build, so it identifies the build and
     /// does not measure time.
-    timestamp: uint64;
+    pub timestamp: uint64;
     /// The build's start date as `YYYY-MM-DD`.
-    date: Slice<char8>;
+    pub date: Slice<char8>;
     /// The build's start time as `HH:MM:SS`.
-    time: Slice<char8>;
+    pub time: Slice<char8>;
 }
 
 /// The active build, as a compile-time value.
@@ -83,4 +83,4 @@ struct Build {
 /// is never resolved or type-checked and may name things this build does not have.
 ///
 /// https://rux-lang.dev/docs/api/core/build
-intrinsic #build: Build;
+pub intrinsic #build: Build;

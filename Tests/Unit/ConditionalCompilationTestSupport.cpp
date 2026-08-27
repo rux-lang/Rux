@@ -13,38 +13,38 @@ namespace {
 // fold uses its own built-in variant tables, so the enum bodies here only need
 // to exist, not to be complete.
 constexpr std::string_view kCorePackageSource = R"(
-struct Slice<T> { data: *T; length: uint; }
-struct Target {}
-struct Build {}
-struct Compiler {}
-struct SemanticVersion {
-    major: uint;
-    minor: uint;
-    patch: uint;
+pub struct Slice<T> { pub data: *T; pub length: uint; }
+pub struct Target {}
+pub struct Build {}
+pub struct Compiler {}
+pub struct SemanticVersion {
+    pub major: uint;
+    pub minor: uint;
+    pub patch: uint;
 }
 extend SemanticVersion {
-    func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
+    pub func SemanticVersion(major: uint, minor: uint, patch: uint) -> SemanticVersion {
         return SemanticVersion { major: major, minor: minor, patch: patch };
     }
 }
-struct Source {}
-struct Config {}
-intrinsic #target: Target;
-intrinsic #build: Build;
-intrinsic #compiler: Compiler;
-intrinsic #source: Source;
-intrinsic #config: Config;
-intrinsic func #Error(message: Slice<char8>);
-intrinsic func #Warn(message: Slice<char8>);
-enum OperatingSystem { Windows }
-enum Architecture { X86_64 }
-enum ApplicationBinaryInterface { WindowsX64 }
-enum Endianness { Little }
-enum DataModel { LLP64 }
-enum ObjectFormat { COFF }
-enum BuildMode { Debug }
-enum OptimizationMode { Speed }
-enum OutputKind { SharedLibrary }
+pub struct Source {}
+pub struct Config {}
+pub intrinsic #target: Target;
+pub intrinsic #build: Build;
+pub intrinsic #compiler: Compiler;
+pub intrinsic #source: Source;
+pub intrinsic #config: Config;
+pub intrinsic func #Error(message: Slice<char8>);
+pub intrinsic func #Warn(message: Slice<char8>);
+pub enum OperatingSystem { Windows }
+pub enum Architecture { X86_64 }
+pub enum ApplicationBinaryInterface { WindowsX64 }
+pub enum Endianness { Little }
+pub enum DataModel { LLP64 }
+pub enum ObjectFormat { COFF }
+pub enum BuildMode { Debug }
+pub enum OptimizationMode { Speed }
+pub enum OutputKind { SharedLibrary }
 )";
 
 } // namespace

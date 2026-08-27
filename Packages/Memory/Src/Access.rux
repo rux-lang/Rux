@@ -21,7 +21,7 @@ import Memory::Copy;
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/memory/is-aligned
-func IsAligned(address: uint, alignment: uint) -> bool {
+pub func IsAligned(address: uint, alignment: uint) -> bool {
     if alignment == 0 {
         return false;
     }
@@ -36,7 +36,7 @@ func IsAligned(address: uint, alignment: uint) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/memory/is-pointer-aligned
-func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
+pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
     return IsAligned(pointer as uint, alignment);
 }
 
@@ -54,7 +54,7 @@ func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
 /// does the checking.
 ///
 /// https://rux-lang.dev/docs/api/memory/align-up
-func AlignUp(value: uint, alignment: uint) -> uint {
+pub func AlignUp(value: uint, alignment: uint) -> uint {
     if alignment <= 1 {
         return value;
     }
@@ -73,7 +73,7 @@ func AlignUp(value: uint, alignment: uint) -> uint {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/memory/align-up-checked
-func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
+pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
     if alignment <= 1 {
         *result = value;
         return false;
@@ -98,7 +98,7 @@ func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
 /// Cannot fail: rounding down never leaves the range.
 ///
 /// https://rux-lang.dev/docs/api/memory/align-down
-func AlignDown(value: uint, alignment: uint) -> uint {
+pub func AlignDown(value: uint, alignment: uint) -> uint {
     if alignment <= 1 {
         return value;
     }
@@ -121,7 +121,7 @@ func AlignDown(value: uint, alignment: uint) -> uint {
 /// `T` stays invalid; this reinterprets rather than validating.
 ///
 /// https://rux-lang.dev/docs/api/memory/load-unaligned
-func LoadUnaligned<T>(source: *opaque, destination: *var T) {
+pub func LoadUnaligned<T>(source: *opaque, destination: *var T) {
     Copy(destination as *var opaque, source, sizeof(T));
 }
 
@@ -136,7 +136,7 @@ func LoadUnaligned<T>(source: *opaque, destination: *var T) {
 /// `destination` must be writable for `sizeof(T)` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/store-unaligned
-func StoreUnaligned<T>(destination: *var opaque, value: *T) {
+pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
     Copy(destination, value as *opaque, sizeof(T));
 }
 
@@ -154,7 +154,7 @@ func StoreUnaligned<T>(destination: *var opaque, value: *T) {
 /// `buffer` must be readable and writable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/reverse-block
-func ReverseBlock(buffer: *var opaque, length: uint) {
+pub func ReverseBlock(buffer: *var opaque, length: uint) {
     if length < 2 {
         return;
     }
@@ -185,7 +185,7 @@ func ReverseBlock(buffer: *var opaque, length: uint) {
 /// `source` must be readable for `sizeof(T)` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/load-little-endian
-func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
+pub func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if !TargetIsLittleEndian() {
         ReverseBlock(destination as *var opaque, sizeof(T));
@@ -204,7 +204,7 @@ func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
 /// `source` must be readable for `sizeof(T)` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/load-big-endian
-func LoadBigEndian<T>(source: *opaque, destination: *var T) {
+pub func LoadBigEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if TargetIsLittleEndian() {
         ReverseBlock(destination as *var opaque, sizeof(T));
@@ -223,7 +223,7 @@ func LoadBigEndian<T>(source: *opaque, destination: *var T) {
 /// `destination` must be writable for `sizeof(T)` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/store-little-endian
-func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
+pub func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if !TargetIsLittleEndian() {
         ReverseBlock(destination, sizeof(T));
@@ -242,7 +242,7 @@ func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
 /// `destination` must be writable for `sizeof(T)` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/store-big-endian
-func StoreBigEndian<T>(destination: *var opaque, value: *T) {
+pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if TargetIsLittleEndian() {
         ReverseBlock(destination, sizeof(T));
@@ -271,7 +271,7 @@ func StoreBigEndian<T>(destination: *var opaque, value: *T) {
 /// one place from the start for this to be the whole of its erasure.
 ///
 /// https://rux-lang.dev/docs/api/memory/zeroize-block
-func ZeroizeBlock(buffer: *var opaque, length: uint) {
+pub func ZeroizeBlock(buffer: *var opaque, length: uint) {
     if length == 0 {
         return;
     }

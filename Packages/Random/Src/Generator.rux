@@ -19,7 +19,7 @@ import Core::MinimumOf;
 /// advances.
 ///
 /// https://rux-lang.dev/docs/api/random/random-generator
-interface RandomGenerator {
+pub interface RandomGenerator {
     /// The next 64-bit word, and the state advanced past it.
     ///
     /// https://rux-lang.dev/docs/api/random/random-generator/next-uint64
@@ -35,7 +35,7 @@ interface RandomGenerator {
 /// get correlated streams out of an excellent algorithm.
 ///
 /// https://rux-lang.dev/docs/api/random/split-mix64
-struct SplitMix64 {
+pub struct SplitMix64 {
     /// The whole of the state.
     state: uint64;
 }
@@ -44,7 +44,7 @@ extend SplitMix64 {
     /// A mixer starting from `seed`. Every seed is acceptable, including zero.
     ///
     /// https://rux-lang.dev/docs/api/random/split-mix64/new
-    func SplitMix64(seed: uint64) -> SplitMix64 {
+    pub func SplitMix64(seed: uint64) -> SplitMix64 {
         return SplitMix64 { state: seed };
     }
 
@@ -57,7 +57,7 @@ extend SplitMix64 : RandomGenerator {
     /// what turns a counter into something that looks random. Both constants are Steele, Lea and Flood's.
     ///
     /// https://rux-lang.dev/docs/api/random/split-mix64/next-uint64
-    func NextUint64(self: &var SplitMix64) -> uint64 {
+    pub func NextUint64(self: &var SplitMix64) -> uint64 {
         self.state = self.state + 0x9E3779B97F4A7C15u64;
         var z = self.state;
         z = (z ^ (z >> 30u64)) * 0xBF58476D1CE4E5B9u64;

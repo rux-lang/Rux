@@ -128,6 +128,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     , typeImplementsInterfaces(programIndex.ImplementedInterfaces())
     , functionDeclScopes(programIndex.FunctionScopes())
     , functionDeclFiles(programIndex.FunctionSources())
+    , declarationInfos(programIndex.DeclarationInfos())
     , currentScope(&globalScope) {
 }
 
@@ -139,6 +140,15 @@ std::unordered_map<std::string, TypeProperties> SemanticAnalyzerContext::TakeTyp
 
 std::unordered_map<std::string, ResolvedConstraintWitness> SemanticAnalyzerContext::TakeConstraintWitnesses() {
     return std::move(constraintWitnesses);
+}
+
+std::unordered_map<const Decl *, bool> SemanticAnalyzerContext::EffectiveVisibilities() const {
+    std::unordered_map<const Decl *, bool> result;
+    result.reserve(declarationInfos.size());
+    for (const auto &[declaration, info] : declarationInfos) {
+        result.emplace(declaration, info.isEffectivelyPublic);
+    }
+    return result;
 }
 
 std::unordered_map<const TryExpr *, ResolvedPropagation> SemanticAnalyzerContext::TakePropagations() {
@@ -296,6 +306,9 @@ void SemanticAnalyzerContext::RegisterBuiltins() {
         symbol.kind = Symbol::Kind::Type;
         symbol.name = name;
         symbol.type = std::move(type);
+        symbol.isPublic = true;
+        symbol.isEffectivelyPublic = true;
+        symbol.ownerPackage = "<builtin>";
         globalScope.Define(std::move(symbol), diags, "<builtin>");
     };
     add("opaque", TypeRef::MakeOpaque());
@@ -311,6 +324,7 @@ void SemanticAnalyzerContext::RegisterBuiltins() {
 
 void SemanticAnalyzerContext::CollectModule(const Module &module) {
     currentFile = module.name;
+    currentPackage = packageName;
     const std::string *selfPackageName = packageName.empty() ? nullptr : &packageName;
     programIndex.CollectModule(module, selfPackageName, [this](const TypeExpr &type) { return ResolveType(type); });
 }
@@ -318,6 +332,7 @@ void SemanticAnalyzerContext::CollectModule(const Module &module) {
 void SemanticAnalyzerContext::IndexDeclarations() {
     RegisterBuiltins();
     for (auto &package : deps) {
+        currentPackage = package.name;
         Scope &rootScope = programIndex.CreatePackageRoot(package.name);
         for (auto &entry : package.modules) {
             currentFile = entry.module->name;
@@ -335,33 +350,85 @@ void SemanticAnalyzerContext::IndexDeclarations() {
     for (const Module *module : modules) {
         CollectModule(*module);
     }
+    programIndex.FinalizeVisibility();
+}
+
+bool SemanticAnalyzerContext::IsAccessible(const Symbol &symbol) const {
+    return symbol.ownerPackage == currentPackage || symbol.isEffectivelyPublic;
+}
+
+bool SemanticAnalyzerContext::IsAccessible(const Decl &declaration) const {
+    const auto found = declarationInfos.find(&declaration);
+    return found == declarationInfos.end() || found->second.ownerPackage == currentPackage ||
+           found->second.isEffectivelyPublic;
+}
+
+bool SemanticAnalyzerContext::IsMemberAccessible(const Decl &owner, const bool memberIsPublic) const {
+    const auto found = declarationInfos.find(&owner);
+    return found == declarationInfos.end() || found->second.ownerPackage == currentPackage ||
+           (memberIsPublic && found->second.isEffectivelyPublic);
+}
+
+void SemanticAnalyzerContext::EmitPrivacyError(const SourceLocation useLocation, const Symbol &symbol) const {
+    EmitError(useLocation,
+              std::format("{} '{}' is private to package '{}'", SymbolKindName(symbol.kind), symbol.name,
+                          symbol.ownerPackage),
+              {DeclarationNote(symbol)}, std::format("add 'pub' to the declaration of '{}'", symbol.name));
+}
+
+void SemanticAnalyzerContext::EmitPrivacyError(const SourceLocation useLocation, const Decl &declaration,
+                                               const std::string_view kind, const std::string_view name) const {
+    const auto found = declarationInfos.find(&declaration);
+    const std::string owner = found == declarationInfos.end() ? std::string{} : found->second.ownerPackage;
+    const std::string source = found == declarationInfos.end() ? std::string{} : found->second.sourceName;
+    std::vector<std::string> notes;
+    if (!source.empty()) {
+        notes.push_back(std::format("'{}' was declared at '{}':{}:{}", name, source, declaration.location.line,
+                                    declaration.location.column));
+    }
+    EmitError(useLocation, std::format("{} '{}' is private to package '{}'", kind, name, owner), std::move(notes),
+              std::format("add 'pub' to the declaration of '{}'", name));
+}
+
+void SemanticAnalyzerContext::EmitPrivateMemberError(const SourceLocation useLocation, const Decl &owner,
+                                                     const std::string_view kind, const std::string_view name) const {
+    const auto found = declarationInfos.find(&owner);
+    const std::string package = found == declarationInfos.end() ? std::string{} : found->second.ownerPackage;
+    EmitError(useLocation, std::format("{} '{}' is private to package '{}'", kind, name, package), {},
+              std::format("add 'pub' before the declaration of '{}'", name));
 }
 
 void SemanticAnalyzerContext::Run() {
     IndexDeclarations();
 
     for (auto &package : deps) {
+        currentPackage = package.name;
         for (auto &entry : package.modules) {
             ApplyModuleImportsInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
         }
     }
     for (auto &package : deps) {
+        currentPackage = package.name;
         for (auto &entry : package.modules) {
             ResolveModuleSignaturesInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
         }
     }
     for (auto &package : deps) {
+        currentPackage = package.name;
         for (auto &entry : package.modules) {
             CheckModuleInScope(*entry.module, *packageModuleScopes.at(package.name).at(""));
         }
     }
     for (const Module *module : modules) {
+        currentPackage = packageName;
         ApplyModuleImports(*module);
     }
     for (const Module *module : modules) {
+        currentPackage = packageName;
         ResolveModuleSignatures(*module);
     }
     for (const Module *module : modules) {
+        currentPackage = packageName;
         CheckModule(*module);
     }
     QueueDropMethodInstantiations();

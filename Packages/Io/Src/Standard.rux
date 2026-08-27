@@ -150,7 +150,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var
 /// other, so no reading pattern can tear a character.
 ///
 /// https://rux-lang.dev/docs/api/io/standard-in
-struct StandardIn {
+pub struct StandardIn {
     /// The platform's handle for the stream.
     handle: RawStream;
     /// Whether the stream is a console, decided once.
@@ -158,7 +158,7 @@ struct StandardIn {
     /// Converted bytes that did not fit the last read, least significant byte first in stream order.
     pending: uint64;
     /// How many of them there are.
-    pendingCount: uint;
+    pub pendingCount: uint;
     /// A high surrogate whose partner has not arrived yet.
     heldUnit: uint16;
     /// Whether one is waiting.
@@ -171,7 +171,7 @@ extend StandardIn {
     /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-in/acquire
-    func Acquire() -> StandardIn {
+    pub func Acquire() -> StandardIn {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdInputHandle);
             var mode: uint32 = 0;
@@ -192,7 +192,7 @@ extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-in/read
-    func Read(self: &var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 {
             return IoError::Ok();
@@ -335,7 +335,7 @@ when #target.os == .Windows {
 /// Standard output: a byte `Writer` whose encoding matches where the bytes land.
 ///
 /// https://rux-lang.dev/docs/api/io/standard-out
-struct StandardOut {
+pub struct StandardOut {
     /// The platform's handle for the stream.
     handle: RawStream;
     /// Whether the stream is a console, decided once.
@@ -346,7 +346,7 @@ extend StandardOut {
     /// The process's standard output.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/acquire
-    func Acquire() -> StandardOut {
+    pub func Acquire() -> StandardOut {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdOutputHandle);
             var mode: uint32 = 0;
@@ -363,14 +363,14 @@ extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/write
-    func Write(self: &var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/flush
-    func Flush(self: &var StandardOut) -> IoError {
+    pub func Flush(self: &var StandardOut) -> IoError {
         return IoError::Ok();
     }
 }
@@ -378,7 +378,7 @@ extend StandardOut : Writer {
 /// Standard error: the same contract as standard output, on the stream reports belong to.
 ///
 /// https://rux-lang.dev/docs/api/io/standard-error
-struct StandardError {
+pub struct StandardError {
     /// The platform's handle for the stream.
     handle: RawStream;
     /// Whether the stream is a console, decided once.
@@ -389,7 +389,7 @@ extend StandardError {
     /// The process's standard error.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/acquire
-    func Acquire() -> StandardError {
+    pub func Acquire() -> StandardError {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdErrorHandle);
             var mode: uint32 = 0;
@@ -406,14 +406,14 @@ extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/write
-    func Write(self: &var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/flush
-    func Flush(self: &var StandardError) -> IoError {
+    pub func Flush(self: &var StandardError) -> IoError {
         return IoError::Ok();
     }
 }

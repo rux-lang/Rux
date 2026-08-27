@@ -1,16 +1,61 @@
 // Common mathematical constants, rounded to nearest float64.
-const E = 2.718281828459045;
-const Log2E = 1.4426950408889634;
-const Log10E = 0.4342944819032518;
-const Ln2 = 0.6931471805599453;
-const Ln10 = 2.302585092994046;
-const Pi = 3.141592653589793;
-const Tau = 6.283185307179586;
-const HalfPi = 1.5707963267948966;
-const QuarterPi = 0.7853981633974483;
-const InvPi = 0.3183098861837907;
-const InvTau = 0.15915494309189535;
-const Sqrt2 = 1.4142135623730951;
-const InvSqrt2 = 0.7071067811865476;
-const RadPerDeg = 0.017453292519943295;
-const DegPerRad = 57.29577951308232;
+/// The public `E` value.
+///
+/// https://rux-lang.dev/docs/api/math/e
+pub const E = 2.718281828459045;
+/// The public `Log2E` value.
+///
+/// https://rux-lang.dev/docs/api/math/log2-e
+pub const Log2E = 1.4426950408889634;
+/// The public `Log10E` value.
+///
+/// https://rux-lang.dev/docs/api/math/log10-e
+pub const Log10E = 0.4342944819032518;
+/// The public `Ln2` value.
+///
+/// https://rux-lang.dev/docs/api/math/ln2
+pub const Ln2 = 0.6931471805599453;
+/// The public `Ln10` value.
+///
+/// https://rux-lang.dev/docs/api/math/ln10
+pub const Ln10 = 2.302585092994046;
+/// The public `Pi` value.
+///
+/// https://rux-lang.dev/docs/api/math/pi
+pub const Pi = 3.141592653589793;
+/// The public `Tau` value.
+///
+/// https://rux-lang.dev/docs/api/math/tau
+pub const Tau = 6.283185307179586;
+/// The public `HalfPi` value.
+///
+/// https://rux-lang.dev/docs/api/math/half-pi
+pub const HalfPi = 1.5707963267948966;
+/// The public `QuarterPi` value.
+///
+/// https://rux-lang.dev/docs/api/math/quarter-pi
+pub const QuarterPi = 0.7853981633974483;
+/// The public `InvPi` value.
+///
+/// https://rux-lang.dev/docs/api/math/inv-pi
+pub const InvPi = 0.3183098861837907;
+/// The public `InvTau` value.
+///
+/// https://rux-lang.dev/docs/api/math/inv-tau
+pub const InvTau = 0.15915494309189535;
+/// The public `Sqrt2` value.
+///
+/// https://rux-lang.dev/docs/api/math/sqrt2
+pub const Sqrt2 = 1.4142135623730951;
+/// The public `InvSqrt2` value.
+///
+/// https://rux-lang.dev/docs/api/math/inv-sqrt2
+pub const InvSqrt2 = 0.7071067811865476;
+/// The public `RadPerDeg` value.
+///
+/// https://rux-lang.dev/docs/api/math/rad-per-deg
+pub const RadPerDeg = 0.017453292519943295;
+/// The public `DegPerRad` value.
+///
+/// https://rux-lang.dev/docs/api/math/deg-per-rad
+pub const DegPerRad = 57.29577951308232;

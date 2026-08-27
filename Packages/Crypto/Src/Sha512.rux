@@ -72,7 +72,7 @@ func RotateRight64(value: uint64, amount: uint64) -> uint64 {
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha512
-struct Sha512 {
+pub struct Sha512 {
     /// The eight working words.
     state: uint64[8];
     /// Bytes not yet part of a full block.
@@ -100,28 +100,28 @@ extend Sha512 {
     /// A SHA-512 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/new
-    func Sha512() -> Sha512 {
+    pub func Sha512() -> Sha512 {
         return Sha512::Start(Sha512InitialState, 64u);
     }
 
     /// A SHA-384 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/new-384
-    func New384() -> Sha512 {
+    pub func New384() -> Sha512 {
         return Sha512::Start(Sha384InitialState, 48u);
     }
 
     /// A SHA-512/224 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/new-trunc224
-    func NewTrunc224() -> Sha512 {
+    pub func NewTrunc224() -> Sha512 {
         return Sha512::Start(Sha512Trunc224InitialState, 28u);
     }
 
     /// A SHA-512/256 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/new-trunc256
-    func NewTrunc256() -> Sha512 {
+    pub func NewTrunc256() -> Sha512 {
         return Sha512::Start(Sha512Trunc256InitialState, 32u);
     }
 
@@ -191,7 +191,7 @@ extend Sha512 : Digest {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/update
-    func Update(self: &var Sha512, bytes: Slice<char8>) {
+    pub func Update(self: &var Sha512, bytes: Slice<char8>) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         if self.buffered > 0u {
@@ -222,7 +222,7 @@ extend Sha512 : Digest {
     /// rather than nine; a block with fewer takes a whole further block.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/finish
-    func Finish(self: &var Sha512, into: MutableSlice<char8>) {
+    pub func Finish(self: &var Sha512, into: MutableSlice<char8>) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -267,14 +267,14 @@ extend Sha512 : Digest {
     /// Sixty-four, forty-eight, thirty-two or twenty-eight bytes, depending on which variant this is.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/digest-length
-    func DigestLength(self: &Sha512) -> uint {
+    pub func DigestLength(self: &Sha512) -> uint {
         return self.outputLength;
     }
 
     /// A hundred and twenty eight bytes, for every variant.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha512/block-length
-    func BlockLength(self: &Sha512) -> uint {
+    pub func BlockLength(self: &Sha512) -> uint {
         return 128u;
     }
 }
@@ -282,7 +282,7 @@ extend Sha512 : Digest {
 /// The SHA-512 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha512-of
-func Sha512Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha512Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha512();
     digest.Update(bytes);
     digest.Finish(into);
@@ -291,7 +291,7 @@ func Sha512Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA-384 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha384-of
-func Sha384Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha384Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha512::New384();
     digest.Update(bytes);
     digest.Finish(into);
@@ -300,7 +300,7 @@ func Sha384Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA-512/224 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha512-trunc224-of
-func Sha512Trunc224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha512Trunc224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha512::NewTrunc224();
     digest.Update(bytes);
     digest.Finish(into);
@@ -309,7 +309,7 @@ func Sha512Trunc224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA-512/256 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha512-trunc256-of
-func Sha512Trunc256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha512Trunc256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha512::NewTrunc256();
     digest.Update(bytes);
     digest.Finish(into);

@@ -17,7 +17,7 @@ import Linux::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
 /// This ends the whole process rather than one thread, which is `exit_group` in kernel terms.
 ///
 /// https://rux-lang.dev/docs/api/linux/exit
-func Exit(code: int32) {
+pub func Exit(code: int32) {
     Syscall1(SysExit, (code as int64) as uint64);
 }
 
@@ -29,6 +29,6 @@ func Exit(code: int32) {
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/linux/get-pid
-func GetPid() -> ProcessId {
+pub func GetPid() -> ProcessId {
     return Syscall0(SysGetPid) as ProcessId;
 }

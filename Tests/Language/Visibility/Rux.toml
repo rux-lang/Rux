@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Visibility"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: package-private defaults and public members"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

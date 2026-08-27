@@ -15,7 +15,7 @@
 /// and a code point in no range is `Any`.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const GraphemeBreakRanges: uint32[4158] = [
+pub const GraphemeBreakRanges: uint32[4158] = [
     0, 9, 3, 10, 10, 2, 11, 12, 3, 13, 13, 1,
     14, 31, 3, 127, 159, 3, 173, 173, 3, 768, 879, 4,
     1155, 1161, 4, 1425, 1469, 4, 1471, 1471, 4, 1473, 1474, 4,
@@ -368,7 +368,7 @@ const GraphemeBreakRanges: uint32[4158] = [
 /// Extended_Pictographic ranges: first, last.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const PictographicRanges: uint32[312] = [
+pub const PictographicRanges: uint32[312] = [
     169, 169, 174, 174, 8252, 8252, 8265, 8265, 8482, 8482, 8505, 8505,
     8596, 8601, 8617, 8618, 8986, 8987, 9000, 9000, 9167, 9167, 9193, 9203,
     9208, 9210, 9410, 9410, 9642, 9643, 9654, 9654, 9664, 9664, 9723, 9726,
@@ -400,7 +400,7 @@ const PictographicRanges: uint32[312] = [
 /// InCB=Consonant ranges: first, last.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const ConjunctConsonantRanges: uint32[152] = [
+pub const ConjunctConsonantRanges: uint32[152] = [
     2325, 2361, 2392, 2399, 2424, 2431, 2453, 2472, 2474, 2480, 2482, 2482,
     2486, 2489, 2524, 2525, 2527, 2527, 2544, 2545, 2709, 2728, 2730, 2736,
     2738, 2739, 2741, 2745, 2809, 2809, 2837, 2856, 2858, 2864, 2866, 2867,
@@ -419,7 +419,7 @@ const ConjunctConsonantRanges: uint32[152] = [
 /// InCB=Linker ranges: first, last.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const ConjunctLinkerRanges: uint32[40] = [
+pub const ConjunctLinkerRanges: uint32[40] = [
     2381, 2381, 2509, 2509, 2765, 2765, 2893, 2893, 3149, 3149, 3405, 3405,
     4153, 4153, 6098, 6098, 6752, 6752, 6980, 6980, 7083, 7083, 43456, 43456,
     43766, 43766, 68159, 68159, 69939, 69939, 70608, 70608, 71998, 71998, 72263, 72263,
@@ -429,7 +429,7 @@ const ConjunctLinkerRanges: uint32[40] = [
 /// InCB=Extend ranges: first, last.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
-const ConjunctExtendRanges: uint32[754] = [
+pub const ConjunctExtendRanges: uint32[754] = [
     768, 879, 1155, 1161, 1425, 1469, 1471, 1471, 1473, 1474, 1476, 1477,
     1479, 1479, 1552, 1562, 1611, 1631, 1648, 1648, 1750, 1756, 1759, 1764,
     1767, 1768, 1770, 1773, 1809, 1809, 1840, 1866, 1958, 1968, 2027, 2035,

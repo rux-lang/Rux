@@ -17,7 +17,7 @@ import Windows::{ Dword, FileTime };
 /// reading here needs.
 ///
 /// https://rux-lang.dev/docs/api/windows/file-time-ticks-per-second
-const FileTimeTicksPerSecond: uint64 = 10000000;
+pub const FileTimeTicksPerSecond: uint64 = 10000000;
 
 /// Seconds between the `FileTime` epoch of 1601 and the Unix epoch of 1970.
 ///
@@ -25,30 +25,30 @@ const FileTimeTicksPerSecond: uint64 = 10000000;
 /// includes the leap days of the intervening centuries, which is why it is not a round number.
 ///
 /// https://rux-lang.dev/docs/api/windows/file-time-to-unix-epoch-seconds
-const FileTimeToUnixEpochSeconds: uint64 = 11644473600;
+pub const FileTimeToUnixEpochSeconds: uint64 = 11644473600;
 
 #Link("Kernel32.dll")
-extern {
+pub extern {
     // Reads the monotonic performance counter
     //
     // Writes the current count and returns nonzero. It cannot fail on any system this package supports, and the
     // count is guaranteed not to go backwards -- unlike the wall clock, which can. The unit is whatever
     // QueryPerformanceFrequency reports and is not seconds.
     // https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter
-    func QueryPerformanceCounter(count: *var int64) -> int32;
+    pub func QueryPerformanceCounter(count: *var int64) -> int32;
 
     // Reads how many performance-counter ticks make one second
     //
     // Fixed while the system runs, so a caller reads it once rather than per measurement.
     // https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency
-    func QueryPerformanceFrequency(frequency: *var int64) -> int32;
+    pub func QueryPerformanceFrequency(frequency: *var int64) -> int32;
 
     // Reads the current wall-clock time at the highest resolution the system offers
     //
     // Writes 100-nanosecond intervals since January 1, 1601 UTC. The plain GetSystemTimeAsFileTime is cheaper and
     // coarser, advancing only at the scheduler's tick.
     // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimepreciseasfiletime
-    func GetSystemTimePreciseAsFileTime(time: *var FileTime);
+    pub func GetSystemTimePreciseAsFileTime(time: *var FileTime);
 
     // Reads the current wall-clock time at the system tick's resolution
     // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimeasfiletime
@@ -63,6 +63,6 @@ extern {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/windows/file-time-ticks
-func FileTimeTicks(time: &FileTime) -> uint64 {
+pub func FileTimeTicks(time: &FileTime) -> uint64 {
     return ((time.highDateTime as uint64) << 32) | (time.lowDateTime as uint64);
 }

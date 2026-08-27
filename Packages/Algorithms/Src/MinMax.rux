@@ -23,7 +23,7 @@ import Core::{ Option, Ordering };
 /// Cannot fail. Runs in time proportional to the length, comparing each element once, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-index
-func MinIndex<T>(items: Slice<T>) -> Option<uint> {
+pub func MinIndex<T>(items: Slice<T>) -> Option<uint> {
     if items.length == 0 {
         return Option::None<uint>();
     }
@@ -48,7 +48,7 @@ func MinIndex<T>(items: Slice<T>) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max-index
-func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
+pub func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
     if items.length == 0 {
         return Option::None<uint>();
     }
@@ -71,7 +71,7 @@ func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-index-by
-func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
+pub func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
     if items.length == 0 {
         return Option::None<uint>();
     }
@@ -94,7 +94,7 @@ func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<u
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max-index-by
-func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
+pub func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
     if items.length == 0 {
         return Option::None<uint>();
     }
@@ -127,7 +127,7 @@ func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<u
 /// `smallest` and `largest` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index
-func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) -> bool {
+pub func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) -> bool {
     if items.length == 0 {
         return false;
     }
@@ -160,7 +160,7 @@ func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) ->
 /// `smallest` and `largest` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index-by
-func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest: *var uint,
+pub func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest: *var uint,
                       largest: *var uint) -> bool {
     if items.length == 0 {
         return false;
@@ -189,7 +189,7 @@ func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min
-func Min<T>(left: T, right: T) -> T {
+pub func Min<T>(left: T, right: T) -> T {
     if right < left {
         return right;
     }
@@ -203,7 +203,7 @@ func Min<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max
-func Max<T>(left: T, right: T) -> T {
+pub func Max<T>(left: T, right: T) -> T {
     if left < right {
         return right;
     }
@@ -220,7 +220,7 @@ func Max<T>(left: T, right: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/clamp
-func Clamp<T>(value: T, low: T, high: T) -> T {
+pub func Clamp<T>(value: T, low: T, high: T) -> T {
     if high < low {
         return low;
     }
@@ -241,7 +241,7 @@ func Clamp<T>(value: T, low: T, high: T) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/clamp-by
-func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
+pub func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
     if compare(high, low).IsLess() {
         return low;
     }

@@ -18,7 +18,7 @@ import Text::{ String, StringBuilder, StringView, TextError };
 /// What to do about an object containing the same name twice.
 ///
 /// https://rux-lang.dev/docs/api/json/duplicate-key-policy
-enum DuplicateKeyPolicy: int32 {
+pub enum DuplicateKeyPolicy: int32 {
     /// Refuse the document. The default, and the only policy that cannot be used to make two readers disagree.
     Reject = 0,
     /// Keep the first occurrence and discard the rest.
@@ -32,7 +32,7 @@ enum DuplicateKeyPolicy: int32 {
 /// Why parsing stopped.
 ///
 /// https://rux-lang.dev/docs/api/json/parse-error
-enum JsonParseError: int32 {
+pub enum JsonParseError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The lexer refused the input; its reason is reported separately.
@@ -58,19 +58,19 @@ enum JsonParseError: int32 {
 /// The outcome of a parse: the value, and why it stopped if it did.
 ///
 /// https://rux-lang.dev/docs/api/json/parse-outcome
-struct JsonParseOutcome {
+pub struct JsonParseOutcome {
     /// Why parsing stopped, or `None`.
-    error: JsonParseError;
+    pub error: JsonParseError;
     /// The lexer's reason, when `error` is `Lexical`.
-    lexical: JsonLexError;
+    pub lexical: JsonLexError;
     /// Where in the input it stopped.
-    position: uint;
+    pub position: uint;
 }
 
 /// A parser over a document.
 ///
 /// https://rux-lang.dev/docs/api/json/json-parser
-struct JsonParser {
+pub struct JsonParser {
     /// Where tokens come from.
     lexer: JsonLexer;
     /// Where values are built.
@@ -91,7 +91,7 @@ extend JsonParser {
     /// A parser over `input` under `limits`, rejecting duplicate names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/new
-    func JsonParser(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
+    pub func JsonParser(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
         return JsonParser {
             lexer: JsonLexer(input, limits),
             allocator: allocator,
@@ -108,14 +108,14 @@ extend JsonParser {
     /// Chooses what to do about duplicate object names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy
-    func SetDuplicatePolicy(self: &var JsonParser, policy: DuplicateKeyPolicy) {
+    pub func SetDuplicatePolicy(self: &var JsonParser, policy: DuplicateKeyPolicy) {
         self.duplicates = policy;
     }
 
     /// Why parsing stopped.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/outcome
-    func Outcome(self: &JsonParser) -> JsonParseOutcome {
+    pub func Outcome(self: &JsonParser) -> JsonParseOutcome {
         return self.outcome;
     }
 
@@ -413,7 +413,7 @@ extend JsonParser {
     /// not a document however well-formed each is.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/parse
-    func Parse(self: &var JsonParser) -> JsonValue {
+    pub func Parse(self: &var JsonParser) -> JsonValue {
         var value = self.ParseValue(self.lexer.Next());
         if self.outcome.error != JsonParseError::None {
             return <-value;
@@ -430,7 +430,7 @@ extend JsonParser {
 /// Parses `input` into a value, rejecting duplicate names.
 ///
 /// https://rux-lang.dev/docs/api/json/parse
-func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOutcome) -> JsonValue {
+pub func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOutcome) -> JsonValue {
     var parser = JsonParser(allocator, input, JsonLimits::Default());
     var value = parser.Parse();
     *outcome = parser.Outcome();
@@ -444,7 +444,7 @@ func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOut
 /// in the same program cannot influence one another.
 ///
 /// https://rux-lang.dev/docs/api/json/parse-with
-func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits, duplicates: DuplicateKeyPolicy,
+pub func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits, duplicates: DuplicateKeyPolicy,
                outcome: *var JsonParseOutcome) -> JsonValue {
     var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);

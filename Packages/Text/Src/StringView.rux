@@ -19,7 +19,7 @@ import Core::{ Iterator, Option, Ordering, Slice };
 /// Copy, owning nothing. The bytes it names must outlive it.
 ///
 /// https://rux-lang.dev/docs/api/text/string-view
-struct StringView {
+pub struct StringView {
     /// The bytes. Well-formed UTF-8 for any view this package produces.
     bytes: Slice<char8>;
 }
@@ -30,7 +30,7 @@ extend StringView {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/new
-    func StringView() -> StringView {
+    pub func StringView() -> StringView {
         return StringView { bytes: Slice<char8> { data: null, length: 0 } };
     }
 
@@ -42,7 +42,7 @@ extend StringView {
     /// Runs in time proportional to the length and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/from-bytes
-    func FromBytes(bytes: Slice<char8>) -> Option<StringView> {
+    pub func FromBytes(bytes: Slice<char8>) -> Option<StringView> {
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() {
             return Option::None<StringView>();
@@ -61,7 +61,7 @@ extend StringView {
     /// answers rather than errors: a scalar walk reads past a truncated sequence, and a cut lands mid-character.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/from-validated
-    func FromValidated(bytes: Slice<char8>) -> StringView {
+    pub func FromValidated(bytes: Slice<char8>) -> StringView {
         return StringView { bytes: bytes };
     }
 
@@ -70,21 +70,21 @@ extend StringView {
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/length
-    func Length(self: &StringView) -> uint {
+    pub func Length(self: &StringView) -> uint {
         return self.bytes.length;
     }
 
     /// Whether the view spans no bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/is-empty
-    func IsEmpty(self: &StringView) -> bool {
+    pub func IsEmpty(self: &StringView) -> bool {
         return self.bytes.length == 0;
     }
 
     /// The bytes themselves, for handing to something that reads bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/bytes
-    func Bytes(self: &StringView) -> Slice<char8> {
+    pub func Bytes(self: &StringView) -> Slice<char8> {
         return self.bytes;
     }
 
@@ -94,14 +94,14 @@ extend StringView {
     /// method rather than a field.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/scalar-count
-    func ScalarCount(self: &StringView) -> uint {
+    pub func ScalarCount(self: &StringView) -> uint {
         return CountScalars(self.bytes);
     }
 
     /// Whether `index` is where a scalar value starts, and so a place this view may be cut.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/is-boundary
-    func IsBoundary(self: &StringView, index: uint) -> bool {
+    pub func IsBoundary(self: &StringView, index: uint) -> bool {
         return IsBoundary(self.bytes, index);
     }
     /// The part of this view from `start` up to `end`, or `None` when either is not a boundary or they are the
@@ -113,7 +113,7 @@ extend StringView {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/part
-    func Part(self: &StringView, start: uint, end: uint) -> Option<StringView> {
+    pub func Part(self: &StringView, start: uint, end: uint) -> Option<StringView> {
         if start > end || end > self.bytes.length {
             return Option::None<StringView>();
         }
@@ -127,7 +127,7 @@ extend StringView {
     /// The scalar value starting at `index`, or `None` when `index` is not a boundary inside the view.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/scalar-at
-    func ScalarAt(self: &StringView, index: uint) -> Option<char32> {
+    pub func ScalarAt(self: &StringView, index: uint) -> Option<char32> {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         if DecodeAt(self.bytes, index, @scalar, @width).IsError() {
@@ -142,7 +142,7 @@ extend StringView {
     /// one encoding. It is not equality after normalization, which is a different question and a different package.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/equals
-    func Equals(self: &StringView, other: &StringView) -> bool {
+    pub func Equals(self: &StringView, other: &StringView) -> bool {
         if self.bytes.length != other.bytes.length {
             return false;
         }
@@ -162,7 +162,7 @@ extend StringView {
     /// comparing scalar values give the same answer. It is not alphabetical in any language.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/compare
-    func Compare(self: &StringView, other: &StringView) -> Ordering {
+    pub func Compare(self: &StringView, other: &StringView) -> Ordering {
         let shared = self.bytes.length < other.bytes.length ? self.bytes.length : other.bytes.length;
         var index: uint = 0;
         while index < shared {
@@ -187,7 +187,7 @@ extend StringView {
 /// A walk over the scalar values of a view, first to last.
 ///
 /// https://rux-lang.dev/docs/api/text/scalar-iterator
-struct ScalarIterator {
+pub struct ScalarIterator {
     /// The bytes being walked.
     bytes: Slice<char8>;
     /// The byte index the next scalar value starts at.
@@ -201,7 +201,7 @@ extend ScalarIterator {
     /// so reaching one means the bytes were vouched for and were not.
     ///
     /// https://rux-lang.dev/docs/api/text/scalar-iterator/next
-    func Next(self: &var ScalarIterator) -> Option<char32> {
+    pub func Next(self: &var ScalarIterator) -> Option<char32> {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         if DecodeAt(self.bytes, self.cursor, @scalar, @width).IsError() {
@@ -221,7 +221,7 @@ extend StringView {
     /// `self` is borrowed and must outlive the walk.
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/scalars
-    func Scalars(self: &StringView) -> ScalarIterator {
+    pub func Scalars(self: &StringView) -> ScalarIterator {
         return ScalarIterator { bytes: self.bytes, cursor: 0 };
     }
 }

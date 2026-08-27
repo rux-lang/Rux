@@ -15,7 +15,7 @@ extend Path {
     /// a bare segment is the empty path, which is what lets a loop walk parents to a fixed end.
     ///
     /// https://rux-lang.dev/docs/api/path/path/parent
-    func Parent(self: &Path) -> Option<Path> {
+    pub func Parent(self: &Path) -> Option<Path> {
         let units = self.name.Units();
         var end = units.length;
         // Trailing separators say nothing about parenthood.
@@ -45,7 +45,7 @@ extend Path {
     /// libraries has always meant by it.
     ///
     /// https://rux-lang.dev/docs/api/path/path/file-name
-    func FileName(self: &Path) -> Option<OsStringView> {
+    pub func FileName(self: &Path) -> Option<OsStringView> {
         let units = self.name.Units();
         var end = units.length;
         while end > 0 && IsSeparator(units.data[end - 1]) {
@@ -68,7 +68,7 @@ extend Path {
     /// `a.tar.gz` it is `a.tar` -- one extension comes off, the last.
     ///
     /// https://rux-lang.dev/docs/api/path/path/stem
-    func Stem(self: &Path) -> Option<OsStringView> {
+    pub func Stem(self: &Path) -> Option<OsStringView> {
         let name = self.FileName();
         if name.IsNone() {
             return Option::None<OsStringView>();
@@ -88,7 +88,7 @@ extend Path {
     /// `None` for `.bashrc` and for `Makefile` alike: a name that is all extension has none.
     ///
     /// https://rux-lang.dev/docs/api/path/path/extension
-    func Extension(self: &Path) -> Option<OsStringView> {
+    pub func Extension(self: &Path) -> Option<OsStringView> {
         let name = self.FileName();
         if name.IsNone() {
             return Option::None<OsStringView>();

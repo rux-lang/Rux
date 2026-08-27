@@ -18,7 +18,7 @@ import Memory::{ AlignUp, Copy };
 /// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
 ///
 /// https://rux-lang.dev/docs/api/allocator/fixed-buffer
-struct FixedBuffer {
+pub struct FixedBuffer {
     /// The first byte of the storage, or null for a buffer with no storage at all.
     start: uint;
     /// How many bytes the storage holds.
@@ -47,7 +47,7 @@ extend FixedBuffer {
     /// is used. Nothing here tracks that.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/new
-    func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
+    pub func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
         let base = storage == null ? 0u : storage as uint;
         return FixedBuffer {
             start: base,
@@ -67,7 +67,7 @@ extend FixedBuffer {
     /// The handle borrows the allocator and must not outlive it or survive it being moved.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/handle
-    func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
+    pub func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
         return FixedBufferHandle { buffer: self };
     }
 
@@ -82,7 +82,7 @@ extend FixedBuffer {
     /// Nothing may be read from or written to any earlier allocation afterwards.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/reset
-    func Reset(self: &var FixedBuffer) {
+    pub func Reset(self: &var FixedBuffer) {
         self.used = 0;
         self.lastAllocation = 0;
     }
@@ -92,7 +92,7 @@ extend FixedBuffer {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-used
-    func BytesUsed(self: &FixedBuffer) -> uint {
+    pub func BytesUsed(self: &FixedBuffer) -> uint {
         return self.used;
     }
 
@@ -101,7 +101,7 @@ extend FixedBuffer {
     /// `self` is borrowed. A request of exactly this size succeeds only when it needs no padding.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-remaining
-    func BytesRemaining(self: &FixedBuffer) -> uint {
+    pub func BytesRemaining(self: &FixedBuffer) -> uint {
         return self.capacity - self.used;
     }
 }
@@ -109,7 +109,7 @@ extend FixedBuffer {
 /// A copyable interface adapter pointing at a `FixedBuffer`.
 ///
 /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle
-struct FixedBufferHandle {
+pub struct FixedBufferHandle {
     /// The allocator this borrows. Never null for a handle `FixedBuffer::Handle` produced.
     buffer: *var FixedBuffer;
 }
@@ -130,7 +130,7 @@ extend FixedBufferHandle : Allocator {
     /// The storage lives until the allocator is reset, and no longer.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
-    func Allocate(self: &var FixedBufferHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var FixedBufferHandle, layout: Layout, result: *var *var opaque) -> AllocError {
         if layout.size == 0 {
             *result = EmptyBlockAddress();
             return AllocError::None;
@@ -166,7 +166,7 @@ extend FixedBufferHandle : Allocator {
     /// generic code that releases what it takes.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
-    func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> AllocError {
+    pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> AllocError {
         if layout.size == 0 {
             return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
         }
@@ -190,7 +190,7 @@ extend FixedBufferHandle : Allocator {
     /// and copies, leaving the old space behind until the next reset.
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/reallocate
-    func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+    pub func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         if oldLayout.alignment != newLayout.alignment {
             return AllocError::Unsupported;

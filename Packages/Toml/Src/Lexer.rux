@@ -16,7 +16,7 @@ import Text::{ String, StringBuilder, TextError };
 /// What kind of token this is.
 ///
 /// https://rux-lang.dev/docs/api/toml/token-kind
-enum TomlTokenKind: int32 {
+pub enum TomlTokenKind: int32 {
     /// The input is exhausted.
     End = 0,
     /// A bare key: letters, digits, underscores and hyphens.
@@ -54,7 +54,7 @@ enum TomlTokenKind: int32 {
 /// Which of the four string forms a text token was written in.
 ///
 /// https://rux-lang.dev/docs/api/toml/text-form
-enum TomlTextForm: int32 {
+pub enum TomlTextForm: int32 {
     /// Not a text token.
     NotText = 0,
     /// A basic string: escapes honoured, no raw newlines.
@@ -73,7 +73,7 @@ enum TomlTextForm: int32 {
 /// Why lexing stopped.
 ///
 /// https://rux-lang.dev/docs/api/toml/lex-error
-enum TomlLexError: int32 {
+pub enum TomlLexError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// A byte that begins no token.
@@ -97,33 +97,33 @@ enum TomlLexError: int32 {
 /// One token, and where it came from.
 ///
 /// https://rux-lang.dev/docs/api/toml/token
-struct TomlToken {
+pub struct TomlToken {
     /// What kind of token this is.
-    kind: TomlTokenKind;
+    pub kind: TomlTokenKind;
     /// Which string form, for a text token.
-    form: TomlTextForm;
+    pub form: TomlTextForm;
     /// Where its text starts, as a byte offset.
-    start: uint;
+    pub start: uint;
     /// Where its text ends.
-    end: uint;
+    pub end: uint;
     /// Which line it starts on, counting from one.
-    line: uint;
+    pub line: uint;
     /// Which column it starts at, counting from one, in bytes.
-    column: uint;
+    pub column: uint;
     /// Why lexing stopped, when the kind is `Error`.
-    error: TomlLexError;
+    pub error: TomlLexError;
 }
 
 /// A TOML lexer over a byte slice.
 ///
 /// https://rux-lang.dev/docs/api/toml/lexer
-struct TomlLexer {
+pub struct TomlLexer {
     /// The document.
     input: Slice<char8>;
     /// How far reading has reached.
     position: uint;
     /// Which line that is on.
-    line: uint;
+    pub line: uint;
     /// Where the current line started, so a column is a subtraction.
     lineStart: uint;
 }
@@ -132,7 +132,7 @@ extend TomlLexer {
     /// A lexer over `input`.
     ///
     /// https://rux-lang.dev/docs/api/toml/lexer/new
-    func TomlLexer(input: Slice<char8>) -> TomlLexer {
+    pub func TomlLexer(input: Slice<char8>) -> TomlLexer {
         return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
     }
 
@@ -452,7 +452,7 @@ extend TomlLexer {
     /// The next token, or `End` at the end of the input.
     ///
     /// https://rux-lang.dev/docs/api/toml/lexer/next
-    func Next(self: &var TomlLexer) -> TomlToken {
+    pub func Next(self: &var TomlLexer) -> TomlToken {
         self.SkipSpaceAndComments();
         if self.position >= self.input.length {
             return self.Make(TomlTokenKind::End, TomlTextForm::NotText, self.position, self.position);
@@ -527,7 +527,7 @@ extend TomlLexer {
     /// The bytes a token spans, which for a text token excludes the quotes and is still escaped.
     ///
     /// https://rux-lang.dev/docs/api/toml/lexer/text-of
-    func TextOf(self: &TomlLexer, token: &TomlToken) -> Slice<char8> {
+    pub func TextOf(self: &TomlLexer, token: &TomlToken) -> Slice<char8> {
         return Slice<char8> { data: self.input.data + token.start, length: token.end - token.start };
     }
 }
@@ -539,7 +539,7 @@ extend TomlLexer {
 /// wrapped in the source without the wrapping appearing in the value.
 ///
 /// https://rux-lang.dev/docs/api/toml/decode-text
-func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm, error: *var TextError,
+pub func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm, error: *var TextError,
                     bad: *var bool) -> String {
     *bad = false;
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {

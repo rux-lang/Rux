@@ -53,34 +53,34 @@ else {
 /// which is the property log writers need and `write` alone does not have.
 ///
 /// https://rux-lang.dev/docs/api/storage/open-options
-struct OpenOptions {
+pub struct OpenOptions {
     /// The handle may read.
     read: bool;
     /// The handle may write.
-    write: bool;
+    pub write: bool;
     /// The handle may write, and every write lands at the end.
     append: bool;
     /// An existing file's contents are discarded on open. Requires `write`.
-    truncate: bool;
+    pub truncate: bool;
     /// A missing file is created. Requires `write` or `append`.
-    create: bool;
+    pub create: bool;
     /// The file must not exist: it is created, and an existing one is `AlreadyExists`. Wins over `create` and
     /// `truncate`, and is the option that makes creation a claim rather than a race.
-    createNew: bool;
+    pub createNew: bool;
 }
 
 extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/new
-    func OpenOptions() -> OpenOptions {
+    pub func OpenOptions() -> OpenOptions {
         return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
     /// Reading an existing file.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/reading
-    func Reading() -> OpenOptions {
+    pub func Reading() -> OpenOptions {
         var options = OpenOptions();
         options.read = true;
         return options;
@@ -89,7 +89,7 @@ extend OpenOptions {
     /// Writing a file from its beginning: created if missing, emptied if not.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/writing
-    func Writing() -> OpenOptions {
+    pub func Writing() -> OpenOptions {
         var options = OpenOptions();
         options.write = true;
         options.create = true;
@@ -100,7 +100,7 @@ extend OpenOptions {
     /// Adding to a file's end: created if missing, appended to if not.
     ///
     /// https://rux-lang.dev/docs/api/storage/open-options/appending
-    func Appending() -> OpenOptions {
+    pub func Appending() -> OpenOptions {
         var options = OpenOptions();
         options.append = true;
         options.create = true;
@@ -129,7 +129,7 @@ extend OpenOptions {
 /// loss for one that was written.
 ///
 /// https://rux-lang.dev/docs/api/storage/file
-struct File {
+pub struct File {
     /// The platform's handle.
     handle: RawFile;
     /// Whether it is still this value's to close.
@@ -191,7 +191,7 @@ extend File {
     /// returned value is not open, and `error` says why in the platform's own terms, translated.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/open
-    func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
+    pub func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
         *error = options.Validate();
         var file = File { handle: NoFile(), open: false };
         if (*error).IsError() {
@@ -279,7 +279,7 @@ extend File {
     /// Whether the handle is still open.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/is-open
-    func IsOpen(self: &File) -> bool {
+    pub func IsOpen(self: &File) -> bool {
         return self.open;
     }
 
@@ -289,7 +289,7 @@ extend File {
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/close
-    func Close(self: &var File) -> IoError {
+    pub func Close(self: &var File) -> IoError {
         if !self.open {
             return IoError::Ok();
         }

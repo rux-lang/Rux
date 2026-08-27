@@ -11,7 +11,7 @@ import macOS::{ ProcessId, _exit, getpid };
 /// should call C's `exit` through `Rux/C`.
 ///
 /// https://rux-lang.dev/docs/api/macos/exit
-func Exit(code: int32) {
+pub func Exit(code: int32) {
     _exit(code);
 }
 
@@ -20,6 +20,6 @@ func Exit(code: int32) {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/macos/get-pid
-func GetPid() -> ProcessId {
+pub func GetPid() -> ProcessId {
     return getpid();
 }

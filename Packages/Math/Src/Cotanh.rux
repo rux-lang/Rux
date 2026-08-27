@@ -1,4 +1,7 @@
-func Cotanh(x: float64) -> float64 {
+/// Provides the public `Cotanh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cotanh
+pub func Cotanh(x: float64) -> float64 {
     if x != x {
         return x;
     }
@@ -19,6 +22,9 @@ func Cotanh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-func Cotanh(x: float32) -> float32 {
+/// Provides the public `Cotanh` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cotanh
+pub func Cotanh(x: float32) -> float32 {
     return Cotanh(x as float64) as float32;
 }

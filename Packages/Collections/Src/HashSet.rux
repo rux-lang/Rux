@@ -16,7 +16,7 @@ import Core::{ Iterator, Option, Unit };
 /// Move-only: it owns its elements and its storage.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-set
-struct HashSet<T> {
+pub struct HashSet<T> {
     /// The slots and the elements. The value side carries nothing, which is what makes this a set.
     table: Table<T, Unit>;
     /// What an element's hash is, given the table's seed.
@@ -32,7 +32,7 @@ extend HashSet<T> {
     /// An empty set that has not allocated anything, with a seed drawn from the operating system.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/new
-    func HashSet(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
+    pub func HashSet(allocator: Allocator, hash: func(T, uint64, uint64) -> uint64,
                  equals: func(T, T) -> bool) -> HashSet<T> {
         return HashSet::WithSeed<T>(allocator, TableSeed::Random(), hash, equals);
     }
@@ -40,7 +40,7 @@ extend HashSet<T> {
     /// An empty set that has not allocated anything, hashing with `seed`.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/with-seed
-    func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
+    pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
                   equals: func(T, T) -> bool) -> HashSet<T> {
         return HashSet<T> { table: Table<T, Unit>(allocator, seed), hash: hash, equals: equals };
     }
@@ -50,7 +50,7 @@ extend HashSet<T> {
     /// `error` is written with why the room could not be taken.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/with-capacity
-    func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
+    pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
                       equals: func(T, T) -> bool, error: *var CollectionError) -> HashSet<T> {
         var set = HashSet<T>(allocator, hash, equals);
         *error = set.Reserve(capacity);
@@ -60,21 +60,21 @@ extend HashSet<T> {
     /// How many elements the set holds.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/length
-    func Length(self: &HashSet<T>) -> uint {
+    pub func Length(self: &HashSet<T>) -> uint {
         return self.table.Length();
     }
 
     /// How many slots the table has.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/capacity
-    func Capacity(self: &HashSet<T>) -> uint {
+    pub func Capacity(self: &HashSet<T>) -> uint {
         return self.table.Capacity();
     }
 
     /// Whether the set holds no elements.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-empty
-    func IsEmpty(self: &HashSet<T>) -> bool {
+    pub func IsEmpty(self: &HashSet<T>) -> bool {
         return self.table.IsEmpty();
     }
 
@@ -85,7 +85,7 @@ extend HashSet<T> {
     /// Runs in constant expected time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/contains
-    func Contains(self: &HashSet<T>, value: T) -> bool {
+    pub func Contains(self: &HashSet<T>, value: T) -> bool {
         return self.table.Find(value, self.hash, self.equals).IsSome();
     }
 
@@ -98,7 +98,7 @@ extend HashSet<T> {
     /// A failure leaves the set exactly as it was.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/insert
-    func Insert(self: &var HashSet<T>, value: T, added: *var bool) -> CollectionError {
+    pub func Insert(self: &var HashSet<T>, value: T, added: *var bool) -> CollectionError {
         if self.table.Find(value, self.hash, self.equals).IsSome() {
             if added != null {
                 *added = false;
@@ -127,7 +127,7 @@ extend HashSet<T> {
     /// intact. Reports `None` when the set did not have it.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/remove
-    func Remove(self: &var HashSet<T>, value: T) -> Option<T> {
+    pub func Remove(self: &var HashSet<T>, value: T) -> Option<T> {
         var slot: uint = 0;
         if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
             return Option::None<T>();
@@ -140,21 +140,21 @@ extend HashSet<T> {
     /// Makes room for `additional` more elements on top of those already present.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/reserve
-    func Reserve(self: &var HashSet<T>, additional: uint) -> CollectionError {
+    pub func Reserve(self: &var HashSet<T>, additional: uint) -> CollectionError {
         return self.table.Reserve(additional, self.hash);
     }
 
     /// Releases the capacity the element count does not need.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/shrink-to-fit
-    func ShrinkToFit(self: &var HashSet<T>) -> CollectionError {
+    pub func ShrinkToFit(self: &var HashSet<T>) -> CollectionError {
         return self.table.ShrinkToFit(self.hash);
     }
 
     /// Destroys every element, keeping the storage.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/clear
-    func Clear(self: &var HashSet<T>) {
+    pub func Clear(self: &var HashSet<T>) {
         self.table.Clear();
     }
 
@@ -164,7 +164,7 @@ extend HashSet<T> {
     /// is the seed's and not the insertion's, and nothing may be inserted or removed while a walk is in progress.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/try-next
-    func TryNext(self: &HashSet<T>, cursor: *var uint, value: *var T) -> bool {
+    pub func TryNext(self: &HashSet<T>, cursor: *var uint, value: *var T) -> bool {
         var index = *cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
@@ -186,7 +186,7 @@ extend HashSet<T> {
 /// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-set-iterator
-struct HashSetIterator<T> {
+pub struct HashSetIterator<T> {
     /// Raw borrowed table storage. Kept raw because references cannot be fields.
     keys: *T;
     states: *uint8;
@@ -202,7 +202,7 @@ extend HashSetIterator<T> {
     /// with `TryNext` instead.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set-iterator/next
-    func Next(self: &var HashSetIterator<T>) -> Option<T> {
+    pub func Next(self: &var HashSetIterator<T>) -> Option<T> {
         var index = self.cursor;
         while index < self.capacity {
             if self.states[index] != SlotEmpty {
@@ -223,7 +223,7 @@ extend HashSetIterator<T> : Iterator {}
 /// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
-struct HashSetIntoIterator<T> {
+pub struct HashSetIntoIterator<T> {
     /// The table taken from the set.
     table: Table<T, Unit>;
     /// The slot to look at next.
@@ -240,7 +240,7 @@ extend HashSetIntoIterator<T> {
     /// destructor is exactly what nobody took.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set-into-iterator/next
-    func Next(self: &var HashSetIntoIterator<T>) -> Option<T> {
+    pub func Next(self: &var HashSetIntoIterator<T>) -> Option<T> {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
@@ -270,7 +270,7 @@ extend HashSet<T> {
     /// Nothing may be inserted or removed while the iterator is alive.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/iterate
-    func Iterate(self: &HashSet<T>) -> HashSetIterator<T> {
+    pub func Iterate(self: &HashSet<T>) -> HashSetIterator<T> {
         return HashSetIterator<T> {
             keys: self.table.keys,
             states: self.table.states,
@@ -285,7 +285,7 @@ extend HashSet<T> {
     /// destroyed when the iterator's life ends.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/into-iterator
-    func IntoIterator(self: HashSet<T>) -> HashSetIntoIterator<T> {
+    pub func IntoIterator(self: HashSet<T>) -> HashSetIntoIterator<T> {
         var set <- self;
         let taken = HashSetIntoIterator<T> {
             table: Table<T, Unit> {
@@ -320,7 +320,7 @@ extend HashSet<T> {
     /// Allocates nothing. Runs in time proportional to this set's size.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-subset-of
-    func IsSubsetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsSubsetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
         if self.Length() > other.Length() {
             return false;
         }
@@ -346,7 +346,7 @@ extend HashSet<T> {
     /// Both are borrowed. The mirror of `IsSubsetOf`, which is what it calls.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-superset-of
-    func IsSupersetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsSupersetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
         return other.IsSubsetOf(self);
     }
 
@@ -360,7 +360,7 @@ extend HashSet<T> {
     /// Allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-disjoint-from
-    func IsDisjointFrom(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func IsDisjointFrom(self: &HashSet<T>, other: &HashSet<T>) -> bool {
         if self.Length() > other.Length() {
             return other.IsDisjointFrom(self);
         }
@@ -389,7 +389,7 @@ extend HashSet<T> {
     /// Both are borrowed. Equal sizes and one containment, which together are containment both ways.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/equals
-    func Equals(self: &HashSet<T>, other: &HashSet<T>) -> bool {
+    pub func Equals(self: &HashSet<T>, other: &HashSet<T>) -> bool {
         return self.Length() == other.Length() && self.IsSubsetOf(other);
     }
 }
@@ -407,7 +407,7 @@ extend HashSet<T> {
     /// Runs in time proportional to `other`.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/union-with
-    func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
+    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
         if other.Length() == 0 {
             return CollectionError::None;
         }
@@ -443,7 +443,7 @@ extend HashSet<T> {
     /// Allocates nothing, so it cannot fail: a set only ever gets smaller here.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/intersect-with
-    func IntersectWith(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func IntersectWith(self: &var HashSet<T>, other: &HashSet<T>) {
         if self.Length() == 0 {
             return;
         }
@@ -476,7 +476,7 @@ extend HashSet<T> {
     /// Allocates nothing, so it cannot fail.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/subtract
-    func Subtract(self: &var HashSet<T>, other: &HashSet<T>) {
+    pub func Subtract(self: &var HashSet<T>, other: &HashSet<T>) {
         if self.Length() == 0 || other.Length() == 0 {
             return;
         }
@@ -507,7 +507,7 @@ extend HashSet<T> {
     /// leave a set that is neither operand nor the answer.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/symmetric-difference-with
-    func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
+    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
         if other.Length() == 0 {
             return CollectionError::None;
         }
@@ -548,7 +548,7 @@ extend HashSet<T> {
     /// own storage from the same allocator and the same seed, so the two lay their elements out alike.
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/clone
-    func Clone(self: &HashSet<T>, error: *var CollectionError) -> HashSet<T> {
+    pub func Clone(self: &HashSet<T>, error: *var CollectionError) -> HashSet<T> {
         var copy = HashSet::WithSeed<T>(self.table.allocator, self.table.seed, self.hash, self.equals);
         let room = copy.Reserve(self.Length());
         if room.IsError() {

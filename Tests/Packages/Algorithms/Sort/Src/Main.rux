@@ -6,17 +6,17 @@ import Core::MutableSlice;
 // input exhausts, and there is no supported way to force it from outside.
 import Algorithms::{ InsertionSortRange, HeapSortRange };
 
-struct Ranked {
+pub struct Ranked {
     key: int32;
     origin: int32;
 }
 
 extend Ranked {
-    func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 
-    func ==(self: &Ranked, other: Ranked) -> bool {
+    pub func ==(self: &Ranked, other: Ranked) -> bool {
         return self.key == other.key && self.origin == other.origin;
     }
 }

@@ -11,7 +11,7 @@
 /// Why an allocation, reallocation or release did not do what was asked.
 ///
 /// https://rux-lang.dev/docs/api/allocator/alloc-error
-enum AllocError: uint8 {
+pub enum AllocError: uint8 {
     /// Nothing went wrong. A successful call reports this, so it is not an error case.
     None = 0,
     /// The layout cannot be served by this allocator at all: an alignment stricter than it can give, or a size it
@@ -31,7 +31,7 @@ extend AllocError {
     /// runs without the reader having to remember that zero means success here.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
-    func IsOk(self: AllocError) -> bool {
+    pub func IsOk(self: AllocError) -> bool {
         return self == AllocError::None;
     }
 
@@ -40,7 +40,7 @@ extend AllocError {
     /// `self` is borrowed.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
-    func IsError(self: AllocError) -> bool {
+    pub func IsError(self: AllocError) -> bool {
         return self != AllocError::None;
     }
 
@@ -50,7 +50,7 @@ extend AllocError {
     /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
     ///
     /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-transient
-    func IsTransient(self: AllocError) -> bool {
+    pub func IsTransient(self: AllocError) -> bool {
         return self == AllocError::OutOfMemory;
     }
 }

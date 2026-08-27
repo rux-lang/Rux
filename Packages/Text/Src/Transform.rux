@@ -17,7 +17,7 @@ import Core::{ Option, Slice };
 /// `error` receives what went wrong, and the string comes back empty.
 ///
 /// https://rux-lang.dev/docs/api/text/concat
-func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
+pub func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     *error = builder.Reserve(left.bytes.length + right.bytes.length);
     if error.IsError() {
@@ -37,7 +37,7 @@ func Concat(allocator: Allocator, left: StringView, right: StringView, error: *v
 /// same as joining a thing to itself.
 ///
 /// https://rux-lang.dev/docs/api/text/repeat
-func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
+pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
         if count > 0xFFFFFFFFFFFFFFFFu / view.bytes.length {
@@ -68,7 +68,7 @@ func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var Tex
 /// alternative is a replacement between every pair of characters and before and after every one of them.
 ///
 /// https://rux-lang.dev/docs/api/text/replace
-func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
+pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
              error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
@@ -104,7 +104,7 @@ func Replace(allocator: Allocator, view: StringView, needle: StringView, replace
 /// Whether `byte` is an ASCII letter.
 ///
 /// https://rux-lang.dev/docs/api/text/is-ascii-letter
-func IsAsciiLetter(byte: char8) -> bool {
+pub func IsAsciiLetter(byte: char8) -> bool {
     let value = byte as uint32;
     return (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A);
 }
@@ -115,14 +115,14 @@ func IsAsciiLetter(byte: char8) -> bool {
 /// cannot produce anything that is not UTF-8.
 ///
 /// https://rux-lang.dev/docs/api/text/to-ascii-upper
-func ToAsciiUpper(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+pub func ToAsciiUpper(allocator: Allocator, view: StringView, error: *var TextError) -> String {
     return MapAscii(allocator, view, 0x61, 0x7A, 0x20, error);
 }
 
 /// The text of `view` with every ASCII upper-case letter lowered.
 ///
 /// https://rux-lang.dev/docs/api/text/to-ascii-lower
-func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+pub func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError) -> String {
     return MapAscii(allocator, view, 0x41, 0x5A, 0x20, error);
 }
 

@@ -24,11 +24,11 @@ import Memory::Copy;
 /// Copyable with value semantics: each copy owns an independent block and gives it back when it dies.
 ///
 /// https://rux-lang.dev/docs/api/text/string
-struct String {
+pub struct String {
     /// The bytes, or null for text of no length.
-    data: *var char8;
+    pub data: *var char8;
     /// How many bytes there are. Not how many characters.
-    length: uint;
+    pub length: uint;
     /// How large the block is. An allocator is given back the layout it handed out, and a string built by handing
     /// a builder's block over gets one with room to spare, so what was allocated and what is used are not always
     /// the same number.
@@ -42,7 +42,9 @@ extend String {
     ///
     /// The special copy operation cannot report allocation failure, so it terminates on exhaustion. Use `Clone`
     /// when failure must be handled. The source remains valid and unchanged.
-    func =(self: &var String, other: &String) {
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/copy
+    pub func =(self: &var String, other: &String) {
         self.data = null;
         self.length = other.length;
         self.capacity = other.length;
@@ -68,7 +70,7 @@ extend String {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string/new
-    func String(allocator: Allocator) -> String {
+    pub func String(allocator: Allocator) -> String {
         return String { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
@@ -85,7 +87,7 @@ extend String {
     /// answers rather than errors.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-validated
-    func FromValidated(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+    pub func FromValidated(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
         *error = TextError::None;
         if bytes.length == 0 {
             return String(allocator);
@@ -122,7 +124,7 @@ extend String {
     /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-bytes
-    func FromBytes(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+    pub func FromBytes(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() {
             *error = TextError::InvalidUtf8;
@@ -136,7 +138,7 @@ extend String {
     /// The view was checked when it was made, so this copies without checking again.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-view
-    func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> String {
+    pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> String {
         return String::FromValidated(allocator, view.bytes, error);
     }
 }
@@ -147,21 +149,21 @@ extend String {
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     ///
     /// https://rux-lang.dev/docs/api/text/string/length
-    func Length(self: &String) -> uint {
+    pub func Length(self: &String) -> uint {
         return self.length;
     }
 
     /// Whether the text spans no bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/string/is-empty
-    func IsEmpty(self: &String) -> bool {
+    pub func IsEmpty(self: &String) -> bool {
         return self.length == 0;
     }
 
     /// The bytes themselves, borrowed.
     ///
     /// https://rux-lang.dev/docs/api/text/string/bytes
-    func Bytes(self: &String) -> Slice<char8> {
+    pub func Bytes(self: &String) -> Slice<char8> {
         return Slice<char8> { data: self.data, length: self.length };
     }
 
@@ -170,21 +172,21 @@ extend String {
     /// Copies nothing. The view borrows this string and must not outlive it.
     ///
     /// https://rux-lang.dev/docs/api/text/string/view
-    func View(self: &String) -> StringView {
+    pub func View(self: &String) -> StringView {
         return StringView::FromValidated(self.Bytes());
     }
 
     /// How many characters the text holds.
     ///
     /// https://rux-lang.dev/docs/api/text/string/scalar-count
-    func ScalarCount(self: &String) -> uint {
+    pub func ScalarCount(self: &String) -> uint {
         return CountScalars(self.Bytes());
     }
 
     /// Whether `index` is where a character starts, and so a place the text may be cut.
     ///
     /// https://rux-lang.dev/docs/api/text/string/is-boundary
-    func IsBoundary(self: &String, index: uint) -> bool {
+    pub func IsBoundary(self: &String, index: uint) -> bool {
         return IsBoundary(self.Bytes(), index);
     }
 
@@ -194,7 +196,7 @@ extend String {
     /// makes an owning copy.
     ///
     /// https://rux-lang.dev/docs/api/text/string/part
-    func Part(self: &String, start: uint, end: uint) -> Option<StringView> {
+    pub func Part(self: &String, start: uint, end: uint) -> Option<StringView> {
         let whole = self.View();
         return whole.Part(start, end);
     }
@@ -204,7 +206,7 @@ extend String {
     /// `error` receives `NotABoundary` when either end would cut a character in half.
     ///
     /// https://rux-lang.dev/docs/api/text/string/substring
-    func Substring(self: &String, start: uint, end: uint, error: *var TextError) -> String {
+    pub func Substring(self: &String, start: uint, end: uint, error: *var TextError) -> String {
         let part = self.Part(start, end);
         if part.IsNone() {
             *error = TextError::NotABoundary;
@@ -216,14 +218,14 @@ extend String {
     /// An independent copy, with a block of its own from the same allocator.
     ///
     /// https://rux-lang.dev/docs/api/text/string/clone
-    func Clone(self: &String, error: *var TextError) -> String {
+    pub func Clone(self: &String, error: *var TextError) -> String {
         return String::FromValidated(self.allocator, self.Bytes(), error);
     }
 
     /// Whether two strings hold the same bytes.
     ///
     /// https://rux-lang.dev/docs/api/text/string/equals
-    func Equals(self: &String, other: &String) -> bool {
+    pub func Equals(self: &String, other: &String) -> bool {
         let mine = self.View();
         let theirs = other.View();
         return mine.Equals(theirs);
@@ -232,7 +234,7 @@ extend String {
     /// How this string orders against `other`, by bytes, which for UTF-8 is also by code point.
     ///
     /// https://rux-lang.dev/docs/api/text/string/compare
-    func Compare(self: &String, other: &String) -> Ordering {
+    pub func Compare(self: &String, other: &String) -> Ordering {
         let mine = self.View();
         let theirs = other.View();
         return mine.Compare(theirs);
@@ -244,7 +246,7 @@ extend String {
     /// twice because what it leaves behind owns nothing.
     ///
     /// https://rux-lang.dev/docs/api/text/string/clear
-    func Clear(self: &var String) {
+    pub func Clear(self: &var String) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
@@ -260,7 +262,8 @@ extend String {
     ///
     /// A fresh value transfers directly. Passing a named string first invokes its deep copy, so the caller keeps an
     /// independent original.
-    func ReplaceWith(self: &var String, value: String) {
+    /// https://rux-lang.dev/docs/api/text/string/replace-with
+    pub func ReplaceWith(self: &var String, value: String) {
         var owned <- value;
         self.Clear();
         self.data = owned.data;

@@ -17,7 +17,7 @@ import Core::{ #target };
 /// link on Apple platforms.
 ///
 /// https://rux-lang.dev/docs/api/macos/system-lib
-const SystemLib = "libSystem.B.dylib";
+pub const SystemLib = "libSystem.B.dylib";
 
 #Link(SystemLib)
 extern {

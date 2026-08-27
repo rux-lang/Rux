@@ -177,7 +177,10 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
 // keeps a power of a power from drifting; an exact answer is still not
 // guaranteed, so `PowInteger` is the one to reach for with a whole
 // exponent.
-func Pow(x: float64, y: float64) -> float64 {
+/// Provides the public `Pow` operation.
+///
+/// https://rux-lang.dev/docs/api/math/pow
+pub func Pow(x: float64, y: float64) -> float64 {
     let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
     let huge = 1.0e300;
     let tiny = 1.0e-300;
@@ -365,6 +368,9 @@ func Pow(x: float64, y: float64) -> float64 {
     return s * Pow2(pHigh, pLow, z);
 }
 
-func Pow(x: float32, y: float32) -> float32 {
+/// Provides the public `Pow` operation.
+///
+/// https://rux-lang.dev/docs/api/math/pow
+pub func Pow(x: float32, y: float32) -> float32 {
     return Pow(x as float64, y as float64) as float32;
 }

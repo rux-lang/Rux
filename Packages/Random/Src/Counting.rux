@@ -17,7 +17,7 @@ import Math::{ Exp, Floor, Log };
 /// billion trials costs about thirty draws rather than a billion.
 ///
 /// https://rux-lang.dev/docs/api/random/binomial
-func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability: float64) -> uint64 {
+pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability: float64) -> uint64 {
     if trials == 0u64 || !(probability > 0.0) {
         return 0u64;
     }
@@ -54,7 +54,7 @@ func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability
 /// interval, in which case the count is a binomial of what is left, or it fits and the remainder carries on.
 ///
 /// https://rux-lang.dev/docs/api/random/poisson
-func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64 {
+pub func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64 {
     if !(mean > 0.0) {
         return 0u64;
     }

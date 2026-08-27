@@ -16,7 +16,7 @@
 /// more than almost anywhere else.
 ///
 /// https://rux-lang.dev/docs/api/math/arc-tan2
-func ArcTan2(y: float64, x: float64) -> float64 {
+pub func ArcTan2(y: float64, x: float64) -> float64 {
     // Pi in two parts, so the corrections below keep their low bits.
     let piHi = 3.141592653589793;
     let piLo = 1.2246467991473532e-16;
@@ -62,6 +62,6 @@ func ArcTan2(y: float64, x: float64) -> float64 {
 /// The angle to the point `(x, y)`, at the narrow width.
 ///
 /// https://rux-lang.dev/docs/api/math/arc-tan2-32
-func ArcTan2(y: float32, x: float32) -> float32 {
+pub func ArcTan2(y: float32, x: float32) -> float32 {
     return ArcTan2(y as float64, x as float64) as float32;
 }

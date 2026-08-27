@@ -1,13 +1,13 @@
 import Algorithms::{ CopyTo, IsSorted, NthElement, PartialSort, SequenceEqual };
 import Core::MutableSlice;
 
-struct Ranked {
+pub struct Ranked {
     key: int32;
     origin: int32;
 }
 
 extend Ranked {
-    func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 }

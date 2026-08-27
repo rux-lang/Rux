@@ -12,14 +12,14 @@ import Linux::{ SysGetRandom, Syscall3 };
 /// `GRND_NONBLOCK`: report `EAGAIN` rather than waiting for the pool to be seeded.
 ///
 /// https://rux-lang.dev/docs/api/linux/random-non-blocking
-const RandomNonBlocking: uint32 = 1;
+pub const RandomNonBlocking: uint32 = 1;
 
 /// `GRND_RANDOM`: draw from the blocking pool, which is almost never what a caller wants.
 ///
 /// Kept for completeness. The default source is as unpredictable and does not stall.
 ///
 /// https://rux-lang.dev/docs/api/linux/random-blocking-pool
-const RandomBlockingPool: uint32 = 2;
+pub const RandomBlockingPool: uint32 = 2;
 
 /// Fills up to `length` bytes of `buffer` with unpredictable bytes.
 ///
@@ -38,6 +38,6 @@ const RandomBlockingPool: uint32 = 2;
 /// unwritten tail stays whatever it held -- which for a key is the worst possible outcome.
 ///
 /// https://rux-lang.dev/docs/api/linux/get-random
-func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
+pub func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {
     return Syscall3(SysGetRandom, buffer as uint64, length as uint64, flags as uint64);
 }

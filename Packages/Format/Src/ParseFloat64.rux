@@ -2,7 +2,10 @@ import Core::Result;
 import Text::StringView;
 
 // Why a decimal string could not be converted to a float64.
-enum ParseError {
+/// The `ParseError` values exposed by this package.
+///
+/// https://rux-lang.dev/docs/api/format/parse-error
+pub enum ParseError {
     Empty,
     InvalidCharacter(uint),
     Overflow
@@ -10,7 +13,10 @@ enum ParseError {
 
 // Parses a decimal float. The accepted grammar is
 // `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`.
-func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
+/// Provides the public `ParseFloat64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float64
+pub func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
     if str.length == 0 {
         return Result::Error<float64, ParseError>(ParseError::Empty);
     }
@@ -132,13 +138,19 @@ func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
 
 // Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
 // nothing, and the bytes are known to be text.
-func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
+/// Provides the public `ParseFloat64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float64
+pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
     return ParseFloat64(str.Bytes());
 }
 
 // Parses into value and reports only whether conversion succeeded. On failure,
 // value is left unchanged. A null output pointer also reports failure.
-func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
+/// Provides the public `TryParseFloat64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/try-parse-float64
+pub func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
     if value == null {
         return false;
     }
@@ -155,7 +167,10 @@ func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
 }
 
 // The same for a view.
-func TryParseFloat64(str: StringView, value: *var float64) -> bool {
+/// Provides the public `TryParseFloat64` operation.
+///
+/// https://rux-lang.dev/docs/api/format/try-parse-float64
+pub func TryParseFloat64(str: StringView, value: *var float64) -> bool {
     return TryParseFloat64(str.Bytes(), value);
 }
 
@@ -166,7 +181,7 @@ func TryParseFloat64(str: StringView, value: *var float64) -> bool {
 /// back as the zero it rounds to, exactly as a tiny value does at the wider width.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float32
-func ParseFloat32(str: Slice<char8>) -> Result<float32, ParseError> {
+pub func ParseFloat32(str: Slice<char8>) -> Result<float32, ParseError> {
     var wide = 0.0;
     match ParseFloat64(str) {
         .Success(value) => {
@@ -188,6 +203,6 @@ func ParseFloat32(str: Slice<char8>) -> Result<float32, ParseError> {
 /// The same grammar for a view.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float32-view
-func ParseFloat32(str: StringView) -> Result<float32, ParseError> {
+pub func ParseFloat32(str: StringView) -> Result<float32, ParseError> {
     return ParseFloat32(str.Bytes());
 }

@@ -18,7 +18,7 @@ import Core::{ MutableSlice, Slice };
 /// The most blocks `Expand` can produce, since its counter is one byte.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
-const HkdfMaximumBlocks: uint = 255;
+pub const HkdfMaximumBlocks: uint = 255;
 
 /// Extracts a pseudorandom key from `material`, salted with `salt`.
 ///
@@ -26,7 +26,7 @@ const HkdfMaximumBlocks: uint = 255;
 /// which is what the specification says -- so an absent salt is not the same as no salt at all.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-extract
-func HkdfExtract<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, into: MutableSlice<char8>) {
+pub func HkdfExtract<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, into: MutableSlice<char8>) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
     if salt.length > 0u {
@@ -51,7 +51,7 @@ func HkdfExtract<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<ch
 /// under different info strings are unrelated.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-expand
-func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char8>,
+pub func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char8>,
                            into: MutableSlice<char8>) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();
@@ -91,7 +91,7 @@ func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char8>,
 /// Returns `false` for an output longer than 255 digests, exactly as `HkdfExpand` does.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf
-func Hkdf<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, info: Slice<char8>,
+pub func Hkdf<D: Digest>(prototype: D, salt: Slice<char8>, material: Slice<char8>, info: Slice<char8>,
                      into: MutableSlice<char8>) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();

@@ -42,7 +42,10 @@ func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
 }
 
 // Storage for `count` elements, uninitialized. Nothing is written to it: a container fills what it hands out.
-func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) -> CollectionError {
+/// Provides the public `AllocateBlock` operation.
+///
+/// https://rux-lang.dev/docs/api/collections/allocate-block
+pub func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) -> CollectionError {
     var layout = Layout { size: 0, alignment: 1 };
     let sizing = ElementLayout<T>(count, @layout);
     if sizing.IsError() {
@@ -61,7 +64,10 @@ func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) ->
 // Storage for `newCount` elements holding what the first `min(oldCount, newCount)` of the old block held. On failure
 // the old block is untouched and still the caller's, which is what lets a container report a failed growth and
 // carry on as it was.
-func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint,
+/// Provides the public `ReallocateBlock` operation.
+///
+/// https://rux-lang.dev/docs/api/collections/reallocate-block
+pub func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, newCount: uint,
                         result: *var *var T) -> CollectionError {
     var oldLayout = Layout { size: 0, alignment: 1 };
     let oldSizing = ElementLayout<T>(oldCount, @oldLayout);
@@ -85,7 +91,10 @@ func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, new
 
 // Gives back storage this package took for `count` elements. The elements themselves are the container's business:
 // whatever they own must already have been dealt with, because this frees the block and nothing else.
-func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
+/// Provides the public `ReleaseBlock` operation.
+///
+/// https://rux-lang.dev/docs/api/collections/release-block
+pub func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
     var layout = Layout { size: 0, alignment: 1 };
     let sizing = ElementLayout<T>(count, @layout);
     if sizing.IsError() {

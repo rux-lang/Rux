@@ -13,7 +13,7 @@ import Core::MutableSlice;
 /// size.
 ///
 /// https://rux-lang.dev/docs/api/random/reservoir
-struct Reservoir<T> {
+pub struct Reservoir<T> {
     /// Where the sample is kept; its length is the sample size.
     room: MutableSlice<T>;
     /// How many items have been offered so far.
@@ -24,7 +24,7 @@ extend Reservoir<T> {
     /// A reservoir that will fill `room`.
     ///
     /// https://rux-lang.dev/docs/api/random/reservoir/new
-    func Reservoir(room: MutableSlice<T>) -> Reservoir<T> {
+    pub func Reservoir(room: MutableSlice<T>) -> Reservoir<T> {
         return Reservoir<T> { room: room, seen: 0 };
     }
 
@@ -32,14 +32,14 @@ extend Reservoir<T> {
     /// offered.
     ///
     /// https://rux-lang.dev/docs/api/random/reservoir/length
-    func Length(self: &Reservoir<T>) -> uint {
+    pub func Length(self: &Reservoir<T>) -> uint {
         return self.seen < self.room.length ? self.seen : self.room.length;
     }
 
     /// How many items have been offered.
     ///
     /// https://rux-lang.dev/docs/api/random/reservoir/seen
-    func Seen(self: &Reservoir<T>) -> uint {
+    pub func Seen(self: &Reservoir<T>) -> uint {
         return self.seen;
     }
 }
@@ -52,7 +52,7 @@ extend Reservoir<T> {
 /// the sample is still uniform over what arrived.
 ///
 /// https://rux-lang.dev/docs/api/random/offer
-func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
+pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
     if reservoir.room.length == 0u {
         reservoir.seen = reservoir.seen + 1u;
         return;

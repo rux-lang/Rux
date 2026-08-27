@@ -34,7 +34,7 @@ when #target.os == .Windows {
 /// overlap. Use `Move` when they might: this one is free to copy in whichever order suits the machine.
 ///
 /// https://rux-lang.dev/docs/api/memory/copy
-func Copy(destination: *var opaque, source: *opaque, length: uint) {
+pub func Copy(destination: *var opaque, source: *opaque, length: uint) {
     if length == 0 {
         return;
     }
@@ -69,7 +69,7 @@ func Copy(destination: *var opaque, source: *opaque, length: uint) {
 /// way, including exactly.
 ///
 /// https://rux-lang.dev/docs/api/memory/move
-func Move(destination: *var opaque, source: *opaque, length: uint) {
+pub func Move(destination: *var opaque, source: *opaque, length: uint) {
     if length == 0 {
         return;
     }
@@ -109,7 +109,7 @@ func Move(destination: *var opaque, source: *opaque, length: uint) {
 /// reads back may be deleted, and `Core::Zeroize` is the one that may not be.
 ///
 /// https://rux-lang.dev/docs/api/memory/set
-func Set(destination: *var opaque, value: byte, length: uint) {
+pub func Set(destination: *var opaque, value: byte, length: uint) {
     if length == 0 {
         return;
     }
@@ -137,7 +137,7 @@ func Set(destination: *var opaque, value: byte, length: uint) {
 /// delete however unread the bytes are afterwards.
 ///
 /// https://rux-lang.dev/docs/api/memory/zero
-func Zero(destination: *var opaque, length: uint) {
+pub func Zero(destination: *var opaque, length: uint) {
     if length == 0 {
         return;
     }
@@ -164,7 +164,7 @@ func Zero(destination: *var opaque, length: uint) {
 /// must not be used on a secret.
 ///
 /// https://rux-lang.dev/docs/api/memory/mismatch-offset
-func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
+pub func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
     if length == 0 {
         return 0;
     }
@@ -201,7 +201,7 @@ func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
 /// secret compared this way leaks where it differs. `Rux/Crypto` is where a constant-time comparison belongs.
 ///
 /// https://rux-lang.dev/docs/api/memory/compare
-func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
+pub func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
     let offset = MismatchOffset(left, right, length);
     if offset == length {
         return Ordering::Equal;
@@ -223,7 +223,7 @@ func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
 /// Both pointers must be readable for `length` bytes. Not constant-time.
 ///
 /// https://rux-lang.dev/docs/api/memory/equal
-func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
+pub func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
     return MismatchOffset(left, right, length) == length;
 }
 
@@ -239,7 +239,7 @@ func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
 /// `haystack` must be readable for `length` bytes.
 ///
 /// https://rux-lang.dev/docs/api/memory/find
-func Find(haystack: *opaque, length: uint, value: byte) -> uint {
+pub func Find(haystack: *opaque, length: uint, value: byte) -> uint {
     if length == 0 {
         return 0;
     }

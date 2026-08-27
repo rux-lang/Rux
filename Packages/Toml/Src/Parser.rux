@@ -25,7 +25,7 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 /// Why parsing stopped.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-error
-enum TomlParseError: int32 {
+pub enum TomlParseError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The lexer refused the input; its reason is reported separately.
@@ -59,7 +59,7 @@ enum TomlParseError: int32 {
 /// What a parse will accept.
 ///
 /// https://rux-lang.dev/docs/api/toml/limits
-struct TomlLimits {
+pub struct TomlLimits {
     /// How deeply arrays and inline tables may nest.
     maximumDepth: uint;
 }
@@ -69,14 +69,14 @@ extend TomlLimits {
     /// document built to exhaust the stack does not.
     ///
     /// https://rux-lang.dev/docs/api/toml/limits/default
-    func Default() -> TomlLimits {
+    pub func Default() -> TomlLimits {
         return TomlLimits { maximumDepth: 64 };
     }
 
     /// Limits that refuse nothing, for input already known to be trustworthy.
     ///
     /// https://rux-lang.dev/docs/api/toml/limits/unlimited
-    func Unlimited() -> TomlLimits {
+    pub func Unlimited() -> TomlLimits {
         return TomlLimits { maximumDepth: 18446744073709551615u };
     }
 }
@@ -84,24 +84,24 @@ extend TomlLimits {
 /// The outcome of a parse: why it stopped, and where.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-outcome
-struct TomlParseOutcome {
+pub struct TomlParseOutcome {
     /// Why parsing stopped, or `None`.
-    error: TomlParseError;
+    pub error: TomlParseError;
     /// The lexer's reason, when `error` is `Lexical`.
     lexical: TomlLexError;
     /// The scalar reader's reason, when `error` is `BadValue`.
     scalar: TomlScalarError;
     /// Which line it stopped on, counting from one.
-    line: uint;
+    pub line: uint;
     /// Which column, counting from one, in bytes.
-    column: uint;
+    pub column: uint;
 }
 
 extend TomlParseOutcome {
     /// An outcome that has not failed, which is what a caller passes in to be filled.
     ///
     /// https://rux-lang.dev/docs/api/toml/parse-outcome/new
-    func TomlParseOutcome() -> TomlParseOutcome {
+    pub func TomlParseOutcome() -> TomlParseOutcome {
         return TomlParseOutcome {
             error: TomlParseError::None,
             lexical: TomlLexError::None,
@@ -116,7 +116,7 @@ extend TomlParseOutcome {
 /// A parser over a document.
 ///
 /// https://rux-lang.dev/docs/api/toml/parser
-struct TomlParser {
+pub struct TomlParser {
     /// Where tokens come from.
     lexer: TomlLexer;
     /// Where values are built.
@@ -137,7 +137,7 @@ extend TomlParser {
     /// A parser over `input` under `limits`.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/new
-    func TomlParser(allocator: Allocator, input: Slice<char8>, limits: TomlLimits) -> TomlParser {
+    pub func TomlParser(allocator: Allocator, input: Slice<char8>, limits: TomlLimits) -> TomlParser {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
         return TomlParser {
@@ -160,14 +160,14 @@ extend TomlParser {
     /// Why parsing stopped.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/outcome
-    func Outcome(self: &TomlParser) -> TomlParseOutcome {
+    pub func Outcome(self: &TomlParser) -> TomlParseOutcome {
         return self.outcome;
     }
 
     /// Whether parsing has failed.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/failed
-    func Failed(self: &TomlParser) -> bool {
+    pub func Failed(self: &TomlParser) -> bool {
         return self.outcome.error != TomlParseError::None;
     }
 
@@ -679,7 +679,7 @@ extend TomlParser {
     /// reads configuration; it does not edit files.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/parse
-    func Parse(self: &var TomlParser) -> TomlValue {
+    pub func Parse(self: &var TomlParser) -> TomlValue {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
         var current = @root;
@@ -717,7 +717,7 @@ extend TomlParser {
 /// Reads `input` into a table, reporting through `outcome` why it stopped if it did.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse
-func TomlParse(allocator: Allocator, input: Slice<char8>, outcome: *var TomlParseOutcome) -> TomlValue {
+pub func TomlParse(allocator: Allocator, input: Slice<char8>, outcome: *var TomlParseOutcome) -> TomlValue {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
     var root = parser.Parse();
     *outcome = parser.Outcome();

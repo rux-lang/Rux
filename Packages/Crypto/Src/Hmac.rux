@@ -26,7 +26,7 @@ const HmacOuterPad: uint8 = 0x5C;
 /// be a compile-time integer and a constant does not satisfy that yet.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hmac-maximum-block
-const HmacMaximumBlock: uint = 168;
+pub const HmacMaximumBlock: uint = 168;
 
 /// An incremental HMAC over any digest.
 ///
@@ -36,7 +36,7 @@ const HmacMaximumBlock: uint = 168;
 /// Structural `Copy` whenever `D` is copyable; copying snapshots both digest states independently.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hmac
-struct Hmac<D: Digest> {
+pub struct Hmac<D: Digest> {
     /// The inner hash, which sees the padded key followed by the message.
     inner: D;
     /// The outer hash, which sees the padded key followed by the inner digest.
@@ -53,7 +53,7 @@ extend Hmac<D> {
     /// they are the same key after this step. A shorter key is padded with zeros.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/new
-    func Hmac(prototype: D, key: Slice<char8>) -> Hmac<D> {
+    pub func Hmac(prototype: D, key: Slice<char8>) -> Hmac<D> {
         var probe = prototype;
         let blockLength = probe.BlockLength();
         let digestLength = probe.DigestLength();
@@ -102,14 +102,14 @@ extend Hmac<D> {
     /// Adds `bytes` to the message being authenticated.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/update
-    func Update<D: Digest>(self: &var Hmac<D>, bytes: Slice<char8>) {
+    pub func Update<D: Digest>(self: &var Hmac<D>, bytes: Slice<char8>) {
         self.inner.Update(bytes);
     }
 
     /// Writes the authentication tag into `into`.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/finish
-    func Finish<D: Digest>(self: &var Hmac<D>, into: MutableSlice<char8>) {
+    pub func Finish<D: Digest>(self: &var Hmac<D>, into: MutableSlice<char8>) {
         var innerDigest: char8[64];
         self.inner.Finish(MutableSlice::From<char8>(@innerDigest[0], self.digestLength));
         self.outer.Update(Slice<char8> { data: @innerDigest[0], length: self.digestLength });
@@ -119,7 +119,7 @@ extend Hmac<D> {
     /// How many bytes `Finish` writes: the underlying digest's length.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/tag-length
-    func TagLength<D: Digest>(self: &Hmac<D>) -> uint {
+    pub func TagLength<D: Digest>(self: &Hmac<D>) -> uint {
         return self.digestLength;
     }
 }
@@ -127,7 +127,7 @@ extend Hmac<D> {
 /// The HMAC of `message` under `key`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hmac-of
-func HmacOf<D: Digest>(prototype: D, key: Slice<char8>, message: Slice<char8>, into: MutableSlice<char8>) {
+pub func HmacOf<D: Digest>(prototype: D, key: Slice<char8>, message: Slice<char8>, into: MutableSlice<char8>) {
     var state = Hmac<D>(prototype, key);
     state.Update(message);
     state.Finish(into);

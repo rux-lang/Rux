@@ -11,7 +11,7 @@ import Core::Slice;
 /// The ordinals match the generated table and must not be reordered: the table stores them as numbers.
 ///
 /// https://rux-lang.dev/docs/api/unicode/general-category
-enum GeneralCategory: int32 {
+pub enum GeneralCategory: int32 {
     /// Unassigned, or outside every range.
     Unassigned = 0,
     /// Lu: an uppercase letter.
@@ -79,14 +79,14 @@ enum GeneralCategory: int32 {
 /// Runs in a handful of comparisons and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/unicode/category-of
-func CategoryOf(scalar: char32) -> GeneralCategory {
+pub func CategoryOf(scalar: char32) -> GeneralCategory {
     return RangeValue(CategoryRanges[..], scalar as uint32, 0) as GeneralCategory;
 }
 
 /// The canonical combining class of `scalar`: zero for nearly everything, and the reordering key for marks.
 ///
 /// https://rux-lang.dev/docs/api/unicode/combining-class-of
-func CombiningClassOf(scalar: char32) -> uint32 {
+pub func CombiningClassOf(scalar: char32) -> uint32 {
     return RangeValue(CombiningClassRanges[..], scalar as uint32, 0);
 }
 
@@ -96,20 +96,20 @@ func CombiningClassOf(scalar: char32) -> uint32 {
 /// are all here, which is what separates this from `Text`'s deliberately ASCII-only trimming.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-white-space
-func IsWhiteSpace(scalar: char32) -> bool {
+pub func IsWhiteSpace(scalar: char32) -> bool {
     return InRangePairs(WhiteSpaceRanges[..], scalar as uint32);
 }
 
 /// Whether `scalar` is alphabetic by the derived `Alphabetic` property.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-alphabetic
-func IsAlphabetic(scalar: char32) -> bool {
+pub func IsAlphabetic(scalar: char32) -> bool {
     return InRangePairs(AlphabeticRanges[..], scalar as uint32);
 }
 
 /// Whether `scalar` is numeric: a decimal digit, a letterlike number, or another number form.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-numeric
-func IsNumeric(scalar: char32) -> bool {
+pub func IsNumeric(scalar: char32) -> bool {
     return InRangePairs(NumericRanges[..], scalar as uint32);
 }

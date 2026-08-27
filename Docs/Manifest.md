@@ -83,6 +83,8 @@ Package types determine top-level command behavior:
 
 The retired `Program`, `Library`, and `Source` spellings are invalid and have no aliases. Dependency consumption remains source-based in 0.4.0 even when a local dependency declares `SharedLibrary` or `StaticLibrary`.
 
+The package named by `[Package].Name` is also the language visibility boundary. All of its source files and logical modules share package-private declarations and members. A dependency package sees only declarations marked `pub` whose complete containing module path is also public; the manifest dependency name does not re-export anything implicitly.
+
 `rux new` and `rux init` select mutually exclusive `--executable`, `--shared`, `--static`, and `--source` modes. Executable is the default; `--bin` and `--lib` are invalid.
 
 `[Build]` is optional. `Output` is a package-relative path and defaults to `Bin`. `[Build.Defines]` is an optional table whose values are exposed to compile-time configuration.
@@ -91,7 +93,7 @@ An ordinary artifact always writes to `<Output>/<Profile>/<OS>/<Arch>/`, includi
 
 `rux build --all` applies this layout to all eight canonical targets in both profiles, producing 16 distinct directories below the configured root. The [package build guide](Builds.md) lists their exact order and documents the matrix flag and reporting rules.
 
-Outputs that are not ordinary machine artifacts use the configured root explicitly. Native `rux test` artifacts go directly below the test manifest's `Output`; selecting another executable architecture adds the same OS and architecture components but no profile. `rux doc` defaults to `<Output>/Docs`, and `rux pack` writes its target-independent `.ruxpkg` directly to `<Output>`. `rux clean` removes exactly the configured output root and the package's `Temp` tree.
+Outputs that are not ordinary machine artifacts use the configured root explicitly. Native `rux test` artifacts go directly below the test manifest's `Output`; selecting another executable architecture adds the same OS and architecture components but no profile. `rux doc` defaults to `<Output>/Docs` and documents only effectively public declarations and public members; `--document-private-items` includes the complete package implementation. `rux pack` writes its target-independent `.ruxpkg` directly to `<Output>`. `rux clean` removes exactly the configured output root and the package's `Temp` tree.
 
 | Output kind                        | Layout                                  |
 | ---------------------------------- | --------------------------------------- |

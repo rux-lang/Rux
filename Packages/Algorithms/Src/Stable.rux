@@ -31,7 +31,7 @@ import Core::{ MutableSlice, Ordering };
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/required-scratch
-func RequiredScratch(length: uint) -> uint {
+pub func RequiredScratch(length: uint) -> uint {
     return length;
 }
 
@@ -48,7 +48,7 @@ func RequiredScratch(length: uint) -> uint {
 /// Makes O(n log n) comparisons and moves for every input -- there is no bad case -- and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort
-func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool {
+pub func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool {
     if items.length < 2 {
         return true;
     }
@@ -111,7 +111,7 @@ func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool {
 /// Makes O(n log n) comparisons and moves for every input, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort-by
-func StableSortBy<T>(items: MutableSlice<T>, scratch: MutableSlice<T>, compare: func(T, T) -> Ordering) -> bool {
+pub func StableSortBy<T>(items: MutableSlice<T>, scratch: MutableSlice<T>, compare: func(T, T) -> Ordering) -> bool {
     if items.length < 2 {
         return true;
     }

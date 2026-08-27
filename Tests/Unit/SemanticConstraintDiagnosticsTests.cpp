@@ -541,7 +541,7 @@ pub interface Measured {
     func Measure() -> int;
 }
 
-pub struct Square { size: int; }
+pub struct Square { pub size: int; }
 
 extend Square : Measured {
     func Measure(self: &Square) -> int { return self.size * self.size; }

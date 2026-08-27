@@ -7,13 +7,13 @@
 ///
 /// https://rux-lang.dev/docs/api/macos/rtld-lazy
 #Allow("naming.const")
-const RTLD_LAZY: int32 = 1;
+pub const RTLD_LAZY: int32 = 1;
 
 /// `RTLD_NOW`: resolve every symbol before `dlopen` returns.
 ///
 /// https://rux-lang.dev/docs/api/macos/rtld-now
 #Allow("naming.const")
-const RTLD_NOW: int32 = 2;
+pub const RTLD_NOW: int32 = 2;
 
 /// `RTLD_LOCAL`: keep this object's symbols to itself, which is Darwin's default.
 ///
@@ -22,10 +22,10 @@ const RTLD_NOW: int32 = 2;
 ///
 /// https://rux-lang.dev/docs/api/macos/rtld-local
 #Allow("naming.const")
-const RTLD_LOCAL: int32 = 4;
+pub const RTLD_LOCAL: int32 = 4;
 
 /// `RTLD_GLOBAL`: make this object's symbols available to objects loaded afterwards.
 ///
 /// https://rux-lang.dev/docs/api/macos/rtld-global
 #Allow("naming.const")
-const RTLD_GLOBAL: int32 = 8;
+pub const RTLD_GLOBAL: int32 = 8;

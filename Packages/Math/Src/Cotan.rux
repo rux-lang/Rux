@@ -1,7 +1,10 @@
 // Cotan is not 1 / Tan(x): that would round the tangent, then round its
 // reciprocal, and near a pole the first rounding is the whole answer. It is
 // instead the same kernel asked for the reciprocal directly.
-func Cotan(x: float64) -> float64 {
+/// Provides the public `Cotan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cotan
+pub func Cotan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if x != x {
         return x;
@@ -44,6 +47,9 @@ func Cotan(x: float64) -> float64 {
 
 // float32 has fewer bits than the float64 result is accurate to, so the
 // double-precision cotangent rounded once to float32 is faithful.
-func Cotan(x: float32) -> float32 {
+/// Provides the public `Cotan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cotan
+pub func Cotan(x: float32) -> float32 {
     return Cotan(x as float64) as float32;
 }

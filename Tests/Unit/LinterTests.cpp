@@ -367,6 +367,29 @@ func Open() -> int32 {
     CHECK(Messages(Rux::Linting::Lint(source, "docs.rux")).empty());
 }
 
+TEST_CASE("pub below a private module owes no public API documentation") {
+    const std::string source = R"(
+module Internal {
+    pub struct Detail {}
+    pub func Helper() {}
+}
+)";
+
+    CHECK(Messages(Rux::Linting::Lint(source, "private-module-docs.rux")).empty());
+}
+
+TEST_CASE("pub below a public module is linted as effective public API") {
+    const std::string source = R"(
+pub module Api::Nested {
+    pub func Open() {}
+}
+)";
+
+    const auto messages = Messages(Rux::Linting::Lint(source, "public-module-docs.rux"));
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "public function 'Open' has no documentation comment");
+}
+
 TEST_CASE("documentation without an API page is reported") {
     const std::string source = R"(
 /// Opens the handle.

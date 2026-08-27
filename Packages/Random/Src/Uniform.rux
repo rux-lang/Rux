@@ -20,7 +20,7 @@ import Math::{ IsInfinite, NextDown };
 /// Runs in constant expected time; the loop below runs more than once with probability under `bound / 2^64`.
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-below
-func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
+pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
     if bound == 0u64 {
         return 0u64;
     }
@@ -46,7 +46,7 @@ func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint6
 /// rather than by an arithmetic accident.
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-in-range
-func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high: uint64) -> uint64 {
+pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high: uint64) -> uint64 {
     if high < low {
         return low;
     }
@@ -64,7 +64,7 @@ func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high: ui
 /// the difference of the ends overflows a signed type -- is ordinary rather than a special case.
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-in-signed-range
-func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
+pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
     if high < low {
         return low;
     }
@@ -81,7 +81,7 @@ func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, hig
 /// wide that its span overflows to an infinity gives values across the whole of it rather than a NaN.
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-float-in-range
-func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64, high: float64) -> float64 {
+pub func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64, high: float64) -> float64 {
     if !(low < high) {
         return low;
     }

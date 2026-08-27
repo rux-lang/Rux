@@ -13,17 +13,26 @@ const Digits32 = 7u;
 
 // Whether the value is a NaN, on the same terms as the float64 overload: a
 // NaN is the only value not equal to itself.
-func IsNan(value: float32) -> bool {
+/// Provides the public `IsNan` operation.
+///
+/// https://rux-lang.dev/docs/api/format/is-nan
+pub func IsNan(value: float32) -> bool {
     return value != value;
 }
 
 // Whether the value is one of the two infinities.
-func IsInfinite(value: float32) -> bool {
+/// Provides the public `IsInfinite` operation.
+///
+/// https://rux-lang.dev/docs/api/format/is-infinite
+pub func IsInfinite(value: float32) -> bool {
     return value as float64 > MaxFinite32 || (value as float64) < -MaxFinite32;
 }
 
 // Whether the value is an ordinary number: neither a NaN nor an infinity.
-func IsFinite(value: float32) -> bool {
+/// Provides the public `IsFinite` operation.
+///
+/// https://rux-lang.dev/docs/api/format/is-finite
+pub func IsFinite(value: float32) -> bool {
     return value as float64 >= -MaxFinite32 && value as float64 <= MaxFinite32;
 }
 
@@ -34,7 +43,7 @@ extend float32 : Display {
     /// more than the longest rendering -- sign, digits, point and exponent -- can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format
-    func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var storage: char8[52];
         var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 50));
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
@@ -59,7 +68,7 @@ extend float32 : Debug {
     /// The same text.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format-debug
-    func FormatDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return self.Format(writer, spec);
     }
 }

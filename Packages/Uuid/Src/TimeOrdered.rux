@@ -21,7 +21,7 @@ import Time::Timestamp;
 /// timestamp-shaped value with no randomness -- which would be guessable and would look fine.
 ///
 /// https://rux-lang.dev/docs/api/uuid/time-ordered
-func TimeOrdered(error: *var EntropyError) -> Uuid {
+pub func TimeOrdered(error: *var EntropyError) -> Uuid {
     let now = Timestamp::Now();
     let milliseconds = (now.UnixSeconds() as uint64) * 1000u64 + ((now.SubsecondNanoseconds() / 1000000u32) as uint64);
     return TimeOrderedAt(milliseconds, error);
@@ -32,7 +32,7 @@ func TimeOrdered(error: *var EntropyError) -> Uuid {
 /// For reproducing an identifier from a recorded time, and for testing.
 ///
 /// https://rux-lang.dev/docs/api/uuid/time-ordered-at
-func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
+pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
     if *error != EntropyError::None {
@@ -56,7 +56,7 @@ func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
 /// Meaningless for any other version, which is why the version should be checked first.
 ///
 /// https://rux-lang.dev/docs/api/uuid/millisecond-of
-func MillisecondOf(value: &Uuid) -> uint64 {
+pub func MillisecondOf(value: &Uuid) -> uint64 {
     var milliseconds = 0u64;
     var index: uint = 0;
     while index < 6u {
@@ -77,7 +77,7 @@ func MillisecondOf(value: &Uuid) -> uint64 {
 /// serialize against each other or interleave into one sequence.
 ///
 /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid
-struct MonotonicUuid {
+pub struct MonotonicUuid {
     /// The last value returned, or nil before the first.
     previous: Uuid;
     /// Whether anything has been returned yet.
@@ -88,14 +88,14 @@ extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     ///
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
-    func MonotonicUuid() -> MonotonicUuid {
+    pub func MonotonicUuid() -> MonotonicUuid {
         return MonotonicUuid { previous: Uuid::Nil(), started: false };
     }
 
     /// The next identifier, strictly greater than the one before it.
     ///
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
-    func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
+    pub func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
         let candidate = TimeOrdered(error);
         if *error != EntropyError::None {
             return Uuid::Nil();

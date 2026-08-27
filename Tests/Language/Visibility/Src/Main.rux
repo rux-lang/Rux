@@ -1,0 +1,17 @@
+func Main() -> int {
+    let packageCounter = MakePackageCounter(7);
+    if packageCounter.Read() != 7 || packageCounter.value != 7 {
+        return 1;
+    }
+
+    let publicCounter = PublicCounter(4) + PublicCounter::Zero();
+    if publicCounter.value != 4 || publicCounter.Read() != 5 {
+        return 2;
+    }
+
+    let bits = PublicBits { signed: 9i32 };
+    if bits.signed != 9i32 {
+        return 3;
+    }
+    return 0;
+}

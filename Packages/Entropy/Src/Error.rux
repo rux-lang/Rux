@@ -14,7 +14,7 @@
 /// `None` means the whole buffer was filled. Every other value means nothing was written that a caller may rely on.
 ///
 /// https://rux-lang.dev/docs/api/entropy/entropy-error
-enum EntropyError {
+pub enum EntropyError {
     /// The whole buffer was filled with unpredictable bytes.
     None,
     /// This system has no entropy source this package can reach.
@@ -42,7 +42,7 @@ extend EntropyError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/entropy/entropy-error/is-ok
-    func IsOk(self: *EntropyError) -> bool {
+    pub func IsOk(self: *EntropyError) -> bool {
         return *self == EntropyError::None;
     }
 
@@ -54,7 +54,7 @@ extend EntropyError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/entropy/entropy-error/is-error
-    func IsError(self: *EntropyError) -> bool {
+    pub func IsError(self: *EntropyError) -> bool {
         return *self != EntropyError::None;
     }
 
@@ -67,7 +67,7 @@ extend EntropyError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/entropy/entropy-error/is-transient
-    func IsTransient(self: *EntropyError) -> bool {
+    pub func IsTransient(self: *EntropyError) -> bool {
         return *self == EntropyError::Interrupted;
     }
 }

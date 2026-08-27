@@ -10,24 +10,24 @@
 /// the constant it folds to; the text fields borrow the compiler's own storage, which outlives the program.
 ///
 /// https://rux-lang.dev/docs/api/core/source
-struct Source {
+pub struct Source {
     /// The one-based line of the reading expression.
-    line: uint;
+    pub line: uint;
     /// The one-based column of the reading expression.
-    column: uint;
+    pub column: uint;
     /// The source file as the build named it, which is the spelling a diagnostic uses.
-    file: Slice<char8>;
+    pub file: Slice<char8>;
     /// The file's last path component, with its extension.
-    fileName: Slice<char8>;
+    pub fileName: Slice<char8>;
     /// The file's path, relative to the package root where the file belongs to one.
-    filePath: Slice<char8>;
+    pub filePath: Slice<char8>;
     /// The enclosing function, qualified with its type for a method.
-    function: Slice<char8>;
+    pub function: Slice<char8>;
     /// The enclosing module path, relative to the package root.
-    module: Slice<char8>;
+    pub module: Slice<char8>;
 }
 
 /// The reading expression's own location, as a compile-time value.
 ///
 /// https://rux-lang.dev/docs/api/core/source
-intrinsic #source: Source;
+pub intrinsic #source: Source;

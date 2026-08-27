@@ -519,8 +519,9 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
         if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
             const FuncDecl *custom = nullptr;
             if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
-                if (const FuncDecl *operation = LookupMethod(type, "=", {type}); operation && operation->body) {
-                    custom = operation;
+                custom = LookupSourceSpecialOperation(type, "=", location);
+                if (!custom) {
+                    return;
                 }
             }
             valueCopies.insert_or_assign(&expression, ValueCopy{kind, type, custom, location});
@@ -585,8 +586,9 @@ void SemanticAnalyzerContext::ConsumeExplicitValue(const Expr &expression, const
         const bool constructsDestination = place.IsNamedStorage();
         const FuncDecl *custom = nullptr;
         if (constructsDestination && properties.moveOperation == TypeProperties::SpecialOperationState::Custom) {
-            if (const FuncDecl *operation = LookupMethod(type, "<-", {type}); operation && operation->body) {
-                custom = operation;
+            custom = LookupSourceSpecialOperation(type, "<-", location);
+            if (!custom) {
+                return;
             }
         }
         valueConsumptions.insert_or_assign(&expression, ValueConsumption{ValueConsumptionKind::ExplicitMove, type,

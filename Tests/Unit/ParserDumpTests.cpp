@@ -32,7 +32,7 @@ pub enum Choice<T>: uint8 {
 }
 
 pub union Bits {
-    signed: int32,
+    pub signed: int32,
     unsigned: uint32
 }
 
@@ -44,7 +44,7 @@ extend Box : Reader {
     func Read(self: &Box) -> int { return 1; }
 }
 
-pub module Nested {
+pub module Nested::Leaf {
     pub type Callback = func(int32) -> bool;
     pub const Limit: uint32 = 4;
 }
@@ -99,7 +99,7 @@ asm func Raw() {
     Variant 'Pair' (T, int32)
     Variant 'Named' { value: T; }
   pub UnionDecl 'Bits'
-    Field 'signed' : int32
+    pub Field 'signed' : int32
     Field 'unsigned' : uint32
   pub InterfaceDecl 'Reader'
     FuncDecl 'Read' (self: &Self) -> int [signature]
@@ -109,9 +109,10 @@ asm func Raw() {
         ReturnStmt
           LiteralExpr (int) '1'
   pub ModuleDecl 'Nested'
-    pub TypeAliasDecl 'Callback' = <type>
-    pub ConstDecl 'Limit' : uint32
-      LiteralExpr (int) '4'
+    pub ModuleDecl 'Leaf'
+      pub TypeAliasDecl 'Callback' = <type>
+      pub ConstDecl 'Limit' : uint32
+        LiteralExpr (int) '4'
   WhenDecl
     Branch
       Condition

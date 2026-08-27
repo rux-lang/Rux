@@ -50,7 +50,7 @@ import Core::{ MutableSlice, Ordering };
 /// O(log n) deep.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort
-func Sort<T>(items: MutableSlice<T>) {
+pub func Sort<T>(items: MutableSlice<T>) {
     let data = items.data;
     let length = items.length;
     if length < 2 {
@@ -81,7 +81,7 @@ func Sort<T>(items: MutableSlice<T>) {
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort-descending
-func SortDescending<T>(items: MutableSlice<T>) {
+pub func SortDescending<T>(items: MutableSlice<T>) {
     Sort<T>(items);
     Reverse<T>(items);
 }
@@ -102,7 +102,7 @@ func SortDescending<T>(items: MutableSlice<T>) {
 /// Requires `<` on the element type. Equal elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/nth-element
-func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
+pub func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
     let data = items.data;
     let length = items.length;
     if n >= length {
@@ -165,7 +165,7 @@ func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
 /// Requires `<` on the element type. Equal elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/partial-sort
-func PartialSort<T>(items: MutableSlice<T>, count: uint) -> bool {
+pub func PartialSort<T>(items: MutableSlice<T>, count: uint) -> bool {
     let data = items.data;
     let length = items.length;
     if count > length {
@@ -288,7 +288,10 @@ func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd
 }
 
 // Internal helper; not part of the package API.
-func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
+/// Provides the public `InsertionSortRange` operation.
+///
+/// https://rux-lang.dev/docs/api/algorithms/insertion-sort-range
+pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
     if high - low < 2 {
         return;
     }
@@ -345,7 +348,10 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 // The fallback that bounds the worst case. O(n log n) whatever the input, and
 // O(1) space, at a larger constant factor than quicksort — which is why it is
 // reached only once the recursion budget is spent.
-func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
+/// Provides the public `HeapSortRange` operation.
+///
+/// https://rux-lang.dev/docs/api/algorithms/heap-sort-range
+pub func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
     let count = high - low;
     if count < 2 {
         return;
@@ -426,7 +432,7 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 /// O(log n) deep. Equal elements may be reordered: this is not stable.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort-by
-func SortBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func SortBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     let data = items.data;
     let length = items.length;
     if length < 2 {
@@ -449,7 +455,7 @@ func SortBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
 /// reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sort-descending-by
-func SortDescendingBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
+pub func SortDescendingBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     SortBy<T>(items, compare);
     Reverse<T>(items);
 }
@@ -464,7 +470,7 @@ func SortDescendingBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering
 /// O(n) comparisons on average and O(n log n) at worst. Equivalent elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/nth-element-by
-func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ordering) -> bool {
+pub func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
     if n >= length {
@@ -518,7 +524,7 @@ func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ord
 /// O(n log count) comparisons. Equivalent elements may be reordered.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/partial-sort-by
-func PartialSortBy<T>(items: MutableSlice<T>, count: uint, compare: func(T, T) -> Ordering) -> bool {
+pub func PartialSortBy<T>(items: MutableSlice<T>, count: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
     if count > length {

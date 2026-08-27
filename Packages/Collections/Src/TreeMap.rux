@@ -19,7 +19,7 @@ import Core::{ Option, Ordering };
 /// Move-only: it owns every node and everything in them.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-map
-struct TreeMap<K, V> {
+pub struct TreeMap<K, V> {
     /// The nodes, and the balancing that keeps them shallow.
     tree: Tree<K, V>;
     /// The order the keys are kept in. Fixed when the map is made.
@@ -38,21 +38,21 @@ extend TreeMap<K, V> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/new
-    func TreeMap(allocator: Allocator, compare: func(K, K) -> Ordering) -> TreeMap<K, V> {
+    pub func TreeMap(allocator: Allocator, compare: func(K, K) -> Ordering) -> TreeMap<K, V> {
         return TreeMap<K, V> { tree: Tree<K, V>(allocator), compare: compare };
     }
 
     /// How many entries the map holds.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/length
-    func Length(self: &TreeMap<K, V>) -> uint {
+    pub func Length(self: &TreeMap<K, V>) -> uint {
         return self.tree.length;
     }
 
     /// Whether the map holds no entries.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/is-empty
-    func IsEmpty(self: &TreeMap<K, V>) -> bool {
+    pub func IsEmpty(self: &TreeMap<K, V>) -> bool {
         return self.tree.length == 0;
     }
 
@@ -61,14 +61,14 @@ extend TreeMap<K, V> {
     /// Runs in time proportional to the height, which is at most twice the logarithm of the length.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/contains-key
-    func ContainsKey(self: &TreeMap<K, V>, key: K) -> bool {
+    pub func ContainsKey(self: &TreeMap<K, V>, key: K) -> bool {
         return self.tree.Find(key, self.compare) != null;
     }
 
     /// A copy of the value stored under `key`, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/get
-    func Get(self: &TreeMap<K, V>, key: K) -> Option<V> {
+    pub func Get(self: &TreeMap<K, V>, key: K) -> Option<V> {
         let node = self.tree.Find(key, self.compare);
         if node == null {
             return Option::None<V>();
@@ -83,7 +83,7 @@ extend TreeMap<K, V> {
     /// key is removed or the map dies.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/reference
-    func Reference(self: &TreeMap<K, V>, key: K) -> Option<*V> {
+    pub func Reference(self: &TreeMap<K, V>, key: K) -> Option<*V> {
         let node = self.tree.Find(key, self.compare);
         if node == null {
             return Option::None<*V>();
@@ -98,7 +98,7 @@ extend TreeMap<K, V> {
     /// option of a writable pointer does not survive lowering; this is the same answer in the shape that does.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/try-reference-mutable
-    func TryReferenceMutable(self: &var TreeMap<K, V>, key: K, value: *var *var V) -> bool {
+    pub func TryReferenceMutable(self: &var TreeMap<K, V>, key: K, value: *var *var V) -> bool {
         let node = self.tree.Find(key, self.compare);
         if node == null {
             return false;
@@ -117,7 +117,7 @@ extend TreeMap<K, V> {
     /// new and nothing at all for one already there.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/insert
-    func Insert(self: &var TreeMap<K, V>, key: K, value: V) -> CollectionError {
+    pub func Insert(self: &var TreeMap<K, V>, key: K, value: V) -> CollectionError {
         var replaced = Option::None<V>();
         return self.tree.Attach(<-key, <-value, self.compare, @replaced);
     }
@@ -128,7 +128,7 @@ extend TreeMap<K, V> {
     /// caller distinguishing "nothing was there" from "nothing was stored" reads `error`.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/replace
-    func Replace(self: &var TreeMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
+    pub func Replace(self: &var TreeMap<K, V>, key: K, value: V, error: *var CollectionError) -> Option<V> {
         var replaced = Option::None<V>();
         *error = self.tree.Attach(<-key, <-value, self.compare, @replaced);
         return <-replaced;
@@ -139,7 +139,7 @@ extend TreeMap<K, V> {
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/remove
-    func Remove(self: &var TreeMap<K, V>, key: K) -> Option<V> {
+    pub func Remove(self: &var TreeMap<K, V>, key: K) -> Option<V> {
         let node = self.tree.Find(key, self.compare);
         if node == null {
             return Option::None<V>();
@@ -154,7 +154,7 @@ extend TreeMap<K, V> {
     /// the one every entry below it was ordered against, not the one just passed in.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/remove-entry
-    func RemoveEntry(self: &var TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
+    pub func RemoveEntry(self: &var TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         let node = self.tree.Find(key, self.compare);
         if node == null {
             return Option::None<KeyValue<K, V>>();
@@ -166,7 +166,7 @@ extend TreeMap<K, V> {
     /// Destroys every entry, leaving an empty map that is still usable.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/clear
-    func Clear(self: &var TreeMap<K, V>) {
+    pub func Clear(self: &var TreeMap<K, V>) {
         self.tree.Clear();
     }
 }
@@ -186,14 +186,14 @@ extend TreeMap<K, V> {
     /// Runs in time proportional to the height and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/first
-    func First(self: &TreeMap<K, V>) -> Option<KeyValue<K, V>> {
+    pub func First(self: &TreeMap<K, V>) -> Option<KeyValue<K, V>> {
         return TreeMap::EntryOf<K, V>(Tree::Minimum<K, V>(self.tree.root));
     }
 
     /// The entry with the largest key, or `None` for an empty map.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/last
-    func Last(self: &TreeMap<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Last(self: &TreeMap<K, V>) -> Option<KeyValue<K, V>> {
         return TreeMap::EntryOf<K, V>(Tree::Maximum<K, V>(self.tree.root));
     }
 
@@ -205,7 +205,7 @@ extend TreeMap<K, V> {
     /// Runs in time proportional to the height and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/floor
-    func Floor(self: &TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
+    pub func Floor(self: &TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.tree.root;
         while walk != null {
@@ -227,7 +227,7 @@ extend TreeMap<K, V> {
     /// The entry with the smallest key at or above `key`, or `None` when every key is below it.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/ceiling
-    func Ceiling(self: &TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
+    pub func Ceiling(self: &TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.tree.root;
         while walk != null {
@@ -253,7 +253,7 @@ extend TreeMap<K, V> {
 /// Copies each entry out as it goes, so the map is untouched and keeps everything it holds.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-map-iterator
-struct TreeMapIterator<K, V> {
+pub struct TreeMapIterator<K, V> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<K, V>;
 }
@@ -264,7 +264,7 @@ extend TreeMapIterator<K, V> {
     /// Runs in constant amortized time: every edge of the tree is crossed exactly twice across a whole walk.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map-iterator/next
-    func Next(self: &var TreeMapIterator<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Next(self: &var TreeMapIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = self.next;
         if node == null {
             return Option::None<KeyValue<K, V>>();
@@ -277,7 +277,7 @@ extend TreeMapIterator<K, V> {
 /// A walk over a borrowed map that stops at a bound.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-map-range-iterator
-struct TreeMapRangeIterator<K, V> {
+pub struct TreeMapRangeIterator<K, V> {
     /// The node to hand back next, or null when the walk is done.
     next: *var TreeNode<K, V>;
     /// The first key the walk will not hand back.
@@ -290,7 +290,7 @@ extend TreeMapRangeIterator<K, V> {
     /// The next entry below the bound, or `None` once the walk reaches it.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map-range-iterator/next
-    func Next(self: &var TreeMapRangeIterator<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Next(self: &var TreeMapRangeIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = self.next;
         if node == null {
             return Option::None<KeyValue<K, V>>();
@@ -310,7 +310,7 @@ extend TreeMapRangeIterator<K, V> {
 /// rest exactly once, and nothing already handed out is destroyed twice.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-map-into-iterator
-struct TreeMapIntoIterator<K, V> {
+pub struct TreeMapIntoIterator<K, V> {
     /// What is left of the map.
     tree: Tree<K, V>;
 }
@@ -326,7 +326,7 @@ extend TreeMapIntoIterator<K, V> {
     /// linearithmic where the borrowed walk is linear -- the price of handing out ownership one entry at a time.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map-into-iterator/next
-    func Next(self: &var TreeMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
+    pub func Next(self: &var TreeMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = Tree::Minimum<K, V>(self.tree.root);
         if node == null {
             return Option::None<KeyValue<K, V>>();
@@ -342,7 +342,7 @@ extend TreeMap<K, V> {
     /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/iterate
-    func Iterate(self: &TreeMap<K, V>) -> TreeMapIterator<K, V> {
+    pub func Iterate(self: &TreeMap<K, V>) -> TreeMapIterator<K, V> {
         return TreeMapIterator<K, V> { next: Tree::Minimum<K, V>(self.tree.root) };
     }
 
@@ -355,7 +355,7 @@ extend TreeMap<K, V> {
     /// cheap.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/range
-    func Range(self: &TreeMap<K, V>, start: K, end: K) -> TreeMapRangeIterator<K, V> {
+    pub func Range(self: &TreeMap<K, V>, start: K, end: K) -> TreeMapRangeIterator<K, V> {
         var first: *var TreeNode<K, V> = null;
         var walk = self.tree.root;
         while walk != null {
@@ -380,7 +380,7 @@ extend TreeMap<K, V> {
     /// Takes ownership; the map is gone afterwards.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map/into-iterator
-    func IntoIterator(self: TreeMap<K, V>) -> TreeMapIntoIterator<K, V> {
+    pub func IntoIterator(self: TreeMap<K, V>) -> TreeMapIntoIterator<K, V> {
         // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
         // function ends, and a map left holding the nodes would have its destructor free the very nodes the iterator
         // was handed.

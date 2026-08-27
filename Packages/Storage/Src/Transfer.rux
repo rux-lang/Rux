@@ -54,7 +54,7 @@ func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firs
 /// gap. Across volumes Windows copies and deletes instead -- not atomic -- and the Unix systems refuse.
 ///
 /// https://rux-lang.dev/docs/api/storage/rename
-func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
+pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
     var fromNative: *var OsUnit = null;
     var toNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
@@ -84,7 +84,7 @@ func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
 /// cannot be hard-linked on any supported system.
 ///
 /// https://rux-lang.dev/docs/api/storage/create-hard-link
-func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError {
+pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError {
     var existingNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, existing, link, @existingNative, @linkNative);
@@ -115,7 +115,7 @@ func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError
 /// a bug.
 ///
 /// https://rux-lang.dev/docs/api/storage/create-symbolic-link
-func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> IoError {
+pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> IoError {
     var targetNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, target, link, @targetNative, @linkNative);
@@ -148,7 +148,7 @@ func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIs
 /// the metadata are the destination's own, fresh -- carrying them is a policy the metadata work owns.
 ///
 /// https://rux-lang.dev/docs/api/storage/copy-file
-func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
+pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
     when #target.os == .Windows {
         var fromNative: *var OsUnit = null;
         var toNative: *var OsUnit = null;

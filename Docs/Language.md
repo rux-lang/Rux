@@ -4,6 +4,48 @@ This page is the settled contract for Rux values, borrowing, copying, moving, co
 
 The design favors locally visible ownership effects, explicit signatures, and separate syntax for safe borrowing and raw addresses. Declarations and members remain private by default and use `pub` for public API. A `struct` declares layout, while functions, operators, constructors, destructors, and interface implementations live in `extend` blocks.
 
+## Package Visibility
+
+Every source declaration is package-private unless it starts with `pub`. Package-private means that every file and module in the defining package can use it; it does not mean file-private or module-private. A dependent package can import or name only effectively public API:
+
+```rux
+func Helper() {}          // visible throughout this package
+pub func Parse() {}       // visible to dependent packages
+
+pub module Text::Utf8 {
+    pub func Validate() {}
+    func DecodeUnit() {}  // still package-private
+}
+```
+
+A public item is effectively public only when every module containing it is public. `pub module Text::Utf8` publishes both synthesized path segments. A `pub` declaration below a private module remains package-private. Named, multi-item, and qualified imports report an attempt to import a private declaration and point back to its declaration; a glob import simply omits private declarations. When a function or method name has public and private overloads, cross-package overload resolution sees only the public set, and diagnostics do not reveal the private candidates.
+
+Struct and union fields, methods, associated functions, constructors, and source-level operators also default to package-private:
+
+```rux
+pub struct Buffer {
+    pub length: uint;
+    data: *var char8;
+}
+
+pub union Word {
+    pub unsigned: uint32,
+    signed: int32
+}
+
+extend Buffer {
+    pub func Buffer() -> Buffer { /* ... */ }
+    pub func Length(self: &Buffer) -> uint { return self.length; }
+    func Capacity(self: &Buffer) -> uint { /* package helper */ }
+}
+```
+
+An external struct initializer must be able to name every field, so a public struct with private representation fields is constructed through a public constructor or factory. Enum variants and their payload fields inherit the enum's effective visibility; they do not take individual `pub` markers. Interface requirements likewise inherit the interface's visibility. A concrete method may remain private while satisfying a public interface: dispatch through the public interface is allowed, but a direct call on the concrete type is not.
+
+Compiler-generated copy and move operations are available wherever their type is available. A custom copy or move implementation, like any other source operator, must be `pub` for cross-package source use. A canonical bodyless copy or move declaration still prohibits the capability everywhere regardless of visibility. Destructors are invoked by compiler glue regardless of visibility and normally remain private.
+
+Public API signatures must close over public types. An effectively public function, method, constructor, alias, constant, extern, generic bound, field, enum payload, or interface requirement cannot expose a private type through a parameter, return, inferred type, nested generic argument, or bound. Publishing an item does not implicitly re-export the private declarations used by its signature; the compiler rejects the leak instead.
+
 ## Bindings and Parameters
 
 Bindings have three forms:

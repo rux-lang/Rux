@@ -46,7 +46,7 @@ func RotateRight32(value: uint32, amount: uint32) -> uint32 {
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha256
-struct Sha256 {
+pub struct Sha256 {
     /// The eight working words.
     state: uint32[8];
     /// Bytes not yet part of a full block.
@@ -63,7 +63,7 @@ extend Sha256 {
     /// A SHA-256 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/new
-    func Sha256() -> Sha256 {
+    pub func Sha256() -> Sha256 {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64u {
@@ -76,7 +76,7 @@ extend Sha256 {
     /// A SHA-224 state: the same compression function from a different start, keeping seven words of the result.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/new-224
-    func New224() -> Sha256 {
+    pub func New224() -> Sha256 {
         var digest: Sha256;
         digest.state = Sha224InitialState;
         digest.buffered = 0;
@@ -151,7 +151,7 @@ extend Sha256 : Digest {
     /// the buffer is only compressed once it is full.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/update
-    func Update(self: &var Sha256, bytes: Slice<char8>) {
+    pub func Update(self: &var Sha256, bytes: Slice<char8>) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         // Finish whatever partial block is already held before taking whole blocks directly.
@@ -185,7 +185,7 @@ extend Sha256 : Digest {
     /// implementation from one that passes the short vectors.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/finish
-    func Finish(self: &var Sha256, into: MutableSlice<char8>) {
+    pub func Finish(self: &var Sha256, into: MutableSlice<char8>) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -223,14 +223,14 @@ extend Sha256 : Digest {
     /// Thirty-two bytes for SHA-256, twenty-eight for SHA-224.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/digest-length
-    func DigestLength(self: &Sha256) -> uint {
+    pub func DigestLength(self: &Sha256) -> uint {
         return self.outputLength;
     }
 
     /// Sixty-four bytes, for both.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/block-length
-    func BlockLength(self: &Sha256) -> uint {
+    pub func BlockLength(self: &Sha256) -> uint {
         return 64u;
     }
 }
@@ -238,7 +238,7 @@ extend Sha256 : Digest {
 /// The SHA-256 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha256-of
-func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha256();
     digest.Update(bytes);
     digest.Finish(into);
@@ -247,7 +247,7 @@ func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA-224 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha224-of
-func Sha224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha256::New224();
     digest.Update(bytes);
     digest.Finish(into);

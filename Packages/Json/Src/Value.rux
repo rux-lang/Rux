@@ -20,7 +20,7 @@ import Text::{ String, StringView, TextError };
 /// Which kind of JSON value this is.
 ///
 /// https://rux-lang.dev/docs/api/json/value-kind
-enum JsonKind: int32 {
+pub enum JsonKind: int32 {
     /// The literal `null`.
     Null = 0,
     /// `true` or `false`.
@@ -42,7 +42,7 @@ enum JsonKind: int32 {
 /// text is also what lets a document round-trip exactly, which a parser converting to a double cannot do.
 ///
 /// https://rux-lang.dev/docs/api/json/json-number
-struct JsonNumber {
+pub struct JsonNumber {
     /// The number exactly as it was written.
     text: String;
 }
@@ -51,7 +51,7 @@ extend JsonNumber {
     /// A number from its text, which is copied.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/new
-    func New(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonNumber {
+    pub func New(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonNumber {
         // The bytes of a number are always ASCII, so the validated constructor is sound here and cheaper than
         // re-checking them.
         var held = String::FromBytes(allocator, text, error);
@@ -61,7 +61,7 @@ extend JsonNumber {
     /// The number exactly as written.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/text
-    func Text(self: &JsonNumber) -> StringView {
+    pub func Text(self: &JsonNumber) -> StringView {
         return self.text.View();
     }
 
@@ -71,7 +71,7 @@ extend JsonNumber {
     /// not an integer in JSON's grammar and pretending otherwise loses the distinction a document was making.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/as-int64
-    func AsInt64(self: &JsonNumber, result: *var int64) -> bool {
+    pub func AsInt64(self: &JsonNumber, result: *var int64) -> bool {
         let parsed = ParseInt64(self.text.View().Bytes());
         if parsed.IsError() {
             return false;
@@ -83,7 +83,7 @@ extend JsonNumber {
     /// The value as an unsigned integer, or `false` if it does not fit one.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/as-uint64
-    func AsUint64(self: &JsonNumber, result: *var uint64) -> bool {
+    pub func AsUint64(self: &JsonNumber, result: *var uint64) -> bool {
         let parsed = ParseUint64(self.text.View().Bytes());
         if parsed.IsError() {
             return false;
@@ -98,7 +98,7 @@ extend JsonNumber {
     /// exactness should ask for an integer or read the text.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/as-float64
-    func AsFloat64(self: &JsonNumber, result: *var float64) -> bool {
+    pub func AsFloat64(self: &JsonNumber, result: *var float64) -> bool {
         let parsed = ParseFloat64(self.text.View().Bytes());
         if parsed.IsError() {
             return false;
@@ -110,7 +110,7 @@ extend JsonNumber {
     /// Whether the text has no fraction and no exponent, so it denotes an integer.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/is-integral
-    func IsIntegral(self: &JsonNumber) -> bool {
+    pub func IsIntegral(self: &JsonNumber) -> bool {
         let bytes = self.text.View().Bytes();
         var index: uint = 0;
         while index < bytes.length {
@@ -126,7 +126,7 @@ extend JsonNumber {
     /// Gives the text back.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/release
-    func Release(self: &var JsonNumber) {
+    pub func Release(self: &var JsonNumber) {
         self.text.Clear();
     }
 }
@@ -134,11 +134,11 @@ extend JsonNumber {
 /// A name-value pair inside an object.
 ///
 /// https://rux-lang.dev/docs/api/json/json-member
-struct JsonMember {
+pub struct JsonMember {
     /// The member's name.
-    name: String;
+    pub name: String;
     /// The member's value.
-    value: JsonValue;
+    pub value: JsonValue;
 }
 
 /// A JSON value: one of the six kinds, owning whatever it holds.
@@ -151,9 +151,9 @@ struct JsonMember {
 /// reports failure rather than reinterpreting the bytes.
 ///
 /// https://rux-lang.dev/docs/api/json/json-value
-struct JsonValue {
+pub struct JsonValue {
     /// Which of the six kinds this is.
-    kind: JsonKind;
+    pub kind: JsonKind;
     /// The payload of a `Boolean`.
     boolean: bool;
     /// The payload of a `Number`.
@@ -175,7 +175,7 @@ extend JsonValue {
     /// The literal `null`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/null
-    func Null(allocator: Allocator) -> JsonValue {
+    pub func Null(allocator: Allocator) -> JsonValue {
         var textError = TextError::None;
         return JsonValue {
             kind: JsonKind::Null,
@@ -191,7 +191,7 @@ extend JsonValue {
     /// A boolean value.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/boolean
-    func Boolean(allocator: Allocator, value: bool) -> JsonValue {
+    pub func Boolean(allocator: Allocator, value: bool) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Boolean;
         held.boolean = value;
@@ -201,7 +201,7 @@ extend JsonValue {
     /// A number, from the text it was written with.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/number
-    func Number(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonValue {
+    pub func Number(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = JsonNumber::New(allocator, text, error);
@@ -211,7 +211,7 @@ extend JsonValue {
     /// A string value.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/text
-    func Text(allocator: Allocator, value: Slice<char8>, error: *var TextError) -> JsonValue {
+    pub func Text(allocator: Allocator, value: Slice<char8>, error: *var TextError) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Text;
         held.text = String::FromBytes(allocator, value, error);
@@ -221,7 +221,7 @@ extend JsonValue {
     /// An empty array.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/array
-    func Array(allocator: Allocator) -> JsonValue {
+    pub func Array(allocator: Allocator) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Array;
         return <-held;
@@ -230,7 +230,7 @@ extend JsonValue {
     /// An empty object.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/object
-    func Object(allocator: Allocator) -> JsonValue {
+    pub func Object(allocator: Allocator) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Object;
         return <-held;
@@ -239,14 +239,14 @@ extend JsonValue {
     /// Which kind this value is.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/kind
-    func Kind(self: &JsonValue) -> JsonKind {
+    pub func Kind(self: &JsonValue) -> JsonKind {
         return self.kind;
     }
 
     /// Whether this is `null`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/is-null
-    func IsNull(self: &JsonValue) -> bool {
+    pub func IsNull(self: &JsonValue) -> bool {
         return self.kind == JsonKind::Null;
     }
 
@@ -254,7 +254,7 @@ extend JsonValue {
     /// `false`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-boolean
-    func AsBoolean(self: &JsonValue, result: *var bool) -> bool {
+    pub func AsBoolean(self: &JsonValue, result: *var bool) -> bool {
         if self.kind != JsonKind::Boolean {
             return false;
         }
@@ -265,14 +265,14 @@ extend JsonValue {
     /// The number payload, borrowed.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-number
-    func AsNumber(self: &JsonValue) -> *JsonNumber {
+    pub func AsNumber(self: &JsonValue) -> *JsonNumber {
         return @self.number;
     }
 
     /// The string payload, or an empty view when this is not a string.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-text
-    func AsText(self: &JsonValue) -> StringView {
+    pub func AsText(self: &JsonValue) -> StringView {
         if self.kind != JsonKind::Text {
             return StringView();
         }
@@ -282,7 +282,7 @@ extend JsonValue {
     /// How many elements an array holds, or members an object holds; zero for anything else.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/length
-    func Length(self: &JsonValue) -> uint {
+    pub func Length(self: &JsonValue) -> uint {
         if self.kind == JsonKind::Array {
             return self.elements.Length();
         }
@@ -300,7 +300,7 @@ extend JsonValue {
     /// a caller does not have to decide who owns it on failure.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/push
-    func Push(self: &var JsonValue, value: JsonValue) -> bool {
+    pub func Push(self: &var JsonValue, value: JsonValue) -> bool {
         if self.kind != JsonKind::Array {
             return false;
         }
@@ -314,7 +314,7 @@ extend JsonValue {
     /// the caller can choose it.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/insert
-    func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
+    pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
         if self.kind != JsonKind::Object {
             return false;
         }
@@ -325,7 +325,7 @@ extend JsonValue {
     /// The element at `index`, borrowed, or null when there is none.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/at
-    func At(self: &JsonValue, index: uint) -> *JsonValue {
+    pub func At(self: &JsonValue, index: uint) -> *JsonValue {
         if self.kind != JsonKind::Array || index >= self.elements.Length() {
             return null;
         }
@@ -339,7 +339,7 @@ extend JsonValue {
     /// since that is the one a reader encounters.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/find
-    func Find(self: &JsonValue, name: StringView) -> *JsonValue {
+    pub func Find(self: &JsonValue, name: StringView) -> *JsonValue {
         if self.kind != JsonKind::Object {
             return null;
         }
@@ -358,7 +358,7 @@ extend JsonValue {
     /// The member at `index`, borrowed, or null when there is none.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/member-at
-    func MemberAt(self: &JsonValue, index: uint) -> *JsonMember {
+    pub func MemberAt(self: &JsonValue, index: uint) -> *JsonMember {
         if self.kind != JsonKind::Object || index >= self.members.Length() {
             return null;
         }
@@ -378,7 +378,7 @@ extend JsonValue {
     /// rules will not allow silently. Duplicates are rare enough that the cost never matters.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/remove-first
-    func RemoveFirst(self: &var JsonValue, name: StringView) -> bool {
+    pub func RemoveFirst(self: &var JsonValue, name: StringView) -> bool {
         if self.kind != JsonKind::Object {
             return false;
         }

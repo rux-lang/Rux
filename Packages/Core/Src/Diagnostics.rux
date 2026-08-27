@@ -22,7 +22,7 @@
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/assert
-intrinsic func Assert(condition: bool, message: Slice<char8>);
+pub intrinsic func Assert(condition: bool, message: Slice<char8>);
 
 /// Terminates the program unless `condition` holds, in builds that keep debug assertions.
 ///
@@ -35,7 +35,7 @@ intrinsic func Assert(condition: bool, message: Slice<char8>);
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/debug-assert
-intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
+pub intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
 
 /// Terminates the program, reporting `message`.
 ///
@@ -48,7 +48,7 @@ intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
 /// Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/panic
-intrinsic func Panic(message: Slice<char8>);
+pub intrinsic func Panic(message: Slice<char8>);
 
 /// Rejects the build where it is written, reporting `message`.
 ///
@@ -58,7 +58,7 @@ intrinsic func Panic(message: Slice<char8>);
 /// Cannot fail at run time, because it does not reach run time. Costs nothing in the built program.
 ///
 /// https://rux-lang.dev/docs/api/core/error
-intrinsic func #Error(message: Slice<char8>);
+pub intrinsic func #Error(message: Slice<char8>);
 
 /// Reports `message` as a compilation warning where it is written, without rejecting the build.
 ///
@@ -68,4 +68,4 @@ intrinsic func #Error(message: Slice<char8>);
 /// Cannot fail. Costs nothing in the built program.
 ///
 /// https://rux-lang.dev/docs/api/core/warn
-intrinsic func #Warn(message: Slice<char8>);
+pub intrinsic func #Warn(message: Slice<char8>);

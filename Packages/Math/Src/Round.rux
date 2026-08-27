@@ -6,7 +6,10 @@
 // exactly 1.0, so that argument would round to one instead of to zero.
 // Taking the fractional part first avoids the question: x - Trunc(x) is
 // exact, because both are representable and their difference is under one.
-func Round(x: float64) -> float64 {
+/// Provides the public `Round` operation.
+///
+/// https://rux-lang.dev/docs/api/math/round
+pub func Round(x: float64) -> float64 {
     let t = Trunc(x);
     let frac = x - t;
 
@@ -22,6 +25,9 @@ func Round(x: float64) -> float64 {
     return t;
 }
 
-func Round(x: float32) -> float32 {
+/// Provides the public `Round` operation.
+///
+/// https://rux-lang.dev/docs/api/math/round
+pub func Round(x: float32) -> float32 {
     return Round(x as float64) as float32;
 }

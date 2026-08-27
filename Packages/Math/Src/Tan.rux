@@ -1,7 +1,10 @@
 // **Accuracy: error at most 1 ulp.** Near an odd multiple of Pi/2 the true
 // value is unbounded, and the answer there is as accurate as the reduced
 // argument allows -- which, the reduction being exact, is fully accurate.
-func Tan(x: float64) -> float64 {
+/// Provides the public `Tan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/tan
+pub func Tan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if x != x {
         return x;
@@ -34,6 +37,9 @@ func Tan(x: float64) -> float64 {
 
 // float32 has fewer bits than the float64 result is accurate to, so the
 // double-precision tangent rounded once to float32 is faithful.
-func Tan(x: float32) -> float32 {
+/// Provides the public `Tan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/tan
+pub func Tan(x: float32) -> float32 {
     return Tan(x as float64) as float32;
 }

@@ -13,7 +13,7 @@
 /// `Equals` reports true.
 ///
 /// https://rux-lang.dev/docs/api/core/comparable
-interface Comparable {
+pub interface Comparable {
     /// Compares this value against `other`.
     ///
     /// Borrows both operands and takes ownership of neither. The reference guarantees that `other` is present.

@@ -32,6 +32,28 @@ template <typename Range, typename Projection>
     return result;
 }
 
+template <typename Range, typename Projection, typename Predicate>
+[[nodiscard]] std::string AvailableNamesIf(const Range &values, Projection projection, Predicate predicate) {
+    std::vector<std::string> names;
+    for (const auto &value : values) {
+        if (predicate(value)) {
+            names.push_back(std::format("'{}'", projection(value)));
+        }
+    }
+    std::ranges::sort(names);
+    if (names.empty()) {
+        return "none";
+    }
+    std::string result;
+    for (std::size_t index = 0; index < names.size(); ++index) {
+        if (index != 0) {
+            result += index + 1 == names.size() ? " and " : ", ";
+        }
+        result += names[index];
+    }
+    return result;
+}
+
 } // namespace
 
 std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) const {
@@ -204,12 +226,19 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                         return candidate.name == field.name;
                     });
                 if (expectedField == unionType->second->fields.end()) {
-                    EmitError(
-                        field.location, std::format("union '{}' has no field '{}'", expression.typeName, field.name),
-                        {std::format("available fields are {}",
-                                     AvailableNames(unionType->second->fields, [](const UnionDecl::Field &candidate) {
-                                         return candidate.name;
-                                     }))});
+                    EmitError(field.location,
+                              std::format("union '{}' has no field '{}'", expression.typeName, field.name),
+                              {std::format("available fields are {}",
+                                           AvailableNamesIf(
+                                               unionType->second->fields,
+                                               [](const UnionDecl::Field &candidate) { return candidate.name; },
+                                               [this, &unionType](const UnionDecl::Field &candidate) {
+                                                   return IsMemberAccessible(*unionType->second, candidate.isPublic);
+                                               }))});
+                    continue;
+                }
+                if (!IsMemberAccessible(*unionType->second, expectedField->isPublic)) {
+                    EmitPrivateMemberError(field.location, *unionType->second, "union field", field.name);
                     continue;
                 }
                 const TypeRef fieldType = ResolveType(*expectedField->type);
@@ -352,10 +381,19 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
 
         const auto expectedField = fields.find(field.name);
         if (expectedField == fields.end()) {
-            EmitError(field.location, std::format("struct '{}' has no field '{}'", expression.typeName, field.name),
-                      {std::format("available fields are {}",
-                                   AvailableNames(declaration.fields,
-                                                  [](const StructDecl::Field &candidate) { return candidate.name; }))});
+            EmitError(
+                field.location, std::format("struct '{}' has no field '{}'", expression.typeName, field.name),
+                {std::format("available fields are {}",
+                             AvailableNamesIf(
+                                 declaration.fields, [](const StructDecl::Field &candidate) { return candidate.name; },
+                                 [this, &declaration](const StructDecl::Field &candidate) {
+                                     return IsMemberAccessible(declaration, candidate.isPublic);
+                                 }))});
+            continue;
+        }
+
+        if (!IsMemberAccessible(declaration, expectedField->second->isPublic)) {
+            EmitPrivateMemberError(field.location, declaration, "struct field", field.name);
             continue;
         }
 
@@ -375,7 +413,12 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
         }
     }
 
+    bool hasInaccessibleField = false;
     for (const auto &field : declaration.fields) {
+        if (!IsMemberAccessible(declaration, field.isPublic)) {
+            hasInaccessibleField = true;
+            continue;
+        }
         if (!initialized.contains(field.name)) {
             EmitError(
                 expression.location,
@@ -383,6 +426,12 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                 {std::format("field '{}' declared at line {}, column {}", field.name, field.location.line,
                              field.location.column)});
         }
+    }
+    if (hasInaccessibleField) {
+        EmitError(expression.location,
+                  std::format("struct '{}' cannot be initialized outside its package because it has private fields",
+                              expression.typeName),
+                  {}, "use a public constructor instead");
     }
 }
 
@@ -502,24 +551,45 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
 
         const std::string structName = NamedBaseTypeName(objectType);
         if (!structName.empty() && structDecls.contains(structName)) {
+            const StructDecl &declaration = *structDecls.at(structName);
+            const auto member = std::ranges::find_if(
+                declaration.fields, [&](const StructDecl::Field &candidate) { return candidate.name == field->field; });
+            if (member != declaration.fields.end() && !IsMemberAccessible(declaration, member->isPublic)) {
+                EmitPrivateMemberError(field->location, declaration, "struct field", field->field);
+                return TypeRef::MakeUnknown();
+            }
             if (TypeRef fieldType = StructFieldType(objectType, field->field); !fieldType.IsUnknown()) {
                 return fieldType;
             }
-            EmitError(field->location,
-                      std::format("struct '{}' has no field '{}'", objectType.ToString(), field->field),
-                      {std::format("available fields are {}",
-                                   AvailableNames(structDecls.at(structName)->fields,
-                                                  [](const StructDecl::Field &candidate) { return candidate.name; }))});
+            EmitError(
+                field->location, std::format("struct '{}' has no field '{}'", objectType.ToString(), field->field),
+                {std::format("available fields are {}",
+                             AvailableNamesIf(
+                                 declaration.fields, [](const StructDecl::Field &candidate) { return candidate.name; },
+                                 [this, &declaration](const StructDecl::Field &candidate) {
+                                     return IsMemberAccessible(declaration, candidate.isPublic);
+                                 }))});
             return TypeRef::MakeUnknown();
         }
         if (!structName.empty() && unionDecls.contains(structName)) {
+            const UnionDecl &declaration = *unionDecls.at(structName);
+            const auto member = std::ranges::find_if(
+                declaration.fields, [&](const UnionDecl::Field &candidate) { return candidate.name == field->field; });
+            if (member != declaration.fields.end() && !IsMemberAccessible(declaration, member->isPublic)) {
+                EmitPrivateMemberError(field->location, declaration, "union field", field->field);
+                return TypeRef::MakeUnknown();
+            }
             if (TypeRef fieldType = StructFieldType(objectType, field->field); !fieldType.IsUnknown()) {
                 return fieldType;
             }
-            EmitError(field->location, std::format("union '{}' has no field '{}'", objectType.ToString(), field->field),
-                      {std::format("available fields are {}",
-                                   AvailableNames(unionDecls.at(structName)->fields,
-                                                  [](const UnionDecl::Field &candidate) { return candidate.name; }))});
+            EmitError(
+                field->location, std::format("union '{}' has no field '{}'", objectType.ToString(), field->field),
+                {std::format("available fields are {}",
+                             AvailableNamesIf(
+                                 declaration.fields, [](const UnionDecl::Field &candidate) { return candidate.name; },
+                                 [this, &declaration](const UnionDecl::Field &candidate) {
+                                     return IsMemberAccessible(declaration, candidate.isPublic);
+                                 }))});
             return TypeRef::MakeUnknown();
         }
 

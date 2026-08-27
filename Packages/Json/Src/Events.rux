@@ -20,7 +20,7 @@ import Io::{ IoError, IoErrorKind, Reader };
 /// What just happened in the document.
 ///
 /// https://rux-lang.dev/docs/api/json/json-event
-enum JsonEvent: int32 {
+pub enum JsonEvent: int32 {
     /// The document is finished.
     End = 0,
     /// An object opened.
@@ -50,7 +50,7 @@ enum JsonEvent: int32 {
 /// Reads a document as events, pulling bytes as it needs them.
 ///
 /// https://rux-lang.dev/docs/api/json/json-event-reader
-struct JsonEventReader {
+pub struct JsonEventReader {
     /// Where bytes come from.
     source: Reader;
     /// Bytes read and not yet consumed.
@@ -60,7 +60,7 @@ struct JsonEventReader {
     /// How much of it holds bytes.
     filled: uint;
     /// How far into it reading has reached.
-    position: uint;
+    pub position: uint;
     /// Whether the source is exhausted.
     exhausted: bool;
     /// Where the buffer came from.
@@ -80,7 +80,7 @@ struct JsonEventReader {
     /// Why reading stopped.
     failure: JsonParseError;
     /// The lexer's reason, when the failure was lexical.
-    lexical: JsonLexError;
+    pub lexical: JsonLexError;
     /// Whether a value is expected next rather than a name or a separator.
     expectingValue: bool;
 }
@@ -95,7 +95,7 @@ extend JsonEventReader {
     /// A reader over `source` under `limits`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/new
-    func New(allocator: Allocator, source: Reader, limits: JsonLimits,
+    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits,
              error: *var IoError) -> JsonEventReader {
         *error = IoError::Ok();
         var reader = JsonEventReader {
@@ -119,14 +119,14 @@ extend JsonEventReader {
     /// Why reading stopped, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/failure
-    func Failure(self: &JsonEventReader) -> JsonParseError {
+    pub func Failure(self: &JsonEventReader) -> JsonParseError {
         return self.failure;
     }
 
     /// The lexer's reason, when the failure was lexical.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/lexical-failure
-    func LexicalFailure(self: &JsonEventReader) -> JsonLexError {
+    pub func LexicalFailure(self: &JsonEventReader) -> JsonLexError {
         return self.lexical;
     }
 
@@ -136,21 +136,21 @@ extend JsonEventReader {
     /// and a caller skipping past a field should not pay for its contents.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/text
-    func Text(self: &JsonEventReader) -> Slice<char8> {
+    pub func Text(self: &JsonEventReader) -> Slice<char8> {
         return Slice<char8> { data: @self.data[self.tokenStart], length: self.tokenEnd - self.tokenStart };
     }
 
     /// Whether that text holds escapes a caller must resolve.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/text-is-escaped
-    func TextIsEscaped(self: &JsonEventReader) -> bool {
+    pub func TextIsEscaped(self: &JsonEventReader) -> bool {
         return self.tokenEscaped;
     }
 
     /// How deeply nested the reader currently is.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/depth
-    func Depth(self: &JsonEventReader) -> uint {
+    pub func Depth(self: &JsonEventReader) -> uint {
         return self.depth;
     }
 
@@ -211,7 +211,7 @@ extend JsonEventReader {
     /// Gives the buffer back.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/release
-    func Release(self: &var JsonEventReader) {
+    pub func Release(self: &var JsonEventReader) {
         if self.data != null {
             var borrowed = self.allocator;
             let held = Layout { size: self.capacity, alignment: 1 };
@@ -367,7 +367,7 @@ extend JsonEventReader {
     /// the level a streaming reader is useful at.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/next
-    func Next(self: &var JsonEventReader) -> JsonEvent {
+    pub func Next(self: &var JsonEventReader) -> JsonEvent {
         if self.failure != JsonParseError::None {
             return JsonEvent::Error;
         }

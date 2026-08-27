@@ -19,7 +19,7 @@
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/bit-width-of
-func BitWidthOf<T>(sample: T) -> uint64 {
+pub func BitWidthOf<T>(sample: T) -> uint64 {
     return sizeof(T) * 8u64;
 }
 
@@ -32,7 +32,7 @@ func BitWidthOf<T>(sample: T) -> uint64 {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/shift-right-logical
-func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
+pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
     if amount == 0u64 {
         return value;
@@ -55,7 +55,7 @@ func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/bit-at
-func BitAt<T>(value: T, index: uint64) -> bool {
+pub func BitAt<T>(value: T, index: uint64) -> bool {
     let zero = value - value;
     if index >= sizeof(T) * 8u64 {
         return false;
@@ -71,7 +71,7 @@ func BitAt<T>(value: T, index: uint64) -> bool {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/count-ones
-func CountOnes<T>(value: T) -> uint32 {
+pub func CountOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var count = 0u32;
     var index = 0u64;
@@ -91,7 +91,7 @@ func CountOnes<T>(value: T) -> uint32 {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/count-zeros
-func CountZeros<T>(value: T) -> uint32 {
+pub func CountZeros<T>(value: T) -> uint32 {
     return (sizeof(T) * 8u64) as uint32 - CountOnes<T>(value);
 }
 
@@ -102,7 +102,7 @@ func CountZeros<T>(value: T) -> uint32 {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/leading-zeros
-func LeadingZeros<T>(value: T) -> uint32 {
+pub func LeadingZeros<T>(value: T) -> uint32 {
     var count = 0u32;
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
@@ -122,7 +122,7 @@ func LeadingZeros<T>(value: T) -> uint32 {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/trailing-zeros
-func TrailingZeros<T>(value: T) -> uint32 {
+pub func TrailingZeros<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
     while index < bits {
@@ -141,7 +141,7 @@ func TrailingZeros<T>(value: T) -> uint32 {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/leading-ones
-func LeadingOnes<T>(value: T) -> uint32 {
+pub func LeadingOnes<T>(value: T) -> uint32 {
     var count = 0u32;
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
@@ -161,7 +161,7 @@ func LeadingOnes<T>(value: T) -> uint32 {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/trailing-ones
-func TrailingOnes<T>(value: T) -> uint32 {
+pub func TrailingOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
     while index < bits {
@@ -181,7 +181,7 @@ func TrailingOnes<T>(value: T) -> uint32 {
 /// Cannot fail: no bit is lost, unlike a shift. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/rotate-left
-func RotateLeft<T>(value: T, amount: uint64) -> T {
+pub func RotateLeft<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
     if shift == 0u64 {
@@ -198,7 +198,7 @@ func RotateLeft<T>(value: T, amount: uint64) -> T {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/rotate-right
-func RotateRight<T>(value: T, amount: uint64) -> T {
+pub func RotateRight<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
     if shift == 0u64 {
@@ -214,7 +214,7 @@ func RotateRight<T>(value: T, amount: uint64) -> T {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/reverse-bits
-func ReverseBits<T>(value: T) -> T {
+pub func ReverseBits<T>(value: T) -> T {
     let zero = value - value;
     let one = zero + 1;
     let bits = sizeof(T) * 8u64;
@@ -237,7 +237,7 @@ func ReverseBits<T>(value: T) -> T {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/reverse-bytes
-func ReverseBytes<T>(value: T) -> T {
+pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
     if bytes <= 1u64 {
@@ -263,6 +263,6 @@ func ReverseBytes<T>(value: T) -> T {
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/core/is-power-of-two
-func IsPowerOfTwo<T>(value: T) -> bool {
+pub func IsPowerOfTwo<T>(value: T) -> bool {
     return CountOnes<T>(value) == 1u32;
 }

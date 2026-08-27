@@ -17,7 +17,7 @@ import Allocator::AllocError;
 /// `None` is success. Every other value means the operation did not happen and the collection is as it was.
 ///
 /// https://rux-lang.dev/docs/api/collections/collection-error
-enum CollectionError: uint8 {
+pub enum CollectionError: uint8 {
     /// The operation completed.
     None = 0,
     /// The allocator had no storage to give.
@@ -48,7 +48,7 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-ok
-    func IsOk(self: CollectionError) -> bool {
+    pub func IsOk(self: CollectionError) -> bool {
         return self == CollectionError::None;
     }
 
@@ -60,7 +60,7 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-error
-    func IsError(self: CollectionError) -> bool {
+    pub func IsError(self: CollectionError) -> bool {
         return self != CollectionError::None;
     }
 
@@ -74,7 +74,7 @@ extend CollectionError {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/collections/collection-error/is-transient
-    func IsTransient(self: CollectionError) -> bool {
+    pub func IsTransient(self: CollectionError) -> bool {
         return self == CollectionError::OutOfMemory;
     }
 }
@@ -88,7 +88,7 @@ extend CollectionError {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/collections/from-alloc-error
-func FromAllocError(error: AllocError) -> CollectionError {
+pub func FromAllocError(error: AllocError) -> CollectionError {
     if error == AllocError::None {
         return CollectionError::None;
     }

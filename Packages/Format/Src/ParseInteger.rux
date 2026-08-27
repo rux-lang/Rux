@@ -84,7 +84,7 @@ func ParseIntegerMagnitude(str: Slice<char8>, magnitude: *var uint512,
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint8
-func ParseUint8(str: Slice<char8>) -> Result<uint8, ParseError> {
+pub func ParseUint8(str: Slice<char8>) -> Result<uint8, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -107,7 +107,7 @@ func ParseUint8(str: Slice<char8>) -> Result<uint8, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int8
-func ParseInt8(str: Slice<char8>) -> Result<int8, ParseError> {
+pub func ParseInt8(str: Slice<char8>) -> Result<int8, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -131,7 +131,7 @@ func ParseInt8(str: Slice<char8>) -> Result<int8, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint16
-func ParseUint16(str: Slice<char8>) -> Result<uint16, ParseError> {
+pub func ParseUint16(str: Slice<char8>) -> Result<uint16, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -154,7 +154,7 @@ func ParseUint16(str: Slice<char8>) -> Result<uint16, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int16
-func ParseInt16(str: Slice<char8>) -> Result<int16, ParseError> {
+pub func ParseInt16(str: Slice<char8>) -> Result<int16, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -178,7 +178,7 @@ func ParseInt16(str: Slice<char8>) -> Result<int16, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint32
-func ParseUint32(str: Slice<char8>) -> Result<uint32, ParseError> {
+pub func ParseUint32(str: Slice<char8>) -> Result<uint32, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -201,7 +201,7 @@ func ParseUint32(str: Slice<char8>) -> Result<uint32, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int32
-func ParseInt32(str: Slice<char8>) -> Result<int32, ParseError> {
+pub func ParseInt32(str: Slice<char8>) -> Result<int32, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -225,7 +225,7 @@ func ParseInt32(str: Slice<char8>) -> Result<int32, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint64
-func ParseUint64(str: Slice<char8>) -> Result<uint64, ParseError> {
+pub func ParseUint64(str: Slice<char8>) -> Result<uint64, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -248,7 +248,7 @@ func ParseUint64(str: Slice<char8>) -> Result<uint64, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int64
-func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
+pub func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -272,7 +272,7 @@ func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint128
-func ParseUint128(str: Slice<char8>) -> Result<uint128, ParseError> {
+pub func ParseUint128(str: Slice<char8>) -> Result<uint128, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -295,7 +295,7 @@ func ParseUint128(str: Slice<char8>) -> Result<uint128, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int128
-func ParseInt128(str: Slice<char8>) -> Result<int128, ParseError> {
+pub func ParseInt128(str: Slice<char8>) -> Result<int128, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -319,7 +319,7 @@ func ParseInt128(str: Slice<char8>) -> Result<int128, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint256
-func ParseUint256(str: Slice<char8>) -> Result<uint256, ParseError> {
+pub func ParseUint256(str: Slice<char8>) -> Result<uint256, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -342,7 +342,7 @@ func ParseUint256(str: Slice<char8>) -> Result<uint256, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int256
-func ParseInt256(str: Slice<char8>) -> Result<int256, ParseError> {
+pub func ParseInt256(str: Slice<char8>) -> Result<int256, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -366,7 +366,7 @@ func ParseInt256(str: Slice<char8>) -> Result<int256, ParseError> {
 /// part of the grammar -- a `-` included, since no unsigned value is negative.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint512
-func ParseUint512(str: Slice<char8>) -> Result<uint512, ParseError> {
+pub func ParseUint512(str: Slice<char8>) -> Result<uint512, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -389,7 +389,7 @@ func ParseUint512(str: Slice<char8>) -> Result<uint512, ParseError> {
 /// counterpart: the value one past the largest positive fits only with its sign.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int512
-func ParseInt512(str: Slice<char8>) -> Result<int512, ParseError> {
+pub func ParseInt512(str: Slice<char8>) -> Result<int512, ParseError> {
     var magnitude: uint512 = 0u512;
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
@@ -410,97 +410,97 @@ func ParseInt512(str: Slice<char8>) -> Result<int512, ParseError> {
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint8-view
-func ParseUint8(str: StringView) -> Result<uint8, ParseError> {
+pub func ParseUint8(str: StringView) -> Result<uint8, ParseError> {
     return ParseUint8(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int8-view
-func ParseInt8(str: StringView) -> Result<int8, ParseError> {
+pub func ParseInt8(str: StringView) -> Result<int8, ParseError> {
     return ParseInt8(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint16-view
-func ParseUint16(str: StringView) -> Result<uint16, ParseError> {
+pub func ParseUint16(str: StringView) -> Result<uint16, ParseError> {
     return ParseUint16(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int16-view
-func ParseInt16(str: StringView) -> Result<int16, ParseError> {
+pub func ParseInt16(str: StringView) -> Result<int16, ParseError> {
     return ParseInt16(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint32-view
-func ParseUint32(str: StringView) -> Result<uint32, ParseError> {
+pub func ParseUint32(str: StringView) -> Result<uint32, ParseError> {
     return ParseUint32(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int32-view
-func ParseInt32(str: StringView) -> Result<int32, ParseError> {
+pub func ParseInt32(str: StringView) -> Result<int32, ParseError> {
     return ParseInt32(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint64-view
-func ParseUint64(str: StringView) -> Result<uint64, ParseError> {
+pub func ParseUint64(str: StringView) -> Result<uint64, ParseError> {
     return ParseUint64(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int64-view
-func ParseInt64(str: StringView) -> Result<int64, ParseError> {
+pub func ParseInt64(str: StringView) -> Result<int64, ParseError> {
     return ParseInt64(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint128-view
-func ParseUint128(str: StringView) -> Result<uint128, ParseError> {
+pub func ParseUint128(str: StringView) -> Result<uint128, ParseError> {
     return ParseUint128(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int128-view
-func ParseInt128(str: StringView) -> Result<int128, ParseError> {
+pub func ParseInt128(str: StringView) -> Result<int128, ParseError> {
     return ParseInt128(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint256-view
-func ParseUint256(str: StringView) -> Result<uint256, ParseError> {
+pub func ParseUint256(str: StringView) -> Result<uint256, ParseError> {
     return ParseUint256(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int256-view
-func ParseInt256(str: StringView) -> Result<int256, ParseError> {
+pub func ParseInt256(str: StringView) -> Result<int256, ParseError> {
     return ParseInt256(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-uint512-view
-func ParseUint512(str: StringView) -> Result<uint512, ParseError> {
+pub func ParseUint512(str: StringView) -> Result<uint512, ParseError> {
     return ParseUint512(str.Bytes());
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-int512-view
-func ParseInt512(str: StringView) -> Result<int512, ParseError> {
+pub func ParseInt512(str: StringView) -> Result<int512, ParseError> {
     return ParseInt512(str.Bytes());
 }

@@ -273,7 +273,16 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         else if (isAssignable) {
             const FuncDecl *copyOperation = nullptr;
             if (assignment->op == TokenKind::Assign && target.kind != TypeRef::Kind::Reference) {
-                copyOperation = LookupMethod(target, "=", {value});
+                const TypeProperties properties = ClassifyTypeProperties(target);
+                if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
+                    copyOperation = LookupSourceSpecialOperation(target, "=", assignment->location);
+                    if (!copyOperation) {
+                        return TypeRef::MakeOpaque();
+                    }
+                }
+                else {
+                    copyOperation = LookupMethod(target, "=", {value});
+                }
             }
             if (copyOperation) {
                 if (!copyOperation->body) {

@@ -15,7 +15,7 @@ import Io::{ IoError, IoErrorKind };
 /// Codes with no portable meaning translate to `Other`; the caller still has the raw code beside it.
 ///
 /// https://rux-lang.dev/docs/api/storage/native-kind
-func NativeKind(raw: int32) -> IoErrorKind {
+pub func NativeKind(raw: int32) -> IoErrorKind {
     when #target.os == .Windows {
         // winerror.h, the handful whose meaning a portable caller acts on.
         if raw == 2 || raw == 3 {
@@ -119,6 +119,6 @@ func NativeKind(raw: int32) -> IoErrorKind {
 /// A platform error code as the structured error everything here reports.
 ///
 /// https://rux-lang.dev/docs/api/storage/translate-native
-func TranslateNative(raw: int32) -> IoError {
+pub func TranslateNative(raw: int32) -> IoError {
     return IoError { kind: NativeKind(raw), raw: raw };
 }

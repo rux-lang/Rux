@@ -9,7 +9,10 @@
 // naive square-and-add overflows for arguments whose square does not fit and
 // underflows to zero for arguments whose square is subnormal, both of which
 // lose the answer entirely rather than merely rounding it.
-func Hypot(x: float64, y: float64) -> float64 {
+/// Provides the public `Hypot` operation.
+///
+/// https://rux-lang.dev/docs/api/math/hypot
+pub func Hypot(x: float64, y: float64) -> float64 {
     var a = Abs(x);
     var b = Abs(y);
     var ha = FloatBits(a) >> 32u64;
@@ -97,6 +100,9 @@ func Hypot(x: float64, y: float64) -> float64 {
     return w;
 }
 
-func Hypot(x: float32, y: float32) -> float32 {
+/// Provides the public `Hypot` operation.
+///
+/// https://rux-lang.dev/docs/api/math/hypot
+pub func Hypot(x: float32, y: float32) -> float32 {
     return Hypot(x as float64, y as float64) as float32;
 }

@@ -13,7 +13,7 @@
 ///
 /// https://rux-lang.dev/docs/api/core/operating-system
 #Allow("naming.type")
-enum OperatingSystem: uint8 {
+pub enum OperatingSystem: uint8 {
     /// A target the compiler has no name for, which no supported build produces.
     Unknown = 0,
     FreeBSD = 1,
@@ -26,7 +26,7 @@ enum OperatingSystem: uint8 {
 ///
 /// https://rux-lang.dev/docs/api/core/architecture
 #Allow("naming.type")
-enum Architecture: uint8 {
+pub enum Architecture: uint8 {
     /// An architecture the compiler has no name for, which no supported build produces.
     Unknown = 0,
     AArch64 = 1,
@@ -39,7 +39,7 @@ enum Architecture: uint8 {
 /// a foreign interface branches on it rather than on the operating system.
 ///
 /// https://rux-lang.dev/docs/api/core/application-binary-interface
-enum ApplicationBinaryInterface: uint8 {
+pub enum ApplicationBinaryInterface: uint8 {
     /// An ABI the compiler has no name for, which no supported build produces.
     Unknown = 0,
     /// The AArch64 procedure call standard.
@@ -56,7 +56,7 @@ enum ApplicationBinaryInterface: uint8 {
 /// rather than a single one.
 ///
 /// https://rux-lang.dev/docs/api/core/target-feature
-enum TargetFeature: uint8 {
+pub enum TargetFeature: uint8 {
     AVX = 0,
     AVX2 = 1,
     AVX512 = 2,
@@ -72,7 +72,7 @@ enum TargetFeature: uint8 {
 /// The order a target stores a multi-byte value's bytes in.
 ///
 /// https://rux-lang.dev/docs/api/core/endianness
-enum Endianness: uint8 {
+pub enum Endianness: uint8 {
     /// Most significant byte first, which is network byte order.
     Big = 0,
     /// Least significant byte first, which every currently supported target uses.
@@ -84,7 +84,7 @@ enum Endianness: uint8 {
 /// This is what a raw C declaration needs to get `long` right, since the two models disagree about it.
 ///
 /// https://rux-lang.dev/docs/api/core/data-model
-enum DataModel: uint8 {
+pub enum DataModel: uint8 {
     /// A model the compiler has no name for, which no supported build produces.
     Unknown = 0,
     /// 32-bit `long`, 64-bit pointer. Windows.
@@ -96,7 +96,7 @@ enum DataModel: uint8 {
 /// The object-file format a target's compiled code is emitted in.
 ///
 /// https://rux-lang.dev/docs/api/core/object-format
-enum ObjectFormat: uint8 {
+pub enum ObjectFormat: uint8 {
     /// A format the compiler has no name for, which no supported build produces.
     Unknown = 0,
     /// The format Windows links, carried in a PE image.
@@ -113,23 +113,23 @@ enum ObjectFormat: uint8 {
 /// decided while compiling and the untaken side is not emitted.
 ///
 /// https://rux-lang.dev/docs/api/core/target
-struct Target {
+pub struct Target {
     /// The operating system.
-    os: OperatingSystem;
+    pub os: OperatingSystem;
     /// The processor architecture.
-    arch: Architecture;
+    pub arch: Architecture;
     /// The calling and layout conventions the target's code follows.
     abi: ApplicationBinaryInterface;
     /// The order the target stores a multi-byte value's bytes in.
-    endian: Endianness;
+    pub endian: Endianness;
     /// How many bits a pointer occupies.
-    pointerBits: uint;
+    pub pointerBits: uint;
     /// The widths the target's C environment assigns to `long` and to a pointer.
-    dataModel: DataModel;
+    pub dataModel: DataModel;
     /// The object-file format compiled code is emitted in.
-    objectFormat: ObjectFormat;
+    pub objectFormat: ObjectFormat;
     /// The canonical target name, spelled `<os>-<arch>`, which is what `--target` accepts.
-    triple: Slice<char8>;
+    pub triple: Slice<char8>;
 }
 
 extend Target {
@@ -142,7 +142,7 @@ extend Target {
     /// program.
     ///
     /// https://rux-lang.dev/docs/api/core/target/has-feature
-    intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
+    pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
 }
 
 /// The machine being compiled for, as a compile-time value.
@@ -151,4 +151,4 @@ extend Target {
 /// is never resolved or type-checked and may name declarations this target does not have.
 ///
 /// https://rux-lang.dev/docs/api/core/target
-intrinsic #target: Target;
+pub intrinsic #target: Target;

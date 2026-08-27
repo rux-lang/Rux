@@ -1,7 +1,10 @@
 // **Accuracy: error at most 1 ulp, and exact for an exact power of ten.**
 // Sharing the natural logarithm's series and scaling the result would lose
 // that exactness, since the scaling factor is not representable.
-func Log10(x: float64) -> float64 {
+/// Provides the public `Log10` operation.
+///
+/// https://rux-lang.dev/docs/api/math/log10
+pub func Log10(x: float64) -> float64 {
     let ivln10Hi = 4.34294481878168880939e-01;
     let ivln10Lo = 2.50829467116452752298e-11;
     let log10Of2Hi = 3.01029995663611771306e-01;
@@ -43,6 +46,9 @@ func Log10(x: float64) -> float64 {
     return valLo + valHi;
 }
 
-func Log10(x: float32) -> float32 {
+/// Provides the public `Log10` operation.
+///
+/// https://rux-lang.dev/docs/api/math/log10
+pub func Log10(x: float32) -> float32 {
     return Log10(x as float64) as float32;
 }

@@ -16,21 +16,21 @@ import Core::{ MutableSlice, Slice };
 /// The simple uppercase of `scalar`: one value to one, itself when it has no mapping.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-upper-simple
-func ToUpperSimple(scalar: char32) -> char32 {
+pub func ToUpperSimple(scalar: char32) -> char32 {
     return PairValue(SimpleUpperPairs[..], scalar as uint32) as char32;
 }
 
 /// The simple lowercase of `scalar`.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-lower-simple
-func ToLowerSimple(scalar: char32) -> char32 {
+pub func ToLowerSimple(scalar: char32) -> char32 {
     return PairValue(SimpleLowerPairs[..], scalar as uint32) as char32;
 }
 
 /// The simple titlecase of `scalar`: the uppercase, except for the few dozen characters whose titlecase differs.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-title-simple
-func ToTitleSimple(scalar: char32) -> char32 {
+pub func ToTitleSimple(scalar: char32) -> char32 {
     let titled = PairValue(SimpleTitlePairs[..], scalar as uint32);
     if titled != scalar as uint32 {
         return titled as char32;
@@ -76,7 +76,7 @@ func WriteMapping(index: Slice<uint32>, elements: Slice<uint32>, scalar: char32,
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-upper-full
-func ToUpperFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func ToUpperFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
     return WriteMapping(FullUpperIndex[..], FullUpperElements[..], scalar, ToUpperSimple(scalar), into, written);
 }
 
@@ -87,7 +87,7 @@ func ToUpperFull(scalar: char32, into: MutableSlice<char32>, written: *var uint)
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/to-lower-full
-func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
     return WriteMapping(FullLowerIndex[..], FullLowerElements[..], scalar, ToLowerSimple(scalar), into, written);
 }
 
@@ -102,6 +102,6 @@ func ToLowerFull(scalar: char32, into: MutableSlice<char32>, written: *var uint)
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/fold
-func Fold(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func Fold(scalar: char32, into: MutableSlice<char32>, written: *var uint) -> bool {
     return WriteMapping(FullFoldIndex[..], FullFoldElements[..], scalar, scalar, into, written);
 }

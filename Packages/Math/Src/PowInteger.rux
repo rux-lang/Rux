@@ -15,7 +15,7 @@
 /// which keeps the intermediates as large as possible and loses the least.
 ///
 /// https://rux-lang.dev/docs/api/math/pow-integer
-func PowInteger(base: float64, exponent: int64) -> float64 {
+pub func PowInteger(base: float64, exponent: int64) -> float64 {
     if exponent == 0i64 {
         return 1.0;
     }
@@ -44,7 +44,7 @@ func PowInteger(base: float64, exponent: int64) -> float64 {
 /// `base` raised to the integer power `exponent`, at the narrow width.
 ///
 /// https://rux-lang.dev/docs/api/math/pow-integer-32
-func PowInteger(base: float32, exponent: int64) -> float32 {
+pub func PowInteger(base: float32, exponent: int64) -> float32 {
     // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type,
     // where every intermediate would round.
     return PowInteger(base as float64, exponent) as float32;

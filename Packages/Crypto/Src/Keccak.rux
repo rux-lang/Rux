@@ -48,7 +48,7 @@ func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
 /// would otherwise make every round identical.
 ///
 /// https://rux-lang.dev/docs/api/crypto/keccak-permute
-func KeccakPermute(lanes: *var uint64) {
+pub func KeccakPermute(lanes: *var uint64) {
     var round: uint = 0;
     while round < 24u {
         // Theta: exclusive-or each column together, then mix each with the rotated neighbouring column.
@@ -109,7 +109,7 @@ func KeccakPermute(lanes: *var uint64) {
 /// Structural `Copy`; copying takes an independent snapshot of the sponge state.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha3
-struct Sha3 {
+pub struct Sha3 {
     /// The state, as twenty-five sixty-four bit lanes.
     lanes: uint64[25];
     /// How many bytes of the state the message is absorbed into before the permutation runs.
@@ -142,28 +142,28 @@ extend Sha3 {
     /// A SHA3-224 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/new-224
-    func New224() -> Sha3 {
+    pub func New224() -> Sha3 {
         return Sha3::Start(28u, 0x06u8);
     }
 
     /// A SHA3-256 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/new-256
-    func New256() -> Sha3 {
+    pub func New256() -> Sha3 {
         return Sha3::Start(32u, 0x06u8);
     }
 
     /// A SHA3-384 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/new-384
-    func New384() -> Sha3 {
+    pub func New384() -> Sha3 {
         return Sha3::Start(48u, 0x06u8);
     }
 
     /// A SHA3-512 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/new-512
-    func New512() -> Sha3 {
+    pub func New512() -> Sha3 {
         return Sha3::Start(64u, 0x06u8);
     }
 
@@ -180,7 +180,7 @@ extend Sha3 : Digest {
     /// Absorbs `bytes` into the state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/update
-    func Update(self: &var Sha3, bytes: Slice<char8>) {
+    pub func Update(self: &var Sha3, bytes: Slice<char8>) {
         var index: uint = 0;
         while index < bytes.length {
             self.AbsorbByte(self.absorbed, bytes.data[index] as uint8);
@@ -200,7 +200,7 @@ extend Sha3 : Digest {
     /// from one that works at every other length.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/finish
-    func Finish(self: &var Sha3, into: MutableSlice<char8>) {
+    pub func Finish(self: &var Sha3, into: MutableSlice<char8>) {
         self.AbsorbByte(self.absorbed, self.domain);
         self.AbsorbByte(self.rate - 1u, 0x80u8);
         KeccakPermute(@self.lanes[0]);
@@ -226,14 +226,14 @@ extend Sha3 : Digest {
     /// Twenty-eight, thirty-two, forty-eight or sixty-four bytes.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/digest-length
-    func DigestLength(self: &Sha3) -> uint {
+    pub func DigestLength(self: &Sha3) -> uint {
         return self.outputLength;
     }
 
     /// The rate, which differs per size -- unlike the SHA-2 family, whose block is fixed.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/block-length
-    func BlockLength(self: &Sha3) -> uint {
+    pub func BlockLength(self: &Sha3) -> uint {
         return self.rate;
     }
 }
@@ -241,7 +241,7 @@ extend Sha3 : Digest {
 /// The SHA3-224 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha3-of-224
-func Sha3Of224(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha3Of224(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha3::New224();
     digest.Update(bytes);
     digest.Finish(into);
@@ -250,7 +250,7 @@ func Sha3Of224(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA3-256 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha3-of-256
-func Sha3Of256(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha3Of256(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha3::New256();
     digest.Update(bytes);
     digest.Finish(into);
@@ -259,7 +259,7 @@ func Sha3Of256(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA3-384 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha3-of-384
-func Sha3Of384(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha3Of384(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha3::New384();
     digest.Update(bytes);
     digest.Finish(into);
@@ -268,7 +268,7 @@ func Sha3Of384(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA3-512 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha3-of-512
-func Sha3Of512(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha3Of512(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = Sha3::New512();
     digest.Update(bytes);
     digest.Finish(into);

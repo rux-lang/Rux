@@ -55,7 +55,7 @@ func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-md5
-struct LegacyMd5 {
+pub struct LegacyMd5 {
     /// The four working words.
     state: uint32[4];
     /// Bytes not yet part of a full block.
@@ -70,7 +70,7 @@ extend LegacyMd5 {
     /// An MD5 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-md5/new
-    func LegacyMd5() -> LegacyMd5 {
+    pub func LegacyMd5() -> LegacyMd5 {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64u {
@@ -143,7 +143,7 @@ extend LegacyMd5 {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-md5/update
-    func Update(self: &var LegacyMd5, bytes: Slice<char8>) {
+    pub func Update(self: &var LegacyMd5, bytes: Slice<char8>) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -162,7 +162,7 @@ extend LegacyMd5 {
     /// The length is appended little-endian, unlike the SHA family's big-endian count.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
-    func Finish(self: &var LegacyMd5, into: MutableSlice<char8>) {
+    pub func Finish(self: &var LegacyMd5, into: MutableSlice<char8>) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -198,7 +198,7 @@ extend LegacyMd5 {
 /// The MD5 digest of `bytes`. **Broken; see the note at the top of this file.**
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-md5-of
-func LegacyMd5Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func LegacyMd5Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = LegacyMd5();
     digest.Update(bytes);
     digest.Finish(into);
@@ -209,7 +209,7 @@ func LegacyMd5Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-sha1
-struct LegacySha1 {
+pub struct LegacySha1 {
     /// The five working words.
     state: uint32[5];
     /// Bytes not yet part of a full block.
@@ -224,7 +224,7 @@ extend LegacySha1 {
     /// A SHA-1 state.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/new
-    func LegacySha1() -> LegacySha1 {
+    pub func LegacySha1() -> LegacySha1 {
         var buffer: char8[64];
         var index: uint = 0;
         while index < 64u {
@@ -301,7 +301,7 @@ extend LegacySha1 {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
-    func Update(self: &var LegacySha1, bytes: Slice<char8>) {
+    pub func Update(self: &var LegacySha1, bytes: Slice<char8>) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -318,7 +318,7 @@ extend LegacySha1 {
     /// Writes the twenty-byte digest into `into`.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
-    func Finish(self: &var LegacySha1, into: MutableSlice<char8>) {
+    pub func Finish(self: &var LegacySha1, into: MutableSlice<char8>) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -355,7 +355,7 @@ extend LegacySha1 {
 /// The SHA-1 digest of `bytes`. **Broken for collision resistance; see the note at the top of this file.**
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-sha1-of
-func LegacySha1Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func LegacySha1Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
     var digest = LegacySha1();
     digest.Update(bytes);
     digest.Finish(into);

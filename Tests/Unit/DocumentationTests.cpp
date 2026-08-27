@@ -61,13 +61,14 @@ TEST_CASE("a blank line prevents documentation attachment") {
     CHECK(parsed.module.items.front()->documentation.empty());
 }
 
-TEST_CASE("documentation covers the file-scope surface and honours pub inside a module") {
-    // A file-scope declaration is what another package imports, marker or no marker, so all of them are the
-    // documented surface. Inside a module block the marker means what it says.
-    auto parsed = Parse("/// Safe <b>text</b>.\nstruct Plain {\n    /// A field.\n    value: int;\n}\n"
-                        "/// Also here.\nfunc Bare();\n"
-                        "module Inner {\n    /// Exported.\n    pub func Shown();\n"
-                        "    /// Kept in.\n    func Withheld();\n}\n");
+TEST_CASE("documentation covers only effectively public declarations and members") {
+    auto parsed = Parse("/// Safe <b>text</b>.\npub struct Plain {\n    /// A field.\n    pub value: int;\n"
+                        "    /// Hidden field.\n    hidden: int;\n}\n"
+                        "/// Not public.\nfunc Bare();\n"
+                        "pub module Inner {\n    /// Exported.\n    pub func Shown();\n"
+                        "    /// Kept in.\n    func Withheld();\n}\n"
+                        "module Internal {\n    /// Capped by its module.\n    pub func Marked();\n}\n"
+                        "struct Secret {}\nextend Secret {\n    /// Capped by its type.\n    pub func Reveal();\n}\n");
     auto loaded = Docs("DocsTest");
     REQUIRE(loaded.Ok());
 
@@ -82,10 +83,13 @@ TEST_CASE("documentation covers the file-scope surface and honours pub inside a 
     const auto firstSearch = Read(output / "search-index.json");
     CHECK(firstHtml.contains("Safe &lt;b&gt;text&lt;/b&gt;"));
     CHECK(firstHtml.contains("Plain"));
-    CHECK(firstHtml.contains("Bare"));
+    CHECK_FALSE(firstHtml.contains("Bare"));
     CHECK(firstHtml.contains("A field."));
+    CHECK_FALSE(firstHtml.contains("Hidden field."));
     CHECK(firstHtml.contains("Shown"));
     CHECK_FALSE(firstHtml.contains("Withheld"));
+    CHECK_FALSE(firstHtml.contains("Marked"));
+    CHECK_FALSE(firstHtml.contains("Reveal"));
     CHECK(std::filesystem::exists(output / ".rux-docs"));
 
     // Generating twice over the same directory produces the same bytes.
@@ -127,8 +131,8 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
 
     const auto root = FreshRoot("rux-documentation-lifecycle-unit");
     const std::array modules{std::move(parsed)};
-    const auto generated =
-        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    const auto generated = Documentation::Generate(
+        *loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site", .includePrivate = true});
     REQUIRE(generated.ok);
     const std::string html = Read(root / "site" / "index.html");
     CHECK(html.contains("func =(self: &amp;var Cell, other: &amp;Cell)"));
@@ -140,8 +144,34 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
     std::filesystem::remove_all(root, error);
 }
 
+TEST_CASE("documentation renders public extern block members with complete signatures") {
+    auto parsed = Parse(R"(
+        #Link("system.dll")
+        extern {
+            pub func Open(value: int, ...) -> int;
+            func Hidden();
+            pub Shared: uint64;
+        }
+    )");
+    auto loaded = Docs("ExternDocs");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-extern-unit");
+    const std::array modules{std::move(parsed)};
+    const auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    REQUIRE(generated.ok);
+    const std::string html = Read(root / "site" / "index.html");
+    CHECK(html.contains("pub extern func Open(value: int, ...) -&gt; int"));
+    CHECK(html.contains("pub extern Shared: uint64"));
+    CHECK_FALSE(html.contains("Hidden"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("documentation refuses a link it cannot emit rather than dropping it quietly") {
-    auto parsed = Parse("/// See [bad](javascript:alert(1)).\nfunc Thing();\n");
+    auto parsed = Parse("/// See [bad](javascript:alert(1)).\npub func Thing();\n");
     auto loaded = Docs("DocsLinks");
     REQUIRE(loaded.Ok());
 
@@ -162,7 +192,7 @@ TEST_CASE("documentation refuses a link it cannot emit rather than dropping it q
 TEST_CASE("documentation refuses two declarations that claim one route") {
     // The anchor is built from the name folded to lower case, so two declarations differing only in case land on
     // the same route and every link to the second would reach the first.
-    auto parsed = Parse("/// One.\nfunc Thing();\n/// Two.\nstruct thing {\n    value: int;\n}\n");
+    auto parsed = Parse("/// One.\npub func Thing();\n/// Two.\npub struct thing {\n    pub value: int;\n}\n");
     auto loaded = Docs("DocsRoutes");
     REQUIRE(loaded.Ok());
 

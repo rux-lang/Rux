@@ -392,6 +392,9 @@ void DeclarationPrinter::PrintUnionDecl(const UnionDecl &decl) {
     ++indent;
     for (const auto &field : decl.fields) {
         Pad();
+        if (field.isPublic) {
+            out << "pub ";
+        }
         out << "Field '" << field.name << "' : " << TypeString(field.type.get()) << '\n';
     }
     --indent;

@@ -48,7 +48,7 @@ when #target.os {
 /// What kind of thing a name refers to.
 ///
 /// https://rux-lang.dev/docs/api/storage/file-kind
-enum FileKind: int32 {
+pub enum FileKind: int32 {
     /// An ordinary file of bytes.
     File = 0,
     /// A directory.
@@ -67,9 +67,9 @@ enum FileKind: int32 {
 /// and on Unix `readOnly` reports whether the owner-write bit is clear. `Capabilities` says which one is real.
 ///
 /// https://rux-lang.dev/docs/api/storage/permissions
-struct Permissions {
+pub struct Permissions {
     /// The Unix permission bits.
-    mode: uint32;
+    pub mode: uint32;
     /// Whether writing is refused.
     readOnly: bool;
 }
@@ -78,21 +78,21 @@ extend Permissions {
     /// Permissions from Unix mode bits, with `readOnly` derived from the owner-write bit.
     ///
     /// https://rux-lang.dev/docs/api/storage/permissions/from-mode
-    func FromMode(mode: uint32) -> Permissions {
+    pub func FromMode(mode: uint32) -> Permissions {
         return Permissions { mode: mode & 0xFFFu32, readOnly: (mode & 0x80u32) == 0u32 };
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
     ///
     /// https://rux-lang.dev/docs/api/storage/permissions/from-read-only
-    func FromReadOnly(readOnly: bool) -> Permissions {
+    pub func FromReadOnly(readOnly: bool) -> Permissions {
         return Permissions { mode: readOnly ? 0x124u32 : 0x1B6u32, readOnly: readOnly };
     }
 
     /// Whether the owner may write.
     ///
     /// https://rux-lang.dev/docs/api/storage/permissions/is-writable
-    func IsWritable(self: &Permissions) -> bool {
+    pub func IsWritable(self: &Permissions) -> bool {
         return !self.readOnly;
     }
 }
@@ -100,33 +100,33 @@ extend Permissions {
 /// Everything a single query can say about a file.
 ///
 /// https://rux-lang.dev/docs/api/storage/metadata
-struct Metadata {
+pub struct Metadata {
     /// What the name refers to.
-    kind: FileKind;
+    pub kind: FileKind;
     /// The length in bytes; zero for a directory, whose size means nothing portable.
-    size: uint64;
+    pub size: uint64;
     /// How many names the content has. Always one on a system that does not count them.
-    linkCount: uint64;
+    pub linkCount: uint64;
     /// Who may do what.
-    permissions: Permissions;
+    pub permissions: Permissions;
     /// When the contents were last read.
-    accessed: Timestamp;
+    pub accessed: Timestamp;
     /// When the contents were last written.
-    modified: Timestamp;
+    pub modified: Timestamp;
     /// When the file came into being, where the system records that.
     created: Timestamp;
     /// Whether `created` means anything.
-    hasCreated: bool;
+    pub hasCreated: bool;
 }
 
 /// What the running system can actually answer, so a caller can ask before it assumes.
 ///
 /// https://rux-lang.dev/docs/api/storage/capabilities
-struct Capabilities {
+pub struct Capabilities {
     /// Whether `Permissions::mode` is the system's own answer rather than one synthesized from a flag.
-    unixPermissions: bool;
+    pub unixPermissions: bool;
     /// Whether the system records a creation time.
-    creationTime: bool;
+    pub creationTime: bool;
     /// Whether names have a meaningful link count.
     hardLinkCounts: bool;
     /// Whether setting timestamps is supported at all.
@@ -136,7 +136,7 @@ struct Capabilities {
 /// What this system can answer.
 ///
 /// https://rux-lang.dev/docs/api/storage/capabilities-of-system
-func CapabilitiesOfSystem() -> Capabilities {
+pub func CapabilitiesOfSystem() -> Capabilities {
     when #target.os == .Windows {
         return Capabilities { unixPermissions: false, creationTime: true, hardLinkCounts: true,
                               settableTimes: true };
@@ -390,7 +390,7 @@ when #target.os == .Windows {
 /// and not following it describes the link, which is the only way `SymbolicLink` is ever reported.
 ///
 /// https://rux-lang.dev/docs/api/storage/metadata-of
-func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var IoError) -> Metadata {
+pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var IoError) -> Metadata {
     *error = IoError::Ok();
     var result = Metadata {
         kind: FileKind::Other,
@@ -450,7 +450,7 @@ extend File {
     /// query the way a path-based one can.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/metadata
-    func Metadata(self: &File, error: *var IoError) -> Metadata {
+    pub func Metadata(self: &File, error: *var IoError) -> Metadata {
         *error = IoError::Ok();
         var result = Metadata {
             kind: FileKind::Other,
@@ -492,7 +492,7 @@ extend File {
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
 ///
 /// https://rux-lang.dev/docs/api/storage/set-permissions
-func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> IoError {
+pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
     if converted.IsError() {
@@ -533,7 +533,7 @@ func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) 
 /// that silently means different things on different systems is worse than one that is not offered.
 ///
 /// https://rux-lang.dev/docs/api/storage/set-times
-func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
+pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
               followLinks: bool) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);

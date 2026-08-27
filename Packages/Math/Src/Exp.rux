@@ -36,7 +36,10 @@ func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
 // a multiple of ln 2 and a small remainder carried as two parts, which is
 // what keeps the last bits: summing the two parts first would round away the
 // correction the reduction exists to supply.
-func Exp(x: float64) -> float64 {
+/// Provides the public `Exp` operation.
+///
+/// https://rux-lang.dev/docs/api/math/exp
+pub func Exp(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
     let invln2 = 1.44269504088896338700e+00;
@@ -98,6 +101,9 @@ func Exp(x: float64) -> float64 {
 
 // float32 has fewer bits than the float64 result is accurate to, so the
 // double-precision exponential rounded once to float32 is faithful.
-func Exp(x: float32) -> float32 {
+/// Provides the public `Exp` operation.
+///
+/// https://rux-lang.dev/docs/api/math/exp
+pub func Exp(x: float32) -> float32 {
     return Exp(x as float64) as float32;
 }

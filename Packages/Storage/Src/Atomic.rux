@@ -35,7 +35,7 @@ func DotSegmentUnit() -> OsUnit {
 /// in place, which is the behavior that makes this worth using.
 ///
 /// https://rux-lang.dev/docs/api/storage/atomic-write
-struct AtomicWrite {
+pub struct AtomicWrite {
     /// The partial file, in the target's own directory.
     scratch: TemporaryFile;
     /// Where it is going.
@@ -54,7 +54,7 @@ extend AtomicWrite {
     /// target need not exist; if it does, it is untouched until `Commit`.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/begin
-    func Begin(allocator: Allocator, target: Path, error: *var IoError) -> AtomicWrite {
+    pub func Begin(allocator: Allocator, target: Path, error: *var IoError) -> AtomicWrite {
         *error = IoError::Ok();
         var textError = TextError::None;
         var result = AtomicWrite {
@@ -107,14 +107,14 @@ extend AtomicWrite {
     /// A writer over the partial file.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/stream
-    func Stream(self: &var AtomicWrite) -> FileStream {
+    pub func Stream(self: &var AtomicWrite) -> FileStream {
         return self.scratch.file.Stream();
     }
 
     /// The name the finished file will take.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/target
-    func Target(self: &AtomicWrite) -> Path {
+    pub func Target(self: &AtomicWrite) -> Path {
         return self.target.AsPath();
     }
 }
@@ -131,7 +131,7 @@ extend AtomicWrite {
     /// rather than being durable on some and pretending on the rest.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/commit
-    func Commit(self: &var AtomicWrite, allocator: Allocator) -> IoError {
+    pub func Commit(self: &var AtomicWrite, allocator: Allocator) -> IoError {
         if !self.pending {
             return IoError::Of(IoErrorKind::InvalidInput);
         }
@@ -159,7 +159,7 @@ extend AtomicWrite {
     /// Throws the partial file away and leaves the target as it was.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/abandon
-    func Abandon(self: &var AtomicWrite, allocator: Allocator) -> IoError {
+    pub func Abandon(self: &var AtomicWrite, allocator: Allocator) -> IoError {
         if !self.pending {
             return IoError::Ok();
         }
@@ -170,7 +170,7 @@ extend AtomicWrite {
     /// Gives the buffers back. The temporary's own destructor removes any partial file.
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/release
-    func Release(self: &var AtomicWrite) {
+    pub func Release(self: &var AtomicWrite) {
         self.pending = false;
         self.target.Release();
     }
@@ -191,7 +191,7 @@ extend AtomicWrite {
 /// The one-shot form of the type above, for the common case where the whole file is already in hand.
 ///
 /// https://rux-lang.dev/docs/api/storage/write-atomically
-func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>) -> IoError {
+pub func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>) -> IoError {
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     if error.IsError() {

@@ -5,7 +5,7 @@
 /// ownership of its own, so passing one neither consumes nor invalidates anything.
 ///
 /// https://rux-lang.dev/docs/api/core/unit
-struct Unit {}
+pub struct Unit {}
 
 extend Unit {
     /// Constructs the only `Unit` value there is.
@@ -15,7 +15,7 @@ extend Unit {
     /// Cannot fail. Runs in constant time, allocates nothing, and reads no storage.
     ///
     /// https://rux-lang.dev/docs/api/core/unit
-    func Unit() -> Unit {
+    pub func Unit() -> Unit {
         return Unit {};
     }
 

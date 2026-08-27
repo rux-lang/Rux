@@ -11,7 +11,7 @@
 /// An `Option<T>` is as wide as its tag plus `T`, and never allocates on its own.
 ///
 /// https://rux-lang.dev/docs/api/core/option
-enum Option<T> {
+pub enum Option<T> {
     Some(T),
     None
 }
@@ -25,7 +25,7 @@ extend Option<T> {
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
     /// https://rux-lang.dev/docs/api/core/option/is-some
-    func IsSome(self: &Option<T>) -> bool {
+    pub func IsSome(self: &Option<T>) -> bool {
         return match self {
             .Some(_) => true,
             .None => false
@@ -39,7 +39,7 @@ extend Option<T> {
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/option/is-none
-    func IsNone(self: &Option<T>) -> bool {
+    pub func IsNone(self: &Option<T>) -> bool {
         return !self.IsSome();
     }
 
@@ -54,7 +54,7 @@ extend Option<T> {
     /// nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/option/value-or
-    func ValueOr(self: Option<T>, fallback: T) -> T {
+    pub func ValueOr(self: Option<T>, fallback: T) -> T {
         return match <-self {
             .Some(value) => <-value,
             .None => <-fallback
@@ -74,7 +74,7 @@ extend Option<T> {
     /// Runs in constant time and allocates nothing.
     ///
     /// https://rux-lang.dev/docs/api/core/option/try-into-value
-    func TryIntoValue(self: Option<T>, value: *var T) -> bool {
+    pub func TryIntoValue(self: Option<T>, value: *var T) -> bool {
         if value == null {
             return false;
         }

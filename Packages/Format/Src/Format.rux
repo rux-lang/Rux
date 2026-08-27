@@ -22,7 +22,7 @@ import Text::{ String, StringBuilder, TextError };
 /// Reports whatever the writer reported, having written what it managed to first.
 ///
 /// https://rux-lang.dev/docs/api/format/write-format
-func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Display...) -> TextError {
+pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Display...) -> TextError {
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
     // ever moves forward.
     var next: uint = 0;
@@ -92,7 +92,7 @@ func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Display...
 /// wrong, and the string comes back holding whatever was written before that.
 ///
 /// https://rux-lang.dev/docs/api/format/format
-func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, args: Display...) -> String {
+pub func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, args: Display...) -> String {
     var builder = StringBuilder(allocator);
     // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
     // builder is there to absorb; the short calls that most of them are fill in without one.

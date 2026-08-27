@@ -15,7 +15,7 @@ import Core::{ MutableSlice, Slice };
 /// Somewhere bytes come from.
 ///
 /// https://rux-lang.dev/docs/api/io/reader
-interface Reader {
+pub interface Reader {
     /// Fills what it can of `into` and reports how much through `filled`.
     ///
     /// Zero with `Ok` does not happen: the end of the stream is `EndOfStream`, so a caller never mistakes silence
@@ -26,7 +26,7 @@ interface Reader {
 /// Somewhere bytes go.
 ///
 /// https://rux-lang.dev/docs/api/io/writer
-interface Writer {
+pub interface Writer {
     /// Takes what it can of `bytes` and reports how much through `taken`.
     func Write(bytes: Slice<char8>, taken: *var uint) -> IoError;
 
@@ -37,7 +37,7 @@ interface Writer {
 /// Where a seek starts counting from.
 ///
 /// https://rux-lang.dev/docs/api/io/seek-from
-enum SeekFrom: int32 {
+pub enum SeekFrom: int32 {
     /// The start of the stream; the offset must not be negative.
     Start = 0,
     /// The current position.
@@ -49,7 +49,7 @@ enum SeekFrom: int32 {
 /// A stream whose position can be moved.
 ///
 /// https://rux-lang.dev/docs/api/io/seeker
-interface Seeker {
+pub interface Seeker {
     /// Moves the position `offset` bytes from `origin` and reports where it landed through `position`.
     func Seek(origin: SeekFrom, offset: int64, position: *var uint64) -> IoError;
 }
@@ -60,7 +60,7 @@ interface Seeker {
 /// moved nothing, which is a stream that will never finish the job.
 ///
 /// https://rux-lang.dev/docs/api/io/zero-progress-limit
-const ZeroProgressLimit: uint = 3;
+pub const ZeroProgressLimit: uint = 3;
 
 /// Fills all of `into`, looping over partial reads, or says why it could not.
 ///
@@ -68,7 +68,7 @@ const ZeroProgressLimit: uint = 3;
 /// partly written -- how much is not reported, because a caller who needs the count reads incrementally.
 ///
 /// https://rux-lang.dev/docs/api/io/read-exact
-func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
+pub func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
     var at: uint = 0;
     while at < into.length {
         let rest = MutableSlice<char8> { data: @into.data[at], length: into.length - at };
@@ -95,7 +95,7 @@ func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
 /// that spins on it would hang the caller on a stream that will never take the rest.
 ///
 /// https://rux-lang.dev/docs/api/io/write-all
-func WriteAll(writer: &var Writer, bytes: Slice<char8>) -> IoError {
+pub func WriteAll(writer: &var Writer, bytes: Slice<char8>) -> IoError {
     var at: uint = 0;
     var stalled: uint = 0;
     while at < bytes.length {

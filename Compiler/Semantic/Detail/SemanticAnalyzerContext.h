@@ -48,12 +48,48 @@ public:
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
     [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
     [[nodiscard]] std::unordered_map<const ForStmt *, ResolvedIteration> TakeIterations();
+    [[nodiscard]] std::unordered_map<const Decl *, bool> EffectiveVisibilities() const;
 
 protected:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},
                    std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message) const;
     void EmitUndefinedName(SourceLocation location, const std::string &name) const;
+    [[nodiscard]] bool IsAccessible(const Symbol &symbol) const;
+    [[nodiscard]] bool IsAccessible(const Decl &declaration) const;
+    [[nodiscard]] bool IsMemberAccessible(const Decl &owner, bool memberIsPublic) const;
+    void EmitPrivacyError(SourceLocation useLocation, const Symbol &symbol) const;
+    void EmitPrivacyError(SourceLocation useLocation, const Decl &declaration, std::string_view kind,
+                          std::string_view name) const;
+    void EmitPrivateMemberError(SourceLocation useLocation, const Decl &owner, std::string_view kind,
+                                std::string_view name) const;
+    void ValidatePublicType(const TypeExpr &type, std::string_view subject,
+                            const std::unordered_set<std::string> &typeParameters = {});
+    void ValidatePublicResolvedType(const TypeRef &type, const Decl &declaration, std::string_view subject);
+    void ValidatePublicTypeParameters(const std::vector<TypeParameter> &parameters, std::string_view subject,
+                                      const std::unordered_set<std::string> &typeParameterNames);
+    void ValidatePublicFunction(const FuncDecl &function, std::string_view subject,
+                                const TypeExpr *extendedType = nullptr);
+    void ValidatePublicDeclaration(const Decl &declaration);
+
+    struct FunctionSignature {
+        std::size_t typeParamCount = 0;
+        std::vector<TypeRef> paramTypes;
+        std::vector<bool> variadicParams;
+    };
+
+    [[nodiscard]] TypeRef MakeFuncType(const std::vector<Param> &parameters,
+                                       const std::optional<TypeExprPtr> &returnType,
+                                       const std::vector<std::string> &typeParameters = {}, bool cVariadic = false);
+    [[nodiscard]] TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &parameters,
+                                                       const std::optional<TypeExprPtr> &returnType,
+                                                       const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                       const std::vector<std::string> &typeParameters,
+                                                       bool cVariadic = false);
+    [[nodiscard]] std::optional<FunctionSignature> ResolveFunctionSignature(const FuncDecl &declaration, bool isMethod);
+    [[nodiscard]] static bool SameFunctionSignature(const FunctionSignature &left, const FunctionSignature &right);
+    void ValidateFunctionSignature(const FuncDecl &declaration, const std::vector<const FuncDecl *> &overloads,
+                                   bool isMethod = false);
     void EmitGenericArityError(const TypeExpr &expression, std::string subject, std::size_t expectedCount,
                                std::size_t actualCount);
     [[nodiscard]] std::optional<TypeRef> ResolveStructTypeReference(const TypeExpr &expression, const std::string &name,
@@ -75,6 +111,8 @@ protected:
     [[nodiscard]] bool ValidateMoveSource(const Expr &expression, SourceLocation location);
     [[nodiscard]] bool RejectSelfMove(const Expr &target, const Expr &value, SourceLocation location);
     [[nodiscard]] TypeProperties ClassifyTypeProperties(const TypeRef &type);
+    [[nodiscard]] const FuncDecl *LookupSourceSpecialOperation(const TypeRef &type, std::string_view operation,
+                                                               SourceLocation location);
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
     [[nodiscard]] static bool IsDestructorName(std::string_view name);
     void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
@@ -82,6 +120,8 @@ protected:
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
     [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
     [[nodiscard]] std::vector<const FuncDecl *> ConstructorCandidates(const TypeRef &type);
+    [[nodiscard]] std::vector<const FuncDecl *> AccessibleMethodCandidates(const TypeRef &receiverType,
+                                                                           const std::string &methodName) const;
 
     struct BorrowPlace {
         const Symbol *root = nullptr;
@@ -344,6 +384,7 @@ protected:
     Scope &globalScope;
     const SemanticProgramIndex::PackageScopes &packageModuleScopes;
     std::string currentFile;
+    std::string currentPackage;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
@@ -375,6 +416,9 @@ protected:
     const FuncDecl *currentFunctionDecl = nullptr;
     const std::unordered_map<const FuncDecl *, Scope *> &functionDeclScopes;
     const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
+    const std::unordered_map<const Decl *, SemanticProgramIndex::DeclarationInfo> &declarationInfos;
+    std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
+    std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     Scope *currentScope;
     MoveStateTracker moveStates;
     std::vector<MoveStateTracker> savedMoveStates;
@@ -487,11 +531,6 @@ private:
     virtual TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
     virtual TypeRef CheckExpr(const Expr &expression) = 0;
-    virtual TypeRef MakeFuncTypeWithSubstitution(const std::vector<Param> &parameters,
-                                                 const std::optional<TypeExprPtr> &returnType,
-                                                 const std::unordered_map<std::string, TypeRef> &substitutions,
-                                                 const std::vector<std::string> &typeParameters,
-                                                 bool cVariadic = false) = 0;
     virtual void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call) = 0;
     [[nodiscard]] virtual const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                                  const std::vector<TypeRef> &argumentTypes,
@@ -499,7 +538,8 @@ private:
     virtual void QueueGenericInstantiation(const FuncDecl &declaration,
                                            const std::unordered_map<std::string, TypeRef> &substitutions) = 0;
     [[nodiscard]] virtual const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
-                                                       const std::vector<TypeRef> &argumentTypes) = 0;
+                                                       const std::vector<TypeRef> &argumentTypes,
+                                                       bool requireAccessible = true) = 0;
     [[nodiscard]] virtual std::unordered_map<std::string, TypeRef>
     MethodTypeSubstitutions(const TypeRef &receiverType) const = 0;
     [[nodiscard]] virtual const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const = 0;
@@ -549,10 +589,12 @@ private:
     [[nodiscard]] virtual std::vector<TypeRef> ParseTypeArgsFromTypeName(const std::string &typeName) const = 0;
     virtual void ApplyModuleImports(const Module &module) = 0;
     virtual void ApplyModuleImportsInScope(const Module &module, Scope &scope) = 0;
-    virtual void ResolveModuleSignatures(const Module &module) = 0;
-    virtual void ResolveModuleSignaturesInScope(const Module &module, Scope &scope) = 0;
-    virtual void CheckModule(const Module &module) = 0;
-    virtual void CheckModuleInScope(const Module &module, Scope &scope) = 0;
+    void ResolveDeclSignature(const Decl &declaration);
+    void ResolveDeclSignatureInScope(const Decl &declaration, Scope &scope);
+    void ResolveModuleSignatures(const Module &module);
+    void ResolveModuleSignaturesInScope(const Module &module, Scope &scope);
+    void CheckModule(const Module &module);
+    void CheckModuleInScope(const Module &module, Scope &scope);
     /// Queues the destructor of every droppable type recorded, so its body is analyzed at each type it will
     /// be built for. Nothing in the source calls a destructor -- the generated glue does -- so without this a body
     /// reachable no other way is lowered having never been analyzed, and anything it deferred until its type

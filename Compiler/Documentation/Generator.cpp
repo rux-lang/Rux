@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string_view>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 namespace Rux::Documentation {
@@ -298,6 +299,26 @@ std::string FunctionSignature(const FuncDecl &function) {
     return text;
 }
 
+std::string ExternFunctionSignature(const ExternFuncDecl &function) {
+    std::string text = function.isPublic ? "pub extern func " : "extern func ";
+    text += function.name + "(";
+    for (std::size_t i = 0; i < function.params.size(); ++i) {
+        if (i != 0)
+            text += ", ";
+        const auto &parameter = function.params[i];
+        text += parameter.name + ": " + TypeText(parameter.type.get());
+    }
+    if (function.isVariadic) {
+        if (!function.params.empty())
+            text += ", ";
+        text += "...";
+    }
+    text += ')';
+    if (function.returnType)
+        text += " -> " + TypeText(function.returnType->get());
+    return text;
+}
+
 std::string DeclName(const Decl &decl) {
     if (const auto *value = dynamic_cast<const FuncDecl *>(&decl))
         return value->name;
@@ -371,12 +392,8 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "extern " + value->name + ": " +
                TypeText(value->type.get());
-    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl)) {
-        FuncDecl function;
-        function.isPublic = value->isPublic;
-        function.name = value->name;
-        return "extern " + FunctionSignature(function);
-    }
+    if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
+        return ExternFunctionSignature(*value);
     return DeclName(decl);
 }
 
@@ -393,24 +410,58 @@ std::string Anchor(std::string value) {
 
 /// Whether a declaration belongs in the generated output, which by default is the package's public surface only.
 ///
-/// A declaration written at file scope is that surface: another package importing this one reaches it without any
-/// marker, so documenting only the ones spelled `pub` would leave every page empty. Inside a `module` block the
-/// marker means what it says, and only the exported items are shown.
-bool Visible(const Decl &decl, const bool includePrivate, const bool atFileScope) {
-    if (includePrivate || atFileScope || decl.isPublic)
+/// A public item is externally visible only while every module containing it is public.
+bool Visible(const Decl &decl, const bool includePrivate, const bool containingModulesPublic,
+             const std::unordered_set<std::string> &publicTypes) {
+    if (includePrivate)
         return true;
     if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
-        return std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; });
+        const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
+        return containingModulesPublic && publicTypes.contains(typeName) &&
+               std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; });
     }
-    return false;
+    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+        return containingModulesPublic &&
+               std::ranges::any_of(block->items, [](const auto &item) { return item->isPublic; });
+    }
+    return containingModulesPublic && decl.isPublic;
+}
+
+void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
+                        std::unordered_set<std::string> &publicTypes, const std::string &prefix = {}) {
+    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+        const bool modulePublic = containingModulesPublic && module->isPublic;
+        const std::string qualified = prefix.empty() ? module->name : prefix + "::" + module->name;
+        for (const auto &item : module->items) {
+            CollectPublicTypes(*item, modulePublic, publicTypes, qualified);
+        }
+        return;
+    }
+    if (!containingModulesPublic || !decl.isPublic ||
+        !(dynamic_cast<const StructDecl *>(&decl) || dynamic_cast<const EnumDecl *>(&decl) ||
+          dynamic_cast<const UnionDecl *>(&decl) || dynamic_cast<const InterfaceDecl *>(&decl))) {
+        return;
+    }
+    const std::string name = DeclName(decl);
+    publicTypes.insert(name);
+    if (!prefix.empty()) {
+        publicTypes.insert(prefix + "::" + name);
+    }
 }
 
 void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &moduleName, const std::string &source,
                 const bool includePrivate, std::vector<SearchEntry> &search, Findings &findings,
-                const std::string &prefix = {}) {
-    const bool atFileScope = prefix.empty();
-    if (!Visible(decl, includePrivate, atFileScope))
+                const std::unordered_set<std::string> &publicTypes, const std::string &prefix = {},
+                const bool containingModulesPublic = true) {
+    if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes))
         return;
+    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+        for (const auto &item : block->items) {
+            RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, prefix,
+                       containingModulesPublic);
+        }
+        return;
+    }
     const std::string name = DeclName(decl);
     // An import has no name and is not an item; rendering one produces an empty card with an empty heading.
     if (name.empty())
@@ -453,9 +504,16 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
 
     if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
         for (const auto &field : structure->fields) {
-            // A field of a file-scope struct is reachable wherever the struct is, so `pub` distinguishes nothing
-            // there and hiding the fields would document a type as if it had none.
-            if (!includePrivate && !atFileScope && !field.isPublic)
+            if (!includePrivate && !field.isPublic)
+                continue;
+            html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
+                 << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
+                 << "</code>" << RenderMarkdown(field.documentation, &findings) << "</section>";
+        }
+    }
+    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&decl)) {
+        for (const auto &field : unionType->fields) {
+            if (!includePrivate && !field.isPublic)
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
@@ -477,7 +535,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
         for (const auto &method : extension->methods) {
-            if (!includePrivate && !atFileScope && !method->isPublic)
+            if (!includePrivate && !method->isPublic)
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
@@ -487,7 +545,8 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     html << "</article>";
     if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
         for (const auto &item : module->items) {
-            RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, qualified);
+            RenderDecl(html, *item, moduleName, source, includePrivate, search, findings, publicTypes, qualified,
+                       containingModulesPublic && module->isPublic);
         }
     }
 }
@@ -571,7 +630,12 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     std::ostringstream content;
     std::vector<SearchEntry> search;
     Findings findings;
-    std::size_t declared = 0;
+    std::unordered_set<std::string> publicTypes;
+    for (const auto &module : modules) {
+        for (const auto &declaration : module.module.items) {
+            CollectPublicTypes(*declaration, true, publicTypes);
+        }
+    }
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
         // A name that is already relative is shown as written: measuring it against the root would drag the working
@@ -592,22 +656,14 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
             ec.clear();
         }
         const std::string moduleName = sourcePath.stem().string();
-        declared = declared + module.module.items.size();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";
         for (const auto &declaration : module.module.items) {
-            RenderDecl(content, *declaration, moduleName, source, options.includePrivate, search, findings);
+            RenderDecl(content, *declaration, moduleName, source, options.includePrivate, search, findings,
+                       publicTypes);
         }
         content << "</section>";
     }
     std::ranges::sort(search, {}, &SearchEntry::name);
-    // A page of module headings with nothing under them is what a visibility rule that does not match the language
-    // produces, and it looks like a package with no API rather than like a bug.
-    if (declared > 0 && findings.rendered == 0) {
-        findings.diagnostics.push_back(
-            ErrorDiagnostic(std::format("'{}' declares {} items but none reached its documentation",
-                                        manifest.package.name.Text(), declared),
-                            {}, "check that the declarations are at file scope or marked 'pub'"));
-    }
     result.diagnostics.insert(result.diagnostics.end(), findings.diagnostics.begin(), findings.diagnostics.end());
     if (result.HasErrors()) {
         std::filesystem::remove_all(temporary, ec);

@@ -44,7 +44,7 @@ extern {
     // `ptr` must be readable for `count` bytes. A `count` larger than the object reads past it.
     //
     // https://en.cppreference.com/c/string/byte/memchr
-    func memchr(ptr: *opaque, ch: c_int, count: size_t) -> *opaque;
+    pub func memchr(ptr: *opaque, ch: c_int, count: size_t) -> *opaque;
 
     // Compares the first `count` bytes of two objects.
     //
@@ -60,7 +60,7 @@ extern {
     // Both pointers must be readable for `count` bytes.
     //
     // https://en.cppreference.com/c/string/byte/memcmp
-    func memcmp(lhs: *opaque, rhs: *opaque, count: size_t) -> c_int;
+    pub func memcmp(lhs: *opaque, rhs: *opaque, count: size_t) -> c_int;
 
     // Copies `count` bytes from `src` to `dest`.
     //
@@ -74,7 +74,7 @@ extern {
     // `dest` must be writable for `count` bytes, `src` readable for `count`, and the two must not overlap.
     //
     // https://en.cppreference.com/c/string/byte/memcpy
-    func memcpy(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
+    pub func memcpy(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
 
     // Copies `count` bytes from `src` to `dest`, correctly even when the two overlap.
     //
@@ -88,7 +88,7 @@ extern {
     // `dest` must be writable for `count` bytes and `src` readable for `count`.
     //
     // https://en.cppreference.com/c/string/byte/memmove
-    func memmove(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
+    pub func memmove(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
 
     // Writes `ch` to each of the first `count` bytes of `dest`.
     //
@@ -103,7 +103,7 @@ extern {
     // to delete a write nothing reads back, and `Core::Zeroize` is the one that is not.
     //
     // https://en.cppreference.com/c/string/byte/memset
-    func memset(dest: *var opaque, ch: c_int, count: size_t) -> *var opaque;
+    pub func memset(dest: *var opaque, ch: c_int, count: size_t) -> *var opaque;
 
     // The length of a byte string, not counting its terminator.
     //
@@ -116,7 +116,7 @@ extern {
     // `str` must be non-null and must contain a zero byte. Without one this reads until it faults or wraps.
     //
     // https://en.cppreference.com/c/string/byte/strlen
-    func strlen(str: *char8) -> size_t;
+    pub func strlen(str: *char8) -> size_t;
 
     // Compares two byte strings.
     //
@@ -130,7 +130,7 @@ extern {
     // Both must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strcmp
-    func strcmp(lhs: *char8, rhs: *char8) -> c_int;
+    pub func strcmp(lhs: *char8, rhs: *char8) -> c_int;
 
     // Compares at most `count` bytes of two byte strings.
     //
@@ -144,7 +144,7 @@ extern {
     // Both must be readable until a terminator or `count` bytes, whichever comes first.
     //
     // https://en.cppreference.com/c/string/byte/strncmp
-    func strncmp(lhs: *char8, rhs: *char8, count: size_t) -> c_int;
+    pub func strncmp(lhs: *char8, rhs: *char8, count: size_t) -> c_int;
 
     // Copies a byte string, terminator included.
     //
@@ -158,7 +158,7 @@ extern {
     // Getting that wrong is the classic buffer overrun; prefer `memcpy` with a length the caller computed.
     //
     // https://en.cppreference.com/c/string/byte/strcpy
-    func strcpy(dest: *var char8, src: *char8) -> *var char8;
+    pub func strcpy(dest: *var char8, src: *char8) -> *var char8;
 
     // Copies at most `count` bytes of a byte string, padding with zeros.
     //
@@ -173,7 +173,7 @@ extern {
     // bytes or longer, which is the trap in its name: it is not a bounded `strcpy`.
     //
     // https://en.cppreference.com/c/string/byte/strncpy
-    func strncpy(dest: *var char8, src: *char8, count: size_t) -> *var char8;
+    pub func strncpy(dest: *var char8, src: *char8, count: size_t) -> *var char8;
 
     // Appends a byte string to the end of another.
     //
@@ -187,7 +187,7 @@ extern {
     // is a common accident: each call walks the destination from its start.
     //
     // https://en.cppreference.com/c/string/byte/strcat
-    func strcat(dest: *var char8, src: *char8) -> *var char8;
+    pub func strcat(dest: *var char8, src: *char8) -> *var char8;
 
     // Appends at most `count` bytes of a byte string to the end of another.
     //
@@ -202,7 +202,7 @@ extern {
     // taken from the source, not the size of the destination.
     //
     // https://en.cppreference.com/c/string/byte/strncat
-    func strncat(dest: *var char8, src: *char8, count: size_t) -> *var char8;
+    pub func strncat(dest: *var char8, src: *char8, count: size_t) -> *var char8;
 
     // Finds the first occurrence of a byte in a byte string.
     //
@@ -216,7 +216,7 @@ extern {
     // `str` must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strchr
-    func strchr(str: *char8, ch: c_int) -> *char8;
+    pub func strchr(str: *char8, ch: c_int) -> *char8;
 
     // Finds the last occurrence of a byte in a byte string.
     //
@@ -230,7 +230,7 @@ extern {
     // `str` must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strrchr
-    func strrchr(str: *char8, ch: c_int) -> *char8;
+    pub func strrchr(str: *char8, ch: c_int) -> *char8;
 
     // Finds the first occurrence of one byte string within another.
     //
@@ -244,7 +244,7 @@ extern {
     // Both must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strstr
-    func strstr(haystack: *char8, needle: *char8) -> *char8;
+    pub func strstr(haystack: *char8, needle: *char8) -> *char8;
 
     // The length of the leading run of bytes drawn only from `accept`.
     //
@@ -258,7 +258,7 @@ extern {
     // Both must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strspn
-    func strspn(str: *char8, accept: *char8) -> size_t;
+    pub func strspn(str: *char8, accept: *char8) -> size_t;
 
     // The length of the leading run of bytes drawn from none of `reject`.
     //
@@ -270,7 +270,7 @@ extern {
     // Both must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strcspn
-    func strcspn(str: *char8, reject: *char8) -> size_t;
+    pub func strcspn(str: *char8, reject: *char8) -> size_t;
 
     // Finds the first byte of `str` that occurs in `accept`.
     //
@@ -281,7 +281,7 @@ extern {
     // Both must be non-null and terminated.
     //
     // https://en.cppreference.com/c/string/byte/strpbrk
-    func strpbrk(str: *char8, accept: *char8) -> *char8;
+    pub func strpbrk(str: *char8, accept: *char8) -> *char8;
 
     // The implementation's message for an error number.
     //
@@ -335,5 +335,5 @@ extern {
     // other and no two threads may use this at once. The string must be writable, which rules out a literal.
     //
     // https://en.cppreference.com/c/string/byte/strtok
-    func strtok(str: *var char8, delimiters: *char8) -> *char8;
+    pub func strtok(str: *var char8, delimiters: *char8) -> *char8;
 }

@@ -10,7 +10,7 @@ import Allocator::AllocError;
 /// What went wrong, or `None` when nothing did.
 ///
 /// https://rux-lang.dev/docs/api/text/text-error
-enum TextError: int32 {
+pub enum TextError: int32 {
     /// Nothing went wrong.
     None = 0,
     /// The allocator could not supply the storage.
@@ -27,14 +27,14 @@ extend TextError {
     /// Whether this reports success.
     ///
     /// https://rux-lang.dev/docs/api/text/text-error/is-ok
-    func IsOk(self: TextError) -> bool {
+    pub func IsOk(self: TextError) -> bool {
         return self == TextError::None;
     }
 
     /// Whether this reports a failure.
     ///
     /// https://rux-lang.dev/docs/api/text/text-error/is-error
-    func IsError(self: TextError) -> bool {
+    pub func IsError(self: TextError) -> bool {
         return self != TextError::None;
     }
 }
@@ -46,6 +46,6 @@ extend TextError {
 /// differently.
 ///
 /// https://rux-lang.dev/docs/api/text/from-alloc-error
-func FromAllocError(error: AllocError) -> TextError {
+pub func FromAllocError(error: AllocError) -> TextError {
     return error == AllocError::None ? TextError::None : TextError::OutOfMemory;
 }

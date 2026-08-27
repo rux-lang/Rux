@@ -7,7 +7,10 @@
 // twenty-three, and one Newton step that doubles that to the full
 // significand. Unlike Sqrt there is no hardware instruction to lean on, but
 // unlike Sqrt the answer is defined for a negative argument.
-func Cbrt(x: float64) -> float64 {
+/// Provides the public `Cbrt` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cbrt
+pub func Cbrt(x: float64) -> float64 {
     // 1023 - 1023/3 - 0.03306235651, in the top 20 bits of the significand.
     let b1 = 715094163u64;
     // The same, less 54/3 octaves, for a subnormal scaled up by 2^54.
@@ -63,6 +66,9 @@ func Cbrt(x: float64) -> float64 {
     return t + t * r;
 }
 
-func Cbrt(x: float32) -> float32 {
+/// Provides the public `Cbrt` operation.
+///
+/// https://rux-lang.dev/docs/api/math/cbrt
+pub func Cbrt(x: float32) -> float32 {
     return Cbrt(x as float64) as float32;
 }

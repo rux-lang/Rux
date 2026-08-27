@@ -34,7 +34,7 @@ when #target.os {
 /// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.
 ///
 /// https://rux-lang.dev/docs/api/storage/make-directory
-func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
+pub func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
     if converted.IsError() {
@@ -60,7 +60,7 @@ func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
 /// Deletes the empty directory `path` names; a directory with anything still in it is refused.
 ///
 /// https://rux-lang.dev/docs/api/storage/delete-directory
-func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
+pub func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
     if converted.IsError() {
@@ -85,7 +85,7 @@ func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
 /// Deletes the file `path` names. Removing the name does not disturb any handle still open on the file.
 ///
 /// https://rux-lang.dev/docs/api/storage/delete-file
-func DeleteFile(allocator: Allocator, path: Path) -> IoError {
+pub func DeleteFile(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
     if converted.IsError() {
@@ -113,7 +113,7 @@ func DeleteFile(allocator: Allocator, path: Path) -> IoError {
 /// name over as a fresh `OsString` owned by the caller.
 ///
 /// https://rux-lang.dev/docs/api/storage/directory-iterator
-struct DirectoryIterator {
+pub struct DirectoryIterator {
     /// Where the record buffer came from, and where the names come from.
     allocator: Allocator;
     /// The platform's enumeration handle.
@@ -145,7 +145,7 @@ func DirectoryBufferSize() -> uint {
 /// Begins enumerating the directory `path` names.
 ///
 /// https://rux-lang.dev/docs/api/storage/read-directory
-func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> DirectoryIterator {
+pub func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> DirectoryIterator {
     *error = IoError::Ok();
     var iterator = DirectoryIterator {
         allocator: allocator,
@@ -242,7 +242,7 @@ extend DirectoryIterator {
     /// or `false` with `failure` saying what went wrong. The `.` and `..` entries are skipped.
     ///
     /// https://rux-lang.dev/docs/api/storage/directory-iterator/next
-    func Next(self: &var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
+    pub func Next(self: &var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
         *failure = IoError::Ok();
         if !self.open {
             *failure = IoError::Of(IoErrorKind::InvalidHandle);
@@ -352,7 +352,7 @@ extend DirectoryIterator {
     /// Gives back the handle and the buffer.
     ///
     /// https://rux-lang.dev/docs/api/storage/directory-iterator/release
-    func Release(self: &var DirectoryIterator) {
+    pub func Release(self: &var DirectoryIterator) {
         if self.open {
             self.open = false;
             when #target.os == .Windows {

@@ -1,6 +1,9 @@
 // Returns the inverse tangent, in radians
 // https://rux-lang.dev/api/math/arctan
-func ArcTan(x: float64) -> float64 {
+/// Provides the public `ArcTan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tan
+pub func ArcTan(x: float64) -> float64 {
     let atanhi0 = 4.63647609000806093515e-01; // atan(0.5), high
     let atanhi1 = 7.85398163397448278999e-01; // atan(1.0), high
     let atanhi2 = 9.82793723247329054082e-01; // atan(1.5), high
@@ -79,6 +82,9 @@ func ArcTan(x: float64) -> float64 {
 
 // Returns the inverse tangent, in radians
 // https://rux-lang.dev/api/math/arctan
-func ArcTan(x: float32) -> float32 {
+/// Provides the public `ArcTan` operation.
+///
+/// https://rux-lang.dev/docs/api/math/arc-tan
+pub func ArcTan(x: float32) -> float32 {
     return ArcTan(x as float64) as float32;
 }

@@ -536,8 +536,9 @@ void SemanticAnalyzerContext::CheckStatement(const Stmt &statement) {
         }
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
-        programIndex.CollectDeclaration(*declarationStatement->decl, *currentScope, currentFile,
-                                        [this](const TypeExpr &type) { return ResolveType(type); });
+        programIndex.CollectDeclaration(
+            *declarationStatement->decl, *currentScope, currentFile,
+            [this](const TypeExpr &type) { return ResolveType(type); }, &currentPackage);
         CheckDecl(*declarationStatement->decl);
     }
     else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {

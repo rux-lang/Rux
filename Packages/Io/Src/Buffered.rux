@@ -19,14 +19,14 @@ import Memory::Copy;
 /// The room a buffered stream takes when the caller expresses no preference.
 ///
 /// https://rux-lang.dev/docs/api/io/default-buffer-capacity
-const DefaultBufferCapacity: uint = 8192;
+pub const DefaultBufferCapacity: uint = 8192;
 
 /// A reader that fills a buffer in large reads and serves small ones from it.
 ///
 /// Move-only: it owns its buffer. The reader it wraps is borrowed through the interface value and must outlive it.
 ///
 /// https://rux-lang.dev/docs/api/io/buffered-reader
-struct BufferedReader {
+pub struct BufferedReader {
     /// Where bytes come from when the buffer runs out.
     source: Reader;
     /// The buffer, or null when allocation was refused.
@@ -51,7 +51,7 @@ extend BufferedReader {
     /// read straight through, because a reader that exists but cannot read would be worse than a slow one.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/new
-    func New(allocator: Allocator, source: Reader, capacity: uint, error: *var IoError) -> BufferedReader {
+    pub func New(allocator: Allocator, source: Reader, capacity: uint, error: *var IoError) -> BufferedReader {
         *error = IoError::Ok();
         var reader = BufferedReader {
             source: source,
@@ -79,7 +79,7 @@ extend BufferedReader {
     /// How many buffered bytes wait unread.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/available
-    func Available(self: &BufferedReader) -> uint {
+    pub func Available(self: &BufferedReader) -> uint {
         return self.end - self.start;
     }
 
@@ -88,14 +88,14 @@ extend BufferedReader {
     /// What line reading is built from: look, decide, then `Consume` what was used.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/buffered
-    func Buffered(self: &BufferedReader) -> Slice<char8> {
+    pub func Buffered(self: &BufferedReader) -> Slice<char8> {
         return Slice<char8> { data: @self.data[self.start], length: self.end - self.start };
     }
 
     /// Marks `count` buffered bytes as read.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/consume
-    func Consume(self: &var BufferedReader, count: uint) {
+    pub func Consume(self: &var BufferedReader, count: uint) {
         self.start = self.start + (count <= self.Available() ? count : self.Available());
     }
 
@@ -105,7 +105,7 @@ extend BufferedReader {
     /// while handing over nothing breaks the `Reader` contract, and is reported as the end rather than looped on.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/fill
-    func Fill(self: &var BufferedReader) -> IoError {
+    pub func Fill(self: &var BufferedReader) -> IoError {
         if self.Available() > 0 {
             return IoError::Ok();
         }
@@ -133,7 +133,7 @@ extend BufferedReader {
     /// already larger than the whole buffer.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/read
-    func Read(self: &var BufferedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var BufferedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 {
             return IoError::Ok();
@@ -166,7 +166,7 @@ extend BufferedReader {
     /// Gives the buffer back.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/release
-    func Release(self: &var BufferedReader) {
+    pub func Release(self: &var BufferedReader) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
@@ -195,7 +195,7 @@ extend BufferedReader {
 /// calls it before letting go.
 ///
 /// https://rux-lang.dev/docs/api/io/buffered-writer
-struct BufferedWriter {
+pub struct BufferedWriter {
     /// Where the gathered bytes go.
     sink: Writer;
     /// The buffer, or null when allocation was refused.
@@ -217,7 +217,7 @@ extend BufferedWriter {
     /// A refused buffer leaves a writer that passes everything straight through, for the reader's reason.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/new
-    func New(allocator: Allocator, sink: Writer, capacity: uint, error: *var IoError) -> BufferedWriter {
+    pub func New(allocator: Allocator, sink: Writer, capacity: uint, error: *var IoError) -> BufferedWriter {
         *error = IoError::Ok();
         var writer = BufferedWriter { sink: sink, data: null, capacity: 0, length: 0, allocator: allocator };
         let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
@@ -238,14 +238,14 @@ extend BufferedWriter {
     /// How many bytes wait unsent.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/pending
-    func Pending(self: &BufferedWriter) -> uint {
+    pub func Pending(self: &BufferedWriter) -> uint {
         return self.length;
     }
 
     /// Sends everything gathered, then asks the sink to flush too.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/flush
-    func Flush(self: &var BufferedWriter) -> IoError {
+    pub func Flush(self: &var BufferedWriter) -> IoError {
         if self.length > 0 {
             let held = Slice<char8> { data: self.data, length: self.length };
             let sent = WriteAll(self.sink, held);
@@ -260,7 +260,7 @@ extend BufferedWriter {
     /// Takes `bytes`: into the buffer while they fit, around it in one piece when they never would.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/write
-    func Write(self: &var BufferedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var BufferedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
         *taken = 0;
         if bytes.length == 0 {
             return IoError::Ok();
@@ -301,7 +301,7 @@ extend BufferedWriter {
     /// For the caller who has decided the bytes must not go -- the one case where losing them is the point.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/abandon
-    func Abandon(self: &var BufferedWriter) {
+    pub func Abandon(self: &var BufferedWriter) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             let fallback = Layout { size: self.capacity, alignment: 1 };

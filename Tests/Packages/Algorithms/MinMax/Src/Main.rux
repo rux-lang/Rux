@@ -7,13 +7,13 @@ import Core::{ Assert, Ordering };
 // the elements carry something the ordering ignores, so they do.
 
 // Ordered by key alone, so equivalent-but-distinct elements exist and the choice among them is observable.
-struct Ranked {
+pub struct Ranked {
     key: int32;
     origin: int32;
 }
 
 extend Ranked {
-    func <(self: &Ranked, other: Ranked) -> bool {
+    pub func <(self: &Ranked, other: Ranked) -> bool {
         return self.key < other.key;
     }
 }

@@ -11,4 +11,4 @@
 /// a value copied elsewhere beforehand, or spilled to a register or the stack by the caller, is not reached.
 ///
 /// https://rux-lang.dev/docs/api/core/zeroize
-intrinsic func Zeroize(memory: *var uint8, length: uint64);
+pub intrinsic func Zeroize(memory: *var uint8, length: uint64);

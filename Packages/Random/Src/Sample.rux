@@ -17,7 +17,7 @@ import Core::{ MutableSlice, Slice };
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/random/shuffle
-func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T>) {
+pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T>) {
     if items.length < 2u {
         return;
     }
@@ -40,7 +40,7 @@ func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T>) {
 /// index, which a zero would be.
 ///
 /// https://rux-lang.dev/docs/api/random/choose-index
-func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
+pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
     if count == 0u {
         return 0u;
     }
@@ -57,7 +57,7 @@ func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
 /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
 ///
 /// https://rux-lang.dev/docs/api/random/weighted-index
-func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<float64>) -> uint {
+pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<float64>) -> uint {
     var total = 0.0;
     var index: uint = 0;
     while index < weights.length {

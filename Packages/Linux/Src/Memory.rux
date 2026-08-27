@@ -10,46 +10,46 @@ import Linux::{ SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunma
 /// `PROT_NONE`: the pages may not be touched at all.
 ///
 /// https://rux-lang.dev/docs/api/linux/protection-none
-const ProtectionNone: int32 = 0;
+pub const ProtectionNone: int32 = 0;
 
 /// `PROT_READ`: the pages may be read.
 ///
 /// https://rux-lang.dev/docs/api/linux/protection-read
-const ProtectionRead: int32 = 1;
+pub const ProtectionRead: int32 = 1;
 
 /// `PROT_WRITE`: the pages may be written.
 ///
 /// https://rux-lang.dev/docs/api/linux/protection-write
-const ProtectionWrite: int32 = 2;
+pub const ProtectionWrite: int32 = 2;
 
 /// `PROT_EXEC`: the pages may be executed.
 ///
 /// https://rux-lang.dev/docs/api/linux/protection-execute
-const ProtectionExecute: int32 = 4;
+pub const ProtectionExecute: int32 = 4;
 
 /// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
 ///
 /// https://rux-lang.dev/docs/api/linux/map-shared
-const MapShared: int32 = 1;
+pub const MapShared: int32 = 1;
 
 /// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
 ///
 /// https://rux-lang.dev/docs/api/linux/map-private
-const MapPrivate: int32 = 2;
+pub const MapPrivate: int32 = 2;
 
 /// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
 ///
 /// Dangerous by design: it silently unmaps anything already at the address, which may be someone else's mapping.
 ///
 /// https://rux-lang.dev/docs/api/linux/map-fixed
-const MapFixed: int32 = 16;
+pub const MapFixed: int32 = 16;
 
 /// `MAP_ANONYMOUS`: the mapping is backed by zeroed pages rather than by a file.
 ///
 /// The descriptor argument is then unused and is conventionally `-1`.
 ///
 /// https://rux-lang.dev/docs/api/linux/map-anonymous
-const MapAnonymous: int32 = 32;
+pub const MapAnonymous: int32 = 32;
 
 /// Creates a mapping and returns its address, or a negative error number.
 ///
@@ -66,7 +66,7 @@ const MapAnonymous: int32 = 32;
 /// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
 ///
 /// https://rux-lang.dev/docs/api/linux/mmap
-func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
+pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
     return Syscall6(
         SysMmap,
         address as uint64,
@@ -90,7 +90,7 @@ func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: i
 /// Every pointer into the range becomes invalid, and the address space may be handed to a later mapping at once.
 ///
 /// https://rux-lang.dev/docs/api/linux/munmap
-func Munmap(address: *opaque, length: uint) -> int64 {
+pub func Munmap(address: *opaque, length: uint) -> int64 {
     return Syscall2(SysMunmap, address as uint64, length as uint64);
 }
 
@@ -103,7 +103,7 @@ func Munmap(address: *opaque, length: uint) -> int64 {
 /// was linked in, is using the same one.
 ///
 /// https://rux-lang.dev/docs/api/linux/brk
-func Brk(address: *opaque) -> int64 {
+pub func Brk(address: *opaque) -> int64 {
     return Syscall1(SysBrk, address as uint64);
 }
 
@@ -113,22 +113,22 @@ func Brk(address: *opaque) -> int64 {
 /// giving up the address space.
 ///
 /// https://rux-lang.dev/docs/api/linux/advise-dont-need
-const AdviseDontNeed: int32 = 4;
+pub const AdviseDontNeed: int32 = 4;
 
 /// `MADV_WILLNEED`: the pages will be read soon, so reading them ahead is worthwhile.
 ///
 /// https://rux-lang.dev/docs/api/linux/advise-will-need
-const AdviseWillNeed: int32 = 3;
+pub const AdviseWillNeed: int32 = 3;
 
 /// `MADV_RANDOM`: the pages will be touched in no useful order, so reading ahead is not.
 ///
 /// https://rux-lang.dev/docs/api/linux/advise-random
-const AdviseRandom: int32 = 1;
+pub const AdviseRandom: int32 = 1;
 
 /// `MADV_SEQUENTIAL`: the pages will be touched in order.
 ///
 /// https://rux-lang.dev/docs/api/linux/advise-sequential
-const AdviseSequential: int32 = 2;
+pub const AdviseSequential: int32 = 2;
 
 /// Changes what may be done with the pages covering `address` through `address + length`.
 ///
@@ -144,7 +144,7 @@ const AdviseSequential: int32 = 2;
 /// what a hardened system refuses.
 ///
 /// https://rux-lang.dev/docs/api/linux/mprotect
-func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
+pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
     return Syscall3(SysMprotect, address as uint64, length as uint64, (protection as int64) as uint64);
 }
 
@@ -159,6 +159,6 @@ func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 /// it discards the modifications rather than writing them back.
 ///
 /// https://rux-lang.dev/docs/api/linux/madvise
-func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
+pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
     return Syscall3(SysMadvise, address as uint64, length as uint64, (advice as int64) as uint64);
 }

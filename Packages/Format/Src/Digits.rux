@@ -9,14 +9,14 @@
 /// The most digits a `uint64` ever needs, for 18446744073709551615.
 ///
 /// https://rux-lang.dev/docs/api/format/max-decimal-digits
-const MaxDecimalDigits: uint = 20;
+pub const MaxDecimalDigits: uint = 20;
 
 /// Writes the decimal digits of an unsigned value.
 ///
 /// A division loop produces them least significant first, so they land in a small buffer and go back reversed.
 ///
 /// https://rux-lang.dev/docs/api/format/write-uint
-func WriteUint(cursor: &var ByteCursor, value: uint64) {
+pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
     if value == 0u64 {
         cursor.Push(c8'0');
         return;
@@ -45,7 +45,7 @@ func WriteUint(cursor: &var ByteCursor, value: uint64) {
 /// answer for that value and for every other one.
 ///
 /// https://rux-lang.dev/docs/api/format/write-int
-func WriteInt(cursor: &var ByteCursor, value: int64) {
+pub func WriteInt(cursor: &var ByteCursor, value: int64) {
     if value < 0i64 {
         cursor.Push(c8'-');
         WriteUint(cursor, ~(value as uint64) + 1u64);

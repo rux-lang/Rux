@@ -14,7 +14,7 @@ import Core::{ MutableSlice, Slice };
 /// A fixed buffer being filled from the front.
 ///
 /// https://rux-lang.dev/docs/api/format/byte-cursor
-struct ByteCursor {
+pub struct ByteCursor {
     /// The room available.
     room: MutableSlice<char8>;
     /// How much of it is used.
@@ -27,14 +27,14 @@ extend ByteCursor {
     /// A cursor over `room`, filling from its start.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/new
-    func ByteCursor(room: MutableSlice<char8>) -> ByteCursor {
+    pub func ByteCursor(room: MutableSlice<char8>) -> ByteCursor {
         return ByteCursor { room: room, length: 0, overran: false };
     }
 
     /// Appends one byte, or records an overrun when there is no room.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push
-    func Push(self: &var ByteCursor, byte: char8) {
+    pub func Push(self: &var ByteCursor, byte: char8) {
         if self.length >= self.room.length {
             self.overran = true;
             return;
@@ -46,7 +46,7 @@ extend ByteCursor {
     /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
-    func PushBytes(self: &var ByteCursor, bytes: Slice<char8>) {
+    pub func PushBytes(self: &var ByteCursor, bytes: Slice<char8>) {
         var index: uint = 0;
         while index < bytes.length {
             self.Push(bytes.data[index]);
@@ -57,14 +57,14 @@ extend ByteCursor {
     /// What has been written.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/written
-    func Written(self: &ByteCursor) -> Slice<char8> {
+    pub func Written(self: &ByteCursor) -> Slice<char8> {
         return Slice<char8> { data: self.room.data, length: self.length };
     }
 
     /// Whether a write was refused for want of room.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/overran
-    func Overran(self: &ByteCursor) -> bool {
+    pub func Overran(self: &ByteCursor) -> bool {
         return self.overran;
     }
 }

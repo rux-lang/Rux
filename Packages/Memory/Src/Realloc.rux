@@ -16,7 +16,7 @@ when #target.os == .Windows {
 /// or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
 ///
 /// https://rux-lang.dev/docs/api/memory/realloc
-func Realloc(ptr: *opaque, size: uint) -> *var opaque {
+pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
             if ptr == null {
