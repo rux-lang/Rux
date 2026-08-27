@@ -1,0 +1,27 @@
+import Core::Assert;
+
+func ScopeWithDefer(val: *var int) {
+    defer *val += 5;
+    defer *val *= 2;
+    Assert(*val == 10, "val should be 10 before scope exit");
+}
+
+func TestEarlyReturn() -> int {
+    var a = 1;
+    defer a += 10;
+    if a == 1 {
+        return a;
+    }
+    return 0;
+}
+
+func Main() -> int {
+    var x = 10;
+    ScopeWithDefer(@x);
+    // LIFO: x *= 2 -> 20, then x += 5 -> 25
+    Assert(x == 25, "x should be 25 after defer execution");
+
+    var ret = TestEarlyReturn();
+    Assert(ret == 11, "ret should be 11 after defer runs before return");
+    return 0;
+}

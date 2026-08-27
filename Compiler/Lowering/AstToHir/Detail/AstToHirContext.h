@@ -97,6 +97,7 @@ protected:
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> typeInterfaceVtables;
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
+    std::vector<std::vector<const DeferStmt *>> deferStack;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
     std::vector<Diagnostic> &diagnostics;

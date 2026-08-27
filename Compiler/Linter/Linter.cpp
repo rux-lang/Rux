@@ -598,6 +598,11 @@ private:
                 VisitExpr(**retStmt->value);
             }
         }
+        else if (const auto *defStmt = dynamic_cast<const DeferStmt *>(&stmt)) {
+            if (defStmt->deferredStmt) {
+                VisitStmt(*defStmt->deferredStmt, scopeNames);
+            }
+        }
         else if (const auto *declStmt = dynamic_cast<const DeclStmt *>(&stmt)) {
             if (declStmt->decl) {
                 std::vector<std::string> name;

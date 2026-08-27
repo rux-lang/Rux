@@ -82,6 +82,9 @@ StmtPtr Parser::ParseStmt() {
     if (Check(TokenKind::ReturnKeyword)) {
         return ParseReturnStmt();
     }
+    if (Check(TokenKind::DeferKeyword)) {
+        return ParseDeferStmt();
+    }
 
     if (Check(TokenKind::BreakKeyword)) {
         Advance();
@@ -436,6 +439,16 @@ std::unique_ptr<ReturnStmt> Parser::ParseReturnStmt() {
     }
 
     ExpectBefore(TokenKind::Semicolon, "';' after the 'return' statement");
+    return s;
+}
+
+std::unique_ptr<DeferStmt> Parser::ParseDeferStmt() {
+    const auto loc = CurrentLocation();
+    Expect(TokenKind::DeferKeyword, "expected 'defer'");
+
+    auto s = std::make_unique<DeferStmt>();
+    s->location = loc;
+    s->deferredStmt = ParseStmt();
     return s;
 }
 } // namespace Rux

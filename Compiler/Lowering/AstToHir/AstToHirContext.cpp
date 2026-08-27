@@ -181,6 +181,7 @@ void AstToHirContext::PushScope() {
     ownedScopes.push_back(std::make_unique<HirScope>(currentScope));
     currentScope = ownedScopes.back().get();
     constIntegerScopes.emplace_back();
+    deferStack.emplace_back();
     cleanupPlanner.PushScope();
 }
 
@@ -189,6 +190,9 @@ void AstToHirContext::PopScope() {
     currentScope = currentScope->Parent();
     if (constIntegerScopes.size() > 1) {
         constIntegerScopes.pop_back();
+    }
+    if (!deferStack.empty()) {
+        deferStack.pop_back();
     }
     cleanupPlanner.PopScope();
 }
