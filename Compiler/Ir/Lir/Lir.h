@@ -30,7 +30,6 @@ enum class LirOpcode {
     Mul,
     Div,
     Mod,
-    Pow,
     // Bitwise / shift
     And,
     Or,
@@ -88,8 +87,6 @@ enum class LirOpcode {
         return "div";
     case LirOpcode::Mod:
         return "mod";
-    case LirOpcode::Pow:
-        return "pow";
     case LirOpcode::And:
         return "and";
     case LirOpcode::Or:

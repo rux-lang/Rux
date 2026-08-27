@@ -38,10 +38,6 @@ review_exception() {
         reviewed_limit=1300
         reviewed_reason='cohesive module-level RCU sections, symbols, relocations, and the operand-width rules its emitters share'
         ;;
-    Compiler/CodeGen/X86_64/FunctionEmitter.cpp)
-        reviewed_limit=1300
-        reviewed_reason='cohesive x86-64 function instruction selection sharing frame offsets, aggregate copies, and emitter hooks'
-        ;;
     Compiler/Semantic/SemanticAnalyzer.cpp)
         reviewed_limit=3700
         reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, generic instantiation, and shared-context policy'

@@ -8,7 +8,6 @@
 #include "CodeGen/AArch64/FramePlan.h"
 #include "CodeGen/AArch64/FunctionEmitter.h"
 #include "CodeGen/AArch64/Registers.h"
-#include "CodeGen/AArch64/RuntimeHelpers.h"
 #include "CodeGen/BackendDiagnostics.h"
 #include "CodeGen/ConstantData.h"
 #include "CodeGen/FloatLiteral.h"
@@ -153,7 +152,6 @@ public:
                          .buildTimestamp = RcuBuildTimestamp(buildInfo),
                          .ruxVersion = RcuCompilerVersion(buildInfo)})
         , enc(moduleBuilder.SectionData(RcuModuleSection::Text))
-        , runtimeHelpers(moduleBuilder, constIdx, [this](std::string message) { Report(std::move(message)); })
         , callPlanner(layouts, interfaceNames, inputStructDecls, inputTargetOs) {
     }
 
@@ -181,8 +179,6 @@ private:
     // The counter names interned constants apart; the names are local to the
     // object and mean nothing outside it.
     unsigned constIdx = 0;
-
-    AArch64RuntimeHelperEmitter runtimeHelpers;
 
     [[nodiscard]] std::vector<std::uint8_t> &TextData() {
         return moduleBuilder.SectionData(RcuModuleSection::Text);
@@ -1189,8 +1185,7 @@ private:
         }
         const AArch64FramePlan framePlan = PlanAArch64Frame(func, layouts, interfaceNames, structDecls, targetOs);
         activeFramePlan = &framePlan;
-        AArch64FunctionEmitter functionEmitter(enc, framePlan, runtimeHelpers, layouts, interfaceNames, currentFunc,
-                                               targetOs, *this);
+        AArch64FunctionEmitter functionEmitter(enc, framePlan, layouts, interfaceNames, currentFunc, targetOs, *this);
         AArch64CallEmitter callEmitter(enc, framePlan, callPlanner, currentFunc, *this);
         AArch64TerminatorEmitter terminatorEmitter(enc, framePlan, callEmitter, currentFunc, *this);
         terminatorEmitter.BeginFunction();
@@ -1359,7 +1354,6 @@ private:
         for (const auto &func : mod.funcs) {
             GenFunc(func);
         }
-        runtimeHelpers.EmitRequested();
     }
 };
 

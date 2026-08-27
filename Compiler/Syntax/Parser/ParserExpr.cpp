@@ -395,7 +395,7 @@ ExprPtr Parser::ParseAdd() {
 }
 
 ExprPtr Parser::ParseMul() {
-    auto left = ParseExp();
+    auto left = ParseCast();
     if (!left) {
         return nullptr;
     }
@@ -403,7 +403,7 @@ ExprPtr Parser::ParseMul() {
         const auto loc = CurrentLocation();
         const Token opToken = Advance();
         const auto op = opToken.kind;
-        auto right = ParseExp();
+        auto right = ParseCast();
         if (!right) {
             EmitMissingExpression(std::format("after '{}'", opToken.text));
         }
@@ -414,36 +414,6 @@ ExprPtr Parser::ParseMul() {
         e->right = std::move(right);
         left = std::move(e);
     }
-    return left;
-}
-
-// ** is right-associative (exponentiation)
-ExprPtr Parser::ParseExp() {
-    auto left = ParseCast();
-    if (!left) {
-        return nullptr;
-    }
-
-    if (Check(TokenKind::Star) && Peek(1).kind == TokenKind::Star) {
-        const auto loc = CurrentLocation();
-
-        Advance(); // first *
-        Advance(); // second *
-
-        auto right = ParseExp(); // right-associative
-        if (!right) {
-            EmitMissingExpression("after '**'");
-        }
-
-        auto e = std::make_unique<BinaryExpr>();
-        e->location = loc;
-        e->op = TokenKind::StarStar; // keep AST/LIR compatibility
-        e->left = std::move(left);
-        e->right = std::move(right);
-
-        return e;
-    }
-
     return left;
 }
 

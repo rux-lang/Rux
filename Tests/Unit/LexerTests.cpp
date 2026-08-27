@@ -69,6 +69,16 @@ TEST_CASE("Lexer recognizes ownership transfer arrows without splitting comparis
     CHECK(result.tokens[7].Is(TokenKind::Minus));
 }
 
+TEST_CASE("Lexer keeps adjacent stars as separate multiplication and dereference tokens") {
+    const auto result = Lex("left**right; left * *right;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.tokens.size(), 11);
+    for (const std::size_t index : {1u, 2u, 6u, 7u}) {
+        CHECK(result.tokens[index].Is(TokenKind::Star));
+        CHECK_EQ(result.tokens[index].text, "*");
+    }
+}
+
 TEST_CASE("Lexer does not recognize flat compile-time intrinsic aliases") {
     static constexpr const char *aliases[] = {
         "line",

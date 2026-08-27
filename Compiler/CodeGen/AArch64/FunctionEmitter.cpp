@@ -18,7 +18,6 @@ constexpr unsigned kTemp = 9;
 constexpr unsigned kAddr = 10;
 constexpr unsigned kSrcAddr = 11;
 constexpr unsigned kTemp2 = 12;
-constexpr unsigned kReturn = 0;
 constexpr unsigned kFpTemp = 16;
 constexpr unsigned kFpTemp2 = 17;
 constexpr unsigned kFpTemp3 = 18;
@@ -80,13 +79,12 @@ constexpr std::int32_t kFrameRecordSize = 16;
 } // namespace
 
 AArch64FunctionEmitter::AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
-                                               AArch64RuntimeHelperEmitter &runtimeHelpers, const LayoutMap &layouts,
+                                               const LayoutMap &layouts,
                                                const std::unordered_set<std::string> &interfaceNames,
                                                std::string functionName, const Target::OS targetOs,
                                                AArch64FunctionEmitterHooks &hooks)
     : encoder(encoder)
     , framePlan(framePlan)
-    , runtimeHelpers(runtimeHelpers)
     , layouts(layouts)
     , interfaceNames(interfaceNames)
     , functionName(std::move(functionName))
@@ -353,35 +351,6 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const A64Reg remainder = hooks.ResultRegister(instruction.dst, A64::Xn(kTemp));
         Must(encoder.Msub(remainder, quotient, operands->rhs, operands->lhs), LirOpcodeName(instruction.op));
         hooks.StoreToSlot(remainder, instruction.dst, type);
-        return true;
-    }
-    case LirOpcode::Pow: {
-        const TypeRef &type = instruction.type;
-        if (instruction.srcs.size() < 2) {
-            Report(std::format("AArch64 code generation reached a 'pow' with one operand in '{}'", functionName));
-            return true;
-        }
-        if (IsFloat(type)) {
-            const bool single = type.kind == TypeRef::Kind::Float32;
-            hooks.LoadFpFromSlot(FpReg(type, 0), instruction.srcs[0]);
-            hooks.LoadFpFromSlot(FpReg(type, 1), instruction.srcs[1]);
-            const std::uint32_t site = encoder.Size();
-            Must(encoder.Bl(0), "a call to the exponentiation helper");
-            runtimeHelpers.AddCallRelocation(site, single ? AArch64RuntimeHelper::FloatPower32
-                                                          : AArch64RuntimeHelper::FloatPower64);
-            hooks.StoreFpToSlot(FpReg(type, 0), instruction.dst);
-            return true;
-        }
-        if (!IsRegisterValue(type)) {
-            NotImplemented(std::format("the '{}' opcode on '{}'", LirOpcodeName(instruction.op), type.ToString()));
-            return true;
-        }
-        hooks.LoadFromSlot(A64::Xn(kReturn), instruction.srcs[0], type);
-        hooks.LoadFromSlot(A64::Xn(kReturn + 1), instruction.srcs[1], TypeOfReg(instruction.srcs[1]));
-        const std::uint32_t callSite = encoder.Size();
-        Must(encoder.Bl(0), "a call to the exponentiation helper");
-        runtimeHelpers.AddCallRelocation(callSite, AArch64RuntimeHelper::IntegerPower);
-        hooks.StoreToSlot(A64::Xn(kReturn), instruction.dst, type);
         return true;
     }
     case LirOpcode::Shl:

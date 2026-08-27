@@ -27,8 +27,6 @@ std::string_view OpStr(TokenKind op) {
         return "/";
     case TK::Percent:
         return "%";
-    case TK::StarStar:
-        return "**";
     case TK::PlusPlus:
         return "++";
     case TK::MinusMinus:

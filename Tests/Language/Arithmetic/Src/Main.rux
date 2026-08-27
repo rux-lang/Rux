@@ -58,5 +58,13 @@ func Main() -> int {
         return 10;
     }
 
+    // Adjacent stars have no exponent meaning. They are the same ordinary
+    // multiplication and dereference tokens as the spaced spelling.
+    let pointed = 3;
+    let pointer = @pointed;
+    if 2 ** pointer != 6 || 2 * *pointer != 6 {
+        return 11;
+    }
+
     return 0;
 }

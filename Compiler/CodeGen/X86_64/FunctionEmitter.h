@@ -2,7 +2,6 @@
 
 #include "CodeGen/Layout.h"
 #include "CodeGen/X86_64/FramePlan.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Ir/Lir/Lir.h"
 
 #include <cstdint>
@@ -37,8 +36,7 @@ public:
 /// behind this boundary without exposing frame or module-emission state.
 class X86_64FunctionEmitter {
 public:
-    X86_64FunctionEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan, X86_64RuntimeHelperEmitter &runtimeHelpers,
-                          CallingConvention defaultConvention, const Layout::LayoutMap &layouts,
+    X86_64FunctionEmitter(X64Enc &encoder, const X86_64FramePlan &framePlan, const Layout::LayoutMap &layouts,
                           const std::unordered_set<std::string> &interfaceNames, X86_64FunctionEmitterHooks &hooks);
 
     /// Returns true exactly when the instruction belongs to the arithmetic, comparison, shift, cast, or unary family
@@ -52,8 +50,6 @@ public:
 private:
     X64Enc &encoder;
     const X86_64FramePlan &framePlan;
-    X86_64RuntimeHelperEmitter &runtimeHelpers;
-    CallingConvention defaultConvention;
     const Layout::LayoutMap &layouts;
     const std::unordered_set<std::string> &interfaceNames;
     X86_64FunctionEmitterHooks &hooks;

@@ -311,62 +311,6 @@ bool AArch64FunctionEmitter::EmitWideArithmetic(const LirInstr &instruction) {
         }
         return true;
     }
-    case LirOpcode::Pow: {
-        const std::int32_t base = framePlan.WideTemporaryOffset(0);
-        const std::int32_t exponent = framePlan.WideTemporaryOffset(1);
-        const std::int32_t product = framePlan.WideTemporaryOffset(2);
-        ZeroWide(destination, size);
-        Must(encoder.LoadImm64(A64::Xn(kValue), 1), "a wide-integer power identity");
-        hooks.StoreScalar(A64::Xn(kValue), A64::Fp, destination, 8);
-
-        std::vector<std::uint32_t> doneBranches;
-        if (wideType.IsSigned()) {
-            LoadWideWord(A64::Xn(kValue), instruction.srcs[1], words - 1);
-            Must(encoder.Cmp(A64::Xn(kValue), A64::Xzr), "a wide-integer exponent sign");
-            const std::uint32_t nonNegative = BranchIf(A64Condition::Pl);
-            ZeroWide(destination, size);
-            doneBranches.push_back(Branch());
-            PatchConditionalBranch(nonNegative);
-        }
-
-        CopyWide(source(0), base, size);
-        CopyWide(source(1), exponent, size);
-        const std::uint32_t loop = encoder.Size();
-        Must(encoder.LoadImm64(A64::Xn(kValue), 0), "a wide-integer exponent test");
-        for (int word = 0; word < words; ++word) {
-            hooks.LoadScalar(A64::Xn(kRight), A64::Fp, static_cast<std::int64_t>(exponent) + word * 8, 8, false);
-            Must(encoder.Orr(A64::Xn(kValue), A64::Xn(kValue), A64::Xn(kRight)), "a wide-integer exponent test");
-        }
-        Must(encoder.Cmp(A64::Xn(kValue), A64::Xzr), "a wide-integer exponent test");
-        doneBranches.push_back(BranchIf(A64Condition::Eq));
-        hooks.LoadScalar(A64::Xn(kValue), A64::Fp, exponent, 8, false);
-        Must(encoder.AndsImm(A64::Xzr, A64::Xn(kValue), 1), "a wide-integer exponent bit");
-        const std::uint32_t skipMultiply = BranchIf(A64Condition::Eq);
-        MultiplyWide(destination, base, product, size);
-        CopyWide(product, destination, size);
-        PatchConditionalBranch(skipMultiply);
-        MultiplyWide(base, base, product, size);
-        CopyWide(product, base, size);
-        for (int word = 0; word < words - 1; ++word) {
-            hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(exponent) + word * 8, 8, false);
-            hooks.LoadScalar(A64::Xn(kRight), A64::Fp, static_cast<std::int64_t>(exponent) + (word + 1) * 8, 8, false);
-            Must(encoder.Extr(A64::Xn(kValue), A64::Xn(kRight), A64::Xn(kValue), 1), "a wide-integer exponent shift");
-            hooks.StoreScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(exponent) + word * 8, 8);
-        }
-        hooks.LoadScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(exponent) + size - 8, 8, false);
-        Must(encoder.Lsr(A64::Xn(kValue), A64::Xn(kValue), 1), "a wide-integer exponent shift");
-        hooks.StoreScalar(A64::Xn(kValue), A64::Fp, static_cast<std::int64_t>(exponent) + size - 8, 8);
-        Must(encoder.B(static_cast<std::int64_t>(loop) - encoder.Size()), "a wide-integer power loop");
-        for (const std::uint32_t site : doneBranches) {
-            if ((encoder.WordAt(site) & 0x7C000000U) == 0x14000000U) {
-                PatchBranch(site);
-            }
-            else {
-                PatchConditionalBranch(site);
-            }
-        }
-        return true;
-    }
     case LirOpcode::Neg:
         CopyWide(source(0), destination, size);
         NegateWide(destination, size);

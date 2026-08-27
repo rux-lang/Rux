@@ -200,7 +200,6 @@ private:
     ExprPtr ParseShift();
     ExprPtr ParseAdd();
     ExprPtr ParseMul();
-    ExprPtr ParseExp(); ///< ** right-associative
     ExprPtr ParseUnary();
     ExprPtr ParsePostfix();
     ExprPtr ParsePrimary();

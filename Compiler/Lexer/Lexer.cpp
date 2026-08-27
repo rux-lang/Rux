@@ -1018,7 +1018,7 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
         }
         return MakeToken(TokenKind::Minus, start, tokenStart);
 
-    // *  or  *=  or  **
+    // *  or  *=
     case '*':
         if (Match('=')) {
             return MakeToken(TokenKind::StarAssign, start, tokenStart);

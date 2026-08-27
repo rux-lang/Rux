@@ -4,7 +4,6 @@
 #include "CodeGen/X86_64/AssemblyInstructionPrinter.h"
 
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
-#include "CodeGen/X86_64/RuntimeHelpers.h"
 #include "Target/Platform.h"
 
 #include <algorithm>
@@ -518,34 +517,6 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
             if (instruction.op == LirOpcode::Mod) {
                 modulePrinter.TextInstruction("mov     rax, rdx");
             }
-        }
-        StoreA(instruction.dst, type);
-        return true;
-    }
-    case LirOpcode::Pow: {
-        const TypeRef &type = instruction.type;
-        const int shadowSpace = IsWin64Convention(CallingConvention::Default) ? 32 : 0;
-        if (shadowSpace > 0) {
-            modulePrinter.TextInstruction(std::format("sub     rsp, {}", shadowSpace));
-        }
-        if (IsFloat(type)) {
-            const bool float32 = type.kind == TypeRef::Kind::Float32;
-            modulePrinter.RequestHelper(float32 ? X86_64RuntimeHelper::FloatPower32
-                                                : X86_64RuntimeHelper::FloatPower64);
-            LoadA(instruction.srcs[0], type);
-            LoadB(instruction.srcs[1], type);
-            modulePrinter.TextInstruction(float32 ? "call    __rux_powf32" : "call    __rux_powf64");
-        }
-        else {
-            modulePrinter.RequestHelper(X86_64RuntimeHelper::IntegerPower);
-            LoadA(instruction.srcs[0], type);
-            LoadB(instruction.srcs[1], type);
-            modulePrinter.TextInstruction("mov     rcx, rax");
-            modulePrinter.TextInstruction("mov     rdx, r10");
-            modulePrinter.TextInstruction("call    __rux_ipow");
-        }
-        if (shadowSpace > 0) {
-            modulePrinter.TextInstruction(std::format("add     rsp, {}", shadowSpace));
         }
         StoreA(instruction.dst, type);
         return true;

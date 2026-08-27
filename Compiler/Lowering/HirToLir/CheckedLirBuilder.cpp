@@ -173,8 +173,6 @@ std::optional<LirOpcode> CheckedLirBuilder::BinaryOpcode(const TokenKind op) noe
         return LirOpcode::Div;
     case TK::Percent:
         return LirOpcode::Mod;
-    case TK::StarStar:
-        return LirOpcode::Pow;
     case TK::Amp:
     case TK::AmpAmp:
         return LirOpcode::And;

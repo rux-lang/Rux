@@ -2,7 +2,6 @@
 
 #include "CodeGen/AArch64/Encoder.h"
 #include "CodeGen/AArch64/FramePlan.h"
-#include "CodeGen/AArch64/RuntimeHelpers.h"
 #include "CodeGen/Layout.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Lir/Lir.h"
@@ -49,8 +48,7 @@ public:
 /// another emitter.
 class AArch64FunctionEmitter {
 public:
-    AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan,
-                           AArch64RuntimeHelperEmitter &runtimeHelpers, const Layout::LayoutMap &layouts,
+    AArch64FunctionEmitter(A64Enc &encoder, const AArch64FramePlan &framePlan, const Layout::LayoutMap &layouts,
                            const std::unordered_set<std::string> &interfaceNames, std::string functionName,
                            Target::OS targetOs, AArch64FunctionEmitterHooks &hooks);
 
@@ -71,7 +69,6 @@ private:
 
     A64Enc &encoder;
     const AArch64FramePlan &framePlan;
-    AArch64RuntimeHelperEmitter &runtimeHelpers;
     const Layout::LayoutMap &layouts;
     const std::unordered_set<std::string> &interfaceNames;
     std::string functionName;

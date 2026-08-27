@@ -218,61 +218,6 @@ TEST_CASE("AArch64 RCU emitter negates, complements and tests in one instruction
     CHECK_EQ(std::ranges::count_if(words, [](const std::uint32_t w) { return (w & 0xFFE0FFE0U) == 0xAA2003E0U; }), 1);
 }
 
-TEST_CASE("AArch64 RCU emitter calls one synthesized exponentiation helper") {
-    const auto package = CompileToAArch64Lir(R"(
-        func Main() -> int {
-            var base: int = 5;
-            var exponent: int = 3;
-            var first = base ** exponent;
-            var second = exponent ** base;
-            return 0;
-        }
-    )");
-
-    AArch64RcuEmitter emitter(package, "test");
-    const auto objects = emitter.Generate();
-    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
-    const auto &object = objects.front();
-
-    // One body, whatever the number of uses, and local to the object: two
-    // modules of a package each carry their own rather than sharing one.
-    const RcuSymbol *helper = FindSymbol(object, "__rux_ipow");
-    REQUIRE(helper != nullptr);
-    CHECK_EQ(helper->sectionIdx, RCU_TEXT_IDX);
-    CHECK_EQ(helper->visibility, RcuSymVis::Local);
-    CHECK_EQ(helper->kind, RcuSymKind::Func);
-
-    // Exponentiation by squaring, with a negative exponent yielding zero and a
-    // zero exponent yielding one — the answers the x86-64 helper gives.
-    const std::vector<std::uint32_t> expected = {
-        0xAA0003E2, // mov  x2, x0        — the base
-        0xD2800000, // mov  x0, #0        — a negative exponent yields zero
-        0xB7F80101, // tbnz x1, #63, done
-        0xD2800020, // mov  x0, #1
-        0xB40000C1, // loop: cbz x1, done
-        0x36000041, // tbz  w1, #0, square
-        0x9B027C00, // mul  x0, x0, x2
-        0x9B027C42, // square: mul x2, x2, x2
-        0x9341FC21, // asr  x1, x1, #1
-        0x17FFFFFB, // b    loop
-        0xD65F03C0, // done: ret
-    };
-    const auto body = FunctionWords(object, "__rux_ipow");
-    REQUIRE_EQ(body.size(), expected.size());
-    for (std::size_t i = 0; i < expected.size(); ++i) {
-        CHECK_EQ(HexWord(body[i]), HexWord(expected[i]));
-    }
-
-    // Each use is a BL carrying a branch relocation against that one symbol,
-    // since the body is emitted after every function that calls it.
-    const auto calls = RelocsFor(object, RCU_TEXT_IDX, "__rux_ipow");
-    REQUIRE_EQ(calls.size(), 2);
-    for (const auto &call : calls) {
-        CHECK_EQ(call.type, RcuRelType::AArch64Call26);
-        CHECK_EQ(HexWord(TextWordAt(object, call.sectionOffset) & 0xFC000000U), HexWord(0x94000000U)); // bl
-    }
-}
-
 TEST_CASE("AArch64 RCU emitter reads a comparison at the signedness of its operands") {
     const auto package = CompileToAArch64Lir(R"(
         func Main() -> int {

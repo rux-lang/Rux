@@ -98,7 +98,6 @@ namespace {
         Binary(LirOpcode::Mul, 8, uint128, 0, 1),
         Binary(LirOpcode::Div, 9, int128, 3, 4),
         Binary(LirOpcode::Mod, 10, int128, 3, 4),
-        Binary(LirOpcode::Pow, 11, uint128, 1, 1),
         Binary(LirOpcode::And, 12, uint128, 0, 1),
         Binary(LirOpcode::Or, 13, uint128, 0, 1),
         Binary(LirOpcode::Xor, 14, uint128, 0, 1),

@@ -9,7 +9,6 @@
 #include <unordered_set>
 
 namespace Rux {
-enum class X86_64RuntimeHelper;
 struct LirFunc;
 struct LirModule;
 
@@ -27,8 +26,6 @@ public:
     [[nodiscard]] std::string InternFloat32(const std::string &value);
     [[nodiscard]] std::string InternFloat64(const std::string &value);
     [[nodiscard]] std::string CreateLocalLabel(std::string_view prefix);
-    void RequestHelper(X86_64RuntimeHelper helper);
-
     void TextLine(std::string_view line);
     void TextInstruction(std::string_view instruction);
     void TextLabel(std::string_view label);
@@ -50,15 +47,7 @@ private:
     std::unordered_map<std::string, std::string> float64Labels;
     std::unordered_set<std::string> declaredExterns;
     int constantIndex = 0;
-    bool needsIntegerPower = false;
-    bool needsFloatPower64 = false;
-    bool needsFloatPower32 = false;
-
     [[nodiscard]] bool UsesWin64Convention() const;
     void DeclareGlobal(const std::string &name);
-    void EmitRequestedHelpers();
-    void EmitIntegerPowerHelper();
-    void EmitFloatPower64Helper();
-    void EmitFloatPower32Helper();
 };
 } // namespace Rux

@@ -179,8 +179,6 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "Slash";
     case TokenKind::Percent:
         return "Percent";
-    case TokenKind::StarStar:
-        return "StarStar";
     case TokenKind::PlusPlus:
         return "PlusPlus";
     case TokenKind::MinusMinus:

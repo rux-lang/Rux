@@ -262,6 +262,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Removed
 
+- **Exponentiation operator** — `**` no longer denotes a power. Adjacent stars follow the ordinary
+  multiplication-and-dereference grammar, so `value ** pointer` means `value * *pointer`. Explicit powers remain
+  available from `Rux/Math` through `Pow`, `PowInteger`, and `PowChecked`.
 - **Implicit named ownership transfers** — named move-only values now require `<-` in bindings, assignments, arguments, returns, aggregate fields, and conditional arms. Plain by-value use means copy and is rejected when the type prohibits copying, with a diagnostic showing the explicit transfer syntax for that context. Fresh temporaries continue to transfer directly.
 - **Mutable-parameter prefixes** — parameters use `name: Type` exclusively. A body that needs mutable local storage writes `var local <- value`; a caller-owned value that the function mutates is accepted as `value: &var T`.
 - **`Core::Drop` compatibility** — the temporary interface, compiler recognition, lowering fallback, imports, and compatibility fixtures are removed. Resource owners prohibit copying explicitly and use `func ~Type(self: &var Type)` for deterministic cleanup.
