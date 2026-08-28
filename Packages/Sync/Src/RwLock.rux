@@ -3,19 +3,19 @@ import Sync::{ AtomicUint32, MemoryOrder, SpinLoopHint };
 /// An RAII read-lock guard that allows shared immutable access.
 ///
 /// https://rux-lang.dev/docs/api/sync/rwlock-read-guard
-struct RwLockReadGuard<T> {
-    state: *var AtomicUint32;
-    data: *T;
+pub struct RwLockReadGuard<T> {
+    pub state: *var AtomicUint32;
+    pub data: *T;
 }
 
 extend RwLockReadGuard<T> {
     /// Obtains a pointer to the protected data.
-    func Data(self: &RwLockReadGuard<T>) -> *T {
+    pub func Data(self: &RwLockReadGuard<T>) -> *T {
         return self.data;
     }
 
     /// Releases the read lock when the guard is dropped.
-    func ~RwLockReadGuard(self: &var RwLockReadGuard<T>) {
+    pub func ~RwLockReadGuard(self: &var RwLockReadGuard<T>) {
         (*self.state).FetchSub(1u32, MemoryOrder::Release);
     }
 }
@@ -23,19 +23,19 @@ extend RwLockReadGuard<T> {
 /// An RAII write-lock guard that allows exclusive mutable access.
 ///
 /// https://rux-lang.dev/docs/api/sync/rwlock-write-guard
-struct RwLockWriteGuard<T> {
-    state: *var AtomicUint32;
-    data: *var T;
+pub struct RwLockWriteGuard<T> {
+    pub state: *var AtomicUint32;
+    pub data: *var T;
 }
 
 extend RwLockWriteGuard<T> {
     /// Obtains a pointer to the protected data.
-    func Data(self: &RwLockWriteGuard<T>) -> *var T {
+    pub func Data(self: &RwLockWriteGuard<T>) -> *var T {
         return self.data;
     }
 
     /// Releases the write lock when the guard is dropped.
-    func ~RwLockWriteGuard(self: &var RwLockWriteGuard<T>) {
+    pub func ~RwLockWriteGuard(self: &var RwLockWriteGuard<T>) {
         (*self.state).Store(0u32, MemoryOrder::Release);
     }
 }
@@ -43,14 +43,14 @@ extend RwLockWriteGuard<T> {
 /// A reader-writer lock allowing concurrent readers or a single writer.
 ///
 /// https://rux-lang.dev/docs/api/sync/rwlock
-struct RwLock<T> {
-    state: AtomicUint32;
-    data: T;
+pub struct RwLock<T> {
+    pub state: AtomicUint32;
+    pub data: T;
 }
 
 extend RwLock<T> {
     /// Creates a new `RwLock` in an unlocked state.
-    func RwLock(data: T) -> RwLock<T> {
+    pub func RwLock(data: T) -> RwLock<T> {
         return RwLock<T> {
             state: AtomicUint32(0u32),
             data: data
@@ -58,7 +58,7 @@ extend RwLock<T> {
     }
 
     /// Locks this rwlock with shared read access.
-    func Read(self: &var RwLock<T>) -> RwLockReadGuard<T> {
+    pub func Read(self: &var RwLock<T>) -> RwLockReadGuard<T> {
         while true {
             let cur = self.state.Load(MemoryOrder::Relaxed);
             if (cur & 0x80000000u32) == 0u32 {
@@ -77,7 +77,7 @@ extend RwLock<T> {
     }
 
     /// Locks this rwlock with exclusive write access.
-    func Write(self: &var RwLock<T>) -> RwLockWriteGuard<T> {
+    pub func Write(self: &var RwLock<T>) -> RwLockWriteGuard<T> {
         while true {
             let res = self.state.CompareExchange(0u32, 0x80000000u32, MemoryOrder::Acquire, MemoryOrder::Relaxed);
             if res.1 {
@@ -94,7 +94,7 @@ extend RwLock<T> {
     }
 
     /// Consumes the lock, returning the underlying data.
-    func IntoInner(self: RwLock<T>) -> T {
+    pub func IntoInner(self: RwLock<T>) -> T {
         return self.data;
     }
 }

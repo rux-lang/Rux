@@ -1,7 +1,7 @@
 /// An optimization barrier that forces the compiler to treat `val` as observable.
 ///
 /// https://rux-lang.dev/docs/api/benchmark/black-box
-func BlackBox<T>(val: T) -> T {
+pub func BlackBox<T>(val: T) -> T {
     var local = val;
     let ptr = @local;
     return *ptr;

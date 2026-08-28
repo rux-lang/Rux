@@ -4,17 +4,17 @@ import Core::Option;
 /// A bounded thread-safe synchronization channel.
 ///
 /// https://rux-lang.dev/docs/api/sync/channel
-struct Channel<T> {
-    lock: SpinLock;
-    data: T[16];
-    head: uint64;
-    tail: uint64;
-    count: uint64;
+pub struct Channel<T> {
+    pub lock: SpinLock;
+    pub data: T[16];
+    pub head: uint64;
+    pub tail: uint64;
+    pub count: uint64;
 }
 
 extend Channel<T> {
     /// Creates a new bounded channel initialized with a default exemplar.
-    func Channel(defaultVal: T) -> Channel<T> {
+    pub func Channel(defaultVal: T) -> Channel<T> {
         return Channel<T> {
             lock: SpinLock(),
             data: [
@@ -31,7 +31,7 @@ extend Channel<T> {
 
     /// Attempts to send a value into the channel without blocking.
     /// Returns `true` if sent, `false` if the channel is full.
-    func TrySend(self: &var Channel<T>, val: T) -> bool {
+    pub func TrySend(self: &var Channel<T>, val: T) -> bool {
         self.lock.Lock();
         if self.count >= 16u64 {
             self.lock.Unlock();
@@ -45,7 +45,7 @@ extend Channel<T> {
     }
 
     /// Attempts to receive a value from the channel without blocking.
-    func TryRecv(self: &var Channel<T>) -> Option<T> {
+    pub func TryRecv(self: &var Channel<T>) -> Option<T> {
         self.lock.Lock();
         if self.count == 0u64 {
             self.lock.Unlock();

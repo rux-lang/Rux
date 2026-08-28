@@ -1,26 +1,26 @@
 /// A 128-bit vector holding four 32-bit signed integer lanes.
 ///
 /// https://rux-lang.dev/docs/api/simd/int32x4
-struct Int32x4 {
-    v0: int32;
-    v1: int32;
-    v2: int32;
-    v3: int32;
+pub struct Int32x4 {
+    pub v0: int32;
+    pub v1: int32;
+    pub v2: int32;
+    pub v3: int32;
 }
 
 extend Int32x4 {
     /// Creates a vector from four 32-bit signed integers.
-    func Int32x4(v0: int32, v1: int32, v2: int32, v3: int32) -> Int32x4 {
+    pub func Int32x4(v0: int32, v1: int32, v2: int32, v3: int32) -> Int32x4 {
         return Int32x4 { v0: v0, v1: v1, v2: v2, v3: v3 };
     }
 
     /// Creates a vector with all four lanes initialized to `val`.
-    func Splat(val: int32) -> Int32x4 {
+    pub func Splat(val: int32) -> Int32x4 {
         return Int32x4 { v0: val, v1: val, v2: val, v3: val };
     }
 
     /// Adds two vectors lane-wise.
-    func Add(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func Add(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 + other.v0,
             v1: self.v1 + other.v1,
@@ -30,7 +30,7 @@ extend Int32x4 {
     }
 
     /// Subtracts `other` from `self` lane-wise.
-    func Sub(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func Sub(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 - other.v0,
             v1: self.v1 - other.v1,
@@ -40,7 +40,7 @@ extend Int32x4 {
     }
 
     /// Multiplies two vectors lane-wise.
-    func Mul(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func Mul(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 * other.v0,
             v1: self.v1 * other.v1,
@@ -50,7 +50,7 @@ extend Int32x4 {
     }
 
     /// Bitwise AND across corresponding lanes.
-    func BitAnd(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func BitAnd(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 & other.v0,
             v1: self.v1 & other.v1,
@@ -60,7 +60,7 @@ extend Int32x4 {
     }
 
     /// Bitwise OR across corresponding lanes.
-    func BitOr(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func BitOr(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 | other.v0,
             v1: self.v1 | other.v1,
@@ -70,7 +70,7 @@ extend Int32x4 {
     }
 
     /// Bitwise XOR across corresponding lanes.
-    func BitXor(self: Int32x4, other: Int32x4) -> Int32x4 {
+    pub func BitXor(self: Int32x4, other: Int32x4) -> Int32x4 {
         return Int32x4 {
             v0: self.v0 ^ other.v0,
             v1: self.v1 ^ other.v1,
@@ -80,7 +80,7 @@ extend Int32x4 {
     }
 
     /// Computes the horizontal sum of all four lanes.
-    func Sum(self: Int32x4) -> int32 {
+    pub func Sum(self: Int32x4) -> int32 {
         return self.v0 + self.v1 + self.v2 + self.v3;
     }
 }
