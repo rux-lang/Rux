@@ -1,0 +1,55 @@
+import Sync::SpinLock;
+
+/// An RAII guard that provides access to the protected data
+/// and automatically releases the lock when dropped.
+///
+/// https://rux-lang.dev/docs/api/sync/mutex-guard
+pub struct MutexGuard<T> {
+    pub lock: *var SpinLock;
+    pub data: *var T;
+}
+
+extend MutexGuard<T> {
+    /// Obtains a pointer to the protected data.
+    pub func Data(self: &MutexGuard<T>) -> *var T {
+        return self.data;
+    }
+
+    /// Releases the mutex lock when the guard is dropped.
+    pub func ~MutexGuard(self: &var MutexGuard<T>) {
+        (*self.lock).Unlock();
+    }
+}
+
+/// A mutual exclusion primitive useful for protecting shared data.
+///
+/// https://rux-lang.dev/docs/api/sync/mutex
+pub struct Mutex<T> {
+    pub lock: SpinLock;
+    pub data: T;
+}
+
+extend Mutex<T> {
+    /// Creates a new `Mutex` in an unlocked state ready for use.
+    pub func Mutex(data: T) -> Mutex<T> {
+        return Mutex<T> {
+            lock: SpinLock(),
+            data: data
+        };
+    }
+
+    /// Acquires the mutex, spinning until available.
+    /// Returns an RAII `MutexGuard` that releases the mutex on drop.
+    pub func Lock(self: &var Mutex<T>) -> MutexGuard<T> {
+        self.lock.Lock();
+        return MutexGuard<T> {
+            lock: @self.lock,
+            data: @self.data
+        };
+    }
+
+    /// Consumes the mutex, returning the underlying data.
+    pub func IntoInner(self: Mutex<T>) -> T {
+        return self.data;
+    }
+}

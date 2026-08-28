@@ -1,0 +1,354 @@
+import Core::{ #target, #Error };
+
+/// Memory ordering semantics for atomic operations.
+///
+/// https://rux-lang.dev/docs/api/sync/memory-order
+pub enum MemoryOrder {
+    Relaxed,
+    Acquire,
+    Release,
+    AcqRel,
+    SeqCst
+}
+
+when #target.arch {
+    .X86_64 => {
+        #Abi(.Win64)
+        asm func RawSwap64(ptr: *var uint64, val: uint64) -> uint64 {
+            mov rax, rdx
+            xchg qword [rcx], rax
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawCas64(ptr: *var uint64, expected: uint64, desired: uint64) -> uint64 {
+            mov rax, rdx
+            lock
+            cmpxchg qword [rcx], r8
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawFetchAdd64(ptr: *var uint64, val: uint64) -> uint64 {
+            mov rax, rdx
+            lock
+            xadd qword [rcx], rax
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawSwap32(ptr: *var uint32, val: uint32) -> uint32 {
+            mov eax, edx
+            xchg dword [rcx], eax
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawCas32(ptr: *var uint32, expected: uint32, desired: uint32) -> uint32 {
+            mov eax, edx
+            lock
+            cmpxchg dword [rcx], r8d
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawFetchAdd32(ptr: *var uint32, val: uint32) -> uint32 {
+            mov eax, edx
+            lock
+            xadd dword [rcx], eax
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawSwap8(ptr: *var uint8, val: uint8) -> uint8 {
+            mov al, dl
+            xchg byte [rcx], al
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawCas8(ptr: *var uint8, expected: uint8, desired: uint8) -> uint8 {
+            mov al, dl
+            lock
+            cmpxchg byte [rcx], r8b
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawFence() {
+            mfence
+            ret
+        }
+
+        #Abi(.Win64)
+        asm func RawSpinLoopHint() {
+            pause
+            ret
+        }
+    },
+    .AArch64 => {
+        asm func RawSwap64(ptr: *var uint64, val: uint64) -> uint64 {
+            dmb ish
+            ldr x2, [x0]
+            str x1, [x0]
+            dmb ish
+            mov x0, x2
+            ret
+        }
+
+        asm func RawCas64(ptr: *var uint64, expected: uint64, desired: uint64) -> uint64 {
+            dmb ish
+            ldr x3, [x0]
+            cmp x3, x1
+            b.ne done
+            str x2, [x0]
+        done:
+            dmb ish
+            mov x0, x3
+            ret
+        }
+
+        asm func RawFetchAdd64(ptr: *var uint64, val: uint64) -> uint64 {
+            dmb ish
+            ldr x2, [x0]
+            add x3, x2, x1
+            str x3, [x0]
+            dmb ish
+            mov x0, x2
+            ret
+        }
+
+        asm func RawSwap32(ptr: *var uint32, val: uint32) -> uint32 {
+            dmb ish
+            ldr w2, [x0]
+            str w1, [x0]
+            dmb ish
+            mov w0, w2
+            ret
+        }
+
+        asm func RawCas32(ptr: *var uint32, expected: uint32, desired: uint32) -> uint32 {
+            dmb ish
+            ldr w3, [x0]
+            cmp w3, w1
+            b.ne done
+            str w2, [x0]
+        done:
+            dmb ish
+            mov w0, w3
+            ret
+        }
+
+        asm func RawFetchAdd32(ptr: *var uint32, val: uint32) -> uint32 {
+            dmb ish
+            ldr w2, [x0]
+            add w3, w2, w1
+            str w3, [x0]
+            dmb ish
+            mov w0, w2
+            ret
+        }
+
+        asm func RawSwap8(ptr: *var uint8, val: uint8) -> uint8 {
+            dmb ish
+            ldrb w2, [x0]
+            strb w1, [x0]
+            dmb ish
+            mov w0, w2
+            ret
+        }
+
+        asm func RawCas8(ptr: *var uint8, expected: uint8, desired: uint8) -> uint8 {
+            dmb ish
+            ldrb w3, [x0]
+            cmp w3, w1
+            b.ne done
+            strb w2, [x0]
+        done:
+            dmb ish
+            mov w0, w3
+            ret
+        }
+
+        asm func RawFence() {
+            dmb ish
+            ret
+        }
+
+        asm func RawSpinLoopHint() {
+            dmb ish
+            ret
+        }
+    },
+    else => #Error("Unsupported architecture for atomic operations")
+}
+
+/// Issues a full memory barrier.
+///
+/// https://rux-lang.dev/docs/api/sync/fence
+pub func Fence(order: MemoryOrder) {
+    if order == MemoryOrder::SeqCst || order == MemoryOrder::Acquire || order == MemoryOrder::Release || order == MemoryOrder::AcqRel {
+        RawFence();
+    }
+}
+
+/// Emits a processor hint to optimize spinloop performance and reduce power consumption.
+///
+/// https://rux-lang.dev/docs/api/sync/spin-loop-hint
+pub func SpinLoopHint() {
+    RawSpinLoopHint();
+}
+
+/// Atomic 64-bit unsigned integer value.
+///
+/// https://rux-lang.dev/docs/api/sync/atomic-uint64
+pub struct AtomicUint64 {
+    pub value: uint64;
+}
+
+extend AtomicUint64 {
+    /// Creates a new `AtomicUint64` with the given initial value.
+    pub func AtomicUint64(initial: uint64) -> AtomicUint64 {
+        return AtomicUint64 { value: initial };
+    }
+
+    /// Loads the current value.
+    pub func Load(self: &AtomicUint64, order: MemoryOrder) -> uint64 {
+        let val = self.value;
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Acquire {
+            RawFence();
+        }
+        return val;
+    }
+
+    /// Stores a new value into the atomic integer.
+    pub func Store(self: &var AtomicUint64, val: uint64, order: MemoryOrder) {
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Release {
+            RawFence();
+        }
+        RawSwap64(@self.value, val);
+    }
+
+    /// Atomically swaps the value with `val` and returns the previous value.
+    pub func Swap(self: &var AtomicUint64, val: uint64, order: MemoryOrder) -> uint64 {
+        return RawSwap64(@self.value, val);
+    }
+
+    /// Atomically compares the value with `expected`, and if equal, stores `desired`.
+    /// Returns a tuple `(actual, succeeded)`.
+    pub func CompareExchange(self: &var AtomicUint64, expected: uint64, desired: uint64, success: MemoryOrder, failure: MemoryOrder) -> (uint64, bool) {
+        let prev = RawCas64(@self.value, expected, desired);
+        return (prev, prev == expected);
+    }
+
+    /// Atomically adds `val` to the integer and returns the previous value.
+    pub func FetchAdd(self: &var AtomicUint64, val: uint64, order: MemoryOrder) -> uint64 {
+        return RawFetchAdd64(@self.value, val);
+    }
+
+    /// Atomically subtracts `val` from the integer and returns the previous value.
+    pub func FetchSub(self: &var AtomicUint64, val: uint64, order: MemoryOrder) -> uint64 {
+        let negVal = 0u64 - val;
+        return RawFetchAdd64(@self.value, negVal);
+    }
+}
+
+/// Atomic 32-bit unsigned integer value.
+///
+/// https://rux-lang.dev/docs/api/sync/atomic-uint32
+pub struct AtomicUint32 {
+    pub value: uint32;
+}
+
+extend AtomicUint32 {
+    /// Creates a new `AtomicUint32` with the given initial value.
+    pub func AtomicUint32(initial: uint32) -> AtomicUint32 {
+        return AtomicUint32 { value: initial };
+    }
+
+    /// Loads the current value.
+    pub func Load(self: &AtomicUint32, order: MemoryOrder) -> uint32 {
+        let val = self.value;
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Acquire {
+            RawFence();
+        }
+        return val;
+    }
+
+    /// Stores a new value into the atomic integer.
+    pub func Store(self: &var AtomicUint32, val: uint32, order: MemoryOrder) {
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Release {
+            RawFence();
+        }
+        RawSwap32(@self.value, val);
+    }
+
+    /// Atomically swaps the value with `val` and returns the previous value.
+    pub func Swap(self: &var AtomicUint32, val: uint32, order: MemoryOrder) -> uint32 {
+        return RawSwap32(@self.value, val);
+    }
+
+    /// Atomically compares the value with `expected`, and if equal, stores `desired`.
+    pub func CompareExchange(self: &var AtomicUint32, expected: uint32, desired: uint32, success: MemoryOrder, failure: MemoryOrder) -> (uint32, bool) {
+        let prev = RawCas32(@self.value, expected, desired);
+        return (prev, prev == expected);
+    }
+
+    /// Atomically adds `val` to the integer and returns the previous value.
+    pub func FetchAdd(self: &var AtomicUint32, val: uint32, order: MemoryOrder) -> uint32 {
+        return RawFetchAdd32(@self.value, val);
+    }
+
+    /// Atomically subtracts `val` from the integer and returns the previous value.
+    pub func FetchSub(self: &var AtomicUint32, val: uint32, order: MemoryOrder) -> uint32 {
+        let negVal = 0u32 - val;
+        return RawFetchAdd32(@self.value, negVal);
+    }
+}
+
+/// Atomic boolean value.
+///
+/// https://rux-lang.dev/docs/api/sync/atomic-bool
+pub struct AtomicBool {
+    pub value: uint8;
+}
+
+extend AtomicBool {
+    /// Creates a new `AtomicBool` with the given initial boolean value.
+    pub func AtomicBool(initial: bool) -> AtomicBool {
+        return AtomicBool { value: initial ? 1u8 : 0u8 };
+    }
+
+    /// Loads the current boolean value.
+    pub func Load(self: &AtomicBool, order: MemoryOrder) -> bool {
+        let val = self.value;
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Acquire {
+            RawFence();
+        }
+        return val != 0u8;
+    }
+
+    /// Stores a new value into the atomic boolean.
+    pub func Store(self: &var AtomicBool, val: bool, order: MemoryOrder) {
+        let byteVal = val ? 1u8 : 0u8;
+        if order == MemoryOrder::SeqCst || order == MemoryOrder::Release {
+            RawFence();
+        }
+        RawSwap8(@self.value, byteVal);
+    }
+
+    /// Atomically swaps the value with `val` and returns the previous value.
+    pub func Swap(self: &var AtomicBool, val: bool, order: MemoryOrder) -> bool {
+        let byteVal = val ? 1u8 : 0u8;
+        let prev = RawSwap8(@self.value, byteVal);
+        return prev != 0u8;
+    }
+
+    /// Atomically compares and exchanges the boolean value.
+    pub func CompareExchange(self: &var AtomicBool, expected: bool, desired: bool, success: MemoryOrder, failure: MemoryOrder) -> (bool, bool) {
+        let expByte = expected ? 1u8 : 0u8;
+        let desByte = desired ? 1u8 : 0u8;
+        let prev = RawCas8(@self.value, expByte, desByte);
+        return (prev != 0u8, prev == expByte);
+    }
+}

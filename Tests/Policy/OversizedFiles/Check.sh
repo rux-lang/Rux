@@ -34,6 +34,10 @@ review_exception() {
         reviewed_limit=1500
         reviewed_reason='cohesive module-level RCU sections, symbols, retry orchestration, fixups, and shared emitter hooks'
         ;;
+    Compiler/CodeGen/X86_64/Assembler.cpp)
+        reviewed_limit=1400
+        reviewed_reason='cohesive x86-64 assembly instruction encoding, ModRM/SIB calculation, and atomic/SSE instruction dispatch'
+        ;;
     Compiler/CodeGen/X86_64/RcuEmitter.cpp)
         reviewed_limit=1300
         reviewed_reason='cohesive module-level RCU sections, symbols, relocations, and the operand-width rules its emitters share'

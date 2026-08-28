@@ -868,6 +868,15 @@ private:
             }
         }
 
+        if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expr)) {
+            const TypeRef thenType = CheckExpr(*ternary->thenExpr);
+            const TypeRef elseType = CheckExpr(*ternary->elseExpr);
+            if (CanAssignExprTo(*ternary->thenExpr, thenType, targetType) &&
+                CanAssignExprTo(*ternary->elseExpr, elseType, targetType)) {
+                return true;
+            }
+        }
+
         return exprType.IsAssignableTo(targetType) ||
                (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
                UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
@@ -1443,14 +1452,17 @@ private:
             return TypeImplementsInterface(source, target);
         };
         if (sym.funcOverloads.size() == 1) {
-            // Single overload: still validate arity and assignability so
-            // that Bar(wrongType) against a lone Bar(int32) returns null
-            // and lets the caller emit a proper diagnostic.
             const auto *decl = sym.funcOverloads[0];
+            if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
+                return decl;
+            }
             std::unordered_map<std::string, TypeRef> substitutions;
             const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
             for (std::size_t i = 0; i < count; ++i) {
                 substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
+            }
+            if (substitutions.size() < decl->typeParams.size()) {
+                DeduceTypeArguments(*decl, argTypes, substitutions);
             }
             TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                             TypeParameterNames(decl->typeParams));
@@ -1486,14 +1498,17 @@ private:
         for (const bool allowVariadic : {false, true}) {
             for (const bool exactOnly : {true, false}) {
                 for (const auto *decl : sym.funcOverloads) {
+                    if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
+                        continue;
+                    }
                     std::unordered_map<std::string, TypeRef> substitutions;
                     const std::size_t count = std::min(decl->typeParams.size(), typeArgs.size());
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i].name, ResolveType(*typeArgs[i]));
                     }
-                    // A candidate whose bounds the type arguments do not meet is not a candidate, so an overload set
-                    // separated by constraint picks the one that applies. The lone-overload path above deliberately
-                    // does not filter, so one constrained function reports its unmet bound rather than no match.
+                    if (substitutions.size() < decl->typeParams.size()) {
+                        DeduceTypeArguments(*decl, argTypes, substitutions);
+                    }
                     if (!TypeArgumentsSatisfyBounds(decl->typeParams, substitutions)) {
                         continue;
                     }
@@ -2191,24 +2206,6 @@ private:
             }
         }
         currentTypeParams = savedTypeParams;
-    }
-
-    TypeRef EnumVariantConstructorType(const EnumDecl &decl, const EnumDecl::Variant &variant,
-                                       const std::vector<TypeRef> &typeArgs = {}) override {
-        std::unordered_map<std::string, TypeRef> substitutions;
-        const std::size_t count = std::min(decl.typeParams.size(), typeArgs.size());
-        for (std::size_t i = 0; i < count; ++i) {
-            substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
-        }
-        std::vector<TypeRef> params;
-        params.reserve(variant.fields.size() + variant.namedFields.size());
-        for (const auto &field : variant.fields) {
-            params.push_back(ResolveTypeWithSubstitution(*field, substitutions));
-        }
-        for (const auto &field : variant.namedFields) {
-            params.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
-        }
-        return TypeRef::MakeFunc(std::move(params), EnumType(decl, typeArgs));
     }
 
     void CheckUnionDecl(const UnionDecl &d) {

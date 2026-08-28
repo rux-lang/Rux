@@ -1,0 +1,117 @@
+import Sync::{
+    AtomicBool,
+    AtomicUint32,
+    AtomicUint64,
+    MemoryOrder,
+    Fence,
+    SpinLoopHint
+};
+
+func TestAtomicUint64() -> int {
+    var a = AtomicUint64(42u64);
+    if a.Load(MemoryOrder::SeqCst) != 42u64 {
+        return 1;
+    }
+
+    a.Store(100u64, MemoryOrder::Release);
+    if a.Load(MemoryOrder::Acquire) != 100u64 {
+        return 2;
+    }
+
+    let prev = a.Swap(200u64, MemoryOrder::SeqCst);
+    if prev != 100u64 || a.Load(MemoryOrder::Relaxed) != 200u64 {
+        return 3;
+    }
+
+    let casFail = a.CompareExchange(999u64, 300u64, MemoryOrder::SeqCst, MemoryOrder::Relaxed);
+    if casFail.1 || casFail.0 != 200u64 || a.Load(MemoryOrder::Relaxed) != 200u64 {
+        return 4;
+    }
+
+    let casOk = a.CompareExchange(200u64, 300u64, MemoryOrder::SeqCst, MemoryOrder::Relaxed);
+    if !casOk.1 || casOk.0 != 200u64 || a.Load(MemoryOrder::Relaxed) != 300u64 {
+        return 5;
+    }
+
+    let addPrev = a.FetchAdd(50u64, MemoryOrder::SeqCst);
+    if addPrev != 300u64 || a.Load(MemoryOrder::Relaxed) != 350u64 {
+        return 6;
+    }
+
+    let subPrev = a.FetchSub(150u64, MemoryOrder::SeqCst);
+    if subPrev != 350u64 || a.Load(MemoryOrder::Relaxed) != 200u64 {
+        return 7;
+    }
+
+    return 0;
+}
+
+func TestAtomicUint32() -> int {
+    var a = AtomicUint32(10u32);
+    if a.Load(MemoryOrder::SeqCst) != 10u32 {
+        return 10;
+    }
+
+    let prev = a.Swap(50u32, MemoryOrder::SeqCst);
+    if prev != 10u32 || a.Load(MemoryOrder::Relaxed) != 50u32 {
+        return 11;
+    }
+
+    let casOk = a.CompareExchange(50u32, 80u32, MemoryOrder::SeqCst, MemoryOrder::Relaxed);
+    if !casOk.1 || a.Load(MemoryOrder::Relaxed) != 80u32 {
+        return 12;
+    }
+
+    let addPrev = a.FetchAdd(20u32, MemoryOrder::SeqCst);
+    if addPrev != 80u32 || a.Load(MemoryOrder::Relaxed) != 100u32 {
+        return 13;
+    }
+
+    return 0;
+}
+
+func TestAtomicBool() -> int {
+    var flag = AtomicBool(false);
+    if flag.Load(MemoryOrder::Relaxed) {
+        return 20;
+    }
+
+    flag.Store(true, MemoryOrder::Release);
+    if !flag.Load(MemoryOrder::Acquire) {
+        return 21;
+    }
+
+    let prev = flag.Swap(false, MemoryOrder::SeqCst);
+    if !prev || flag.Load(MemoryOrder::Relaxed) {
+        return 22;
+    }
+
+    let casOk = flag.CompareExchange(false, true, MemoryOrder::SeqCst, MemoryOrder::Relaxed);
+    if !casOk.1 || !flag.Load(MemoryOrder::Relaxed) {
+        return 23;
+    }
+
+    return 0;
+}
+
+func Main() -> int {
+    Fence(MemoryOrder::SeqCst);
+    SpinLoopHint();
+
+    let r1 = TestAtomicUint64();
+    if r1 != 0 {
+        return r1;
+    }
+
+    let r2 = TestAtomicUint32();
+    if r2 != 0 {
+        return r2;
+    }
+
+    let r3 = TestAtomicBool();
+    if r3 != 0 {
+        return r3;
+    }
+
+    return 0;
+}

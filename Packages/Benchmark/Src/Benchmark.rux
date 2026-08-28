@@ -1,0 +1,92 @@
+import Time::{ Duration, Instant };
+
+/// Results of running a benchmark.
+///
+/// https://rux-lang.dev/docs/api/benchmark/benchmark-result
+pub struct BenchmarkResult {
+    /// Total number of iterations executed during measurement.
+    pub iterations: uint64;
+    /// Total duration elapsed during measurement.
+    pub elapsed: Duration;
+    /// Average time per single iteration in nanoseconds.
+    pub nanosPerOp: uint64;
+    /// Optional processed bytes per iteration.
+    pub bytesPerOp: uint64;
+}
+
+extend BenchmarkResult {
+    /// Calculates the throughput in megabytes per second (MB/s).
+    pub func MegabytesPerSecond(self: BenchmarkResult) -> float64 {
+        if self.nanosPerOp == 0u64 || self.bytesPerOp == 0u64 {
+            return 0.0f64;
+        }
+        let bytesPerSec = (self.bytesPerOp as float64) * 1000000000.0f64 / (self.nanosPerOp as float64);
+        return bytesPerSec / 1000000.0f64;
+    }
+}
+
+/// A benchmark runner for micro-benchmarks.
+///
+/// https://rux-lang.dev/docs/api/benchmark/bench-runner
+pub struct BenchRunner {
+    /// Number of warm-up iterations.
+    pub warmupIters: uint64;
+    /// Target iterations for measurement.
+    pub measuredIters: uint64;
+    /// Processed bytes per operation.
+    pub bytesPerOp: uint64;
+}
+
+extend BenchRunner {
+    /// Creates a benchmark runner with default parameters.
+    pub func BenchRunner() -> BenchRunner {
+        return BenchRunner {
+            warmupIters: 1000u64,
+            measuredIters: 100000u64,
+            bytesPerOp: 0u64
+        };
+    }
+
+    /// Sets the number of warm-up iterations.
+    pub func WithWarmup(self: BenchRunner, iters: uint64) -> BenchRunner {
+        return BenchRunner {
+            warmupIters: iters,
+            measuredIters: self.measuredIters,
+            bytesPerOp: self.bytesPerOp
+        };
+    }
+
+    /// Sets the number of measured iterations.
+    pub func WithIterations(self: BenchRunner, iters: uint64) -> BenchRunner {
+        return BenchRunner {
+            warmupIters: self.warmupIters,
+            measuredIters: iters,
+            bytesPerOp: self.bytesPerOp
+        };
+    }
+
+    /// Sets bytes processed per iteration for throughput reporting.
+    pub func WithBytes(self: BenchRunner, bytes: uint64) -> BenchRunner {
+        return BenchRunner {
+            warmupIters: self.warmupIters,
+            measuredIters: self.measuredIters,
+            bytesPerOp: bytes
+        };
+    }
+
+    /// Creates a result from elapsed time and iteration counts.
+    pub func ComputeResult(self: BenchRunner, elapsed: Duration) -> BenchmarkResult {
+        let totalNanos = (elapsed.WholeSeconds() as uint64) * 1000000000u64 + (elapsed.SubsecondNanoseconds() as uint64);
+        var nanosPerOp: uint64 = 0;
+        if self.measuredIters > 0u64 {
+            nanosPerOp = totalNanos / self.measuredIters;
+        }
+
+        return BenchmarkResult {
+            iterations: self.measuredIters,
+            elapsed: elapsed,
+            nanosPerOp: nanosPerOp,
+            bytesPerOp: self.bytesPerOp
+        };
+    }
+}

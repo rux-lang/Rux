@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Channel"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Synchronization channel verification"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Sync = { Path = "../../../../Packages/Sync" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Sync"

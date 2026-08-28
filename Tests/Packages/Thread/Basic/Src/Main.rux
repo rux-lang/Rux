@@ -1,0 +1,13 @@
+import Thread::{ CurrentId, SleepMillis, Yield };
+
+func Main() -> int {
+    let tid = CurrentId();
+    if tid == 0u64 {
+        return 1;
+    }
+
+    Yield();
+    SleepMillis(1u32);
+
+    return 0;
+}

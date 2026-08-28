@@ -209,6 +209,13 @@ protected:
                                                   const std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] bool TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason);
     [[nodiscard]] const FuncDecl *SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const;
+    bool DeduceTypeArguments(const FuncDecl &declaration, const std::vector<TypeRef> &argumentTypes,
+                             std::unordered_map<std::string, TypeRef> &substitutions);
+    bool DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
+                            const std::unordered_set<std::string> &typeParamNames,
+                            std::unordered_map<std::string, TypeRef> &substitutions);
+    [[nodiscard]] TypeRef EnumVariantConstructorType(const EnumDecl &declaration, const EnumDecl::Variant &variant,
+                                                     const std::vector<TypeRef> &typeArguments = {});
 
     /// The bound operation a constrained receiver's method name resolves to, and where it sits in its interface.
     struct ConstrainedOperation {
@@ -563,9 +570,6 @@ private:
     [[nodiscard]] virtual TypeRef ResolveInterfaceMethodReturnType(const FuncDecl &method, const TypeRef &selfType) = 0;
     [[nodiscard]] virtual std::vector<TypeRef> ResolveInterfaceMethodParamTypes(const FuncDecl &method,
                                                                                 const TypeRef &selfType) = 0;
-    [[nodiscard]] virtual TypeRef EnumVariantConstructorType(const EnumDecl &declaration,
-                                                             const EnumDecl::Variant &variant,
-                                                             const std::vector<TypeRef> &typeArguments) = 0;
     [[nodiscard]] virtual TypeRef EnumType(const EnumDecl &declaration,
                                            const std::vector<TypeRef> &typeArguments = {}) = 0;
     [[nodiscard]] virtual TypeRef LiteralType(const Token &token) const = 0;

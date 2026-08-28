@@ -1,0 +1,36 @@
+import Simd::{ Int32x4, Uint32x4 };
+
+func Main() -> int {
+    // Test Int32x4
+    let a = Int32x4(10i32, 20i32, 30i32, 40i32);
+    let b = Int32x4(1i32, 2i32, 3i32, 4i32);
+
+    let sum = a.Add(b);
+    if sum.v0 != 11i32 || sum.v1 != 22i32 || sum.v2 != 33i32 || sum.v3 != 44i32 {
+        return 1;
+    }
+
+    let diff = a.Sub(b);
+    if diff.v0 != 9i32 || diff.v1 != 18i32 || diff.v2 != 27i32 || diff.v3 != 36i32 {
+        return 2;
+    }
+
+    let prod = b.Mul(Int32x4::Splat(10i32));
+    if prod.v0 != 10i32 || prod.v1 != 20i32 || prod.v2 != 30i32 || prod.v3 != 40i32 {
+        return 3;
+    }
+
+    if a.Sum() != 100i32 {
+        return 4;
+    }
+
+    // Test Uint32x4
+    let u1 = Uint32x4(0x0Fu32, 0xF0u32, 0xAAu32, 0x55u32);
+    let u2 = Uint32x4(0xFFu32, 0xFFu32, 0xFFu32, 0xFFu32);
+    let band = u1.BitAnd(u2);
+    if band.v0 != 0x0Fu32 || band.v1 != 0xF0u32 || band.v2 != 0xAAu32 || band.v3 != 0x55u32 {
+        return 5;
+    }
+
+    return 0;
+}

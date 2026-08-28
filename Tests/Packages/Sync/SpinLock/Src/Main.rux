@@ -1,0 +1,29 @@
+import Sync::SpinLock;
+
+func Main() -> int {
+    var lock = SpinLock();
+
+    // Lock must be acquireable
+    if !lock.TryLock() {
+        return 1;
+    }
+
+    // Lock is already held: TryLock must fail
+    if lock.TryLock() {
+        return 2;
+    }
+
+    lock.Unlock();
+
+    // After unlock, Lock and Unlock works
+    lock.Lock();
+    lock.Unlock();
+
+    // Now lock is free again
+    if !lock.TryLock() {
+        return 3;
+    }
+
+    lock.Unlock();
+    return 0;
+}

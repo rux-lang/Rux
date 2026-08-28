@@ -1,0 +1,60 @@
+import Sync::SpinLock;
+import Core::Option;
+
+/// A bounded thread-safe synchronization channel.
+///
+/// https://rux-lang.dev/docs/api/sync/channel
+pub struct Channel<T> {
+    pub lock: SpinLock;
+    pub data: T[16];
+    pub head: uint64;
+    pub tail: uint64;
+    pub count: uint64;
+}
+
+extend Channel<T> {
+    /// Creates a new bounded channel initialized with a default exemplar.
+    pub func Channel(defaultVal: T) -> Channel<T> {
+        return Channel<T> {
+            lock: SpinLock(),
+            data: [
+                defaultVal, defaultVal, defaultVal, defaultVal,
+                defaultVal, defaultVal, defaultVal, defaultVal,
+                defaultVal, defaultVal, defaultVal, defaultVal,
+                defaultVal, defaultVal, defaultVal, defaultVal
+            ],
+            head: 0u64,
+            tail: 0u64,
+            count: 0u64
+        };
+    }
+
+    /// Attempts to send a value into the channel without blocking.
+    /// Returns `true` if sent, `false` if the channel is full.
+    pub func TrySend(self: &var Channel<T>, val: T) -> bool {
+        self.lock.Lock();
+        if self.count >= 16u64 {
+            self.lock.Unlock();
+            return false;
+        }
+        self.data[self.tail % 16u64] <- val;
+        self.tail = self.tail + 1u64;
+        self.count = self.count + 1u64;
+        self.lock.Unlock();
+        return true;
+    }
+
+    /// Attempts to receive a value from the channel without blocking.
+    pub func TryRecv(self: &var Channel<T>) -> Option<T> {
+        self.lock.Lock();
+        if self.count == 0u64 {
+            self.lock.Unlock();
+            return Option::None<T>();
+        }
+        let val = self.data[self.head % 16u64];
+        self.head = self.head + 1u64;
+        self.count = self.count - 1u64;
+        self.lock.Unlock();
+        return Option::Some(val);
+    }
+}
