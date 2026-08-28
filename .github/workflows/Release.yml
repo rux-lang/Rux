@@ -287,6 +287,9 @@ jobs:
       - name: Install Clang 22
         run: |
           brew untap aws/tap || true
+          if brew list --versions llvm@20 >/dev/null; then
+            brew unlink llvm@20
+          fi
           brew install llvm@22
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
 
