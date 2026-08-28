@@ -40,8 +40,11 @@ extern {
     func close(fd: int32) -> int32;
 
     // Opens a path relative to a directory descriptor; returns a descriptor, or -1
+    //
+    // The mode is variadic because libSystem follows the C declaration. This matters on Apple Silicon, whose ABI
+    // places variadic arguments differently from fixed arguments.
     // https://keith.github.io/xcode-man-pages/open.2.html
-    func openat(directoryFd: int32, path: *char8, flags: int32, mode: uint32) -> int32;
+    func openat(directoryFd: int32, path: *char8, flags: int32, ...) -> int32;
 
     // Moves a descriptor's file offset; returns the resulting offset, or -1
     // https://keith.github.io/xcode-man-pages/lseek.2.html

@@ -42,7 +42,7 @@ pub struct Timespec {
 /// https://rux-lang.dev/docs/api/macos/timeval
 pub struct Timeval {
     /// Whole seconds.
-    seconds: int64;
+    pub seconds: int64;
     /// Microseconds within the second, in `[0, 999999]`.
-    microseconds: int32;
+    pub microseconds: int32;
 }

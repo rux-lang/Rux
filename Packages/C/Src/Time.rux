@@ -50,7 +50,7 @@ when #target.os {
             pub tm_year: int32;  // years since 1900
             pub tm_wday: int32;  // days since Sunday [0, 6]
             pub tm_yday: int32;  // days since January 1 [0, 365]
-            tm_isdst: int32; // daylight saving time flag
+            pub tm_isdst: int32; // daylight saving time flag
         }
     }
     else => {
@@ -64,9 +64,9 @@ when #target.os {
             pub tm_year: int32;         // years since 1900
             pub tm_wday: int32;         // days since Sunday [0, 6]
             pub tm_yday: int32;         // days since January 1 [0, 365]
-            tm_isdst: int32;        // daylight saving time flag
-            tm_gmtoff: int64;       // seconds east of UTC
-            tm_zone: *char8;  // timezone abbreviation
+            pub tm_isdst: int32;   // daylight saving time flag
+            pub tm_gmtoff: int64;  // seconds east of UTC
+            pub tm_zone: *char8;    // timezone abbreviation
         }
     }
 }
