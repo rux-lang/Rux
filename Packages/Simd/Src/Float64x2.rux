@@ -1,0 +1,64 @@
+import Math::Sqrt;
+
+/// A 128-bit vector holding two 64-bit floating-point lanes.
+///
+/// https://rux-lang.dev/docs/api/simd/float64x2
+struct Float64x2 {
+    v0: float64;
+    v1: float64;
+}
+
+extend Float64x2 {
+    /// Creates a vector from two 64-bit floats.
+    func Float64x2(v0: float64, v1: float64) -> Float64x2 {
+        return Float64x2 { v0: v0, v1: v1 };
+    }
+
+    /// Creates a vector with both lanes initialized to `val`.
+    func Splat(val: float64) -> Float64x2 {
+        return Float64x2 { v0: val, v1: val };
+    }
+
+    /// Adds two vectors lane-wise.
+    func Add(self: Float64x2, other: Float64x2) -> Float64x2 {
+        return Float64x2 {
+            v0: self.v0 + other.v0,
+            v1: self.v1 + other.v1
+        };
+    }
+
+    /// Subtracts `other` from `self` lane-wise.
+    func Sub(self: Float64x2, other: Float64x2) -> Float64x2 {
+        return Float64x2 {
+            v0: self.v0 - other.v0,
+            v1: self.v1 - other.v1
+        };
+    }
+
+    /// Multiplies two vectors lane-wise.
+    func Mul(self: Float64x2, other: Float64x2) -> Float64x2 {
+        return Float64x2 {
+            v0: self.v0 * other.v0,
+            v1: self.v1 * other.v1
+        };
+    }
+
+    /// Divides `self` by `other` lane-wise.
+    func Div(self: Float64x2, other: Float64x2) -> Float64x2 {
+        return Float64x2 {
+            v0: self.v0 / other.v0,
+            v1: self.v1 / other.v1
+        };
+    }
+
+    /// Returns the dot product of `self` and `other`.
+    func Dot(self: Float64x2, other: Float64x2) -> float64 {
+        let p = self.Mul(other);
+        return p.Sum();
+    }
+
+    /// Computes the horizontal sum of both lanes.
+    func Sum(self: Float64x2) -> float64 {
+        return self.v0 + self.v1;
+    }
+}

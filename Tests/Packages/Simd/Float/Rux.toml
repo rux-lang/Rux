@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Float"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Floating-point SIMD vector operations verification"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Math = { Path = "../../../../Packages/Math" }
+Simd = { Path = "../../../../Packages/Simd" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Simd"

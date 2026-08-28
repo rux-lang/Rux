@@ -247,9 +247,32 @@ pub extern {
         moveMethod: uint32
     ) -> bool32;
 
+    // Creates a thread to execute within the virtual address space of the calling process.
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createthread
+    func CreateThread(
+        securityAttributes: *opaque,
+        stackSize: uint64,
+        startAddress: *opaque,
+        parameter: *opaque,
+        creationFlags: uint32,
+        threadId: *uint32
+    ) -> *opaque;
+
+    // Retrieves the thread identifier of the calling thread.
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
+    func GetCurrentThreadId() -> uint32;
+
     // Suspends the execution of the current thread until the time-out interval elapses
     // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-sleep
     func Sleep(milliseconds: uint32);
+
+    // Causes the calling thread to yield execution to another thread that is ready to run.
+    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-switchtothread
+    func SwitchToThread() -> bool32;
+
+    // Waits until the specified object is in the signaled state or the time-out interval elapses.
+    // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
+    func WaitForSingleObject(handle: *opaque, milliseconds: uint32) -> uint32;
 
     // Converts UTF-16 text to another code page.
     // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte

@@ -31,7 +31,8 @@ std::string LowerAsmName(std::string name) {
 /// instead.
 bool IsZeroOperandAsmMnemonic(const std::string_view mnemonic) {
     return mnemonic == "ret" || mnemonic == "leave" || mnemonic == "nop" || mnemonic == "syscall" ||
-           mnemonic == "cqo" || mnemonic == "cdq" || mnemonic == "cdqe";
+           mnemonic == "cqo" || mnemonic == "cdq" || mnemonic == "cdqe" || mnemonic == "pause" ||
+           mnemonic == "mfence" || mnemonic == "lfence" || mnemonic == "sfence" || mnemonic == "lock";
 }
 
 /// AArch64 shift and extend keywords, as written after a register or immediate operand and inside a register-offset

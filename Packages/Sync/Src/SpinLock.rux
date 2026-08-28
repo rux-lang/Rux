@@ -1,0 +1,38 @@
+import Sync::{ AtomicBool, MemoryOrder, SpinLoopHint };
+
+/// A low-overhead spinlock built on atomic primitives.
+///
+/// https://rux-lang.dev/docs/api/sync/spin-lock
+struct SpinLock {
+    locked: AtomicBool;
+}
+
+extend SpinLock {
+    /// Creates a new unlocked `SpinLock`.
+    func SpinLock() -> SpinLock {
+        return SpinLock {
+            locked: AtomicBool(false)
+        };
+    }
+
+    /// Acquires the lock, spinning until available.
+    func Lock(self: &var SpinLock) {
+        while self.locked.Swap(true, MemoryOrder::Acquire) {
+            while self.locked.Load(MemoryOrder::Relaxed) {
+                SpinLoopHint();
+            }
+        }
+    }
+
+    /// Attempts to acquire the lock without blocking.
+    /// Returns `true` if acquired, `false` otherwise.
+    func TryLock(self: &var SpinLock) -> bool {
+        let res = self.locked.CompareExchange(false, true, MemoryOrder::Acquire, MemoryOrder::Relaxed);
+        return res.1;
+    }
+
+    /// Releases the lock.
+    func Unlock(self: &var SpinLock) {
+        self.locked.Store(false, MemoryOrder::Release);
+    }
+}

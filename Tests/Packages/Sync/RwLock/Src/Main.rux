@@ -1,0 +1,39 @@
+import Sync::RwLock;
+
+func CheckMultipleReaders(rw: &var RwLock<int32>) -> bool {
+    let r1 = rw.Read();
+    let r2 = rw.Read();
+    return *r1.Data() == 42i32 && *r2.Data() == 42i32;
+    // both read guards drop here
+}
+
+func WriteValue(rw: &var RwLock<int32>, val: int32) {
+    var w = rw.Write();
+    *w.Data() = val;
+    // write guard drops here
+}
+
+func ReadSingle(rw: &var RwLock<int32>) -> int32 {
+    let r = rw.Read();
+    return *r.Data();
+}
+
+func Main() -> int {
+    var rw = RwLock<int32>(42i32);
+
+    if !CheckMultipleReaders(rw) {
+        return 1;
+    }
+
+    WriteValue(rw, 99i32);
+
+    if ReadSingle(rw) != 99i32 {
+        return 2;
+    }
+
+    if rw.IntoInner() != 99i32 {
+        return 3;
+    }
+
+    return 0;
+}

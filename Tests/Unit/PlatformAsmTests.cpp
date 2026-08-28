@@ -403,3 +403,67 @@ TEST_CASE("every first-party asm func has a body for the architecture being comp
     // operator for. macOS was the fifth until it moved to libSystem, which is what the case above guards.
     CHECK_MESSAGE(sourcesWithAsm >= 4, "a package source writing inline assembly went unchecked");
 }
+
+TEST_CASE("x86-64 encodes atomic and synchronization instructions") {
+    const std::string source = R"(
+        asm func Atomics() {
+            pause
+            mfence
+            lfence
+            sfence
+            lock cmpxchg qword [rcx], rdx
+            lock xadd qword [rcx], rax
+            xchg qword [rcx], rdx
+            lock add qword [rcx], 1
+            ret
+        }
+    )";
+    Lexer lexer(source, "atomics.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "atomics.rux", Target::Arch::X86_64);
+    auto parsed = parser.Parse();
+    REQUIRE(parsed.diagnostics.empty());
+    std::vector<std::uint8_t> code;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *func = dynamic_cast<const FuncDecl *>(item.get()); func && func->isAsm) {
+            auto asmResult = AssembleAsmFunc(func->asmBody, "atomics.rux", code, Target::OS::Windows);
+            CHECK(asmResult.ok);
+            CHECK(asmResult.diagnostics.empty());
+        }
+    }
+    CHECK_FALSE(code.empty());
+}
+
+TEST_CASE("x86-64 encodes packed SSE2 vector instructions") {
+    const std::string source = R"(
+        asm func VectorOps() {
+            movups xmm0, [rcx]
+            movups xmm1, [rdx]
+            addps xmm0, xmm1
+            subps xmm0, xmm1
+            mulps xmm0, xmm1
+            divps xmm0, xmm1
+            sqrtps xmm0, xmm1
+            paddd xmm0, xmm1
+            psubd xmm0, xmm1
+            movups [rax], xmm0
+            ret
+        }
+    )";
+    Lexer lexer(source, "vectors.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "vectors.rux", Target::Arch::X86_64);
+    auto parsed = parser.Parse();
+    REQUIRE(parsed.diagnostics.empty());
+    std::vector<std::uint8_t> code;
+    for (const auto &item : parsed.module.items) {
+        if (const auto *func = dynamic_cast<const FuncDecl *>(item.get()); func && func->isAsm) {
+            auto asmResult = AssembleAsmFunc(func->asmBody, "vectors.rux", code, Target::OS::Windows);
+            CHECK(asmResult.ok);
+            CHECK(asmResult.diagnostics.empty());
+        }
+    }
+    CHECK_FALSE(code.empty());
+}

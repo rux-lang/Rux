@@ -1,0 +1,11 @@
+import Sync::Once;
+
+func Main() -> int {
+    let once = Once();
+
+    if once.IsCompleted() {
+        return 1;
+    }
+
+    return 0;
+}

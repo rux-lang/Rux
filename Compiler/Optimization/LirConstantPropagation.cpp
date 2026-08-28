@@ -142,6 +142,112 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
                 return KnownValue{std::move(result), std::nullopt};
             }
         }
+
+        const bool sameOperand =
+            (instruction.srcs[0] == instruction.srcs[1]) || (left.copy && right.copy && *left.copy == *right.copy);
+        const LirReg leftReg = left.copy ? *left.copy : instruction.srcs[0];
+        const LirReg rightReg = right.copy ? *right.copy : instruction.srcs[1];
+
+        // Self-identity & idempotence on same operand (for integers / booleans)
+        if (sameOperand && (instruction.type.IsInteger() || instruction.type.IsBool())) {
+            switch (instruction.op) {
+            case LirOpcode::Sub:
+            case LirOpcode::Xor:
+                if (auto zero = ParseConstant("0", instruction.type)) {
+                    return KnownValue{std::move(zero), std::nullopt};
+                }
+                break;
+            case LirOpcode::And:
+            case LirOpcode::Or:
+                return KnownValue{std::nullopt, leftReg};
+            case LirOpcode::CmpEq:
+            case LirOpcode::CmpLe:
+            case LirOpcode::CmpGe:
+                if (auto t = ParseConstant("true", TypeRef::MakeBool())) {
+                    return KnownValue{std::move(t), std::nullopt};
+                }
+                break;
+            case LirOpcode::CmpNe:
+            case LirOpcode::CmpLt:
+            case LirOpcode::CmpGt:
+                if (auto f = ParseConstant("false", TypeRef::MakeBool())) {
+                    return KnownValue{std::move(f), std::nullopt};
+                }
+                break;
+            default:
+                break;
+            }
+        }
+
+        // Identity with constant 0 / 1
+        if (instruction.type.IsInteger() || instruction.type.IsBool()) {
+            const bool rightIsZero = right.constant && right.constant->Bits().IsZero();
+            const bool leftIsZero = left.constant && left.constant->Bits().IsZero();
+            const bool rightIsOne =
+                right.constant && right.constant->Bits() == WideInteger::FromUnsigned(1, right.constant->Width());
+            const bool leftIsOne =
+                left.constant && left.constant->Bits() == WideInteger::FromUnsigned(1, left.constant->Width());
+
+            switch (instruction.op) {
+            case LirOpcode::Add:
+                if (rightIsZero)
+                    return KnownValue{std::nullopt, leftReg};
+                if (leftIsZero)
+                    return KnownValue{std::nullopt, rightReg};
+                break;
+            case LirOpcode::Sub:
+                if (rightIsZero)
+                    return KnownValue{std::nullopt, leftReg};
+                break;
+            case LirOpcode::Mul:
+                if (rightIsZero || leftIsZero) {
+                    if (auto zero = ParseConstant("0", instruction.type)) {
+                        return KnownValue{std::move(zero), std::nullopt};
+                    }
+                }
+                if (rightIsOne)
+                    return KnownValue{std::nullopt, leftReg};
+                if (leftIsOne)
+                    return KnownValue{std::nullopt, rightReg};
+                break;
+            case LirOpcode::Div:
+                if (rightIsOne)
+                    return KnownValue{std::nullopt, leftReg};
+                if (leftIsZero && !rightIsZero) {
+                    if (auto zero = ParseConstant("0", instruction.type)) {
+                        return KnownValue{std::move(zero), std::nullopt};
+                    }
+                }
+                break;
+            case LirOpcode::And:
+                if (rightIsZero || leftIsZero) {
+                    if (auto zero = ParseConstant("0", instruction.type)) {
+                        return KnownValue{std::move(zero), std::nullopt};
+                    }
+                }
+                break;
+            case LirOpcode::Or:
+            case LirOpcode::Xor:
+                if (rightIsZero)
+                    return KnownValue{std::nullopt, leftReg};
+                if (leftIsZero)
+                    return KnownValue{std::nullopt, rightReg};
+                break;
+            case LirOpcode::Shl:
+            case LirOpcode::Shr:
+            case LirOpcode::Lshr:
+                if (rightIsZero)
+                    return KnownValue{std::nullopt, leftReg};
+                if (leftIsZero) {
+                    if (auto zero = ParseConstant("0", instruction.type)) {
+                        return KnownValue{std::move(zero), std::nullopt};
+                    }
+                }
+                break;
+            default:
+                break;
+            }
+        }
         return std::nullopt;
     }
     if (instruction.op == LirOpcode::Cast && instruction.srcs.size() == 1) {

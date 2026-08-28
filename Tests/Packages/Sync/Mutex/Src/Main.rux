@@ -1,0 +1,28 @@
+import Sync::Mutex;
+
+func ModifyWithGuard(mutex: &var Mutex<int32>) {
+    var guard = mutex.Lock();
+    *guard.Data() = *guard.Data() + 50i32;
+    // guard drops and unlocks here
+}
+
+func VerifyWithGuard(mutex: &var Mutex<int32>) -> bool {
+    let guard = mutex.Lock();
+    return *guard.Data() == 150i32;
+}
+
+func Main() -> int {
+    var mutex = Mutex<int32>(100i32);
+
+    ModifyWithGuard(mutex);
+
+    if !VerifyWithGuard(mutex) {
+        return 1;
+    }
+
+    if mutex.IntoInner() != 150i32 {
+        return 2;
+    }
+
+    return 0;
+}

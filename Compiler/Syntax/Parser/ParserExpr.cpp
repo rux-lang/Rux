@@ -772,6 +772,8 @@ ExprPtr Parser::ParsePrimary() {
     }
     // Grouped expression or tuple: (expr)  or  (expr, expr, ...)
     if (Match(TokenKind::LeftParen)) {
+        const bool savedStructInitAllowed = structInitAllowed;
+        structInitAllowed = true;
         auto first = ParseRequiredExpr("after '('");
         if (Match(TokenKind::Comma)) {
             auto t = std::make_unique<TupleExpr>();
@@ -798,9 +800,11 @@ ExprPtr Parser::ParsePrimary() {
                     break;
                 }
             }
+            structInitAllowed = savedStructInitAllowed;
             ExpectBefore(TokenKind::RightParen, "')' to close the tuple expression");
             return t;
         }
+        structInitAllowed = savedStructInitAllowed;
         ExpectBefore(TokenKind::RightParen, "')' to close the grouped expression");
         return first;
     }
@@ -860,6 +864,8 @@ ExprPtr Parser::ParsePrimary() {
 std::vector<ExprPtr> Parser::ParseArgList() {
     std::vector<ExprPtr> args;
     ExpectBefore(TokenKind::LeftParen, "'(' to start the argument list");
+    const bool savedStructInitAllowed = structInitAllowed;
+    structInitAllowed = true;
     while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
         auto e = ParseRequiredExpr(args.empty() ? "after '(' in the argument list" : "after ',' in the argument list");
         if (e && Match(TokenKind::DotDotDot)) {
@@ -890,6 +896,7 @@ std::vector<ExprPtr> Parser::ParseArgList() {
             break;
         }
     }
+    structInitAllowed = savedStructInitAllowed;
     ExpectBefore(TokenKind::RightParen, "')' to close the argument list");
     return args;
 }

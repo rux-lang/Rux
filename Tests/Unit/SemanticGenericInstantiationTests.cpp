@@ -3,6 +3,7 @@
 #include "Syntax/Parser/Parser.h"
 
 #include <doctest.h>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,9 +17,16 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     REQUIRE_FALSE(lexed.HasErrors());
     Parser parser(std::move(lexed.tokens), "instantiation.rux");
     auto parsed = parser.Parse();
+    for (const auto &d : parsed.diagnostics) {
+        INFO("PARSER: " << d.message);
+    }
     REQUIRE_FALSE(parsed.HasErrors());
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
-    return analyzer.Analyze().diagnostics;
+    auto result = analyzer.Analyze();
+    for (const auto &d : result.diagnostics) {
+        INFO("SEMANTIC: " << d.message);
+    }
+    return result.diagnostics;
 }
 } // namespace
 
@@ -77,6 +85,91 @@ TEST_CASE("an instantiation passed as a type argument waits for the parameter it
         func Main() -> int {
             var holder = Holder<int32> { seed: 1 };
             return holder.Size() == 8u ? 0 : 1;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("generic function type parameters are automatically inferred from argument types") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Identity<T>(val: T) -> T {
+            return val;
+        }
+
+        func MakePair<A, B>(first: A, second: B) -> (A, B) {
+            return (first, second);
+        }
+
+        func Inspect<T>(val: &T) -> bool {
+            return true;
+        }
+
+        func Main() -> int32 {
+            let a: int32 = Identity(42i32);
+            let b: (int32, int32) = MakePair(100i32, 200i32);
+            let x: int32 = 10i32;
+            let ok: bool = Inspect(x);
+            return ok ? a + b.0 : 0i32;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("generic enum variants deduce type parameters from payload arguments") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Option<T> {
+            Some(T),
+            None
+        }
+
+        func UnwrapOr<T>(opt: Option<T>, defaultVal: T) -> T {
+            return match opt {
+                .Some(val) => val,
+                .None => defaultVal
+            };
+        }
+
+        func Main() -> int32 {
+            let opt = Option::Some(42i32);
+            return UnwrapOr(opt, 0i32);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("nested struct literal inside if condition parses correctly") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Item {
+            val: int32;
+        }
+
+        func CheckItem(item: Item) -> bool {
+            return item.val > 0i32;
+        }
+
+        func Main() -> int32 {
+            if CheckItem(Item { val: 10i32 }) {
+                return 0i32;
+            }
+            return 1i32;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("ternary expression types unify integer constants contextually") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Select(cond: bool) -> uint64 {
+            return cond ? 0 : 1;
+        }
+
+        func Main() -> uint64 {
+            let res: uint64 = Select(true);
+            return res;
         }
     )");
 

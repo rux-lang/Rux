@@ -1,0 +1,37 @@
+import Benchmark::{ BenchRunner, BlackBox };
+import Time::{ Duration, Instant };
+
+func Main() -> int {
+    let runner = BenchRunner().WithWarmup(100u64).WithIterations(1000u64).WithBytes(64u64);
+
+    // Warm-up
+    var w: uint64 = 0;
+    while w < runner.warmupIters {
+        let x = BlackBox(w * 2u64);
+        w = w + 1u64;
+    }
+
+    // Measurement
+    let start = Instant::Now();
+    var i: uint64 = 0;
+    while i < runner.measuredIters {
+        let y = BlackBox(i * 3u64 + 1u64);
+        i = i + 1u64;
+    }
+    let elapsed = start.Elapsed();
+
+    let result = runner.ComputeResult(elapsed);
+    if result.iterations != 1000u64 {
+        return 1;
+    }
+    if result.bytesPerOp != 64u64 {
+        return 2;
+    }
+
+    let mbps = result.MegabytesPerSecond();
+    if mbps < 0.0f64 {
+        return 3;
+    }
+
+    return 0;
+}
