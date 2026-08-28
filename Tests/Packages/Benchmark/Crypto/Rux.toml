@@ -1,0 +1,18 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Hashing"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Micro-benchmark evaluation of cryptographic hashing"
+
+[Dependencies]
+Benchmark = { Path = "../../../../Packages/Benchmark" }
+Core = { Path = "../../../../Packages/Core" }
+Crypto = { Path = "../../../../Packages/Crypto" }
+Time = { Path = "../../../../Packages/Time" }
+Windows = { Path = "../../../../Packages/Windows" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Benchmark"

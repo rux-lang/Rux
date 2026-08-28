@@ -205,24 +205,40 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 emitOverloadError(ident->name, argTypes, sym->funcOverloads);
                 return TypeRef::MakeUnknown();
             }
-            bool callAccepted = e->typeArgs.size() == decl->typeParams.size();
-            if (!callAccepted) {
-                EmitError(e->location,
-                          std::format("function '{}' requires {}, but {} provided", ident->name,
-                                      Counted(decl->typeParams.size(), "type argument"),
-                                      e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())),
-                          {declarationNote(*decl, false)});
+            std::unordered_map<std::string, TypeRef> substitutions;
+            bool callAccepted = true;
+            if (e->typeArgs.empty()) {
+                if (!decl->typeParams.empty()) {
+                    DeduceTypeArguments(*decl, argTypes, substitutions);
+                    if (substitutions.size() != decl->typeParams.size()) {
+                        callAccepted = false;
+                        EmitError(e->location,
+                                  std::format("function '{}' requires {}, but 0 were provided", ident->name,
+                                              Counted(decl->typeParams.size(), "type argument")),
+                                  {declarationNote(*decl, false)});
+                    }
+                }
+            }
+            else {
+                callAccepted = e->typeArgs.size() == decl->typeParams.size();
+                if (!callAccepted) {
+                    EmitError(
+                        e->location,
+                        std::format("function '{}' requires {}, but {} provided", ident->name,
+                                    Counted(decl->typeParams.size(), "type argument"),
+                                    e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())),
+                        {declarationNote(*decl, false)});
+                }
+                const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                for (std::size_t i = 0; i < count; ++i) {
+                    substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
+                }
             }
             if (!decl->warnMessage.empty()) {
                 EmitWarning(e->location, decl->warnMessage);
             }
             if (!decl->errorMessage.empty()) {
                 EmitError(e->location, decl->errorMessage);
-            }
-            std::unordered_map<std::string, TypeRef> substitutions;
-            const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
-            for (std::size_t i = 0; i < count; ++i) {
-                substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
             }
             CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
                                          std::format("function '{}'", ident->name));
@@ -597,7 +613,40 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                 if (const EnumDecl *enumeration = EnumNamed(path->segments[0])) {
                     if (const EnumDecl::Variant *variant = LookupEnumVariant(path->segments[0], path->segments[1])) {
                         const EnumDecl &decl = *enumeration;
-                        if (e->typeArgs.size() != decl.typeParams.size()) {
+                        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
+                        std::vector<TypeRef> typeArgs;
+                        typeArgs.reserve(e->typeArgs.size());
+                        for (const auto &typeArg : e->typeArgs) {
+                            typeArgs.push_back(ResolveType(*typeArg));
+                        }
+                        if (typeArgs.size() < decl.typeParams.size()) {
+                            std::unordered_map<std::string, TypeRef> substitutions;
+                            for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+                                substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
+                            }
+                            std::unordered_set<std::string> typeParamNames;
+                            for (const auto &tp : decl.typeParams) {
+                                typeParamNames.insert(tp.name);
+                            }
+                            const auto savedTypeParams = currentTypeParams;
+                            for (const auto &tp : decl.typeParams) {
+                                currentTypeParams.push_back(tp.name);
+                            }
+                            if (variant->fields.size() == argTypes.size()) {
+                                for (std::size_t i = 0; i < variant->fields.size(); ++i) {
+                                    TypeRef fieldType = ResolveTypeWithSubstitution(*variant->fields[i], substitutions);
+                                    DeduceTypeArgument(fieldType, argTypes[i], typeParamNames, substitutions);
+                                }
+                            }
+                            currentTypeParams = savedTypeParams;
+                            if (substitutions.size() == decl.typeParams.size()) {
+                                typeArgs.clear();
+                                for (const auto &tp : decl.typeParams) {
+                                    typeArgs.push_back(substitutions.at(tp.name));
+                                }
+                            }
+                        }
+                        if (typeArgs.size() != decl.typeParams.size()) {
                             EmitError(e->location, std::format("enum variant '{}::{}' requires {}, but {} provided",
                                                                path->segments[0], path->segments[1],
                                                                Counted(decl.typeParams.size(), "type argument"),
@@ -605,14 +654,8 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                                                                    ? "1 was"
                                                                    : std::format("{} were", e->typeArgs.size())));
                         }
-                        std::vector<TypeRef> typeArgs;
-                        typeArgs.reserve(e->typeArgs.size());
-                        for (const auto &typeArg : e->typeArgs) {
-                            typeArgs.push_back(ResolveType(*typeArg));
-                        }
                         const TypeRef constructor = EnumVariantConstructorType(decl, *variant, typeArgs);
                         const std::size_t paramCount = constructor.inner.empty() ? 0 : constructor.inner.size() - 1;
-                        const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                         bool callAccepted = argTypes.size() == paramCount;
                         if (argTypes.size() != paramCount) {
                             emitArityError(std::format("{}::{}", path->segments[0], path->segments[1]), paramCount,
@@ -791,9 +834,14 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
         else if (calleeSymbol && !calleeSymbol->funcOverloads.empty()) {
             if (const FuncDecl *decl = LookupFunctionOverload(*calleeSymbol, argTypes, e->typeArgs)) {
                 std::unordered_map<std::string, TypeRef> substitutions;
-                const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
-                for (std::size_t i = 0; i < count; ++i) {
-                    substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
+                if (e->typeArgs.empty()) {
+                    DeduceTypeArguments(*decl, argTypes, substitutions);
+                }
+                else {
+                    const std::size_t count = std::min(decl->typeParams.size(), e->typeArgs.size());
+                    for (std::size_t i = 0; i < count; ++i) {
+                        substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
+                    }
                 }
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));

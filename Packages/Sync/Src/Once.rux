@@ -1,0 +1,22 @@
+import Sync::{ AtomicUint32, MemoryOrder, SpinLoopHint };
+
+/// A synchronization primitive for thread-safe one-time initialization.
+///
+/// https://rux-lang.dev/docs/api/sync/once
+struct Once {
+    state: AtomicUint32;
+}
+
+extend Once {
+    /// Creates a new unexecuted `Once` cell.
+    func Once() -> Once {
+        return Once {
+            state: AtomicUint32(0u32)
+        };
+    }
+
+    /// Returns `true` if the one-time operation has completed.
+    func IsCompleted(self: &Once) -> bool {
+        return self.state.Load(MemoryOrder::Acquire) == 2u32;
+    }
+}

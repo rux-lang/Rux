@@ -398,6 +398,180 @@ void SemanticAnalyzerContext::EmitPrivateMemberError(const SourceLocation useLoc
               std::format("add 'pub' before the declaration of '{}'", name));
 }
 
+bool SemanticAnalyzerContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef &argType,
+                                                 const std::unordered_set<std::string> &typeParamNames,
+                                                 std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (paramType.IsUnknown() || argType.IsUnknown()) {
+        return true;
+    }
+    if (paramType.kind == TypeRef::Kind::TypeParam) {
+        if (typeParamNames.contains(paramType.name)) {
+            TypeRef target = argType;
+            if (const auto it = substitutions.find(paramType.name); it != substitutions.end()) {
+                const TypeRef &existing = it->second;
+                if (existing == target) {
+                    return true;
+                }
+                if (existing.kind == TypeRef::Kind::Int && target.IsInteger()) {
+                    substitutions[paramType.name] = target;
+                    return true;
+                }
+                if (target.kind == TypeRef::Kind::Int && existing.IsInteger()) {
+                    return true;
+                }
+                if (existing.kind == TypeRef::Kind::Float && target.IsFloat()) {
+                    substitutions[paramType.name] = target;
+                    return true;
+                }
+                if (target.kind == TypeRef::Kind::Float && existing.IsFloat()) {
+                    return true;
+                }
+                if (target.IsAssignableTo(existing)) {
+                    return true;
+                }
+                if (existing.IsAssignableTo(target)) {
+                    substitutions[paramType.name] = target;
+                    return true;
+                }
+                return false;
+            }
+            substitutions.emplace(paramType.name, target);
+            return true;
+        }
+        return true;
+    }
+
+    if (paramType.kind == TypeRef::Kind::Reference) {
+        if (paramType.inner.empty()) {
+            return false;
+        }
+        if (argType.kind == TypeRef::Kind::Reference && !argType.inner.empty()) {
+            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        }
+        return DeduceTypeArgument(paramType.inner[0], argType, typeParamNames, substitutions);
+    }
+
+    if (paramType.kind == TypeRef::Kind::Pointer) {
+        if (paramType.inner.empty()) {
+            return false;
+        }
+        if (argType.kind == TypeRef::Kind::Pointer && !argType.inner.empty()) {
+            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        }
+        return false;
+    }
+
+    if (paramType.kind == TypeRef::Kind::Array) {
+        if (paramType.inner.empty()) {
+            return false;
+        }
+        if (argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
+            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        }
+        return false;
+    }
+
+    if (paramType.kind == TypeRef::Kind::Tuple) {
+        if (argType.kind != TypeRef::Kind::Tuple || paramType.inner.size() != argType.inner.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < paramType.inner.size(); ++i) {
+            if (!DeduceTypeArgument(paramType.inner[i], argType.inner[i], typeParamNames, substitutions)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (paramType.kind == TypeRef::Kind::Func) {
+        if (argType.kind != TypeRef::Kind::Func || paramType.inner.size() != argType.inner.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < paramType.inner.size(); ++i) {
+            if (!DeduceTypeArgument(paramType.inner[i], argType.inner[i], typeParamNames, substitutions)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (paramType.kind == TypeRef::Kind::Named) {
+        const std::string paramBase = NamedBaseTypeName(paramType);
+        if (argType.kind == TypeRef::Kind::Named) {
+            const std::string argBase = NamedBaseTypeName(argType);
+            if (paramBase == argBase) {
+                const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
+                const auto argArgs = ParseTypeArgsFromTypeName(argType.name);
+                if (paramArgs.size() == argArgs.size() && !paramArgs.empty()) {
+                    for (std::size_t i = 0; i < paramArgs.size(); ++i) {
+                        if (!DeduceTypeArgument(paramArgs[i], argArgs[i], typeParamNames, substitutions)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+        }
+        if (paramBase == "Slice" && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
+            const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
+            if (paramArgs.size() == 1) {
+                return DeduceTypeArgument(paramArgs[0], argType.inner[0], typeParamNames, substitutions);
+            }
+        }
+    }
+
+    return true;
+}
+
+bool SemanticAnalyzerContext::DeduceTypeArguments(const FuncDecl &declaration,
+                                                  const std::vector<TypeRef> &argumentTypes,
+                                                  std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (declaration.typeParams.empty()) {
+        return true;
+    }
+    std::unordered_set<std::string> typeParamNames;
+    typeParamNames.reserve(declaration.typeParams.size());
+    for (const auto &tp : declaration.typeParams) {
+        typeParamNames.insert(tp.name);
+    }
+
+    const TypeRef templateFuncType = MakeFuncTypeWithSubstitution(declaration.params, declaration.returnType, {},
+                                                                  TypeParameterNames(declaration.typeParams));
+    if (templateFuncType.kind != TypeRef::Kind::Func || templateFuncType.inner.empty()) {
+        return false;
+    }
+    const std::size_t paramCount = templateFuncType.inner.size() - 1;
+    const std::size_t count = std::min(argumentTypes.size(), paramCount);
+    for (std::size_t i = 0; i < count; ++i) {
+        DeduceTypeArgument(templateFuncType.inner[i], argumentTypes[i], typeParamNames, substitutions);
+    }
+    return substitutions.size() == declaration.typeParams.size();
+}
+
+TypeRef SemanticAnalyzerContext::EnumVariantConstructorType(const EnumDecl &declaration,
+                                                            const EnumDecl::Variant &variant,
+                                                            const std::vector<TypeRef> &typeArguments) {
+    const auto savedTypeParams = currentTypeParams;
+    for (const auto &tp : declaration.typeParams) {
+        currentTypeParams.push_back(tp.name);
+    }
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::size_t count = std::min(declaration.typeParams.size(), typeArguments.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        substitutions.emplace(declaration.typeParams[i].name, typeArguments[i]);
+    }
+    std::vector<TypeRef> params;
+    params.reserve(variant.fields.size() + variant.namedFields.size());
+    for (const auto &field : variant.fields) {
+        params.push_back(ResolveTypeWithSubstitution(*field, substitutions));
+    }
+    for (const auto &field : variant.namedFields) {
+        params.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
+    }
+    currentTypeParams = savedTypeParams;
+    return TypeRef::MakeFunc(std::move(params), EnumType(declaration, typeArguments));
+}
+
 void SemanticAnalyzerContext::Run() {
     IndexDeclarations();
 

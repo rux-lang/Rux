@@ -1,0 +1,76 @@
+/// A 128-bit vector holding four 32-bit unsigned integer lanes.
+///
+/// https://rux-lang.dev/docs/api/simd/uint32x4
+struct Uint32x4 {
+    v0: uint32;
+    v1: uint32;
+    v2: uint32;
+    v3: uint32;
+}
+
+extend Uint32x4 {
+    /// Creates a vector from four 32-bit unsigned integers.
+    func Uint32x4(v0: uint32, v1: uint32, v2: uint32, v3: uint32) -> Uint32x4 {
+        return Uint32x4 { v0: v0, v1: v1, v2: v2, v3: v3 };
+    }
+
+    /// Creates a vector with all four lanes initialized to `val`.
+    func Splat(val: uint32) -> Uint32x4 {
+        return Uint32x4 { v0: val, v1: val, v2: val, v3: val };
+    }
+
+    /// Adds two vectors lane-wise.
+    func Add(self: Uint32x4, other: Uint32x4) -> Uint32x4 {
+        return Uint32x4 {
+            v0: self.v0 + other.v0,
+            v1: self.v1 + other.v1,
+            v2: self.v2 + other.v2,
+            v3: self.v3 + other.v3
+        };
+    }
+
+    /// Subtracts `other` from `self` lane-wise.
+    func Sub(self: Uint32x4, other: Uint32x4) -> Uint32x4 {
+        return Uint32x4 {
+            v0: self.v0 - other.v0,
+            v1: self.v1 - other.v1,
+            v2: self.v2 - other.v2,
+            v3: self.v3 - other.v3
+        };
+    }
+
+    /// Bitwise AND across corresponding lanes.
+    func BitAnd(self: Uint32x4, other: Uint32x4) -> Uint32x4 {
+        return Uint32x4 {
+            v0: self.v0 & other.v0,
+            v1: self.v1 & other.v1,
+            v2: self.v2 & other.v2,
+            v3: self.v3 & other.v3
+        };
+    }
+
+    /// Bitwise OR across corresponding lanes.
+    func BitOr(self: Uint32x4, other: Uint32x4) -> Uint32x4 {
+        return Uint32x4 {
+            v0: self.v0 | other.v0,
+            v1: self.v1 | other.v1,
+            v2: self.v2 | other.v2,
+            v3: self.v3 | other.v3
+        };
+    }
+
+    /// Bitwise XOR across corresponding lanes.
+    func BitXor(self: Uint32x4, other: Uint32x4) -> Uint32x4 {
+        return Uint32x4 {
+            v0: self.v0 ^ other.v0,
+            v1: self.v1 ^ other.v1,
+            v2: self.v2 ^ other.v2,
+            v3: self.v3 ^ other.v3
+        };
+    }
+
+    /// Computes the horizontal sum of all four lanes.
+    func Sum(self: Uint32x4) -> uint32 {
+        return self.v0 + self.v1 + self.v2 + self.v3;
+    }
+}

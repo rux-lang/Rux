@@ -555,6 +555,93 @@ private:
         EmitModRM(dstReg->size, {0x8D}, dstReg->code, rm, in.location);
     }
 
+    void EncodeXchg(const AsmInstr &in) {
+        if (in.operands.size() != 2) {
+            Error(in.location, "'xchg' expects 2 operands");
+            return;
+        }
+        const AsmOperand &dst = in.operands[0];
+        const AsmOperand &src = in.operands[1];
+        const int opSize = OperandSize(in, 8);
+        const bool byte = opSize == 1;
+        if (src.kind == AsmOperand::Kind::Reg &&
+            (dst.kind == AsmOperand::Kind::Reg || dst.kind == AsmOperand::Kind::Mem)) {
+            auto srcReg = Reg(src);
+            if (!srcReg) {
+                return;
+            }
+            std::optional<AsmRegInfo> ignore;
+            RmEnc rm = EncodeRm(dst, ignore);
+            rm.rexRequired = rm.rexRequired || srcReg->rexRequired;
+            rm.rexForbidden = rm.rexForbidden || srcReg->high8;
+            EmitModRM(opSize, {static_cast<std::uint8_t>(byte ? 0x86 : 0x87)}, srcReg->code, rm, in.location);
+            return;
+        }
+        if (dst.kind == AsmOperand::Kind::Reg && src.kind == AsmOperand::Kind::Mem) {
+            auto dstReg = Reg(dst);
+            if (!dstReg) {
+                return;
+            }
+            std::optional<AsmRegInfo> ignore;
+            RmEnc rm = EncodeRm(src, ignore);
+            rm.rexRequired = rm.rexRequired || dstReg->rexRequired;
+            rm.rexForbidden = rm.rexForbidden || dstReg->high8;
+            EmitModRM(opSize, {static_cast<std::uint8_t>(byte ? 0x86 : 0x87)}, dstReg->code, rm, in.location);
+            return;
+        }
+        Error(in.location, "unsupported operands for 'xchg'");
+    }
+
+    void EncodeCmpxchg(const AsmInstr &in) {
+        if (in.operands.size() != 2) {
+            Error(in.location, "'cmpxchg' expects 2 operands");
+            return;
+        }
+        const AsmOperand &dst = in.operands[0];
+        const AsmOperand &src = in.operands[1];
+        const int opSize = OperandSize(in, 8);
+        const bool byte = opSize == 1;
+        if (src.kind == AsmOperand::Kind::Reg &&
+            (dst.kind == AsmOperand::Kind::Reg || dst.kind == AsmOperand::Kind::Mem)) {
+            auto srcReg = Reg(src);
+            if (!srcReg) {
+                return;
+            }
+            std::optional<AsmRegInfo> ignore;
+            RmEnc rm = EncodeRm(dst, ignore);
+            rm.rexRequired = rm.rexRequired || srcReg->rexRequired;
+            rm.rexForbidden = rm.rexForbidden || srcReg->high8;
+            EmitModRM(opSize, {0x0F, static_cast<std::uint8_t>(byte ? 0xB0 : 0xB1)}, srcReg->code, rm, in.location);
+            return;
+        }
+        Error(in.location, "unsupported operands for 'cmpxchg'");
+    }
+
+    void EncodeXadd(const AsmInstr &in) {
+        if (in.operands.size() != 2) {
+            Error(in.location, "'xadd' expects 2 operands");
+            return;
+        }
+        const AsmOperand &dst = in.operands[0];
+        const AsmOperand &src = in.operands[1];
+        const int opSize = OperandSize(in, 8);
+        const bool byte = opSize == 1;
+        if (src.kind == AsmOperand::Kind::Reg &&
+            (dst.kind == AsmOperand::Kind::Reg || dst.kind == AsmOperand::Kind::Mem)) {
+            auto srcReg = Reg(src);
+            if (!srcReg) {
+                return;
+            }
+            std::optional<AsmRegInfo> ignore;
+            RmEnc rm = EncodeRm(dst, ignore);
+            rm.rexRequired = rm.rexRequired || srcReg->rexRequired;
+            rm.rexForbidden = rm.rexForbidden || srcReg->high8;
+            EmitModRM(opSize, {0x0F, static_cast<std::uint8_t>(byte ? 0xC0 : 0xC1)}, srcReg->code, rm, in.location);
+            return;
+        }
+        Error(in.location, "unsupported operands for 'xadd'");
+    }
+
     // movzx / movsx: reg, r/m of a smaller width.
     void EncodeMovExtend(const AsmInstr &in, bool signExtend) {
         if (in.operands.size() != 2 || in.operands[0].kind != AsmOperand::Kind::Reg) {
@@ -1009,6 +1096,45 @@ private:
             else {
                 Error(in.location, "'int' expects an immediate");
             }
+            return;
+        }
+        if (m == "pause") {
+            Emit8(0xF3);
+            Emit8(0x90);
+            return;
+        }
+        if (m == "mfence") {
+            Emit8(0x0F);
+            Emit8(0xAE);
+            Emit8(0xF0);
+            return;
+        }
+        if (m == "lfence") {
+            Emit8(0x0F);
+            Emit8(0xAE);
+            Emit8(0xE8);
+            return;
+        }
+        if (m == "sfence") {
+            Emit8(0x0F);
+            Emit8(0xAE);
+            Emit8(0xF8);
+            return;
+        }
+        if (m == "lock") {
+            Emit8(0xF0);
+            return;
+        }
+        if (m == "xchg") {
+            EncodeXchg(in);
+            return;
+        }
+        if (m == "cmpxchg") {
+            EncodeCmpxchg(in);
+            return;
+        }
+        if (m == "xadd") {
+            EncodeXadd(in);
             return;
         }
         if (m == "cqo") {

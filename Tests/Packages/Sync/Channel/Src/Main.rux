@@ -1,0 +1,38 @@
+import Sync::Channel;
+
+func Main() -> int {
+    var chan = Channel<int32>(0i32);
+
+    // Initial receive on empty channel must be None
+    let emptyRecv = chan.TryRecv();
+    if emptyRecv.IsSome() {
+        return 1;
+    }
+
+    // Send items
+    if !chan.TrySend(10i32) {
+        return 2;
+    }
+    if !chan.TrySend(20i32) {
+        return 3;
+    }
+
+    // Recv items
+    let r1 = chan.TryRecv();
+    if r1.IsNone() || r1.ValueOr(0i32) != 10i32 {
+        return 4;
+    }
+
+    let r2 = chan.TryRecv();
+    if r2.IsNone() || r2.ValueOr(0i32) != 20i32 {
+        return 5;
+    }
+
+    // Channel must be empty again
+    let r3 = chan.TryRecv();
+    if r3.IsSome() {
+        return 6;
+    }
+
+    return 0;
+}

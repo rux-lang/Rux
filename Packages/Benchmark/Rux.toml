@@ -1,0 +1,21 @@
+[Manifest]
+Version = 1
+MinRux = "0.4.0"
+
+[Package]
+Namespace = "Rux"
+Name = "Benchmark"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "Micro-benchmarking framework with anti-optimization barriers and timing statistics"
+Authors = ["Rux Contributors <info@rux-lang.dev>"]
+Keywords = ["Benchmark", "Timing", "Performance", "Profiling", "Statistics"]
+License = "MIT"
+LicenseFile = "LICENSE.md"
+Repository = "https://github.com/rux-lang/Rux"
+Homepage = "https://rux-lang.dev/docs/api/benchmark"
+ReadmeFile = "README.md"
+
+[Dependencies]
+Core = { Namespace = "Rux", Version = "0.1.0" }
+Time = { Namespace = "Rux", Version = "0.1.0" }

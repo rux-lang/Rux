@@ -1,0 +1,38 @@
+import Simd::{ Float32x4, Float64x2 };
+
+func Main() -> int {
+    // Test Float32x4
+    let a = Float32x4(1.0f32, 2.0f32, 3.0f32, 4.0f32);
+    let b = Float32x4(10.0f32, 20.0f32, 30.0f32, 40.0f32);
+
+    let sum = a.Add(b);
+    if sum.v0 != 11.0f32 || sum.v1 != 22.0f32 || sum.v2 != 33.0f32 || sum.v3 != 44.0f32 {
+        return 1;
+    }
+
+    let diff = b.Sub(a);
+    if diff.v0 != 9.0f32 || diff.v1 != 18.0f32 || diff.v2 != 27.0f32 || diff.v3 != 36.0f32 {
+        return 2;
+    }
+
+    let prod = a.Mul(Float32x4::Splat(2.0f32));
+    if prod.v0 != 2.0f32 || prod.v1 != 4.0f32 || prod.v2 != 6.0f32 || prod.v3 != 8.0f32 {
+        return 3;
+    }
+
+    // 1*2 + 2*3 + 3*4 + 4*5 = 2 + 6 + 12 + 20 = 40
+    let dot = a.Dot(Float32x4(2.0f32, 3.0f32, 4.0f32, 5.0f32));
+    if dot != 40.0f32 {
+        return 4;
+    }
+
+    // Test Float64x2
+    let d1 = Float64x2(1.5f64, 2.5f64);
+    let d2 = Float64x2(3.5f64, 4.5f64);
+    let dsum = d1.Add(d2);
+    if dsum.v0 != 5.0f64 || dsum.v1 != 7.0f64 {
+        return 5;
+    }
+
+    return 0;
+}
