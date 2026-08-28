@@ -16,9 +16,9 @@ import Text::{ FromAllocError, TextError };
 /// https://rux-lang.dev/docs/api/path/path-buffer
 pub struct PathBuffer {
     /// The units, or null before the first push.
-    data: *var OsUnit;
+    pub data: *var OsUnit;
     /// How many units are in use.
-    length: uint;
+    pub length: uint;
     /// How many units the block holds.
     capacity: uint;
     /// Where the block came from, and where it goes back to.

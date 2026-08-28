@@ -28,9 +28,9 @@ pub type FileMode = uint16;
 /// https://rux-lang.dev/docs/api/macos/timespec
 pub struct Timespec {
     /// Whole seconds.
-    seconds: int64;
+    pub seconds: int64;
     /// Nanoseconds within the second, in `[0, 999999999]`.
-    nanoseconds: int64;
+    pub nanoseconds: int64;
 }
 
 /// A duration or an instant, as seconds and microseconds.

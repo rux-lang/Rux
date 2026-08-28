@@ -69,7 +69,8 @@ jobs:
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # The AArch64 VM fully emulates the compiler and complete test build.
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v6
