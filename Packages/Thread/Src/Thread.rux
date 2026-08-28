@@ -9,7 +9,7 @@ when #target.os {
 /// Suspends the current thread for at least the specified duration in milliseconds.
 ///
 /// https://rux-lang.dev/docs/api/thread/sleep-millis
-func SleepMillis(milliseconds: uint32) {
+pub func SleepMillis(milliseconds: uint32) {
     when #target.os {
         .Windows => {
             Sleep(milliseconds);
@@ -23,7 +23,7 @@ func SleepMillis(milliseconds: uint32) {
 /// Cooperatively yields the remaining time slice of the current thread to other ready threads.
 ///
 /// https://rux-lang.dev/docs/api/thread/yield
-func Yield() {
+pub func Yield() {
     when #target.os {
         .Windows => {
             SwitchToThread();
@@ -37,7 +37,7 @@ func Yield() {
 /// Returns the unique numeric identifier of the calling thread.
 ///
 /// https://rux-lang.dev/docs/api/thread/current-id
-func CurrentId() -> uint64 {
+pub func CurrentId() -> uint64 {
     when #target.os {
         .Windows => {
             return GetCurrentThreadId() as uint64;

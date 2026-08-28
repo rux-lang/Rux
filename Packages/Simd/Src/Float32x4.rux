@@ -3,26 +3,26 @@ import Math::Sqrt;
 /// A 128-bit vector holding four 32-bit floating-point lanes.
 ///
 /// https://rux-lang.dev/docs/api/simd/float32x4
-struct Float32x4 {
-    v0: float32;
-    v1: float32;
-    v2: float32;
-    v3: float32;
+pub struct Float32x4 {
+    pub v0: float32;
+    pub v1: float32;
+    pub v2: float32;
+    pub v3: float32;
 }
 
 extend Float32x4 {
     /// Creates a vector from four 32-bit floats.
-    func Float32x4(v0: float32, v1: float32, v2: float32, v3: float32) -> Float32x4 {
+    pub func Float32x4(v0: float32, v1: float32, v2: float32, v3: float32) -> Float32x4 {
         return Float32x4 { v0: v0, v1: v1, v2: v2, v3: v3 };
     }
 
     /// Creates a vector with all four lanes initialized to `val`.
-    func Splat(val: float32) -> Float32x4 {
+    pub func Splat(val: float32) -> Float32x4 {
         return Float32x4 { v0: val, v1: val, v2: val, v3: val };
     }
 
     /// Adds two vectors lane-wise.
-    func Add(self: Float32x4, other: Float32x4) -> Float32x4 {
+    pub func Add(self: Float32x4, other: Float32x4) -> Float32x4 {
         return Float32x4 {
             v0: self.v0 + other.v0,
             v1: self.v1 + other.v1,
@@ -32,7 +32,7 @@ extend Float32x4 {
     }
 
     /// Subtracts `other` from `self` lane-wise.
-    func Sub(self: Float32x4, other: Float32x4) -> Float32x4 {
+    pub func Sub(self: Float32x4, other: Float32x4) -> Float32x4 {
         return Float32x4 {
             v0: self.v0 - other.v0,
             v1: self.v1 - other.v1,
@@ -42,7 +42,7 @@ extend Float32x4 {
     }
 
     /// Multiplies two vectors lane-wise.
-    func Mul(self: Float32x4, other: Float32x4) -> Float32x4 {
+    pub func Mul(self: Float32x4, other: Float32x4) -> Float32x4 {
         return Float32x4 {
             v0: self.v0 * other.v0,
             v1: self.v1 * other.v1,
@@ -52,7 +52,7 @@ extend Float32x4 {
     }
 
     /// Divides `self` by `other` lane-wise.
-    func Div(self: Float32x4, other: Float32x4) -> Float32x4 {
+    pub func Div(self: Float32x4, other: Float32x4) -> Float32x4 {
         return Float32x4 {
             v0: self.v0 / other.v0,
             v1: self.v1 / other.v1,
@@ -62,13 +62,13 @@ extend Float32x4 {
     }
 
     /// Returns the dot product of `self` and `other`.
-    func Dot(self: Float32x4, other: Float32x4) -> float32 {
+    pub func Dot(self: Float32x4, other: Float32x4) -> float32 {
         let p = self.Mul(other);
         return p.Sum();
     }
 
     /// Computes the horizontal sum of all four lanes.
-    func Sum(self: Float32x4) -> float32 {
+    pub func Sum(self: Float32x4) -> float32 {
         return self.v0 + self.v1 + self.v2 + self.v3;
     }
 }
