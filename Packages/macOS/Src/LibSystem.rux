@@ -143,7 +143,7 @@ extern {
     // Darwin's page size is not the same on every machine: Apple Silicon uses 16 KiB where x86-64 uses 4 KiB, which
     // is why this is asked rather than assumed.
     // https://keith.github.io/xcode-man-pages/getpagesize.3.html
-    func getpagesize() -> int32;
+    pub func getpagesize() -> int32;
 
     // Returns the calling process's identifier; cannot fail
     // https://keith.github.io/xcode-man-pages/getpid.2.html

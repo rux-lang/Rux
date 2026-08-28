@@ -141,10 +141,10 @@ pub const OpenCloseOnExec: int32 = 524288;
 /// https://rux-lang.dev/docs/api/linux/open-directory
 when #target.arch {
     .X86_64 => {
-        const OpenDirectory: int32 = 65536;
+        pub const OpenDirectory: int32 = 65536;
     }
     .AArch64 => {
-        const OpenDirectory: int32 = 16384;
+        pub const OpenDirectory: int32 = 16384;
     }
     else => #Error("Unsupported Linux architecture")
 }
