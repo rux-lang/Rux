@@ -169,7 +169,7 @@ TEST_CASE("references cannot escape into storage or returns") {
     )");
 
     CHECK(HasErrorContaining(diagnostics, "field 'item' in struct 'BadStruct' cannot store reference"));
-    CHECK(HasErrorContaining(diagnostics, "payload in enum variant 'BadEnum::Some' cannot store reference"));
+    CHECK(HasErrorContaining(diagnostics, "payload in variant case 'BadEnum::Some' cannot store reference"));
     CHECK(HasErrorContaining(diagnostics, "field 'item' in union 'BadUnion' cannot store reference"));
     CHECK(HasErrorContaining(diagnostics, "function return type cannot store reference"));
     CHECK(HasErrorContaining(diagnostics, "function parameter cannot store reference type 'Box<&Item>'"));

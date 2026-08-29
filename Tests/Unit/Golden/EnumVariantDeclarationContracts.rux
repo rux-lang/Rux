@@ -1,0 +1,6 @@
+enum Generic<T> { Empty }
+enum Tuple { Value(int) }
+enum Named { Value { item: int; } }
+variant Based: uint8 { Ready }
+variant Tagged { Ready = 7 }
+variant Mixed: uint16 { Waiting = 1, Ready = 2 }

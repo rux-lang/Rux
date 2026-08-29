@@ -495,12 +495,26 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     decl->form = isVariant ? EnumDecl::Form::Variant : EnumDecl::Form::Enumeration;
     decl->name =
         ExpectBefore(TokenKind::Ident, isVariant ? "a variant name after 'variant'" : "an enum name after 'enum'").text;
+    bool reportedInvalidEnumShape = false;
+    bool reportedInvalidVariantTagControl = false;
     if (Check(TokenKind::Less)) {
+        const SourceLocation typeParametersLocation = CurrentLocation();
         decl->typeParams = ParseTypeParams();
+        if (!isVariant) {
+            EmitError(typeParametersLocation, "enum '" + decl->name + "' cannot declare type parameters",
+                      "remove the type parameters or use 'variant' for cases that carry data");
+            reportedInvalidEnumShape = true;
+        }
     }
     if (Match(TokenKind::Colon)) {
+        const SourceLocation baseLocation = Previous().location;
         decl->baseType =
             ParseType(isVariant ? "add the variant base type after ':'" : "add the enum base type after ':'");
+        if (isVariant && decl->baseType) {
+            EmitError(baseLocation, "variant '" + decl->name + "' cannot specify a base type",
+                      "variant tags are private; remove ': Type'");
+            reportedInvalidVariantTagControl = true;
+        }
     }
 
     const std::string bodyName = "the " + std::string(declarationName) + " body";
@@ -522,6 +536,11 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
         variant.name = Advance().text;
 
         if (Match(TokenKind::LeftParen)) {
+            if (!isVariant && !reportedInvalidEnumShape) {
+                EmitError(Previous().location, "enum '" + decl->name + "' cannot declare payloads",
+                          "use 'variant' for cases that carry data");
+                reportedInvalidEnumShape = true;
+            }
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
                 auto fieldType = ParseType("add the " + std::string(memberName) + " field type after '(' or ','");
                 if (!fieldType) {
@@ -545,6 +564,11 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
             ExpectBefore(TokenKind::RightParen, "')' to close the " + std::string(memberName) + " fields");
         }
         else if (Match(TokenKind::LeftBrace)) {
+            if (!isVariant && !reportedInvalidEnumShape) {
+                EmitError(Previous().location, "enum '" + decl->name + "' cannot declare payloads",
+                          "use 'variant' for cases that carry data");
+                reportedInvalidEnumShape = true;
+            }
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumDecl::Variant::NamedField field;
                 field.documentation = ParseDocumentation();
@@ -570,14 +594,21 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
         }
 
         if (Match(TokenKind::Assign)) {
+            const SourceLocation discriminantLocation = Previous().location;
             std::string value;
             if (Match(TokenKind::Minus)) {
                 value = "-";
             }
+            const bool hasDiscriminant = Check(TokenKind::IntLiteral);
             value += ExpectBefore(TokenKind::IntLiteral, isVariant ? "an integer variant discriminant after '='"
                                                                    : "an integer enum discriminant after '='")
                          .text;
             variant.discriminant = std::move(value);
+            if (isVariant && hasDiscriminant && !reportedInvalidVariantTagControl) {
+                EmitError(discriminantLocation, "variant '" + decl->name + "' cannot assign case discriminants",
+                          "variant tags are private; remove '= value'");
+                reportedInvalidVariantTagControl = true;
+            }
         }
 
         decl->variants.push_back(std::move(variant));

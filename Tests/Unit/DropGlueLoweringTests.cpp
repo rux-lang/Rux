@@ -213,7 +213,7 @@ TEST_SUITE("DropGlueLowering") {
 
     TEST_CASE("small payload variants retain addressable storage for destruction") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
-            variant Tiny: uint8 {
+            variant Tiny {
                 Empty,
                 Some(Handle)
             }
