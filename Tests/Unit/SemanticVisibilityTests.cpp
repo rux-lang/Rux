@@ -435,13 +435,36 @@ TEST_CASE("effective public API closure rejects private types in every exposed p
 
     for (const std::string_view subject :
          {"public struct 'PublicStruct'", "public field 'PublicStruct.item'", "public union field 'PublicUnion.item'",
-          "public enum variant 'PublicEnum::Tuple'", "public enum field 'PublicEnum::Named.item'",
+          "public variant case 'PublicEnum::Tuple'", "public variant case field 'PublicEnum::Named.item'",
           "public interface requirement 'PublicInterface.Make'", "public type alias 'PublicAlias'",
           "public constant 'PublicConstant'", "public function 'PublicFunction'",
           "public extern function 'PublicExtern'", "public extern variable 'PublicVariable'",
           "public method 'PublicStruct.Exposed'"}) {
         CHECK_MESSAGE(HasMessage(diagnostics, std::string(subject) + " exposes private"), subject);
     }
+}
+
+TEST_CASE("public API closure names variant bounds cases and fields without enum terminology") {
+    const auto diagnostics = AnalyzePackages({{"api.rux", R"(
+        struct Hidden { value: int; }
+        interface HiddenBound {}
+        pub enum PublicState: uint8 { Ready = 1, Failed = 2 }
+        pub variant Packet<T: HiddenBound> {
+            Empty,
+            Tuple(Hidden),
+            Named { payload: Hidden; }
+        }
+    )"}});
+
+    CHECK_MESSAGE(HasMessage(diagnostics, "public variant 'Packet' exposes private"), Messages(diagnostics));
+    CHECK_MESSAGE(HasMessage(diagnostics, "public variant case 'Packet::Tuple' exposes private"),
+                  Messages(diagnostics));
+    CHECK_MESSAGE(HasMessage(diagnostics, "public variant case field 'Packet::Named.payload' exposes private"),
+                  Messages(diagnostics));
+    CHECK_FALSE(HasMessage(diagnostics, "public enum 'Packet'"));
+    CHECK_FALSE(HasMessage(diagnostics, "public enum variant"));
+    CHECK_FALSE(HasMessage(diagnostics, "public enum field"));
+    CHECK_FALSE(HasMessage(diagnostics, "PublicState exposes private"));
 }
 
 TEST_CASE("pub nested below a private module remains package-private and is exempt from API closure") {

@@ -64,6 +64,11 @@ extend Cell {
     func ~Cell(self: &var Cell) {}
 }
 func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
+enum State: uint8 { Idle = 1, Ready = 2 }
+variant Result<T, E> { Success(T), Error(E) }
+func ReadResult(value: Result<int32, State>) -> int32 {
+    return match value { .Success(item) => item, .Error(_) => -1i32 };
+}
 )");
     const std::string manifest = manifestPath.string();
 
@@ -120,10 +125,20 @@ func Borrow(shared: &Cell, exclusive: &var Cell) -> int { return shared.value; }
     CHECK(tokens.starts_with("   1:1     FuncKeyword"));
     CHECK(ast.starts_with("Module \""));
     CHECK(ast.contains("FuncDecl '~Cell' (self: &var Cell)"));
+    CHECK(ast.contains("EnumDecl 'State' : uint8"));
+    CHECK(ast.contains("Member 'Idle' = 1"));
+    CHECK(ast.contains("VariantDecl 'Result'<T, E>"));
+    CHECK(ast.contains("Case 'Success' (T)"));
     CHECK(sema.contains("func Borrow(shared: &Cell, exclusive: &var Cell) -> int"));
     CHECK(sema.contains("Cell                          copy=prohibited move=custom drop=yes"));
     CHECK(hir.starts_with("=== High-level Intermediate Representation ==="));
+    CHECK(hir.contains("enum State: uint8"));
+    CHECK(hir.contains("variant Result<T, E>"));
+    CHECK_FALSE(hir.contains("variant Result<T, E>:"));
     CHECK(lir.starts_with("=== Low-level Intermediate Representation ==="));
+    CHECK(lir.contains("enum State: uint8"));
+    CHECK(lir.contains("variant Result<T, E>"));
+    CHECK_FALSE(lir.contains("variant Result<T, E>:"));
     CHECK_FALSE(assembly.starts_with("Emitted"));
     CHECK(rcu.starts_with("; RCU  Rux Compiled Unit  v1.0"));
     for (const std::string_view payload : {tokens, ast, sema, hir, lir, assembly, rcu}) {

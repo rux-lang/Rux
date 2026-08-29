@@ -130,18 +130,22 @@ void SemanticAnalyzerContext::ValidatePublicDeclaration(const Decl &declaration)
         for (const TypeParameter &parameter : enumeration->typeParams) {
             parameters.insert(parameter.name);
         }
-        ValidatePublicTypeParameters(enumeration->typeParams, std::format("public enum '{}'", enumeration->name),
+        const std::string_view kind = enumeration->IsVariant() ? "variant" : "enum";
+        ValidatePublicTypeParameters(enumeration->typeParams, std::format("public {} '{}'", kind, enumeration->name),
                                      parameters);
-        for (const EnumDecl::Variant &variant : enumeration->variants) {
-            for (const auto &field : variant.fields) {
-                ValidatePublicType(*field, std::format("public enum variant '{}::{}'", enumeration->name, variant.name),
-                                   parameters);
-            }
-            for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
-                ValidatePublicType(
-                    *field.type,
-                    std::format("public enum field '{}::{}.{}'", enumeration->name, variant.name, field.name),
-                    parameters);
+        if (enumeration->IsVariant()) {
+            for (const EnumDecl::Variant &variant : enumeration->variants) {
+                for (const auto &field : variant.fields) {
+                    ValidatePublicType(*field,
+                                       std::format("public variant case '{}::{}'", enumeration->name, variant.name),
+                                       parameters);
+                }
+                for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
+                    ValidatePublicType(*field.type,
+                                       std::format("public variant case field '{}::{}.{}'", enumeration->name,
+                                                   variant.name, field.name),
+                                       parameters);
+                }
             }
         }
     }
