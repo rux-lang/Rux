@@ -202,6 +202,123 @@ TEST_CASE("equality between distinct variant types remains a type mismatch") {
     CHECK_EQ(diagnostics[0].message, "operator '==' cannot compare left operand 'Left' with right operand 'Right'");
 }
 
+TEST_CASE("scalar enum representation casts remain available") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Status: uint8 { Ready = 1, Busy = 2 }
+        func Encode(value: Status) -> uint8 { return value as uint8; }
+        func Decode(value: uint8) -> Status { return value as Status; }
+        func Same(value: Status) -> Status { return value as Status; }
+        func Compare(left: Status, right: Status) -> bool {
+            return left == right || left < right;
+        }
+    )");
+
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("unrelated scalar enums cannot be representation-cast directly") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Left: uint8 { Value = 1 }
+        enum Right: uint8 { Value = 1 }
+        func Convert(value: Left) -> Right { return value as Right; }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot cast enum 'Left' directly to unrelated enum 'Right'");
+}
+
+TEST_CASE("variant representation casts are rejected in every direction") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        variant Other { Empty, Number(int) }
+        func ToScalar(value: Value) -> int { return value as int; }
+        func FromScalar(value: int) -> Value { return value as Value; }
+        func ToVariant(value: Value) -> Other { return value as Other; }
+        func SameVariant(value: Value) -> Value { return value as Value; }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "cannot cast variant 'Value' to scalar type 'int'");
+    CHECK_EQ(diagnostics[1].message, "cannot cast scalar type 'int' to variant 'Value'");
+    CHECK_EQ(diagnostics[2].message, "cannot cast variant 'Value' to variant 'Other'");
+    CHECK_EQ(diagnostics[3].message, "cannot cast variant 'Value' to variant 'Value'");
+}
+
+TEST_CASE("variants have structural equality but no built-in ordering") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        func Compare(left: Value, right: Value) -> bool {
+            let equal = left == right;
+            let notEqual = left != right;
+            let less = left < right;
+            let lessEqual = left <= right;
+            let greater = left > right;
+            let greaterEqual = left >= right;
+            return equal || notEqual || less || lessEqual || greater || greaterEqual;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "operator '<' is not defined for variant 'Value'");
+    CHECK_EQ(diagnostics[1].message, "operator '<=' is not defined for variant 'Value'");
+    CHECK_EQ(diagnostics[2].message, "operator '>' is not defined for variant 'Value'");
+    CHECK_EQ(diagnostics[3].message, "operator '>=' is not defined for variant 'Value'");
+    for (const auto &diagnostic : diagnostics) {
+        REQUIRE_EQ(diagnostic.notes.size(), 1);
+        CHECK_EQ(diagnostic.notes[0], "variants have structural equality but no built-in ordering");
+        REQUIRE(diagnostic.help.has_value());
+        CHECK(diagnostic.help->starts_with("declare '"));
+        CHECK(diagnostic.help->ends_with("to define this ordering"));
+    }
+}
+
+TEST_CASE("a declared variant ordering operator overrides the built-in restriction") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Rank { Low, High }
+        extend Rank {
+            func <(self: &Rank, other: Rank) -> bool { return false; }
+        }
+        func Ordered(left: Rank, right: Rank) -> bool { return left < right; }
+    )");
+
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("variants do not acquire numeric or bitwise operations from their tag") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Value { Empty, Number(int) }
+        func Invalid(value: Value) {
+            let add = value + 1;
+            let subtract = value - 1;
+            let multiply = value * 2;
+            let bits = value & 1;
+            let shifted = value << 1;
+            let negated = -value;
+            var mutable = Value::Empty;
+            let incremented = mutable++;
+        }
+    )");
+
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_EQ(diagnostics.size(), 7);
+    CHECK_EQ(diagnostics[0].message, "operator '+' cannot combine left operand 'Value' with right operand 'int'");
+    CHECK_EQ(diagnostics[1].message, "operator '-' cannot combine left operand 'Value' with right operand 'int'");
+    CHECK_EQ(diagnostics[2].message, "operator '*' cannot combine left operand 'Value' with right operand 'int'");
+    CHECK_EQ(diagnostics[3].message,
+             "operator '&' requires an integer, bool, or character left operand, but found 'Value'");
+    CHECK_EQ(diagnostics[4].message, "operator '<<' requires an integer or character left operand, but found 'Value'");
+    CHECK_EQ(diagnostics[5].message, "operator '-' requires a numeric operand, but found 'Value'");
+    CHECK_EQ(diagnostics[6].message, "operator '++' requires a numeric operand, but found 'Value'");
+}
+
 TEST_CASE("compound assignments apply the matching operator requirements") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {

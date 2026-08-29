@@ -325,3 +325,36 @@ TEST_CASE("AArch64 RCU emitter reads an enum as the integer its discriminant is"
                   "cmp xN, xM");
     CHECK_MESSAGE(HasCset(words, 0x9A9F17E0U), "cset xD, eq");
 }
+
+TEST_CASE("AArch64 keeps narrow signed enums on the scalar integer path") {
+    const auto package = CompileToAArch64Lir(R"(
+        enum Ordering: int8 {
+            Less = -1,
+            Equal = 0,
+            Greater = 1
+        }
+
+        func Decode(value: int8) -> Ordering { return value as Ordering; }
+        func Encode(value: Ordering) -> int8 { return value as int8; }
+        func Main() -> int {
+            let less = Decode(-1i8);
+            let encoded = Encode(less);
+            let ordered = less < Ordering::Greater;
+            return (encoded as int) + match ordered { true => 1, false => 0 };
+        }
+    )");
+
+    AArch64RcuEmitter emitter(package, "test");
+    const auto objects = emitter.Generate();
+    CHECK_MESSAGE(emitter.Diagnostics().empty(), JoinMessages(emitter.Diagnostics()));
+    const auto words = FunctionWords(objects.front(), "Main");
+
+    // Both cast directions and ordering remain scalar: the comparison is an ordinary register compare followed by a
+    // condition-set, with no aggregate field-address sequence introduced by the declaration split.
+    CHECK_FALSE(words.empty());
+    CHECK_MESSAGE(
+        std::ranges::any_of(words, [](const std::uint32_t word) { return (word & 0xFFE0FC1FU) == 0xEB00001FU; }),
+        "cmp xN, xM");
+    const bool hasScalarOrdering = HasCset(words, 0x9A9FA7E0U) || HasCset(words, 0x9A9F27E0U);
+    CHECK_MESSAGE(hasScalarOrdering, "scalar ordering cset");
+}

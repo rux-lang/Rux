@@ -78,6 +78,70 @@ func Do() -> int {
     CHECK(ReturnedLiteral(*func) == "1");
 }
 
+TEST_CASE("scalar enum values continue to select compile-time branches") {
+    auto parsed = ParseSource(R"(
+enum Mode { Fast, Small }
+
+when Mode::Fast == Mode::Fast {
+    func Selected() -> int { return 1; }
+} else {
+    func Selected() -> int { return 0; }
+}
+
+func MatchMode() -> int {
+    when Mode::Small {
+        Mode::Fast => { return 1; }
+        Mode::Small => { return 2; }
+        else => { return 3; }
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module);
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *selected = FindFunc(parsed.module, "Selected");
+    const auto *matched = FindFunc(parsed.module, "MatchMode");
+    REQUIRE(selected != nullptr);
+    REQUIRE(matched != nullptr);
+    CHECK(ReturnedLiteral(*selected) == "1");
+    REQUIRE(matched->body != nullptr);
+    REQUIRE_GE(matched->body->stmts.size(), 1);
+    const auto *matchedReturn = dynamic_cast<const ReturnStmt *>(matched->body->stmts[0].get());
+    REQUIRE(matchedReturn != nullptr);
+    REQUIRE(matchedReturn->value.has_value());
+    const auto *matchedLiteral = dynamic_cast<const LiteralExpr *>(matchedReturn->value->get());
+    REQUIRE(matchedLiteral != nullptr);
+    CHECK_EQ(matchedLiteral->token.text, "2");
+}
+
+TEST_CASE("variant values are not folded as scalar compile-time enums") {
+    auto parsed = ParseSource(R"(
+variant Mode { Fast, Small }
+
+when Mode::Fast == Mode::Fast {
+    func Selected() {}
+}
+
+func MatchMode() -> int {
+    when Mode::Small {
+        Mode::Fast => { return 1; }
+        else => { return 2; }
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module);
+    REQUIRE(model.HasErrors());
+    CHECK(std::ranges::any_of(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "compile-time 'when' cannot evaluate variant type 'Mode'";
+    }));
+    // Rejected compile-time declarations are not silently spliced as if their first case were an integer tag.
+    CHECK(FindFunc(parsed.module, "Selected") == nullptr);
+}
+
 TEST_CASE("a when statement that is false keeps the else branch") {
     auto parsed = ParseSource(R"(
 const Debug = false;

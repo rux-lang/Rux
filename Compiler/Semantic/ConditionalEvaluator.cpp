@@ -442,10 +442,15 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
             RegisterConstantImpl(*constDecl);
         }
         else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(decl.get())) {
-            programEnumNames.insert(enumDecl->name);
-            auto &variants = enumVariants[enumDecl->name];
-            for (const auto &variant : enumDecl->variants) {
-                variants.push_back(variant.name);
+            if (enumDecl->form == EnumDecl::Form::Variant) {
+                programVariantNames.insert(enumDecl->name);
+            }
+            else {
+                programEnumNames.insert(enumDecl->name);
+                auto &variants = enumVariants[enumDecl->name];
+                for (const auto &variant : enumDecl->variants) {
+                    variants.push_back(variant.name);
+                }
             }
         }
         else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
@@ -1005,6 +1010,11 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         // built-in Rux enum must be imported; the program's own need not be.
         if (e->segments.size() == 2) {
             const std::string &enumName = e->segments[0];
+            if (programVariantNames.contains(enumName)) {
+                EmitError(e->location, std::format("compile-time 'when' cannot evaluate variant type '{}'", enumName));
+                reportedError = true;
+                return std::nullopt;
+            }
             if (builtinEnumNames.contains(enumName) && !programEnumNames.contains(enumName) &&
                 !RequireRuxImport(enumName, e->location)) {
                 return std::nullopt;

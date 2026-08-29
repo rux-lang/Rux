@@ -52,6 +52,7 @@ private:
     std::unordered_set<std::string> constsInProgress;
     std::unordered_set<std::string> builtinEnumNames;
     std::unordered_set<std::string> programEnumNames;
+    std::unordered_set<std::string> programVariantNames;
     std::unordered_set<std::string> localIntrinsics;
     std::unordered_set<std::string> ruxImports;
     bool ruxGlobImport = false;
