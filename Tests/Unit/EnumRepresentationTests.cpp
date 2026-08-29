@@ -437,3 +437,17 @@ TEST_CASE("a nested variant is aligned once inside a named payload") {
     CHECK_EQ(layouts.at("Message").size, 48);
     CHECK_EQ(layouts.at("Message").alignment, 8);
 }
+
+TEST_CASE("wide scalar enum matches preserve every declared base-type bit") {
+    const LirPackage package = LowerSource(R"(
+        enum Signal: uint64 { Low = 1, High = 0x100000001 }
+        func Decode(value: Signal) -> int {
+            return match value { .Low => 1, .High => 2 };
+        }
+    )");
+    const LirFunc &decode = RequireFunction(package, "Decode");
+    const std::vector<LirOpcode> opcodes = OpcodesOf(decode);
+    CHECK_GE(std::ranges::count(opcodes, LirOpcode::CmpEq), 2);
+    CHECK_FALSE(Contains(opcodes, LirOpcode::And));
+    CHECK_FALSE(Contains(opcodes, LirOpcode::Shr));
+}

@@ -46,6 +46,10 @@ review_exception() {
         reviewed_limit=3700
         reviewed_reason='central semantic phase orchestration, type resolution, declaration checking, generic instantiation, and shared-context policy'
         ;;
+    Compiler/Syntax/Parser/ParserDecl.cpp)
+        reviewed_limit=1300
+        reviewed_reason='cohesive declaration grammar including shared enum and variant case parsing and recovery'
+        ;;
     Tests/Unit/AArch64EncoderVectors.inc)
         reviewed_limit=1700
         reviewed_reason='dense one-line instruction reference vectors whose locality makes coverage auditable'
@@ -59,8 +63,8 @@ review_exception() {
         reviewed_reason='shared hand-built HIR/LIR pass fixtures and pipeline contract tests'
         ;;
     Tests/Unit/SemanticTests.cpp)
-        reviewed_limit=1500
-        reviewed_reason='end-to-end semantic contracts sharing source analysis and diagnostic-order assertions'
+        reviewed_limit=1800
+        reviewed_reason='end-to-end semantic contracts sharing source analysis, declaration-kind rules, and diagnostic-order assertions'
         ;;
     Tests/Unit/ThirdParty/doctest.h)
         reviewed_limit=7200

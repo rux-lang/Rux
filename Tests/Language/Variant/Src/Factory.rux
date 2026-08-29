@@ -1,0 +1,20 @@
+module Variant::Factory {
+    pub variant RemoteValue {
+        Empty,
+        Pair(int32, int64)
+    }
+
+    pub func BuildRemote(withPayload: bool) -> RemoteValue {
+        if withPayload {
+            return RemoteValue::Pair(20i32, 22i64);
+        }
+        return RemoteValue::Empty;
+    }
+
+    pub func ReadRemote(value: RemoteValue) -> int64 {
+        return match value {
+            .Empty => -1i64,
+            .Pair(first, second) => (first as int64) + second
+        };
+    }
+}

@@ -189,9 +189,6 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         return EmitBinary(LirOpcode::And, cmpLo, cmpHi, TypeRef::MakeBool());
     }
 
-    // Enum, struct, tuple patterns: lower payload bindings, then emit a
-    // placeholder true. Full structural matching requires runtime
-    // support beyond what this IR stage provides.
     if (auto *p = dynamic_cast<const HirEnumPattern *>(&pat)) {
         // Read the tag back at the width it was stored. A C-like enum is stored at its declared base type, so reading
         // it as a full word picked up whatever happened to sit beside it, and the mask below only cleared that when
@@ -203,69 +200,85 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
             tagValue = EmitLoad(subjectSlot, tagType);
             tagValue = EmitCastIfNeeded(tagValue, tagType, TypeRef::MakeInt64());
         }
-        // The mask strips a packed payload from beside the tag. A tag narrower than the mask has nothing packed
-        // beside it, and masking a sign-extended negative discriminant would only corrupt it.
-        if ((!p->unitDiscriminants.empty() || p->discriminant) &&
-            tagType.SizeInBytes().value_or(8) >= sizeof(std::uint32_t)) {
+        // Only compact variants pack their payload above a 32-bit tag. Scalar enums use their entire declared base
+        // type, while addressable variants keep the tag in a separate field.
+        const bool addressableVariant = p->form == CaseTypeForm::Variant && IsAggregateEnumType(subjectType);
+        if (p->form == CaseTypeForm::Variant && !addressableVariant && p->hasPayload) {
             LirReg mask = EmitConst("4294967295", TypeRef::MakeInt64());
             tagValue = EmitBinary(LirOpcode::And, tagValue, mask, TypeRef::MakeInt64());
         }
+
+        LirReg tagMatches = EmitConst("1", TypeRef::MakeBool());
+        if (p->discriminant) {
+            const LirReg literal = EmitConst(*p->discriminant, TypeRef::MakeInt64());
+            tagMatches = EmitBinary(LirOpcode::CmpEq, tagValue, literal, TypeRef::MakeBool());
+        }
+        if (p->form != CaseTypeForm::Variant || p->args.empty()) {
+            return tagMatches;
+        }
+
+        // Do not inspect payload storage until the active tag is known to match. Besides being required for owners,
+        // this makes a value returned across a call boundary decode exactly like one constructed in the current
+        // function.
+        const std::uint32_t payloadBlock = NewBlock("variant.pattern.payload");
+        const std::uint32_t mismatchBlock = NewBlock("variant.pattern.mismatch");
+        const std::uint32_t mergeBlock = NewBlock("variant.pattern.merge");
+        Branch(tagMatches, payloadBlock, mismatchBlock);
+
+        SetBlock(payloadBlock);
+        LirReg payloadMatches = EmitConst("1", TypeRef::MakeBool());
         for (std::size_t i = 0; i < p->args.size(); ++i) {
             const auto &arg = p->args[i];
-            if (auto *bp = dynamic_cast<const HirBindingPattern *>(arg.get())) {
-                const TypeRef bindType = bp->type.IsUnknown() ? subjectType : bp->type;
-                const LirReg bindSlot = EmitAlloca(bindType);
-                locals[bp->name] = bindSlot;
-                LirReg payload = LirNoReg;
-                const std::size_t payloadIndex = i < p->argIndices.size() ? p->argIndices[i] : i;
-                if (enumPayload && payloadIndex < enumPayload->size()) {
-                    payload = EmitLoad((*enumPayload)[payloadIndex], bindType);
-                }
-                else if (subjectSlot != LirNoReg) {
-                    std::uint64_t offset = tagType.SizeInBytes().value_or(8);
-                    for (std::size_t fieldIndex = 0; fieldIndex < payloadIndex && fieldIndex < p->args.size();
-                         ++fieldIndex) {
-                        TypeRef fieldType = TypeRef::MakeUnknown();
-                        if (const auto *fieldBinding =
-                                dynamic_cast<const HirBindingPattern *>(p->args[fieldIndex].get())) {
-                            fieldType = fieldBinding->type;
-                        }
-                        else if (const auto *fieldLiteral =
-                                     dynamic_cast<const HirLiteralPattern *>(p->args[fieldIndex].get())) {
-                            fieldType = fieldLiteral->type;
-                        }
-                        const std::uint64_t fieldSize = fieldType.SizeInBytes().value_or(8);
-                        const std::uint64_t fieldAlign = fieldSize > 0 ? std::min<std::uint64_t>(fieldSize, 8) : 1;
-                        offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
-                        offset += fieldSize;
-                    }
-                    const std::uint64_t bindSize = bindType.SizeInBytes().value_or(8);
-                    const std::uint64_t bindAlign = bindSize > 0 ? std::min<std::uint64_t>(bindSize, 8) : 1;
-                    offset = (offset + bindAlign - 1) / bindAlign * bindAlign;
-                    const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
-                    const LirReg payloadPtr = EmitIndexPtr(subjectSlot, offsetReg, TypeRef::MakeChar8());
-                    payload = EmitLoad(payloadPtr, bindType);
-                }
-                else {
-                    LirReg shift = EmitConst("32", TypeRef::MakeInt64());
-                    payload = EmitBinary(LirOpcode::Shr, subjectVal, shift, TypeRef::MakeInt64());
-                }
-                EmitStore(payload, bindSlot, bindType);
-                MarkBindingLive(bp->bindingId, true);
+            const std::size_t payloadIndex = i < p->argIndices.size() ? p->argIndices[i] : i;
+            const TypeRef payloadType =
+                payloadIndex < p->payloadTypes.size() ? p->payloadTypes[payloadIndex] : TypeRef::MakeUnknown();
+            LirReg payloadSlot = LirNoReg;
+            LirReg payload = LirNoReg;
+            if (enumPayload && payloadIndex < enumPayload->size()) {
+                payloadSlot = (*enumPayload)[payloadIndex];
+                payload = EmitLoad(payloadSlot, payloadType);
             }
-        }
-        if (p->hasPayload) {
-            if (p->discriminant) {
-                LirReg lit = EmitConst(*p->discriminant, TypeRef::MakeInt64());
-                return EmitBinary(LirOpcode::CmpEq, tagValue, lit, TypeRef::MakeBool());
+            else if (addressableVariant && subjectSlot != LirNoReg) {
+                std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+                for (std::size_t fieldIndex = 0; fieldIndex < payloadIndex && fieldIndex < p->payloadTypes.size();
+                     ++fieldIndex) {
+                    const std::uint64_t fieldSize = p->payloadTypes[fieldIndex].SizeInBytes().value_or(8);
+                    const std::uint64_t fieldAlign = fieldSize > 0 ? std::min<std::uint64_t>(fieldSize, 8) : 1;
+                    offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
+                    offset += fieldSize;
+                }
+                const std::uint64_t payloadSize = payloadType.SizeInBytes().value_or(8);
+                const std::uint64_t payloadAlign = payloadSize > 0 ? std::min<std::uint64_t>(payloadSize, 8) : 1;
+                offset = (offset + payloadAlign - 1) / payloadAlign * payloadAlign;
+                const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+                payloadSlot = EmitIndexPtr(subjectSlot, offsetReg, TypeRef::MakeChar8());
+                payload = EmitLoad(payloadSlot, payloadType);
             }
-            return EmitConst("1", TypeRef::MakeBool());
+            else {
+                const LirReg shift = EmitConst("32", TypeRef::MakeInt64());
+                payload = EmitBinary(LirOpcode::Shr, subjectVal, shift, TypeRef::MakeInt64());
+                payload = EmitCastIfNeeded(payload, TypeRef::MakeInt64(), payloadType);
+            }
+            const LirReg argumentMatches = LowerPattern(*arg, payload, payloadType, nullptr, payloadSlot);
+            payloadMatches = EmitBinary(LirOpcode::And, payloadMatches, argumentMatches, TypeRef::MakeBool());
         }
-        if (p->discriminant) {
-            LirReg lit = EmitConst(*p->discriminant, TypeRef::MakeInt64());
-            return EmitBinary(LirOpcode::CmpEq, tagValue, lit, TypeRef::MakeBool());
-        }
-        return EmitConst("1", TypeRef::MakeBool());
+        const std::uint32_t payloadPred = builder->CurrentBlock();
+        Jump(mergeBlock);
+
+        SetBlock(mismatchBlock);
+        const LirReg mismatch = EmitConst("0", TypeRef::MakeBool());
+        const std::uint32_t mismatchPred = builder->CurrentBlock();
+        Jump(mergeBlock);
+
+        SetBlock(mergeBlock);
+        const LirReg result = NewReg();
+        LirInstr phi;
+        phi.dst = result;
+        phi.op = LirOpcode::Phi;
+        phi.type = TypeRef::MakeBool();
+        phi.phiPreds = {{payloadMatches, payloadPred}, {mismatch, mismatchPred}};
+        Emit(std::move(phi));
+        return result;
     }
 
     if (auto *p = dynamic_cast<const HirStructPattern *>(&pat)) {
@@ -289,9 +302,28 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
     }
 
     if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
-        LirReg inner = LowerPattern(*p->inner, subjectVal, subjectType, enumPayload, subjectSlot);
-        LirReg guard = LowerExpr(*p->guard);
-        return EmitBinary(LirOpcode::And, inner, guard, TypeRef::MakeBool());
+        const LirReg inner = LowerPattern(*p->inner, subjectVal, subjectType, enumPayload, subjectSlot);
+        const std::uint32_t guardBlock = NewBlock("pattern.guard");
+        const std::uint32_t mismatchBlock = NewBlock("pattern.guard.mismatch");
+        const std::uint32_t mergeBlock = NewBlock("pattern.guard.merge");
+        Branch(inner, guardBlock, mismatchBlock);
+        SetBlock(guardBlock);
+        const LirReg guard = LowerExpr(*p->guard);
+        const std::uint32_t guardPred = builder->CurrentBlock();
+        Jump(mergeBlock);
+        SetBlock(mismatchBlock);
+        const LirReg mismatch = EmitConst("0", TypeRef::MakeBool());
+        const std::uint32_t mismatchPred = builder->CurrentBlock();
+        Jump(mergeBlock);
+        SetBlock(mergeBlock);
+        const LirReg result = NewReg();
+        LirInstr phi;
+        phi.dst = result;
+        phi.op = LirOpcode::Phi;
+        phi.type = TypeRef::MakeBool();
+        phi.phiPreds = {{guard, guardPred}, {mismatch, mismatchPred}};
+        Emit(std::move(phi));
+        return result;
     }
 
     return EmitConst("1", TypeRef::MakeBool()); // wildcard fallback

@@ -93,8 +93,10 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     itemPattern->location = statement.location;
     itemPattern->path = {fact.optionEnumName, fact.someVariant};
     itemPattern->resolvedType = reportedType;
+    itemPattern->form = CaseTypeForm::Variant;
     itemPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionEnumName, fact.someVariant);
     itemPattern->hasPayload = true;
+    itemPattern->payloadTypes.push_back(itemType);
     itemPattern->unitDiscriminants = unitDiscriminants;
     auto itemBinding = std::make_unique<HirBindingPattern>();
     itemBinding->location = statement.location;
@@ -141,6 +143,7 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     endPattern->location = statement.location;
     endPattern->path = {fact.optionEnumName, fact.noneVariant};
     endPattern->resolvedType = reportedType;
+    endPattern->form = CaseTypeForm::Variant;
     endPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionEnumName, fact.noneVariant);
     endPattern->unitDiscriminants = unitDiscriminants;
 
