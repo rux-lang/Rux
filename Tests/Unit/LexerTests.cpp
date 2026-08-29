@@ -59,6 +59,18 @@ TEST_CASE("Lexer uses maximal munch for logical right shift operators") {
     CHECK(result.tokens[5].text == ">>>=");
 }
 
+TEST_CASE("Lexer uses maximal munch for Option coalescing without changing postfix question") {
+    const auto result = Lex("a?; b??c; d???e;");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.tokens.size(), 13);
+    CHECK(result.tokens[1].Is(TokenKind::Question));
+    CHECK(result.tokens[4].Is(TokenKind::QuestionQuestion));
+    CHECK_EQ(result.tokens[4].text, "??");
+    CHECK_FALSE(result.tokens[4].IsOperator());
+    CHECK(result.tokens[8].Is(TokenKind::QuestionQuestion));
+    CHECK(result.tokens[9].Is(TokenKind::Question));
+}
+
 TEST_CASE("Lexer recognizes ownership transfer arrows without splitting comparisons") {
     const auto result = Lex("let destination <- source; left < -right;");
     REQUIRE(result.diagnostics.empty());

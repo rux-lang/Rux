@@ -203,6 +203,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     }
 
     if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+        if (binary->op == TokenKind::QuestionQuestion) {
+            return LowerCoalesceExpr(*binary);
+        }
         auto lowerOperand = [&](const Expr &operand, const Expr &other) {
             if (IsNullLiteral(operand)) {
                 const TypeRef otherType = ResolvedExpressionType(other);

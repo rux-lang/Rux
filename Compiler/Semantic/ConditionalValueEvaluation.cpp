@@ -98,6 +98,8 @@ std::string_view OperatorName(const TokenKind op) {
         return "&&";
     case TokenKind::PipePipe:
         return "||";
+    case TokenKind::QuestionQuestion:
+        return "??";
     case TokenKind::LessLess:
         return "<<";
     case TokenKind::GreaterGreater:

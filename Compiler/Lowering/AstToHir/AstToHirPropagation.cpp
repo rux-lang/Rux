@@ -15,7 +15,45 @@ namespace {
 [[nodiscard]] std::string PropagationBindingName(const std::string_view role, const std::size_t ordinal) {
     return std::format("$try.{}.{}", role, ordinal);
 }
+
+[[nodiscard]] std::string CoalescingBindingName(const std::size_t ordinal) {
+    return std::format("$coalesce.value.{}", ordinal);
+}
 } // namespace
+
+std::unique_ptr<HirEnumPattern> AstToHirContext::LowerOutcomeVariantPattern(
+    const SourceLocation location, const std::string &variantName, const std::string &caseName,
+    const TypeRef &operandType, const std::string &bindingName, const TypeRef &bindingType, const bool hasPayload) {
+    std::vector<std::string> unitDiscriminants;
+    if (const auto declaration = enumDecls.find(variantName); declaration != enumDecls.end()) {
+        for (const auto &variant : declaration->second->variants) {
+            if (variant.fields.empty() && variant.namedFields.empty()) {
+                if (auto discriminant = LookupEnumVariantDiscriminant(variantName, variant.name)) {
+                    unitDiscriminants.push_back(*discriminant);
+                }
+            }
+        }
+    }
+
+    auto pattern = std::make_unique<HirEnumPattern>();
+    pattern->location = location;
+    pattern->path = {variantName, caseName};
+    pattern->resolvedType = operandType;
+    pattern->form = CaseTypeForm::Variant;
+    pattern->discriminant = LookupEnumVariantDiscriminant(variantName, caseName);
+    pattern->hasPayload = hasPayload;
+    pattern->unitDiscriminants = std::move(unitDiscriminants);
+    if (hasPayload) {
+        pattern->payloadTypes.push_back(bindingType);
+        auto binding = std::make_unique<HirBindingPattern>();
+        binding->location = location;
+        binding->name = bindingName;
+        binding->type = bindingType;
+        pattern->argIndices.push_back(0);
+        pattern->args.push_back(std::move(binding));
+    }
+    return pattern;
+}
 
 HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     const ResolvedPropagation *fact = model.TryGetPropagation(expression);
@@ -33,41 +71,6 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     const std::string payloadName = PropagationBindingName("value", ordinal);
     const std::string failureName = PropagationBindingName("failure", ordinal);
 
-    // Every unit case of the operand's variant, which is how pattern lowering tells a payload-carrying value in the
-    // compact representation from one that has no payload to read.
-    std::vector<std::string> unitDiscriminants;
-    if (const auto declaration = enumDecls.find(fact->variantName); declaration != enumDecls.end()) {
-        for (const auto &variant : declaration->second->variants) {
-            if (variant.fields.empty() && variant.namedFields.empty()) {
-                if (auto discriminant = LookupEnumVariantDiscriminant(fact->variantName, variant.name)) {
-                    unitDiscriminants.push_back(*discriminant);
-                }
-            }
-        }
-    }
-
-    const auto variantPattern = [&](const std::string &variant, const std::string &bindingName,
-                                    const TypeRef &bindingType, const bool hasPayload) {
-        auto pattern = std::make_unique<HirEnumPattern>();
-        pattern->location = expression.location;
-        pattern->path = {fact->variantName, variant};
-        pattern->resolvedType = operandType;
-        pattern->form = CaseTypeForm::Variant;
-        pattern->discriminant = LookupEnumVariantDiscriminant(fact->variantName, variant);
-        pattern->hasPayload = hasPayload;
-        pattern->unitDiscriminants = unitDiscriminants;
-        if (hasPayload) {
-            pattern->payloadTypes.push_back(bindingType);
-            auto binding = std::make_unique<HirBindingPattern>();
-            binding->location = expression.location;
-            binding->name = bindingName;
-            binding->type = bindingType;
-            pattern->argIndices.push_back(0);
-            pattern->args.push_back(std::move(binding));
-        }
-        return pattern;
-    };
-
     const auto namedValue = [&](const std::string &name, const TypeRef &type) {
         auto value = std::make_unique<HirVarExpr>();
         value->location = expression.location;
@@ -78,7 +81,8 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
 
     HirMatchArm success;
     success.location = expression.location;
-    success.pattern = variantPattern(fact->successVariant, payloadName, payloadType, true);
+    success.pattern = LowerOutcomeVariantPattern(expression.location, fact->variantName, fact->successVariant,
+                                                 operandType, payloadName, payloadType, true);
     success.body = namedValue(payloadName, payloadType);
 
     // The failure travels out unchanged: the same payload, re-wrapped in the failure variant of what this function
@@ -107,7 +111,8 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
 
     HirMatchArm failure;
     failure.location = expression.location;
-    failure.pattern = variantPattern(fact->failureVariant, failureName, failureType, fact->failureType.has_value());
+    failure.pattern = LowerOutcomeVariantPattern(expression.location, fact->variantName, fact->failureVariant,
+                                                 operandType, failureName, failureType, fact->failureType.has_value());
     failure.body = std::move(failureBody);
 
     auto lowered = std::make_unique<HirMatchExpr>();
@@ -116,6 +121,53 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     lowered->subject = LowerExpr(*expression.operand);
     lowered->arms.push_back(std::move(success));
     lowered->arms.push_back(std::move(failure));
+    return lowered;
+}
+
+HirExprPtr AstToHirContext::LowerCoalesceExpr(const BinaryExpr &expression) {
+    const ResolvedCoalescing *fact = model.TryGetCoalescing(expression);
+    assert(fact != nullptr && "accepted coalescing expression is missing its semantic fact");
+    if (!fact) {
+        std::abort();
+    }
+
+    const TypeRef operandType = ResolvedExpressionType(*expression.left);
+    const TypeRef payloadType = ResolvedExpressionType(expression);
+    const std::string payloadName = CoalescingBindingName(coalescingOrdinal++);
+
+    auto payloadValue = std::make_unique<HirVarExpr>();
+    payloadValue->location = expression.location;
+    payloadValue->name = payloadName;
+    payloadValue->type = payloadType;
+    HirExprPtr successBody = std::move(payloadValue);
+    HirMovePlan payloadMove = BuildMovePlan(payloadType);
+    if (payloadMove.kind != HirMovePlan::Kind::Trivial) {
+        auto moved = std::make_unique<HirMoveExpr>();
+        moved->location = expression.location;
+        moved->type = payloadType;
+        moved->plan = std::move(payloadMove);
+        moved->value = std::move(successBody);
+        successBody = std::move(moved);
+    }
+
+    HirMatchArm some;
+    some.location = expression.location;
+    some.pattern = LowerOutcomeVariantPattern(expression.location, fact->variantName, fact->someVariant, operandType,
+                                              payloadName, payloadType, true);
+    some.body = std::move(successBody);
+
+    HirMatchArm none;
+    none.location = expression.location;
+    none.pattern = LowerOutcomeVariantPattern(expression.location, fact->variantName, fact->noneVariant, operandType,
+                                              {}, TypeRef::MakeUnknown(), false);
+    none.body = LowerExprAs(*expression.right, payloadType);
+
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = expression.location;
+    lowered->type = payloadType;
+    lowered->subject = LowerExpr(*expression.left);
+    lowered->arms.push_back(std::move(some));
+    lowered->arms.push_back(std::move(none));
     return lowered;
 }
 } // namespace Rux::AstToHirDetail

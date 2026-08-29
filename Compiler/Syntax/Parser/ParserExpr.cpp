@@ -133,14 +133,14 @@ ExprPtr Parser::ParseRange() {
 }
 
 ExprPtr Parser::ParseTernary() {
-    auto cond = ParseOr();
+    auto cond = ParseCoalesce();
     if (!cond) {
         return nullptr;
     }
 
     if (Match(TokenKind::Question)) {
         const auto loc = Previous().location;
-        auto thenExpr = ParseOr();
+        auto thenExpr = ParseCoalesce();
         if (!thenExpr) {
             EmitMissingExpression("after '?' in the conditional expression");
         }
@@ -157,6 +157,30 @@ ExprPtr Parser::ParseTernary() {
         return e;
     }
     return cond;
+}
+
+// right-associative: a ?? b ?? c  =>  a ?? (b ?? c)
+ExprPtr Parser::ParseCoalesce() {
+    auto left = ParseOr();
+    if (!left) {
+        return nullptr;
+    }
+    if (!Check(TokenKind::QuestionQuestion)) {
+        return left;
+    }
+
+    const auto loc = CurrentLocation();
+    const Token opToken = Advance();
+    auto right = ParseCoalesce();
+    if (!right) {
+        EmitMissingExpression(std::format("after '{}'", opToken.text));
+    }
+    auto expression = std::make_unique<BinaryExpr>();
+    expression->location = loc;
+    expression->op = TokenKind::QuestionQuestion;
+    expression->left = std::move(left);
+    expression->right = std::move(right);
+    return expression;
 }
 
 ExprPtr Parser::ParseOr() {

@@ -13,6 +13,8 @@ enum class ValueConsumptionKind {
     Aggregate,
     ArrayRepeat,
     ConditionalArm,
+    CoalescingOperand,
+    CoalescingFallback,
     ExplicitMove,
 };
 

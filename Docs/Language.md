@@ -231,6 +231,26 @@ let contextual: uint8[16] = [0; 16];
 
 The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`Slice<T>` coercion as ordinary array literals.
 
+## Option Coalescing
+
+`option ?? fallback` extracts the value carried by an Option or evaluates `fallback` when the Option is `None`:
+
+```rux
+let port = configuredPort ?? ReadDefaultPort();
+```
+
+The left operand is evaluated exactly once. The fallback is checked at compile time but evaluated only for `None`, so it may perform expensive work or visible side effects without paying that cost on the `Some` path. The result type is the payload type, and the fallback must be assignable to it.
+
+Option is a structural protocol rather than a built-in type name. The left type must be a `variant` with exactly `Some(T)` and payload-less `None` cases; a user-declared `Maybe<T>` with that shape works identically. `Result`, scalar enums, malformed lookalikes, references to an Option, and raw pointers used directly as the left operand are rejected. A raw pointer may still be the `T` inside an Option. Reference payloads are not supported because extracting one would lose the borrow provenance hidden inside `Some`.
+
+Coalescing consumes its evaluated Option. A named copyable Option is copied and remains usable, while a named move-only Option must make the transfer visible:
+
+```rux
+let value = (<-ownedOption) ?? <-ownedFallback;
+```
+
+The fallback transfer is conditional, so `ownedFallback` is possibly moved after this expression. `??` associates to the right. Logical `||` binds more tightly and `?:` binds less tightly, so `first ?? second ?? fallback` means `first ?? (second ?? fallback)`. The operator is compiler-owned control flow: it cannot be declared in an `extend` block or overloaded, and there is no `??=` form. Because `??` is now a single maximal-munch token, two adjacent postfix propagations must be written `(nested?)?` instead of `nested??`.
+
 ## Indexing
 
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:

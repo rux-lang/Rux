@@ -56,25 +56,26 @@ enum class TokenKind : std::uint8_t {
     WhileKeyword,     // while
 
     // Punctuation
-    LeftParen,    // (
-    RightParen,   // )
-    LeftBrace,    // {
-    RightBrace,   // }
-    LeftBracket,  // [
-    RightBracket, // ]
-    Comma,        // ,
-    Semicolon,    // ;
-    Colon,        // :
-    ColonColon,   // ::
-    Dot,          // .
-    DotDot,       // ..
-    DotDotDot,    // ...
-    DotDotEqual,  // ..=
-    Arrow,        // ->
-    FatArrow,     // =>
-    At,           // @
-    Hash,         // #
-    Question,     // ?
+    LeftParen,        // (
+    RightParen,       // )
+    LeftBrace,        // {
+    RightBrace,       // }
+    LeftBracket,      // [
+    RightBracket,     // ]
+    Comma,            // ,
+    Semicolon,        // ;
+    Colon,            // :
+    ColonColon,       // ::
+    Dot,              // .
+    DotDot,           // ..
+    DotDotDot,        // ...
+    DotDotEqual,      // ..=
+    Arrow,            // ->
+    FatArrow,         // =>
+    At,               // @
+    Hash,             // #
+    Question,         // ?
+    QuestionQuestion, // ?? -- built-in Option coalescing, not a declarable operator
 
     // Arithmetic operators
     Plus,       // +

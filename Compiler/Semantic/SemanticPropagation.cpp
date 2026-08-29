@@ -216,4 +216,100 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckTryExpression(const TryExpr
     propagations.insert_or_assign(&expression, std::move(propagation));
     return operand->payload;
 }
+
+bool SemanticAnalyzerContext::ValidateCoalescingPayload(const TypeRef &payload, const SourceLocation location) {
+    if (payload.IsUnknown() || (!ClassifyTypeProperties(payload).IsResolved() && MentionsTypeParameter(payload))) {
+        return true;
+    }
+    if (payload.kind == TypeRef::Kind::Reference) {
+        EmitError(location,
+                  std::format("'{}' cannot extract reference payload type '{}' from an Option",
+                              "?"
+                              "?",
+                              payload.ToString()),
+                  {"the hidden Some payload has no source place whose borrow provenance can be preserved"},
+                  "handle the Option with an explicit match, or store a raw pointer when an address must escape");
+        return false;
+    }
+    const TypeProperties properties = ClassifyTypeProperties(payload);
+    if (properties.IsResolved() && !properties.IsMovable()) {
+        EmitError(location,
+                  std::format("'{}' cannot extract payload type '{}' because moving it is prohibited",
+                              "?"
+                              "?",
+                              payload.ToString()),
+                  {"coalescing transfers the Some payload into the result"},
+                  "use an explicit match and copy the payload, or permit the canonical move operation");
+        return false;
+    }
+    return true;
+}
+
+TypeRef SemanticAnalyzerContext::CheckCoalesceExpression(const BinaryExpr &expression) {
+    const TypeRef leftType = CheckExpr(*expression.left);
+    if (leftType.IsUnknown()) {
+        static_cast<void>(CheckExpr(*expression.right));
+        return TypeRef::MakeUnknown();
+    }
+
+    const auto shape = PropagationShapeOf(leftType);
+    if (!shape) {
+        static_cast<void>(CheckExpr(*expression.right));
+        std::vector<std::string> notes;
+        if (auto issue = PropagationShapeIssue(leftType, PropagationShape::Kind::Option)) {
+            notes.push_back(std::move(*issue));
+        }
+        EmitError(expression.location,
+                  std::format("operator '{}' requires an Option-shaped left operand, but found '{}'",
+                              "?"
+                              "?",
+                              leftType.ToString()),
+                  std::move(notes), "use a variant with exactly 'Some(T)' and payload-less 'None' cases");
+        return TypeRef::MakeUnknown();
+    }
+    if (shape->kind != PropagationShape::Kind::Option) {
+        static_cast<void>(CheckExpr(*expression.right));
+        EmitError(expression.location,
+                  std::format("Result value '{}' cannot be coalesced with '{}'", leftType.ToString(),
+                              "?"
+                              "?"),
+                  {"a Result carries an error that coalescing would silently discard"},
+                  "handle Error explicitly with 'match', or convert the Result to an Option first");
+        return TypeRef::MakeUnknown();
+    }
+
+    bool payloadValid = true;
+    if (MentionsTypeParameter(shape->payload) && currentFunctionDecl) {
+        deferredCoalescingChecks[currentFunctionDecl].push_back({shape->payload, expression.location});
+    }
+    else {
+        payloadValid = ValidateCoalescingPayload(shape->payload, expression.location);
+    }
+
+    ConsumeValue(*expression.left, leftType, ValueConsumptionKind::CoalescingOperand, expression.left->location);
+    const TrackedFlow someExit = SaveTrackedFlow();
+
+    const TypeRef rightType = CheckExpr(*expression.right);
+    bool fallbackValid = rightType.IsUnknown() || shape->payload.IsUnknown() ||
+                         CanAssignExprTo(*expression.right, rightType, shape->payload);
+    if (!fallbackValid) {
+        EmitError(
+            expression.right->location,
+            AssignmentErrorMessage(*expression.right, shape->payload,
+                                   std::format("coalescing fallback has type '{}', but the Option payload is '{}'",
+                                               rightType.ToString(), shape->payload.ToString())));
+    }
+    else if (!rightType.IsUnknown()) {
+        ConsumeValue(*expression.right, rightType, ValueConsumptionKind::CoalescingFallback,
+                     expression.right->location);
+    }
+    const TrackedFlow noneExit = SaveTrackedFlow();
+    MergeTrackedFlows({someExit, noneExit});
+
+    if (payloadValid && fallbackValid && !shape->payload.IsUnknown()) {
+        coalescings.insert_or_assign(&expression, ResolvedCoalescing{shape->declaration->name, std::string(kOptionSome),
+                                                                     std::string(kOptionNone), shape->payload});
+    }
+    return shape->payload;
+}
 } // namespace Rux::SemanticDetail

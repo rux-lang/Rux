@@ -979,7 +979,7 @@ Token Lexer::ScanSymbol(const SourceLocation start) {
     case '#':
         return MakeToken(TokenKind::Hash, start, tokenStart);
     case '?':
-        return MakeToken(TokenKind::Question, start, tokenStart);
+        return MakeToken(Match('?') ? TokenKind::QuestionQuestion : TokenKind::Question, start, tokenStart);
     case '~':
         return MakeToken(TokenKind::Tilde, start, tokenStart);
     // :  or  ::

@@ -23,6 +23,10 @@ std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexc
         return "array repeat";
     case ValueConsumptionKind::ConditionalArm:
         return "conditional-arm";
+    case ValueConsumptionKind::CoalescingOperand:
+        return "coalescing operand";
+    case ValueConsumptionKind::CoalescingFallback:
+        return "coalescing fallback";
     case ValueConsumptionKind::ExplicitMove:
         return "explicit";
     }

@@ -72,6 +72,8 @@ protected:
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     /// Distinguishes the bindings two propagations in one expression introduce; only their uniqueness matters.
     std::size_t propagationOrdinal = 0;
+    /// Distinguishes the hidden payload bindings introduced by coalescing expressions.
+    std::size_t coalescingOrdinal = 0;
     /// The same for the iterator and item bindings nested convention-driven loops introduce.
     std::size_t iterationOrdinal = 0;
     /// The same for the operands and result a checked operation names.
@@ -136,6 +138,11 @@ protected:
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
+    [[nodiscard]] HirExprPtr LowerCoalesceExpr(const BinaryExpr &expression);
+    [[nodiscard]] std::unique_ptr<HirEnumPattern>
+    LowerOutcomeVariantPattern(SourceLocation location, const std::string &variantName, const std::string &caseName,
+                               const TypeRef &operandType, const std::string &bindingName, const TypeRef &bindingType,
+                               bool hasPayload);
     [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] HirExprPtr LowerZeroizeCall(const CallExpr &call);
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);

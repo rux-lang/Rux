@@ -3608,6 +3608,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(vtableIdentities),
                          analyzer.TakeConstraintWitnesses(),
                          analyzer.TakePropagations(),
+                         analyzer.TakeCoalescings(),
                          analyzer.TakeIndexOperators(),
                          analyzer.TakeIndexAssignments(),
                          analyzer.TakeIterations(),

@@ -255,6 +255,11 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
             decl->name = "[]=";
         }
     }
+    else if (Check(TokenKind::QuestionQuestion)) {
+        decl->name = Advance().text;
+        EmitError(loc, "operator '?"
+                       "?' is built in and cannot be declared or overloaded");
+    }
     else if (Peek().IsOperator()) {
         decl->name = Advance().text;
     }

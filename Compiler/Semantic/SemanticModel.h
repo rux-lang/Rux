@@ -186,6 +186,15 @@ struct ResolvedPropagation {
     TypeRef returnType;
 };
 
+/// What one accepted `option ?? fallback` coalesces. Analysis identifies the Option protocol structurally and fixes
+/// the payload type, so lowering only has to build the lazy match it describes.
+struct ResolvedCoalescing {
+    std::string variantName;
+    std::string someVariant;
+    std::string noneVariant;
+    TypeRef payloadType;
+};
+
 /// How one accepted `for` loop reads its subject. Analysis decides whether the subject is driven directly or through
 /// the iterator convention and which methods drive it, so lowering builds the loop from this rather than deciding
 /// again.
@@ -290,6 +299,7 @@ struct SemanticModel {
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                   std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
+                  std::unordered_map<const BinaryExpr *, ResolvedCoalescing> inputCoalescings,
                   std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
                   std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> inputIndexAssignments,
                   std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
@@ -342,6 +352,9 @@ struct SemanticModel {
     /// Returns null for a rejected `?`, which has no early return to build.
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
 
+    /// Returns null for a rejected `??` and for every ordinary binary expression.
+    [[nodiscard]] const ResolvedCoalescing *TryGetCoalescing(const BinaryExpr &expression) const noexcept;
+
     /// Returns null for built-in array, slice, and pointer indexing, which needs no declared operator.
     [[nodiscard]] const ResolvedIndexOperator *TryGetIndexOperator(const IndexExpr &expression) const noexcept;
 
@@ -389,6 +402,7 @@ private:
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;

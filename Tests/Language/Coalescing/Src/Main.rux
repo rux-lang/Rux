@@ -1,0 +1,119 @@
+import Core::{ Assert, Option, Unit };
+
+variant Maybe<T> {
+    Some(T),
+    None
+}
+
+struct Wide {
+    first: int64;
+    second: int64;
+    third: int64;
+}
+
+struct Tracked {
+    value: int32;
+    drops: *var int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        *self.drops += 1;
+    }
+}
+
+func CountedOption(value: int32, calls: *var int32) -> Option<int32> {
+    *calls += 1;
+    return Option::Some<int32>(value);
+}
+
+func CountedFallback(value: int32, calls: *var int32) -> int32 {
+    *calls += 1;
+    return value;
+}
+
+func CountedTracked(value: int32, calls: *var int32, drops: *var int32) -> Tracked {
+    *calls += 1;
+    return Tracked { value: value, drops: drops };
+}
+
+func Generic<T>(option: Option<T>, fallback: T) -> T {
+    return (<-option) ?? <-fallback;
+}
+
+func Nested(present: bool) -> Option<Option<int32>> {
+    if present {
+        return Option::Some<Option<int32>>(Option::None<int32>());
+    }
+    return Option::None<Option<int32>>();
+}
+
+func PropagateThenCoalesce(present: bool) -> Option<int32> {
+    let value = Nested(present)? ?? 17i32;
+    return Option::Some<int32>(value);
+}
+
+func Held(option: Option<int32>) -> int32 {
+    return (<-option) ?? -1i32;
+}
+
+func SomeDropCase(drops: *var int32, fallbackCalls: *var int32) {
+    let option = Option::Some<Tracked>(Tracked { value: 7i32, drops: drops });
+    let selected = (<-option) ?? CountedTracked(9i32, fallbackCalls, drops);
+    Assert(selected.value == 7i32, "Some should transfer its payload");
+}
+
+func NoneDropCase(drops: *var int32, fallbackCalls: *var int32) {
+    let option = Option::None<Tracked>();
+    let selected = (<-option) ?? CountedTracked(9i32, fallbackCalls, drops);
+    Assert(selected.value == 9i32, "None should produce the fallback");
+}
+
+func Main() -> int {
+    var leftCalls = 0i32;
+    var fallbackCalls = 0i32;
+    Assert((CountedOption(7i32, @leftCalls) ?? CountedFallback(9i32, @fallbackCalls)) == 7i32,
+           "Some should select its payload");
+    Assert(leftCalls == 1i32, "the coalescing operand should be evaluated once");
+    Assert(fallbackCalls == 0i32, "Some should not evaluate the fallback");
+
+    Assert((Option::None<int32>() ?? CountedFallback(11i32, @fallbackCalls)) == 11i32,
+           "None should select its fallback");
+    Assert(fallbackCalls == 1i32, "None should evaluate the fallback exactly once");
+
+    let reusable = Option::Some<int32>(3i32);
+    Assert((reusable ?? 0i32) == 3i32, "a copyable named Option should be reusable");
+    Assert((reusable ?? 0i32) == 3i32, "coalescing should copy a copyable named Option");
+
+    Assert((Option::None<int32>() ?? Option::Some<int32>(4i32) ?? 5i32) == 4i32,
+           "coalescing chains should associate to the right");
+    Assert((Maybe::Some<int32>(6i32) ?? 0i32) == 6i32, "structural Option shapes should coalesce");
+    Assert((Maybe::None<int32>() ?? 8i32) == 8i32, "custom None should select the fallback");
+
+    let generic = Generic<int32>(Option::None<int32>(), 13i32);
+    Assert(generic == 13i32, "generic Options should coalesce after substitution");
+
+    let wide = Option::Some<Wide>(Wide { first: 1, second: 2, third: 3 }) ??
+               Wide { first: 4, second: 5, third: 6 };
+    Assert(wide.third == 3, "wide payloads should transfer through match lowering");
+    let unit = Option::None<Unit>() ?? Unit();
+
+    var pointee = 21i32;
+    let pointer = Option::Some<*var int32>(@pointee) ?? null;
+    Assert(pointer != null && *pointer == 21i32, "raw pointers should work as Option payloads");
+
+    Assert(Held(PropagateThenCoalesce(true)) == 17i32, "postfix propagation should compose with coalescing");
+    Assert(Held(PropagateThenCoalesce(false)) == -1i32, "propagation should still return None early");
+
+    var drops = 0i32;
+    var trackedFallbackCalls = 0i32;
+    SomeDropCase(@drops, @trackedFallbackCalls);
+    Assert(trackedFallbackCalls == 0i32, "unused move-only fallback should never be constructed");
+    Assert(drops == 1i32, "the selected Some payload should be destroyed exactly once");
+    NoneDropCase(@drops, @trackedFallbackCalls);
+    Assert(trackedFallbackCalls == 1i32, "the move-only fallback should be constructed once for None");
+    Assert(drops == 2i32, "the selected fallback should be destroyed exactly once");
+    return 0;
+}
