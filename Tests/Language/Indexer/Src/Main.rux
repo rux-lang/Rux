@@ -1,0 +1,116 @@
+import Core::Assert;
+
+// A type indexes itself by declaring `[]` in an `extend` block, the same way it
+// declares `==` or `<`. `v[i]` then calls that operator.
+//
+// The result is a value, not a place: a reference cannot be returned, so there
+// is no place-returning indexer to write back through. `v[i] = x` is rejected,
+// and writing stays on an ordinary method.
+
+struct Vect {
+    data: int[10];
+}
+
+extend Vect {
+    func [](self: &Vect, index: uint) -> int {
+        return self.data[index];
+    }
+
+    // A second overload, separated only by its index type. Overload resolution
+    // on the index is what lets one type answer both `v[i]` and `v[a..b]`.
+    func [](self: &Vect, span: Range<int>) -> Slice<int> {
+        return self.data[span];
+    }
+
+    // The receiver reads its own indexer the way any other caller does.
+    func Sum(self: &Vect, count: uint) -> int {
+        var total = 0;
+        var index: uint = 0;
+        while index < count {
+            total = total + self[index];
+            index++;
+        }
+        return total;
+    }
+
+    // Writing is a method, because the indexer produces a value.
+    func Set(self: &var Vect, index: uint, value: int) {
+        self.data[index] = value;
+    }
+}
+
+// An index need not be an integer. Nothing about the operator fixes the index
+// type, so a coordinate pair reads as naturally as an offset does.
+struct Coord {
+    row: uint;
+    column: uint;
+}
+
+struct Grid {
+    cells: int32[9];
+}
+
+extend Grid {
+    func [](self: &Grid, at: Coord) -> int32 {
+        return self.cells[at.row * 3 + at.column];
+    }
+}
+
+// A generic receiver substitutes its type arguments into the operator's
+// signature, so the element type follows the instantiation.
+struct Box<T> {
+    items: T[4];
+}
+
+extend Box<T> {
+    func [](self: &Box<T>, index: uint) -> T {
+        return self.items[index];
+    }
+}
+
+func Main() -> int {
+    let vect = Vect { data: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19] };
+
+    // The declared operator answers `v[i]`.
+    Assert(vect[0] == 10, "the indexer reads the first element");
+    Assert(vect[9] == 19, "the indexer reads the last element");
+
+    // An unsuffixed literal index takes the parameter's type, as in any call.
+    var offset: uint = 4;
+    Assert(vect[offset] == 14, "the indexer reads through a uint variable");
+    Assert(vect[offset + 1] == 15, "the index is an ordinary expression");
+
+    // The range overload is selected by the index type alone.
+    let middle = vect[2..5];
+    Assert(middle.length == 3, "the range overload returns the spanned length");
+    Assert(middle[0] == 12, "the range overload spans from its start");
+    Assert(middle[2] == 14, "the range overload stops before its end");
+
+    // The receiver's own use of the operator resolves the same way.
+    Assert(vect.Sum(3) == 33, "a method reads through its own indexer");
+
+    // Writing goes through a method; the indexer still reads the new value.
+    var mutable = Vect { data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+    mutable.Set(2, 7);
+    Assert(mutable[2] == 7, "the indexer observes a write made by a method");
+
+    // A non-integer index.
+    let grid = Grid { cells: [0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32] };
+    let corner = Coord { row: 2, column: 2 };
+    Assert(grid[corner] == 8i32, "the indexer accepts a struct index");
+    let origin = Coord { row: 0, column: 1 };
+    Assert(grid[origin] == 1i32, "a struct index is an ordinary argument");
+
+    // A generic receiver.
+    let boxed = Box<int32> { items: [3i32, 5i32, 8i32, 13i32] };
+    Assert(boxed[1] == 5i32, "a generic indexer substitutes its element type");
+    Assert(boxed[3] == 13i32, "a generic indexer indexes its whole extent");
+
+    // The built-in forms are untouched by any of this.
+    let numbers: int[3] = [4, 5, 6];
+    Assert(numbers[1] == 5, "array indexing is unchanged");
+    let span = numbers[0..2];
+    Assert(span[1] == 5, "slice indexing is unchanged");
+
+    return 0;
+}

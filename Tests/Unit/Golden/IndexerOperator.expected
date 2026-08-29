@@ -1,0 +1,9 @@
+44:9: error: cannot assign through the '[]' operator on 'Vect'
+45:9: error: cannot assign through the '[]' operator on 'Vect'
+46:9: error: cannot assign through the '[]' operator on 'Vect'
+50:14: error: cannot assign through the '[]' operator on 'Holder'
+53:16: error: argument 1 to 'Borrow' has type 'int', but parameter 'value' requires '&int'
+58:20: error: type 'Plain' cannot be indexed
+58:5: warning: cannot infer type of 'rejected'
+61:23: error: cannot slice value of type 'Vect'
+61:5: warning: cannot infer type of 'spanned'

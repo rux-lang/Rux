@@ -361,6 +361,10 @@ void SemanticAnalyzerContext::MarkTrackedAssignment(const Expr &target, const So
             continue;
         }
         if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+            // An operator index assigns nothing back to the object, so the walk stops rather than marking it written.
+            if (IsIndexOperatorCall(*index)) {
+                return;
+            }
             root = index->object.get();
             continue;
         }
@@ -403,7 +407,8 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const S
         if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate)) {
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate);
+                 index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
         if (!object) {
@@ -420,7 +425,8 @@ bool SemanticAnalyzerContext::ValidateMoveSource(const Expr &expression, const S
         if (const auto *field = dynamic_cast<const FieldExpr *>(&candidate)) {
             object = field->object.get();
         }
-        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate)) {
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(&candidate);
+                 index && !IsIndexOperatorCall(*index)) {
             object = index->object.get();
         }
         else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&candidate);

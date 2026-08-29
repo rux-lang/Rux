@@ -161,6 +161,10 @@ std::unordered_map<const TryExpr *, ResolvedPropagation> SemanticAnalyzerContext
     return std::move(propagations);
 }
 
+std::unordered_map<const IndexExpr *, ResolvedIndexOperator> SemanticAnalyzerContext::TakeIndexOperators() {
+    return std::move(indexOperators);
+}
+
 std::unordered_map<const ForStmt *, ResolvedIteration> SemanticAnalyzerContext::TakeIterations() {
     return std::move(iterations);
 }

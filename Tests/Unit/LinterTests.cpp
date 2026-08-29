@@ -67,6 +67,18 @@ TEST_CASE("linter accepts symbolic operator function names") {
     CHECK(result.diagnostics.empty());
 }
 
+TEST_CASE("linter accepts the indexer operator name") {
+    auto result = Rux::Linting::Lint(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+        }
+    )",
+                                     "indexer.rux");
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
 TEST_CASE("linter accepts lifecycle operation names") {
     auto result = Rux::Linting::Lint(R"(
         struct Cell { value: int32; }

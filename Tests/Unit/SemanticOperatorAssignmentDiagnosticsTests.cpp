@@ -442,3 +442,106 @@ TEST_CASE("function values cast to and from pointers but not to scalars") {
     CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'int' to 'func() -> int'");
     CHECK_EQ(diagnostics[1].message, "cannot cast value of type 'func() -> int' to 'int'");
 }
+
+TEST_CASE("a declared indexer answers indexing and selects its overload by index type") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Coord { row: uint; column: uint; }
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func [](self: &Vect, at: Coord) -> int { return self.data[at.row]; }
+        }
+        struct Box<T> { items: T[2]; }
+        extend Box<T> {
+            func [](self: &Box<T>, index: uint) -> T { return self.items[index]; }
+        }
+        func Main() {
+            let vect = Vect { data: [1, 2, 3, 4] };
+            let byOffset: int = vect[1];
+            let at = Coord { row: 0, column: 0 };
+            let byCoord: int = vect[at];
+            let boxed = Box<int32> { items: [1i32, 2i32] };
+            let element: int32 = boxed[0];
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("an index on a type that declares no indexer names the operator that would define it") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Plain { value: int; }
+        func Main() {
+            let plain = Plain { value: 1 };
+            let rejected: int = plain[0];
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "type 'Plain' cannot be indexed");
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "declare 'func []' on 'Plain'");
+}
+
+TEST_CASE("an indexer result is a value, so no assignment or borrow reaches through it") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Cell { value: int; }
+        struct Holder { inner: Cell; }
+        extend Holder {
+            func [](self: &Holder, index: uint) -> Cell { return self.inner; }
+        }
+        func Borrow(cell: &Cell) {}
+        func Main() {
+            var holder = Holder { inner: Cell { value: 1 } };
+            holder[0] = Cell { value: 2 };
+            holder[0].value = 3;
+            Borrow(holder[0]);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "cannot assign through the '[]' operator on 'Holder'");
+    CHECK_EQ(diagnostics[1].message, "cannot assign through the '[]' operator on 'Holder'");
+    CHECK_EQ(diagnostics[2].message, "argument 1 to 'Borrow' has type 'Cell', but parameter 'cell' requires '&Cell'");
+}
+
+TEST_CASE("an indexer call reads its whole receiver rather than projecting into it") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func Bump(self: &var Vect) { self.data[0] = self.data[0] + 1; }
+        }
+        func Main() {
+            var vect = Vect { data: [1, 2, 3, 4] };
+            var exclusive: &var Vect = vect;
+            let read: int = vect[0];
+            exclusive.Bump();
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot read 'vect' while 'exclusive' holds an exclusive borrow");
+}
+
+TEST_CASE("an indexer result transfers as a temporary and leaves its receiver whole") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Owned { value: int; }
+        extend Owned {
+            func =(self: &var Owned, other: &Owned);
+        }
+        struct Bag { slot: Owned; }
+        extend Bag {
+            func [](self: &Bag, index: uint) -> Owned { return Owned { value: 1 }; }
+        }
+        func Consume(item: Owned) {}
+        func Main() {
+            let bag = Bag { slot: Owned { value: 5 } };
+            Consume(bag[0]);
+            Consume(bag[1]);
+            let still: int = bag.slot.value;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}

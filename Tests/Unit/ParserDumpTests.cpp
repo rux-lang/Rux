@@ -169,6 +169,33 @@ func Transfer(source: Cell) -> Cell {
     CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
 }
 
+TEST_CASE("AST dumps name the indexer operator by the brackets it is declared with") {
+    constexpr std::string_view source = R"(
+struct Vect { data: int[4]; }
+extend Vect {
+    func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+    func [](self: &Vect, span: Range<int>) -> Slice<int> { return self.data[span]; }
+}
+)";
+
+    Lexer lexer(std::string(source), "indexer-dump.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "indexer-dump.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-indexer-dump.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    CHECK(output.contains("FuncDecl '[]' (self: &Vect, index: uint)"));
+    CHECK(output.contains("FuncDecl '[]' (self: &Vect, span: Range<int>)"));
+}
+
 TEST_CASE("AST dumps adjacent stars as multiplication followed by dereference") {
     constexpr std::string_view source = R"(
 func Main(value: int, pointer: *int) -> int {

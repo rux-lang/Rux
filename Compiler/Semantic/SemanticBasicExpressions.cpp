@@ -946,6 +946,10 @@ bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {
         return PlaceIsImmutable(*field->object);
     }
     if (const auto *index = dynamic_cast<const IndexExpr *>(&place)) {
+        if (IsIndexOperatorCall(*index)) {
+            // The operator's result is a temporary, so nothing about the receiver's mutability describes it.
+            return false;
+        }
         const bool savedProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
@@ -1014,7 +1018,7 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
             CheckMutability(*field->object);
         }
     }
-    else if (const auto *index = dynamic_cast<const IndexExpr *>(&target)) {
+    else if (const auto *index = dynamic_cast<const IndexExpr *>(&target); index && !IsIndexOperatorCall(*index)) {
         const TypeRef objectType = CheckExpr(*index->object);
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
@@ -1041,6 +1045,17 @@ void SemanticAnalyzerContext::CheckMutability(const Expr &target) {
 
 bool SemanticAnalyzerContext::CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                                     const std::string_view operatorName) {
+    if (const IndexExpr *indexOperator = IndexOperatorInPlace(target)) {
+        // `v[i]` on a type that declares `[]` calls the operator and yields its result, which no assignment can write
+        // back through -- nor can one reach a field of that result. A reference cannot be returned, so a
+        // place-returning indexer is not expressible either.
+        const ResolvedIndexOperator &resolved = indexOperators.at(indexOperator);
+        EmitError(target.location,
+                  std::format("cannot assign through the '[]' operator on '{}'", resolved.receiverType.ToString()),
+                  {"the indexer returns a value, so its result is not a place"},
+                  "assign through a method that takes the new value, such as 'Set(index, value)'");
+        return false;
+    }
     if (!IsAssignablePlace(target)) {
         EmitError(target.location,
                   std::format("operator '{}' requires an assignable target, but its left operand has type '{}'",
