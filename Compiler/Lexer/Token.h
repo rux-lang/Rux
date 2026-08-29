@@ -48,7 +48,6 @@ enum class TokenKind : std::uint8_t {
     ReturnKeyword,    // return
     SelfKeyword,      // self
     StructKeyword,    // struct
-    SuperKeyword,     // super
     TypeKeyword,      // type
     UnionKeyword,     // union
     VarKeyword,       // var

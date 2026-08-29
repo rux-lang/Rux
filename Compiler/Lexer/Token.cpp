@@ -35,7 +35,6 @@ TokenKind KeywordKind(const std::string_view text) noexcept {
         {"return", TokenKind::ReturnKeyword},
         {"self", TokenKind::SelfKeyword},
         {"struct", TokenKind::StructKeyword},
-        {"super", TokenKind::SuperKeyword},
         {"true", TokenKind::BoolLiteral},
         {"type", TokenKind::TypeKeyword},
         {"union", TokenKind::UnionKeyword},
@@ -130,8 +129,6 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "NullKeyword";
     case TokenKind::SelfKeyword:
         return "SelfKeyword";
-    case TokenKind::SuperKeyword:
-        return "SuperKeyword";
     case TokenKind::LeftParen:
         return "LeftParen";
     case TokenKind::RightParen:

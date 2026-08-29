@@ -270,6 +270,7 @@ TEST_CASE("KeywordKind distinguishes keywords from identifiers") {
     CHECK(KeywordKind("while") == TokenKind::WhileKeyword);
     CHECK(KeywordKind("if") == TokenKind::IfKeyword);
     CHECK(KeywordKind("when") == TokenKind::WhenKeyword);
+    CHECK(KeywordKind("super") == TokenKind::Ident);
     CHECK(KeywordKind("funcy") == TokenKind::Ident);
     CHECK(KeywordKind("whenever") == TokenKind::Ident);
     CHECK(KeywordKind("") == TokenKind::Ident);
