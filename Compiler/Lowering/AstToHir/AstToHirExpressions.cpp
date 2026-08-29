@@ -214,6 +214,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         };
         HirExprPtr left = lowerOperand(*binary->left, *binary->right);
         HirExprPtr right = lowerOperand(*binary->right, *binary->left);
+        if (const ResolvedVariantEquality *equality = model.TryGetVariantEquality(*binary)) {
+            return LowerVariantEquality(*binary, std::move(left), std::move(right), *equality);
+        }
         if (HirExprPtr overloaded = TryLowerOverloadedBinary(*binary, left, right)) {
             overloaded->type = ResolvedExpressionType(*binary);
             return overloaded;

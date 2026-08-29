@@ -77,6 +77,9 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirBinaryExpr *>(&expr)) {
         return LowerBinary(*e);
     }
+    if (auto *e = dynamic_cast<const HirVariantEqualityExpr *>(&expr)) {
+        return LowerVariantEquality(*e);
+    }
     if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
         return LowerCopy(*e);
     }
@@ -228,6 +231,141 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
         BuilderFailure("unary operator has no LIR opcode mapping");
         return LirNoReg;
     }
+}
+
+LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPayload &payload, const LirReg left,
+                                                   const LirReg right) {
+    using Operation = HirVariantEqualityPayload::Operation;
+    if (payload.operation == Operation::Builtin) {
+        return EmitBinary(LirOpcode::CmpEq, EmitLoad(left, payload.type), EmitLoad(right, payload.type),
+                          TypeRef::MakeBool());
+    }
+    if (payload.operation == Operation::Custom) {
+        const bool receiverIndirect = payload.customReceiverType.kind == TypeRef::Kind::Pointer ||
+                                      payload.customReceiverType.kind == TypeRef::Kind::Reference;
+        const bool argumentIndirect = payload.customArgumentType.kind == TypeRef::Kind::Pointer ||
+                                      payload.customArgumentType.kind == TypeRef::Kind::Reference;
+        LirInstr call;
+        call.dst = NewReg();
+        call.op = LirOpcode::Call;
+        call.type = TypeRef::MakeBool();
+        call.strArg = SymbolFor(payload.customCallee);
+        call.srcs.push_back(receiverIndirect ? left : EmitLoad(left, payload.type));
+        call.srcs.push_back(argumentIndirect ? right : EmitLoad(right, payload.type));
+        const LirReg result = call.dst;
+        Emit(std::move(call));
+        return result;
+    }
+    if (payload.operation == Operation::Variant) {
+        return EmitVariantEquality(payload.type, payload.variantCases, left, right);
+    }
+
+    LirReg equal = EmitConst("true", TypeRef::MakeBool());
+    if (payload.operation == Operation::Tuple) {
+        for (std::size_t index = 0; index < payload.elements.size(); ++index) {
+            const HirVariantEqualityPayload &element = payload.elements[index];
+            const LirReg leftElement = EmitFieldPtr(left, std::to_string(index), element.type);
+            const LirReg rightElement = EmitFieldPtr(right, std::to_string(index), element.type);
+            equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(element, leftElement, rightElement),
+                               TypeRef::MakeBool());
+        }
+        return equal;
+    }
+    if (payload.operation == Operation::Array && !payload.elements.empty()) {
+        const HirVariantEqualityPayload &element = payload.elements.front();
+        for (std::uint64_t index = 0; index < payload.type.arrayLength.value_or(0); ++index) {
+            const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
+            const LirReg leftElement = EmitIndexPtr(left, offset, element.type);
+            const LirReg rightElement = EmitIndexPtr(right, offset, element.type);
+            equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(element, leftElement, rightElement),
+                               TypeRef::MakeBool());
+        }
+    }
+    return equal;
+}
+
+LirReg HirToLirContext::EmitVariantPayloadsEquality(const std::vector<HirVariantEqualityPayload> &payloads,
+                                                    const LirReg left, const LirReg right, const TypeRef &tagType) {
+    LirReg equal = EmitConst("true", TypeRef::MakeBool());
+    std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+    for (const HirVariantEqualityPayload &payload : payloads) {
+        const std::uint64_t size = payload.type.SizeInBytes().value_or(8);
+        const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+        offset = (offset + alignment - 1) / alignment * alignment;
+        const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+        const LirReg leftBytes = EmitIndexPtr(left, byteOffset, TypeRef::MakeChar8());
+        const LirReg rightBytes = EmitIndexPtr(right, byteOffset, TypeRef::MakeChar8());
+        const TypeRef payloadPointer = TypeRef::MakePointer(payload.type);
+        const LirReg leftPayload = EmitCast(leftBytes, TypeRef::MakePointer(TypeRef::MakeChar8()), payloadPointer);
+        const LirReg rightPayload = EmitCast(rightBytes, TypeRef::MakePointer(TypeRef::MakeChar8()), payloadPointer);
+        equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(payload, leftPayload, rightPayload),
+                           TypeRef::MakeBool());
+        offset += size;
+    }
+    return equal;
+}
+
+LirReg HirToLirContext::EmitVariantEquality(const TypeRef &type, const std::vector<HirVariantEqualityCase> &cases,
+                                            const LirReg left, const LirReg right) {
+    const TypeRef tagType = EnumTagType(type);
+    const LirReg leftTag = EmitLoad(left, tagType);
+    const LirReg rightTag = EmitLoad(right, tagType);
+    const std::uint32_t sharedTagBlock = NewBlock("variant.eq.shared-tag");
+    const std::uint32_t differentTagBlock = NewBlock("variant.eq.different-tag");
+    const std::uint32_t mergeBlock = NewBlock("variant.eq.merge");
+    Branch(EmitBinary(LirOpcode::CmpEq, leftTag, rightTag, TypeRef::MakeBool()), sharedTagBlock, differentTagBlock);
+
+    std::vector<std::pair<LirReg, std::uint32_t>> results;
+    SetBlock(differentTagBlock);
+    results.emplace_back(EmitConst("false", TypeRef::MakeBool()), builder->CurrentBlock());
+    Jump(mergeBlock);
+
+    SetBlock(sharedTagBlock);
+    for (const HirVariantEqualityCase &variantCase : cases) {
+        const std::uint32_t caseBlock = NewBlock("variant.eq.case");
+        const std::uint32_t nextBlock = NewBlock("variant.eq.next");
+        Branch(EmitBinary(LirOpcode::CmpEq, leftTag, EmitConst(variantCase.discriminant, tagType), TypeRef::MakeBool()),
+               caseBlock, nextBlock);
+        SetBlock(caseBlock);
+        const LirReg caseEqual = EmitVariantPayloadsEquality(variantCase.payloads, left, right, tagType);
+        results.emplace_back(caseEqual, builder->CurrentBlock());
+        Jump(mergeBlock);
+        SetBlock(nextBlock);
+    }
+
+    // Equal invalid tags cannot arise in a checked program, but keeping a concrete fallback makes this CFG total and
+    // avoids treating corrupt storage as equal.
+    results.emplace_back(EmitConst("false", TypeRef::MakeBool()), builder->CurrentBlock());
+    Jump(mergeBlock);
+    SetBlock(mergeBlock);
+    const LirReg result = NewReg();
+    LirInstr phi;
+    phi.dst = result;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeBool();
+    phi.phiPreds = std::move(results);
+    Emit(std::move(phi));
+    return result;
+}
+
+LirReg HirToLirContext::LowerVariantEquality(const HirVariantEqualityExpr &e) {
+    const auto stableStorage = [&](const HirExpr &operand) {
+        const auto *unary = dynamic_cast<const HirUnaryExpr *>(&operand);
+        const bool addressable =
+            dynamic_cast<const HirVarExpr *>(&operand) || dynamic_cast<const HirSelfExpr *>(&operand) ||
+            dynamic_cast<const HirFieldExpr *>(&operand) || dynamic_cast<const HirIndexExpr *>(&operand) ||
+            (unary && unary->op == TokenKind::Star);
+        if (addressable) {
+            return LowerLValue(operand);
+        }
+        const LirReg slot = EmitAlloca(e.variantType);
+        StoreExprIntoSlot(operand, slot, e.variantType);
+        return slot;
+    };
+    const LirReg left = stableStorage(*e.left);
+    const LirReg right = stableStorage(*e.right);
+    const LirReg equal = EmitVariantEquality(e.variantType, e.cases, left, right);
+    return e.negated ? EmitUnary(LirOpcode::Not, equal, TypeRef::MakeBool()) : equal;
 }
 
 LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
