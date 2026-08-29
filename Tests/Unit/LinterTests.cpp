@@ -459,7 +459,7 @@ pub module Api::Nested {
     CHECK_EQ(messages[0], "public function 'Open' has no documentation comment");
 }
 
-TEST_CASE("documentation without an API page is reported") {
+TEST_CASE("documentation does not require an API page") {
     const std::string source = R"(
 /// Opens the handle.
 pub func Open() -> int32 {
@@ -467,9 +467,7 @@ pub func Open() -> int32 {
 }
 )";
 
-    const auto messages = Messages(Rux::Linting::Lint(source, "docs.rux"));
-    REQUIRE_EQ(messages.size(), 1);
-    CHECK_EQ(messages[0], "documentation for public function 'Open' names no API page");
+    CHECK(Messages(Rux::Linting::Lint(source, "docs.rux")).empty());
 }
 
 TEST_CASE("documentation naming its API page is accepted") {
@@ -489,12 +487,6 @@ TEST_CASE("an undocumented public declaration can allow the rule deliberately") 
     const std::string source = R"(
 #Allow("docs.missing")
 pub func Open() -> int32 {
-    return 0i32;
-}
-
-/// Closes the handle.
-#Allow("docs.api-url")
-pub func Close() -> int32 {
     return 0i32;
 }
 )";
@@ -550,5 +542,12 @@ pub func Open() -> int32 { return 0i32; }
 
     REQUIRE(result.HasErrors());
     CHECK_EQ(result.diagnostics.front().message,
-             "unknown lint rule 'docs.mising'; valid rules are: naming.type, naming.const, docs.missing, docs.api-url");
+             "unknown lint rule 'docs.mising'; valid rules are: naming.type, naming.const, docs.missing");
+}
+
+TEST_CASE("the removed docs API URL allowance is rejected") {
+    const auto result = Rux::Linting::Lint("#Allow(\"docs.api-url\")\npub func Open() {}\n", "allow.rux");
+    REQUIRE(result.HasErrors());
+    CHECK_EQ(result.diagnostics.front().message,
+             "unknown lint rule 'docs.api-url'; valid rules are: naming.type, naming.const, docs.missing");
 }
