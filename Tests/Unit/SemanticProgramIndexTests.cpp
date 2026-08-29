@@ -302,10 +302,12 @@ TEST_CASE("constructor facts and IR retain source declaration form") {
 
     const std::string hirDump = DumpHir(hir, "rux-case-type-forms");
     CHECK(hirDump.contains("pub enum Color: uint8"));
-    CHECK(hirDump.contains("pub variant Maybe<T>:"));
-    CHECK(hirDump.contains("variant Signal:"));
+    CHECK(hirDump.contains("pub variant Maybe<T>\n"));
+    CHECK(hirDump.contains("variant Signal\n"));
     CHECK_FALSE(hirDump.contains("enum Maybe<T>:"));
     CHECK_FALSE(hirDump.contains("enum Signal:"));
+    CHECK_FALSE(hirDump.contains("variant Maybe<T>:"));
+    CHECK_FALSE(hirDump.contains("variant Signal:"));
 
     HirToLirLowering hirToLir(std::move(hir), TargetContext::CreateNative());
     LirPackage lir = hirToLir.Generate();
@@ -326,8 +328,10 @@ TEST_CASE("constructor facts and IR retain source declaration form") {
 
     const std::string lirDump = DumpLir(lir, "rux-case-type-forms");
     CHECK(lirDump.contains("pub enum Color: uint8"));
-    CHECK(lirDump.contains("pub variant Maybe<T>:"));
-    CHECK(lirDump.contains("variant Signal:"));
+    CHECK(lirDump.contains("pub variant Maybe<T>\n"));
+    CHECK(lirDump.contains("variant Signal\n"));
     CHECK_FALSE(lirDump.contains("enum Maybe<T>:"));
     CHECK_FALSE(lirDump.contains("enum Signal:"));
+    CHECK_FALSE(lirDump.contains("variant Maybe<T>:"));
+    CHECK_FALSE(lirDump.contains("variant Signal:"));
 }

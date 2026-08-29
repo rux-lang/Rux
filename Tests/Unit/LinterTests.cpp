@@ -1,5 +1,6 @@
 #include "Linter/Linter.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <string>
 #include <vector>
@@ -25,9 +26,9 @@ TEST_CASE("linter accepts correct naming conventions") {
                 someField: int32;
             }
 
-            variant MyEnum {
-                FirstVariant,
-                SecondVariant{innerValue: int32;}
+            variant MyVariant {
+                FirstCase,
+                SecondCase{innerValue: int32;}
             }
 
             interface MyInterface {
@@ -112,20 +113,75 @@ TEST_CASE("linter warns on bad enum name") {
     CHECK(result.diagnostics[0].help == "rename it to 'BadEnum'");
 }
 
-TEST_CASE("linter warns on bad enum variant name") {
-    auto result = Rux::Linting::Lint("enum Test { badVariant }", "variant_bad.rux");
+TEST_CASE("linter warns on bad enum member name") {
+    auto result = Rux::Linting::Lint("enum Test { badMember }", "member_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
-    CHECK(result.diagnostics[0].message == "enum variant name 'badVariant' should be PascalCase");
-    CHECK(result.diagnostics[0].help == "rename it to 'BadVariant'");
+    CHECK(result.diagnostics[0].message == "enum member name 'badMember' should be PascalCase");
+    CHECK(result.diagnostics[0].help == "rename it to 'BadMember'");
 }
 
-TEST_CASE("linter warns on bad enum variant field name") {
-    auto result = Rux::Linting::Lint("variant Test { Variant{BadField: int;} }", "var_field_bad.rux");
+TEST_CASE("linter distinguishes variant type and case names") {
+    const auto badType = Rux::Linting::Lint("variant badVariant { GoodCase }", "variant_type_bad.rux");
+    REQUIRE(badType.diagnostics.size() == 1);
+    CHECK(badType.diagnostics[0].message == "variant name 'badVariant' should be PascalCase");
+    CHECK(badType.diagnostics[0].help == "rename it to 'BadVariant'");
+
+    const auto badCase = Rux::Linting::Lint("variant Test { badCase }", "variant_case_bad.rux");
+    REQUIRE(badCase.diagnostics.size() == 1);
+    CHECK(badCase.diagnostics[0].message == "variant case name 'badCase' should be PascalCase");
+    CHECK(badCase.diagnostics[0].help == "rename it to 'BadCase'");
+}
+
+TEST_CASE("linter warns on bad variant case field name") {
+    auto result = Rux::Linting::Lint("variant Test { Case{BadField: int;} }", "case_field_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
-    CHECK(result.diagnostics[0].message == "enum variant field name 'BadField' should be camelCase");
+    CHECK(result.diagnostics[0].message == "variant case field name 'BadField' should be camelCase");
     CHECK(result.diagnostics[0].help == "rename it to 'badField'");
+}
+
+TEST_CASE("linter documentation diagnostics name enum and variant declarations separately") {
+    const auto enumeration = Rux::Linting::Lint("pub enum State: uint8 { Ready = 1 }", "enum_docs.rux");
+    REQUIRE_GE(enumeration.diagnostics.size(), 1);
+    CHECK(std::ranges::any_of(enumeration.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message == "public enum 'State' has no documentation comment";
+    }));
+
+    const auto variant = Rux::Linting::Lint("pub variant Result<T, E> { Success(T), Error(E) }", "variant_docs.rux");
+    REQUIRE_GE(variant.diagnostics.size(), 1);
+    CHECK(std::ranges::any_of(variant.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message == "public variant 'Result' has no documentation comment";
+    }));
+    CHECK(std::ranges::none_of(variant.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.contains("public enum 'Result'");
+    }));
+}
+
+TEST_CASE("naming.type consistently exempts foreign variant names cases and fields") {
+    const auto result = Rux::Linting::Lint(R"(
+        #Allow("naming.type")
+        variant tagged_result {
+            ok_value(int32),
+            error_value { Error_Code: int32; }
+        }
+    )",
+                                           "foreign_variant.rux");
+
+    CHECK_FALSE(result.HasErrors());
+    CHECK(result.diagnostics.empty());
+}
+
+TEST_CASE("enum and variant case diagnostics keep independent replacement suggestions") {
+    const auto enumeration = Rux::Linting::Lint("enum State { ready_state }", "enum_member_suggestion.rux");
+    REQUIRE_EQ(enumeration.diagnostics.size(), 1);
+    CHECK_EQ(enumeration.diagnostics[0].message, "enum member name 'ready_state' should be PascalCase");
+    CHECK_EQ(enumeration.diagnostics[0].help, "rename it to 'ReadyState'");
+
+    const auto variant = Rux::Linting::Lint("variant State { ready_state(int32) }", "variant_case_suggestion.rux");
+    REQUIRE_EQ(variant.diagnostics.size(), 1);
+    CHECK_EQ(variant.diagnostics[0].message, "variant case name 'ready_state' should be PascalCase");
+    CHECK_EQ(variant.diagnostics[0].help, "rename it to 'ReadyState'");
 }
 
 TEST_CASE("linter warns on bad union name") {

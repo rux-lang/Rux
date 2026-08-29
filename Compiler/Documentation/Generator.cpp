@@ -350,8 +350,8 @@ std::string DeclKind(const Decl &decl) {
         return "function";
     if (dynamic_cast<const StructDecl *>(&decl))
         return "struct";
-    if (dynamic_cast<const EnumDecl *>(&decl))
-        return "enum";
+    if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
+        return value->IsVariant() ? "variant" : "enum";
     if (dynamic_cast<const UnionDecl *>(&decl))
         return "union";
     if (dynamic_cast<const InterfaceDecl *>(&decl))
@@ -375,7 +375,8 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "struct " + value->name + TypeParams(value->typeParams);
     if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "enum " + value->name + TypeParams(value->typeParams);
+        return std::string(value->isPublic ? "pub " : "") + (value->IsVariant() ? "variant " : "enum ") + value->name +
+               TypeParams(value->typeParams);
     if (const auto *value = dynamic_cast<const UnionDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + "union " + value->name;
     if (const auto *value = dynamic_cast<const InterfaceDecl *>(&decl))
@@ -395,6 +396,34 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *value = dynamic_cast<const ExternFuncDecl *>(&decl))
         return ExternFunctionSignature(*value);
     return DeclName(decl);
+}
+
+std::string CaseSignature(const EnumDecl &declaration, const EnumDecl::Variant &variant) {
+    std::string text = variant.name;
+    if (!declaration.IsVariant()) {
+        if (variant.discriminant) {
+            text += " = " + *variant.discriminant;
+        }
+        return text;
+    }
+    if (!variant.fields.empty()) {
+        text += '(';
+        for (std::size_t index = 0; index < variant.fields.size(); ++index) {
+            if (index != 0) {
+                text += ", ";
+            }
+            text += TypeText(variant.fields[index].get());
+        }
+        text += ')';
+    }
+    else if (!variant.namedFields.empty()) {
+        text += " { ";
+        for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
+            text += field.name + ": " + TypeText(field.type.get()) + "; ";
+        }
+        text += '}';
+    }
+    return text;
 }
 
 /// A stable URL fragment for a declaration, so a link into the generated page keeps working across rebuilds.
@@ -522,8 +551,10 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
         for (const auto &variant : enumeration->variants) {
-            html << "<section class=\"member\"><h4>" << EscapeHtml(variant.name) << "</h4>"
-                 << RenderMarkdown(variant.documentation, &findings) << "</section>";
+            const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
+            html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
+                 << EscapeHtml(variant.name) << "</h4><code>" << EscapeHtml(CaseSignature(*enumeration, variant))
+                 << "</code>" << RenderMarkdown(variant.documentation, &findings) << "</section>";
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {

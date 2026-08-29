@@ -315,8 +315,8 @@ enum State: uint8 {
     Case 'Success' (Value)
     Case 'Failure' { code: int32; error: Error; }
   EnumDecl 'State' : uint8
-    Variant 'Idle' = 0
-    Variant 'Busy' = 1
+    Member 'Idle' = 0
+    Member 'Busy' = 1
 )";
     CHECK_EQ(output, expected);
 }

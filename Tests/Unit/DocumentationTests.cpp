@@ -144,6 +144,114 @@ TEST_CASE("documentation renders reference and lifecycle signatures as source sy
     std::filesystem::remove_all(root, error);
 }
 
+TEST_CASE("documentation renders enum members and variant cases with source signatures") {
+    auto parsed = Parse(R"(
+        /// Calendar months.
+        pub enum Month: uint8 {
+            /// First month.
+            January = 1,
+            /// Second month.
+            February = 2
+        }
+        /// A success value or an error.
+        pub variant Result<T, E> {
+            /// Contains a value.
+            Success(T),
+            /// Contains an error.
+            Error(E)
+        }
+        /// A named record case.
+        pub variant Shape {
+            /// No dimensions.
+            Point,
+            /// Two dimensions.
+            Rectangle { width: float64; height: float64; }
+        }
+    )");
+    auto loaded = Docs("CaseTypeDocs");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-case-types-unit");
+    const std::array modules{std::move(parsed)};
+    const auto generated =
+        Documentation::Generate(*loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site"});
+    REQUIRE(generated.ok);
+    CHECK(generated.diagnostics.empty());
+
+    const std::string html = Read(root / "site" / "index.html");
+    CHECK(html.contains("<div class=\"kind\">enum</div>"));
+    CHECK(html.contains("<code>pub enum Month</code>"));
+    CHECK(html.contains("<div class=\"member-kind\">enum member</div>"));
+    CHECK(html.contains("<code>January = 1</code>"));
+    CHECK(html.contains("<code>February = 2</code>"));
+    CHECK(html.contains("<div class=\"kind\">variant</div>"));
+    CHECK(html.contains("<code>pub variant Result&lt;T, E&gt;</code>"));
+    CHECK(html.contains("<div class=\"member-kind\">variant case</div>"));
+    CHECK(html.contains("<code>Success(T)</code>"));
+    CHECK(html.contains("<code>Error(E)</code>"));
+    CHECK(html.contains("<code>Point</code>"));
+    CHECK(html.contains("<code>Rectangle { width: float64; height: float64; }</code>"));
+    CHECK_FALSE(html.contains("pub enum Result"));
+
+    const std::string search = Read(root / "site" / "search-index.json");
+    CHECK(search.contains("\"name\":\"Month\",\"kind\":\"enum\""));
+    CHECK(search.contains("\"name\":\"Result\",\"kind\":\"variant\""));
+    CHECK(search.contains("\"name\":\"Shape\",\"kind\":\"variant\""));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("private documentation keeps case-type kinds without inventing public syntax") {
+    auto parsed = Parse(R"(
+        /// Internal state.
+        enum InternalState: int16 {
+            /// A negative value.
+            Failed = -1,
+            /// A zero value.
+            Ready = 0
+        }
+        /// Internal message.
+        variant InternalMessage<T> {
+            /// No message.
+            Empty,
+            /// Positional message.
+            Value(T),
+            /// Named message.
+            Record { code: int32; payload: T; }
+        }
+    )");
+    auto loaded = Docs("PrivateCaseTypeDocs");
+    REQUIRE(loaded.Ok());
+
+    const auto root = FreshRoot("rux-documentation-private-case-types-unit");
+    const std::array modules{std::move(parsed)};
+    const auto generated = Documentation::Generate(
+        *loaded.manifest, modules, {.packageRoot = root, .outputDirectory = root / "site", .includePrivate = true});
+    REQUIRE(generated.ok);
+    CHECK(generated.diagnostics.empty());
+
+    const std::string html = Read(root / "site" / "index.html");
+    CHECK(html.contains("<code>enum InternalState</code>"));
+    CHECK_FALSE(html.contains("<code>pub enum InternalState</code>"));
+    CHECK(html.contains("<code>Failed = -1</code>"));
+    CHECK(html.contains("<code>Ready = 0</code>"));
+    CHECK(html.contains("<code>variant InternalMessage&lt;T&gt;</code>"));
+    CHECK_FALSE(html.contains("<code>pub variant InternalMessage"));
+    CHECK(html.contains("<code>Empty</code>"));
+    CHECK(html.contains("<code>Value(T)</code>"));
+    CHECK(html.contains("<code>Record { code: int32; payload: T; }</code>"));
+    CHECK(html.contains("A negative value."));
+    CHECK(html.contains("Named message."));
+
+    const std::string search = Read(root / "site" / "search-index.json");
+    CHECK(search.contains("\"name\":\"InternalState\",\"kind\":\"enum\""));
+    CHECK(search.contains("\"name\":\"InternalMessage\",\"kind\":\"variant\""));
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
 TEST_CASE("documentation renders public extern block members with complete signatures") {
     auto parsed = Parse(R"(
         #Link("system.dll")

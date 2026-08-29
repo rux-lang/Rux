@@ -398,20 +398,24 @@ private:
             }
         }
         else if (const auto *en = dynamic_cast<const EnumDecl *>(&decl)) {
-            CheckDocumentation(decl, "enum", en->name);
+            const std::string_view kind = en->IsVariant() ? "variant" : "enum";
+            const std::string_view memberKind = en->IsVariant() ? "variant case" : "enum member";
+            CheckDocumentation(decl, kind, en->name);
             const bool allowTypeNaming = Allows(decl, "naming.type");
             if (!allowTypeNaming && !IsPascalCase(en->name)) {
-                WarnNaming(en->location, "enum name", en->name, NamingConvention::PascalCase, siblingNames);
+                WarnNaming(en->location, std::string(kind) + " name", en->name, NamingConvention::PascalCase,
+                           siblingNames);
             }
             const auto variantNames = Names(en->variants);
             for (const auto &v : en->variants) {
                 if (!allowTypeNaming && !IsPascalCase(v.name)) {
-                    WarnNaming(v.location, "enum variant name", v.name, NamingConvention::PascalCase, variantNames);
+                    WarnNaming(v.location, std::string(memberKind) + " name", v.name, NamingConvention::PascalCase,
+                               variantNames);
                 }
                 const auto fieldNames = Names(v.namedFields);
                 for (const auto &nf : v.namedFields) {
                     if (!allowTypeNaming && !IsCamelCase(nf.name)) {
-                        WarnNaming(nf.location, "enum variant field name", nf.name, NamingConvention::CamelCase,
+                        WarnNaming(nf.location, "variant case field name", nf.name, NamingConvention::CamelCase,
                                    fieldNames);
                     }
                 }

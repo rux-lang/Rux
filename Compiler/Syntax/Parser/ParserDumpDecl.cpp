@@ -353,7 +353,7 @@ void DeclarationPrinter::PrintEnumDecl(const EnumDecl &decl) {
     ++indent;
     for (const auto &variant : decl.variants) {
         Pad();
-        out << (decl.IsVariant() ? "Case '" : "Variant '") << variant.name << "'";
+        out << (decl.IsVariant() ? "Case '" : "Member '") << variant.name << "'";
         if (!variant.fields.empty()) {
             out << " (";
             for (std::size_t index = 0; index < variant.fields.size(); ++index) {

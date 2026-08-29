@@ -256,11 +256,17 @@ bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &pa
                 }
                 typeParams += ">";
             }
-            out << std::format("\n{}{} {}{}: {}\n", pub, CaseTypeKeyword(e.form), e.name, typeParams,
-                               e.baseType.ToString());
+            out << std::format("\n{}{} {}{}", pub, CaseTypeKeyword(e.form), e.name, typeParams);
+            if (!e.IsVariant()) {
+                out << std::format(": {}", e.baseType.ToString());
+            }
+            out << '\n';
             for (const auto &v : e.variants) {
-                if (v.fields.empty()) {
+                if (!e.IsVariant()) {
                     out << std::format("  {} = {}\n", v.name, v.discriminant.value_or("0"));
+                }
+                else if (v.fields.empty()) {
+                    out << std::format("  {}\n", v.name);
                 }
                 else {
                     std::string fields;
@@ -270,12 +276,7 @@ bool LirPrinter::Dump(const LirPackage &package, const std::filesystem::path &pa
                         }
                         fields += v.fields[i].ToString();
                     }
-                    if (v.discriminant) {
-                        out << std::format("  {}({}) = {}\n", v.name, fields, *v.discriminant);
-                    }
-                    else {
-                        out << std::format("  {}({})\n", v.name, fields);
-                    }
+                    out << std::format("  {}({})\n", v.name, fields);
                 }
             }
         }
