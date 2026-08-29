@@ -2,6 +2,8 @@
 
 #include "Syntax/Parser/Parser.h"
 
+#include "Syntax/DocumentationComment.h"
+
 #include <cassert>
 #include <format>
 #include <optional>
@@ -62,15 +64,7 @@ std::string Parser::ParseDocumentation() {
             documentation.clear();
         if (!documentation.empty())
             documentation += '\n';
-        // Compatibility until the shared documentation normalizer is introduced: the lexer deliberately keeps the
-        // raw spelling while the existing parser still stores the content of line documentation comments.
-        std::string_view content = comment.text;
-        if (content.starts_with("///")) {
-            content.remove_prefix(3);
-            if (content.starts_with(' '))
-                content.remove_prefix(1);
-        }
-        documentation += content;
+        documentation += NormalizeDocumentationComment(comment.text);
         previousLine = comment.endLocation.line;
     }
     if (previousLine != 0 && CurrentLocation().line > previousLine + 1)
