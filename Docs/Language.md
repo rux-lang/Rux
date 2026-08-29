@@ -220,6 +220,17 @@ Constructors are called as `String(...)` or `Vector<int32>(...)`, not through an
 
 `var value: T;` invokes `T()` when an accessible default constructor exists. With no `T()`, the declaration remains legal but denotes compiler-tracked uninitialized storage. Reading or destroying that storage before definite initialization is an error. Construction and assignment are distinct: a constructor creates a value, while `=` replaces or initializes storage according to its current state. Constructor lookup is never a general hidden conversion rule.
 
+### Repeated fixed-array initialization
+
+`[value; count]` constructs a fixed inline array by evaluating `value` exactly once and copying the result into every element. `count` must be a non-negative compile-time integer. The expression has type `T[N]`, so both the element type and extent can be inferred, while an explicit destination type contextually types the repeated value:
+
+```rux
+let inferred = [0u8; 16];
+let contextual: uint8[16] = [0; 16];
+```
+
+The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`Slice<T>` coercion as ordinary array literals.
+
 ## Destruction
 
 A destructor is a body-bearing special function named after its type with a leading `~`:

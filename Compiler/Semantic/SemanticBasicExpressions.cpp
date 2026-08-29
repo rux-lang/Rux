@@ -438,8 +438,16 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
             }
             if (deferred.kind != ValueConsumptionKind::ExplicitMove) {
                 if (properties.IsMoveOnly()) {
-                    static_cast<void>(
-                        RejectImplicitMove(*deferred.expression, resolved, deferred.kind, deferred.location));
+                    if (deferred.kind == ValueConsumptionKind::ArrayRepeat) {
+                        EmitError(deferred.location,
+                                  std::format("array repeat element type '{}' must be copyable", resolved.ToString()),
+                                  {"'[value; count]' evaluates 'value' once and copies it into every element"},
+                                  "write the elements explicitly or initialize move-only elements in a loop");
+                    }
+                    else {
+                        static_cast<void>(
+                            RejectImplicitMove(*deferred.expression, resolved, deferred.kind, deferred.location));
+                    }
                 }
                 continue;
             }

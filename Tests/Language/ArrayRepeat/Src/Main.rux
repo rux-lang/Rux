@@ -1,0 +1,75 @@
+import Core::Assert;
+
+const Zeros: int[4] = [0; 4];
+
+struct Cell {
+    value: int;
+}
+
+extend Cell {
+    func =(self: &var Cell, other: &Cell) {
+        self.value = other.value + 1;
+    }
+}
+
+struct Tracked {
+    drops: *var int;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked) {
+        self.drops = other.drops;
+    }
+
+    func ~Tracked(self: &var Tracked) {
+        *self.drops = *self.drops + 1;
+    }
+}
+
+func Next(counter: *var int) -> int {
+    *counter = *counter + 1;
+    return *counter;
+}
+
+func Sum(values: Slice<int>) -> int {
+    var total = 0;
+    for value in values {
+        total = total + value;
+    }
+    return total;
+}
+
+func Main() -> int {
+    let inferred = [7u16; 3];
+    Assert(inferred.length == 3, "a repeated array infers its extent");
+    Assert(inferred[0] == 7u16 && inferred[2] == 7u16, "a repeated array initializes every element");
+
+    let contextual: uint8[2] = [255; 2];
+    Assert(contextual[0] == 255u8 && contextual[1] == 255u8,
+           "a repeated array contextually types its element");
+
+    let nested: int[2][3] = [[1; 2]; 3];
+    Assert(nested[0][1] == 1 && nested[2][0] == 1, "repetition recursively copies nested arrays");
+
+    let cells = [Cell { value: 10 }; 3];
+    Assert(cells[0].value == 11 && cells[2].value == 11,
+           "every repeated element is initialized through the custom copy operation");
+
+    var calls = 0;
+    let values = [Next(@calls); 4];
+    Assert(calls == 1, "the repeated expression is evaluated exactly once");
+    Assert(values[0] == 1 && values[3] == 1, "the evaluated value is copied into every element");
+
+    let empty = [Next(@calls); 0];
+    Assert(calls == 2, "a zero-length repeat still evaluates its expression exactly once");
+    Assert(empty.length == 0, "a zero-length repeat produces a zero-length inline array");
+
+    var drops = 0;
+    let emptyTracked = [Tracked { drops: @drops }; 0];
+    Assert(emptyTracked.length == 0, "a zero-length repeat preserves its element type");
+    Assert(drops == 1, "a zero-length repeat destroys its evaluated temporary");
+
+    Assert(Sum([3; 4]) == 12, "a repeated inline array coerces to a slice view");
+    Assert(Zeros[0] == 0 && Zeros[3] == 0, "constant arrays support repeated initialization");
+    return 0;
+}

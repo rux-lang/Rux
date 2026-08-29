@@ -441,6 +441,13 @@ void HirConstantFolder::OptimizeExpr(HirExprPtr &expr, const bool allowSubstitut
         }
     }
     else if (auto *array = dynamic_cast<HirArrayExpr *>(expr.get())) {
+        if (array->repeatedElement) {
+            OptimizeExpr(array->repeatedElement, allowSubstitution);
+            if ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
+                !array->repeatElementDropGlue.empty()) {
+                InvalidateAll();
+            }
+        }
         for (auto &element : array->elements) {
             OptimizeExpr(element, allowSubstitution);
         }
@@ -582,7 +589,12 @@ bool HirConstantFolder::IsDiscardable(const HirExpr &expr) {
                                    [](const HirStructInitField &field) { return IsDiscardable(*field.value); });
     }
     if (const auto *array = dynamic_cast<const HirArrayExpr *>(&expr)) {
-        return std::ranges::all_of(array->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
+        const bool repeatHasEffects =
+            array->repeatedElement &&
+            ((array->repeatCount > 0 && array->repeatCopyPlan.kind != HirCopyPlan::Kind::Trivial) ||
+             !array->repeatElementDropGlue.empty());
+        return !repeatHasEffects && (!array->repeatedElement || IsDiscardable(*array->repeatedElement)) &&
+               std::ranges::all_of(array->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });
     }
     if (const auto *tuple = dynamic_cast<const HirTupleExpr *>(&expr)) {
         return std::ranges::all_of(tuple->elements, [](const HirExprPtr &element) { return IsDiscardable(*element); });

@@ -111,6 +111,9 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
             CollectExpressionUses(*element, uses);
         }
     }
+    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        CollectExpressionUses(*repeat->value, uses);
+    }
     else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
         CollectExpressionUses(*spread->operand, uses);
     }
@@ -316,6 +319,9 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
         for (const auto &element : array->elements) {
             RecordExpressionLastUses(*element, offsets, result);
         }
+    }
+    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        RecordExpressionLastUses(*repeat->value, offsets, result);
     }
     else if (const auto *spread = dynamic_cast<const SpreadExpr *>(&expression)) {
         RecordExpressionLastUses(*spread->operand, offsets, result);

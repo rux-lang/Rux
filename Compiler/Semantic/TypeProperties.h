@@ -11,6 +11,7 @@ enum class ValueConsumptionKind {
     Return,
     Assignment,
     Aggregate,
+    ArrayRepeat,
     ConditionalArm,
     ExplicitMove,
 };

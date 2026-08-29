@@ -365,6 +365,13 @@ struct HirStructInitExpr : HirExpr {
 struct HirArrayExpr : HirExpr {
     TypeRef elementType;
     std::vector<HirExprPtr> elements;
+    /// Compact representation of `[value; count]`. The value is evaluated into temporary storage exactly once and the
+    /// recursive copy plan initializes every element from it. `repeatElementDropGlue` releases the temporary when the
+    /// element type owns resources, including when the repeated array has zero elements.
+    HirExprPtr repeatedElement;
+    std::uint64_t repeatCount = 0;
+    HirCopyPlan repeatCopyPlan;
+    std::string repeatElementDropGlue;
     /// Entry i destroys elements [0, i) in reverse order if element i does not finish initialization.
     std::vector<HirFailureCleanup> failureCleanups;
 };

@@ -756,6 +756,14 @@ ExprPtr Parser::ParsePrimary() {
                 }
                 break;
             }
+            if (e->elements.size() == 1 && Match(TokenKind::Semicolon)) {
+                auto repeated = std::make_unique<ArrayRepeatExpr>();
+                repeated->location = loc;
+                repeated->value = std::move(e->elements.front());
+                repeated->count = ParseRequiredExpr("after ';' in the array repeat expression");
+                ExpectBefore(TokenKind::RightBracket, "']' to close the array repeat expression");
+                return repeated;
+            }
             if (Match(TokenKind::Comma)) {
                 continue;
             }

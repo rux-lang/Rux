@@ -825,6 +825,10 @@ private:
                     }
                     return true;
                 }
+                if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
+                    const TypeRef elementType = CheckExpr(*repeat->value);
+                    return CanAssignExprTo(*repeat->value, elementType, *sliceElement);
+                }
                 return exprType.inner[0].IsAssignableTo(*sliceElement);
             }
         }
@@ -841,6 +845,15 @@ private:
                 }
             }
             return true;
+        }
+
+        if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr);
+            repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+            if (exprType.kind != TypeRef::Kind::Array || exprType.arrayLength != targetType.arrayLength) {
+                return false;
+            }
+            const TypeRef elementType = CheckExpr(*repeat->value);
+            return CanAssignExprTo(*repeat->value, elementType, targetType.inner[0]);
         }
 
         // Tuple literals are contextually typed element-by-element. This lets
@@ -886,7 +899,7 @@ private:
                UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
     }
 
-    std::optional<std::uint64_t> EvalArrayLength(const Expr &expr) const {
+    std::optional<std::uint64_t> EvalArrayLength(const Expr &expr) const override {
         const auto value = EvalConstInt(expr);
         if (!value || *value < 0) {
             return std::nullopt;
@@ -2418,8 +2431,9 @@ private:
         }
         if (IsSliceTypeRef(constType) || constType.kind == TypeRef::Kind::Array) {
             const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
+            const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
             const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;
-            if (!isText && !array) {
+            if (!isText && !array && !repeat) {
                 EmitError(d.value->location,
                           "a constant sequence must be initialized with an array literal or a string literal");
             }
@@ -2431,6 +2445,9 @@ private:
                         break;
                     }
                 }
+            }
+            else if (repeat && !IsConstArrayElement(*repeat->value)) {
+                EmitError(repeat->value->location, "element of a constant array must be a literal or a named constant");
             }
         }
         if (Symbol *sym = currentScope->Lookup(d.name)) {

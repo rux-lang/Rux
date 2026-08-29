@@ -143,6 +143,8 @@ std::string_view ExpressionKind(const Expr &expression) {
         return "struct initializer";
     if (dynamic_cast<const ArrayExpr *>(&expression))
         return "array";
+    if (dynamic_cast<const ArrayRepeatExpr *>(&expression))
+        return "array repeat";
     if (dynamic_cast<const SpreadExpr *>(&expression))
         return "spread";
     if (dynamic_cast<const TupleExpr *>(&expression))

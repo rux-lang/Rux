@@ -19,6 +19,8 @@ std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexc
         return "assignment";
     case ValueConsumptionKind::Aggregate:
         return "aggregate";
+    case ValueConsumptionKind::ArrayRepeat:
+        return "array repeat";
     case ValueConsumptionKind::ConditionalArm:
         return "conditional-arm";
     case ValueConsumptionKind::ExplicitMove:

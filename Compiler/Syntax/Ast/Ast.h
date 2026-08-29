@@ -328,6 +328,12 @@ struct ArrayExpr : Expr {
     std::vector<ExprPtr> elements;
 };
 
+// [value; count]
+struct ArrayRepeatExpr : Expr {
+    ExprPtr value;
+    ExprPtr count;
+};
+
 // expr... (spread a slice into a variadic call)
 struct SpreadExpr : Expr {
     ExprPtr operand;
