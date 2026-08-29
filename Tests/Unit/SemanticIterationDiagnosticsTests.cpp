@@ -24,9 +24,9 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     return analyzer.Analyze().diagnostics;
 }
 
-/// `Option` is an ordinary enum, so every case declares the one its iterator reports the end with.
+/// `Option` is an ordinary variant, so every case declares the one its iterator reports the end with.
 const std::string kIterationPrelude = R"(
-    enum Option<T> { Some(T), None }
+    variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
         func Next(self: &var Counter) -> Option<int32> {
@@ -87,7 +87,7 @@ TEST_CASE("the loop variable takes the item type the iterator reports") {
 
 TEST_CASE("a Next that cannot advance its receiver is rejected at its declaration") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Option<T> { Some(T), None }
+        variant Option<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
             func Next(self: &Counter) -> Option<int32> { return Option::None<int32>(); }
@@ -105,7 +105,7 @@ TEST_CASE("a Next that cannot advance its receiver is rejected at its declaratio
 
 TEST_CASE("a Next taking arguments is rejected at its declaration") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Option<T> { Some(T), None }
+        variant Option<T> { Some(T), None }
         struct Counter { value: int32; }
         extend Counter {
             func Next(self: &var Counter, step: int32) -> Option<int32> { return Option::None<int32>(); }

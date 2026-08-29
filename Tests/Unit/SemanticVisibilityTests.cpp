@@ -418,7 +418,7 @@ TEST_CASE("effective public API closure rejects private types in every exposed p
         interface HiddenBound {}
         pub struct PublicStruct<T: HiddenBound> { pub item: Hidden; hidden: Hidden; }
         pub union PublicUnion { pub item: Hidden, hidden: Hidden }
-        pub enum PublicEnum { Tuple(Hidden), Named { item: Hidden; } }
+        pub variant PublicEnum { Tuple(Hidden), Named { item: Hidden; } }
         pub interface PublicInterface { func Make(value: Hidden) -> Hidden; }
         pub type PublicAlias = (Hidden,);
         pub const PublicConstant = Hidden { value: 1 };

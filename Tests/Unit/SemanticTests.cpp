@@ -224,7 +224,7 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
     Lexer lexer(R"(
         struct Slice<T> { data: *T; length: uint; }
         struct Box<T> { value: T; }
-        enum Choice<T> {
+        variant Choice<T> {
             None,
             Some(T),
             Pair { left: T; right: uint8; }
@@ -1181,9 +1181,9 @@ TEST_CASE("fixed arrays require matching literal extents") {
     CHECK(diagnostics.front().message.find("cannot assign") != std::string::npos);
 }
 
-TEST_CASE("contextual enum patterns infer generic subject types") {
+TEST_CASE("contextual variant patterns infer generic subject types") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Result<T, E> {
+        variant Result<T, E> {
             Success(T),
             Error(E)
         }
@@ -1238,9 +1238,9 @@ TEST_CASE("generic arithmetic is checked after type substitution") {
              "operator '/' cannot combine left operand 'bool8' with right operand 'bool8'");
 }
 
-TEST_CASE("contextual enum patterns diagnose unknown variants") {
+TEST_CASE("contextual variant patterns diagnose unknown cases") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Option {
+        variant Option {
             Some(int),
             None
         }

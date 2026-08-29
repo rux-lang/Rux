@@ -117,9 +117,9 @@ TEST_CASE("generic function type parameters are automatically inferred from argu
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("generic enum variants deduce type parameters from payload arguments") {
+TEST_CASE("generic variant cases deduce type parameters from payload arguments") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Option<T> {
+        variant Option<T> {
             Some(T),
             None
         }

@@ -64,8 +64,8 @@ const HirReturnStmt &RequireEarlyReturn(const HirMatchExpr &match) {
 
 const std::string kPropagationPrelude = R"(
     enum ParseError: int32 { Bad }
-    enum Result<T, E> { Success(T), Error(E) }
-    enum Option<T> { Some(T), None }
+    variant Result<T, E> { Success(T), Error(E) }
+    variant Option<T> { Some(T), None }
     func Read(ok: bool) -> Result<int32, ParseError> {
         return Result::Success<int32, ParseError>(7i32);
     }

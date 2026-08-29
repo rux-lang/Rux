@@ -11,7 +11,7 @@
 /// An `Option<T>` is as wide as its tag plus `T`, and never allocates on its own.
 ///
 /// https://rux-lang.dev/docs/api/core/option
-pub enum Option<T> {
+pub variant Option<T> {
     Some(T),
     None
 }

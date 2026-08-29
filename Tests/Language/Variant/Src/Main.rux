@@ -1,0 +1,198 @@
+import Core::Assert;
+
+variant UnitState {
+    Idle,
+    Ready,
+    Complete
+}
+
+variant Maybe<T> {
+    None,
+    Some(T)
+}
+
+variant Shape {
+    Circle { radius: float64; },
+    Rectangle { width: float64; height: float64; },
+    Point
+}
+
+variant Parcel {
+    Nothing,
+    Count(int64),
+    Pair(int32, int32)
+}
+
+variant RepeatedPayload {
+    Empty,
+    Single(int32),
+    Pair(int32, int32),
+    Triple(int32, int32, int32)
+}
+
+variant MixedLayout {
+    Empty,
+    Byte(uint8),
+    Word(int64),
+    Record { code: int32; enabled: bool; }
+}
+
+variant Nested<T> {
+    Missing,
+    Value(T),
+    Optional(Maybe<T>)
+}
+
+func StateCode(state: UnitState) -> int {
+    return match state {
+        .Idle => 10,
+        .Ready => 20,
+        .Complete => 30
+    };
+}
+
+func MakeSome(value: int32) -> Maybe<int32> {
+    return Maybe::Some<int32>(value);
+}
+
+func ReadMaybe(value: Maybe<int32>) -> int32 {
+    return match value {
+        .None => -1i32,
+        .Some(item) => item
+    };
+}
+
+func Area(shape: Shape) -> float64 {
+    return match shape {
+        .Circle { radius } => radius * radius * 3.0,
+        .Rectangle { width, height } => width * height,
+        .Point => 0.0
+    };
+}
+
+func UnwrapCount(parcel: Parcel) -> int64 {
+    return match parcel {
+        .Nothing => 0i64,
+        .Count(value) => value,
+        .Pair(left, right) => (left as int64) + (right as int64)
+    };
+}
+
+func RelayParcel(parcel: Parcel) -> Parcel {
+    return parcel;
+}
+
+func SumRepeated(value: RepeatedPayload) -> int32 {
+    return match value {
+        .Empty => 0i32,
+        .Single(first) => first,
+        .Pair(first, second) => first + second,
+        .Triple(first, second, third) => first + second + third
+    };
+}
+
+func ReadMixed(value: MixedLayout) -> int64 {
+    return match value {
+        .Empty => 0i64,
+        .Byte(byte) => byte as int64,
+        .Word(word) => word,
+        .Record { code, enabled } => (code as int64) + match enabled { true => 100i64, false => 0i64 }
+    };
+}
+
+func ReadNested(value: Nested<int32>) -> int32 {
+    return match value {
+        .Missing => -1i32,
+        .Value(item) => item,
+        .Optional(optional) => match optional {
+            .None => -2i32,
+            .Some(item) => item
+        }
+    };
+}
+
+func CheckUnitCases() {
+    Assert(StateCode(UnitState::Idle) == 10, "an all-unit variant keeps its first case");
+    Assert(StateCode(UnitState::Ready) == 20, "an all-unit variant keeps its middle case");
+    Assert(StateCode(UnitState::Complete) == 30, "an all-unit variant keeps its final case");
+}
+
+func CheckGenericCases() {
+    let none = Maybe::None<int32>();
+    Assert(ReadMaybe(none) == -1i32, "a generic unit case is constructed with explicit type arguments");
+
+    let some = MakeSome(42i32);
+    Assert(ReadMaybe(some) == 42i32, "a generic tuple case carries its substituted payload");
+
+    let direct = Maybe::Some<int32>(7i32);
+    let directValue = match direct {
+        .None => 0i32,
+        .Some(item) => item
+    };
+    Assert(directValue == 7i32, "a contextual generic pattern binds the payload");
+}
+
+func CheckNamedCases() {
+    let circle = Shape::Circle { radius: 2.0 };
+    Assert(Area(circle) == 12.0, "a one-field named case binds its field");
+
+    let rectangle = Shape::Rectangle { width: 10.0, height: 20.0 };
+    Assert(Area(rectangle) == 200.0, "a multi-field named case binds fields by name");
+    Assert(Area(Shape::Point()) == 0.0, "a named-payload variant may also contain unit cases");
+}
+
+func CheckTupleCases() {
+    Assert(UnwrapCount(Parcel::Nothing) == 0i64, "a unit case passes by value");
+    Assert(UnwrapCount(Parcel::Count(42i64)) == 42i64, "a wide tuple payload passes by value");
+    Assert(UnwrapCount(Parcel::Pair(20i32, 22i32)) == 42i64, "a multi-field tuple payload passes by value");
+
+    let relayed = RelayParcel(Parcel::Count(1234567890123i64));
+    Assert(UnwrapCount(relayed) == 1234567890123i64, "a variant survives a by-value return boundary");
+
+    let guardBefore: int64 = 0x1122334455667788i64;
+    let carried = Parcel::Count(9876543210123i64);
+    let guardAfter: int64 = 0x08192A3B4C5D6E7Fi64;
+    Assert(UnwrapCount(carried) == 9876543210123i64, "a wide payload retains all bits");
+    Assert(guardBefore == 0x1122334455667788i64, "the local before a variant stays intact");
+    Assert(guardAfter == 0x08192A3B4C5D6E7Fi64, "the local after a variant stays intact");
+}
+
+func CheckRepeatedPayloadTypes() {
+    Assert(SumRepeated(RepeatedPayload::Empty) == 0i32, "the unit case has no payload");
+    Assert(SumRepeated(RepeatedPayload::Single(9i32)) == 9i32, "one repeated type binds by position");
+    Assert(SumRepeated(RepeatedPayload::Pair(20i32, 22i32)) == 42i32,
+           "two fields with the same type keep their positions");
+    Assert(SumRepeated(RepeatedPayload::Triple(10i32, 20i32, 12i32)) == 42i32,
+           "three fields with the same type keep their positions");
+}
+
+func CheckMixedLayouts() {
+    Assert(ReadMixed(MixedLayout::Empty) == 0i64, "a mixed-layout variant keeps its unit case");
+    Assert(ReadMixed(MixedLayout::Byte(42u8)) == 42i64, "a narrow payload is decoded at its declared width");
+    Assert(ReadMixed(MixedLayout::Word(1234567890123i64)) == 1234567890123i64,
+           "the widest payload determines sufficient storage");
+    Assert(ReadMixed(MixedLayout::Record { code: 23i32, enabled: true }) == 123i64,
+           "an aligned named payload shares the same representation contract");
+}
+
+func CheckNestedCases() {
+    Assert(ReadNested(Nested::Missing<int32>()) == -1i32, "a generic nested variant keeps its unit case");
+    Assert(ReadNested(Nested::Value<int32>(42i32)) == 42i32, "a generic nested variant keeps its direct payload");
+
+    let absent = Nested::Optional<int32>(Maybe::None<int32>());
+    Assert(ReadNested(absent) == -2i32, "a nested unit case is decoded through both tags");
+
+    let present = Nested::Optional<int32>(Maybe::Some<int32>(42i32));
+    Assert(ReadNested(present) == 42i32, "a nested tuple case is decoded through both tags");
+}
+
+func Main() -> int {
+    CheckUnitCases();
+    CheckGenericCases();
+    CheckNamedCases();
+    CheckTupleCases();
+    CheckRepeatedPayloadTypes();
+    CheckMixedLayouts();
+    CheckNestedCases();
+    return 0;
+}

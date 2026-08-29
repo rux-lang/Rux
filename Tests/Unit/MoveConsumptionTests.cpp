@@ -479,7 +479,7 @@ TEST_CASE("cross-source copy assignment constructs scratch before replacing the 
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copy->plan.customCallee), 1);
 }
 
-TEST_CASE("generated enum copies recursively copy the active owning payload") {
+TEST_CASE("generated variant copies recursively copy the active owning payload") {
     const std::string source = R"(
 
         struct Cell { value: int32; }
@@ -490,7 +490,7 @@ TEST_CASE("generated enum copies recursively copy the active owning payload") {
             }
         }
 
-        enum Maybe<T> { Some(T), None }
+        variant Maybe<T> { Some(T), None }
 
         func Take(value: Maybe<Cell>) {}
         func Clone(source: Maybe<Cell>) {
@@ -753,7 +753,7 @@ TEST_CASE("an explicit move into a match consumes its subject") {
             func =(self: &var Handle, other: &Handle);
             func ~Handle(self: &var Handle) {}
         }
-        enum Held { Full(Handle), Empty }
+        variant Held { Full(Handle), Empty }
 
         func Discard(held: Held) {
             match <-held {
@@ -1068,7 +1068,7 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
             func ~Handle(self: &var Handle) {}
         }
         struct Owner { first: Handle; copy: int32; last: Handle; }
-        enum Choice { Both(Handle, Handle) }
+        variant Choice { Both(Handle, Handle) }
 
         func Build(first: Handle, last: Handle) -> Owner {
             return Owner { first: <-first, copy: 1, last: <-last };

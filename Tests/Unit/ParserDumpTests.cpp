@@ -25,7 +25,7 @@ pub struct Box<T> {
     path: Core::Thing;
 }
 
-pub enum Choice<T>: uint8 {
+pub variant Choice<T>: uint8 {
     Empty = 0,
     Pair(T, int32),
     Named { value: T; }
@@ -94,10 +94,10 @@ asm func Raw() {
     Field 'references' : (&uint8)[N]
     Field 'tuple' : (int32,)
     Field 'path' : Core::Thing
-  pub EnumDecl 'Choice'<T> : uint8
-    Variant 'Empty' = 0
-    Variant 'Pair' (T, int32)
-    Variant 'Named' { value: T; }
+  pub VariantDecl 'Choice'<T> : uint8
+    Case 'Empty' = 0
+    Case 'Pair' (T, int32)
+    Case 'Named' { value: T; }
   pub UnionDecl 'Bits'
     pub Field 'signed' : int32
     Field 'unsigned' : uint32
@@ -205,7 +205,7 @@ TEST_CASE("AST dumps render generic interface bounds in declaration order") {
     constexpr std::string_view source = R"(
 func Convert<T: Display + Core::Debug, U>(value: T) -> U;
 struct Index<Key: Hash + Equal, Value> { key: Key; value: Value; }
-enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
+variant Result<Value, Error: Display> { Ok(Value), Fail(Error) }
 )";
 
     Lexer lexer(std::string(source), "generic-bounds.rux");
@@ -228,9 +228,9 @@ enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
   StructDecl 'Index'<Key: Hash + Equal, Value>
     Field 'key' : Key
     Field 'value' : Value
-  EnumDecl 'Result'<Value, Error: Display>
-    Variant 'Ok' (Value)
-    Variant 'Fail' (Error)
+  VariantDecl 'Result'<Value, Error: Display>
+    Case 'Ok' (Value)
+    Case 'Fail' (Error)
 )";
     CHECK_EQ(output, expected);
 }

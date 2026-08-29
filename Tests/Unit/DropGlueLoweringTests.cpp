@@ -211,9 +211,9 @@ TEST_SUITE("DropGlueLowering") {
         CHECK_EQ(CallCount(glue, GlueSymbol(package, "Handle")), 0);
     }
 
-    TEST_CASE("small payload enums retain addressable storage for destruction") {
+    TEST_CASE("small payload variants retain addressable storage for destruction") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
-            enum Tiny: uint8 {
+            variant Tiny: uint8 {
                 Empty,
                 Some(Handle)
             }
@@ -233,7 +233,7 @@ TEST_SUITE("DropGlueLowering") {
     TEST_CASE("propagation rolls back completed aggregate components") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             enum Error: uint8 { Bad }
-            enum Result<T, E> { Success(T), Error(E) }
+            variant Result<T, E> { Success(T), Error(E) }
             struct Pair {
                 first: Handle;
                 second: int32;

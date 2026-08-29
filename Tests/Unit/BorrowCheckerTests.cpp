@@ -156,7 +156,7 @@ TEST_CASE("references cannot escape into storage or returns") {
         struct Box<T> { value: T; }
         type SharedItem = &Item;
         struct BadStruct { item: &Item; }
-        enum BadEnum { Some(&Item) }
+        variant BadEnum { Some(&Item) }
         union BadUnion { item: &Item }
         func Escape(item: &Item) -> &Item {
             return item;

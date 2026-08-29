@@ -5,7 +5,7 @@ import Text::StringView;
 /// The `ParseError` values exposed by this package.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-error
-pub enum ParseError {
+pub variant ParseError {
     Empty,
     InvalidCharacter(uint),
     Overflow

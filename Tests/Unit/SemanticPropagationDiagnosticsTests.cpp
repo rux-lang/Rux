@@ -21,12 +21,12 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     return analyzer.Analyze().diagnostics;
 }
 
-/// `Result` and `Option` are ordinary enums rather than built-in types, so every case declares the ones it needs.
+/// `Result` and `Option` are ordinary variants rather than built-in types, so every case declares the ones it needs.
 const std::string kPropagationPrelude = R"(
     enum ParseError: int32 { Empty, Bad }
     enum IoError: int32 { Closed }
-    enum Result<T, E> { Success(T), Error(E) }
-    enum Option<T> { Some(T), None }
+    variant Result<T, E> { Success(T), Error(E) }
+    variant Option<T> { Some(T), None }
     func Read(flag: bool) -> Result<int32, ParseError> {
         return Result::Success<int32, ParseError>(7i32);
     }

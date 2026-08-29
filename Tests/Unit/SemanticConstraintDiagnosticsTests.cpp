@@ -372,13 +372,13 @@ TEST_CASE("an extend block borrows the bounds of the type it extends") {
     CHECK_EQ(unsatisfied[0].notes[0], "type parameter 'T' is not constrained by 'Display'");
 }
 
-TEST_CASE("a generic enum variant constructor checks the bound of its written type argument") {
+TEST_CASE("a generic variant constructor checks the bound of its written type argument") {
     const auto diagnostics = AnalyzeSource(R"(
         interface Display {
             func Show() -> int;
         }
         struct Plain { value: int; }
-        enum Slot<T: Display>: int32 { Empty, Filled(T) }
+        variant Slot<T: Display>: int32 { Empty, Filled(T) }
         func Main() {
             let plain = Plain { value: 1 };
             let slot = Slot::Filled<Plain>(plain);
@@ -406,13 +406,13 @@ TEST_CASE("a bounded parameter satisfies its own bound where the generic refers 
     CHECK(diagnostics.empty());
 }
 
-TEST_CASE("a generic enum checks the bound of its type argument once per written type") {
+TEST_CASE("a generic variant checks the bound of its type argument once per written type") {
     const auto diagnostics = AnalyzeSource(R"(
         interface Display {
             func Show() -> int;
         }
         struct Plain { value: int; }
-        enum Slot<T: Display>: int32 { Empty, Filled(T) }
+        variant Slot<T: Display>: int32 { Empty, Filled(T) }
         func Reference(slot: Slot<Plain>) {}
     )");
 

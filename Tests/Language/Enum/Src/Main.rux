@@ -13,17 +13,6 @@ enum Color: uint8 {
     Blue = 20
 }
 
-enum Option {
-    Some(int32),
-    None
-}
-
-enum Shape {
-    Circle { radius: float64; },
-    Rect { width: float64; height: float64; },
-    Point
-}
-
 // A tag is stored at the enum's declared width, so a match has to read it back
 // at that width. Reading it as a full word instead picked up whatever sat
 // beside it, and the mask that cleared those bits was itself 32 bits wide, so
@@ -58,42 +47,9 @@ func IdentityDirection(direction: Direction) -> Direction {
     return direction;
 }
 
-// A payload-carrying enum passed by value. Its size is the tag plus the widest
-// payload, not the tag alone, so a call has to carry the whole value.
-enum Parcel {
-    Nothing,
-    Count(int64),
-    Pair(int32, int32)
-}
-
-func UnwrapCount(parcel: Parcel) -> int64 {
-    return match parcel {
-        .Nothing => 0i64,
-        .Count(n) => n,
-        .Pair(a, b) => (a as int64) + (b as int64)
-    };
-}
-
-func Relay(parcel: Parcel) -> int64 {
-    return UnwrapCount(parcel);
-}
-
 func Main() -> int {
     Assert(IdentityDirection(Direction::North) == Direction::North,
            "Expected enum argument and return types to match");
-    let shape = Shape::Rect { width: 10.0, height: 20.0 };
-    let val = match shape {
-        .Circle { radius } => radius,
-        .Rect { width, height } => (width * height),
-        .Point => 0.0
-    };
-    Assert(val == 200.0, "Expected 200.0");
-    let option = Option::Some(7);
-    let optionValue = match option {
-        .Some(value) => value,
-        .None => 0
-    };
-    Assert(optionValue == 7, "Expected contextual payload binding");
     let fallback = match 7 {
         0 => 1,
         else => 2
@@ -123,27 +79,6 @@ func Main() -> int {
     let after: int64 = -1i64;
     Assert((match neighbour { .Low => 10, .High => 20 }) == 10, "Expected a tag to ignore its neighbours");
     Assert(before == -1i64 && after == -1i64, "Expected the neighbours themselves to be intact");
-
-    // A payload-carrying enum passed by value keeps its payload. Sizing such an
-    // enum by its tag alone left the payload behind at the call boundary and the
-    // callee read whatever happened to sit past the tag.
-    Assert(UnwrapCount(Parcel::Count(42i64)) == 42i64, "Expected a by-value payload to survive the call");
-    Assert(UnwrapCount(Parcel::Nothing) == 0i64, "Expected an empty variant to pass by value");
-    Assert(UnwrapCount(Parcel::Pair(20i32, 22i32)) == 42i64, "Expected a two-field payload to pass by value");
-
-    // Through a binding, and through a second call that passes it on again.
-    let parcel = Parcel::Count(7i64);
-    Assert(UnwrapCount(parcel) == 7i64, "Expected a bound payload enum to pass by value");
-    Assert(Relay(Parcel::Count(9i64)) == 9i64, "Expected a payload enum to survive being relayed");
-
-    // Neighbouring locals are untouched: the value is copied whole rather than
-    // read past its own storage.
-    let guardBefore: int64 = 0x1122334455667788i64;
-    let carried = Parcel::Count(1234567890123i64);
-    let guardAfter: int64 = 0x08192A3B4C5D6E7Fi64;
-    Assert(UnwrapCount(carried) == 1234567890123i64, "Expected a wide payload to pass by value");
-    Assert(guardBefore == 0x1122334455667788i64, "Expected the preceding local to be intact");
-    Assert(guardAfter == 0x08192A3B4C5D6E7Fi64, "Expected the following local to be intact");
 
     return 0;
 }
