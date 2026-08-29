@@ -15,6 +15,26 @@ struct Packed {
     second: uint8;
 }
 
+enum ByteCode: uint8 {
+    Empty = 0,
+    Full = 1
+}
+
+variant UnitState {
+    Empty,
+    Full
+}
+
+variant Maybe<T> {
+    None,
+    Some(T)
+}
+
+variant Envelope {
+    Empty,
+    Header(Header)
+}
+
 // The shape of an allocation: a count times an element size, refused rather than wrapped.
 func ByteCount(count: uint64, elementSize: uint64, bytes: *var uint64) -> bool {
     return CheckedMul(count, elementSize, bytes);
@@ -41,6 +61,16 @@ func Main() -> int {
     Assert(alignof(Header) == 8u64, "Expected the struct alignment to be its widest field's");
     Assert(alignof(Packed) == 1u64, "Expected a byte-aligned struct");
     Assert(alignof(Header[4]) == 8u64, "Expected an array to keep its element alignment");
+
+    Assert(sizeof(ByteCode) == 1u64, "Expected a scalar enum to use its uint8 base layout");
+    Assert(alignof(ByteCode) == 1u64, "Expected a scalar enum to use its uint8 base alignment");
+    Assert(sizeof(UnitState) == 8u64, "Expected an all-unit variant to retain its private tag");
+    Assert(alignof(UnitState) == 8u64, "Expected an all-unit variant to retain tag alignment");
+    Assert(sizeof(Maybe<uint8>) == 16u64, "Expected a generic variant to include tag and payload storage");
+    Assert(alignof(Maybe<uint8>) == 8u64, "Expected a generic variant tag to set minimum alignment");
+    Assert(sizeof(Envelope) == 24u64, "Expected a named payload to follow the private tag");
+    Assert(alignof(Envelope) == 8u64, "Expected the widest named payload field to set alignment");
+    Assert(sizeof(Maybe<Header>) == 24u64, "Expected generic payload layout to follow its concrete argument");
 
     // The same answers through a type parameter. A struct whose size and alignment differ is what separates the two
     // questions: Header is sixteen bytes aligned to eight, so an implementation answering either with the other is

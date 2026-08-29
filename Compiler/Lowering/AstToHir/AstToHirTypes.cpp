@@ -1168,10 +1168,7 @@ TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRe
         // Same rule as SemanticAnalyzer::EnumType, the other builder of this type: an enum that is only a
         // discriminant is the size of that discriminant, and one carrying a payload is wider than its tag, so the
         // marker rather than the tag has to say how large the value is.
-        const bool carriesPayload = std::ranges::any_of(decl.variants, [](const EnumDecl::Variant &variant) {
-            return !variant.fields.empty() || !variant.namedFields.empty();
-        });
-        if (carriesPayload) {
+        if (decl.form == EnumDecl::Form::Variant) {
             if (const ResolvedTypeLayout *layout = model.TryGetLayout(type)) {
                 type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
                 return type;

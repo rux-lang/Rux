@@ -1756,6 +1756,9 @@ private:
         if (!tagLayout) {
             return std::nullopt;
         }
+        if (decl.form == EnumDecl::Form::Enumeration) {
+            return tagLayout;
+        }
 
         bool hasPayload = false;
         ResolvedTypeLayout maximumPayload;
@@ -1796,14 +1799,6 @@ private:
         return decl.baseType ? ResolveType(*decl.baseType) : TypeRef::MakeInt();
     }
 
-    /// Whether any variant of `decl` carries a payload, which is what makes the enum an aggregate rather than the
-    /// integer its discriminant is stored as.
-    static bool EnumCarriesPayload(const EnumDecl &decl) {
-        return std::ranges::any_of(decl.variants, [](const EnumDecl::Variant &variant) {
-            return !variant.fields.empty() || !variant.namedFields.empty();
-        });
-    }
-
     TypeRef EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs = {}) override {
         TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
         if (decl.typeParams.empty()) {
@@ -1819,7 +1814,7 @@ private:
             if (layout) {
                 typeLayouts.insert_or_assign(type.name, *layout);
             }
-            if (EnumCarriesPayload(decl) && layout) {
+            if (decl.form == EnumDecl::Form::Variant && layout) {
                 type.inner.push_back(TypeRef::MakeArray(TypeRef::MakeChar8(), layout->size));
                 return type;
             }
