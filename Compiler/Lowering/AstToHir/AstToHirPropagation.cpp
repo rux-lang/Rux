@@ -52,10 +52,12 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
         pattern->location = expression.location;
         pattern->path = {fact->enumName, variant};
         pattern->resolvedType = operandType;
+        pattern->form = CaseTypeForm::Variant;
         pattern->discriminant = LookupEnumVariantDiscriminant(fact->enumName, variant);
         pattern->hasPayload = hasPayload;
         pattern->unitDiscriminants = unitDiscriminants;
         if (hasPayload) {
+            pattern->payloadTypes.push_back(bindingType);
             auto binding = std::make_unique<HirBindingPattern>();
             binding->location = expression.location;
             binding->name = bindingName;

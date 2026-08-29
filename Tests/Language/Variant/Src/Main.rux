@@ -1,4 +1,5 @@
 import Core::Assert;
+import Variant::Factory::{ BuildRemote, ReadRemote };
 
 variant UnitState {
     Idle,
@@ -76,6 +77,14 @@ func ReadMaybe(value: Maybe<int32>) -> int32 {
     };
 }
 
+func ReadGuardedMaybe(value: Maybe<int32>) -> int32 {
+    return match value {
+        .Some(item) if item > 10i32 => item,
+        .Some(_) => 0i32,
+        .None => -1i32
+    };
+}
+
 func Area(shape: Shape) -> float64 {
     return match shape {
         .Circle { radius } => radius * radius * 3.0,
@@ -144,6 +153,16 @@ func CheckGenericCases() {
         .Some(item) => item
     };
     Assert(directValue == 7i32, "a contextual generic pattern binds the payload");
+    Assert(ReadGuardedMaybe(Maybe::None<int32>()) == -1i32, "a guard never reads an inactive payload");
+    Assert(ReadGuardedMaybe(Maybe::Some<int32>(7i32)) == 0i32, "a failed guard reaches the next case arm");
+    Assert(ReadGuardedMaybe(Maybe::Some<int32>(42i32)) == 42i32, "a matching guard retains its payload binding");
+}
+
+func CheckCrossModuleCases() {
+    let first = BuildRemote(false);
+    let second = BuildRemote(true);
+    Assert(ReadRemote(first) == -1i64, "a unit variant returned from another module keeps its tag");
+    Assert(ReadRemote(second) == 42i64, "a payload variant returned from another module keeps its offset");
 }
 
 func CheckNamedCases() {
@@ -239,6 +258,7 @@ func CheckEquality() {
 func Main() -> int {
     CheckUnitCases();
     CheckGenericCases();
+    CheckCrossModuleCases();
     CheckNamedCases();
     CheckTupleCases();
     CheckRepeatedPayloadTypes();

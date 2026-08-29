@@ -68,6 +68,18 @@ const LirFunc &LirFunction(const LirPackage &package, const std::string &name) {
     throw std::runtime_error("missing LIR function");
 }
 
+const HirMatchExpr &ReturnedMatch(const HirPackage &package, const std::string &name) {
+    const HirFunc &function = HirFunction(package, name);
+    REQUIRE(function.body.has_value());
+    REQUIRE_EQ(function.body->stmts.size(), 1);
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(function.body->stmts.front().get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *match = dynamic_cast<const HirMatchExpr *>(returned->value->get());
+    REQUIRE(match != nullptr);
+    return *match;
+}
+
 std::size_t CountOpcode(const LirFunc &function, const LirOpcode opcode) {
     std::size_t count = 0;
     for (const LirBlock &block : function.blocks) {
@@ -366,4 +378,131 @@ TEST_CASE("case discriminants remain declaration-ordered across construction sit
     CHECK_EQ(discriminant("Start"), "0");
     CHECK_EQ(discriminant("Mid"), "1");
     CHECK_EQ(discriminant("Finish"), "2");
+}
+
+TEST_CASE("HIR variant patterns retain form discriminants and declaration payload types") {
+    const HirPackage package = VariantHir(R"(
+        variant Packet {
+            Empty,
+            Pair(uint8, uint64),
+            Named { code: uint32; enabled: bool8; sequence: uint64; }
+        }
+        func Tuple(value: Packet) -> uint64 {
+            return match value { .Empty => 0u64, .Pair(first, second) => (first as uint64) + second,
+                                 .Named { code, enabled, sequence } => (code as uint64) + sequence };
+        }
+        func Named(value: Packet) -> uint64 {
+            return match value { .Empty => 0u64, .Pair(_, _) => 1u64,
+                                 .Named { sequence, code, enabled } => sequence + (code as uint64) };
+        }
+    )");
+
+    for (const std::string functionName : {"Tuple", "Named"}) {
+        const HirMatchExpr &match = ReturnedMatch(package, functionName);
+        REQUIRE_EQ(match.arms.size(), 3);
+        for (const HirMatchArm &arm : match.arms) {
+            const auto *pattern = dynamic_cast<const HirEnumPattern *>(arm.pattern.get());
+            REQUIRE(pattern != nullptr);
+            CHECK_EQ(pattern->form, CaseTypeForm::Variant);
+            REQUIRE(pattern->discriminant.has_value());
+        }
+        const auto *named = dynamic_cast<const HirEnumPattern *>(match.arms.back().pattern.get());
+        REQUIRE(named != nullptr);
+        REQUIRE_EQ(named->payloadTypes.size(), 3);
+        CHECK_EQ(named->payloadTypes[0].kind, TypeRef::Kind::UInt32);
+        CHECK_EQ(named->payloadTypes[1].kind, TypeRef::Kind::Bool8);
+        CHECK_EQ(named->payloadTypes[2].kind, TypeRef::Kind::UInt64);
+        CHECK_EQ(named->argIndices, std::vector<std::size_t>{0, 1, 2});
+    }
+}
+
+TEST_CASE("variant payload reads are emitted only in tag-gated blocks") {
+    const LirPackage package = VariantLir(R"(
+        variant Packet { Empty, Pair(uint32, uint64), Named { code: uint32; sequence: uint64; } }
+        func Decode(value: Packet) -> uint64 {
+            return match value { .Empty => 0u64, .Pair(first, second) => (first as uint64) + second,
+                                 .Named { sequence, code } => sequence + (code as uint64) };
+        }
+    )");
+    const LirFunc &decode = LirFunction(package, "Decode");
+    std::size_t payloadBlocks = 0;
+    std::size_t mismatchBlocks = 0;
+    for (const LirBlock &block : decode.blocks) {
+        if (block.label.starts_with("variant.pattern.payload")) {
+            ++payloadBlocks;
+            CHECK(std::ranges::any_of(block.instrs, [](const LirInstr &instruction) {
+                return instruction.op == LirOpcode::IndexPtr || instruction.op == LirOpcode::Load;
+            }));
+        }
+        if (block.label.starts_with("variant.pattern.mismatch")) {
+            ++mismatchBlocks;
+            CHECK_FALSE(std::ranges::any_of(block.instrs, [](const LirInstr &instruction) {
+                return instruction.op == LirOpcode::IndexPtr || instruction.op == LirOpcode::Load;
+            }));
+        }
+    }
+    CHECK_EQ(payloadBlocks, 2);
+    CHECK_EQ(mismatchBlocks, 2);
+    CHECK_GE(CountOpcode(decode, LirOpcode::Phi), 2);
+}
+
+TEST_CASE("all-unit variant matching reads tags without creating payload paths") {
+    const LirPackage package = VariantLir(R"(
+        variant State { Idle, Ready, Complete }
+        func Decode(value: State) -> int {
+            return match value { .Idle => 10, .Ready => 20, .Complete => 30 };
+        }
+    )");
+    const LirFunc &decode = LirFunction(package, "Decode");
+    CHECK_GE(CountOpcode(decode, LirOpcode::CmpEq), 3);
+    CHECK_FALSE(std::ranges::any_of(
+        decode.blocks, [](const LirBlock &block) { return block.label.starts_with("variant.pattern.payload"); }));
+    CHECK_EQ(CountOpcode(decode, LirOpcode::Shr), 0);
+}
+
+TEST_CASE("guard evaluation is dominated by a successful variant pattern") {
+    const LirPackage package = VariantLir(R"(
+        variant Maybe { None, Some(int64) }
+        func Decode(value: Maybe) -> int64 {
+            return match value { .Some(item) if item > 10i64 => item, .Some(_) => 0i64, .None => -1i64 };
+        }
+    )");
+    const LirFunc &decode = LirFunction(package, "Decode");
+    CHECK(std::ranges::any_of(decode.blocks,
+                              [](const LirBlock &block) { return block.label.starts_with("pattern.guard"); }));
+    CHECK_GE(CountOpcode(decode, LirOpcode::CmpGt), 1);
+    CHECK_GE(CountOpcode(decode, LirOpcode::Phi), 2);
+}
+
+TEST_CASE("generic returned variants decode using substituted payload widths") {
+    const LirPackage package = VariantLir(R"(
+        variant Maybe<T> { None, Some(T) }
+        func Byte() -> Maybe<uint8> { return Maybe::Some<uint8>(7u8); }
+        func Wide() -> Maybe<uint128> { return Maybe::Some<uint128>(9u128); }
+        func ReadByte() -> int { return match Byte() { .None => 0, .Some(value) => value as int }; }
+        func ReadWide() -> int { return match Wide() { .None => 0, .Some(value) => value as int }; }
+    )");
+    const LirFunc &byte = LirFunction(package, "ReadByte");
+    const LirFunc &wide = LirFunction(package, "ReadWide");
+    CHECK_GE(CountOpcode(byte, LirOpcode::Call), 1);
+    CHECK_GE(CountOpcode(wide, LirOpcode::Call), 1);
+    CHECK_GE(CountOpcode(byte, LirOpcode::IndexPtr), 1);
+    CHECK_GE(CountOpcode(wide, LirOpcode::IndexPtr), 1);
+    CHECK_EQ(CountOpcode(byte, LirOpcode::Shr), 0);
+    CHECK_EQ(CountOpcode(wide, LirOpcode::Shr), 0);
+}
+
+TEST_CASE("borrowed variant subjects use the same tag-gated payload offsets") {
+    const LirPackage package = VariantLir(R"(
+        variant Packet { Empty, Pair(int32, int64) }
+        func Decode(value: *Packet) -> int64 {
+            return match *value { .Empty => -1i64, .Pair(first, second) => (first as int64) + second };
+        }
+    )");
+    const LirFunc &decode = LirFunction(package, "Decode");
+    CHECK_GE(CountOpcode(decode, LirOpcode::CmpEq), 2);
+    CHECK_GE(CountOpcode(decode, LirOpcode::IndexPtr), 2);
+    CHECK_EQ(CountOpcode(decode, LirOpcode::Shr), 0);
+    CHECK(std::ranges::any_of(
+        decode.blocks, [](const LirBlock &block) { return block.label.starts_with("variant.pattern.payload"); }));
 }

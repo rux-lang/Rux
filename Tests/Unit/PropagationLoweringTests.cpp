@@ -91,10 +91,13 @@ TEST_CASE("propagation lowers to a match that tests the operand's variants") {
     const auto *success = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
     REQUIRE(success != nullptr);
     CHECK_EQ(success->path, std::vector<std::string>{"Result", "Success"});
+    CHECK_EQ(success->form, CaseTypeForm::Variant);
     CHECK(success->hasPayload);
+    CHECK_EQ(success->payloadTypes, std::vector<TypeRef>{TypeRef::MakeInt32()});
     const auto *failure = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
     REQUIRE(failure != nullptr);
     CHECK_EQ(failure->path, std::vector<std::string>{"Result", "Error"});
+    CHECK_EQ(failure->form, CaseTypeForm::Variant);
     CHECK(failure->hasPayload);
 
     // The success arm evaluates to the payload the pattern bound, so nothing is copied through a temporary slot.

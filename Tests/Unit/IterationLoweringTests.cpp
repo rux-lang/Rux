@@ -109,10 +109,13 @@ TEST_CASE("a loop over an iterator advances it and matches what it reports") {
     const auto *item = dynamic_cast<const HirEnumPattern *>(step.arms[0].pattern.get());
     REQUIRE(item != nullptr);
     CHECK_EQ(item->path, std::vector<std::string>{"Option", "Some"});
+    CHECK_EQ(item->form, CaseTypeForm::Variant);
     CHECK(item->hasPayload);
+    CHECK_EQ(item->payloadTypes, std::vector<TypeRef>{TypeRef::MakeInt32()});
     const auto *end = dynamic_cast<const HirEnumPattern *>(step.arms[1].pattern.get());
     REQUIRE(end != nullptr);
     CHECK_EQ(end->path, std::vector<std::string>{"Option", "None"});
+    CHECK_EQ(end->form, CaseTypeForm::Variant);
     CHECK_FALSE(end->hasPayload);
 }
 

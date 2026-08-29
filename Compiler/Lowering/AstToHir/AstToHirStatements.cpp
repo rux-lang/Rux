@@ -414,6 +414,7 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
                 lowered->hasPayload = !variant->fields.empty() || !variant->namedFields.empty();
             }
             if (const auto enumIt = enumDecls.find(enumName); enumIt != enumDecls.end()) {
+                lowered->form = enumIt->second->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
                 const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
                 const auto &parameters = enumIt->second->typeParams;
                 const std::size_t count = std::min(parameters.size(), typeArguments.size());
@@ -425,6 +426,15 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
                         if (auto discriminant = LookupEnumVariantDiscriminant(enumName, unitVariant.name)) {
                             lowered->unitDiscriminants.push_back(*discriminant);
                         }
+                    }
+                }
+                if (variant) {
+                    lowered->payloadTypes.reserve(variant->fields.size() + variant->namedFields.size());
+                    for (const auto &field : variant->fields) {
+                        lowered->payloadTypes.push_back(ResolveTypeWithSubstitution(*field, substitutions));
+                    }
+                    for (const auto &field : variant->namedFields) {
+                        lowered->payloadTypes.push_back(ResolveTypeWithSubstitution(*field.type, substitutions));
                     }
                 }
             }

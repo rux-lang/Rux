@@ -97,9 +97,11 @@ struct HirRangePattern : HirPattern {
 struct HirEnumPattern : HirPattern {
     std::vector<std::string> path;
     TypeRef resolvedType;
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     std::optional<std::string> discriminant;
     bool hasPayload = false;
     std::vector<std::string> unitDiscriminants;
+    std::vector<TypeRef> payloadTypes;
     std::vector<std::size_t> argIndices;
     std::vector<HirPatternPtr> args;
 };
