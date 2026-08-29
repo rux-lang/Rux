@@ -62,8 +62,16 @@ std::string Parser::ParseDocumentation() {
             documentation.clear();
         if (!documentation.empty())
             documentation += '\n';
-        documentation += comment.text;
-        previousLine = comment.location.line;
+        // Compatibility until the shared documentation normalizer is introduced: the lexer deliberately keeps the
+        // raw spelling while the existing parser still stores the content of line documentation comments.
+        std::string_view content = comment.text;
+        if (content.starts_with("///")) {
+            content.remove_prefix(3);
+            if (content.starts_with(' '))
+                content.remove_prefix(1);
+        }
+        documentation += content;
+        previousLine = comment.endLocation.line;
     }
     if (previousLine != 0 && CurrentLocation().line > previousLine + 1)
         documentation.clear();

@@ -11,10 +11,34 @@
 namespace Rux {
 using LexerDiagnostic = Diagnostic;
 
+/// The four comment spellings recognized by the lexer. Only the two exact documentation forms become parser tokens;
+/// every form remains available as lossless trivia for formatting and tooling.
+enum class CommentKind : std::uint8_t {
+    Line,
+    Block,
+    DocumentationLine,
+    DocumentationBlock,
+};
+
+[[nodiscard]] constexpr bool IsDocumentationComment(const CommentKind kind) noexcept {
+    return kind == CommentKind::DocumentationLine || kind == CommentKind::DocumentationBlock;
+}
+
+/// One source comment with its exact spelling. The range excludes a line comment's line terminator and includes both
+/// delimiters of a block comment. An unterminated block reaches EOF and is accompanied by the usual lexer diagnostic.
+struct CommentTrivia {
+    CommentKind kind = CommentKind::Line;
+    std::string raw;
+    SourceRange range;
+    bool lineLeading = false;
+    bool terminated = true;
+};
+
 /// The token stream and everything that went wrong producing it. A result with errors still carries a usable stream,
 /// since scanning recovers rather than stopping.
 struct LexerResult {
     std::vector<Token> tokens;
+    std::vector<CommentTrivia> comments;
     std::vector<LexerDiagnostic> diagnostics;
     [[nodiscard]] bool HasErrors() const noexcept;
 };
@@ -25,8 +49,8 @@ struct LexerResult {
  * Scanning never stops at the first bad character: an unrecognized byte or an unterminated literal becomes a diagnostic
  * and a token, so the parser still receives a complete stream and one run can report many problems.
  *
- * A `///` doc comment is a token here rather than trivia, because Rux attaches it to the declaration that follows for
- * `rux doc` to read. Ordinary line and block comments are skipped instead, and block comments nest.
+ * Exact line and block documentation comments are tokens because Rux attaches them to the declaration that follows.
+ * Every comment is also retained as lossless trivia for formatters and other source tools, and block comments nest.
  */
 class Lexer {
 public:
@@ -60,6 +84,7 @@ private:
 
     // Output accumulators
     std::vector<Token> tokens;
+    std::vector<CommentTrivia> comments;
     std::vector<LexerDiagnostic> diagnostics;
 
     // Core scanning loop
@@ -78,10 +103,14 @@ private:
     [[nodiscard]] SourceLocation CurrentLocation() const noexcept;
 
     // Whitespace / comments
-    void SkipWhitespace();
-    void SkipLineComment();  // // …
-    void SkipBlockComment(); // /* … */  (supports nesting)
-    Token ScanDocComment(SourceLocation start);
+    [[nodiscard]] bool SkipWhitespace();
+    [[nodiscard]] bool IsLineLeading(std::size_t offset) const noexcept;
+    [[nodiscard]] bool IsDocumentationLineStart() const noexcept;
+    [[nodiscard]] bool IsDocumentationBlockStart() const noexcept;
+    SourceRange ScanLineComment(CommentKind kind);
+    SourceRange ScanBlockComment(CommentKind kind); // supports nesting
+    Token ScanDocumentationLine(SourceLocation start);
+    Token ScanDocumentationBlock(SourceLocation start);
 
     // Scanners for each token family
     Token ScanIdent(SourceLocation start);

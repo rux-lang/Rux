@@ -3,6 +3,7 @@
 #include <doctest.h>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace Rux;
 
@@ -21,6 +22,263 @@ TEST_CASE("Lexer tokenizes a simple function") {
     REQUIRE(!result.tokens.empty());
     CHECK(result.tokens.front().Is(TokenKind::FuncKeyword));
     CHECK(result.tokens.back().IsEof());
+}
+
+TEST_CASE("Lexer classifies only exact documentation comment markers") {
+    const auto result = Lex("// ordinary\n"
+                            "//// decorative line\n"
+                            "/**/ /*** decorative block */\n"
+                            "/// line documentation\n"
+                            "/** block documentation */\n"
+                            "let value = 1;\n");
+
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 6);
+    CHECK(result.comments[0].kind == CommentKind::Line);
+    CHECK(result.comments[1].kind == CommentKind::Line);
+    CHECK(result.comments[2].kind == CommentKind::Block);
+    CHECK(result.comments[3].kind == CommentKind::Block);
+    CHECK(result.comments[4].kind == CommentKind::DocumentationLine);
+    CHECK(result.comments[5].kind == CommentKind::DocumentationBlock);
+
+    CHECK_EQ(result.comments[0].raw, "// ordinary");
+    CHECK_EQ(result.comments[1].raw, "//// decorative line");
+    CHECK_EQ(result.comments[2].raw, "/**/");
+    CHECK_EQ(result.comments[3].raw, "/*** decorative block */");
+    CHECK_EQ(result.comments[4].raw, "/// line documentation");
+    CHECK_EQ(result.comments[5].raw, "/** block documentation */");
+
+    std::vector<std::string> documentationTokens;
+    for (const auto &token : result.tokens) {
+        if (token.Is(TokenKind::DocComment)) {
+            documentationTokens.push_back(token.text);
+        }
+    }
+    REQUIRE_EQ(documentationTokens.size(), 2);
+    CHECK_EQ(documentationTokens[0], "/// line documentation");
+    CHECK_EQ(documentationTokens[1], "/** block documentation */");
+}
+
+TEST_CASE("Lexer records lossless half-open comment ranges") {
+    const std::string source = "  // first\r\n"
+                               "value /* second\n"
+                               " nested */\n"
+                               "\t/// third\r\n"
+                               "/** fourth\n"
+                               " * line\n"
+                               " */tail";
+    const auto result = Lex(source);
+
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 4);
+    for (const auto &comment : result.comments) {
+        REQUIRE(comment.range.end.offset >= comment.range.start.offset);
+        CHECK_EQ(comment.range.Length(), comment.raw.size());
+        CHECK_EQ(source.substr(comment.range.start.offset, comment.range.Length()), comment.raw);
+        CHECK_FALSE(comment.range.Empty());
+        CHECK(comment.terminated);
+    }
+
+    CHECK(result.comments[0].range.start == SourceLocation{1, 3, 2});
+    CHECK(result.comments[0].range.end == SourceLocation{1, 11, 10});
+    CHECK(result.comments[1].range.start.line == 2);
+    CHECK(result.comments[1].range.start.column == 7);
+    CHECK(result.comments[1].range.end.line == 3);
+    CHECK(result.comments[2].range.start.line == 4);
+    CHECK(result.comments[2].range.start.column == 2);
+    CHECK_EQ(result.comments[2].raw, "/// third");
+    CHECK(result.comments[3].range.start.line == 5);
+    CHECK(result.comments[3].range.end.line == 7);
+
+    CHECK(result.comments[0].lineLeading);
+    CHECK_FALSE(result.comments[1].lineLeading);
+    CHECK(result.comments[2].lineLeading);
+    CHECK(result.comments[3].lineLeading);
+}
+
+TEST_CASE("Documentation tokens retain attachment metadata") {
+    const auto result = Lex("value; /// trailing\n"
+                            "/* divider */\n"
+                            "/// leading\n"
+                            "/** block\n"
+                            " */\n"
+                            "func Next();\n");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 4);
+
+    std::vector<const Token *> documentation;
+    for (const auto &token : result.tokens) {
+        if (token.Is(TokenKind::DocComment)) {
+            documentation.push_back(&token);
+        }
+    }
+    REQUIRE_EQ(documentation.size(), 3);
+
+    CHECK_EQ(documentation[0]->text, "/// trailing");
+    CHECK_FALSE(documentation[0]->lineLeading);
+    CHECK_FALSE(documentation[0]->precededByOrdinaryComment);
+    CHECK(documentation[0]->location == SourceLocation{1, 8, 7});
+    CHECK(documentation[0]->endLocation == SourceLocation{1, 20, 19});
+
+    CHECK_EQ(documentation[1]->text, "/// leading");
+    CHECK(documentation[1]->lineLeading);
+    CHECK(documentation[1]->precededByOrdinaryComment);
+    CHECK(documentation[1]->location == result.comments[2].range.start);
+    CHECK(documentation[1]->endLocation == result.comments[2].range.end);
+
+    CHECK_EQ(documentation[2]->text, "/** block\n */");
+    CHECK(documentation[2]->lineLeading);
+    CHECK_FALSE(documentation[2]->precededByOrdinaryComment);
+    CHECK(documentation[2]->location == result.comments[3].range.start);
+    CHECK(documentation[2]->endLocation == result.comments[3].range.end);
+}
+
+TEST_CASE("Ordinary and documentation block comments nest") {
+    const auto result = Lex("/* outer /* nested */ ordinary */\n"
+                            "/** outer /* nested */ documentation */\n"
+                            "func Done();\n");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 2);
+    CHECK(result.comments[0].kind == CommentKind::Block);
+    CHECK(result.comments[1].kind == CommentKind::DocumentationBlock);
+    CHECK_EQ(result.comments[0].raw, "/* outer /* nested */ ordinary */");
+    CHECK_EQ(result.comments[1].raw, "/** outer /* nested */ documentation */");
+    CHECK(result.comments[0].terminated);
+    CHECK(result.comments[1].terminated);
+
+    REQUIRE(!result.tokens.empty());
+    CHECK(result.tokens[0].Is(TokenKind::DocComment));
+    CHECK_EQ(result.tokens[0].text, result.comments[1].raw);
+}
+
+TEST_CASE("Lexer retains unterminated ordinary and documentation blocks") {
+    SUBCASE("ordinary block") {
+        const auto result = Lex("/* still open");
+        REQUIRE(result.HasErrors());
+        REQUIRE_EQ(result.comments.size(), 1);
+        CHECK(result.comments[0].kind == CommentKind::Block);
+        CHECK_EQ(result.comments[0].raw, "/* still open");
+        CHECK_FALSE(result.comments[0].terminated);
+        CHECK_EQ(result.comments[0].range.end.offset, 13);
+        CHECK(result.tokens.back().IsEof());
+    }
+
+    SUBCASE("documentation block") {
+        const auto result = Lex("/** still open");
+        REQUIRE(result.HasErrors());
+        REQUIRE_EQ(result.comments.size(), 1);
+        CHECK(result.comments[0].kind == CommentKind::DocumentationBlock);
+        CHECK_EQ(result.comments[0].raw, "/** still open");
+        CHECK_FALSE(result.comments[0].terminated);
+        REQUIRE_EQ(result.tokens.size(), 2);
+        CHECK(result.tokens[0].Is(TokenKind::DocComment));
+        CHECK_EQ(result.tokens[0].endLocation.offset, 14);
+        CHECK(result.tokens.back().IsEof());
+    }
+}
+
+TEST_CASE("Comment delimiters in literals do not produce trivia") {
+    const auto result = Lex(R"(let a = "/// not documentation";)"
+                            R"(let b = "/** not a block */";)"
+                            R"(let c = "/* ordinary */ // still text";)"
+                            "\n// actual comment\n");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 1);
+    CHECK(result.comments[0].kind == CommentKind::Line);
+    CHECK_EQ(result.comments[0].raw, "// actual comment");
+
+    std::size_t stringCount = 0;
+    for (const auto &token : result.tokens) {
+        if (token.Is(TokenKind::StringLiteral)) {
+            ++stringCount;
+        }
+        CHECK_FALSE(token.Is(TokenKind::DocComment));
+    }
+    CHECK_EQ(stringCount, 3);
+}
+
+TEST_CASE("Comments preserve spacing-sensitive token separation") {
+    const auto result = Lex("a?; a /* gap */ ?; [] [/* gap */] []= [/* gap */] =");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 3);
+    REQUIRE_EQ(result.tokens.size(), 17);
+
+    CHECK(result.tokens[1].Is(TokenKind::Question));
+    CHECK_FALSE(result.tokens[1].precededBySpace);
+    CHECK(result.tokens[4].Is(TokenKind::Question));
+    CHECK(result.tokens[4].precededBySpace);
+
+    CHECK(result.tokens[7].Is(TokenKind::RightBracket));
+    CHECK_FALSE(result.tokens[7].precededBySpace);
+    CHECK(result.tokens[9].Is(TokenKind::RightBracket));
+    CHECK(result.tokens[9].precededBySpace);
+    CHECK(result.tokens[11].Is(TokenKind::RightBracket));
+    CHECK_FALSE(result.tokens[11].precededBySpace);
+    CHECK(result.tokens[12].Is(TokenKind::Assign));
+    CHECK_FALSE(result.tokens[12].precededBySpace);
+    CHECK(result.tokens[14].Is(TokenKind::RightBracket));
+    CHECK(result.tokens[14].precededBySpace);
+    CHECK(result.tokens[15].Is(TokenKind::Assign));
+    CHECK(result.tokens[15].precededBySpace);
+}
+
+TEST_CASE("Line comment ranges exclude LF and CRLF terminators") {
+    const std::string source = "/// windows\r\n"
+                               "// posix\n"
+                               "let value = 0;\n";
+    const auto result = Lex(source);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 2);
+
+    CHECK_EQ(result.comments[0].raw, "/// windows");
+    CHECK_EQ(result.comments[0].range.end.offset, source.find('\r'));
+    CHECK(result.comments[0].range.end == SourceLocation{1, 12, 11});
+    CHECK_EQ(result.comments[1].raw, "// posix");
+    CHECK_EQ(result.comments[1].range.end.offset, source.find('\n', source.find('\n') + 1));
+    CHECK(result.comments[1].range.end.line == 2);
+
+    REQUIRE(result.tokens[0].Is(TokenKind::DocComment));
+    CHECK(result.tokens[0].endLocation == result.comments[0].range.end);
+    CHECK(result.tokens[1].Is(TokenKind::LetKeyword));
+    CHECK_EQ(result.tokens[1].location.line, 3);
+}
+
+TEST_CASE("Empty documentation forms remain exact lossless comments") {
+    const auto result = Lex("///\n"
+                            "/// \n"
+                            "/** */\n"
+                            "/**\n"
+                            " */\n");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.comments.size(), 4);
+    REQUIRE_EQ(result.tokens.size(), 5);
+
+    static constexpr std::string_view spellings[] = {"///", "/// ", "/** */", "/**\n */"};
+    for (std::size_t index = 0; index < std::size(spellings); ++index) {
+        CAPTURE(index);
+        CHECK(IsDocumentationComment(result.comments[index].kind));
+        CHECK_EQ(result.comments[index].raw, spellings[index]);
+        CHECK(result.tokens[index].Is(TokenKind::DocComment));
+        CHECK_EQ(result.tokens[index].text, spellings[index]);
+        CHECK(result.tokens[index].location == result.comments[index].range.start);
+        CHECK(result.tokens[index].endLocation == result.comments[index].range.end);
+    }
+}
+
+TEST_CASE("Lexer assigns half-open ranges to ordinary tokens") {
+    const std::string source = "name += \"value\";";
+    const auto result = Lex(source);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.tokens.size(), 5);
+
+    for (const auto &token : result.tokens) {
+        REQUIRE(token.endLocation.offset >= token.location.offset);
+        if (!token.IsEof()) {
+            const std::uint32_t length = token.endLocation.offset - token.location.offset;
+            CHECK_EQ(source.substr(token.location.offset, length), token.text);
+        }
+    }
+    CHECK(result.tokens.back().location == result.tokens.back().endLocation);
 }
 
 TEST_CASE("Lexer returns source-file open failures as diagnostics") {
