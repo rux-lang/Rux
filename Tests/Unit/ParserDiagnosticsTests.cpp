@@ -39,6 +39,16 @@ bool HasDiagnosticContaining(const ParseResult &result, const std::string_view t
     return false;
 }
 
+std::size_t CountDiagnosticsContaining(const ParseResult &result, const std::string_view text) {
+    std::size_t count = 0;
+    for (const auto &diagnostic : result.diagnostics) {
+        if (diagnostic.message.contains(text)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 std::string DiagnosticMessages(const ParseResult &result) {
     std::string messages;
     for (const auto &diagnostic : result.diagnostics) {
@@ -164,6 +174,230 @@ TEST_CASE("variant diagnostics identify case grammar roles") {
             CHECK_EQ(*diagnostic->help, testCase.help);
         }
     }
+}
+
+TEST_CASE("enum declarations reject generic and payload shapes with migration help") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+        std::string_view help;
+    };
+
+    constexpr Case cases[] = {
+        {
+            "enum Optional<T> { None, Some }",
+            "enum 'Optional' cannot declare type parameters",
+            "remove the type parameters or use 'variant' for cases that carry data",
+        },
+        {
+            "enum Optional { None, Some(int) }",
+            "enum 'Optional' cannot declare payloads",
+            "use 'variant' for cases that carry data",
+        },
+        {
+            "enum Optional { None, Some { value: int; } }",
+            "enum 'Optional' cannot declare payloads",
+            "use 'variant' for cases that carry data",
+        },
+    };
+
+    for (const Case &testCase : cases) {
+        CAPTURE(testCase.source);
+        const ParseResult parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        REQUIRE_EQ(parsed.diagnostics.size(), 1);
+        const Diagnostic *diagnostic = FindDiagnostic(parsed, testCase.expected);
+        REQUIRE(diagnostic != nullptr);
+        REQUIRE(diagnostic->help.has_value());
+        CHECK_EQ(*diagnostic->help, testCase.help);
+
+        REQUIRE_EQ(parsed.module.items.size(), 1);
+        const auto *enumeration = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+        REQUIRE(enumeration != nullptr);
+        CHECK_FALSE(enumeration->IsVariant());
+        CHECK_EQ(enumeration->variants.size(), 2);
+    }
+}
+
+TEST_CASE("an invalid enum shape is diagnosed once while its complete body is retained") {
+    const ParseResult parsed = ParseSource(R"(
+        enum Legacy<T> {
+            Empty,
+            Tuple(T),
+            Named { value: T; },
+            Another(T, int)
+        }
+    )");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    REQUIRE_EQ(parsed.diagnostics.size(), 1);
+    CHECK_EQ(CountDiagnosticsContaining(parsed, "enum 'Legacy' cannot"), 1);
+    CHECK(FindDiagnostic(parsed, "enum 'Legacy' cannot declare type parameters") != nullptr);
+
+    REQUIRE_EQ(parsed.module.items.size(), 1);
+    const auto *legacy = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    REQUIRE(legacy != nullptr);
+    REQUIRE_EQ(legacy->typeParams.size(), 1);
+    REQUIRE_EQ(legacy->variants.size(), 4);
+    CHECK_EQ(legacy->variants[0].name, "Empty");
+    CHECK_EQ(legacy->variants[1].fields.size(), 1);
+    CHECK_EQ(legacy->variants[2].namedFields.size(), 1);
+    CHECK_EQ(legacy->variants[3].fields.size(), 2);
+}
+
+TEST_CASE("variant declarations reject source-level tag controls with opaque-tag help") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+        std::string_view help;
+    };
+
+    constexpr Case cases[] = {
+        {
+            "variant Status: uint8 { Ready }",
+            "variant 'Status' cannot specify a base type",
+            "variant tags are private; remove ': Type'",
+        },
+        {
+            "variant Status { Ready = 7 }",
+            "variant 'Status' cannot assign case discriminants",
+            "variant tags are private; remove '= value'",
+        },
+        {
+            "variant Status: uint8 { Waiting = 1, Ready = 2 }",
+            "variant 'Status' cannot specify a base type",
+            "variant tags are private; remove ': Type'",
+        },
+    };
+
+    for (const Case &testCase : cases) {
+        CAPTURE(testCase.source);
+        const ParseResult parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        REQUIRE_EQ(parsed.diagnostics.size(), 1);
+        const Diagnostic *diagnostic = FindDiagnostic(parsed, testCase.expected);
+        REQUIRE(diagnostic != nullptr);
+        REQUIRE(diagnostic->help.has_value());
+        CHECK_EQ(*diagnostic->help, testCase.help);
+
+        REQUIRE_EQ(parsed.module.items.size(), 1);
+        const auto *variant = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+        REQUIRE(variant != nullptr);
+        CHECK(variant->IsVariant());
+        CHECK_FALSE(variant->variants.empty());
+    }
+}
+
+TEST_CASE("declaration contract errors recover at later cases and declarations") {
+    const ParseResult parsed = ParseSource(R"(
+        enum Legacy {
+            Empty,
+            Tuple(int),
+            Named { value: bool; },
+            Final
+        }
+        func Between();
+        variant Exposed: uint16 {
+            Empty = 0,
+            Tuple(int) = 1,
+            Named { value: bool; } = 2,
+            Final = 3
+        }
+        func After();
+    )");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    REQUIRE_EQ(parsed.diagnostics.size(), 2);
+    CHECK(FindDiagnostic(parsed, "enum 'Legacy' cannot declare payloads") != nullptr);
+    CHECK(FindDiagnostic(parsed, "variant 'Exposed' cannot specify a base type") != nullptr);
+    REQUIRE_EQ(parsed.module.items.size(), 4);
+
+    const auto *legacy = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    const auto *between = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    const auto *exposed = dynamic_cast<const EnumDecl *>(parsed.module.items[2].get());
+    const auto *after = dynamic_cast<const FuncDecl *>(parsed.module.items[3].get());
+    REQUIRE(legacy != nullptr);
+    REQUIRE(between != nullptr);
+    REQUIRE(exposed != nullptr);
+    REQUIRE(after != nullptr);
+    CHECK_EQ(legacy->variants.size(), 4);
+    CHECK_EQ(between->name, "Between");
+    CHECK_EQ(exposed->variants.size(), 4);
+    CHECK_EQ(after->name, "After");
+}
+
+TEST_CASE("malformed variant tag controls keep their grammar diagnostics") {
+    const ParseResult missingBase = ParseSource("variant Missing: { Ready }");
+    REQUIRE_EQ(missingBase.diagnostics.size(), 1);
+    CHECK(FindDiagnostic(missingBase, "expected a type before '{'") != nullptr);
+    CHECK_EQ(CountDiagnosticsContaining(missingBase, "cannot specify a base type"), 0);
+
+    const ParseResult missingValue = ParseSource("variant Missing { Ready = }");
+    REQUIRE_EQ(missingValue.diagnostics.size(), 1);
+    CHECK(FindDiagnostic(missingValue, "expected an integer variant discriminant after '=' before '}'") != nullptr);
+    CHECK_EQ(CountDiagnosticsContaining(missingValue, "cannot assign case discriminants"), 0);
+}
+
+TEST_CASE("valid enum and variant contracts preserve their complete AST shapes") {
+    const ParseResult parsed = ParseSource(R"(
+        enum ByteState: uint8 {
+            Empty,
+            Ready = 4,
+            Finished
+        }
+        enum SignedState: int8 {
+            Before = -1,
+            At = 0,
+            After
+        }
+        variant Signal<T: Display> {
+            Waiting,
+            Ready,
+            Payload(T),
+            Named { value: T; }
+        }
+        variant UnitOnly {
+            First,
+            Second
+        }
+    )");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    REQUIRE_FALSE(parsed.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 4);
+
+    const auto *byteState = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    REQUIRE(byteState != nullptr);
+    CHECK_FALSE(byteState->IsVariant());
+    REQUIRE(byteState->baseType != nullptr);
+    REQUIRE_EQ(byteState->variants.size(), 3);
+    CHECK_FALSE(byteState->variants[0].discriminant.has_value());
+    CHECK_EQ(byteState->variants[1].discriminant, "4");
+    CHECK_FALSE(byteState->variants[2].discriminant.has_value());
+
+    const auto *signedState = dynamic_cast<const EnumDecl *>(parsed.module.items[1].get());
+    REQUIRE(signedState != nullptr);
+    CHECK_EQ(signedState->variants[0].discriminant, "-1");
+    CHECK_EQ(signedState->variants[1].discriminant, "0");
+    CHECK_FALSE(signedState->variants[2].discriminant.has_value());
+
+    const auto *signal = dynamic_cast<const EnumDecl *>(parsed.module.items[2].get());
+    REQUIRE(signal != nullptr);
+    CHECK(signal->IsVariant());
+    REQUIRE_EQ(signal->typeParams.size(), 1);
+    REQUIRE_EQ(signal->typeParams[0].bounds.size(), 1);
+    CHECK(signal->baseType == nullptr);
+    REQUIRE_EQ(signal->variants.size(), 4);
+    CHECK_EQ(signal->variants[2].fields.size(), 1);
+    CHECK_EQ(signal->variants[3].namedFields.size(), 1);
+    for (const auto &variantCase : signal->variants) {
+        CHECK_FALSE(variantCase.discriminant.has_value());
+    }
+
+    const auto *unitOnly = dynamic_cast<const EnumDecl *>(parsed.module.items[3].get());
+    REQUIRE(unitOnly != nullptr);
+    CHECK(unitOnly->IsVariant());
+    CHECK_EQ(unitOnly->variants.size(), 2);
 }
 
 TEST_CASE("variant declaration recovery reaches following cases and declarations") {

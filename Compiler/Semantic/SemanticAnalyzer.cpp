@@ -2176,33 +2176,37 @@ private:
         AppendTypeParameterNames(currentTypeParams, d.typeParams);
         const ScopedTypeParameterBounds boundScope(*this, &d.typeParams, /*replaceEnclosing=*/false);
         const TypeRef baseType = EnumBaseType(d);
-        if (!baseType.IsUnknown() && !baseType.IsInteger()) {
+        if (!d.IsVariant() && !baseType.IsUnknown() && !baseType.IsInteger()) {
             EmitError(d.location, std::format("enum '{}' base type must be an integer type", d.name));
         }
+        const std::string_view declarationName = d.IsVariant() ? "variant" : "enum";
+        const std::string_view caseName = d.IsVariant() ? "case" : "enumerator";
         std::unordered_set<std::string> seen;
         for (const auto &variant : d.variants) {
             if (!seen.insert(variant.name).second) {
-                EmitError(variant.location, std::format("duplicate variant '{}' in enum '{}'", variant.name, d.name));
+                EmitError(variant.location,
+                          std::format("duplicate {} '{}' in {} '{}'", caseName, variant.name, declarationName, d.name));
             }
             if (variant.discriminant && (!variant.fields.empty() || !variant.namedFields.empty())) {
-                EmitError(variant.location, std::format("enum variant '{}::{}' cannot have "
-                                                        "both fields and a discriminant",
-                                                        d.name, variant.name));
+                EmitError(variant.location, std::format("{} '{}::{}' cannot have both fields and a discriminant",
+                                                        caseName, d.name, variant.name));
             }
             for (const auto &f : variant.fields) {
                 ValidateArrayType(*f);
-                ValidateStoredType(ResolveType(*f), f->location,
-                                   std::format("payload in enum variant '{}::{}'", d.name, variant.name));
+                ValidateStoredType(
+                    ResolveType(*f), f->location,
+                    std::format("payload in {} {} '{}::{}'", declarationName, caseName, d.name, variant.name));
             }
             std::unordered_set<std::string> namedFields;
             for (const auto &f : variant.namedFields) {
                 if (!namedFields.insert(f.name).second) {
-                    EmitError(f.location, std::format("duplicate field '{}' in enum variant '{}::{}'", f.name, d.name,
-                                                      variant.name));
+                    EmitError(f.location, std::format("duplicate field '{}' in {} {} '{}::{}'", f.name, declarationName,
+                                                      caseName, d.name, variant.name));
                 }
                 ValidateArrayType(*f.type);
                 ValidateStoredType(ResolveType(*f.type), f.location,
-                                   std::format("field '{}' in enum variant '{}::{}'", f.name, d.name, variant.name));
+                                   std::format("field '{}' in {} {} '{}::{}'", f.name, declarationName, caseName,
+                                               d.name, variant.name));
             }
         }
         currentTypeParams = savedTypeParams;

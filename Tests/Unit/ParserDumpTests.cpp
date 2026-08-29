@@ -25,8 +25,8 @@ pub struct Box<T> {
     path: Core::Thing;
 }
 
-pub variant Choice<T>: uint8 {
-    Empty = 0,
+pub variant Choice<T> {
+    Empty,
     Pair(T, int32),
     Named { value: T; }
 }
@@ -94,8 +94,8 @@ asm func Raw() {
     Field 'references' : (&uint8)[N]
     Field 'tuple' : (int32,)
     Field 'path' : Core::Thing
-  pub VariantDecl 'Choice'<T> : uint8
-    Case 'Empty' = 0
+  pub VariantDecl 'Choice'<T>
+    Case 'Empty'
     Case 'Pair' (T, int32)
     Case 'Named' { value: T; }
   pub UnionDecl 'Bits'
@@ -242,10 +242,10 @@ variant Maybe<T> {
     Some(T)
 }
 
-pub variant NetworkResult<Value, Error: Display>: uint16 {
-    Pending = 0,
-    Success(Value) = 1,
-    Failure { code: int32; error: Error; } = 2
+pub variant NetworkResult<Value, Error: Display> {
+    Pending,
+    Success(Value),
+    Failure { code: int32; error: Error; }
 }
 
 enum State: uint8 {
@@ -278,20 +278,20 @@ enum State: uint8 {
     CHECK(networkResult->isPublic);
     REQUIRE_EQ(networkResult->typeParams.size(), 2);
     CHECK_EQ(networkResult->typeParams[1].bounds.size(), 1);
-    REQUIRE(networkResult->baseType != nullptr);
+    CHECK(networkResult->baseType == nullptr);
     REQUIRE_EQ(networkResult->variants.size(), 3);
     CHECK_EQ(networkResult->variants[0].name, "Pending");
     CHECK(networkResult->variants[0].fields.empty());
     CHECK(networkResult->variants[0].namedFields.empty());
-    CHECK(networkResult->variants[0].discriminant == "0");
+    CHECK_FALSE(networkResult->variants[0].discriminant.has_value());
     CHECK_EQ(networkResult->variants[1].name, "Success");
     CHECK_EQ(networkResult->variants[1].fields.size(), 1);
-    CHECK(networkResult->variants[1].discriminant == "1");
+    CHECK_FALSE(networkResult->variants[1].discriminant.has_value());
     CHECK_EQ(networkResult->variants[2].name, "Failure");
     CHECK_EQ(networkResult->variants[2].namedFields.size(), 2);
     CHECK_EQ(networkResult->variants[2].namedFields[0].name, "code");
     CHECK_EQ(networkResult->variants[2].namedFields[1].name, "error");
-    CHECK(networkResult->variants[2].discriminant == "2");
+    CHECK_FALSE(networkResult->variants[2].discriminant.has_value());
 
     const auto *state = dynamic_cast<const EnumDecl *>(parsed.module.items[2].get());
     REQUIRE(state != nullptr);
@@ -310,10 +310,10 @@ enum State: uint8 {
   VariantDecl 'Maybe'<T>
     Case 'None'
     Case 'Some' (T)
-  pub VariantDecl 'NetworkResult'<Value, Error: Display> : uint16
-    Case 'Pending' = 0
-    Case 'Success' (Value) = 1
-    Case 'Failure' { code: int32; error: Error; } = 2
+  pub VariantDecl 'NetworkResult'<Value, Error: Display>
+    Case 'Pending'
+    Case 'Success' (Value)
+    Case 'Failure' { code: int32; error: Error; }
   EnumDecl 'State' : uint8
     Variant 'Idle' = 0
     Variant 'Busy' = 1

@@ -378,7 +378,7 @@ TEST_CASE("a generic variant constructor checks the bound of its written type ar
             func Show() -> int;
         }
         struct Plain { value: int; }
-        variant Slot<T: Display>: int32 { Empty, Filled(T) }
+        variant Slot<T: Display> { Empty, Filled(T) }
         func Main() {
             let plain = Plain { value: 1 };
             let slot = Slot::Filled<Plain>(plain);
@@ -412,7 +412,7 @@ TEST_CASE("a generic variant checks the bound of its type argument once per writ
             func Show() -> int;
         }
         struct Plain { value: int; }
-        variant Slot<T: Display>: int32 { Empty, Filled(T) }
+        variant Slot<T: Display> { Empty, Filled(T) }
         func Reference(slot: Slot<Plain>) {}
     )");
 

@@ -278,6 +278,54 @@ TEST_CASE("enum constructors diagnose positional and named payload expectations"
              "field 'value' in initializer for 'Choice::Named' has type 'bool8', but its declaration requires 'int'");
 }
 
+TEST_CASE("enum and variant declarations retain kind-specific semantic validation") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Mode: bool {
+            Ready,
+            Ready
+        }
+        variant Message {
+            Empty,
+            Empty,
+            Named {
+                value: int;
+                value: bool;
+            },
+            Borrowed(&int)
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 5);
+    CHECK_EQ(diagnostics[0].message, "enum 'Mode' base type must be an integer type");
+    CHECK_EQ(diagnostics[1].message, "duplicate enumerator 'Ready' in enum 'Mode'");
+    CHECK_EQ(diagnostics[2].message, "duplicate case 'Empty' in variant 'Message'");
+    CHECK_EQ(diagnostics[3].message, "duplicate field 'value' in variant case 'Message::Named'");
+    CHECK_EQ(diagnostics[4].message, "payload in variant case 'Message::Borrowed' cannot store reference type '&int'");
+}
+
+TEST_CASE("narrow and signed enum bases and generic all-unit variants remain valid") {
+    CHECK(AnalyzeSource(R"(
+        enum ByteState: uint8 {
+            Empty,
+            Ready = 7,
+            Finished
+        }
+        enum SignedState: int8 {
+            Before = -1,
+            At = 0,
+            After
+        }
+        interface Display {
+            func Show(self: &Self);
+        }
+        variant Signal<T: Display> {
+            Waiting,
+            Ready
+        }
+    )")
+              .empty());
+}
+
 TEST_CASE("union initializers select one known field with its declared type") {
     CHECK(AnalyzeSource(R"(
         union Bits { integer: int32, decimal: float32 }
