@@ -671,6 +671,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             if (!variant->namedFields.empty()) {
                 auto lowered = std::make_unique<HirEnumConstructExpr>();
                 lowered->location = initializer->location;
+                lowered->form = enumDecl->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
                 lowered->type = EnumType(*enumDecl);
                 const std::size_t separator = initializer->typeName.find("::");
                 lowered->discriminant = LookupEnumVariantDiscriminant(initializer->typeName.substr(0, separator),
@@ -693,8 +694,16 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                 }
                 return lowered;
             }
-            return CompilerLiteral(initializer->location, EnumType(*enumDecl),
-                                   LookupEnumVariantDiscriminant(enumDecl->name, variant->name).value_or("0"));
+            const std::string discriminant = LookupEnumVariantDiscriminant(enumDecl->name, variant->name).value_or("0");
+            if (!enumDecl->IsVariant()) {
+                return CompilerLiteral(initializer->location, EnumType(*enumDecl), discriminant);
+            }
+            auto lowered = std::make_unique<HirEnumConstructExpr>();
+            lowered->location = initializer->location;
+            lowered->form = CaseTypeForm::Variant;
+            lowered->type = EnumType(*enumDecl);
+            lowered->discriminant = discriminant;
+            return lowered;
         }
 
         auto lowered = std::make_unique<HirStructInitExpr>();
@@ -734,8 +743,16 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                             lowered->type = EnumVariantConstructorType(*enumDecls.at(path->segments[0]), *variant);
                             return lowered;
                         }
-                        return CompilerLiteral(path->location, EnumType(*enumDecls.at(path->segments[0])),
-                                               *discriminant);
+                        const EnumDecl &declaration = *enumDecls.at(path->segments[0]);
+                        if (!declaration.IsVariant()) {
+                            return CompilerLiteral(path->location, EnumType(declaration), *discriminant);
+                        }
+                        auto lowered = std::make_unique<HirEnumConstructExpr>();
+                        lowered->location = path->location;
+                        lowered->form = CaseTypeForm::Variant;
+                        lowered->type = EnumType(declaration);
+                        lowered->discriminant = *discriminant;
+                        return lowered;
                     }
                 }
                 const TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;

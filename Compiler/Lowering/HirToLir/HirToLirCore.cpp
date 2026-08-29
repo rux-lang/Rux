@@ -47,17 +47,15 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
     genericPayloadEnums.clear();
     for (const auto &mod : hir.modules) {
         for (const auto &declaration : mod.enums) {
-            const bool packsPayload = std::ranges::any_of(
-                declaration.variants, [](const HirEnumVariant &variant) { return !variant.fields.empty(); });
             TypeRef tagType = TypeRef::MakeInt64();
-            if (!packsPayload && !declaration.baseType.IsUnknown()) {
+            if (!declaration.IsVariant() && !declaration.baseType.IsUnknown()) {
                 tagType = declaration.baseType;
             }
             enumTagTypes[declaration.name] = tagType;
             enumTagTypes[mod.name + "::" + declaration.name] = tagType;
             // Collected on the same terms, and for the same reason, as the tag widths above: which of these an
             // instantiation belongs to is what says a missing layout marker is a bug rather than a compact enum.
-            if (packsPayload && !declaration.typeParams.empty()) {
+            if (declaration.IsVariant() && !declaration.typeParams.empty()) {
                 genericPayloadEnums[declaration.name] = declaration.typeParams;
                 genericPayloadEnums[mod.name + "::" + declaration.name] = declaration.typeParams;
             }
