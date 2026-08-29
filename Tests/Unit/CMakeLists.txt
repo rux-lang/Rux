@@ -48,6 +48,7 @@ set(RUX_TEST_SOURCES
     ConditionalFoldingTests.cpp
     CredentialsTests.cpp
     DiagnosticsTests.cpp
+    DocumentationCommentTests.cpp
     DocumentationTests.cpp
     DropGlueLoweringTests.cpp
     EnumRepresentationTests.cpp
