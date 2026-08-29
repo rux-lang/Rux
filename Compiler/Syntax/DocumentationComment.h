@@ -26,6 +26,12 @@ struct DocumentationTag {
 enum class DocumentationIssueKind : std::uint8_t {
     Detached,
     Trailing,
+    UnknownTag,
+    MalformedTag,
+    DuplicateTag,
+    UnsafeReference,
+    ProseAfterTags,
+    MalformedContinuation,
 };
 
 struct DocumentationIssue {
@@ -40,6 +46,7 @@ struct DocumentationIssue {
 struct Documentation {
     std::string markdown;
     SourceRange range;
+    std::vector<SourceRange> lineRanges;
     std::vector<DocumentationTag> tags;
     std::vector<DocumentationIssue> issues;
 
@@ -51,4 +58,12 @@ struct Documentation {
 /// Normalize one exact line or block documentation comment into LF Markdown. The input retains its source delimiters;
 /// unrecognized input is returned unchanged so recovery never destroys authored text.
 [[nodiscard]] std::string NormalizeDocumentationComment(std::string_view raw);
+
+/// Locate each normalized logical line in the raw spelling. Nonempty content survives normalization verbatim, so these
+/// ranges remain exact even when delimiters, indentation, star margins, or CRLF line endings were removed.
+[[nodiscard]] std::vector<SourceRange> DocumentationCommentLineRanges(std::string_view raw, SourceLocation start,
+                                                                      std::string_view normalized);
+
+/// Split a terminal structured-tag block from the prose and populate ordered tags and recoverable syntax issues.
+void ParseDocumentationTags(Documentation &documentation);
 } // namespace Rux::Syntax

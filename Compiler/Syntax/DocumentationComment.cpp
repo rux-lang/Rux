@@ -128,6 +128,20 @@ std::string JoinLines(const std::vector<std::string_view> &lines) {
     return result;
 }
 
+SourceLocation AdvanceLocation(SourceLocation location, const std::string_view text) noexcept {
+    for (const char value : text) {
+        ++location.offset;
+        if (value == '\n') {
+            ++location.line;
+            location.column = 1;
+        }
+        else {
+            ++location.column;
+        }
+    }
+    return location;
+}
+
 std::string NormalizeLineComment(const std::string_view raw) {
     std::string_view content = raw;
     content.remove_prefix(3);
@@ -170,6 +184,41 @@ std::string NormalizeDocumentationComment(const std::string_view raw) {
         return NormalizeBlockComment(raw);
     }
     return std::string(raw);
+}
+
+std::vector<SourceRange> DocumentationCommentLineRanges(const std::string_view raw, const SourceLocation start,
+                                                        const std::string_view normalized) {
+    const std::vector<std::string_view> lines = SplitLines(normalized);
+    std::vector<SourceRange> ranges;
+    ranges.reserve(lines.size());
+
+    std::size_t searchOffset = 0;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+        const std::string_view line = lines[index];
+        std::size_t match = line.empty() ? searchOffset : raw.find(line, searchOffset);
+        if (match == std::string_view::npos) {
+            match = line.empty() ? raw.size() : raw.find(line);
+        }
+        if (match == std::string_view::npos) {
+            match = std::min(searchOffset, raw.size());
+        }
+
+        const SourceLocation lineStart = AdvanceLocation(start, raw.substr(0, match));
+        const SourceLocation lineEnd = AdvanceLocation(lineStart, raw.substr(match, line.size()));
+        ranges.push_back(SourceRange{lineStart, lineEnd});
+        searchOffset = match + line.size();
+
+        if (index + 1 < lines.size()) {
+            const std::size_t lineEndOffset = raw.find_first_of("\r\n", searchOffset);
+            if (lineEndOffset != std::string_view::npos) {
+                searchOffset = lineEndOffset + 1;
+                if (raw[lineEndOffset] == '\r' && searchOffset < raw.size() && raw[searchOffset] == '\n') {
+                    ++searchOffset;
+                }
+            }
+        }
+    }
+    return ranges;
 }
 
 bool Documentation::Empty() const noexcept {

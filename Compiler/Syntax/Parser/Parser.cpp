@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <format>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -81,13 +82,23 @@ Syntax::Documentation Parser::ParseDocumentation() {
         if (group.commentCount != 0) {
             group.documentation.markdown += '\n';
         }
-        group.documentation.markdown += Syntax::NormalizeDocumentationComment(comment.text);
+        const std::string normalized = Syntax::NormalizeDocumentationComment(comment.text);
+        std::vector<SourceRange> lineRanges =
+            Syntax::DocumentationCommentLineRanges(comment.text, comment.location, normalized);
+        group.documentation.markdown += normalized;
+        group.documentation.lineRanges.insert(group.documentation.lineRanges.end(),
+                                              std::make_move_iterator(lineRanges.begin()),
+                                              std::make_move_iterator(lineRanges.end()));
         group.documentation.range.end = comment.endLocation;
         ++group.commentCount;
     }
 
     if (groups.empty()) {
         return {};
+    }
+
+    for (Group &group : groups) {
+        Syntax::ParseDocumentationTags(group.documentation);
     }
 
     for (std::size_t index = 0; index + 1 < groups.size(); ++index) {
