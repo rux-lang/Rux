@@ -372,6 +372,7 @@ HirExprPtr AstToHirContext::LowerBoundIndirectCall(const CallExpr &call, const R
 HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const ResolvedCallableBinding &binding) {
     const auto *declaration = dynamic_cast<const EnumDecl *>(binding.selectedDeclaration);
     assert(declaration && binding.selectedVariant && "enum constructor binding is incomplete");
+    assert(binding.caseTypeForm == declaration->form && "case constructor binding lost its declaration form");
     std::vector<TypeRef> typeArguments;
     typeArguments.reserve(declaration->typeParams.size());
     for (const auto &parameter : declaration->typeParams) {

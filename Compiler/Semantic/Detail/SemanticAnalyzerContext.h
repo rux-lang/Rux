@@ -461,6 +461,22 @@ protected:
     /// @return nullptr when no enum of that name is in scope
     [[nodiscard]] const EnumDecl *EnumNamed(const std::string &name) const;
 
+    struct CaseTypeDeclaration {
+        const EnumDecl *declaration = nullptr;
+        EnumDecl::Form form = EnumDecl::Form::Enumeration;
+
+        [[nodiscard]] explicit operator bool() const noexcept {
+            return declaration != nullptr;
+        }
+
+        [[nodiscard]] bool IsVariant() const noexcept {
+            return form == EnumDecl::Form::Variant;
+        }
+    };
+
+    /// Resolve a scoped case-bearing type while retaining whether its source declaration used `enum` or `variant`.
+    [[nodiscard]] CaseTypeDeclaration CaseTypeNamed(const std::string &name) const;
+
     /// Report a suffixed integer literal whose magnitude the suffix's own type cannot hold.
     ///
     /// An unsuffixed literal is checked against whatever it is being assigned to; a suffixed one names its type

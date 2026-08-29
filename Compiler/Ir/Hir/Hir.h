@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ir/CaseTypeForm.h"
 #include "Lexer/Token.h"
 #include "Semantic/DropGlue.h"
 #include "Semantic/Type.h"
@@ -536,12 +537,17 @@ struct HirEnumVariant {
 };
 
 struct HirEnum {
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     std::string name;
     bool isPublic = false;
     std::vector<std::string> typeParams;
     TypeRef baseType;
     std::vector<HirEnumVariant> variants;
     SourceLocation location;
+
+    [[nodiscard]] bool IsVariant() const noexcept {
+        return form == CaseTypeForm::Variant;
+    }
 };
 
 // union Name { field: Type, ... }

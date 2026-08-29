@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ir/CaseTypeForm.h"
 #include "Semantic/DropGlue.h"
 #include "Semantic/Type.h"
 #include "Target/AsmInstr.h"
@@ -255,11 +256,16 @@ struct LirEnumVariant {
 };
 
 struct LirEnumDecl {
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     std::string name;
     bool isPublic = false;
     std::vector<std::string> typeParams;
     TypeRef baseType;
     std::vector<LirEnumVariant> variants;
+
+    [[nodiscard]] bool IsVariant() const noexcept {
+        return form == CaseTypeForm::Variant;
+    }
 };
 
 struct LirUnionField {

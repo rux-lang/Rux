@@ -569,6 +569,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
     }
     for (const auto &e : mod.enums) {
         LirEnumDecl ed;
+        ed.form = e.form;
         ed.name = e.name;
         ed.isPublic = e.isPublic;
         ed.typeParams = e.typeParams;

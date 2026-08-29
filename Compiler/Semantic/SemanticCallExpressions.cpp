@@ -686,6 +686,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                         binding.dispatch = ResolvedCallableBinding::DispatchKind::EnumVariant;
                         binding.selectedDeclaration = &decl;
                         binding.selectedVariant = variant;
+                        binding.caseTypeForm = decl.form;
                         const std::size_t substitutionCount = std::min(decl.typeParams.size(), typeArgs.size());
                         for (std::size_t i = 0; i < substitutionCount; ++i) {
                             binding.substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
