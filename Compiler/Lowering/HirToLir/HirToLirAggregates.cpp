@@ -11,6 +11,9 @@
 namespace Rux::HirToLirDetail {
 
 void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, const LirReg slot) {
+    if (e.form != CaseTypeForm::Variant) {
+        BuilderFailure("scalar enum reached tagged variant construction lowering");
+    }
     if (!IsAggregateEnumType(e.type)) {
         enumPayloadSlots[slot].clear();
         enumPayloadSlots[slot].reserve(e.payloads.size());
@@ -41,6 +44,10 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
         return;
     }
 
+    // A case may leave part or all of the maximum payload area unused. Initialize the complete representation before
+    // writing the active tag and payload so passing the value never exposes stale stack bytes to another function or
+    // target ABI.
+    EmitStore(EmitConst("0", e.type), slot, e.type);
     const TypeRef tagType = EnumTagType(e.type);
     LirReg tag = EmitConst(e.discriminant, tagType);
     EmitStore(tag, slot, tagType);

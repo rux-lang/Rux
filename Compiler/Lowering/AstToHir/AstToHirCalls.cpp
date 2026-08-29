@@ -381,6 +381,7 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
     const TypeRef constructor = EnumVariantConstructorType(*declaration, *binding.selectedVariant, typeArguments);
     auto lowered = std::make_unique<HirEnumConstructExpr>();
     lowered->location = call.location;
+    lowered->form = declaration->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
     lowered->type = constructor.inner.back();
     std::vector<HirPartialDropAction> completed;
     for (std::size_t i = 0; i < call.args.size(); ++i) {

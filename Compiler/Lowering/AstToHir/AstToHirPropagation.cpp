@@ -91,6 +91,7 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     }
     auto failureValue = std::make_unique<HirEnumConstructExpr>();
     failureValue->location = expression.location;
+    failureValue->form = CaseTypeForm::Variant;
     failureValue->type = returnType;
     failureValue->discriminant =
         LookupEnumVariantDiscriminant(fact->returnEnumName, fact->failureVariant).value_or("0");

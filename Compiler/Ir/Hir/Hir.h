@@ -405,6 +405,7 @@ struct HirMatchExpr : HirExpr {
 };
 
 struct HirEnumConstructExpr : HirExpr {
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     std::vector<HirExprPtr> payloads;
     std::string discriminant;
     /// Entry i destroys payloads [0, i) in reverse order if payload i exits early.
