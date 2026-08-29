@@ -38,6 +38,7 @@ public:
         std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
         std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
         std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+        std::unordered_map<const EnumPattern *, ResolvedCasePattern> &inputCasePatterns,
         std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
         std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
         std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
@@ -48,7 +49,7 @@ public:
         std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
         : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
                                   inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
-                                  inputValueConsumptions, inputValueCopies, inputCallableBindings,
+                                  inputCasePatterns, inputValueConsumptions, inputValueCopies, inputCallableBindings,
                                   inputDefaultConstructors, inputSymbolIdentities, inputVtableIdentities,
                                   inputTypeLayouts, inputSizeOfValues) {
     }
@@ -3084,15 +3085,19 @@ private:
                         }
                     }
                     const std::string &variantName = e->segments[1];
-                    if (const EnumDecl::Variant *variant = LookupEnumVariant(first->name, variantName)) {
+                    if (const auto resolved = LookupCase(first->name, variantName)) {
+                        const EnumDecl::Variant *variant = resolved->selectedCase;
                         if (e->segments.size() > 2) {
-                            EmitError(e->location, std::format("'{}' is an enum variant, not a module", variantName));
+                            EmitError(e->location,
+                                      std::format("'{}' is a {} {}, not a module", variantName,
+                                                  resolved->form == EnumDecl::Form::Variant ? "variant" : "enum",
+                                                  resolved->form == EnumDecl::Form::Variant ? "case" : "enumerator"));
                             return TypeRef::MakeUnknown();
                         }
                         if (!variant->fields.empty() || !variant->namedFields.empty()) {
-                            return EnumVariantConstructorType(*enumDecls.at(first->name), *variant);
+                            return EnumVariantConstructorType(*resolved->declaration, *variant);
                         }
-                        return EnumType(*enumDecls.at(first->name));
+                        return EnumType(*resolved->declaration);
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
@@ -3542,6 +3547,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
@@ -3551,9 +3557,9 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
     SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
-                                            expressionTypes, typeNodeTypes, patternTypes, valueConsumptions,
-                                            valueCopies, callableBindings, defaultConstructors, symbolIdentities,
-                                            vtableIdentities, typeLayouts, typeQueryValues);
+                                            expressionTypes, typeNodeTypes, patternTypes, casePatterns,
+                                            valueConsumptions, valueCopies, callableBindings, defaultConstructors,
+                                            symbolIdentities, vtableIdentities, typeLayouts, typeQueryValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -3569,6 +3575,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(expressionTypes),
                          std::move(typeNodeTypes),
                          std::move(patternTypes),
+                         std::move(casePatterns),
                          std::move(valueConsumptions),
                          std::move(valueCopies),
                          std::move(callableBindings),

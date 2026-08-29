@@ -70,11 +70,13 @@ bool PatternMatchesEveryValue(const Pattern &pattern) {
            dynamic_cast<const IdentPattern *>(&pattern) != nullptr;
 }
 
-/// Whether an enum pattern accounts for one variant, including its payload. Exhaustiveness over an enum is decided
-/// variant by variant, so a variant left unmatched is what the diagnostic names.
-bool EnumPatternCoversVariant(const EnumPattern &pattern, const EnumDecl::Variant &variant) {
-    const std::size_t fieldCount = variant.fields.size() + variant.namedFields.size();
-    if (pattern.args.size() + pattern.namedArgs.size() < fieldCount) {
+/// Whether a case pattern accounts for one case, including its payload. Exhaustiveness is decided case by case, so an
+/// uncovered declaration member is what the diagnostic names.
+bool CasePatternCoversCase(const EnumPattern &pattern, const EnumDecl::Variant &selectedCase,
+                           const EnumDecl::Form form) {
+    const std::size_t fieldCount = selectedCase.fields.size() + selectedCase.namedFields.size();
+    const std::size_t patternFieldCount = pattern.args.size() + pattern.namedArgs.size();
+    if ((form == EnumDecl::Form::Enumeration && patternFieldCount != 0) || patternFieldCount != fieldCount) {
         return false;
     }
     return std::ranges::all_of(pattern.args,
@@ -689,7 +691,7 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             variantName = enumPattern->path[0];
             if (subjectType.kind != TypeRef::Kind::Named) {
                 EmitError(enumPattern->location,
-                          std::format("cannot infer enum type for shorthand pattern '.{}' from subject type '{}'",
+                          std::format("cannot infer enum or variant type for shorthand pattern '.{}' from type '{}'",
                                       variantName, subjectType.ToString()));
             }
             else {
@@ -698,8 +700,9 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
                     enumDeclaration = enumeration;
                 }
                 else {
-                    EmitError(enumPattern->location, std::format("type '{}' is not an enum in shorthand pattern '.{}'",
-                                                                 subjectType.ToString(), variantName));
+                    EmitError(enumPattern->location,
+                              std::format("type '{}' is not an enum or variant in shorthand pattern '.{}'",
+                                          subjectType.ToString(), variantName));
                 }
             }
         }
@@ -707,21 +710,37 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             enumName = enumPattern->path[0];
             variantName = enumPattern->path[1];
             if (!currentScope->Lookup(enumName)) {
-                EmitError(enumPattern->location, std::format("unknown name '{}' in enum pattern", enumName));
+                EmitError(enumPattern->location, std::format("unknown name '{}' in case pattern", enumName));
             }
             if (const EnumDecl *enumeration = EnumNamed(enumName)) {
                 enumDeclaration = enumeration;
             }
         }
 
-        const EnumDecl::Variant *variant =
-            enumName.empty() || variantName.empty() ? nullptr : LookupEnumVariant(enumName, variantName);
-        if (enumDeclaration && !variant) {
-            EmitError(enumPattern->location, std::format("enum '{}' has no variant '{}'", enumName, variantName));
+        const std::optional<ResolvedCase> resolved =
+            enumName.empty() || variantName.empty() ? std::nullopt : LookupCase(enumName, variantName);
+        const EnumDecl::Variant *variant = resolved ? resolved->selectedCase : nullptr;
+        if (enumDeclaration && !resolved) {
+            EmitError(enumPattern->location,
+                      enumDeclaration->IsVariant()
+                          ? std::format("variant '{}' has no case '{}'", enumName, variantName)
+                          : std::format("enum '{}' has no enumerator '{}'", enumName, variantName));
         }
-        if (variant) {
+        if (enumDeclaration && subjectType.kind == TypeRef::Kind::Named &&
+            BaseTypeName(subjectType.name) != enumDeclaration->name) {
+            EmitError(enumPattern->location, std::format("{} pattern '{}::{}' cannot match value of type '{}'",
+                                                         enumDeclaration->IsVariant() ? "variant" : "enum", enumName,
+                                                         variantName, subjectType.ToString()));
+        }
+        const std::size_t actualFields = enumPattern->args.size() + enumPattern->namedArgs.size();
+        if (resolved && resolved->form == EnumDecl::Form::Enumeration && actualFields != 0) {
+            EmitError(enumPattern->location,
+                      std::format("enum enumerator '{}::{}' cannot bind payload fields", enumName, variantName), {},
+                      "remove the payload pattern; enums contain constants, while variants carry data");
+            return;
+        }
+        if (resolved && resolved->form == EnumDecl::Form::Variant) {
             const std::size_t expectedFields = variant->fields.size() + variant->namedFields.size();
-            const std::size_t actualFields = enumPattern->args.size() + enumPattern->namedArgs.size();
             if (actualFields != expectedFields) {
                 EmitError(enumPattern->location,
                           std::format("pattern for '{}::{}' expects {} field{}, but found {}", enumName, variantName,
@@ -738,10 +757,15 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
                 substitutions.emplace(parameters[index].name, typeArguments[index]);
             }
         }
+        if (resolved) {
+            casePatterns.insert_or_assign(enumPattern,
+                                          ResolvedCasePattern{resolved->declaration, resolved->selectedCase,
+                                                              resolved->form, subjectType, substitutions});
+        }
         std::unordered_set<std::string> namedArguments;
         for (const auto &argument : enumPattern->namedArgs) {
             if (!namedArguments.insert(argument.name).second) {
-                EmitError(argument.location, std::format("duplicate field '{}' in enum pattern", argument.name));
+                EmitError(argument.location, std::format("duplicate field '{}' in variant pattern", argument.name));
                 continue;
             }
 
@@ -760,7 +784,7 @@ void SemanticAnalyzerContext::CheckPattern(const Pattern &pattern, const TypeRef
             }
             else {
                 if (variant) {
-                    EmitError(argument.location, std::format("unknown field '{}' in enum pattern", argument.name));
+                    EmitError(argument.location, std::format("unknown field '{}' in variant pattern", argument.name));
                 }
                 CheckPattern(*argument.pattern);
             }
@@ -803,8 +827,8 @@ void SemanticAnalyzerContext::ValidateMatchPatterns(const std::vector<const Patt
         if (const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
             enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
-            if (const auto *variant = LookupEnumVariant(BaseTypeName(subjectType.name), variantName);
-                variant && EnumPatternCoversVariant(*enumerator, *variant)) {
+            if (const auto resolved = LookupCase(BaseTypeName(subjectType.name), variantName);
+                resolved && CasePatternCoversCase(*enumerator, *resolved->selectedCase, resolved->form)) {
                 coveredVariants.insert(variantName);
             }
         }
@@ -874,8 +898,8 @@ bool SemanticAnalyzerContext::MatchPatternsAreExhaustive(const std::vector<const
         const auto *enumerator = dynamic_cast<const EnumPattern *>(pattern);
         if (enumerator && !enumerator->path.empty()) {
             const std::string &variantName = enumerator->path.back();
-            if (const auto *variant = LookupEnumVariant(enumName, variantName);
-                variant && EnumPatternCoversVariant(*enumerator, *variant)) {
+            if (const auto resolved = LookupCase(enumName, variantName);
+                resolved && CasePatternCoversCase(*enumerator, *resolved->selectedCase, resolved->form)) {
                 covered.insert(variantName);
             }
         }
@@ -992,17 +1016,17 @@ bool SemanticAnalyzerContext::BlockDefinitelyReturns(const Block &block) const {
     return blockReturns(block);
 }
 
-const EnumDecl::Variant *SemanticAnalyzerContext::LookupEnumVariant(const std::string &enumName,
-                                                                    const std::string &variantName) const {
-    const EnumDecl *enumeration = EnumNamed(enumName);
+std::optional<SemanticAnalyzerContext::ResolvedCase>
+SemanticAnalyzerContext::LookupCase(const std::string &typeName, const std::string &caseName) const {
+    const EnumDecl *enumeration = EnumNamed(typeName);
     if (!enumeration) {
-        return nullptr;
+        return std::nullopt;
     }
-    for (const auto &variant : enumeration->variants) {
-        if (variant.name == variantName) {
-            return &variant;
+    for (const auto &candidate : enumeration->variants) {
+        if (candidate.name == caseName) {
+            return ResolvedCase{enumeration, &candidate, enumeration->form};
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 } // namespace Rux::SemanticDetail

@@ -29,6 +29,7 @@ public:
                             std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
                             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
                             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+                            std::unordered_map<const EnumPattern *, ResolvedCasePattern> &inputCasePatterns,
                             std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
                             std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
@@ -350,8 +351,15 @@ protected:
     [[nodiscard]] TypeRef DeclareReceiver(const FuncDecl &declaration, bool isMethod);
     void CheckReceiverType(const FuncDecl &declaration, const Param &receiver, const TypeRef &declared);
     void CheckReceiverPlacement(const FuncDecl &declaration, bool isMethod);
-    [[nodiscard]] const EnumDecl::Variant *LookupEnumVariant(const std::string &enumName,
-                                                             const std::string &variantName) const;
+
+    struct ResolvedCase {
+        const EnumDecl *declaration = nullptr;
+        const EnumDecl::Variant *selectedCase = nullptr;
+        EnumDecl::Form form = EnumDecl::Form::Enumeration;
+    };
+
+    [[nodiscard]] std::optional<ResolvedCase> LookupCase(const std::string &typeName,
+                                                         const std::string &caseName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
     [[nodiscard]] std::string NamedBaseTypeName(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> SliceElementType(const TypeRef &type) const;
@@ -365,6 +373,7 @@ protected:
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
+    std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;

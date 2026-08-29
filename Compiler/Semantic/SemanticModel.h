@@ -90,6 +90,16 @@ struct ResolvedDefaultConstructor {
     TypeRef type;
 };
 
+/// The nominal case selected by one accepted case pattern. Lowering consumes this instead of repeating name lookup or
+/// inferring whether the declaration is an enum or variant from its payload shape.
+struct ResolvedCasePattern {
+    const EnumDecl *declaration = nullptr;
+    const EnumDecl::Variant *selectedCase = nullptr;
+    EnumDecl::Form form = EnumDecl::Form::Enumeration;
+    TypeRef subjectType;
+    std::unordered_map<std::string, TypeRef> substitutions;
+};
+
 /// Which concrete method satisfies each operation of one interface bound, for one type argument that satisfied it.
 /// Analysis proves a bound at the use site, so the witness is what lets a constrained call be lowered to a direct call
 /// per instantiation instead of through a vtable. Entries are ordered by the interface's method declarations.
@@ -207,6 +217,7 @@ struct SemanticModel {
                   std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
                   std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                   std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
+                  std::unordered_map<const EnumPattern *, ResolvedCasePattern> inputCasePatterns,
                   std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                   std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
@@ -229,6 +240,9 @@ struct SemanticModel {
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const Pattern &pattern) const noexcept;
+
+    /// Returns null for non-case patterns and case patterns rejected during semantic analysis.
+    [[nodiscard]] const ResolvedCasePattern *TryGetCasePattern(const EnumPattern &pattern) const noexcept;
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
     [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;
@@ -289,6 +303,7 @@ private:
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
