@@ -130,6 +130,8 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                              std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                              std::unordered_map<const EnumPattern *, ResolvedCasePattern> inputCasePatterns,
+                             std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> inputVariantEqualities,
+                             std::unordered_map<std::string, VariantEqualityPlan> inputVariantEqualityPlans,
                              std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                              std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                              std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
@@ -152,6 +154,8 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , typeNodeTypes(std::move(inputTypeNodeTypes))
     , patternTypes(std::move(inputPatternTypes))
     , casePatterns(std::move(inputCasePatterns))
+    , variantEqualities(std::move(inputVariantEqualities))
+    , variantEqualityPlans(std::move(inputVariantEqualityPlans))
     , valueConsumptions(std::move(inputValueConsumptions))
     , valueCopies(std::move(inputValueCopies))
     , callableBindings(std::move(inputCallableBindings))
@@ -191,6 +195,16 @@ const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept 
 const ResolvedCasePattern *SemanticModel::TryGetCasePattern(const EnumPattern &pattern) const noexcept {
     const auto fact = casePatterns.find(&pattern);
     return fact == casePatterns.end() ? nullptr : &fact->second;
+}
+
+const ResolvedVariantEquality *SemanticModel::TryGetVariantEquality(const BinaryExpr &expression) const noexcept {
+    const auto fact = variantEqualities.find(&expression);
+    return fact == variantEqualities.end() ? nullptr : &fact->second;
+}
+
+const VariantEqualityPlan *SemanticModel::TryGetVariantEqualityPlan(const TypeRef &type) const noexcept {
+    const auto plan = variantEqualityPlans.find(type.ToString());
+    return plan == variantEqualityPlans.end() ? nullptr : &plan->second;
 }
 
 const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression) const noexcept {

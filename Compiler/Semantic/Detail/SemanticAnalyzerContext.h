@@ -30,6 +30,8 @@ public:
                             std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
                             std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
                             std::unordered_map<const EnumPattern *, ResolvedCasePattern> &inputCasePatterns,
+                            std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &inputVariantEqualities,
+                            std::unordered_map<std::string, VariantEqualityPlan> &inputVariantEqualityPlans,
                             std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
                             std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
@@ -374,6 +376,8 @@ protected:
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
+    std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
+    std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;
@@ -521,6 +525,7 @@ private:
         TypeRef right;
         const Expr *leftExpression;
         const Expr *rightExpression;
+        const BinaryExpr *binaryExpression;
         SourceLocation location;
     };
 
@@ -642,7 +647,14 @@ private:
 
     [[nodiscard]] TypeRef CheckUnary(TokenKind op, const TypeRef &operand, SourceLocation location);
     [[nodiscard]] TypeRef CheckBinary(TokenKind op, const TypeRef &left, const TypeRef &right,
-                                      const Expr &leftExpression, const Expr &rightExpression, SourceLocation location);
+                                      const Expr &leftExpression, const Expr &rightExpression, SourceLocation location,
+                                      const BinaryExpr *binaryExpression = nullptr);
+    [[nodiscard]] bool BuildVariantEqualityPlan(const TypeRef &type, SourceLocation useLocation,
+                                                std::unordered_set<std::string> &activeTypes);
+    [[nodiscard]] bool BuildVariantEqualityPayload(VariantEqualityPayload &payload, SourceLocation useLocation,
+                                                   std::string_view variantTypeName, std::string_view declarationName,
+                                                   std::string_view caseName,
+                                                   std::unordered_set<std::string> &activeTypes);
     [[nodiscard]] Symbol *LookupCalleeSymbol(const Expr &callee) const;
     void EmitCallSiteDiagnostics(const Decl &declaration, SourceLocation location) const;
     void RecordFunctionBinding(const CallExpr &call, const FuncDecl &declaration,

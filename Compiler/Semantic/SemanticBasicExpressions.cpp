@@ -9,13 +9,6 @@
 
 namespace Rux::SemanticDetail {
 namespace {
-bool ContainsTypeParam(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::TypeParam) {
-        return true;
-    }
-    return std::ranges::any_of(type.inner, [](const TypeRef &inner) { return ContainsTypeParam(inner); });
-}
-
 /// A slice borrows its elements through the read-only `*T` in its `data` field, so writing one writes through that
 /// pointer whatever the binding itself is declared as. `MutableSlice` is the writable counterpart.
 bool IsSliceType(const TypeRef &type) {
@@ -249,7 +242,7 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         }
         TypeRef left = CheckExpr(*binary->left);
         TypeRef right = CheckExpr(*binary->right);
-        return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location);
+        return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);
     }
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
@@ -391,7 +384,7 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
         for (const DeferredBinaryCheck &check : it->second) {
             static_cast<void>(CheckBinary(check.op, SubstituteTypeParameters(check.left, substitutions),
                                           SubstituteTypeParameters(check.right, substitutions), *check.leftExpression,
-                                          *check.rightExpression, check.location));
+                                          *check.rightExpression, check.location, check.binaryExpression));
         }
     }
     if (const auto it = deferredCastChecks.find(&declaration); it != deferredCastChecks.end()) {
@@ -508,7 +501,7 @@ TypeRef SemanticAnalyzerContext::CheckUnary(const TokenKind op, const TypeRef &o
 
 TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &left, const TypeRef &right,
                                              const Expr &leftExpression, const Expr &rightExpression,
-                                             const SourceLocation location) {
+                                             const SourceLocation location, const BinaryExpr *binaryExpression) {
     const TokenKind operation = BinaryOperation(op);
     const std::string_view operatorName = OperatorName(op);
     const bool comparesNullPointer = (IsNullLiteral(leftExpression) && right.kind == TypeRef::Kind::Pointer) ||
@@ -519,10 +512,10 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     if (left.IsUnknown() || right.IsUnknown()) {
         return TypeRef::MakeUnknown();
     }
-    if (ContainsTypeParam(left) || ContainsTypeParam(right)) {
+    if (MentionsTypeParameter(left) || MentionsTypeParameter(right)) {
         if (currentFunctionDecl) {
             deferredBinaryChecks[currentFunctionDecl].push_back(
-                {op, left, right, &leftExpression, &rightExpression, location});
+                {op, left, right, &leftExpression, &rightExpression, binaryExpression, location});
         }
         switch (operation) {
         case TokenKind::AmpAmp:
@@ -694,6 +687,19 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     case TK::LessEqual:
     case TK::Greater:
     case TK::GreaterEqual: {
+        const bool sameNamedType =
+            left.kind == TypeRef::Kind::Named && right.kind == TypeRef::Kind::Named && left.name == right.name;
+        const CaseTypeDeclaration caseType =
+            sameNamedType ? CaseTypeNamed(BaseTypeName(left.name)) : CaseTypeDeclaration{};
+        if ((operation == TK::Equal || operation == TK::BangEqual) && caseType.IsVariant()) {
+            std::unordered_set<std::string> activeTypes;
+            if (BuildVariantEqualityPlan(left, location, activeTypes) && binaryExpression) {
+                variantEqualities.insert_or_assign(binaryExpression,
+                                                   ResolvedVariantEquality{left, operation == TK::BangEqual});
+            }
+            return TypeRef::MakeBool();
+        }
+
         // A struct has no ordering of its own. Reaching here means no operator method matched, and comparing the
         // operands as machine values would compare their raw bytes — quietly answering a question the type never
         // defined. Derive what can be derived from the operators the type does declare, and reject the rest.
@@ -742,6 +748,133 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
     default:
         return TypeRef::MakeUnknown();
     }
+}
+
+bool SemanticAnalyzerContext::BuildVariantEqualityPlan(const TypeRef &type, const SourceLocation useLocation,
+                                                       std::unordered_set<std::string> &activeTypes) {
+    const std::string key = type.ToString();
+    if (variantEqualityPlans.contains(key) || activeTypes.contains(key)) {
+        return true;
+    }
+
+    const CaseTypeDeclaration resolved = CaseTypeNamed(BaseTypeName(type.name));
+    if (!resolved.IsVariant()) {
+        return false;
+    }
+
+    activeTypes.insert(key);
+    VariantEqualityPlan plan;
+    plan.declaration = resolved.declaration;
+    plan.type = type;
+
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::size_t argumentCount = std::min(arguments.size(), resolved.declaration->typeParams.size());
+    for (std::size_t index = 0; index < argumentCount; ++index) {
+        substitutions.emplace(resolved.declaration->typeParams[index].name, arguments[index]);
+    }
+
+    for (std::size_t caseIndex = 0; caseIndex < resolved.declaration->variants.size(); ++caseIndex) {
+        const EnumDecl::Variant &sourceCase = resolved.declaration->variants[caseIndex];
+        VariantEqualityCase plannedCase;
+        plannedCase.name = sourceCase.name;
+        plannedCase.discriminant = std::to_string(caseIndex);
+        for (std::size_t fieldIndex = 0; fieldIndex < sourceCase.fields.size(); ++fieldIndex) {
+            VariantEqualityPayload payload;
+            payload.index = fieldIndex;
+            payload.type = ResolveTypeWithSubstitution(*sourceCase.fields[fieldIndex], substitutions);
+            if (!BuildVariantEqualityPayload(payload, useLocation, key, resolved.declaration->name, sourceCase.name,
+                                             activeTypes)) {
+                activeTypes.erase(key);
+                return false;
+            }
+            plannedCase.payloads.push_back(std::move(payload));
+        }
+        for (std::size_t fieldIndex = 0; fieldIndex < sourceCase.namedFields.size(); ++fieldIndex) {
+            const EnumDecl::Variant::NamedField &field = sourceCase.namedFields[fieldIndex];
+            VariantEqualityPayload payload;
+            payload.index = sourceCase.fields.size() + fieldIndex;
+            payload.name = field.name;
+            payload.type = ResolveTypeWithSubstitution(*field.type, substitutions);
+            if (!BuildVariantEqualityPayload(payload, useLocation, key, resolved.declaration->name, sourceCase.name,
+                                             activeTypes)) {
+                activeTypes.erase(key);
+                return false;
+            }
+            plannedCase.payloads.push_back(std::move(payload));
+        }
+        plan.cases.push_back(std::move(plannedCase));
+    }
+
+    activeTypes.erase(key);
+    variantEqualityPlans.insert_or_assign(key, std::move(plan));
+    return true;
+}
+
+bool SemanticAnalyzerContext::BuildVariantEqualityPayload(VariantEqualityPayload &payload,
+                                                          const SourceLocation useLocation,
+                                                          const std::string_view variantTypeName,
+                                                          const std::string_view declarationName,
+                                                          const std::string_view caseName,
+                                                          std::unordered_set<std::string> &activeTypes) {
+    const TypeRef &type = payload.type;
+    if (MentionsTypeParameter(type)) {
+        payload.operation = VariantEqualityPayload::Operation::Deferred;
+        return true;
+    }
+    if (type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer) {
+        payload.operation = VariantEqualityPayload::Operation::Builtin;
+        return true;
+    }
+    if (type.kind == TypeRef::Kind::Tuple) {
+        payload.operation = VariantEqualityPayload::Operation::Tuple;
+        for (std::size_t index = 0; index < type.inner.size(); ++index) {
+            VariantEqualityPayload element;
+            element.index = index;
+            element.type = type.inner[index];
+            if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
+                                             activeTypes)) {
+                return false;
+            }
+            payload.elements.push_back(std::move(element));
+        }
+        return true;
+    }
+    if (type.kind == TypeRef::Kind::Array && !type.inner.empty()) {
+        payload.operation = VariantEqualityPayload::Operation::Array;
+        VariantEqualityPayload element;
+        element.type = type.inner.front();
+        if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
+                                         activeTypes)) {
+            return false;
+        }
+        payload.elements.push_back(std::move(element));
+        return true;
+    }
+    if (type.kind == TypeRef::Kind::Named) {
+        const CaseTypeDeclaration nested = CaseTypeNamed(BaseTypeName(type.name));
+        if (nested.declaration && !nested.IsVariant()) {
+            payload.operation = VariantEqualityPayload::Operation::Builtin;
+            return true;
+        }
+        if (nested.IsVariant()) {
+            payload.operation = VariantEqualityPayload::Operation::Variant;
+            payload.nestedVariantType = type.ToString();
+            return BuildVariantEqualityPlan(type, useLocation, activeTypes);
+        }
+        if (const FuncDecl *method = LookupOperatorMethod(type, "==", {type})) {
+            payload.operation = VariantEqualityPayload::Operation::Custom;
+            payload.customEquality = method;
+            return true;
+        }
+    }
+
+    EmitError(useLocation,
+              std::format("variant equality for '{}' is unavailable because payload type '{}' in case '{}::{}' has no "
+                          "'==' operator",
+                          variantTypeName, type.ToString(), declarationName, caseName),
+              {}, std::format("declare '==' on '{}' or remove equality on the containing variant", type.ToString()));
+    return false;
 }
 
 bool SemanticAnalyzerContext::PlaceIsImmutable(const Expr &place) {

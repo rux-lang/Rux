@@ -117,6 +117,91 @@ TEST_CASE("bool integer equality remains valid while unrelated comparisons name 
     CHECK_EQ(diagnostics[0].message, "operator '==' cannot compare left operand 'Item' with right operand 'int'");
 }
 
+TEST_CASE("variant equality accepts structurally comparable payloads") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Label { value: int; }
+        extend Label {
+            func ==(self: &Label, other: Label) -> bool { return self.value == other.value; }
+        }
+        variant Inner {
+            None,
+            Number(int)
+        }
+        variant Value<T> {
+            Unit,
+            Pair(T, T),
+            Named { inner: Inner; label: Label; },
+            Composite((int, bool), int[2]),
+            Link(*Value<T>)
+        }
+        func Equal(left: Value<int>, right: Value<int>) -> bool { return left == right; }
+        func Different(left: Value<int>, right: Value<int>) -> bool { return left != right; }
+    )");
+
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("variant equality diagnoses the first non-comparable active payload type") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Opaque { value: int; }
+        variant Invalid {
+            Empty,
+            Stored(Opaque),
+            Repeated(Opaque, Opaque)
+        }
+        func Equal(left: Invalid, right: Invalid) -> bool {
+            return left == right;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message,
+             "variant equality for 'Invalid' is unavailable because payload type 'Opaque' in case "
+             "'Invalid::Stored' has no '==' operator");
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "declare '==' on 'Opaque' or remove equality on the containing variant");
+}
+
+TEST_CASE("generic variant equality requirements are checked per concrete instantiation") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Comparable { value: int; }
+        extend Comparable {
+            func ==(self: &Comparable, other: Comparable) -> bool { return self.value == other.value; }
+        }
+        struct Opaque { value: int; }
+        variant Maybe<T> { None, Some(T) }
+
+        func Same<T>(left: Maybe<T>, right: Maybe<T>) -> bool {
+            return left == right;
+        }
+        func Valid(left: Maybe<Comparable>, right: Maybe<Comparable>) -> bool {
+            return Same<Comparable>(left, right);
+        }
+        func Invalid(left: Maybe<Opaque>, right: Maybe<Opaque>) -> bool {
+            return Same<Opaque>(left, right);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message,
+             "variant equality for 'Maybe<Opaque>' is unavailable because payload type 'Opaque' in case "
+             "'Maybe::Some' has no '==' operator");
+}
+
+TEST_CASE("equality between distinct variant types remains a type mismatch") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Left { Value(int) }
+        variant Right { Value(int) }
+        func Compare(left: Left, right: Right) -> bool { return left == right; }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "operator '==' cannot compare left operand 'Left' with right operand 'Right'");
+}
+
 TEST_CASE("compound assignments apply the matching operator requirements") {
     const auto diagnostics = AnalyzeSource(R"(
         func Main() {

@@ -39,6 +39,8 @@ public:
         std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
         std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
         std::unordered_map<const EnumPattern *, ResolvedCasePattern> &inputCasePatterns,
+        std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &inputVariantEqualities,
+        std::unordered_map<std::string, VariantEqualityPlan> &inputVariantEqualityPlans,
         std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
         std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
         std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
@@ -49,7 +51,8 @@ public:
         std::unordered_map<const TypeQueryExpr *, std::uint64_t> &inputSizeOfValues)
         : SemanticAnalyzerContext(inputModules, inputDependencies, inputPackageName, inputDiagnostics, inputSymbols,
                                   inputContext, inputExpressionTypes, inputTypeNodeTypes, inputPatternTypes,
-                                  inputCasePatterns, inputValueConsumptions, inputValueCopies, inputCallableBindings,
+                                  inputCasePatterns, inputVariantEqualities, inputVariantEqualityPlans,
+                                  inputValueConsumptions, inputValueCopies, inputCallableBindings,
                                   inputDefaultConstructors, inputSymbolIdentities, inputVtableIdentities,
                                   inputTypeLayouts, inputSizeOfValues) {
     }
@@ -1812,7 +1815,7 @@ private:
             // Record the layout under the name whatever the enum's shape: lowering builds this type a second time
             // and reads the size back from here, having no layout machinery of its own, and it needs the size of a
             // plain discriminant enum just as much when substitution has dropped what `inner` said.
-            const auto layout = LayoutOfEnum(decl);
+            const auto layout = LayoutOfTypeRef(type);
             if (layout) {
                 typeLayouts.insert_or_assign(type.name, *layout);
             }
@@ -1836,7 +1839,7 @@ private:
             for (std::size_t i = 0; i < typeArgs.size(); ++i) {
                 substitutions.emplace(decl.typeParams[i].name, typeArgs[i]);
             }
-            if (const auto layout = LayoutOfEnum(decl, substitutions)) {
+            if (const auto layout = LayoutOfTypeRef(type, substitutions)) {
                 // Under the instantiation's own name, for the reason the branch above records it: lowering builds
                 // this type a second time and reads its size back from here, having no layout machinery of its own.
                 // An instantiation composed only inside generic bodies -- where nothing concrete ever spells it --
@@ -3548,6 +3551,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
+    std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
+    std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
@@ -3556,10 +3561,10 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
-    SemanticAnalyzerImplementation analyzer(constModules, deps, packageName, diags, symbols, compileTimeContext,
-                                            expressionTypes, typeNodeTypes, patternTypes, casePatterns,
-                                            valueConsumptions, valueCopies, callableBindings, defaultConstructors,
-                                            symbolIdentities, vtableIdentities, typeLayouts, typeQueryValues);
+    SemanticAnalyzerImplementation analyzer(
+        constModules, deps, packageName, diags, symbols, compileTimeContext, expressionTypes, typeNodeTypes,
+        patternTypes, casePatterns, variantEqualities, variantEqualityPlans, valueConsumptions, valueCopies,
+        callableBindings, defaultConstructors, symbolIdentities, vtableIdentities, typeLayouts, typeQueryValues);
     analyzer.Run();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
@@ -3576,6 +3581,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(typeNodeTypes),
                          std::move(patternTypes),
                          std::move(casePatterns),
+                         std::move(variantEqualities),
+                         std::move(variantEqualityPlans),
                          std::move(valueConsumptions),
                          std::move(valueCopies),
                          std::move(callableBindings),
