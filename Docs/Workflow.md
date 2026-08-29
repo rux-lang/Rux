@@ -254,6 +254,7 @@ The formatters handle layout; the conventions they can't enforce, observed throu
   - Enum members, variant cases, and namespaced constants are `PascalCase` — `Severity::Error`, `Option::Some`, `RcuSecType::Text`. Named variant payload fields are `camelCase`.
   - Everything lives in the `Rux` namespace (no namespace indentation; closing `} // namespace Rux` comment is auto-emitted).
 - **Headers** — every header opens with `#pragma once`. Includes are grouped and sorted by `clang-format`: project headers first, then `<system>` headers. Mark non-void accessors `[[nodiscard]]` and use `noexcept` where it holds, as the existing headers do.
+- **Rux layout** — a guard `if` (a single `return`, `break`, `continue`, or `Panic` statement, no `else`) is written on one line when it fits in 120 columns: `if a != a { return b; }`. Braces are always required around every `if` body; there is no brace-less form.
 - **Error handling** — the compiler does **not** throw for ordinary failures. Fallible operations return a result struct carrying a `diagnostics` vector (with a `HasErrors()` query) or a `std::optional` / `bool`. Diagnostics are _accumulated_ with severity + `SourceLocation` (see `EmitError`/`EmitWarning`) so the compiler can report many problems in one run and recover at statement boundaries rather than aborting on the first error.
 
 Otherwise, match the surrounding code — consistency beats personal preference.
