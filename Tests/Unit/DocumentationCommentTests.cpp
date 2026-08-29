@@ -9,6 +9,7 @@
 #include <utility>
 
 using namespace Rux;
+using Syntax::NormalizeDocumentationComment;
 
 namespace {
 std::string ParseStructureDocumentation(std::string source) {
@@ -23,7 +24,7 @@ std::string ParseStructureDocumentation(std::string source) {
 
     const auto *structure = dynamic_cast<const StructDecl *>(parsed.module.items.front().get());
     REQUIRE(structure != nullptr);
-    return structure->documentation;
+    return structure->documentation.markdown;
 }
 } // namespace
 

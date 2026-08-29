@@ -50,15 +50,15 @@ TEST_CASE("outer documentation comments attach without a blank line") {
     REQUIRE(parsed.module.items.size() == 1);
     const auto *structure = dynamic_cast<const StructDecl *>(parsed.module.items.front().get());
     REQUIRE(structure != nullptr);
-    CHECK(structure->documentation == "First line.\nSecond line.");
+    CHECK(structure->documentation.markdown == "First line.\nSecond line.");
     REQUIRE(structure->fields.size() == 1);
-    CHECK(structure->fields.front().documentation == "A visible field.");
+    CHECK(structure->fields.front().documentation.markdown == "A visible field.");
 }
 
 TEST_CASE("a blank line prevents documentation attachment") {
     auto parsed = Parse("/// Detached.\n\npub func Visible();\n");
     REQUIRE(parsed.module.items.size() == 1);
-    CHECK(parsed.module.items.front()->documentation.empty());
+    CHECK_FALSE(parsed.module.items.front()->documentation.Present());
 }
 
 TEST_CASE("documentation covers only effectively public declarations and members") {

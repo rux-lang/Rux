@@ -55,6 +55,7 @@ private:
     Target::Arch arch = Target::HostArch;
     std::size_t pos = 0;
     std::vector<ParserDiagnostic> diagnostics;
+    std::vector<Syntax::DocumentationIssue> documentationIssues;
     bool structInitAllowed = true; ///< disabled inside if/while/for/match conditions
 
     // Token helpers
@@ -98,7 +99,8 @@ private:
 
     // Top-level
     DeclPtr ParseDecl();
-    [[nodiscard]] std::string ParseDocumentation();
+    [[nodiscard]] Syntax::Documentation ParseDocumentation();
+    void RecordDetachedDocumentation(Syntax::Documentation documentation, Syntax::DocumentationIssueKind kind);
 
     // Attribute parsing
     struct ParsedAttrs {

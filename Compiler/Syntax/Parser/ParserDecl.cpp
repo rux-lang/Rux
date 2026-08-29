@@ -449,6 +449,10 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         StructDecl::Field field;
         field.documentation = ParseDocumentation();
+        if (Check(TokenKind::RightBrace)) {
+            RecordDetachedDocumentation(std::move(field.documentation), Syntax::DocumentationIssueKind::Detached);
+            break;
+        }
         field.location = CurrentLocation();
 
         if (Match(TokenKind::PubKeyword)) {
@@ -456,6 +460,7 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
         }
 
         if (!Check(TokenKind::Ident) && !Check(TokenKind::ModuleKeyword)) {
+            RecordDetachedDocumentation(std::move(field.documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), "a structure field name");
             while (!CheckAny({TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
                 Advance();
@@ -524,8 +529,13 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         EnumDecl::Variant variant;
         variant.documentation = ParseDocumentation();
+        if (Check(TokenKind::RightBrace)) {
+            RecordDetachedDocumentation(std::move(variant.documentation), Syntax::DocumentationIssueKind::Detached);
+            break;
+        }
         variant.location = CurrentLocation();
         if (!Check(TokenKind::Ident)) {
+            RecordDetachedDocumentation(std::move(variant.documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), "a " + std::string(memberName) + " name");
             while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
                 Advance();
@@ -572,8 +582,15 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumDecl::Variant::NamedField field;
                 field.documentation = ParseDocumentation();
+                if (Check(TokenKind::RightBrace)) {
+                    RecordDetachedDocumentation(std::move(field.documentation),
+                                                Syntax::DocumentationIssueKind::Detached);
+                    break;
+                }
                 field.location = CurrentLocation();
                 if (!Check(TokenKind::Ident)) {
+                    RecordDetachedDocumentation(std::move(field.documentation),
+                                                Syntax::DocumentationIssueKind::Detached);
                     EmitExpected(CurrentLocation(), "a " + std::string(memberName) + " field name");
                     while (!CheckAny({TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
                         Advance();
@@ -646,9 +663,14 @@ std::unique_ptr<UnionDecl> Parser::ParseUnionDecl(bool isPublic) {
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
         UnionDecl::Field field;
         field.documentation = ParseDocumentation();
+        if (Check(TokenKind::RightBrace)) {
+            RecordDetachedDocumentation(std::move(field.documentation), Syntax::DocumentationIssueKind::Detached);
+            break;
+        }
         field.location = CurrentLocation();
         field.isPublic = Match(TokenKind::PubKeyword);
         if (!Check(TokenKind::Ident)) {
+            RecordDetachedDocumentation(std::move(field.documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), "a union field name");
             while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
                 Advance();
@@ -686,8 +708,13 @@ std::unique_ptr<InterfaceDecl> Parser::ParseInterfaceDecl(bool isPublic) {
         return decl;
     }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-        std::string documentation = ParseDocumentation();
+        Syntax::Documentation documentation = ParseDocumentation();
+        if (Check(TokenKind::RightBrace)) {
+            RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
+            break;
+        }
         if (!Check(TokenKind::FuncKeyword)) {
+            RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), "'func' to start an interface method");
             Recover();
             continue;
@@ -733,7 +760,11 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         return decl;
     }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-        std::string documentation = ParseDocumentation();
+        Syntax::Documentation documentation = ParseDocumentation();
+        if (Check(TokenKind::RightBrace)) {
+            RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
+            break;
+        }
         // Methods can be conditionally compiled like any other declaration.
         // Conditional compilation later moves those of the taken branch into
         // `methods`.
@@ -749,6 +780,7 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         const bool isIntrinsic = Match(TokenKind::IntrinsicKeyword);
         const auto intrinsicLoc = Previous().location;
         if (!Check(TokenKind::FuncKeyword)) {
+            RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), isIntrinsic ? "'func' after 'intrinsic' in the extension body"
                                                         : "'func' to start a method in the extension body");
             Recover();
@@ -798,7 +830,7 @@ std::unique_ptr<ModuleDecl> Parser::ParseModuleDecl(bool isPublic) {
         if (auto item = ParseDecl()) {
             items.push_back(std::move(item));
         }
-        else {
+        else if (!Check(TokenKind::RightBrace)) {
             Recover();
         }
     }
@@ -953,7 +985,7 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenBody(const SourceLocation loc) {
             if (auto item = ParseDecl()) {
                 items.push_back(std::move(item));
             }
-            else {
+            else if (!Check(TokenKind::RightBrace)) {
                 Recover();
             }
         }
@@ -1056,7 +1088,7 @@ std::unique_ptr<WhenDecl> Parser::ParseWhenMatchBody(const SourceLocation loc, E
                 if (auto item = ParseDecl()) {
                     branch.items.push_back(std::move(item));
                 }
-                else {
+                else if (!Check(TokenKind::RightBrace)) {
                     Recover();
                 }
             }
@@ -1117,7 +1149,13 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
         block->dllConst = attrs.importLibConst;
         block->callConv = attrs.callConv;
         while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+            Syntax::Documentation documentation = ParseDocumentation();
+            if (Check(TokenKind::RightBrace)) {
+                RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
+                break;
+            }
             if (Check(TokenKind::ExternKeyword)) {
+                RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
                 EmitError(CurrentLocation(), "'extern' is not allowed inside an extern block");
                 while (!IsAtEnd() && !Check(TokenKind::Semicolon) && !Check(TokenKind::RightBrace)) {
                     Advance();
@@ -1134,6 +1172,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 fd->dll = attrs.importLib;
                 fd->dllConst = attrs.importLibConst;
                 fd->callConv = attrs.callConv;
+                fd->documentation = std::move(documentation);
                 fd->name = ExpectBefore(TokenKind::Ident, "a function name after 'func'").text;
                 if (Match(TokenKind::LeftParen)) {
                     fd->params = ParseParamList(true);
@@ -1156,6 +1195,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 auto vd = std::make_unique<ExternVarDecl>();
                 vd->location = CurrentLocation();
                 vd->isPublic = isPublic || memberIsPublic;
+                vd->documentation = std::move(documentation);
                 vd->name = Advance().text;
                 ExpectBefore(TokenKind::Colon, "':' after the external variable name",
                              "write external variables as 'Name: Type;'");
@@ -1164,6 +1204,7 @@ DeclPtr Parser::ParseExternDecl(bool isPublic, ParsedAttrs &attrs) {
                 block->items.push_back(std::move(vd));
             }
             else {
+                RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
                 EmitExpected(CurrentLocation(), "'func' or a variable declaration in the external block");
                 Recover();
             }

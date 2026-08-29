@@ -143,8 +143,9 @@ struct Token {
     /// propagates a failure while `x ? a : b` selects between two values, and the separation is what tells them apart.
     /// Defaults to separated, so a token built by hand rather than scanned keeps the older of the two meanings.
     bool precededBySpace = true;
-    /// Documentation attachment metadata. `lineLeading` means only indentation precedes the comment on its source
-    /// line. `precededByOrdinaryComment` records an ordinary comment in the trivia since the previous token.
+    /// Documentation attachment metadata. `lineLeading` means only indentation precedes a documentation token on its
+    /// source line. `precededByOrdinaryComment` applies to every token and records ordinary trivia since the last
+    /// token.
     bool lineLeading = false;
     bool precededByOrdinaryComment = false;
 
