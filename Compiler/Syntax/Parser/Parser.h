@@ -189,6 +189,7 @@ private:
     ExprPtr ParseAssign();
     ExprPtr ParseRange();
     ExprPtr ParseTernary();
+    ExprPtr ParseCoalesce();
     ExprPtr ParseOr();
     ExprPtr ParseAnd();
     ExprPtr ParseBitOr();

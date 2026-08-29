@@ -39,6 +39,7 @@ set(RUX_TEST_SOURCES
     CliProcessTests.cpp
     CliScaffoldProcessTests.cpp
     CmdInspectProcessTests.cpp
+    CoalescingLoweringTests.cpp
     CompilerDriverTests.cpp
     CompilerPipelineDiagnosticTests.cpp
     ConstantEvaluatorTests.cpp
@@ -94,6 +95,7 @@ set(RUX_TEST_SOURCES
     RcuModuleBuilderTests.cpp
     RcuTests.cpp
     RuntimeFailureTests.cpp
+    SemanticCoalescingDiagnosticsTests.cpp
     RegistryTests.cpp
     SemanticProgramIndexTests.cpp
     SemanticPropagationDiagnosticsTests.cpp

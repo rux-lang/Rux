@@ -51,6 +51,8 @@ std::string_view OperatorName(const TokenKind op) noexcept {
         return "&&";
     case TK::PipePipe:
         return "||";
+    case TK::QuestionQuestion:
+        return "??";
     case TK::Equal:
         return "==";
     case TK::BangEqual:
@@ -237,6 +239,9 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         return operandType;
     }
     if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+        if (binary->op == TokenKind::QuestionQuestion) {
+            return CheckCoalesceExpression(*binary);
+        }
         if (binary->op == TokenKind::AmpAmp || binary->op == TokenKind::PipePipe) {
             return CheckShortCircuitExpression(*binary);
         }
@@ -427,6 +432,12 @@ void SemanticAnalyzerContext::ValidateDeferredBasicExpressionChecks(
         for (const DeferredCastCheck &check : it->second) {
             CheckCast(SubstituteTypeParameters(check.operand, substitutions),
                       SubstituteTypeParameters(check.target, substitutions), check.location);
+        }
+    }
+    if (const auto it = deferredCoalescingChecks.find(&declaration); it != deferredCoalescingChecks.end()) {
+        for (const DeferredCoalescingCheck &check : it->second) {
+            static_cast<void>(
+                ValidateCoalescingPayload(SubstituteTypeParameters(check.payload, substitutions), check.location));
         }
     }
     if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {

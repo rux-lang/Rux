@@ -50,6 +50,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
     [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
+    [[nodiscard]] std::unordered_map<const BinaryExpr *, ResolvedCoalescing> TakeCoalescings();
     [[nodiscard]] std::unordered_map<const IndexExpr *, ResolvedIndexOperator> TakeIndexOperators();
     [[nodiscard]] std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> TakeIndexAssignments();
     [[nodiscard]] std::unordered_map<const ForStmt *, ResolvedIteration> TakeIterations();
@@ -309,6 +310,8 @@ protected:
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
+    [[nodiscard]] TypeRef CheckCoalesceExpression(const BinaryExpr &expression);
+    [[nodiscard]] bool ValidateCoalescingPayload(const TypeRef &payload, SourceLocation location);
     [[nodiscard]] TypeRef CheckTypeQueryExpression(const TypeQueryExpr &expression);
     [[nodiscard]] static bool IsCheckedArithmeticIntrinsic(std::string_view intrinsicName);
     void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
@@ -426,6 +429,8 @@ protected:
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    /// One entry per accepted `??`, so lowering does not repeat structural Option recognition.
+    std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
     /// without resolving it again and analysis knows the expression is a call rather than a place.
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
@@ -573,6 +578,11 @@ private:
         SourceLocation location;
     };
 
+    struct DeferredCoalescingCheck {
+        TypeRef payload;
+        SourceLocation location;
+    };
+
     /// A value whose type mentions a type parameter, so whether handing it over consumes it is not yet knowable.
     /// Answered once per instantiation, when the parameter stands for something with a mobility.
     struct DeferredConsumption {
@@ -585,6 +595,7 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredCoalescingCheck>> deferredCoalescingChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
 

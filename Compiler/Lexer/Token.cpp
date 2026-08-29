@@ -169,6 +169,8 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "Hash";
     case TokenKind::Question:
         return "Question";
+    case TokenKind::QuestionQuestion:
+        return "QuestionQuestion";
     case TokenKind::Plus:
         return "Plus";
     case TokenKind::Minus:

@@ -161,6 +161,10 @@ std::unordered_map<const TryExpr *, ResolvedPropagation> SemanticAnalyzerContext
     return std::move(propagations);
 }
 
+std::unordered_map<const BinaryExpr *, ResolvedCoalescing> SemanticAnalyzerContext::TakeCoalescings() {
+    return std::move(coalescings);
+}
+
 std::unordered_map<const IndexExpr *, ResolvedIndexOperator> SemanticAnalyzerContext::TakeIndexOperators() {
     return std::move(indexOperators);
 }

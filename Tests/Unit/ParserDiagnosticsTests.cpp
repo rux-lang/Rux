@@ -62,6 +62,20 @@ std::string DiagnosticMessages(const ParseResult &result) {
 
 } // namespace
 
+TEST_CASE("coalescing parser diagnostics reject declarations and incomplete forms") {
+    const ParseResult declaration = ParseSource("extend int32 { func ?? (self: &int32) -> int32 {} }");
+    CHECK(HasDiagnosticContaining(declaration, "operator '?"
+                                               "?' is built in and cannot be declared or overloaded"));
+
+    const ParseResult missing = ParseSource("func Test(option: int32) { let value = option ?? ; }");
+    CHECK(HasDiagnosticContaining(missing, "expected an expression after"));
+
+    const std::string unsupportedAssignment = "func Test(option: int32, fallback: int32) { option ?"
+                                              "?= fallback; }";
+    const ParseResult assignment = ParseSource(unsupportedAssignment);
+    CHECK(assignment.HasErrors());
+}
+
 TEST_CASE("declaration diagnostics identify the rejected starter and expected declaration role") {
     struct Case {
         std::string_view source;

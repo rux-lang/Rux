@@ -44,6 +44,8 @@ namespace {
         return "&&";
     case TokenKind::PipePipe:
         return "||";
+    case TokenKind::QuestionQuestion:
+        return "??";
     case TokenKind::Bang:
         return "!";
     case TokenKind::Equal:

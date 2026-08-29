@@ -206,6 +206,12 @@ Selecting among installed versions is a local operation in `Driver/BuildTarget`,
 
 An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Program` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
 
+## Option Coalescing
+
+An accepted `??` records the concrete Option-shaped variant, its `Some` and `None` cases, and the substituted payload type in `SemanticModel`. Semantic checking owns branch-sensitive move and borrow flow for the lazy fallback; lowering consumes that fact without repeating structural recognition or type checking.
+
+Coalescing introduces no HIR or LIR operator. AST-to-HIR lowering emits an ordinary two-arm match: the subject is lowered once, the `Some` arm transfers its hidden payload into the result, and only the `None` arm contains the fallback. Existing match CFG lowering supplies lazy evaluation and the result merge.
+
 ## Failure and Diagnostic Contracts
 
 Ordinary compiler failures are values, not exceptions. Frontend stages collect diagnostics with source locations so users can fix several problems per run. Filesystem, process, and network helpers return `bool`, `std::optional`, or a result object; the CLI owns user-facing error text and exit codes.

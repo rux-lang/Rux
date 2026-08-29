@@ -141,6 +141,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
                              std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                              std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                              std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
+                             std::unordered_map<const BinaryExpr *, ResolvedCoalescing> inputCoalescings,
                              std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
                              std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> inputIndexAssignments,
                              std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
@@ -167,6 +168,7 @@ SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, s
     , vtableIdentities(std::move(inputVtableIdentities))
     , constraintWitnesses(std::move(inputConstraintWitnesses))
     , propagations(std::move(inputPropagations))
+    , coalescings(std::move(inputCoalescings))
     , indexOperators(std::move(inputIndexOperators))
     , indexAssignments(std::move(inputIndexAssignments))
     , iterations(std::move(inputIterations))
@@ -255,6 +257,11 @@ const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const st
 const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {
     const auto propagation = propagations.find(&expression);
     return propagation == propagations.end() ? nullptr : &propagation->second;
+}
+
+const ResolvedCoalescing *SemanticModel::TryGetCoalescing(const BinaryExpr &expression) const noexcept {
+    const auto coalescing = coalescings.find(&expression);
+    return coalescing == coalescings.end() ? nullptr : &coalescing->second;
 }
 
 const ResolvedIndexOperator *SemanticModel::TryGetIndexOperator(const IndexExpr &expression) const noexcept {
