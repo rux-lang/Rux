@@ -425,6 +425,7 @@ HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
     const auto savedTypeParams = currentTypeParams;
     AppendTypeParameterNames(currentTypeParams, d.typeParams);
     HirEnum he;
+    he.form = d.IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
     he.name = d.name;
     he.isPublic = model.IsEffectivelyPublic(d);
     he.typeParams = TypeParameterNames(d.typeParams);

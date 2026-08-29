@@ -218,11 +218,18 @@ std::unordered_map<std::string, DropGluePlan> SemanticAnalyzerContext::TakeDropG
 }
 
 const EnumDecl *SemanticAnalyzerContext::EnumNamed(const std::string &name) const {
+    return CaseTypeNamed(name).declaration;
+}
+
+SemanticAnalyzerContext::CaseTypeDeclaration SemanticAnalyzerContext::CaseTypeNamed(const std::string &name) const {
     if (const EnumDecl *local = programIndex.EnumIn(currentFile, name)) {
-        return local;
+        return {local, local->form};
     }
     const auto enumeration = enumDecls.find(name);
-    return enumeration == enumDecls.end() ? nullptr : enumeration->second;
+    if (enumeration == enumDecls.end()) {
+        return {};
+    }
+    return {enumeration->second, enumeration->second->form};
 }
 
 namespace {

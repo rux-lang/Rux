@@ -524,7 +524,8 @@ bool HirPrinter::Dump(const HirPackage &package, const std::filesystem::path &pa
                 }
                 typeParams += ">";
             }
-            out << std::format("\n{}enum {}{}: {}\n", pub, e.name, typeParams, e.baseType.ToString());
+            out << std::format("\n{}{} {}{}: {}\n", pub, CaseTypeKeyword(e.form), e.name, typeParams,
+                               e.baseType.ToString());
             for (const auto &v : e.variants) {
                 if (v.fields.empty()) {
                     out << std::format("  {} = {}\n", v.name, v.discriminant.value_or("0"));

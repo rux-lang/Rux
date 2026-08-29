@@ -243,7 +243,8 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
         enums[enumeration->name] = enumeration;
         enumsBySource[sourceName][enumeration->name] = enumeration;
-        defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type, "enum");
+        defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type,
+                     enumeration->IsVariant() ? "variant" : "enum");
     }
     else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
         unions[unionType->name] = unionType;

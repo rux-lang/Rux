@@ -55,6 +55,9 @@ struct ResolvedCallableBinding {
     DispatchKind dispatch = DispatchKind::Indirect;
     const Decl *selectedDeclaration = nullptr;
     const EnumDecl::Variant *selectedVariant = nullptr;
+    /// Source form of the case constructor selected above. Keeping this beside the selected case prevents generic
+    /// instantiation and lowering from reconstructing the kind from whether that case happens to carry a payload.
+    EnumDecl::Form caseTypeForm = EnumDecl::Form::Enumeration;
     std::unordered_map<std::string, TypeRef> substitutions;
     std::optional<TypeRef> receiverType;
     std::optional<std::size_t> variadicBoundary;
