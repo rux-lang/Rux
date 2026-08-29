@@ -137,9 +137,7 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
             return result;
         }
         if exponentField == 0u64 {
-            if field == 0u512 {
-                return result;
-            }
+            if field == 0u512 { return result; }
             result.class = WideClass::Subnormal;
             result.significand = field;
             result.exponent = layout.MinimumExponent();
@@ -159,9 +157,7 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
         return result;
     }
     if exponentField == 0u64 {
-        if field == 0u512 {
-            return result;
-        }
+        if field == 0u512 { return result; }
         result.class = WideClass::Subnormal;
         result.significand = field;
         result.exponent = layout.MinimumExponent();
@@ -182,9 +178,7 @@ pub func PackWide(negative: bool, significand: uint512, exponent: int, layout: &
     if negative {
         bits = 1u512 << (layout.bits - 1u);
     }
-    if significand == 0u512 {
-        return bits;
-    }
+    if significand == 0u512 { return bits; }
     let leading = 1u512 << (layout.precision - 1u);
     if significand < leading {
         // Subnormal: the exponent field is zero and the field is the significand as it stands.

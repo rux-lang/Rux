@@ -5,21 +5,15 @@ pub func Sinh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
     let overflow = 710.4758600739439; // ln(2 * maxfloat)
 
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     let bits = FloatBits(x);
     let negative = (bits >> 63u64) == 1u64;
     let ax = Abs(x);
 
-    if ax == 0.0 {
-        return x;
-    }
+    if ax == 0.0 { return x; }
     if ax > overflow {
-        if ax == 1.0 / 0.0 {
-            return x;
-        }
+        if ax == 1.0 / 0.0 { return x; }
         let huge = 1.0e300;
         return negative ? -huge * huge : huge * huge;
     }

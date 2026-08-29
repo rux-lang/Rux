@@ -15,18 +15,14 @@ import Text::StringView;
 // negated. An empty run of digits after a prefix is the error the prefix's index reports.
 func ParseIntegerMagnitude(str: Slice<char8>, magnitude: *var uint512,
                            negative: *var bool) -> Result<bool, ParseError> {
-    if str.length == 0 {
-        return Result::Error<bool, ParseError>(ParseError::Empty);
-    }
+    if str.length == 0 { return Result::Error<bool, ParseError>(ParseError::Empty); }
 
     var index: uint = 0;
     *negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         *negative = str[index] == c8'-';
         index++;
-        if index == str.length {
-            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index - 1));
-        }
+        if index == str.length { return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index - 1)); }
     }
 
     var radix: uint512 = 10u512;
@@ -66,12 +62,8 @@ func ParseIntegerMagnitude(str: Slice<char8>, magnitude: *var uint512,
         else {
             return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index));
         }
-        if digit >= radix {
-            return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index));
-        }
-        if *magnitude > (limit - digit) / radix {
-            return Result::Error<bool, ParseError>(ParseError::Overflow);
-        }
+        if digit >= radix { return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(index)); }
+        if *magnitude > (limit - digit) / radix { return Result::Error<bool, ParseError>(ParseError::Overflow); }
         *magnitude = *magnitude * radix + digit;
         index++;
     }
@@ -89,15 +81,9 @@ pub func ParseUint8(str: Slice<char8>) -> Result<uint8, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint8, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint8, ParseError>(ParseError::InvalidCharacter(0));
-    }
-    if magnitude > 255u512 {
-        return Result::Error<uint8, ParseError>(ParseError::Overflow);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint8, ParseError>(failed); }
+    if negative { return Result::Error<uint8, ParseError>(ParseError::InvalidCharacter(0)); }
+    if magnitude > 255u512 { return Result::Error<uint8, ParseError>(ParseError::Overflow); }
     return Result::Success<uint8, ParseError>(magnitude as uint8);
 }
 
@@ -112,16 +98,10 @@ pub func ParseInt8(str: Slice<char8>) -> Result<int8, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int8, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int8, ParseError>(failed); }
     let limit = negative ? 128u512 : 127u512;
-    if magnitude > limit {
-        return Result::Error<int8, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int8, ParseError>(~((magnitude as uint8) - 1u8) as int8);
-    }
+    if magnitude > limit { return Result::Error<int8, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int8, ParseError>(~((magnitude as uint8) - 1u8) as int8); }
     return Result::Success<int8, ParseError>(magnitude as int8);
 }
 
@@ -136,15 +116,9 @@ pub func ParseUint16(str: Slice<char8>) -> Result<uint16, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint16, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint16, ParseError>(ParseError::InvalidCharacter(0));
-    }
-    if magnitude > 65535u512 {
-        return Result::Error<uint16, ParseError>(ParseError::Overflow);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint16, ParseError>(failed); }
+    if negative { return Result::Error<uint16, ParseError>(ParseError::InvalidCharacter(0)); }
+    if magnitude > 65535u512 { return Result::Error<uint16, ParseError>(ParseError::Overflow); }
     return Result::Success<uint16, ParseError>(magnitude as uint16);
 }
 
@@ -159,16 +133,10 @@ pub func ParseInt16(str: Slice<char8>) -> Result<int16, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int16, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int16, ParseError>(failed); }
     let limit = negative ? 32768u512 : 32767u512;
-    if magnitude > limit {
-        return Result::Error<int16, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int16, ParseError>(~((magnitude as uint16) - 1u16) as int16);
-    }
+    if magnitude > limit { return Result::Error<int16, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int16, ParseError>(~((magnitude as uint16) - 1u16) as int16); }
     return Result::Success<int16, ParseError>(magnitude as int16);
 }
 
@@ -183,15 +151,9 @@ pub func ParseUint32(str: Slice<char8>) -> Result<uint32, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint32, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint32, ParseError>(ParseError::InvalidCharacter(0));
-    }
-    if magnitude > 4294967295u512 {
-        return Result::Error<uint32, ParseError>(ParseError::Overflow);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint32, ParseError>(failed); }
+    if negative { return Result::Error<uint32, ParseError>(ParseError::InvalidCharacter(0)); }
+    if magnitude > 4294967295u512 { return Result::Error<uint32, ParseError>(ParseError::Overflow); }
     return Result::Success<uint32, ParseError>(magnitude as uint32);
 }
 
@@ -206,16 +168,10 @@ pub func ParseInt32(str: Slice<char8>) -> Result<int32, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int32, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int32, ParseError>(failed); }
     let limit = negative ? 2147483648u512 : 2147483647u512;
-    if magnitude > limit {
-        return Result::Error<int32, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int32, ParseError>(~((magnitude as uint32) - 1u32) as int32);
-    }
+    if magnitude > limit { return Result::Error<int32, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int32, ParseError>(~((magnitude as uint32) - 1u32) as int32); }
     return Result::Success<int32, ParseError>(magnitude as int32);
 }
 
@@ -230,15 +186,9 @@ pub func ParseUint64(str: Slice<char8>) -> Result<uint64, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint64, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint64, ParseError>(ParseError::InvalidCharacter(0));
-    }
-    if magnitude > 18446744073709551615u512 {
-        return Result::Error<uint64, ParseError>(ParseError::Overflow);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint64, ParseError>(failed); }
+    if negative { return Result::Error<uint64, ParseError>(ParseError::InvalidCharacter(0)); }
+    if magnitude > 18446744073709551615u512 { return Result::Error<uint64, ParseError>(ParseError::Overflow); }
     return Result::Success<uint64, ParseError>(magnitude as uint64);
 }
 
@@ -253,16 +203,10 @@ pub func ParseInt64(str: Slice<char8>) -> Result<int64, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int64, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int64, ParseError>(failed); }
     let limit = negative ? 9223372036854775808u512 : 9223372036854775807u512;
-    if magnitude > limit {
-        return Result::Error<int64, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int64, ParseError>(~((magnitude as uint64) - 1u64) as int64);
-    }
+    if magnitude > limit { return Result::Error<int64, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int64, ParseError>(~((magnitude as uint64) - 1u64) as int64); }
     return Result::Success<int64, ParseError>(magnitude as int64);
 }
 
@@ -277,12 +221,8 @@ pub func ParseUint128(str: Slice<char8>) -> Result<uint128, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint128, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint128, ParseError>(ParseError::InvalidCharacter(0));
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint128, ParseError>(failed); }
+    if negative { return Result::Error<uint128, ParseError>(ParseError::InvalidCharacter(0)); }
     if magnitude > 340282366920938463463374607431768211455u512 {
         return Result::Error<uint128, ParseError>(ParseError::Overflow);
     }
@@ -300,16 +240,10 @@ pub func ParseInt128(str: Slice<char8>) -> Result<int128, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int128, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int128, ParseError>(failed); }
     let limit = negative ? 170141183460469231731687303715884105728u512 : 170141183460469231731687303715884105727u512;
-    if magnitude > limit {
-        return Result::Error<int128, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int128, ParseError>(~((magnitude as uint128) - 1u128) as int128);
-    }
+    if magnitude > limit { return Result::Error<int128, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int128, ParseError>(~((magnitude as uint128) - 1u128) as int128); }
     return Result::Success<int128, ParseError>(magnitude as int128);
 }
 
@@ -324,12 +258,8 @@ pub func ParseUint256(str: Slice<char8>) -> Result<uint256, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint256, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint256, ParseError>(ParseError::InvalidCharacter(0));
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint256, ParseError>(failed); }
+    if negative { return Result::Error<uint256, ParseError>(ParseError::InvalidCharacter(0)); }
     if magnitude > 115792089237316195423570985008687907853269984665640564039457584007913129639935u512 {
         return Result::Error<uint256, ParseError>(ParseError::Overflow);
     }
@@ -347,16 +277,10 @@ pub func ParseInt256(str: Slice<char8>) -> Result<int256, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int256, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int256, ParseError>(failed); }
     let limit = negative ? 57896044618658097711785492504343953926634992332820282019728792003956564819968u512 : 57896044618658097711785492504343953926634992332820282019728792003956564819967u512;
-    if magnitude > limit {
-        return Result::Error<int256, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int256, ParseError>(~((magnitude as uint256) - 1u256) as int256);
-    }
+    if magnitude > limit { return Result::Error<int256, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int256, ParseError>(~((magnitude as uint256) - 1u256) as int256); }
     return Result::Success<int256, ParseError>(magnitude as int256);
 }
 
@@ -371,12 +295,8 @@ pub func ParseUint512(str: Slice<char8>) -> Result<uint512, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<uint512, ParseError>(failed);
-    }
-    if negative {
-        return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(0));
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<uint512, ParseError>(failed); }
+    if negative { return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(0)); }
     if magnitude > 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512 {
         return Result::Error<uint512, ParseError>(ParseError::Overflow);
     }
@@ -394,16 +314,10 @@ pub func ParseInt512(str: Slice<char8>) -> Result<int512, ParseError> {
     var negative = false;
     let parsed = ParseIntegerMagnitude(str, @magnitude, @negative);
     var failed = ParseError::Empty;
-    if parsed.TryIntoError(@failed) {
-        return Result::Error<int512, ParseError>(failed);
-    }
+    if parsed.TryIntoError(@failed) { return Result::Error<int512, ParseError>(failed); }
     let limit = negative ? 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048u512 : 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047u512;
-    if magnitude > limit {
-        return Result::Error<int512, ParseError>(ParseError::Overflow);
-    }
-    if negative {
-        return Result::Success<int512, ParseError>(~((magnitude as uint512) - 1u512) as int512);
-    }
+    if magnitude > limit { return Result::Error<int512, ParseError>(ParseError::Overflow); }
+    if negative { return Result::Success<int512, ParseError>(~((magnitude as uint512) - 1u512) as int512); }
     return Result::Success<int512, ParseError>(magnitude as int512);
 }
 

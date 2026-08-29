@@ -130,9 +130,7 @@ extend JsonParser {
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
     func TakeText(self: &var JsonParser, token: JsonToken, error: *var TextError) -> String {
         let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
-        if !token.escaped {
-            return String::FromBytes(self.allocator, span, error);
-        }
+        if !token.escaped { return String::FromBytes(self.allocator, span, error); }
         var builder = StringBuilder(self.allocator);
         var index: uint = 0;
         while index < span.length {
@@ -228,25 +226,15 @@ extend JsonParser {
             self.outcome.position = token.start;
             return JsonValue::Null(self.allocator);
         }
-        if token.kind == JsonTokenKind::End {
-            return self.Stop(JsonParseError::Truncated);
-        }
-        if token.kind == JsonTokenKind::Null {
-            return JsonValue::Null(self.allocator);
-        }
-        if token.kind == JsonTokenKind::True {
-            return JsonValue::Boolean(self.allocator, true);
-        }
-        if token.kind == JsonTokenKind::False {
-            return JsonValue::Boolean(self.allocator, false);
-        }
+        if token.kind == JsonTokenKind::End { return self.Stop(JsonParseError::Truncated); }
+        if token.kind == JsonTokenKind::Null { return JsonValue::Null(self.allocator); }
+        if token.kind == JsonTokenKind::True { return JsonValue::Boolean(self.allocator, true); }
+        if token.kind == JsonTokenKind::False { return JsonValue::Boolean(self.allocator, false); }
         if token.kind == JsonTokenKind::Number {
             var textError = TextError::None;
             let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
             var value = JsonValue::Number(self.allocator, span, @textError);
-            if textError != TextError::None {
-                return self.Stop(JsonParseError::OutOfMemory);
-            }
+            if textError != TextError::None { return self.Stop(JsonParseError::OutOfMemory); }
             return <-value;
         }
         if token.kind == JsonTokenKind::Text {
@@ -261,21 +249,15 @@ extend JsonParser {
             value.text = held;
             return <-value;
         }
-        if token.kind == JsonTokenKind::ArrayStart {
-            return self.ParseArray();
-        }
-        if token.kind == JsonTokenKind::ObjectStart {
-            return self.ParseObject();
-        }
+        if token.kind == JsonTokenKind::ArrayStart { return self.ParseArray(); }
+        if token.kind == JsonTokenKind::ObjectStart { return self.ParseObject(); }
         return self.Stop(JsonParseError::Unexpected);
     }
 
     func ParseArray(self: &var JsonParser) -> JsonValue {
         // The depth check happens before descending, so a document built to exhaust the stack is refused while
         // there is still stack to refuse it with.
-        if self.depth >= self.limits.maximumDepth {
-            return self.Stop(JsonParseError::TooDeep);
-        }
+        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonParseError::TooDeep); }
         self.depth = self.depth + 1u;
         var array = JsonValue::Array(self.allocator);
         var token = self.lexer.Next();
@@ -286,16 +268,10 @@ extend JsonParser {
         var entries: uint = 0;
         while true {
             var element = self.ParseValue(token);
-            if self.outcome.error != JsonParseError::None {
-                return <-array;
-            }
+            if self.outcome.error != JsonParseError::None { return <-array; }
             entries = entries + 1u;
-            if entries > self.limits.maximumEntries {
-                return self.Stop(JsonParseError::TooManyEntries);
-            }
-            if !array.Push(<-element) {
-                return self.Stop(JsonParseError::OutOfMemory);
-            }
+            if entries > self.limits.maximumEntries { return self.Stop(JsonParseError::TooManyEntries); }
+            if !array.Push(<-element) { return self.Stop(JsonParseError::OutOfMemory); }
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1u;
@@ -314,9 +290,7 @@ extend JsonParser {
 
 extend JsonParser {
     func ParseObject(self: &var JsonParser) -> JsonValue {
-        if self.depth >= self.limits.maximumDepth {
-            return self.Stop(JsonParseError::TooDeep);
-        }
+        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonParseError::TooDeep); }
         self.depth = self.depth + 1u;
         var object = JsonValue::Object(self.allocator);
         var token = self.lexer.Next();
@@ -372,9 +346,7 @@ extend JsonParser {
                         self.depth = self.depth - 1u;
                         return <-object;
                     }
-                    if token.kind != JsonTokenKind::Comma {
-                        return self.Stop(JsonParseError::Unexpected);
-                    }
+                    if token.kind != JsonTokenKind::Comma { return self.Stop(JsonParseError::Unexpected); }
                     token = self.lexer.Next();
                     continue;
                 }
@@ -389,9 +361,7 @@ extend JsonParser {
                 name.Clear();
                 return self.Stop(JsonParseError::TooManyEntries);
             }
-            if !object.Insert(name, <-value) {
-                return self.Stop(JsonParseError::OutOfMemory);
-            }
+            if !object.Insert(name, <-value) { return self.Stop(JsonParseError::OutOfMemory); }
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
@@ -415,9 +385,7 @@ extend JsonParser {
     /// https://rux-lang.dev/docs/api/json/json-parser/parse
     pub func Parse(self: &var JsonParser) -> JsonValue {
         var value = self.ParseValue(self.lexer.Next());
-        if self.outcome.error != JsonParseError::None {
-            return <-value;
-        }
+        if self.outcome.error != JsonParseError::None { return <-value; }
         let trailing = self.lexer.Next();
         if trailing.kind != JsonTokenKind::End {
             self.outcome.error = JsonParseError::TrailingContent;

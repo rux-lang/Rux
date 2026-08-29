@@ -16,17 +16,13 @@ import Core::{ Result, Slice };
 ///
 /// https://rux-lang.dev/docs/api/format/parse-wide-float
 pub func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: &FloatLayout) -> Result<uint512, ParseError> {
-    if str.length == 0u {
-        return Result::Error<uint512, ParseError>(ParseError::Empty);
-    }
+    if str.length == 0u { return Result::Error<uint512, ParseError>(ParseError::Empty); }
     var index: uint = 0;
     var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
         index = index + 1u;
-        if index == str.length {
-            return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index - 1u));
-        }
+        if index == str.length { return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index - 1u)); }
     }
     if index + 3u == str.length && str[index] == c8'N' && str[index + 1u] == c8'a' && str[index + 2u] == c8'N' {
         return Result::Success<uint512, ParseError>(NanBits(layout));
@@ -64,9 +60,7 @@ pub func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: &FloatL
         }
         break;
     }
-    if digitCount == 0u {
-        return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index));
-    }
+    if digitCount == 0u { return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index)); }
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         let marker = index;
         index = index + 1u;
@@ -90,24 +84,16 @@ pub func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: &FloatL
         }
         decimalExponent = exponentNegative ? decimalExponent - exponent : decimalExponent + exponent;
     }
-    if index != str.length {
-        return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index));
-    }
-    if digits.IsZero() {
-        return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout));
-    }
+    if index != str.length { return Result::Error<uint512, ParseError>(ParseError::InvalidCharacter(index)); }
+    if digits.IsZero() { return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout)); }
 
     // The value is at least ten to the magnitude less one and below ten to the magnitude; anything clearly past
     // the format is answered without building the numbers that would say so exactly.
     let magnitude = (significant as int) + decimalExponent;
     let largest = ((layout.bias as int64 * 30103i64) / 100000i64) as int + 2;
     let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103i64) / 100000i64) as int + 3);
-    if magnitude > largest {
-        return Result::Error<uint512, ParseError>(ParseError::Overflow);
-    }
-    if magnitude < smallest {
-        return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout));
-    }
+    if magnitude > largest { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
+    if magnitude < smallest { return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout)); }
     return RoundRatio(allocator, digits, decimalExponent, negative, layout);
 }
 
@@ -119,9 +105,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     var power = BigNat(allocator);
     var base = BigNat(allocator);
     var scratch = BigNat(allocator);
-    if !denominator.SetSmall(1u64) {
-        return Result::Error<uint512, ParseError>(ParseError::Overflow);
-    }
+    if !denominator.SetSmall(1u64) { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
     if decimalExponent >= 0 {
         if !SetPowerOfTen(power, decimalExponent as uint, base, scratch) || !numerator.SetProduct(digits, power) {
             return Result::Error<uint512, ParseError>(ParseError::Overflow);
@@ -153,18 +137,14 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
         }
     }
     let precision = layout.precision;
-    if exponent > layout.bias {
-        return Result::Error<uint512, ParseError>(ParseError::Overflow);
-    }
+    if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
     // Below the normal range the quotient is taken at fewer bits, so that what is rounded is the subnormal's own
     // last place and not a position it cannot store.
     var wanted = precision + 3u;
     let lowest = 1 - layout.bias;
     if exponent < lowest {
         let lost = (lowest - exponent) as uint;
-        if lost >= wanted {
-            return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout));
-        }
+        if lost >= wanted { return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout)); }
         wanted = wanted - lost;
     }
 
@@ -214,9 +194,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     if significand == (1u512 << precision) {
         significand = significand >> 1u;
         exponent = exponent + 1;
-        if exponent > layout.bias {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
-        }
+        if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
     }
     return Result::Success<uint512, ParseError>(PackWide(negative, significand, exponent - (precision as int - 1),
                                                           layout));
@@ -229,9 +207,7 @@ pub func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80
     let layout = FloatLayout::Extended80();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return Result::Error<Float80, ParseError>(failure);
-    }
+    if parsed.TryIntoError(@failure) { return Result::Error<Float80, ParseError>(failure); }
     return Result::Success<Float80, ParseError>(Float80::FromBits(parsed.ValueOr(0u512) as uint128));
 }
 
@@ -242,9 +218,7 @@ pub func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float1
     let layout = FloatLayout::Binary128();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return Result::Error<Float128, ParseError>(failure);
-    }
+    if parsed.TryIntoError(@failure) { return Result::Error<Float128, ParseError>(failure); }
     return Result::Success<Float128, ParseError>(Float128::FromBits(parsed.ValueOr(0u512) as uint128));
 }
 
@@ -255,9 +229,7 @@ pub func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float2
     let layout = FloatLayout::Binary256();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return Result::Error<Float256, ParseError>(failure);
-    }
+    if parsed.TryIntoError(@failure) { return Result::Error<Float256, ParseError>(failure); }
     return Result::Success<Float256, ParseError>(Float256::FromBits(parsed.ValueOr(0u512) as uint256));
 }
 
@@ -268,8 +240,6 @@ pub func ParseFloat512(allocator: Allocator, str: Slice<char8>) -> Result<Float5
     let layout = FloatLayout::Binary512();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return Result::Error<Float512, ParseError>(failure);
-    }
+    if parsed.TryIntoError(@failure) { return Result::Error<Float512, ParseError>(failure); }
     return Result::Success<Float512, ParseError>(Float512::FromBits(parsed.ValueOr(0u512) as uint512));
 }

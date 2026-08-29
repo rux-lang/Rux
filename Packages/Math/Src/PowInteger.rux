@@ -16,12 +16,8 @@
 ///
 /// https://rux-lang.dev/docs/api/math/pow-integer
 pub func PowInteger(base: float64, exponent: int64) -> float64 {
-    if exponent == 0i64 {
-        return 1.0;
-    }
-    if IsNan(base) {
-        return base;
-    }
+    if exponent == 0i64 { return 1.0; }
+    if IsNan(base) { return base; }
     // The magnitude is taken in unsigned form so the most negative exponent has one too.
     var remaining = exponent < 0i64 ? (0u64 - (exponent as uint64)) : (exponent as uint64);
     var accumulated = 1.0;
@@ -35,9 +31,7 @@ pub func PowInteger(base: float64, exponent: int64) -> float64 {
             factor = factor * factor;
         }
     }
-    if exponent < 0i64 {
-        return 1.0 / accumulated;
-    }
+    if exponent < 0i64 { return 1.0 / accumulated; }
     return accumulated;
 }
 

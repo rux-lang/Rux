@@ -51,9 +51,7 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
     // Converting back lands on the value it started from exactly when nothing was lost on the way out -- with one
     // exception, below, that the round trip cannot see.
-    if (*result as From) != value {
-        return true;
-    }
+    if (*result as From) != value { return true; }
     // A value and its conversion that disagree in sign came back equal only because both conversions wrapped the same
     // way: `-1` and `uint64::Max` are one bit pattern, and so are `2^63` and `int64::Min`.
     return (value < (0 as From)) != (*result < (0 as To));
@@ -93,9 +91,7 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 ///
 /// https://rux-lang.dev/docs/api/core/convert-saturating
 pub func ConvertSaturating<From, To>(value: From, result: *var To) {
-    if !ConvertChecked<From, To>(value, result) {
-        return;
-    }
+    if !ConvertChecked<From, To>(value, result) { return; }
     // A NaN is not above or below the range; it is outside the ordering entirely, so neither limit is nearer.
     if value != value {
         *result = 0 as To;

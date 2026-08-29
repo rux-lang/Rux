@@ -22,9 +22,7 @@ import Entropy::{ EntropyError, NextUint64 };
 /// https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
 pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
     let seed = NextUint64(error);
-    if *error != EntropyError::None {
-        return Xoshiro256(0u64);
-    }
+    if *error != EntropyError::None { return Xoshiro256(0u64); }
     return Xoshiro256(seed);
 }
 
@@ -35,9 +33,7 @@ pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
 /// https://rux-lang.dev/docs/api/random/pcg-from-entropy
 pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
-    if *error != EntropyError::None {
-        return Pcg64Dxsm(0u64);
-    }
+    if *error != EntropyError::None { return Pcg64Dxsm(0u64); }
     return Pcg64Dxsm(seed);
 }
 
@@ -49,8 +45,6 @@ pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
 /// https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
 pub func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
-    if *error != EntropyError::None {
-        return Pcg64Dxsm::WithStream(0u64, stream);
-    }
+    if *error != EntropyError::None { return Pcg64Dxsm::WithStream(0u64, stream); }
     return Pcg64Dxsm::WithStream(seed, stream);
 }

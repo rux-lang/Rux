@@ -23,9 +23,7 @@ extend MutableSlice<T> {
     // range is initialized and outlives the view.
     /// https://rux-lang.dev/docs/api/core/mutable-slice/from
     pub func From(data: *var T, length: uint) -> MutableSlice<T> {
-        if length == 0 {
-            return MutableSlice<T> { data: null, length: 0 };
-        }
+        if length == 0 { return MutableSlice<T> { data: null, length: 0 }; }
 
         return MutableSlice<T> { data: data, length: length };
     }
@@ -57,9 +55,7 @@ extend MutableSlice<T> {
     // index with itself is a no-op.
     /// https://rux-lang.dev/docs/api/core/mutable-slice/swap
     pub func Swap(self: &MutableSlice<T>, first: uint, second: uint) {
-        if first == second {
-            return;
-        }
+        if first == second { return; }
 
         let temp = self.data[first];
         self.data[first] = self.data[second];
@@ -71,9 +67,7 @@ extend MutableSlice<T> {
     // result never covers storage this view does not.
     /// https://rux-lang.dev/docs/api/core/mutable-slice/sub
     pub func Sub(self: &MutableSlice<T>, start: uint, length: uint) -> MutableSlice<T> {
-        if start >= self.length || length == 0 {
-            return MutableSlice<T> { data: null, length: 0 };
-        }
+        if start >= self.length || length == 0 { return MutableSlice<T> { data: null, length: 0 }; }
 
         var count = length;
         let available = self.length - start;

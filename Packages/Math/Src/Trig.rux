@@ -25,9 +25,7 @@ func KernelSin(x: float64, y: float64) -> float64 {
     let z = x * x;
     let v = z * x;
     let r = s2 + z * (s3 + z * (s4 + z * (s5 + z * s6)));
-    if y == 0.0 {
-        return x + v * (s1 + z * r);
-    }
+    if y == 0.0 { return x + v * (s1 + z * r); }
     return x - ((z * (0.5 * y - v * r) - y) - v * s1);
 }
 
@@ -124,9 +122,7 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
         let result = v - 2.0 * (a - (sum * sum / (sum + v) - r));
         return negative ? -result : result;
     }
-    if reciprocal {
-        return NegRecip(a, r, sum);
-    }
+    if reciprocal { return NegRecip(a, r, sum); }
     return sum;
 }
 

@@ -17,18 +17,14 @@ pub variant ParseError {
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float64
 pub func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
-    if str.length == 0 {
-        return Result::Error<float64, ParseError>(ParseError::Empty);
-    }
+    if str.length == 0 { return Result::Error<float64, ParseError>(ParseError::Empty); }
 
     var index: uint = 0;
     var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
         index++;
-        if index == str.length {
-            return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index - 1));
-        }
+        if index == str.length { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index - 1)); }
     }
 
     // The two special spellings, exactly as formatting writes them, so what one side prints the other reads. A NaN
@@ -81,9 +77,7 @@ pub func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
         break;
     }
 
-    if digitCount == 0u {
-        return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index));
-    }
+    if digitCount == 0u { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index)); }
 
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;
@@ -112,21 +106,15 @@ pub func ParseFloat64(str: Slice<char8>) -> Result<float64, ParseError> {
         }
     }
 
-    if index != str.length {
-        return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index));
-    }
+    if index != str.length { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index)); }
 
     if value != 0.0 {
-        if decimalExponent > 308 {
-            return Result::Error<float64, ParseError>(ParseError::Overflow);
-        }
+        if decimalExponent > 308 { return Result::Error<float64, ParseError>(ParseError::Overflow); }
         if decimalExponent < -400 {
             value = 0.0;
         } else {
             value = ScaleByPow10(value, decimalExponent);
-            if IsInfinite(value) {
-                return Result::Error<float64, ParseError>(ParseError::Overflow);
-            }
+            if IsInfinite(value) { return Result::Error<float64, ParseError>(ParseError::Overflow); }
         }
     }
 
@@ -151,9 +139,7 @@ pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
 ///
 /// https://rux-lang.dev/docs/api/format/try-parse-float64
 pub func TryParseFloat64(str: Slice<char8>, value: *var float64) -> bool {
-    if value == null {
-        return false;
-    }
+    if value == null { return false; }
 
     match ParseFloat64(str) {
         .Success(parsed) => {
@@ -193,9 +179,7 @@ pub func ParseFloat32(str: Slice<char8>) -> Result<float32, ParseError> {
     }
     if IsFinite(wide) {
         let magnitude = wide < 0.0 ? -wide : wide;
-        if magnitude > MaxFinite32 {
-            return Result::Error<float32, ParseError>(ParseError::Overflow);
-        }
+        if magnitude > MaxFinite32 { return Result::Error<float32, ParseError>(ParseError::Overflow); }
     }
     return Result::Success<float32, ParseError>(wide as float32);
 }

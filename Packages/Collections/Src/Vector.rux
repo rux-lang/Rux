@@ -154,15 +154,11 @@ extend Vector<T> {
     // Internal: `Reserve` is the public way to ask for room, because it counts from the current length rather than
     // from zero, which is what a caller about to append that many actually means.
     func Grow(self: &var Vector<T>, required: uint) -> CollectionError {
-        if required <= self.capacity {
-            return CollectionError::None;
-        }
+        if required <= self.capacity { return CollectionError::None; }
 
         var capacity: uint = 0;
         let planned = GrowCapacity(self.capacity, required, MinimumVectorCapacity, sizeof(T), @capacity);
-        if planned.IsError() {
-            return planned;
-        }
+        if planned.IsError() { return planned; }
 
         // Into a local first. A failed reallocation leaves the original block valid and the vector's own, so writing
         // the result straight into the field would drop the only pointer to the elements on failure.
@@ -170,9 +166,7 @@ extend Vector<T> {
         let moved = self.data == null ? AllocateBlock<T>(self.allocator, capacity, @resized)
                                       : ReallocateBlock<T>(self.allocator, self.data, self.capacity, capacity,
                                                            @resized);
-        if moved.IsError() {
-            return moved;
-        }
+        if moved.IsError() { return moved; }
 
         self.data = resized;
         self.capacity = capacity;
@@ -191,9 +185,7 @@ extend Vector<T> {
     pub func Reserve(self: &var Vector<T>, additional: uint) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         return self.Grow(required);
     }
 
@@ -205,9 +197,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/shrink-to-fit
     pub func ShrinkToFit(self: &var Vector<T>) -> CollectionError {
-        if self.capacity == self.length {
-            return CollectionError::None;
-        }
+        if self.capacity == self.length { return CollectionError::None; }
         if self.length == 0 {
             if self.data != null {
                 ReleaseBlock<T>(self.allocator, self.data, self.capacity);
@@ -219,9 +209,7 @@ extend Vector<T> {
 
         var resized: *var T = null;
         let moved = ReallocateBlock<T>(self.allocator, self.data, self.capacity, self.length, @resized);
-        if moved.IsError() {
-            return moved;
-        }
+        if moved.IsError() { return moved; }
         self.data = resized;
         self.capacity = self.length;
         return CollectionError::None;
@@ -250,9 +238,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/truncate
     pub func Truncate(self: &var Vector<T>, length: uint) {
-        if length >= self.length {
-            return;
-        }
+        if length >= self.length { return; }
         var index = length;
         while index < self.length {
             // Moving each element into a local destroys it when the local's life ends -- the same mechanism `Array`
@@ -295,13 +281,9 @@ extend Vector<T> {
         if self.length == self.capacity {
             var required: uint = 0;
             let total = AddLength(self.length, 1, @required);
-            if total.IsError() {
-                return total;
-            }
+            if total.IsError() { return total; }
             let room = self.Grow(required);
-            if room.IsError() {
-                return room;
-            }
+            if room.IsError() { return room; }
         }
         self.data[self.length] <- value;
         self.length = self.length + 1;
@@ -315,13 +297,9 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/push-slice
     pub func PushSlice(self: &var Vector<T>, items: Slice<T>) -> CollectionError {
-        if items.length == 0 {
-            return CollectionError::None;
-        }
+        if items.length == 0 { return CollectionError::None; }
         let room = self.Reserve(items.length);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         var index: uint = 0;
         while index < items.length {
             self.data[self.length + index] = items.data[index];
@@ -341,9 +319,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/try-pop
     pub func TryPop(self: &var Vector<T>, value: *var T) -> bool {
-        if self.length == 0 || value == null {
-            return false;
-        }
+        if self.length == 0 || value == null { return false; }
         self.length = self.length - 1;
         *value <- self.data[self.length];
         return true;
@@ -355,9 +331,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/get
     pub func Get(self: &Vector<T>, index: uint) -> Option<T> {
-        if index >= self.length {
-            return Option::None<T>();
-        }
+        if index >= self.length { return Option::None<T>(); }
         return Option::Some<T>(self.data[index]);
     }
 
@@ -371,9 +345,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/reference
     pub func Reference(self: &Vector<T>, index: uint) -> Option<*T> {
-        if index >= self.length {
-            return Option::None<*T>();
-        }
+        if index >= self.length { return Option::None<*T>(); }
         return Option::Some<*T>(@self.data[index]);
     }
 
@@ -387,9 +359,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/set
     pub func Set(self: &var Vector<T>, index: uint, value: T) -> CollectionError {
-        if index >= self.length {
-            return CollectionError::IndexOutOfRange;
-        }
+        if index >= self.length { return CollectionError::IndexOutOfRange; }
         self.data[index] <- value;
         return CollectionError::None;
     }
@@ -454,17 +424,11 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/insert
     pub func Insert(self: &var Vector<T>, index: uint, value: T) -> CollectionError {
-        if index > self.length {
-            return CollectionError::IndexOutOfRange;
-        }
-        if index == self.length {
-            return self.Push(<-value);
-        }
+        if index > self.length { return CollectionError::IndexOutOfRange; }
+        if index == self.length { return self.Push(<-value); }
 
         let room = self.Reserve(1);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         // Backwards, so each element is read before the one that overwrites it.
         var position = self.length;
         while position > index {
@@ -486,9 +450,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/remove-at
     pub func RemoveAt(self: &var Vector<T>, index: uint) -> Option<T> {
-        if index >= self.length {
-            return Option::None<T>();
-        }
+        if index >= self.length { return Option::None<T>(); }
         let removed <- self.data[index];
         var position = index;
         while position + 1 < self.length {
@@ -510,9 +472,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/swap-remove-at
     pub func SwapRemoveAt(self: &var Vector<T>, index: uint) -> Option<T> {
-        if index >= self.length {
-            return Option::None<T>();
-        }
+        if index >= self.length { return Option::None<T>(); }
         let removed <- self.data[index];
         let last = self.length - 1;
         if index != last {
@@ -537,9 +497,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/last
     pub func Last(self: &Vector<T>) -> Option<*T> {
-        if self.length == 0 {
-            return Option::None<*T>();
-        }
+        if self.length == 0 { return Option::None<*T>(); }
         return self.Reference(self.length - 1);
     }
 
@@ -554,9 +512,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/slice
     pub func Slice(self: &Vector<T>, start: uint, count: uint) -> Slice<T> {
-        if start >= self.length || count == 0 {
-            return Slice<T> { data: null, length: 0 };
-        }
+        if start >= self.length || count == 0 { return Slice<T> { data: null, length: 0 }; }
         var taken = count;
         let available = self.length - start;
         if taken > available {
@@ -575,9 +531,7 @@ extend Vector<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/mutable-slice
     pub func MutableSliceOf(self: &var Vector<T>, start: uint, count: uint) -> MutableSlice<T> {
-        if start >= self.length || count == 0 {
-            return MutableSlice<T> { data: null, length: 0 };
-        }
+        if start >= self.length || count == 0 { return MutableSlice<T> { data: null, length: 0 }; }
         var taken = count;
         let available = self.length - start;
         if taken > available {
@@ -621,9 +575,7 @@ extend VectorIntoIterator<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/vector-into-iterator/next
     pub func Next(self: &var VectorIntoIterator<T>) -> Option<T> {
-        if self.position >= self.length {
-            return Option::None<T>();
-        }
+        if self.position >= self.length { return Option::None<T>(); }
         let taken <- self.data[self.position];
         self.position = self.position + 1;
         return Option::Some<T>(<-taken);

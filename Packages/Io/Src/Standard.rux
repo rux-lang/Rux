@@ -42,34 +42,20 @@ else {
 // meaning a caller acts on, and leaves the rest `Other` until `Storage` does the systematic translation.
 func KindOfRaw(raw: int32) -> IoErrorKind {
     when #target.os == .Windows {
-        if raw == 5 {
-            return IoErrorKind::PermissionDenied;
-        }
-        if raw == 6 {
-            return IoErrorKind::InvalidHandle;
-        }
+        if raw == 5 { return IoErrorKind::PermissionDenied; }
+        if raw == 6 { return IoErrorKind::InvalidHandle; }
         return IoErrorKind::Other;
     }
     else {
-        if raw == 4 {
-            return IoErrorKind::Interrupted;
-        }
+        if raw == 4 { return IoErrorKind::Interrupted; }
         when #target.os == .Linux {
-            if raw == 11 {
-                return IoErrorKind::WouldBlock;
-            }
+            if raw == 11 { return IoErrorKind::WouldBlock; }
         }
         else {
-            if raw == 35 {
-                return IoErrorKind::WouldBlock;
-            }
+            if raw == 35 { return IoErrorKind::WouldBlock; }
         }
-        if raw == 9 {
-            return IoErrorKind::InvalidHandle;
-        }
-        if raw == 13 {
-            return IoErrorKind::PermissionDenied;
-        }
+        if raw == 9 { return IoErrorKind::InvalidHandle; }
+        if raw == 13 { return IoErrorKind::PermissionDenied; }
         return IoErrorKind::Other;
     }
 }
@@ -81,9 +67,7 @@ func PlatformFailure(raw: int32) -> IoError {
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
 func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var uint) -> IoError {
     *taken = 0;
-    if bytes.length == 0 {
-        return IoError::Ok();
-    }
+    if bytes.length == 0 { return IoError::Ok(); }
     when #target.os == .Windows {
         if !console {
             let count = bytes.length > 0x100000u ? 0x100000u32 : bytes.length as uint32;
@@ -113,18 +97,14 @@ func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var
             var wide: char16[1024];
             let units = MultiByteToWideChar(CodePage::Utf8 as uint32, 0, @bytes.data[offset], chunk as int32,
                                             @wide[0], 1024);
-            if units <= 0 {
-                return PlatformFailure(GetLastError() as int32);
-            }
+            if units <= 0 { return PlatformFailure(GetLastError() as int32); }
             var sent: uint = 0;
             while sent < units as uint {
                 var written: uint32 = 0;
                 if !WriteConsoleW(handle, @wide[sent], (units as uint - sent) as uint32, @written, null) {
                     return PlatformFailure(GetLastError() as int32);
                 }
-                if written == 0 {
-                    return IoError::Of(IoErrorKind::WriteZero);
-                }
+                if written == 0 { return IoError::Of(IoErrorKind::WriteZero); }
                 sent = sent + written as uint;
             }
             offset = offset + chunk;
@@ -134,9 +114,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var
     }
     else {
         let result = Write(handle, bytes.data as *opaque, bytes.length);
-        if result < 0 {
-            return PlatformFailure((0i64 - result) as int32);
-        }
+        if result < 0 { return PlatformFailure((0i64 - result) as int32); }
         *taken = result as uint;
         return IoError::Ok();
     }
@@ -194,9 +172,7 @@ extend StandardIn : Reader {
     /// https://rux-lang.dev/docs/api/io/standard-in/read
     pub func Read(self: &var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
-        if into.length == 0 {
-            return IoError::Ok();
-        }
+        if into.length == 0 { return IoError::Ok(); }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
             into.data[served] = (self.pending & 0xFFu64) as uint8 as char8;
@@ -209,9 +185,7 @@ extend StandardIn : Reader {
             return IoError::Ok();
         }
         when #target.os == .Windows {
-            if self.console {
-                return self.ReadConsole(into, served, filled);
-            }
+            if self.console { return self.ReadConsole(into, served, filled); }
             var read: uint32 = 0;
             let room = into.length - served;
             let count = room > 0x100000u ? 0x100000u32 : room as uint32;
@@ -222,15 +196,11 @@ extend StandardIn : Reader {
                     return IoError::Ok();
                 }
                 // A pipe whose writing end has closed reports through a failure; it means the stream is over.
-                if raw == 109 {
-                    return IoError::Of(IoErrorKind::EndOfStream);
-                }
+                if raw == 109 { return IoError::Of(IoErrorKind::EndOfStream); }
                 return PlatformFailure(raw);
             }
             *filled = served + read as uint;
-            if *filled == 0 {
-                return IoError::Of(IoErrorKind::EndOfStream);
-            }
+            if *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
             return IoError::Ok();
         }
         else {
@@ -243,9 +213,7 @@ extend StandardIn : Reader {
                 return PlatformFailure((0i64 - result) as int32);
             }
             *filled = served + result as uint;
-            if *filled == 0 {
-                return IoError::Of(IoErrorKind::EndOfStream);
-            }
+            if *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
             return IoError::Ok();
         }
     }

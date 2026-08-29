@@ -24,9 +24,7 @@ import Core::{ Option, Ordering };
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-index
 pub func MinIndex<T>(items: Slice<T>) -> Option<uint> {
-    if items.length == 0 {
-        return Option::None<uint>();
-    }
+    if items.length == 0 { return Option::None<uint>(); }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -49,9 +47,7 @@ pub func MinIndex<T>(items: Slice<T>) -> Option<uint> {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max-index
 pub func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
-    if items.length == 0 {
-        return Option::None<uint>();
-    }
+    if items.length == 0 { return Option::None<uint>(); }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -72,9 +68,7 @@ pub func MaxIndex<T>(items: Slice<T>) -> Option<uint> {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-index-by
 pub func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
-    if items.length == 0 {
-        return Option::None<uint>();
-    }
+    if items.length == 0 { return Option::None<uint>(); }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -95,9 +89,7 @@ pub func MinIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Opti
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max-index-by
 pub func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Option<uint> {
-    if items.length == 0 {
-        return Option::None<uint>();
-    }
+    if items.length == 0 { return Option::None<uint>(); }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -128,9 +120,7 @@ pub func MaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> Opti
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index
 pub func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint) -> bool {
-    if items.length == 0 {
-        return false;
-    }
+    if items.length == 0 { return false; }
     var low: uint = 0;
     var high: uint = 0;
     var index: uint = 1;
@@ -162,9 +152,7 @@ pub func MinMaxIndex<T>(items: Slice<T>, smallest: *var uint, largest: *var uint
 /// https://rux-lang.dev/docs/api/algorithms/min-max-index-by
 pub func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smallest: *var uint,
                       largest: *var uint) -> bool {
-    if items.length == 0 {
-        return false;
-    }
+    if items.length == 0 { return false; }
     var low: uint = 0;
     var high: uint = 0;
     var index: uint = 1;
@@ -190,9 +178,7 @@ pub func MinMaxIndexBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering, smal
 ///
 /// https://rux-lang.dev/docs/api/algorithms/min
 pub func Min<T>(left: T, right: T) -> T {
-    if right < left {
-        return right;
-    }
+    if right < left { return right; }
     return left;
 }
 
@@ -204,9 +190,7 @@ pub func Min<T>(left: T, right: T) -> T {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/max
 pub func Max<T>(left: T, right: T) -> T {
-    if left < right {
-        return right;
-    }
+    if left < right { return right; }
     return left;
 }
 
@@ -221,15 +205,9 @@ pub func Max<T>(left: T, right: T) -> T {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/clamp
 pub func Clamp<T>(value: T, low: T, high: T) -> T {
-    if high < low {
-        return low;
-    }
-    if value < low {
-        return low;
-    }
-    if high < value {
-        return high;
-    }
+    if high < low { return low; }
+    if value < low { return low; }
+    if high < value { return high; }
     return value;
 }
 
@@ -242,14 +220,8 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/clamp-by
 pub func ClampBy<T>(value: T, low: T, high: T, compare: func(T, T) -> Ordering) -> T {
-    if compare(high, low).IsLess() {
-        return low;
-    }
-    if compare(value, low).IsLess() {
-        return low;
-    }
-    if compare(high, value).IsLess() {
-        return high;
-    }
+    if compare(high, low).IsLess() { return low; }
+    if compare(value, low).IsLess() { return low; }
+    if compare(high, value).IsLess() { return high; }
     return value;
 }

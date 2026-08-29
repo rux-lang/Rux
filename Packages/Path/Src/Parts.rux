@@ -22,12 +22,8 @@ extend Path {
         while end > 1 && IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
-        if end == 0 {
-            return Option::None<Path>();
-        }
-        if end == 1 && IsSeparator(units.data[0]) {
-            return Option::None<Path>();
-        }
+        if end == 0 { return Option::None<Path>(); }
+        if end == 1 && IsSeparator(units.data[0]) { return Option::None<Path>(); }
         // Walk back over the last segment, then over the separators before it -- keeping the one that is the root.
         while end > 0 && !IsSeparator(units.data[end - 1]) {
             end = end - 1;
@@ -51,9 +47,7 @@ extend Path {
         while end > 0 && IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
-        if end == 0 {
-            return Option::None<OsStringView>();
-        }
+        if end == 0 { return Option::None<OsStringView>(); }
         var start = end;
         while start > 0 && !IsSeparator(units.data[start - 1]) {
             start = start - 1;
@@ -70,15 +64,11 @@ extend Path {
     /// https://rux-lang.dev/docs/api/path/path/stem
     pub func Stem(self: &Path) -> Option<OsStringView> {
         let name = self.FileName();
-        if name.IsNone() {
-            return Option::None<OsStringView>();
-        }
+        if name.IsNone() { return Option::None<OsStringView>(); }
         let whole = name.ValueOr(OsStringView());
         let units = whole.Units();
         let cut = LastDot(units);
-        if cut == 0 || cut >= units.length {
-            return Option::Some<OsStringView>(whole);
-        }
+        if cut == 0 || cut >= units.length { return Option::Some<OsStringView>(whole); }
         let kept = Slice<OsUnit> { data: units.data, length: cut };
         return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
     }
@@ -90,15 +80,11 @@ extend Path {
     /// https://rux-lang.dev/docs/api/path/path/extension
     pub func Extension(self: &Path) -> Option<OsStringView> {
         let name = self.FileName();
-        if name.IsNone() {
-            return Option::None<OsStringView>();
-        }
+        if name.IsNone() { return Option::None<OsStringView>(); }
         let whole = name.ValueOr(OsStringView());
         let units = whole.Units();
         let cut = LastDot(units);
-        if cut == 0 || cut >= units.length {
-            return Option::None<OsStringView>();
-        }
+        if cut == 0 || cut >= units.length { return Option::None<OsStringView>(); }
         let kept = Slice<OsUnit> { data: @units.data[cut + 1], length: units.length - cut - 1 };
         return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
     }
@@ -111,9 +97,7 @@ func LastDot(units: Slice<OsUnit>) -> uint {
     while index > 1 {
         index = index - 1;
         let dot = units.data[index] as uint32;
-        if dot == 0x2E {
-            return index;
-        }
+        if dot == 0x2E { return index; }
     }
     return units.length;
 }

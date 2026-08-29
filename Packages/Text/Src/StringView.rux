@@ -44,9 +44,7 @@ extend StringView {
     /// https://rux-lang.dev/docs/api/text/string-view/from-bytes
     pub func FromBytes(bytes: Slice<char8>) -> Option<StringView> {
         var failureIndex: uint = 0;
-        if Validate(bytes, @failureIndex).IsError() {
-            return Option::None<StringView>();
-        }
+        if Validate(bytes, @failureIndex).IsError() { return Option::None<StringView>(); }
         return Option::Some<StringView>(StringView { bytes: bytes });
     }
 
@@ -114,12 +112,8 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/part
     pub func Part(self: &StringView, start: uint, end: uint) -> Option<StringView> {
-        if start > end || end > self.bytes.length {
-            return Option::None<StringView>();
-        }
-        if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) {
-            return Option::None<StringView>();
-        }
+        if start > end || end > self.bytes.length { return Option::None<StringView>(); }
+        if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) { return Option::None<StringView>(); }
         let part = Slice<char8> { data: @self.bytes.data[start], length: end - start };
         return Option::Some<StringView>(StringView { bytes: part });
     }
@@ -130,9 +124,7 @@ extend StringView {
     pub func ScalarAt(self: &StringView, index: uint) -> Option<char32> {
         var scalar = 0u32 as char32;
         var width: uint = 0;
-        if DecodeAt(self.bytes, index, @scalar, @width).IsError() {
-            return Option::None<char32>();
-        }
+        if DecodeAt(self.bytes, index, @scalar, @width).IsError() { return Option::None<char32>(); }
         return Option::Some<char32>(scalar);
     }
 
@@ -143,14 +135,10 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/equals
     pub func Equals(self: &StringView, other: &StringView) -> bool {
-        if self.bytes.length != other.bytes.length {
-            return false;
-        }
+        if self.bytes.length != other.bytes.length { return false; }
         var index: uint = 0;
         while index < self.bytes.length {
-            if self.bytes.data[index] != other.bytes.data[index] {
-                return false;
-            }
+            if self.bytes.data[index] != other.bytes.data[index] { return false; }
             index = index + 1;
         }
         return true;
@@ -166,20 +154,12 @@ extend StringView {
         let shared = self.bytes.length < other.bytes.length ? self.bytes.length : other.bytes.length;
         var index: uint = 0;
         while index < shared {
-            if self.bytes.data[index] < other.bytes.data[index] {
-                return Ordering::Less;
-            }
-            if self.bytes.data[index] > other.bytes.data[index] {
-                return Ordering::Greater;
-            }
+            if self.bytes.data[index] < other.bytes.data[index] { return Ordering::Less; }
+            if self.bytes.data[index] > other.bytes.data[index] { return Ordering::Greater; }
             index = index + 1;
         }
-        if self.bytes.length < other.bytes.length {
-            return Ordering::Less;
-        }
-        if self.bytes.length > other.bytes.length {
-            return Ordering::Greater;
-        }
+        if self.bytes.length < other.bytes.length { return Ordering::Less; }
+        if self.bytes.length > other.bytes.length { return Ordering::Greater; }
         return Ordering::Equal;
     }
 }

@@ -49,12 +49,8 @@ pub func RequiredScratch(length: uint) -> uint {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort
 pub func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool {
-    if items.length < 2 {
-        return true;
-    }
-    if scratch.length < RequiredScratch(items.length) {
-        return false;
-    }
+    if items.length < 2 { return true; }
+    if scratch.length < RequiredScratch(items.length) { return false; }
 
     var width = StableRunLength;
     var start: uint = 0;
@@ -112,12 +108,8 @@ pub func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort-by
 pub func StableSortBy<T>(items: MutableSlice<T>, scratch: MutableSlice<T>, compare: func(T, T) -> Ordering) -> bool {
-    if items.length < 2 {
-        return true;
-    }
-    if scratch.length < RequiredScratch(items.length) {
-        return false;
-    }
+    if items.length < 2 { return true; }
+    if scratch.length < RequiredScratch(items.length) { return false; }
 
     var width = StableRunLength;
     var start: uint = 0;
@@ -175,9 +167,7 @@ func StableInsertionRun<T>(data: *var T, low: uint, high: uint) {
         let key = data[index];
         var position = index;
         while position > low {
-            if !(key < data[position - 1]) {
-                break;
-            }
+            if !(key < data[position - 1]) { break; }
             data[position] = data[position - 1];
             position = position - 1;
         }
@@ -193,9 +183,7 @@ func StableInsertionRunBy<T>(data: *var T, low: uint, high: uint, compare: func(
         let key = data[index];
         var position = index;
         while position > low {
-            if !compare(key, data[position - 1]).IsLess() {
-                break;
-            }
+            if !compare(key, data[position - 1]).IsLess() { break; }
             data[position] = data[position - 1];
             position = position - 1;
         }

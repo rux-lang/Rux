@@ -99,9 +99,7 @@ extend TreeSet<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set/remove
     pub func Remove(self: &var TreeSet<T>, value: T) -> bool {
         let node = self.tree.Find(value, self.compare);
-        if node == null {
-            return false;
-        }
+        if node == null { return false; }
         let entry = self.tree.Detach(node);
         return true;
     }
@@ -136,9 +134,7 @@ extend TreeSet<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set/floor
     pub func Floor(self: &TreeSet<T>, value: T) -> Option<T> {
         let exact = self.tree.Find(value, self.compare);
-        if exact != null {
-            return TreeSet::ElementOf<T>(exact);
-        }
+        if exact != null { return TreeSet::ElementOf<T>(exact); }
         return TreeSet::ElementOf<T>(self.tree.Below(value, self.compare));
     }
 
@@ -147,17 +143,13 @@ extend TreeSet<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set/ceiling
     pub func Ceiling(self: &TreeSet<T>, value: T) -> Option<T> {
         let exact = self.tree.Find(value, self.compare);
-        if exact != null {
-            return TreeSet::ElementOf<T>(exact);
-        }
+        if exact != null { return TreeSet::ElementOf<T>(exact); }
         return TreeSet::ElementOf<T>(self.tree.Above(value, self.compare));
     }
 
     // The element a node holds, or `None` for a node that is not there. Every ordered query ends in one of these.
     func ElementOf(node: *var TreeNode<T, Unit>) -> Option<T> {
-        if node == null {
-            return Option::None<T>();
-        }
+        if node == null { return Option::None<T>(); }
         return Option::Some<T>(node.key);
     }
 }
@@ -178,9 +170,7 @@ extend TreeSetIterator<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set-iterator/next
     pub func Next(self: &var TreeSetIterator<T>) -> Option<T> {
         let node = self.next;
-        if node == null {
-            return Option::None<T>();
-        }
+        if node == null { return Option::None<T>(); }
         self.next = Tree::Successor<T, Unit>(node);
         return Option::Some<T>(node.key);
     }
@@ -206,9 +196,7 @@ extend TreeSetRangeIterator<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set-range-iterator/next
     pub func Next(self: &var TreeSetRangeIterator<T>) -> Option<T> {
         let node = self.next;
-        if node == null {
-            return Option::None<T>();
-        }
+        if node == null { return Option::None<T>(); }
         if !self.compare(node.key, self.end).IsLess() {
             self.next = null;
             return Option::None<T>();
@@ -242,9 +230,7 @@ extend TreeSetIntoIterator<T> {
     /// https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next
     pub func Next(self: &var TreeSetIntoIterator<T>) -> Option<T> {
         let node = Tree::Minimum<T, Unit>(self.tree.root);
-        if node == null {
-            return Option::None<T>();
-        }
+        if node == null { return Option::None<T>(); }
         let entry = self.tree.Detach(node);
         return Option::Some<T>(entry.key);
     }
@@ -304,17 +290,13 @@ extend TreeSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-set/is-subset-of
     pub func IsSubsetOf(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
-        if self.Length() > other.Length() {
-            return false;
-        }
+        if self.Length() > other.Length() { return false; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 .Some(value) => {
-                    if !other.Contains(value) {
-                        return false;
-                    }
+                    if !other.Contains(value) { return false; }
                 },
                 .None => {
                     walking = false;
@@ -338,17 +320,13 @@ extend TreeSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-set/is-disjoint-from
     pub func IsDisjointFrom(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
-        if self.Length() > other.Length() {
-            return other.IsDisjointFrom(self);
-        }
+        if self.Length() > other.Length() { return other.IsDisjointFrom(self); }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 .Some(value) => {
-                    if other.Contains(value) {
-                        return false;
-                    }
+                    if other.Contains(value) { return false; }
                 },
                 .None => {
                     walking = false;
@@ -387,9 +365,7 @@ extend TreeSet<T> {
                 .Some(value) => {
                     var added = false;
                     let error = self.Insert(value, @added);
-                    if error.IsError() {
-                        return error;
-                    }
+                    if error.IsError() { return error; }
                 },
                 .None => {
                     walking = false;
@@ -426,9 +402,7 @@ extend TreeSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-set/subtract
     pub func Subtract(self: &var TreeSet<T>, other: &TreeSet<T>) {
-        if other.Length() == 0 {
-            return;
-        }
+        if other.Length() == 0 { return; }
         var node = Tree::Minimum<T, Unit>(self.tree.root);
         while node != null {
             let value = node.key;
@@ -458,9 +432,7 @@ extend TreeSet<T> {
                     if self.Contains(value) {
                         var added = false;
                         let error = shared.Insert(value, @added);
-                        if error.IsError() {
-                            return error;
-                        }
+                        if error.IsError() { return error; }
                     }
                 },
                 .None => {
@@ -478,9 +450,7 @@ extend TreeSet<T> {
                     if !shared.Contains(value) {
                         var added = false;
                         let error = self.Insert(value, @added);
-                        if error.IsError() {
-                            return error;
-                        }
+                        if error.IsError() { return error; }
                     }
                 },
                 .None => {

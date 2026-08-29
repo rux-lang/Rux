@@ -20,13 +20,9 @@ import Core::{ Option, Slice };
 pub func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     *error = builder.Reserve(left.bytes.length + right.bytes.length);
-    if error.IsError() {
-        return builder.IntoString();
-    }
+    if error.IsError() { return builder.IntoString(); }
     *error = builder.Append(left);
-    if error.IsError() {
-        return builder.IntoString();
-    }
+    if error.IsError() { return builder.IntoString(); }
     *error = builder.Append(right);
     return builder.IntoString();
 }
@@ -45,16 +41,12 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var
             return builder.IntoString();
         }
         *error = builder.Reserve(view.bytes.length * count);
-        if error.IsError() {
-            return builder.IntoString();
-        }
+        if error.IsError() { return builder.IntoString(); }
     }
     var done: uint = 0;
     while done < count {
         *error = builder.Append(view);
-        if error.IsError() {
-            return builder.IntoString();
-        }
+        if error.IsError() { return builder.IntoString(); }
         done = done + 1;
     }
     *error = TextError::None;
@@ -83,13 +75,9 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
             .Some(at) => {
                 let before = rest.Part(0, at).ValueOr(StringView());
                 *error = builder.Append(before);
-                if error.IsError() {
-                    return builder.IntoString();
-                }
+                if error.IsError() { return builder.IntoString(); }
                 *error = builder.Append(replacement);
-                if error.IsError() {
-                    return builder.IntoString();
-                }
+                if error.IsError() { return builder.IntoString(); }
                 rest = rest.Part(at + needle.bytes.length, rest.bytes.length).ValueOr(StringView());
             },
             .None => {
@@ -132,9 +120,7 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
               error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     *error = builder.Reserve(view.bytes.length);
-    if error.IsError() {
-        return builder.IntoString();
-    }
+    if error.IsError() { return builder.IntoString(); }
     var index: uint = 0;
     while index < view.bytes.length {
         let byte = view.bytes.data[index];
@@ -147,9 +133,7 @@ func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32,
             var one: char8[1];
             one[0] = byte;
             *error = builder.AppendValidated(Slice<char8> { data: @one[0], length: 1 });
-            if error.IsError() {
-                return builder.IntoString();
-            }
+            if error.IsError() { return builder.IntoString(); }
         }
         index = index + 1;
     }

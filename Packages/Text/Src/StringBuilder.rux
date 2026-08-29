@@ -118,16 +118,10 @@ extend StringBuilder {
 // boundary; the owning builder itself remains non-copyable and all public owner operations use references.
 func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) -> TextError {
-        if additional == 0 {
-            return TextError::None;
-        }
-        if additional > 0xFFFFFFFFFFFFFFFFu - length {
-            return TextError::LengthOverflow;
-        }
+        if additional == 0 { return TextError::None; }
+        if additional > 0xFFFFFFFFFFFFFFFFu - length { return TextError::LengthOverflow; }
         let required = length + additional;
-        if required <= *capacity {
-            return TextError::None;
-        }
+        if required <= *capacity { return TextError::None; }
 
         // Doubling is what makes a run of appends linear rather than quadratic; asking for exactly what is needed
         // would reallocate on nearly every one. Where doubling is not enough, or would overflow, take the
@@ -142,24 +136,18 @@ func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var u
         }
 
         let layout = Layout::New(wanted, 1);
-        if layout.IsNone() {
-            return TextError::LengthOverflow;
-        }
+        if layout.IsNone() { return TextError::LengthOverflow; }
         let want = layout.ValueOr(Layout { size: wanted, alignment: 1 });
         var borrowed = allocator;
         var block: *var opaque = null;
         if *data == null {
             let allocated = borrowed.Allocate(want, @block);
-            if allocated != AllocError::None {
-                return FromAllocError(allocated);
-            }
+            if allocated != AllocError::None { return FromAllocError(allocated); }
         }
         else {
             let have = Layout::New(*capacity, 1).ValueOr(Layout { size: *capacity, alignment: 1 });
             let moved = borrowed.Reallocate(*data as *var opaque, have, want, @block);
-            if moved != AllocError::None {
-                return FromAllocError(moved);
-            }
+            if moved != AllocError::None { return FromAllocError(moved); }
         }
         *data = block as *var char8;
         *capacity = wanted;
@@ -195,9 +183,7 @@ extend StringBuilder {
     /// https://rux-lang.dev/docs/api/text/string-builder/append-bytes
     pub func AppendBytes(self: &var StringBuilder, bytes: Slice<char8>) -> TextError {
         var failureIndex: uint = 0;
-        if Validate(bytes, @failureIndex).IsError() {
-            return TextError::InvalidUtf8;
-        }
+        if Validate(bytes, @failureIndex).IsError() { return TextError::InvalidUtf8; }
         return self.AppendValidated(bytes);
     }
 
@@ -211,9 +197,7 @@ extend StringBuilder {
         var encoded: char8[4];
         var written: uint = 0;
         let sink = MutableSlice::From<char8>(@encoded[0], 4);
-        if Encode(scalar, sink, @written).IsError() {
-            return TextError::InvalidUtf8;
-        }
+        if Encode(scalar, sink, @written).IsError() { return TextError::InvalidUtf8; }
         return self.AppendValidated(Slice<char8> { data: @encoded[0], length: written });
     }
 
@@ -224,9 +208,7 @@ extend StringBuilder {
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/append-ascii
     pub func AppendAscii(self: &var StringBuilder, byte: char8) -> TextError {
-        if (byte as uint32) > 0x7F {
-            return TextError::InvalidUtf8;
-        }
+        if (byte as uint32) > 0x7F { return TextError::InvalidUtf8; }
         var one: char8[1];
         one[0] = byte;
         return self.AppendValidated(Slice<char8> { data: @one[0], length: 1 });
@@ -291,13 +273,9 @@ extend StringBuilder {
 
 func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
                           bytes: Slice<char8>) -> TextError {
-    if bytes.length == 0 {
-        return TextError::None;
-    }
+    if bytes.length == 0 { return TextError::None; }
     let room = ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length);
-    if room.IsError() {
-        return room;
-    }
+    if room.IsError() { return room; }
     Copy(@(*data)[*length] as *var opaque, bytes.data as *opaque, bytes.length);
     *length = *length + bytes.length;
     return TextError::None;

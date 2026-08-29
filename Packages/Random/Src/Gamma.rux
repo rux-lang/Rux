@@ -28,9 +28,7 @@ pub const DirectMethodLimit: float64 = 30.0;
 ///
 /// https://rux-lang.dev/docs/api/random/gamma
 pub func Gamma<G: RandomGenerator>(generator: &var G, shape: float64) -> float64 {
-    if !(shape > 0.0) {
-        return 0.0;
-    }
+    if !(shape > 0.0) { return 0.0; }
     if shape < 1.0 {
         // Boosting: a gamma of shape a is a gamma of shape a+1 times a uniform to the power 1/a.
         let boosted = Gamma<G>(generator, shape + 1.0);
@@ -71,9 +69,7 @@ pub func Gamma<G: RandomGenerator>(generator: &var G, shape: float64) -> float64
 ///
 /// https://rux-lang.dev/docs/api/random/gamma-with-scale
 pub func GammaWithScale<G: RandomGenerator>(generator: &var G, shape: float64, scale: float64) -> float64 {
-    if !(scale > 0.0) {
-        return 0.0;
-    }
+    if !(scale > 0.0) { return 0.0; }
     return Gamma<G>(generator, shape) * scale;
 }
 
@@ -87,8 +83,6 @@ pub func Beta<G: RandomGenerator>(generator: &var G, first: float64, second: flo
     let a = Gamma<G>(generator, first);
     let b = Gamma<G>(generator, second);
     let total = a + b;
-    if !(total > 0.0) {
-        return 0.5;
-    }
+    if !(total > 0.0) { return 0.5; }
     return a / total;
 }

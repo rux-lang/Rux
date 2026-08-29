@@ -32,9 +32,7 @@ pub enum Endian: int32 {
 pub func ReadWord(reader: &var Reader, endian: Endian, width: uint, value: *var uint512) -> IoError {
     var bytes: char8[64];
     let outcome = ReadExact(reader, MutableSlice::From<char8>(@bytes[0], width));
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     var word = 0u512;
     var index: uint = 0;
     while index < width {
@@ -71,9 +69,7 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
 pub func ReadUint8(reader: &var Reader, endian: Endian, value: *var uint8) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 1, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint8;
     return IoError::Ok();
 }
@@ -91,9 +87,7 @@ pub func WriteUint8(writer: &var Writer, endian: Endian, value: uint8) -> IoErro
 pub func ReadInt8(reader: &var Reader, endian: Endian, value: *var int8) -> IoError {
     var word = 0u8;
     let outcome = ReadUint8(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int8;
     return IoError::Ok();
 }
@@ -111,9 +105,7 @@ pub func WriteInt8(writer: &var Writer, endian: Endian, value: int8) -> IoError 
 pub func ReadUint16(reader: &var Reader, endian: Endian, value: *var uint16) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 2, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint16;
     return IoError::Ok();
 }
@@ -131,9 +123,7 @@ pub func WriteUint16(writer: &var Writer, endian: Endian, value: uint16) -> IoEr
 pub func ReadInt16(reader: &var Reader, endian: Endian, value: *var int16) -> IoError {
     var word = 0u16;
     let outcome = ReadUint16(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int16;
     return IoError::Ok();
 }
@@ -151,9 +141,7 @@ pub func WriteInt16(writer: &var Writer, endian: Endian, value: int16) -> IoErro
 pub func ReadUint32(reader: &var Reader, endian: Endian, value: *var uint32) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 4, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint32;
     return IoError::Ok();
 }
@@ -171,9 +159,7 @@ pub func WriteUint32(writer: &var Writer, endian: Endian, value: uint32) -> IoEr
 pub func ReadInt32(reader: &var Reader, endian: Endian, value: *var int32) -> IoError {
     var word = 0u32;
     let outcome = ReadUint32(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int32;
     return IoError::Ok();
 }
@@ -191,9 +177,7 @@ pub func WriteInt32(writer: &var Writer, endian: Endian, value: int32) -> IoErro
 pub func ReadUint64(reader: &var Reader, endian: Endian, value: *var uint64) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 8, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint64;
     return IoError::Ok();
 }
@@ -211,9 +195,7 @@ pub func WriteUint64(writer: &var Writer, endian: Endian, value: uint64) -> IoEr
 pub func ReadInt64(reader: &var Reader, endian: Endian, value: *var int64) -> IoError {
     var word = 0u64;
     let outcome = ReadUint64(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int64;
     return IoError::Ok();
 }
@@ -231,9 +213,7 @@ pub func WriteInt64(writer: &var Writer, endian: Endian, value: int64) -> IoErro
 pub func ReadUint128(reader: &var Reader, endian: Endian, value: *var uint128) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 16, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint128;
     return IoError::Ok();
 }
@@ -251,9 +231,7 @@ pub func WriteUint128(writer: &var Writer, endian: Endian, value: uint128) -> Io
 pub func ReadInt128(reader: &var Reader, endian: Endian, value: *var int128) -> IoError {
     var word = 0u128;
     let outcome = ReadUint128(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int128;
     return IoError::Ok();
 }
@@ -271,9 +249,7 @@ pub func WriteInt128(writer: &var Writer, endian: Endian, value: int128) -> IoEr
 pub func ReadUint256(reader: &var Reader, endian: Endian, value: *var uint256) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 32, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint256;
     return IoError::Ok();
 }
@@ -291,9 +267,7 @@ pub func WriteUint256(writer: &var Writer, endian: Endian, value: uint256) -> Io
 pub func ReadInt256(reader: &var Reader, endian: Endian, value: *var int256) -> IoError {
     var word = 0u256;
     let outcome = ReadUint256(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int256;
     return IoError::Ok();
 }
@@ -311,9 +285,7 @@ pub func WriteInt256(writer: &var Writer, endian: Endian, value: int256) -> IoEr
 pub func ReadUint512(reader: &var Reader, endian: Endian, value: *var uint512) -> IoError {
     var word = 0u512;
     let outcome = ReadWord(reader, endian, 64, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as uint512;
     return IoError::Ok();
 }
@@ -331,9 +303,7 @@ pub func WriteUint512(writer: &var Writer, endian: Endian, value: uint512) -> Io
 pub func ReadInt512(reader: &var Reader, endian: Endian, value: *var int512) -> IoError {
     var word = 0u512;
     let outcome = ReadUint512(reader, endian, @word);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     *value = word as int512;
     return IoError::Ok();
 }
@@ -351,9 +321,7 @@ pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) -> IoEr
 pub func ReadFloat32(reader: &var Reader, endian: Endian, value: *var float32) -> IoError {
     var bits = 0u32;
     let outcome = ReadUint32(reader, endian, @bits);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     Copy(value as *var opaque, @bits as *opaque, 4);
     return IoError::Ok();
 }
@@ -374,9 +342,7 @@ pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> Io
 pub func ReadFloat64(reader: &var Reader, endian: Endian, value: *var float64) -> IoError {
     var bits = 0u64;
     let outcome = ReadUint64(reader, endian, @bits);
-    if outcome.IsError() {
-        return outcome;
-    }
+    if outcome.IsError() { return outcome; }
     Copy(value as *var opaque, @bits as *opaque, 8);
     return IoError::Ok();
 }

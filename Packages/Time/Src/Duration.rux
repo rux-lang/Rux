@@ -48,9 +48,7 @@ extend Duration {
     /// https://rux-lang.dev/docs/api/time/duration/from-minutes
     pub func FromMinutes(minutes: int64) -> Option<Duration> {
         var seconds: int64 = 0;
-        if MulChecked<int64>(minutes, 60i64, @seconds) {
-            return Option::None<Duration>();
-        }
+        if MulChecked<int64>(minutes, 60i64, @seconds) { return Option::None<Duration>(); }
         return Option::Some<Duration>(Duration::FromSeconds(seconds));
     }
 
@@ -59,9 +57,7 @@ extend Duration {
     /// https://rux-lang.dev/docs/api/time/duration/from-hours
     pub func FromHours(hours: int64) -> Option<Duration> {
         var seconds: int64 = 0;
-        if MulChecked<int64>(hours, 3600i64, @seconds) {
-            return Option::None<Duration>();
-        }
+        if MulChecked<int64>(hours, 3600i64, @seconds) { return Option::None<Duration>(); }
         return Option::Some<Duration>(Duration::FromSeconds(seconds));
     }
 
@@ -158,13 +154,9 @@ extend Duration {
     func Total(self: &Duration, scale: uint32) -> Option<int64> {
         let perSecond = (NanosecondsPerSecond / scale) as int64;
         var whole: int64 = 0;
-        if MulChecked<int64>(self.seconds, perSecond, @whole) {
-            return Option::None<int64>();
-        }
+        if MulChecked<int64>(self.seconds, perSecond, @whole) { return Option::None<int64>(); }
         var sum: int64 = 0;
-        if AddChecked<int64>(whole, (self.nanoseconds / scale) as int64, @sum) {
-            return Option::None<int64>();
-        }
+        if AddChecked<int64>(whole, (self.nanoseconds / scale) as int64, @sum) { return Option::None<int64>(); }
         return Option::Some<int64>(sum);
     }
 
@@ -173,15 +165,11 @@ extend Duration {
     /// https://rux-lang.dev/docs/api/time/duration/plus
     pub func Plus(self: &Duration, other: Duration) -> Option<Duration> {
         var seconds: int64 = 0;
-        if AddChecked<int64>(self.seconds, other.seconds, @seconds) {
-            return Option::None<Duration>();
-        }
+        if AddChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
         var nanoseconds = self.nanoseconds + other.nanoseconds;
         if nanoseconds >= NanosecondsPerSecond {
             nanoseconds = nanoseconds - NanosecondsPerSecond;
-            if AddChecked<int64>(seconds, 1i64, @seconds) {
-                return Option::None<Duration>();
-            }
+            if AddChecked<int64>(seconds, 1i64, @seconds) { return Option::None<Duration>(); }
         }
         return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: nanoseconds });
     }
@@ -191,14 +179,10 @@ extend Duration {
     /// https://rux-lang.dev/docs/api/time/duration/minus
     pub func Minus(self: &Duration, other: Duration) -> Option<Duration> {
         var seconds: int64 = 0;
-        if SubChecked<int64>(self.seconds, other.seconds, @seconds) {
-            return Option::None<Duration>();
-        }
+        if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
         var nanoseconds = self.nanoseconds;
         if nanoseconds < other.nanoseconds {
-            if SubChecked<int64>(seconds, 1i64, @seconds) {
-                return Option::None<Duration>();
-            }
+            if SubChecked<int64>(seconds, 1i64, @seconds) { return Option::None<Duration>(); }
             nanoseconds = nanoseconds + NanosecondsPerSecond;
         }
         return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds });
@@ -219,18 +203,12 @@ extend Duration {
         // The fraction times the factor is nanoseconds that may carry whole seconds; the carry rides along
         // checked, so the largest representable spans still refuse rather than wrap.
         var wholePart: int64 = 0;
-        if MulChecked<int64>(self.seconds, factor, @wholePart) {
-            return Option::None<Duration>();
-        }
+        if MulChecked<int64>(self.seconds, factor, @wholePart) { return Option::None<Duration>(); }
         var fractionTotal: int64 = 0;
-        if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) {
-            return Option::None<Duration>();
-        }
+        if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) { return Option::None<Duration>(); }
         let scaled = Duration::FromScaled(fractionTotal, 1u32);
         var seconds: int64 = 0;
-        if AddChecked<int64>(wholePart, scaled.seconds, @seconds) {
-            return Option::None<Duration>();
-        }
+        if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return Option::None<Duration>(); }
         return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: scaled.nanoseconds });
     }
 
@@ -247,18 +225,10 @@ extend Duration {
     ///
     /// https://rux-lang.dev/docs/api/time/duration/compare
     pub func Compare(self: &Duration, other: Duration) -> Ordering {
-        if self.seconds < other.seconds {
-            return Ordering::Less;
-        }
-        if self.seconds > other.seconds {
-            return Ordering::Greater;
-        }
-        if self.nanoseconds < other.nanoseconds {
-            return Ordering::Less;
-        }
-        if self.nanoseconds > other.nanoseconds {
-            return Ordering::Greater;
-        }
+        if self.seconds < other.seconds { return Ordering::Less; }
+        if self.seconds > other.seconds { return Ordering::Greater; }
+        if self.nanoseconds < other.nanoseconds { return Ordering::Less; }
+        if self.nanoseconds > other.nanoseconds { return Ordering::Greater; }
         return Ordering::Equal;
     }
 }

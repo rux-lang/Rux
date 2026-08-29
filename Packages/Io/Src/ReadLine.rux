@@ -25,9 +25,7 @@ pub func ReadLine(builder: &var StringBuilder) -> IoError {
         var filled: uint = 0;
         let outcome = input.Read(room, @filled);
         if outcome.IsError() {
-            if outcome.IsTransient() {
-                continue;
-            }
+            if outcome.IsTransient() { continue; }
             if outcome.IsEnd() {
                 if pendingCarriageReturn {
                     builder.AppendAscii(c8'\r');
@@ -36,14 +34,10 @@ pub func ReadLine(builder: &var StringBuilder) -> IoError {
             }
             return outcome;
         }
-        if filled == 0 {
-            return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
-        }
+        if filled == 0 { return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream); }
         sawAnything = true;
         let ch = byte[0];
-        if ch == c8'\n' {
-            return IoError::Ok();
-        }
+        if ch == c8'\n' { return IoError::Ok(); }
         if pendingCarriageReturn {
             builder.AppendAscii(c8'\r');
             pendingCarriageReturn = false;

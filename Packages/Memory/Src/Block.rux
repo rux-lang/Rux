@@ -35,9 +35,7 @@ when #target.os == .Windows {
 ///
 /// https://rux-lang.dev/docs/api/memory/copy
 pub func Copy(destination: *var opaque, source: *opaque, length: uint) {
-    if length == 0 {
-        return;
-    }
+    if length == 0 { return; }
     when #target.os == .Windows {
         RtlCopyMemory(destination, source, length);
     } else {
@@ -70,14 +68,10 @@ pub func Copy(destination: *var opaque, source: *opaque, length: uint) {
 ///
 /// https://rux-lang.dev/docs/api/memory/move
 pub func Move(destination: *var opaque, source: *opaque, length: uint) {
-    if length == 0 {
-        return;
-    }
+    if length == 0 { return; }
     let target = destination as *var byte;
     let origin = source as *byte;
-    if target == origin as *var byte {
-        return;
-    }
+    if target == origin as *var byte { return; }
 
     // Copying forward is right when the destination is below the source, because every byte read has not yet been
     // written. When the destination is above and the ranges overlap, the same order would overwrite bytes still to
@@ -110,9 +104,7 @@ pub func Move(destination: *var opaque, source: *opaque, length: uint) {
 ///
 /// https://rux-lang.dev/docs/api/memory/set
 pub func Set(destination: *var opaque, value: byte, length: uint) {
-    if length == 0 {
-        return;
-    }
+    if length == 0 { return; }
     when #target.os == .Windows {
         RtlFillMemory(destination, length, value as int32);
     } else {
@@ -138,9 +130,7 @@ pub func Set(destination: *var opaque, value: byte, length: uint) {
 ///
 /// https://rux-lang.dev/docs/api/memory/zero
 pub func Zero(destination: *var opaque, length: uint) {
-    if length == 0 {
-        return;
-    }
+    if length == 0 { return; }
     when #target.os == .Windows {
         RtlZeroMemory(destination, length);
     } else {
@@ -165,9 +155,7 @@ pub func Zero(destination: *var opaque, length: uint) {
 ///
 /// https://rux-lang.dev/docs/api/memory/mismatch-offset
 pub func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
-    if length == 0 {
-        return 0;
-    }
+    if length == 0 { return 0; }
     when #target.os == .Windows {
         return RtlCompareMemory(left, right, length);
     } else {
@@ -175,9 +163,7 @@ pub func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
         let second = right as *byte;
         var offset: uint = 0;
         while offset < length {
-            if *(first + offset) != *(second + offset) {
-                return offset;
-            }
+            if *(first + offset) != *(second + offset) { return offset; }
             offset++;
         }
         return length;
@@ -203,9 +189,7 @@ pub func MismatchOffset(left: *opaque, right: *opaque, length: uint) -> uint {
 /// https://rux-lang.dev/docs/api/memory/compare
 pub func Compare(left: *opaque, right: *opaque, length: uint) -> Ordering {
     let offset = MismatchOffset(left, right, length);
-    if offset == length {
-        return Ordering::Equal;
-    }
+    if offset == length { return Ordering::Equal; }
     let first = *((left as *byte) + offset);
     let second = *((right as *byte) + offset);
     return first < second ? Ordering::Less : Ordering::Greater;
@@ -240,15 +224,11 @@ pub func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/memory/find
 pub func Find(haystack: *opaque, length: uint, value: byte) -> uint {
-    if length == 0 {
-        return 0;
-    }
+    if length == 0 { return 0; }
     let bytes = haystack as *byte;
     var offset: uint = 0;
     while offset < length {
-        if *(bytes + offset) == value {
-            return offset;
-        }
+        if *(bytes + offset) == value { return offset; }
         offset++;
     }
     return length;

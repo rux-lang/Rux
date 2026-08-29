@@ -25,20 +25,12 @@ pub func Log1p(x: float64) -> float64 {
     let magnitude = bits & 0x7FFFFFFFFFFFFFFFu64;
 
     // A NaN, or +Inf, passes straight through: log1p(+Inf) is +Inf.
-    if magnitude >= 0x7FF0000000000000u64 {
-        return x + x;
-    }
-    if x == -1.0 {
-        return -1.0 / zero;
-    }
-    if x < -1.0 {
-        return (x - x) / zero;
-    }
+    if magnitude >= 0x7FF0000000000000u64 { return x + x; }
+    if x == -1.0 { return -1.0 / zero; }
+    if x < -1.0 { return (x - x) / zero; }
     // Below 2^-54 the answer is the argument to every bit the type holds, and returning it keeps the sign of a
     // zero as well.
-    if magnitude < 0x3C90000000000000u64 {
-        return x;
-    }
+    if magnitude < 0x3C90000000000000u64 { return x; }
 
     var correction = 0.0;
     var reduced = x;
@@ -63,9 +55,7 @@ pub func Log1p(x: float64) -> float64 {
     let hfsq = 0.5 * reduced * reduced;
     let r = LogPoly(reduced);
     let dk = k as float64;
-    if k == 0i64 {
-        return reduced - (hfsq - r);
-    }
+    if k == 0i64 { return reduced - (hfsq - r); }
     return dk * ln2Hi - ((hfsq - (r + (dk * ln2Lo + correction))) - reduced);
 }
 

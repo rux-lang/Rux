@@ -35,9 +35,7 @@ pub func TimeOrdered(error: *var EntropyError) -> Uuid {
 pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
-    if *error != EntropyError::None {
-        return Uuid::Nil();
-    }
+    if *error != EntropyError::None { return Uuid::Nil(); }
     var value = Uuid::FromBytes(Slice<char8> { data: @bytes[0], length: 16 });
     // Six bytes of milliseconds, most significant first -- which is what makes byte order equal time order.
     var index: uint = 0;
@@ -97,9 +95,7 @@ extend MonotonicUuid {
     /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
     pub func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
         let candidate = TimeOrdered(error);
-        if *error != EntropyError::None {
-            return Uuid::Nil();
-        }
+        if *error != EntropyError::None { return Uuid::Nil(); }
         if !self.started {
             self.previous = candidate;
             self.started = true;

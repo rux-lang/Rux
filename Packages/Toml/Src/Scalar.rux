@@ -33,16 +33,12 @@ const ScalarCapacity: uint = 160;
 // Copies `text` into `into`, dropping underscores and refusing any that is not surrounded by digits of the base.
 func StripUnderscores(text: Slice<char8>, into: MutableSlice<char8>, length: *var uint) -> bool {
     *length = 0u;
-    if text.length > into.length {
-        return false;
-    }
+    if text.length > into.length { return false; }
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         if c == 0x5Fu8 {
-            if index == 0u || index + 1u == text.length {
-                return false;
-            }
+            if index == 0u || index + 1u == text.length { return false; }
             if !IsBaseDigit(text.data[index - 1u] as uint8) || !IsBaseDigit(text.data[index + 1u] as uint8) {
                 return false;
             }
@@ -69,18 +65,12 @@ func IsBaseDigit(c: uint8) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-integer
 pub func TomlParseInteger(text: Slice<char8>, result: *var int64) -> TomlScalarError {
-    if text.length == 0u {
-        return TomlScalarError::Malformed;
-    }
+    if text.length == 0u { return TomlScalarError::Malformed; }
     var storage: char8[160];
     let buffer = MutableSlice<char8> { data: @storage[0], length: ScalarCapacity };
     var length: uint = 0;
-    if text.length > ScalarCapacity {
-        return TomlScalarError::TooLong;
-    }
-    if !StripUnderscores(text, buffer, @length) {
-        return TomlScalarError::Malformed;
-    }
+    if text.length > ScalarCapacity { return TomlScalarError::TooLong; }
+    if !StripUnderscores(text, buffer, @length) { return TomlScalarError::Malformed; }
     let digits = Slice<char8> { data: @storage[0], length: length };
     var start: uint = 0;
     var signed = false;
@@ -91,49 +81,33 @@ pub func TomlParseInteger(text: Slice<char8>, result: *var int64) -> TomlScalarE
             start = 1u;
         }
     }
-    if start >= digits.length {
-        return TomlScalarError::Malformed;
-    }
+    if start >= digits.length { return TomlScalarError::Malformed; }
     var based = false;
     if digits.length - start > 1u && (digits.data[start] as uint8) == 0x30u8 {
         let mark = digits.data[start + 1u] as uint8;
         based = mark == 0x78u8 || mark == 0x6Fu8 || mark == 0x62u8;
-        if based && signed {
-            return TomlScalarError::Malformed;
-        }
+        if based && signed { return TomlScalarError::Malformed; }
         // A leading zero is only ever a base prefix; `010` is not a TOML integer in any base.
-        if !based {
-            return TomlScalarError::Malformed;
-        }
+        if !based { return TomlScalarError::Malformed; }
     }
     var index = based ? start + 2u : start;
-    if index >= digits.length {
-        return TomlScalarError::Malformed;
-    }
+    if index >= digits.length { return TomlScalarError::Malformed; }
     let radix = based ? BaseOf(digits.data[start + 1u] as uint8) : 10u8;
     while index < digits.length {
-        if !DigitFits(digits.data[index] as uint8, radix) {
-            return TomlScalarError::Malformed;
-        }
+        if !DigitFits(digits.data[index] as uint8, radix) { return TomlScalarError::Malformed; }
         index = index + 1u;
     }
     let parsed = ParseInt64(digits);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return TomlScalarError::OutOfRange;
-    }
+    if parsed.TryIntoError(@failure) { return TomlScalarError::OutOfRange; }
     *result = parsed.ValueOr(0i64);
     return TomlScalarError::None;
 }
 
 // The base a prefix letter names.
 func BaseOf(mark: uint8) -> uint8 {
-    if mark == 0x78u8 {
-        return 16u8;
-    }
-    if mark == 0x6Fu8 {
-        return 8u8;
-    }
+    if mark == 0x78u8 { return 16u8; }
+    if mark == 0x6Fu8 { return 8u8; }
     return 2u8;
 }
 
@@ -142,12 +116,8 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
     if radix == 16u8 {
         return (c >= 0x30u8 && c <= 0x39u8) || (c >= 0x61u8 && c <= 0x66u8) || (c >= 0x41u8 && c <= 0x46u8);
     }
-    if radix == 8u8 {
-        return c >= 0x30u8 && c <= 0x37u8;
-    }
-    if radix == 2u8 {
-        return c == 0x30u8 || c == 0x31u8;
-    }
+    if radix == 8u8 { return c >= 0x30u8 && c <= 0x37u8; }
+    if radix == 2u8 { return c == 0x30u8 || c == 0x31u8; }
     return c >= 0x30u8 && c <= 0x39u8;
 }
 
@@ -158,18 +128,12 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-float
 pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarError {
-    if text.length == 0u {
-        return TomlScalarError::Malformed;
-    }
-    if text.length > ScalarCapacity {
-        return TomlScalarError::TooLong;
-    }
+    if text.length == 0u { return TomlScalarError::Malformed; }
+    if text.length > ScalarCapacity { return TomlScalarError::TooLong; }
     var storage: char8[160];
     let buffer = MutableSlice<char8> { data: @storage[0], length: ScalarCapacity };
     var length: uint = 0;
-    if !StripUnderscores(text, buffer, @length) {
-        return TomlScalarError::Malformed;
-    }
+    if !StripUnderscores(text, buffer, @length) { return TomlScalarError::Malformed; }
     let digits = Slice<char8> { data: @storage[0], length: length };
     var start: uint = 0;
     var negative = false;
@@ -178,9 +142,7 @@ pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarE
         negative = sign == 0x2Du8;
         start = 1u;
     }
-    if start >= digits.length {
-        return TomlScalarError::Malformed;
-    }
+    if start >= digits.length { return TomlScalarError::Malformed; }
     // The three named values, which have no digits to check.
     if MatchesWord(digits, start, "inf") {
         *result = negative ? -PositiveInfinity64() : PositiveInfinity64();
@@ -192,28 +154,20 @@ pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarE
         *result = QuietNan64();
         return TomlScalarError::None;
     }
-    if !CheckFloatShape(digits, start) {
-        return TomlScalarError::Malformed;
-    }
+    if !CheckFloatShape(digits, start) { return TomlScalarError::Malformed; }
     let parsed = ParseFloat64(digits);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return TomlScalarError::Malformed;
-    }
+    if parsed.TryIntoError(@failure) { return TomlScalarError::Malformed; }
     *result = parsed.ValueOr(0.0);
     return TomlScalarError::None;
 }
 
 // Whether `digits` from `start` is exactly `word`.
 func MatchesWord(digits: Slice<char8>, start: uint, word: Slice<char8>) -> bool {
-    if digits.length - start != word.length {
-        return false;
-    }
+    if digits.length - start != word.length { return false; }
     var index: uint = 0;
     while index < word.length {
-        if digits.data[start + index] != word.data[index] {
-            return false;
-        }
+        if digits.data[start + index] != word.data[index] { return false; }
         index = index + 1u;
     }
     return true;
@@ -228,12 +182,8 @@ func CheckFloatShape(digits: Slice<char8>, start: uint) -> bool {
         whole = whole + 1u;
         index = index + 1u;
     }
-    if whole == 0u {
-        return false;
-    }
-    if whole > 1u && (digits.data[start] as uint8) == 0x30u8 {
-        return false;
-    }
+    if whole == 0u { return false; }
+    if whole > 1u && (digits.data[start] as uint8) == 0x30u8 { return false; }
     var fraction = false;
     if index < digits.length && (digits.data[index] as uint8) == 0x2Eu8 {
         index = index + 1u;
@@ -242,17 +192,13 @@ func CheckFloatShape(digits: Slice<char8>, start: uint) -> bool {
             after = after + 1u;
             index = index + 1u;
         }
-        if after == 0u {
-            return false;
-        }
+        if after == 0u { return false; }
         fraction = true;
     }
     var exponent = false;
     if index < digits.length {
         let mark = digits.data[index] as uint8;
-        if mark != 0x65u8 && mark != 0x45u8 {
-            return false;
-        }
+        if mark != 0x65u8 && mark != 0x45u8 { return false; }
         index = index + 1u;
         if index < digits.length {
             let sign = digits.data[index] as uint8;
@@ -265,9 +211,7 @@ func CheckFloatShape(digits: Slice<char8>, start: uint) -> bool {
             after = after + 1u;
             index = index + 1u;
         }
-        if after == 0u {
-            return false;
-        }
+        if after == 0u { return false; }
         exponent = true;
     }
     // Without one or the other it is an integer, and the caller has already decided which it is reading.
@@ -307,56 +251,34 @@ pub func TomlParseDateTime(text: Slice<char8>, date: *var Date, time: *var TimeO
     *offset = UtcOffset::Utc();
     if text.length >= 5u && (text.data[2] as uint8) == 0x3Au8 {
         var consumed: uint = 0;
-        if !ReadTime(text, 0u, time, @consumed) || consumed != text.length {
-            return TomlDateTimeShape::NotDateTime;
-        }
+        if !ReadTime(text, 0u, time, @consumed) || consumed != text.length { return TomlDateTimeShape::NotDateTime; }
         return TomlDateTimeShape::TimeOnly;
     }
-    if text.length < 10u {
-        return TomlDateTimeShape::NotDateTime;
-    }
-    if !ReadDate(text, 0u, date) {
-        return TomlDateTimeShape::NotDateTime;
-    }
-    if text.length == 10u {
-        return TomlDateTimeShape::DateOnly;
-    }
+    if text.length < 10u { return TomlDateTimeShape::NotDateTime; }
+    if !ReadDate(text, 0u, date) { return TomlDateTimeShape::NotDateTime; }
+    if text.length == 10u { return TomlDateTimeShape::DateOnly; }
     let separator = text.data[10] as uint8;
-    if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 {
-        return TomlDateTimeShape::NotDateTime;
-    }
+    if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 { return TomlDateTimeShape::NotDateTime; }
     var consumed: uint = 0;
-    if !ReadTime(text, 11u, time, @consumed) {
-        return TomlDateTimeShape::NotDateTime;
-    }
-    if consumed == text.length {
-        return TomlDateTimeShape::Local;
-    }
-    if !ReadOffset(text, consumed, offset) {
-        return TomlDateTimeShape::NotDateTime;
-    }
+    if !ReadTime(text, 11u, time, @consumed) { return TomlDateTimeShape::NotDateTime; }
+    if consumed == text.length { return TomlDateTimeShape::Local; }
+    if !ReadOffset(text, consumed, offset) { return TomlDateTimeShape::NotDateTime; }
     return TomlDateTimeShape::Offset;
 }
 
 // `YYYY-MM-DD` at `at`, validated by the calendar rather than by digit ranges: the thirty-first of February is
 // four correct digit pairs and not a date.
 func ReadDate(text: Slice<char8>, at: uint, date: *var Date) -> bool {
-    if at + 10u > text.length {
-        return false;
-    }
+    if at + 10u > text.length { return false; }
     var year: uint32 = 0;
     var month: uint32 = 0;
     var day: uint32 = 0;
     if !Digits(text, at, 4u, @year) || !Digits(text, at + 5u, 2u, @month) || !Digits(text, at + 8u, 2u, @day) {
         return false;
     }
-    if (text.data[at + 4u] as uint8) != 0x2Du8 || (text.data[at + 7u] as uint8) != 0x2Du8 {
-        return false;
-    }
+    if (text.data[at + 4u] as uint8) != 0x2Du8 || (text.data[at + 7u] as uint8) != 0x2Du8 { return false; }
     let made = Date::New(year as int32, month as uint8, day as uint8);
-    if made.IsNone() {
-        return false;
-    }
+    if made.IsNone() { return false; }
     *date = made.ValueOr(Date { year: 1970, month: 1u8, day: 1u8 });
     return true;
 }
@@ -366,23 +288,15 @@ func ReadDate(text: Slice<char8>, at: uint, date: *var Date) -> bool {
 // TOML 1.1 lets the seconds be left off, which is the shape a person writes when they mean a time of day rather
 // than an instant. They are read as zero, since that is what the shorter text names.
 func ReadTime(text: Slice<char8>, at: uint, time: *var TimeOfDay, consumed: *var uint) -> bool {
-    if at + 5u > text.length {
-        return false;
-    }
+    if at + 5u > text.length { return false; }
     var hour: uint32 = 0;
     var minute: uint32 = 0;
     var second: uint32 = 0;
-    if !Digits(text, at, 2u, @hour) || !Digits(text, at + 3u, 2u, @minute) {
-        return false;
-    }
-    if (text.data[at + 2u] as uint8) != 0x3Au8 {
-        return false;
-    }
+    if !Digits(text, at, 2u, @hour) || !Digits(text, at + 3u, 2u, @minute) { return false; }
+    if (text.data[at + 2u] as uint8) != 0x3Au8 { return false; }
     var index = at + 5u;
     if index < text.length && (text.data[index] as uint8) == 0x3Au8 {
-        if !Digits(text, index + 1u, 2u, @second) {
-            return false;
-        }
+        if !Digits(text, index + 1u, 2u, @second) { return false; }
         index = index + 3u;
     }
     var nanosecond: uint32 = 0;
@@ -400,9 +314,7 @@ func ReadTime(text: Slice<char8>, at: uint, time: *var TimeOfDay, consumed: *var
             place = place + 1u;
             index = index + 1u;
         }
-        if place == 0u {
-            return false;
-        }
+        if place == 0u { return false; }
     }
     // Second sixty is a leap second, which the calendar does not represent; it folds to the last nanosecond of
     // fifty-nine, the same policy `Time` states for RFC 3339.
@@ -411,9 +323,7 @@ func ReadTime(text: Slice<char8>, at: uint, time: *var TimeOfDay, consumed: *var
         nanosecond = 999999999u32;
     }
     let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
-    if made.IsNone() {
-        return false;
-    }
+    if made.IsNone() { return false; }
     *time = made.ValueOr(TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
     *consumed = index;
     return true;
@@ -426,20 +336,12 @@ func ReadOffset(text: Slice<char8>, at: uint, offset: *var UtcOffset) -> bool {
         *offset = UtcOffset::Utc();
         return at + 1u == text.length;
     }
-    if mark != 0x2Bu8 && mark != 0x2Du8 {
-        return false;
-    }
-    if at + 6u != text.length {
-        return false;
-    }
+    if mark != 0x2Bu8 && mark != 0x2Du8 { return false; }
+    if at + 6u != text.length { return false; }
     var hours: uint32 = 0;
     var minutes: uint32 = 0;
-    if !Digits(text, at + 1u, 2u, @hours) || !Digits(text, at + 4u, 2u, @minutes) {
-        return false;
-    }
-    if (text.data[at + 3u] as uint8) != 0x3Au8 {
-        return false;
-    }
+    if !Digits(text, at + 1u, 2u, @hours) || !Digits(text, at + 4u, 2u, @minutes) { return false; }
+    if (text.data[at + 3u] as uint8) != 0x3Au8 { return false; }
     var signedHours = hours as int32;
     var signedMinutes = minutes as int32;
     if mark == 0x2Du8 {
@@ -447,25 +349,19 @@ func ReadOffset(text: Slice<char8>, at: uint, offset: *var UtcOffset) -> bool {
         signedMinutes = -signedMinutes;
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
-    if made.IsNone() {
-        return false;
-    }
+    if made.IsNone() { return false; }
     *offset = made.ValueOr(UtcOffset::Utc());
     return true;
 }
 
 // Exactly `count` decimal digits at `at`, as a value.
 func Digits(text: Slice<char8>, at: uint, count: uint, value: *var uint32) -> bool {
-    if at + count > text.length {
-        return false;
-    }
+    if at + count > text.length { return false; }
     *value = 0u32;
     var index: uint = 0;
     while index < count {
         let c = text.data[at + index] as uint8;
-        if !IsDecimal(c) {
-            return false;
-        }
+        if !IsDecimal(c) { return false; }
         *value = *value * 10u32 + (c - 0x30u8) as uint32;
         index = index + 1u;
     }

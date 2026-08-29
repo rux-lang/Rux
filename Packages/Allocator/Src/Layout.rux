@@ -42,13 +42,9 @@ extend Layout {
     ///
     /// https://rux-lang.dev/docs/api/allocator/layout/new
     pub func New(size: uint, alignment: uint) -> Option<Layout> {
-        if alignment == 0 || (alignment & (alignment - 1)) != 0 {
-            return Option::None<Layout>();
-        }
+        if alignment == 0 || (alignment & (alignment - 1)) != 0 { return Option::None<Layout>(); }
         var rounded: uint = 0;
-        if AlignUpChecked(size, alignment, @rounded) {
-            return Option::None<Layout>();
-        }
+        if AlignUpChecked(size, alignment, @rounded) { return Option::None<Layout>(); }
         return Option::Some<Layout>(Layout { size: size, alignment: alignment });
     }
 
@@ -78,9 +74,7 @@ extend Layout {
     /// https://rux-lang.dev/docs/api/allocator/layout/padded-size
     pub func PaddedSize(self: &Layout) -> uint {
         var rounded: uint = 0;
-        if AlignUpChecked(self.size, self.alignment, @rounded) {
-            return self.size;
-        }
+        if AlignUpChecked(self.size, self.alignment, @rounded) { return self.size; }
         return rounded;
     }
 
@@ -123,9 +117,7 @@ extend Layout {
 ///
 /// https://rux-lang.dev/docs/api/allocator/natural-alignment
 pub func NaturalAlignment(size: uint) -> uint {
-    if size == 0 {
-        return 1;
-    }
+    if size == 0 { return 1; }
     let word = sizeof(uint);
     var alignment: uint = 1;
     while alignment < word && alignment < size {
@@ -160,8 +152,6 @@ pub func LayoutOf<T>() -> Layout {
 /// https://rux-lang.dev/docs/api/allocator/layout-of-array
 pub func LayoutOfArray<T>(count: uint) -> Option<Layout> {
     let stride = sizeof(T);
-    if stride != 0 && count > uint::Max / stride {
-        return Option::None<Layout>();
-    }
+    if stride != 0 && count > uint::Max / stride { return Option::None<Layout>(); }
     return Layout::New(stride * count, NaturalAlignment(stride));
 }

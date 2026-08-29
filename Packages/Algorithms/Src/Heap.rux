@@ -28,9 +28,7 @@ import Core::{ MutableSlice, Ordering };
 ///
 /// https://rux-lang.dev/docs/api/algorithms/make-heap
 pub func MakeHeap<T>(items: MutableSlice<T>) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     var root = items.length / 2;
     while root > 0 {
         root = root - 1;
@@ -51,9 +49,7 @@ pub func MakeHeap<T>(items: MutableSlice<T>) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/push-heap
 pub func PushHeap<T>(items: MutableSlice<T>) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     HeapSiftUp<T>(items.data, items.length - 1);
 }
 
@@ -69,9 +65,7 @@ pub func PushHeap<T>(items: MutableSlice<T>) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/pop-heap
 pub func PopHeap<T>(items: MutableSlice<T>) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     let last = items.length - 1;
     let largest = items.data[0];
     items.data[0] = items.data[last];
@@ -126,9 +120,7 @@ pub func IsHeap<T>(items: Slice<T>) -> bool {
 pub func IsHeapUntil<T>(items: Slice<T>) -> uint {
     var child: uint = 1;
     while child < items.length {
-        if items.data[(child - 1) / 2] < items.data[child] {
-            return child;
-        }
+        if items.data[(child - 1) / 2] < items.data[child] { return child; }
         child++;
     }
     return items.length;
@@ -139,9 +131,7 @@ func HeapSiftUp<T>(data: *var T, position: uint) {
     var index = position;
     while index > 0 {
         let parent = (index - 1) / 2;
-        if !(data[parent] < data[index]) {
-            return;
-        }
+        if !(data[parent] < data[index]) { return; }
         let held = data[parent];
         data[parent] = data[index];
         data[index] = held;
@@ -154,17 +144,13 @@ func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
     var index = root;
     while true {
         let left = index * 2 + 1;
-        if left >= count {
-            return;
-        }
+        if left >= count { return; }
         var largest = left;
         let right = left + 1;
         if right < count && data[left] < data[right] {
             largest = right;
         }
-        if !(data[index] < data[largest]) {
-            return;
-        }
+        if !(data[index] < data[largest]) { return; }
         let held = data[index];
         data[index] = data[largest];
         data[largest] = held;
@@ -181,9 +167,7 @@ func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/make-heap-by
 pub func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     var root = items.length / 2;
     while root > 0 {
         root = root - 1;
@@ -200,9 +184,7 @@ pub func MakeHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) 
 ///
 /// https://rux-lang.dev/docs/api/algorithms/push-heap-by
 pub func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     HeapSiftUpBy<T>(items.data, items.length - 1, compare);
 }
 
@@ -215,9 +197,7 @@ pub func PushHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) 
 ///
 /// https://rux-lang.dev/docs/api/algorithms/pop-heap-by
 pub func PopHeapBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     let last = items.length - 1;
     let largest = items.data[0];
     items.data[0] = items.data[last];
@@ -263,9 +243,7 @@ pub func IsHeapBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
 pub func IsHeapUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
     var child: uint = 1;
     while child < items.length {
-        if compare(items.data[(child - 1) / 2], items.data[child]).IsLess() {
-            return child;
-        }
+        if compare(items.data[(child - 1) / 2], items.data[child]).IsLess() { return child; }
         child++;
     }
     return items.length;
@@ -276,9 +254,7 @@ func HeapSiftUpBy<T>(data: *var T, position: uint, compare: func(T, T) -> Orderi
     var index = position;
     while index > 0 {
         let parent = (index - 1) / 2;
-        if !compare(data[parent], data[index]).IsLess() {
-            return;
-        }
+        if !compare(data[parent], data[index]).IsLess() { return; }
         let held = data[parent];
         data[parent] = data[index];
         data[index] = held;
@@ -290,17 +266,13 @@ func HeapSiftDownBy<T>(data: *var T, count: uint, root: uint, compare: func(T, T
     var index = root;
     while true {
         let left = index * 2 + 1;
-        if left >= count {
-            return;
-        }
+        if left >= count { return; }
         var largest = left;
         let right = left + 1;
         if right < count && compare(data[left], data[right]).IsLess() {
             largest = right;
         }
-        if !compare(data[index], data[largest]).IsLess() {
-            return;
-        }
+        if !compare(data[index], data[largest]).IsLess() { return; }
         let held = data[index];
         data[index] = data[largest];
         data[largest] = held;

@@ -2,20 +2,14 @@
 ///
 /// https://rux-lang.dev/docs/api/math/tanh
 pub func Tanh(x: float64) -> float64 {
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     let bits = FloatBits(x);
     let negative = (bits >> 63u64) == 1u64;
     let ax = Abs(x);
 
-    if ax == 0.0 {
-        return x;
-    }
-    if ax >= 22.0 {
-        return negative ? -1.0 : 1.0;
-    }
+    if ax == 0.0 { return x; }
+    if ax >= 22.0 { return negative ? -1.0 : 1.0; }
 
     var y = 0.0;
     if ax < 1.0 {

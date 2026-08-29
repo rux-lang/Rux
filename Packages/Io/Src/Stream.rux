@@ -75,9 +75,7 @@ pub func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
         var filled: uint = 0;
         let outcome = reader.Read(rest, @filled);
         if outcome.IsError() {
-            if outcome.IsTransient() {
-                continue;
-            }
+            if outcome.IsTransient() { continue; }
             return outcome;
         }
         if filled == 0 {
@@ -103,16 +101,12 @@ pub func WriteAll(writer: &var Writer, bytes: Slice<char8>) -> IoError {
         var taken: uint = 0;
         let outcome = writer.Write(rest, @taken);
         if outcome.IsError() {
-            if outcome.IsTransient() {
-                continue;
-            }
+            if outcome.IsTransient() { continue; }
             return outcome;
         }
         if taken == 0 {
             stalled = stalled + 1;
-            if stalled >= ZeroProgressLimit {
-                return IoError::Of(IoErrorKind::WriteZero);
-            }
+            if stalled >= ZeroProgressLimit { return IoError::Of(IoErrorKind::WriteZero); }
         }
         else {
             stalled = 0;

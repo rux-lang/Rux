@@ -19,9 +19,7 @@ extend char8 : Display {
     ///
     /// https://rux-lang.dev/docs/api/format/char8/format
     pub func Format(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        if (*self as uint32) > 0x7F {
-            return FormatScalar(writer, spec, ReplacementCharacter);
-        }
+        if (*self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
         one[0] = *self;
         return WriteAligned(writer, spec, Slice<char8> { data: @one[0], length: 1 }, false);
@@ -34,13 +32,9 @@ extend char8 : Debug {
     /// https://rux-lang.dev/docs/api/format/char8/format-debug
     pub func FormatDebug(self: *char8, writer: &var TextWriter) -> TextError {
         let opening = WriteAscii(writer, c8'\'');
-        if opening.IsError() {
-            return opening;
-        }
+        if opening.IsError() { return opening; }
         let body = self.Format(writer, FormatSpec::Plain());
-        if body.IsError() {
-            return body;
-        }
+        if body.IsError() { return body; }
         return WriteAscii(writer, c8'\'');
     }
 }

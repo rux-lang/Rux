@@ -11,19 +11,13 @@ pub func Trunc(x: float64) -> float64 {
 
     // An exponent of 52 or more leaves no fractional bits at all. The
     // infinities and the NaNs have an exponent of 1024 and land here too.
-    if e >= 52i64 {
-        return x;
-    }
+    if e >= 52i64 { return x; }
 
     // |x| < 1, so nothing survives but the sign.
-    if e < 0i64 {
-        return FromBits(bits & 0x8000000000000000u64);
-    }
+    if e < 0i64 { return FromBits(bits & 0x8000000000000000u64); }
 
     let mask = 0xFFFFFFFFFFFFFu64 >> (e as uint64);
-    if (bits & mask) == 0u64 {
-        return x;
-    }
+    if (bits & mask) == 0u64 { return x; }
     return FromBits(bits & ~mask);
 }
 

@@ -95,9 +95,7 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
 pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if SetCurrentDirectoryW(native as *char16) == 0 {
@@ -132,9 +130,7 @@ pub func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> Path
         return <-simplified;
     }
     var here = CurrentDirectory(allocator, error);
-    if (*error).IsError() {
-        return PathBuffer(allocator);
-    }
+    if (*error).IsError() { return PathBuffer(allocator); }
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()), @textError);
     if textError == TextError::None {
         textError = joined.Push(path.name);
@@ -160,9 +156,7 @@ when #target.os != .Windows {
         *linked = false;
         var native: *var OsUnit = null;
         let converted = NativePath(allocator, path, @native);
-        if converted.IsError() {
-            return converted;
-        }
+        if converted.IsError() { return converted; }
         var units: OsUnit[4096];
         let written = ReadlinkAt(AtFdCwd, native as *char8, @units[0], 4096);
         ReleaseNativePath(allocator, native, path.name.units.length);
@@ -181,9 +175,7 @@ when #target.os != .Windows {
         let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
         var textError = TextError::None;
         *target = OsString::FromView(allocator, view, @textError);
-        if textError != TextError::None {
-            return IoError::Of(IoErrorKind::Other);
-        }
+        if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
         *linked = true;
         return IoError::Ok();
     }
@@ -203,14 +195,10 @@ when #target.os != .Windows {
 
     func SegmentIs(segment: OsStringView, length: uint) -> bool {
         let units = segment.Units();
-        if units.length != length {
-            return false;
-        }
+        if units.length != length { return false; }
         var index: uint = 0;
         while index < length {
-            if units.data[index] != DotUnit() {
-                return false;
-            }
+            if units.data[index] != DotUnit() { return false; }
             index = index + 1;
         }
         return true;
@@ -235,9 +223,7 @@ when #target.os != .Windows {
             root[0] = PreferredSeparator();
             resolved.length = 0;
             textError = resolved.Push(OsStringView::FromUnits(root[0..1]));
-            if textError != TextError::None {
-                return IoError::Of(IoErrorKind::Other);
-            }
+            if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
         }
         var walk = path.Components();
         var stepping = true;
@@ -258,26 +244,18 @@ when #target.os != .Windows {
                 }
                 else {
                     textError = resolved.Push(segment);
-                    if textError != TextError::None {
-                        return IoError::Of(IoErrorKind::Other);
-                    }
+                    if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
                     var target = OsString(allocator);
                     var linked = false;
                     let read = ReadLinkText(allocator, resolved.AsPath(), @target, @linked);
-                    if read.IsError() {
-                        return read;
-                    }
+                    if read.IsError() { return read; }
                     if linked {
                         *followed = *followed + 1;
-                        if *followed > SymbolicLinkLimit {
-                            return IoError::Of(IoErrorKind::LimitExceeded);
-                        }
+                        if *followed > SymbolicLinkLimit { return IoError::Of(IoErrorKind::LimitExceeded); }
                         // The link's own name is replaced by whatever it holds, resolved in turn.
                         PopSegment(resolved);
                         let nested = ResolveInto(allocator, Path::FromView(target.View()), resolved, followed);
-                        if nested.IsError() {
-                            return nested;
-                        }
+                        if nested.IsError() { return nested; }
                     }
                 }
             }
@@ -305,9 +283,7 @@ pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> 
         // carries no access rights, which is enough here and works on a file this process may not read.
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
-        if (*error).IsError() {
-            return PathBuffer(allocator);
-        }
+        if (*error).IsError() { return PathBuffer(allocator); }
         let handle = OpenForQuery(native, true);
         ReleaseNativePath(allocator, native, path.name.units.length);
         if (handle as uint64) == InvalidHandleValue {
@@ -337,9 +313,7 @@ pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> 
         // No Unix kernel resolves a whole path for a caller -- `realpath` is library code over `readlink` -- so
         // the walk is done here, component by component, against what each link actually points at.
         var started = Absolute(allocator, path, error);
-        if (*error).IsError() {
-            return <-started;
-        }
+        if (*error).IsError() { return <-started; }
         var resolved = PathBuffer(allocator);
         var followed: uint = 0;
         *error = ResolveInto(allocator, started.AsPath(), resolved, @followed);

@@ -131,9 +131,7 @@ extend ComponentIterator {
         while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;
         }
-        if self.cursor >= self.units.length {
-            return Option::None<OsStringView>();
-        }
+        if self.cursor >= self.units.length { return Option::None<OsStringView>(); }
         let start = self.cursor;
         while self.cursor < self.units.length && !IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;

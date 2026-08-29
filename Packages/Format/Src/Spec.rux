@@ -143,22 +143,16 @@ pub func ParseFormatSpec(text: Slice<char8>, spec: *var FormatSpec) -> bool {
         index = index + 1;
     }
     while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
-        if spec.width > 0xFFFFFFFFu {
-            return false;
-        }
+        if spec.width > 0xFFFFFFFFu { return false; }
         spec.width = spec.width * 10 + ((text.data[index] as uint32) - 0x30) as uint;
         index = index + 1;
     }
     if index < text.length && text.data[index] == c8'.' {
         index = index + 1;
-        if index >= text.length || text.data[index] < c8'0' || text.data[index] > c8'9' {
-            return false;
-        }
+        if index >= text.length || text.data[index] < c8'0' || text.data[index] > c8'9' { return false; }
         spec.hasPrecision = true;
         while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
-            if spec.precision > 0xFFFFFFFFu {
-                return false;
-            }
+            if spec.precision > 0xFFFFFFFFu { return false; }
             spec.precision = spec.precision * 10 + ((text.data[index] as uint32) - 0x30) as uint;
             index = index + 1;
         }

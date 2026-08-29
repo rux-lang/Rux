@@ -28,12 +28,8 @@ pub struct Date {
 ///
 /// https://rux-lang.dev/docs/api/time/is-leap-year
 pub func IsLeapYear(year: int32) -> bool {
-    if year % 4i32 != 0i32 {
-        return false;
-    }
-    if year % 100i32 != 0i32 {
-        return true;
-    }
+    if year % 4i32 != 0i32 { return false; }
+    if year % 100i32 != 0i32 { return true; }
     return year % 400i32 == 0i32;
 }
 
@@ -43,15 +39,9 @@ pub func IsLeapYear(year: int32) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/time/days-in-month
 pub func DaysInMonth(year: int32, month: uint8) -> uint8 {
-    if month == 2u8 {
-        return IsLeapYear(year) ? 29u8 : 28u8;
-    }
-    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 {
-        return 30u8;
-    }
-    if month >= 1u8 && month <= 12u8 {
-        return 31u8;
-    }
+    if month == 2u8 { return IsLeapYear(year) ? 29u8 : 28u8; }
+    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30u8; }
+    if month >= 1u8 && month <= 12u8 { return 31u8; }
     return 0u8;
 }
 
@@ -60,9 +50,7 @@ extend Date {
     ///
     /// https://rux-lang.dev/docs/api/time/date/new
     pub func New(year: int32, month: uint8, day: uint8) -> Option<Date> {
-        if day < 1u8 || day > DaysInMonth(year, month) {
-            return Option::None<Date>();
-        }
+        if day < 1u8 || day > DaysInMonth(year, month) { return Option::None<Date>(); }
         return Option::Some<Date>(Date { year: year, month: month, day: day });
     }
 
@@ -135,12 +123,8 @@ extend Date {
     pub func Compare(self: &Date, other: Date) -> Ordering {
         let mine = self.DaysFromEpoch();
         let theirs = other.DaysFromEpoch();
-        if mine < theirs {
-            return Ordering::Less;
-        }
-        if mine > theirs {
-            return Ordering::Greater;
-        }
+        if mine < theirs { return Ordering::Less; }
+        if mine > theirs { return Ordering::Greater; }
         return Ordering::Equal;
     }
 }
@@ -220,15 +204,9 @@ extend UtcOffset {
     ///
     /// https://rux-lang.dev/docs/api/time/utc-offset/of
     pub func Of(hours: int32, minutes: int32) -> Option<UtcOffset> {
-        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 {
-            return Option::None<UtcOffset>();
-        }
-        if hours > 0i32 && minutes < 0i32 {
-            return Option::None<UtcOffset>();
-        }
-        if hours < 0i32 && minutes > 0i32 {
-            return Option::None<UtcOffset>();
-        }
+        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return Option::None<UtcOffset>(); }
+        if hours > 0i32 && minutes < 0i32 { return Option::None<UtcOffset>(); }
+        if hours < 0i32 && minutes > 0i32 { return Option::None<UtcOffset>(); }
         return Option::Some<UtcOffset>(UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 });
     }
 

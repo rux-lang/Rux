@@ -53,9 +53,7 @@ import Core::{ MutableSlice, Ordering };
 pub func Sort<T>(items: MutableSlice<T>) {
     let data = items.data;
     let length = items.length;
-    if length < 2 {
-        return;
-    }
+    if length < 2 { return; }
 
     // 2*floor(log2 n) is Musser's bound: quicksort's expected recursion depth
     // is about 1.39*log2 n, so the budget is only exhausted by input that is
@@ -105,9 +103,7 @@ pub func SortDescending<T>(items: MutableSlice<T>) {
 pub func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
     let data = items.data;
     let length = items.length;
-    if n >= length {
-        return false;
-    }
+    if n >= length { return false; }
 
     var lo: uint = 0;
     var hi = length;
@@ -168,12 +164,8 @@ pub func NthElement<T>(items: MutableSlice<T>, n: uint) -> bool {
 pub func PartialSort<T>(items: MutableSlice<T>, count: uint) -> bool {
     let data = items.data;
     let length = items.length;
-    if count > length {
-        return false;
-    }
-    if count == 0 {
-        return true;
-    }
+    if count > length { return false; }
+    if count == 0 { return true; }
 
     // A max-heap over the first count elements: its root is the largest of the
     // candidates, which is exactly the one a smaller element should displace.
@@ -215,9 +207,7 @@ func FloorLog2(value: uint) -> uint {
 
 // Internal helper; not part of the package API.
 func SwapAt<T>(data: *var T, first: uint, second: uint) {
-    if first == second {
-        return;
-    }
+    if first == second { return; }
 
     let temp = data[first];
     data[first] = data[second];
@@ -231,21 +221,13 @@ func SwapAt<T>(data: *var T, first: uint, second: uint) {
 // and reverse-sorted input off the quadratic path.
 func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
     if data[first] < data[middle] {
-        if data[middle] < data[last] {
-            return middle;
-        }
-        if data[first] < data[last] {
-            return last;
-        }
+        if data[middle] < data[last] { return middle; }
+        if data[first] < data[last] { return last; }
         return first;
     }
 
-    if data[first] < data[last] {
-        return first;
-    }
-    if data[middle] < data[last] {
-        return last;
-    }
+    if data[first] < data[last] { return first; }
+    if data[middle] < data[last] { return last; }
     return middle;
 }
 
@@ -292,9 +274,7 @@ func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd
 ///
 /// https://rux-lang.dev/docs/api/algorithms/insertion-sort-range
 pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
-    if high - low < 2 {
-        return;
-    }
+    if high - low < 2 { return; }
 
     var i = low + 1;
     while i < high {
@@ -304,9 +284,7 @@ pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
         // guard, so data[j - 1] is never formed at j == low, where the
         // decrement would wrap.
         while j > low {
-            if !(key < data[j - 1]) {
-                break;
-            }
+            if !(key < data[j - 1]) { break; }
             data[j] = data[j - 1];
             j--;
         }
@@ -323,9 +301,7 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
     var root = start;
     loop {
         let child = root * 2 + 1;
-        if child >= count {
-            return;
-        }
+        if child >= count { return; }
 
         var largest = child;
         let right = child + 1;
@@ -335,9 +311,7 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
             }
         }
 
-        if !(data[low + root] < data[low + largest]) {
-            return;
-        }
+        if !(data[low + root] < data[low + largest]) { return; }
         SwapAt<T>(data, low + root, low + largest);
         root = largest;
     }
@@ -353,9 +327,7 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 /// https://rux-lang.dev/docs/api/algorithms/heap-sort-range
 pub func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
     let count = high - low;
-    if count < 2 {
-        return;
-    }
+    if count < 2 { return; }
 
     var i = count / 2;
     while i > 0 {
@@ -435,9 +407,7 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 pub func SortBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Ordering) {
     let data = items.data;
     let length = items.length;
-    if length < 2 {
-        return;
-    }
+    if length < 2 { return; }
 
     var budget = FloorLog2(length) * 2;
     if budget == 0 {
@@ -473,9 +443,7 @@ pub func SortDescendingBy<T>(items: MutableSlice<T>, compare: func(T, T) -> Orde
 pub func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
-    if n >= length {
-        return false;
-    }
+    if n >= length { return false; }
 
     var lo: uint = 0;
     var hi = length;
@@ -527,12 +495,8 @@ pub func NthElementBy<T>(items: MutableSlice<T>, n: uint, compare: func(T, T) ->
 pub func PartialSortBy<T>(items: MutableSlice<T>, count: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
-    if count > length {
-        return false;
-    }
-    if count == 0 {
-        return true;
-    }
+    if count > length { return false; }
+    if count == 0 { return true; }
 
     var i = count / 2;
     while i > 0 {
@@ -556,21 +520,13 @@ pub func PartialSortBy<T>(items: MutableSlice<T>, count: uint, compare: func(T, 
 // Internal helper; not part of the package API.
 func MedianOfThreeBy<T>(data: *T, first: uint, middle: uint, last: uint, compare: func(T, T) -> Ordering) -> uint {
     if compare(data[first], data[middle]).IsLess() {
-        if compare(data[middle], data[last]).IsLess() {
-            return middle;
-        }
-        if compare(data[first], data[last]).IsLess() {
-            return last;
-        }
+        if compare(data[middle], data[last]).IsLess() { return middle; }
+        if compare(data[first], data[last]).IsLess() { return last; }
         return first;
     }
 
-    if compare(data[first], data[last]).IsLess() {
-        return first;
-    }
-    if compare(data[middle], data[last]).IsLess() {
-        return last;
-    }
+    if compare(data[first], data[last]).IsLess() { return first; }
+    if compare(data[middle], data[last]).IsLess() { return last; }
     return middle;
 }
 
@@ -604,18 +560,14 @@ func PartitionThreeWayBy<T>(data: *var T, low: uint, high: uint, pivot: T, lessE
 
 // Internal helper; not part of the package API.
 func InsertionSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
-    if high - low < 2 {
-        return;
-    }
+    if high - low < 2 { return; }
 
     var i = low + 1;
     while i < high {
         let key = data[i];
         var j = i;
         while j > low {
-            if !compare(key, data[j - 1]).IsLess() {
-                break;
-            }
+            if !compare(key, data[j - 1]).IsLess() { break; }
             data[j] = data[j - 1];
             j--;
         }
@@ -629,9 +581,7 @@ func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: f
     var root = start;
     loop {
         let child = root * 2 + 1;
-        if child >= count {
-            return;
-        }
+        if child >= count { return; }
 
         var largest = child;
         let right = child + 1;
@@ -641,9 +591,7 @@ func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: f
             }
         }
 
-        if !compare(data[low + root], data[low + largest]).IsLess() {
-            return;
-        }
+        if !compare(data[low + root], data[low + largest]).IsLess() { return; }
         SwapAt<T>(data, low + root, low + largest);
         root = largest;
     }
@@ -652,9 +600,7 @@ func SiftDownBy<T>(data: *var T, low: uint, start: uint, count: uint, compare: f
 // Internal helper; not part of the package API.
 func HeapSortRangeBy<T>(data: *var T, low: uint, high: uint, compare: func(T, T) -> Ordering) {
     let count = high - low;
-    if count < 2 {
-        return;
-    }
+    if count < 2 { return; }
 
     var i = count / 2;
     while i > 0 {

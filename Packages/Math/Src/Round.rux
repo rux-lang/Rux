@@ -13,12 +13,8 @@ pub func Round(x: float64) -> float64 {
     let t = Trunc(x);
     let frac = x - t;
 
-    if frac >= 0.5 {
-        return t + 1.0;
-    }
-    if frac <= -0.5 {
-        return t - 1.0;
-    }
+    if frac >= 0.5 { return t + 1.0; }
+    if frac <= -0.5 { return t - 1.0; }
 
     // Also the path for the infinities and the NaNs, whose frac is a NaN and
     // so compares false against both halves.

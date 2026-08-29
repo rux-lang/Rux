@@ -75,9 +75,7 @@ extend Result<T, E> {
     ///
     /// https://rux-lang.dev/docs/api/core/result/try-into-value
     pub func TryIntoValue(self: Result<T, E>, value: *var T) -> bool {
-        if value == null {
-            return false;
-        }
+        if value == null { return false; }
 
         match <-self {
             .Success(held) => {
@@ -103,9 +101,7 @@ extend Result<T, E> {
     ///
     /// https://rux-lang.dev/docs/api/core/result/try-into-error
     pub func TryIntoError(self: Result<T, E>, error: *var E) -> bool {
-        if error == null {
-            return false;
-        }
+        if error == null { return false; }
 
         match <-self {
             .Success(_) => {

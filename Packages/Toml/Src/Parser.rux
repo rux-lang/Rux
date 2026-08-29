@@ -174,9 +174,7 @@ extend TomlParser {
     // Records the first failure and where it happened; later ones are noise, since everything after a refusal is
     // parsed from a position the document never meant.
     func Stop(self: &var TomlParser, reason: TomlParseError) {
-        if self.outcome.error != TomlParseError::None {
-            return;
-        }
+        if self.outcome.error != TomlParseError::None { return; }
         self.outcome.error = reason;
         self.outcome.line = self.ahead.line;
         self.outcome.column = self.ahead.column;
@@ -209,12 +207,8 @@ extend TomlParser {
             self.Stop(TomlParseError::Lexical);
             return TomlValue::Table(self.allocator);
         }
-        if token.kind == TomlTokenKind::LeftBracket {
-            return self.ParseArray();
-        }
-        if token.kind == TomlTokenKind::LeftBrace {
-            return self.ParseInlineTable();
-        }
+        if token.kind == TomlTokenKind::LeftBracket { return self.ParseArray(); }
+        if token.kind == TomlTokenKind::LeftBrace { return self.ParseInlineTable(); }
         self.Advance();
         let span = self.lexer.TextOf(token);
         if token.kind == TomlTokenKind::Text {
@@ -226,9 +220,7 @@ extend TomlParser {
             }
             return TomlValue::FromString(self.allocator, decoded);
         }
-        if token.kind == TomlTokenKind::Boolean {
-            return TomlValue::Boolean(self.allocator, span.length == 4u);
-        }
+        if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4u); }
         if token.kind == TomlTokenKind::Integer {
             var value = 0i64;
             let failure = TomlParseInteger(span, @value);
@@ -257,15 +249,9 @@ extend TomlParser {
             if shape == TomlDateTimeShape::Offset {
                 return TomlValue::OffsetDateTime(self.allocator, date, time, offset);
             }
-            if shape == TomlDateTimeShape::Local {
-                return TomlValue::LocalDateTime(self.allocator, date, time);
-            }
-            if shape == TomlDateTimeShape::DateOnly {
-                return TomlValue::LocalDate(self.allocator, date);
-            }
-            if shape == TomlDateTimeShape::TimeOnly {
-                return TomlValue::LocalTime(self.allocator, time);
-            }
+            if shape == TomlDateTimeShape::Local { return TomlValue::LocalDateTime(self.allocator, date, time); }
+            if shape == TomlDateTimeShape::DateOnly { return TomlValue::LocalDate(self.allocator, date); }
+            if shape == TomlDateTimeShape::TimeOnly { return TomlValue::LocalTime(self.allocator, time); }
             self.outcome.scalar = TomlScalarError::Malformed;
             self.Stop(TomlParseError::BadValue);
             return TomlValue::Table(self.allocator);
@@ -300,9 +286,7 @@ extend TomlParser {
                 break;
             }
             var element = self.ParseValue();
-            if self.Failed() {
-                break;
-            }
+            if self.Failed() { break; }
             if !array.Push(<-element) {
                 self.Stop(TomlParseError::OutOfMemory);
                 break;
@@ -352,9 +336,7 @@ extend TomlParser {
                 break;
             }
             self.ParseKeyValue(@table);
-            if self.Failed() {
-                break;
-            }
+            if self.Failed() { break; }
             self.SkipNewlines();
             if self.ahead.kind == TomlTokenKind::Comma {
                 self.Advance();
@@ -420,9 +402,7 @@ extend TomlParser {
                 self.Stop(TomlParseError::OutOfMemory);
                 return false;
             }
-            if self.ahead.kind != TomlTokenKind::Dot {
-                return true;
-            }
+            if self.ahead.kind != TomlTokenKind::Dot { return true; }
             self.Advance();
         }
         return true;
@@ -685,24 +665,18 @@ extend TomlParser {
         var current = @root;
         while true {
             self.SkipNewlines();
-            if self.ahead.kind == TomlTokenKind::End {
-                break;
-            }
+            if self.ahead.kind == TomlTokenKind::End { break; }
             if self.ahead.kind == TomlTokenKind::Error {
                 self.Stop(TomlParseError::Lexical);
                 break;
             }
             if self.ahead.kind == TomlTokenKind::LeftBracket {
                 current = self.ParseHeader(@root);
-                if current == null {
-                    break;
-                }
+                if current == null { break; }
                 continue;
             }
             self.ParseKeyValue(current);
-            if self.Failed() {
-                break;
-            }
+            if self.Failed() { break; }
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
                 // Two key-value pairs on one line is the shape of a missing newline, and TOML has no separator
                 // that would make it mean anything else.

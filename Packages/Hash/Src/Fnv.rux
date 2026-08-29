@@ -97,9 +97,7 @@ extend Fnv1a32 : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a32/write
     pub func Write(self: &var Fnv1a32, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         var index: uint = 0;
         while index < length {
             self.state = self.state ^ (*(bytes + index) as uint32);
@@ -168,9 +166,7 @@ extend Fnv1a64 : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/fnv1a64/write
     pub func Write(self: &var Fnv1a64, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         var index: uint = 0;
         while index < length {
             self.state = self.state ^ (*(bytes + index) as uint64);

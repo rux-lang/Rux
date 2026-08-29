@@ -18,9 +18,7 @@ when #target.os {
 pub func Free(ptr: *opaque) {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
-            if ptr == null {
-                return;
-            }
+            if ptr == null { return; }
             const HeaderSize: uint = 16;
             let header = (ptr as *uint) - 2;
             Munmap(header as *opaque, *header + HeaderSize);

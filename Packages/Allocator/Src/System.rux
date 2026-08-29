@@ -92,22 +92,14 @@ extend SystemAllocator : Allocator {
         // layout, so the space reserved before it is the header rounded up to the alignment.
         let headerSize = sizeof(SystemBlockHeader);
         let prefix = AlignUp(headerSize, layout.alignment);
-        if prefix < headerSize {
-            return AllocError::Unsupported;
-        }
+        if prefix < headerSize { return AllocError::Unsupported; }
         var total: uint = 0;
-        if AlignUpChecked(layout.size, layout.alignment, @total) {
-            return AllocError::Unsupported;
-        }
-        if total > uint::Max - prefix {
-            return AllocError::Unsupported;
-        }
+        if AlignUpChecked(layout.size, layout.alignment, @total) { return AllocError::Unsupported; }
+        if total > uint::Max - prefix { return AllocError::Unsupported; }
         total = total + prefix;
 
         let length = PageAlign(total);
-        if length < total {
-            return AllocError::Unsupported;
-        }
+        if length < total { return AllocError::Unsupported; }
 
         var base: *var opaque = null;
         let pageError = PageAllocate(length, PageRead | PageWrite, @base);
@@ -137,18 +129,12 @@ extend SystemAllocator : Allocator {
     ///
     /// https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
     pub func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 {
-            return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
-        }
-        if block == null || IsEmptyBlock(block) {
-            return AllocError::InvalidBlock;
-        }
+        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
+        if block == null || IsEmptyBlock(block) { return AllocError::InvalidBlock; }
 
         let headerSize = sizeof(SystemBlockHeader);
         let header = ((block as uint) - headerSize) as *var SystemBlockHeader;
-        if header.magic != SystemBlockMagic || header.size != layout.size {
-            return AllocError::InvalidBlock;
-        }
+        if header.magic != SystemBlockMagic || header.size != layout.size { return AllocError::InvalidBlock; }
         header.magic = 0;
         return PageRelease(header.base as *var opaque, header.length) == PageError::None
                  ? AllocError::None
@@ -171,9 +157,7 @@ extend SystemAllocator : Allocator {
     /// https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
     pub func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment {
-            return AllocError::Unsupported;
-        }
+        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
             *result = block;
             return AllocError::None;
@@ -181,9 +165,7 @@ extend SystemAllocator : Allocator {
 
         var fresh: *var opaque = null;
         let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         CopyBlock(fresh, block, keep);
 

@@ -238,9 +238,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-boolean
     pub func AsBoolean(self: &TomlValue, result: *var bool) -> bool {
-        if self.kind != TomlKind::Boolean {
-            return false;
-        }
+        if self.kind != TomlKind::Boolean { return false; }
         *result = self.boolean;
         return true;
     }
@@ -252,9 +250,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-integer
     pub func AsInteger(self: &TomlValue, result: *var int64) -> bool {
-        if self.kind != TomlKind::Integer {
-            return false;
-        }
+        if self.kind != TomlKind::Integer { return false; }
         *result = self.integer;
         return true;
     }
@@ -263,9 +259,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-float
     pub func AsFloat(self: &TomlValue, result: *var float64) -> bool {
-        if self.kind != TomlKind::Float {
-            return false;
-        }
+        if self.kind != TomlKind::Float { return false; }
         *result = self.number;
         return true;
     }
@@ -274,9 +268,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-text
     pub func AsText(self: &TomlValue) -> StringView {
-        if self.kind != TomlKind::Text {
-            return StringView();
-        }
+        if self.kind != TomlKind::Text { return StringView(); }
         return self.text.View();
     }
 
@@ -311,9 +303,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-offset
     pub func AsOffset(self: &TomlValue, result: *var UtcOffset) -> bool {
-        if self.kind != TomlKind::OffsetDateTime {
-            return false;
-        }
+        if self.kind != TomlKind::OffsetDateTime { return false; }
         *result = self.offset;
         return true;
     }
@@ -322,12 +312,8 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/length
     pub func Length(self: &TomlValue) -> uint {
-        if self.kind == TomlKind::Array {
-            return self.elements.Length();
-        }
-        if self.kind == TomlKind::Table {
-            return self.entries.Length();
-        }
+        if self.kind == TomlKind::Array { return self.elements.Length(); }
+        if self.kind == TomlKind::Table { return self.entries.Length(); }
         return 0u;
     }
 }
@@ -340,9 +326,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/push
     pub func Push(self: &var TomlValue, value: TomlValue) -> bool {
-        if self.kind != TomlKind::Array {
-            return false;
-        }
+        if self.kind != TomlKind::Array { return false; }
         return self.elements.Push(<-value) == CollectionError::None;
     }
 
@@ -354,9 +338,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/insert
     pub func Insert(self: &var TomlValue, key: String, value: TomlValue) -> bool {
-        if self.kind != TomlKind::Table {
-            return false;
-        }
+        if self.kind != TomlKind::Table { return false; }
         var entry = TomlEntry { key: key, value: <-value };
         return self.entries.Push(<-entry) == CollectionError::None;
     }
@@ -365,9 +347,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/at
     pub func At(self: &TomlValue, index: uint) -> *TomlValue {
-        if self.kind != TomlKind::Array || index >= self.elements.Length() {
-            return null;
-        }
+        if self.kind != TomlKind::Array || index >= self.elements.Length() { return null; }
         let slice = self.elements.AsSlice();
         return @slice.data[index];
     }
@@ -379,9 +359,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/at-mutable
     pub func AtMutable(self: &var TomlValue, index: uint) -> *var TomlValue {
-        if self.kind != TomlKind::Array || index >= self.elements.Length() {
-            return null;
-        }
+        if self.kind != TomlKind::Array || index >= self.elements.Length() { return null; }
         var slice = self.elements.AsMutableSlice();
         return @slice.data[index];
     }
@@ -390,16 +368,12 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/find
     pub func Find(self: &TomlValue, key: StringView) -> *TomlValue {
-        if self.kind != TomlKind::Table {
-            return null;
-        }
+        if self.kind != TomlKind::Table { return null; }
         let slice = self.entries.AsSlice();
         var index: uint = 0;
         while index < slice.length {
             var held = key;
-            if slice.data[index].key.View().Equals(held) {
-                return @slice.data[index].value;
-            }
+            if slice.data[index].key.View().Equals(held) { return @slice.data[index].value; }
             index = index + 1u;
         }
         return null;
@@ -409,16 +383,12 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/find-mutable
     pub func FindMutable(self: &var TomlValue, key: StringView) -> *var TomlValue {
-        if self.kind != TomlKind::Table {
-            return null;
-        }
+        if self.kind != TomlKind::Table { return null; }
         var slice = self.entries.AsMutableSlice();
         var index: uint = 0;
         while index < slice.length {
             var held = key;
-            if slice.data[index].key.View().Equals(held) {
-                return @slice.data[index].value;
-            }
+            if slice.data[index].key.View().Equals(held) { return @slice.data[index].value; }
             index = index + 1u;
         }
         return null;
@@ -428,9 +398,7 @@ extend TomlValue {
     ///
     /// https://rux-lang.dev/docs/api/toml/value/entry-at
     pub func EntryAt(self: &TomlValue, index: uint) -> *TomlEntry {
-        if self.kind != TomlKind::Table || index >= self.entries.Length() {
-            return null;
-        }
+        if self.kind != TomlKind::Table || index >= self.entries.Length() { return null; }
         let slice = self.entries.AsSlice();
         return @slice.data[index];
     }
@@ -448,9 +416,7 @@ extend TomlValue {
         self.text.Clear();
         while self.elements.Length() > 0u {
             var element = TomlValue::Table(self.allocator);
-            if !self.elements.TryPop(@element) {
-                break;
-            }
+            if !self.elements.TryPop(@element) { break; }
         }
         self.entries.Clear();
     }

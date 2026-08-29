@@ -32,9 +32,7 @@ pub func ToLowerSimple(scalar: char32) -> char32 {
 /// https://rux-lang.dev/docs/api/unicode/to-title-simple
 pub func ToTitleSimple(scalar: char32) -> char32 {
     let titled = PairValue(SimpleTitlePairs[..], scalar as uint32);
-    if titled != scalar as uint32 {
-        return titled as char32;
-    }
+    if titled != scalar as uint32 { return titled as char32; }
     return ToUpperSimple(scalar);
 }
 

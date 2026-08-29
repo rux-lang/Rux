@@ -15,14 +15,10 @@ import Core::{ MutableSlice, Option, Slice };
 
 // Two ASCII digits at `at`, or a refusal.
 func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
-    if at + 2 > text.length {
-        return false;
-    }
+    if at + 2 > text.length { return false; }
     let high = text.data[at] as uint32;
     let low = text.data[at + 1] as uint32;
-    if high < 0x30 || high > 0x39 || low < 0x30 || low > 0x39 {
-        return false;
-    }
+    if high < 0x30 || high > 0x39 || low < 0x30 || low > 0x39 { return false; }
     *value = (high - 0x30) * 10 + (low - 0x30);
     return true;
 }
@@ -36,35 +32,21 @@ func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/time/parse-rfc3339
 pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
-    if text.length < 20 {
-        return false;
-    }
+    if text.length < 20 { return false; }
     var yearHigh: uint32 = 0;
     var yearLow: uint32 = 0;
-    if !TwoDigits(text, 0, @yearHigh) || !TwoDigits(text, 2, @yearLow) {
-        return false;
-    }
-    if text.data[4] != c8'-' || text.data[7] != c8'-' {
-        return false;
-    }
+    if !TwoDigits(text, 0, @yearHigh) || !TwoDigits(text, 2, @yearLow) { return false; }
+    if text.data[4] != c8'-' || text.data[7] != c8'-' { return false; }
     var month: uint32 = 0;
     var day: uint32 = 0;
-    if !TwoDigits(text, 5, @month) || !TwoDigits(text, 8, @day) {
-        return false;
-    }
+    if !TwoDigits(text, 5, @month) || !TwoDigits(text, 8, @day) { return false; }
     let separator = text.data[10];
-    if separator != c8'T' && separator != c8't' && separator != c8' ' {
-        return false;
-    }
+    if separator != c8'T' && separator != c8't' && separator != c8' ' { return false; }
     var hour: uint32 = 0;
     var minute: uint32 = 0;
     var second: uint32 = 0;
-    if !TwoDigits(text, 11, @hour) || !TwoDigits(text, 14, @minute) || !TwoDigits(text, 17, @second) {
-        return false;
-    }
-    if text.data[13] != c8':' || text.data[16] != c8':' {
-        return false;
-    }
+    if !TwoDigits(text, 11, @hour) || !TwoDigits(text, 14, @minute) || !TwoDigits(text, 17, @second) { return false; }
+    if text.data[13] != c8':' || text.data[16] != c8':' { return false; }
 
     var at: uint = 19;
     var nanosecond: uint32 = 0;
@@ -80,15 +62,11 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
             digits = digits + 1;
             at = at + 1;
         }
-        if digits == 0 {
-            return false;
-        }
+        if digits == 0 { return false; }
     }
 
     var parsedOffset = UtcOffset::Utc();
-    if at >= text.length {
-        return false;
-    }
+    if at >= text.length { return false; }
     let mark = text.data[at];
     if mark == c8'Z' || mark == c8'z' {
         at = at + 1;
@@ -107,18 +85,14 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
             signedMinutes = -signedMinutes;
         }
         let made = UtcOffset::Of(signedHours, signedMinutes);
-        if made.IsNone() {
-            return false;
-        }
+        if made.IsNone() { return false; }
         parsedOffset = made.ValueOr(UtcOffset::Utc());
         at = at + 6;
     }
     else {
         return false;
     }
-    if at != text.length {
-        return false;
-    }
+    if at != text.length { return false; }
 
     // The fold: second 60 becomes the last representable nanosecond of 59, as the header says.
     if second == 60u32 {
@@ -127,13 +101,9 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
     }
     let year = (yearHigh * 100 + yearLow) as int32;
     let madeDate = Date::New(year, month as uint8, day as uint8);
-    if madeDate.IsNone() {
-        return false;
-    }
+    if madeDate.IsNone() { return false; }
     let madeTime = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
-    if madeTime.IsNone() {
-        return false;
-    }
+    if madeTime.IsNone() { return false; }
     *dateTime = DateTime {
         date: madeDate.ValueOr(Date::FromEpochDays(0i64)),
         time: madeTime.ValueOr(TimeOfDay::Midnight())
@@ -144,9 +114,7 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
 
 // Writes `value` as `width` ASCII digits, zero-padded, into the cursor position.
 func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: uint) -> bool {
-    if *at + width > into.length {
-        return false;
-    }
+    if *at + width > into.length { return false; }
     var divisor: uint32 = 1;
     var counted: uint = 1;
     while counted < width {
@@ -164,9 +132,7 @@ func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: 
 }
 
 func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
-    if *at >= into.length {
-        return false;
-    }
+    if *at >= into.length { return false; }
     into.data[*at] = byte;
     *at = *at + 1;
     return true;
@@ -185,9 +151,7 @@ func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
 pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice<char8>,
                    written: *var uint) -> bool {
     *written = 0;
-    if dateTime.date.year < 0i32 || dateTime.date.year > 9999i32 {
-        return false;
-    }
+    if dateTime.date.year < 0i32 || dateTime.date.year > 9999i32 { return false; }
     var at: uint = 0;
     if !PushPadded(into, @at, dateTime.date.year as uint32, 4) || !PushByte(into, @at, c8'-') ||
        !PushPadded(into, @at, dateTime.date.month as uint32, 2) || !PushByte(into, @at, c8'-') ||
@@ -202,13 +166,9 @@ pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice
 
     if dateTime.time.nanosecond != 0u32 {
         // Nine digits, then the trailing zeros come back off: `.5` rather than `.500000000`.
-        if !PushByte(into, @at, c8'.') {
-            return false;
-        }
+        if !PushByte(into, @at, c8'.') { return false; }
         let opening = at;
-        if !PushPadded(into, @at, dateTime.time.nanosecond, 9) {
-            return false;
-        }
+        if !PushPadded(into, @at, dateTime.time.nanosecond, 9) { return false; }
         while at > opening + 1 && into.data[at - 1] == c8'0' {
             at = at - 1;
         }
@@ -216,9 +176,7 @@ pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice
 
     let shift = offset.TotalSeconds();
     if shift == 0i32 {
-        if !PushByte(into, @at, c8'Z') {
-            return false;
-        }
+        if !PushByte(into, @at, c8'Z') { return false; }
     }
     else {
         let sign = shift < 0i32 ? c8'-' : c8'+';

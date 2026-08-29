@@ -18,12 +18,8 @@ import Math::{ Exp, Floor, Log };
 ///
 /// https://rux-lang.dev/docs/api/random/binomial
 pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability: float64) -> uint64 {
-    if trials == 0u64 || !(probability > 0.0) {
-        return 0u64;
-    }
-    if probability >= 1.0 {
-        return trials;
-    }
+    if trials == 0u64 || !(probability > 0.0) { return 0u64; }
+    if probability >= 1.0 { return trials; }
     if (trials as float64) <= DirectMethodLimit {
         var successes = 0u64;
         var trial = 0u64;
@@ -39,9 +35,7 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
     let a = 1u64 + trials / 2u64;
     let b = trials + 1u64 - a;
     let split = Beta<G>(generator, a as float64, b as float64);
-    if split >= probability {
-        return Binomial<G>(generator, a - 1u64, probability / split);
-    }
+    if split >= probability { return Binomial<G>(generator, a - 1u64, probability / split); }
     return a + Binomial<G>(generator, b - 1u64, (probability - split) / (1.0 - split));
 }
 
@@ -55,9 +49,7 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 ///
 /// https://rux-lang.dev/docs/api/random/poisson
 pub func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64 {
-    if !(mean > 0.0) {
-        return 0u64;
-    }
+    if !(mean > 0.0) { return 0u64; }
     var remaining = mean;
     var count = 0u64;
     while remaining > DirectMethodLimit {

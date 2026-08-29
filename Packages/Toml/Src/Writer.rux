@@ -44,9 +44,7 @@ struct TomlPath {
 
 extend TomlPath {
     func Append(self: &var TomlPath, bytes: Slice<char8>) -> bool {
-        if self.length + bytes.length > self.room.length {
-            return false;
-        }
+        if self.length + bytes.length > self.room.length { return false; }
         var index: uint = 0;
         while index < bytes.length {
             self.room.data[self.length + index] = bytes.data[index];
@@ -63,17 +61,13 @@ extend TomlPath {
 
 // Whether `name` may be written without quotes: letters, digits, underscores and hyphens, and not empty.
 func IsBareKey(name: Slice<char8>) -> bool {
-    if name.length == 0u {
-        return false;
-    }
+    if name.length == 0u { return false; }
     var index: uint = 0;
     while index < name.length {
         let c = name.data[index] as uint8;
         let allowed = (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) ||
                       (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8 || c == 0x2Du8;
-        if !allowed {
-            return false;
-        }
+        if !allowed { return false; }
         index = index + 1u;
     }
     return true;
@@ -94,17 +88,13 @@ func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {
 // escapes are used where TOML defines them, and a four-digit form otherwise.
 func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteError {
     var failure = EmitByte(writer, 0x22u8);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         if c == 0x22u8 || c == 0x5Cu8 {
             failure = EmitByte(writer, 0x5Cu8);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitByte(writer, c);
         }
         else if c == 0x08u8 {
@@ -126,21 +116,15 @@ func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteEr
             // The escape character has a short form in TOML 1.1, but the four-digit one is understood by 1.0
             // readers too, and choosing the older spelling costs nothing here.
             failure = Emit(writer, "\\u00");
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitByte(writer, HexDigit(c >> 4u8));
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitByte(writer, HexDigit(c & 0x0Fu8));
         }
         else {
             failure = EmitByte(writer, c);
         }
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         index = index + 1u;
     }
     return EmitByte(writer, 0x22u8);
@@ -152,9 +136,7 @@ func HexDigit(value: uint8) -> uint8 {
 
 // A key, bare where TOML allows it and quoted where it does not.
 func EmitKey(writer: &var TextWriter, name: Slice<char8>) -> TomlWriteError {
-    if IsBareKey(name) {
-        return Emit(writer, name);
-    }
+    if IsBareKey(name) { return Emit(writer, name); }
     return EmitBasicString(writer, name);
 }
 
@@ -162,15 +144,9 @@ func EmitKey(writer: &var TextWriter, name: Slice<char8>) -> TomlWriteError {
 // carries cleanly, and seventeen is what always round-trips; trying the three in order gives text that is both
 // short and exact, and the same value always produces the same text.
 func EmitFloat(writer: &var TextWriter, value: float64) -> TomlWriteError {
-    if value != value {
-        return Emit(writer, "nan");
-    }
-    if value > 1.7976931348623157e308 {
-        return Emit(writer, "inf");
-    }
-    if value < -1.7976931348623157e308 {
-        return Emit(writer, "-inf");
-    }
+    if value != value { return Emit(writer, "nan"); }
+    if value > 1.7976931348623157e308 { return Emit(writer, "inf"); }
+    if value < -1.7976931348623157e308 { return Emit(writer, "-inf"); }
     var storage: char8[64];
     var length: uint = 0;
     var significant = 15u;
@@ -189,17 +165,13 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> TomlWriteError {
     }
     let text = Slice<char8> { data: @storage[0], length: length };
     let failure = Emit(writer, text);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     // TOML tells a float from an integer by its point or its exponent, so a whole value needs one written out or
     // it would read back as an integer and stop being the same document.
     var index: uint = 0;
     while index < length {
         let c = text.data[index] as uint8;
-        if c == 0x2Eu8 || c == 0x65u8 || c == 0x45u8 {
-            return TomlWriteError::None;
-        }
+        if c == 0x2Eu8 || c == 0x65u8 || c == 0x45u8 { return TomlWriteError::None; }
         index = index + 1u;
     }
     return Emit(writer, ".0");
@@ -254,85 +226,47 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError 
     let kind = value.Kind();
     if kind != TomlKind::LocalTime {
         failure = EmitPadded(writer, value.date.year as uint32, 4u);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         failure = EmitByte(writer, 0x2Du8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         failure = EmitPadded(writer, value.date.month as uint32, 2u);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         failure = EmitByte(writer, 0x2Du8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         failure = EmitPadded(writer, value.date.day as uint32, 2u);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
-        if kind == TomlKind::LocalDate {
-            return TomlWriteError::None;
-        }
+        if failure != TomlWriteError::None { return failure; }
+        if kind == TomlKind::LocalDate { return TomlWriteError::None; }
         failure = EmitByte(writer, 0x54u8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
     }
     failure = EmitPadded(writer, value.time.hour as uint32, 2u);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitByte(writer, 0x3Au8);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitPadded(writer, value.time.minute as uint32, 2u);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitByte(writer, 0x3Au8);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitPadded(writer, value.time.second as uint32, 2u);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     if value.time.nanosecond != 0u32 {
         failure = EmitByte(writer, 0x2Eu8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         // Nine digits always, rather than the shortest that survives: a fixed width is what makes two documents
         // with the same instant produce the same bytes.
         failure = EmitPadded(writer, value.time.nanosecond, 9u);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
     }
-    if kind != TomlKind::OffsetDateTime {
-        return TomlWriteError::None;
-    }
+    if kind != TomlKind::OffsetDateTime { return TomlWriteError::None; }
     let seconds = value.offset.TotalSeconds();
-    if seconds == 0i32 {
-        return EmitByte(writer, 0x5Au8);
-    }
+    if seconds == 0i32 { return EmitByte(writer, 0x5Au8); }
     let magnitude = seconds < 0i32 ? -seconds : seconds;
     failure = EmitByte(writer, seconds < 0i32 ? 0x2Du8 : 0x2Bu8);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitPadded(writer, (magnitude / 3600i32) as uint32, 2u);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = EmitByte(writer, 0x3Au8);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     return EmitPadded(writer, ((magnitude % 3600i32) / 60i32) as uint32, 2u);
 }
 
@@ -340,35 +274,21 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError 
 // this way is written inline, because inside an array TOML has no other spelling for one.
 func EmitValue(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
     let kind = value.Kind();
-    if kind == TomlKind::Boolean {
-        return Emit(writer, value.boolean ? "true" : "false");
-    }
-    if kind == TomlKind::Integer {
-        return EmitInteger(writer, value.integer);
-    }
-    if kind == TomlKind::Float {
-        return EmitFloat(writer, value.number);
-    }
-    if kind == TomlKind::Text {
-        return EmitBasicString(writer, value.AsText().Bytes());
-    }
+    if kind == TomlKind::Boolean { return Emit(writer, value.boolean ? "true" : "false"); }
+    if kind == TomlKind::Integer { return EmitInteger(writer, value.integer); }
+    if kind == TomlKind::Float { return EmitFloat(writer, value.number); }
+    if kind == TomlKind::Text { return EmitBasicString(writer, value.AsText().Bytes()); }
     if kind == TomlKind::Array {
         var failure = EmitByte(writer, 0x5Bu8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         var index: uint = 0;
         while index < value.Length() {
             if index > 0u {
                 failure = Emit(writer, ", ");
-                if failure != TomlWriteError::None {
-                    return failure;
-                }
+                if failure != TomlWriteError::None { return failure; }
             }
             failure = EmitValue(writer, *value.At(index));
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             index = index + 1u;
         }
         return EmitByte(writer, 0x5Du8);
@@ -376,34 +296,22 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
     if kind == TomlKind::Table {
         // An empty inline table is `{}` rather than `{ }`: the space belongs between entries, and there are
         // none.
-        if value.Length() == 0u {
-            return Emit(writer, "{}");
-        }
+        if value.Length() == 0u { return Emit(writer, "{}"); }
         var failure = Emit(writer, "{ ");
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
         var index: uint = 0;
         while index < value.Length() {
             if index > 0u {
                 failure = Emit(writer, ", ");
-                if failure != TomlWriteError::None {
-                    return failure;
-                }
+                if failure != TomlWriteError::None { return failure; }
             }
             let entry = value.EntryAt(index);
             failure = EmitKey(writer, (*entry).key.View().Bytes());
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = Emit(writer, " = ");
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitValue(writer, (*entry).value);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             index = index + 1u;
         }
         return Emit(writer, " }");
@@ -415,12 +323,8 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
 // own. A table and an array of tables get headers; everything else, including a static array of tables, is a
 // value.
 func IsBodyEntry(value: &TomlValue) -> bool {
-    if value.Kind() == TomlKind::Table {
-        return false;
-    }
-    if value.Kind() == TomlKind::Array && value.tableArray {
-        return false;
-    }
+    if value.Kind() == TomlKind::Table { return false; }
+    if value.Kind() == TomlKind::Array && value.tableArray { return false; }
     return true;
 }
 
@@ -431,21 +335,13 @@ func EmitBody(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
         let entry = table.EntryAt(index);
         if IsBodyEntry((*entry).value) {
             var failure = EmitKey(writer, (*entry).key.View().Bytes());
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = Emit(writer, " = ");
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitValue(writer, (*entry).value);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitByte(writer, 0x0Au8);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
         }
         index = index + 1u;
     }
@@ -459,22 +355,14 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
         // A blank line before every header but the first, which is what makes a configuration file readable and
         // is also the only whitespace this writer ever produces.
         failure = EmitByte(writer, 0x0Au8);
-        if failure != TomlWriteError::None {
-            return failure;
-        }
+        if failure != TomlWriteError::None { return failure; }
     }
     failure = Emit(writer, array ? "[[" : "[");
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = Emit(writer, path.Bytes());
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     failure = Emit(writer, array ? "]]" : "]");
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     return EmitByte(writer, 0x0Au8);
 }
 
@@ -491,46 +379,30 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
         }
         let mark = path.length;
         if !root {
-            if !path.Append(".") {
-                return TomlWriteError::PathTooLong;
-            }
+            if !path.Append(".") { return TomlWriteError::PathTooLong; }
         }
         var named = KeyIntoPath(path, (*entry).key.View().Bytes());
-        if named != TomlWriteError::None {
-            return named;
-        }
+        if named != TomlWriteError::None { return named; }
         if (*entry).value.Kind() == TomlKind::Table {
             var failure = EmitHeader(writer, path, false, *written == 0u);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             *written = *written + 1u;
             failure = EmitBody(writer, (*entry).value);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
             failure = EmitSections(writer, (*entry).value, path, written, false);
-            if failure != TomlWriteError::None {
-                return failure;
-            }
+            if failure != TomlWriteError::None { return failure; }
         }
         else {
             var element: uint = 0;
             while element < (*entry).value.Length() {
                 let held = (*entry).value.At(element);
                 var failure = EmitHeader(writer, path, true, *written == 0u);
-                if failure != TomlWriteError::None {
-                    return failure;
-                }
+                if failure != TomlWriteError::None { return failure; }
                 *written = *written + 1u;
                 failure = EmitBody(writer, *held);
-                if failure != TomlWriteError::None {
-                    return failure;
-                }
+                if failure != TomlWriteError::None { return failure; }
                 failure = EmitSections(writer, *held, path, written, false);
-                if failure != TomlWriteError::None {
-                    return failure;
-                }
+                if failure != TomlWriteError::None { return failure; }
                 element = element + 1u;
             }
         }
@@ -542,16 +414,12 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
 
 // A key appended to the header path, in the form a header would spell it.
 func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
-    if IsBareKey(name) {
-        return path.Append(name) ? TomlWriteError::None : TomlWriteError::PathTooLong;
-    }
+    if IsBareKey(name) { return path.Append(name) ? TomlWriteError::None : TomlWriteError::PathTooLong; }
     var storage: char8[512];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 512));
     let quoted: &var TextWriter = cursor;
     let failure = EmitBasicString(quoted, name);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     return path.Append(cursor.Written()) ? TomlWriteError::None : TomlWriteError::PathTooLong;
 }
 
@@ -566,15 +434,11 @@ func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
 ///
 /// https://rux-lang.dev/docs/api/toml/write-document
 pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
-    if table.Kind() != TomlKind::Table {
-        return EmitValue(writer, table);
-    }
+    if table.Kind() != TomlKind::Table { return EmitValue(writer, table); }
     var storage: char8[1024];
     var path = TomlPath { room: MutableSlice::From<char8>(@storage[0], 1024), length: 0 };
     let failure = EmitBody(writer, table);
-    if failure != TomlWriteError::None {
-        return failure;
-    }
+    if failure != TomlWriteError::None { return failure; }
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been
     // written yet.
     var written = CountBodyEntries(table);

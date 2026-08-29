@@ -91,18 +91,10 @@ pub func IsScalarValue(value: uint32) -> bool {
 /// https://rux-lang.dev/docs/api/text/encoded-length
 pub func EncodedLength(scalar: char32) -> uint {
     let value = scalar as uint32;
-    if !IsScalarValue(value) {
-        return 0;
-    }
-    if value < 0x80 {
-        return 1;
-    }
-    if value < 0x800 {
-        return 2;
-    }
-    if value < 0x10000 {
-        return 3;
-    }
+    if !IsScalarValue(value) { return 0; }
+    if value < 0x80 { return 1; }
+    if value < 0x800 { return 2; }
+    if value < 0x10000 { return 3; }
     return 4;
 }
 
@@ -126,12 +118,8 @@ pub func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -
     *written = 0;
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
-    if width == 0 {
-        return Utf8Error::InvalidStart;
-    }
-    if width > into.length {
-        return Utf8Error::Truncated;
-    }
+    if width == 0 { return Utf8Error::InvalidStart; }
+    if width > into.length { return Utf8Error::Truncated; }
 
     if width == 1 {
         into.data[0] = value as char8;
@@ -214,9 +202,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 pub func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
     *scalar = 0u32 as char32;
     *width = 0;
-    if index >= bytes.length {
-        return Utf8Error::Truncated;
-    }
+    if index >= bytes.length { return Utf8Error::Truncated; }
 
     let leading = bytes.data[index] as uint32;
     if leading < 0x80 {
@@ -228,22 +214,14 @@ pub func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: 
     var low: uint32 = 0;
     var high: uint32 = 0;
     let expected = SecondByteRange(leading, @low, @high);
-    if expected == 0 {
-        return Utf8Error::InvalidStart;
-    }
-    if index + expected > bytes.length {
-        return Utf8Error::Truncated;
-    }
+    if expected == 0 { return Utf8Error::InvalidStart; }
+    if index + expected > bytes.length { return Utf8Error::Truncated; }
 
     let second = bytes.data[index + 1] as uint32;
-    if second < low || second > high {
-        return Utf8Error::InvalidContinuation;
-    }
+    if second < low || second > high { return Utf8Error::InvalidContinuation; }
     var step: uint = 2;
     while step < expected {
-        if !IsContinuation(bytes.data[index + step]) {
-            return Utf8Error::InvalidContinuation;
-        }
+        if !IsContinuation(bytes.data[index + step]) { return Utf8Error::InvalidContinuation; }
         step = step + 1;
     }
 
@@ -290,12 +268,8 @@ pub func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
 ///
 /// https://rux-lang.dev/docs/api/text/is-boundary
 pub func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
-    if index > bytes.length {
-        return false;
-    }
-    if index == bytes.length {
-        return true;
-    }
+    if index > bytes.length { return false; }
+    if index == bytes.length { return true; }
     return !IsContinuation(bytes.data[index]);
 }
 
@@ -326,9 +300,7 @@ pub func CountScalars(bytes: Slice<char8>) -> uint {
 ///
 /// https://rux-lang.dev/docs/api/text/boundary-at-or-below
 pub func BoundaryAtOrBelow(bytes: Slice<char8>, index: uint) -> uint {
-    if index >= bytes.length {
-        return bytes.length;
-    }
+    if index >= bytes.length { return bytes.length; }
     var walk = index;
     // At most three steps: no scalar value takes more than four bytes, so no byte is more than three past a start.
     while walk > 0 && IsContinuation(bytes.data[walk]) {

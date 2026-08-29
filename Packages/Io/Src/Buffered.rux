@@ -106,12 +106,8 @@ extend BufferedReader {
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/fill
     pub func Fill(self: &var BufferedReader) -> IoError {
-        if self.Available() > 0 {
-            return IoError::Ok();
-        }
-        if self.data == null {
-            return IoError::Of(IoErrorKind::Other);
-        }
+        if self.Available() > 0 { return IoError::Ok(); }
+        if self.data == null { return IoError::Of(IoErrorKind::Other); }
         self.start = 0;
         self.end = 0;
         var filled: uint = 0;
@@ -119,12 +115,8 @@ extend BufferedReader {
         while outcome.IsTransient() {
             outcome = self.source.Read(MutableSlice<char8> { data: self.data, length: self.capacity }, @filled);
         }
-        if outcome.IsError() {
-            return outcome;
-        }
-        if filled == 0 {
-            return IoError::Of(IoErrorKind::EndOfStream);
-        }
+        if outcome.IsError() { return outcome; }
+        if filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
         self.end = filled;
         return IoError::Ok();
     }
@@ -135,24 +127,18 @@ extend BufferedReader {
     /// https://rux-lang.dev/docs/api/io/buffered-reader/read
     pub func Read(self: &var BufferedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
         *filled = 0;
-        if into.length == 0 {
-            return IoError::Ok();
-        }
+        if into.length == 0 { return IoError::Ok(); }
         if self.Available() == 0 && into.length >= self.capacity {
             // The bypass: copying a buffer-sized read through the buffer would be pure overhead.
             var outcome = self.source.Read(into, filled);
             while outcome.IsTransient() {
                 outcome = self.source.Read(into, filled);
             }
-            if outcome.IsOk() && *filled == 0 {
-                return IoError::Of(IoErrorKind::EndOfStream);
-            }
+            if outcome.IsOk() && *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
             return outcome;
         }
         let refilled = self.Fill();
-        if refilled.IsError() {
-            return refilled;
-        }
+        if refilled.IsError() { return refilled; }
         var give = self.Available();
         if give > into.length {
             give = into.length;
@@ -249,9 +235,7 @@ extend BufferedWriter {
         if self.length > 0 {
             let held = Slice<char8> { data: self.data, length: self.length };
             let sent = WriteAll(self.sink, held);
-            if sent.IsError() {
-                return sent;
-            }
+            if sent.IsError() { return sent; }
             self.length = 0;
         }
         return self.sink.Flush();
@@ -262,32 +246,24 @@ extend BufferedWriter {
     /// https://rux-lang.dev/docs/api/io/buffered-writer/write
     pub func Write(self: &var BufferedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
         *taken = 0;
-        if bytes.length == 0 {
-            return IoError::Ok();
-        }
+        if bytes.length == 0 { return IoError::Ok(); }
         if self.data == null || bytes.length >= self.capacity {
             // The bypass, after clearing what order requires: bytes gathered earlier go first.
             if self.length > 0 {
                 let held = Slice<char8> { data: self.data, length: self.length };
                 let sent = WriteAll(self.sink, held);
-                if sent.IsError() {
-                    return sent;
-                }
+                if sent.IsError() { return sent; }
                 self.length = 0;
             }
             let outcome = WriteAll(self.sink, bytes);
-            if outcome.IsError() {
-                return outcome;
-            }
+            if outcome.IsError() { return outcome; }
             *taken = bytes.length;
             return IoError::Ok();
         }
         if self.length + bytes.length > self.capacity {
             let held = Slice<char8> { data: self.data, length: self.length };
             let sent = WriteAll(self.sink, held);
-            if sent.IsError() {
-                return sent;
-            }
+            if sent.IsError() { return sent; }
             self.length = 0;
         }
         Copy(@self.data[self.length] as *var opaque, bytes.data as *opaque, bytes.length);

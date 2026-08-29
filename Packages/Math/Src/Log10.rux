@@ -13,15 +13,9 @@ pub func Log10(x: float64) -> float64 {
     var zero = 0.0;
     let bits = FloatBits(x);
 
-    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
-        return -1.0 / zero;
-    }
-    if (bits >> 63u64) == 1u64 {
-        return (x - x) / zero;
-    }
-    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 {
-        return x + x;
-    }
+    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 { return -1.0 / zero; }
+    if (bits >> 63u64) == 1u64 { return (x - x) / zero; }
+    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 { return x + x; }
 
     let red = LogNormalize(x);
     let f = red.m - 1.0;

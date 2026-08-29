@@ -39,9 +39,7 @@ pub func Swap<T>(left: *var T, right: *var T) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/reverse
 pub func Reverse<T>(items: MutableSlice<T>) {
-    if items.length < 2 {
-        return;
-    }
+    if items.length < 2 { return; }
     var low: uint = 0;
     var high = items.length - 1;
     while low < high {
@@ -65,12 +63,8 @@ pub func Reverse<T>(items: MutableSlice<T>) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/rotate
 pub func Rotate<T>(items: MutableSlice<T>, middle: uint) -> bool {
-    if middle > items.length {
-        return false;
-    }
-    if middle == 0 || middle == items.length {
-        return true;
-    }
+    if middle > items.length { return false; }
+    if middle == 0 || middle == items.length { return true; }
     Reverse<T>(MutableSlice<T> { data: items.data, length: middle });
     Reverse<T>(MutableSlice<T> { data: @items.data[middle], length: items.length - middle });
     Reverse<T>(items);
@@ -109,9 +103,7 @@ pub func Fill<T>(items: MutableSlice<T>, value: T) {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/copy-to
 pub func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
-    if destination.length != source.length {
-        return false;
-    }
+    if destination.length != source.length { return false; }
     var index: uint = 0;
     while index < source.length {
         destination.data[index] = source.data[index];
@@ -132,12 +124,8 @@ pub func CopyTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/move-to
 pub func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
-    if destination.length != source.length {
-        return false;
-    }
-    if (destination.data as uint) <= (source.data as uint) {
-        return CopyTo<T>(destination, source);
-    }
+    if destination.length != source.length { return false; }
+    if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
     var remaining = source.length;
     while remaining > 0 {
         remaining = remaining - 1;
@@ -161,9 +149,7 @@ pub func MoveTo<T>(destination: MutableSlice<T>, source: Slice<T>) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/unique
 pub func Unique<T>(items: MutableSlice<T>) -> uint {
-    if items.length < 2 {
-        return items.length;
-    }
+    if items.length < 2 { return items.length; }
     var kept: uint = 1;
     var index: uint = 1;
     while index < items.length {

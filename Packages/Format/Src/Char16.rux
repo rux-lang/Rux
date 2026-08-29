@@ -12,9 +12,7 @@ extend char16 : Display {
     /// https://rux-lang.dev/docs/api/format/char16/format
     pub func Format(self: *char16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let value = *self as uint32;
-        if !IsScalarValue(value) {
-            return FormatScalar(writer, spec, ReplacementCharacter);
-        }
+        if !IsScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
         return FormatScalar(writer, spec, value as char32);
     }
 }
@@ -25,13 +23,9 @@ extend char16 : Debug {
     /// https://rux-lang.dev/docs/api/format/char16/format-debug
     pub func FormatDebug(self: *char16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'\'');
-        if opening.IsError() {
-            return opening;
-        }
+        if opening.IsError() { return opening; }
         let body = self.Format(writer, FormatSpec::Plain());
-        if body.IsError() {
-            return body;
-        }
+        if body.IsError() { return body; }
         return WriteAscii(writer, c8'\'');
     }
 }

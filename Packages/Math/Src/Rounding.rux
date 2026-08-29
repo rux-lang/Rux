@@ -40,19 +40,13 @@ pub func RoundTiesToEven(value: float64) -> float64 {
     let whole = Trunc(value);
     let fraction = value - whole;
     // Anything but an exact half is decided by which side it falls on; only the halves consult the neighbour.
-    if fraction > 0.5 {
-        return whole + 1.0;
-    }
-    if fraction < -0.5 {
-        return whole - 1.0;
-    }
+    if fraction > 0.5 { return whole + 1.0; }
+    if fraction < -0.5 { return whole - 1.0; }
     if fraction == 0.5 {
         // `whole` is an integer, so its own halving tells us whether it is even without any bit inspection.
         return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole + 1.0;
     }
-    if fraction == -0.5 {
-        return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole - 1.0;
-    }
+    if fraction == -0.5 { return Trunc(whole * 0.5) * 2.0 == whole ? whole : whole - 1.0; }
     // Everything else -- including the infinities and NaNs, whose fraction is a NaN and answers false above.
     return whole;
 }
@@ -70,18 +64,10 @@ pub func RoundTiesToEven(value: float32) -> float32 {
 ///
 /// https://rux-lang.dev/docs/api/math/round-to
 pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
-    if mode == RoundingMode::TowardZero {
-        return Trunc(value);
-    }
-    if mode == RoundingMode::TowardNegative {
-        return Floor(value);
-    }
-    if mode == RoundingMode::TowardPositive {
-        return Ceil(value);
-    }
-    if mode == RoundingMode::ToNearestTiesAway {
-        return Round(value);
-    }
+    if mode == RoundingMode::TowardZero { return Trunc(value); }
+    if mode == RoundingMode::TowardNegative { return Floor(value); }
+    if mode == RoundingMode::TowardPositive { return Ceil(value); }
+    if mode == RoundingMode::ToNearestTiesAway { return Round(value); }
     return RoundTiesToEven(value);
 }
 
@@ -89,18 +75,10 @@ pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
 ///
 /// https://rux-lang.dev/docs/api/math/round-to
 pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
-    if mode == RoundingMode::TowardZero {
-        return Trunc(value);
-    }
-    if mode == RoundingMode::TowardNegative {
-        return Floor(value);
-    }
-    if mode == RoundingMode::TowardPositive {
-        return Ceil(value);
-    }
-    if mode == RoundingMode::ToNearestTiesAway {
-        return Round(value);
-    }
+    if mode == RoundingMode::TowardZero { return Trunc(value); }
+    if mode == RoundingMode::TowardNegative { return Floor(value); }
+    if mode == RoundingMode::TowardPositive { return Ceil(value); }
+    if mode == RoundingMode::ToNearestTiesAway { return Round(value); }
     return RoundTiesToEven(value);
 }
 
@@ -121,9 +99,7 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
     *result = zero;
-    if IsNan(value) || IsInfinite(value) {
-        return true;
-    }
+    if IsNan(value) || IsInfinite(value) { return true; }
     let rounded = RoundTo(value, mode);
     let signed = (zero - 1) < zero;
     // Both bounds are compared in floating point, where the integer limits are exactly representable only up to
@@ -131,13 +107,9 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
     // range exactly when it is strictly below 2^(bits-1) for a signed type, or below 2^bits for an unsigned one.
     let bits = sizeof(T) * 8u64;
     let limit = ScaleByPowerOfTwo(1.0, signed ? (bits as int64) - 1i64 : bits as int64);
-    if rounded >= limit {
-        return true;
-    }
+    if rounded >= limit { return true; }
     if signed {
-        if rounded < 0.0 - limit {
-            return true;
-        }
+        if rounded < 0.0 - limit { return true; }
     }
     else if rounded < 0.0 {
         return true;

@@ -35,9 +35,7 @@ const KeccakRotations: uint64[25] = [
 ];
 
 func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
-    if amount == 0u64 {
-        return value;
-    }
+    if amount == 0u64 { return value; }
     return (value << amount) | (value >> (64u64 - amount));
 }
 

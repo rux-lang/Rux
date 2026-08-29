@@ -18,9 +18,7 @@ import Core::{ MutableSlice, Slice };
 ///
 /// https://rux-lang.dev/docs/api/random/shuffle
 pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T>) {
-    if items.length < 2u {
-        return;
-    }
+    if items.length < 2u { return; }
     var index = items.length - 1u;
     while index > 0u {
         // At or below the current position, never above it.
@@ -41,9 +39,7 @@ pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T
 ///
 /// https://rux-lang.dev/docs/api/random/choose-index
 pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
-    if count == 0u {
-        return 0u;
-    }
+    if count == 0u { return 0u; }
     return UniformBelow<G>(generator, count as uint64) as uint;
 }
 
@@ -66,16 +62,12 @@ pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<flo
         }
         index = index + 1;
     }
-    if !(total > 0.0) {
-        return weights.length;
-    }
+    if !(total > 0.0) { return weights.length; }
     var target = NextFloat64<G>(generator) * total;
     index = 0;
     while index < weights.length {
         let weight = weights.data[index] > 0.0 ? weights.data[index] : 0.0;
-        if target < weight {
-            return index;
-        }
+        if target < weight { return index; }
         target = target - weight;
         index = index + 1;
     }
@@ -84,9 +76,7 @@ pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<flo
     index = weights.length;
     while index > 0u {
         index = index - 1u;
-        if weights.data[index] > 0.0 {
-            return index;
-        }
+        if weights.data[index] > 0.0 { return index; }
     }
     return weights.length;
 }

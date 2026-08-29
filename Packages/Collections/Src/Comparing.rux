@@ -19,12 +19,8 @@ import Core::{ Ordering, Slice };
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-uint
 pub func CompareUint(left: uint, right: uint) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -32,12 +28,8 @@ pub func CompareUint(left: uint, right: uint) -> Ordering {
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-uint64
 pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -45,12 +37,8 @@ pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-uint32
 pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -60,12 +48,8 @@ pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-int64
 pub func CompareInt64(left: int64, right: int64) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -73,12 +57,8 @@ pub func CompareInt64(left: int64, right: int64) -> Ordering {
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-int32
 pub func CompareInt32(left: int32, right: int32) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -89,12 +69,8 @@ pub func CompareInt32(left: int32, right: int32) -> Ordering {
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-char8
 pub func CompareChar8(left: char8, right: char8) -> Ordering {
-    if left < right {
-        return Ordering::Less;
-    }
-    if left > right {
-        return Ordering::Greater;
-    }
+    if left < right { return Ordering::Less; }
+    if left > right { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -110,19 +86,11 @@ pub func CompareSlice(left: Slice<char8>, right: Slice<char8>) -> Ordering {
     let shared = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shared {
-        if left.data[index] < right.data[index] {
-            return Ordering::Less;
-        }
-        if left.data[index] > right.data[index] {
-            return Ordering::Greater;
-        }
+        if left.data[index] < right.data[index] { return Ordering::Less; }
+        if left.data[index] > right.data[index] { return Ordering::Greater; }
         index++;
     }
-    if left.length < right.length {
-        return Ordering::Less;
-    }
-    if left.length > right.length {
-        return Ordering::Greater;
-    }
+    if left.length < right.length { return Ordering::Less; }
+    if left.length > right.length { return Ordering::Greater; }
     return Ordering::Equal;
 }

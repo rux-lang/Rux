@@ -75,17 +75,11 @@ pub func Log(x: float64) -> float64 {
     let bits = FloatBits(x);
 
     // log(+-0) is -Inf.
-    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 {
-        return -1.0 / zero;
-    }
+    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 { return -1.0 / zero; }
     // log of a negative has no value, and a negative NaN falls here too.
-    if (bits >> 63u64) == 1u64 {
-        return (x - x) / zero;
-    }
+    if (bits >> 63u64) == 1u64 { return (x - x) / zero; }
     // log(+Inf) is +Inf, and a NaN propagates.
-    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 {
-        return x + x;
-    }
+    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 { return x + x; }
 
     let red = LogNormalize(x);
     let f = red.m - 1.0;

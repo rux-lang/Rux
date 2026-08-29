@@ -115,9 +115,7 @@ extend HashMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/hash-map/get
     pub func Get(self: &HashMap<K, V>, key: K) -> Option<V> {
         var slot: uint = 0;
-        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            return Option::None<V>();
-        }
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<V>(); }
         return Option::Some<V>(self.table.values[slot]);
     }
 
@@ -133,9 +131,7 @@ extend HashMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/hash-map/reference
     pub func Reference(self: &HashMap<K, V>, key: K) -> Option<*V> {
         var slot: uint = 0;
-        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            return Option::None<*V>();
-        }
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<*V>(); }
         return Option::Some<*V>(@self.table.values[slot]);
     }
 
@@ -154,9 +150,7 @@ extend HashMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/hash-map/try-reference-mutable
     pub func TryReferenceMutable(self: &var HashMap<K, V>, key: K, value: *var *var V) -> bool {
         var slot: uint = 0;
-        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            return false;
-        }
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) { return false; }
         *value = @self.table.values[slot];
         return true;
     }
@@ -184,9 +178,7 @@ extend HashMap<K, V> {
         }
 
         let room = self.table.EnsureRoom(self.hash);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         if self.table.Place(<-key, <-value, self.hash).IsNone() {
             // The table has room and the probe still ran past what a distance byte holds, so these keys collide
             // badly enough that a larger table would spread the same collisions over more slots.
@@ -207,9 +199,7 @@ extend HashMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/hash-map/remove
     pub func Remove(self: &var HashMap<K, V>, key: K) -> Option<V> {
         var slot: uint = 0;
-        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            return Option::None<V>();
-        }
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<V>(); }
         let takenKey <- self.table.keys[slot];
         let takenValue <- self.table.values[slot];
         self.table.Vacate(slot);
@@ -317,13 +307,9 @@ extend HashMap<K, V> {
         }
 
         let room = self.table.EnsureRoom(self.hash);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         var placed: uint = 0;
-        if !self.table.Place(<-key, <-value, self.hash).TryIntoValue(@placed) {
-            return CollectionError::Unsupported;
-        }
+        if !self.table.Place(<-key, <-value, self.hash).TryIntoValue(@placed) { return CollectionError::Unsupported; }
         if existing != null {
             *existing = @self.table.values[placed];
         }
@@ -378,9 +364,7 @@ extend HashMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/hash-map/remove-entry
     pub func RemoveEntry(self: &var HashMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         var slot: uint = 0;
-        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if !self.table.Find(key, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<KeyValue<K, V>>(); }
         let takenKey <- self.table.keys[slot];
         let takenValue <- self.table.values[slot];
         self.table.Vacate(slot);

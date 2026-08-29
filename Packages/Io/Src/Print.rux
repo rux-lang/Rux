@@ -42,9 +42,7 @@ extend ConsoleWriter : TextWriter {
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
     pub func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
-        if (*self.failure).IsError() {
-            return TextError::None;
-        }
+        if (*self.failure).IsError() { return TextError::None; }
         let outcome = PrintBytes(bytes);
         if outcome.IsError() {
             *self.failure = outcome;
@@ -70,12 +68,8 @@ pub func PrintValue(value: Display) -> IoError {
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = value.Format(writer, FormatSpec::Plain());
-    if failure.IsError() {
-        return failure;
-    }
-    if formatted != TextError::None {
-        return OfTextFailure(formatted);
-    }
+    if failure.IsError() { return failure; }
+    if formatted != TextError::None { return OfTextFailure(formatted); }
     return IoError::Ok();
 }
 
@@ -120,12 +114,8 @@ pub func Print(format: Slice<char8>, args: Display...) -> IoError {
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
-    if failure.IsError() {
-        return failure;
-    }
-    if formatted != TextError::None {
-        return OfTextFailure(formatted);
-    }
+    if failure.IsError() { return failure; }
+    if formatted != TextError::None { return OfTextFailure(formatted); }
     return IoError::Ok();
 }
 

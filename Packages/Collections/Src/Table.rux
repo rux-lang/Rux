@@ -78,13 +78,9 @@ extend TableSeed {
     pub func Random() -> TableSeed {
         var error = EntropyError::None;
         let low = NextUint64(@error);
-        if error.IsError() {
-            return TableSeed { low: 0x9E3779B97F4A7C15, high: 0xBF58476D1CE4E5B9 };
-        }
+        if error.IsError() { return TableSeed { low: 0x9E3779B97F4A7C15, high: 0xBF58476D1CE4E5B9 }; }
         let high = NextUint64(@error);
-        if error.IsError() {
-            return TableSeed { low: low, high: 0xBF58476D1CE4E5B9 };
-        }
+        if error.IsError() { return TableSeed { low: low, high: 0xBF58476D1CE4E5B9 }; }
         return TableSeed { low: low, high: high };
     }
 
@@ -206,24 +202,16 @@ extend Table<K, V> {
     /// https://rux-lang.dev/docs/api/collections/table/find
     pub func Find(self: &Table<K, V>, key: K, hash: func(K, uint64, uint64) -> uint64,
               equals: func(K, K) -> bool) -> Option<uint> {
-        if self.capacity == 0 || self.length == 0 {
-            return Option::None<uint>();
-        }
+        if self.capacity == 0 || self.length == 0 { return Option::None<uint>(); }
 
         var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
         var distance: uint = 0;
         while distance < self.capacity {
             let state = self.states[index];
-            if state == SlotEmpty {
-                return Option::None<uint>();
-            }
+            if state == SlotEmpty { return Option::None<uint>(); }
             let occupantDistance = (state as uint) - 1;
-            if occupantDistance < distance {
-                return Option::None<uint>();
-            }
-            if equals(self.keys[index], key) {
-                return Option::Some<uint>(index);
-            }
+            if occupantDistance < distance { return Option::None<uint>(); }
+            if equals(self.keys[index], key) { return Option::Some<uint>(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
@@ -316,9 +304,7 @@ extend Table<K, V> {
             return CollectionError::None;
         }
         // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the rounding term can wrap.
-        if length > (uint::Max - 2) / 4 {
-            return CollectionError::CapacityOverflow;
-        }
+        if length > (uint::Max - 2) / 4 { return CollectionError::CapacityOverflow; }
         let required = (length * 4 + 2) / 3;
         // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
         // allocated.
@@ -337,9 +323,7 @@ extend Table<K, V> {
                 hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var keys: *var K = null;
         let keyRoom = AllocateBlock<K>(self.allocator, capacity, @keys);
-        if keyRoom.IsError() {
-            return keyRoom;
-        }
+        if keyRoom.IsError() { return keyRoom; }
         var values: *var V = null;
         let valueRoom = AllocateBlock<V>(self.allocator, capacity, @values);
         if valueRoom.IsError() {
@@ -398,17 +382,11 @@ extend Table<K, V> {
     pub func EnsureRoom(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         var wanted: uint = 0;
         let planned = Table::CapacityFor<K, V>(required, @wanted);
-        if planned.IsError() {
-            return planned;
-        }
-        if wanted <= self.capacity {
-            return CollectionError::None;
-        }
+        if planned.IsError() { return planned; }
+        if wanted <= self.capacity { return CollectionError::None; }
         return self.Rehash(wanted, hash);
     }
 
@@ -421,17 +399,11 @@ extend Table<K, V> {
                  hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         var wanted: uint = 0;
         let planned = Table::CapacityFor<K, V>(required, @wanted);
-        if planned.IsError() {
-            return planned;
-        }
-        if wanted <= self.capacity {
-            return CollectionError::None;
-        }
+        if planned.IsError() { return planned; }
+        if wanted <= self.capacity { return CollectionError::None; }
         return self.Rehash(wanted, hash);
     }
 
@@ -448,12 +420,8 @@ extend Table<K, V> {
         }
         var wanted: uint = 0;
         let planned = Table::CapacityFor<K, V>(self.length, @wanted);
-        if planned.IsError() {
-            return planned;
-        }
-        if wanted >= self.capacity {
-            return CollectionError::None;
-        }
+        if planned.IsError() { return planned; }
+        if wanted >= self.capacity { return CollectionError::None; }
         return self.Rehash(wanted, hash);
     }
 
@@ -479,9 +447,7 @@ extend Table<K, V> {
 
     // Gives back all three runs and leaves the table as a new one.
     func Release(self: &var Table<K, V>) {
-        if self.keys == null {
-            return;
-        }
+        if self.keys == null { return; }
         ReleaseBlock<K>(self.allocator, self.keys, self.capacity);
         ReleaseBlock<V>(self.allocator, self.values, self.capacity);
         ReleaseBlock<uint8>(self.allocator, self.states, self.capacity);

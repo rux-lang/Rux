@@ -236,9 +236,7 @@ extend XxHash64 : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/xx-hash64/write
     pub func Write(self: &var XxHash64, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         self.total = self.total + (length as uint64);
 
         var offset: uint = 0;

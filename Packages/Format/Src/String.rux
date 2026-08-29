@@ -49,13 +49,9 @@ extend StringView : Debug {
     /// https://rux-lang.dev/docs/api/format/string-view/format-debug
     pub func FormatDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'"');
-        if opening.IsError() {
-            return opening;
-        }
+        if opening.IsError() { return opening; }
         let body = WriteBytes(writer, Truncated(self, spec));
-        if body.IsError() {
-            return body;
-        }
+        if body.IsError() { return body; }
         return WriteAscii(writer, c8'"');
     }
 }
@@ -64,9 +60,7 @@ extend StringView : Debug {
 // boundary by construction: it walks whole characters and stops.
 func Truncated(view: &StringView, spec: FormatSpec) -> Slice<char8> {
     let bytes = view.Bytes();
-    if !spec.hasPrecision {
-        return bytes;
-    }
+    if !spec.hasPrecision { return bytes; }
     var kept: uint = 0;
     var index: uint = 0;
     while index < bytes.length && kept < spec.precision {

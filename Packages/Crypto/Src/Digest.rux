@@ -71,9 +71,7 @@ pub interface Digest {
 ///
 /// https://rux-lang.dev/docs/api/crypto/equal
 pub func Equal(left: Slice<char8>, right: Slice<char8>) -> bool {
-    if left.length != right.length {
-        return false;
-    }
+    if left.length != right.length { return false; }
     var difference = 0u8;
     var index: uint = 0;
     while index < left.length {

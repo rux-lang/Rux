@@ -135,23 +135,15 @@ extend FixedBufferHandle : Allocator {
             *result = EmptyBlockAddress();
             return AllocError::None;
         }
-        if self.buffer.start == 0 {
-            return AllocError::OutOfMemory;
-        }
+        if self.buffer.start == 0 { return AllocError::OutOfMemory; }
 
         let unaligned = self.buffer.start + self.buffer.used;
         let aligned = AlignUp(unaligned, layout.alignment);
-        if aligned < unaligned {
-            return AllocError::OutOfMemory;
-        }
+        if aligned < unaligned { return AllocError::OutOfMemory; }
         let padding = aligned - unaligned;
-        if padding > self.buffer.capacity - self.buffer.used {
-            return AllocError::OutOfMemory;
-        }
+        if padding > self.buffer.capacity - self.buffer.used { return AllocError::OutOfMemory; }
         let remaining = self.buffer.capacity - self.buffer.used - padding;
-        if layout.size > remaining {
-            return AllocError::OutOfMemory;
-        }
+        if layout.size > remaining { return AllocError::OutOfMemory; }
 
         self.buffer.used = self.buffer.used + padding + layout.size;
         self.buffer.lastAllocation = aligned;
@@ -167,12 +159,8 @@ extend FixedBufferHandle : Allocator {
     ///
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
     pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 {
-            return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
-        }
-        if block == null {
-            return AllocError::InvalidBlock;
-        }
+        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
+        if block == null { return AllocError::InvalidBlock; }
         let address = block as uint;
         if address == self.buffer.lastAllocation {
             let offset = address - self.buffer.start;
@@ -192,9 +180,7 @@ extend FixedBufferHandle : Allocator {
     /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/reallocate
     pub func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment {
-            return AllocError::Unsupported;
-        }
+        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
             *result = block;
             return AllocError::None;
@@ -220,9 +206,7 @@ extend FixedBufferHandle : Allocator {
 
         var fresh: *var opaque = null;
         let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         Copy(fresh, block as *opaque, keep);
         *result = fresh;

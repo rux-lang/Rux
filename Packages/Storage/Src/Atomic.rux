@@ -132,19 +132,13 @@ extend AtomicWrite {
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/commit
     pub func Commit(self: &var AtomicWrite, allocator: Allocator) -> IoError {
-        if !self.pending {
-            return IoError::Of(IoErrorKind::InvalidInput);
-        }
+        if !self.pending { return IoError::Of(IoErrorKind::InvalidInput); }
         let synced = self.scratch.file.Sync();
-        if synced.IsError() {
-            return synced;
-        }
+        if synced.IsError() { return synced; }
         // The handle must close before the rename: Windows will not move a file that is open without sharing
         // rights it was not necessarily given, and closing is where a delayed write failure finally reports.
         let closed = self.scratch.file.Close();
-        if closed.IsError() {
-            return closed;
-        }
+        if closed.IsError() { return closed; }
         let moved = Rename(allocator, self.scratch.AsPath(), self.target.AsPath());
         if moved.IsError() {
             // The temporary is still ours to clean up, and the target still holds whatever it held.
@@ -160,9 +154,7 @@ extend AtomicWrite {
     ///
     /// https://rux-lang.dev/docs/api/storage/atomic-write/abandon
     pub func Abandon(self: &var AtomicWrite, allocator: Allocator) -> IoError {
-        if !self.pending {
-            return IoError::Ok();
-        }
+        if !self.pending { return IoError::Ok(); }
         self.pending = false;
         return self.scratch.Close(allocator);
     }
@@ -194,9 +186,7 @@ extend AtomicWrite {
 pub func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>) -> IoError {
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
-    if error.IsError() {
-        return error;
-    }
+    if error.IsError() { return error; }
     var sink: Writer = replacement.Stream();
     let wrote = WriteAll(sink, contents);
     if wrote.IsError() {

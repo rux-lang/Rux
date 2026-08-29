@@ -19,9 +19,7 @@ when #target.os == .Windows {
 pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
-            if ptr == null {
-                return Alloc(size);
-            }
+            if ptr == null { return Alloc(size); }
             if size == 0 {
                 Free(ptr);
                 return null;
@@ -29,9 +27,7 @@ pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
             let header = (ptr as *uint) - 2;
             let oldSize = *header;
             let resized = Alloc(size);
-            if resized == null {
-                return null;
-            }
+            if resized == null { return null; }
             let copySize = oldSize < size ? oldSize : size;
             Copy(resized, ptr, copySize);
             Free(ptr);
@@ -39,9 +35,7 @@ pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
         },
         .Windows => {
             let heap = GetProcessHeap();
-            if ptr == null {
-                return HeapAlloc(heap, 0, size);
-            }
+            if ptr == null { return HeapAlloc(heap, 0, size); }
             if size == 0 {
                 HeapFree(heap, 0, ptr);
                 return null;

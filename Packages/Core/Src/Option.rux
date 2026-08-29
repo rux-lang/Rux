@@ -78,9 +78,7 @@ extend Option<T> {
     ///
     /// https://rux-lang.dev/docs/api/core/option/try-into-value
     pub func TryIntoValue(self: Option<T>, value: *var T) -> bool {
-        if value == null {
-            return false;
-        }
+        if value == null { return false; }
 
         match <-self {
             .Some(held) => {

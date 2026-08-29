@@ -17,18 +17,12 @@ import Text::{ DecodeAt, StringView };
 ///
 /// https://rux-lang.dev/docs/api/format/parse-bool
 pub func ParseBool(str: Slice<char8>) -> Result<bool, ParseError> {
-    if str.length == 0 {
-        return Result::Error<bool, ParseError>(ParseError::Empty);
-    }
+    if str.length == 0 { return Result::Error<bool, ParseError>(ParseError::Empty); }
     let text = StringView::FromValidated(str);
     let yes = StringView::FromValidated("true");
     let no = StringView::FromValidated("false");
-    if text.Equals(yes) {
-        return Result::Success<bool, ParseError>(true);
-    }
-    if text.Equals(no) {
-        return Result::Success<bool, ParseError>(false);
-    }
+    if text.Equals(yes) { return Result::Success<bool, ParseError>(true); }
+    if text.Equals(no) { return Result::Success<bool, ParseError>(false); }
     return Result::Error<bool, ParseError>(ParseError::InvalidCharacter(0));
 }
 
@@ -46,17 +40,13 @@ pub func ParseBool(str: StringView) -> Result<bool, ParseError> {
 ///
 /// https://rux-lang.dev/docs/api/format/parse-char
 pub func ParseChar(str: Slice<char8>) -> Result<char32, ParseError> {
-    if str.length == 0 {
-        return Result::Error<char32, ParseError>(ParseError::Empty);
-    }
+    if str.length == 0 { return Result::Error<char32, ParseError>(ParseError::Empty); }
     var scalar = 0u32 as char32;
     var width: uint = 0;
     if DecodeAt(str, 0, @scalar, @width).IsError() {
         return Result::Error<char32, ParseError>(ParseError::InvalidCharacter(0));
     }
-    if width != str.length {
-        return Result::Error<char32, ParseError>(ParseError::InvalidCharacter(width));
-    }
+    if width != str.length { return Result::Error<char32, ParseError>(ParseError::InvalidCharacter(width)); }
     return Result::Success<char32, ParseError>(scalar);
 }
 

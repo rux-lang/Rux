@@ -25,9 +25,7 @@ func ByteSize(count: uint, elementSize: uint, bytes: *var uint) -> CollectionErr
 
     // Division rather than multiply-then-test: the product that would prove the
     // overflow is the one that must never be evaluated.
-    if count > uint::Max / elementSize {
-        return CollectionError::CapacityOverflow;
-    }
+    if count > uint::Max / elementSize { return CollectionError::CapacityOverflow; }
 
     *bytes = count * elementSize;
     return CollectionError::None;
@@ -38,9 +36,7 @@ func ByteSize(count: uint, elementSize: uint, bytes: *var uint) -> CollectionErr
 // of a silently tiny capacity.
 func AddLength(current: uint, additional: uint, total: *var uint) -> CollectionError {
     let sum = current + additional;
-    if sum < current {
-        return CollectionError::CapacityOverflow;
-    }
+    if sum < current { return CollectionError::CapacityOverflow; }
 
     *total = sum;
     return CollectionError::None;
@@ -57,9 +53,7 @@ func GrowCapacity(current: uint, required: uint, minimum: uint, elementSize: uin
                   capacity: *var uint) -> CollectionError {
     var bytes: uint = 0;
     let sizing = ByteSize(required, elementSize, @bytes);
-    if !(sizing == CollectionError::None) {
-        return sizing;
-    }
+    if !(sizing == CollectionError::None) { return sizing; }
 
     var grown = current;
     if grown < minimum {
@@ -97,17 +91,13 @@ func PowerOfTwoCapacity(required: uint, minimum: uint, elementSize: uint,
     var grown = minimum;
     while grown < required {
         let doubled = grown * 2;
-        if doubled < grown {
-            return CollectionError::CapacityOverflow;
-        }
+        if doubled < grown { return CollectionError::CapacityOverflow; }
         grown = doubled;
     }
 
     var bytes: uint = 0;
     let sizing = ByteSize(grown, elementSize, @bytes);
-    if !(sizing == CollectionError::None) {
-        return sizing;
-    }
+    if !(sizing == CollectionError::None) { return sizing; }
 
     *capacity = grown;
     return CollectionError::None;

@@ -80,14 +80,10 @@ extend OsStringView {
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/equals
     pub func Equals(self: &OsStringView, other: &OsStringView) -> bool {
-        if self.units.length != other.units.length {
-            return false;
-        }
+        if self.units.length != other.units.length { return false; }
         var index: uint = 0;
         while index < self.units.length {
-            if self.units.data[index] != other.units.data[index] {
-                return false;
-            }
+            if self.units.data[index] != other.units.data[index] { return false; }
             index = index + 1;
         }
         return true;
@@ -116,9 +112,7 @@ extend OsString {
         self.data = null;
         self.length = other.length;
         self.allocator = other.allocator;
-        if other.length == 0 {
-            return;
-        }
+        if other.length == 0 { return; }
         let bytes = other.length * (sizeof(OsUnit) as uint);
         let layout = Layout::New(bytes, alignof(OsUnit) as uint).ValueOr(Layout { size: bytes, alignment: 1 });
         var block: *var opaque = null;
@@ -146,9 +140,7 @@ extend OsString {
     pub func FromView(allocator: Allocator, view: OsStringView, error: *var TextError) -> OsString {
         *error = TextError::None;
         let units = view.Units();
-        if units.length == 0 {
-            return OsString(allocator);
-        }
+        if units.length == 0 { return OsString(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
         let layout = Layout::New(bytes, alignof(OsUnit) as uint);
         if layout.IsNone() {
@@ -241,9 +233,7 @@ extend OsString {
             }
 
             *error = TextError::None;
-            if needed == 0 {
-                return OsString(allocator);
-            }
+            if needed == 0 { return OsString(allocator); }
             let bytes = needed * 2u;
             let layout = Layout::New(bytes, 2);
             var block: *var opaque = null;
@@ -314,9 +304,7 @@ extend OsStringView {
             }
 
             var builder = StringBuilder::WithCapacity(allocator, needed, error);
-            if error.IsError() {
-                return Option::None<String>();
-            }
+            if error.IsError() { return Option::None<String>(); }
             index = 0;
             while index < units.length {
                 var scalar: uint32 = 0;
@@ -337,9 +325,7 @@ extend OsStringView {
         else {
             // Bytes: the check is the conversion.
             let made = String::FromBytes(allocator, self.units, error);
-            if error.IsError() {
-                return Option::None<String>();
-            }
+            if error.IsError() { return Option::None<String>(); }
             return Option::Some<String>(made);
         }
     }
@@ -355,16 +341,10 @@ when #target.os == .Windows {
             *width = 1;
             return true;
         }
-        if unit >= 0xDC00 {
-            return false;
-        }
-        if index + 1 >= units.length {
-            return false;
-        }
+        if unit >= 0xDC00 { return false; }
+        if index + 1 >= units.length { return false; }
         let low = units.data[index + 1] as uint32;
-        if low < 0xDC00 || low > 0xDFFF {
-            return false;
-        }
+        if low < 0xDC00 || low > 0xDFFF { return false; }
         *scalar = 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00);
         *width = 2;
         return true;
@@ -372,15 +352,9 @@ when #target.os == .Windows {
 
     // How many UTF-8 bytes a scalar takes; every input here is a valid scalar by construction.
     func Utf8Width(scalar: uint32) -> uint {
-        if scalar < 0x80 {
-            return 1;
-        }
-        if scalar < 0x800 {
-            return 2;
-        }
-        if scalar < 0x10000 {
-            return 3;
-        }
+        if scalar < 0x80 { return 1; }
+        if scalar < 0x800 { return 2; }
+        if scalar < 0x10000 { return 3; }
         return 4;
     }
 }

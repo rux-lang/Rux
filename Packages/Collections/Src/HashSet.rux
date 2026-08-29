@@ -107,14 +107,10 @@ extend HashSet<T> {
         }
 
         let room = self.table.EnsureRoom(self.hash);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         // Named first: a struct literal cannot appear inside an `if` condition, since its brace opens the body.
         let nothing = Unit {};
-        if self.table.Place(<-value, nothing, self.hash).IsNone() {
-            return CollectionError::Unsupported;
-        }
+        if self.table.Place(<-value, nothing, self.hash).IsNone() { return CollectionError::Unsupported; }
         if added != null {
             *added = true;
         }
@@ -129,9 +125,7 @@ extend HashSet<T> {
     /// https://rux-lang.dev/docs/api/collections/hash-set/remove
     pub func Remove(self: &var HashSet<T>, value: T) -> Option<T> {
         var slot: uint = 0;
-        if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
-            return Option::None<T>();
-        }
+        if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<T>(); }
         let taken <- self.table.keys[slot];
         self.table.Vacate(slot);
         return Option::Some<T>(<-taken);
@@ -321,17 +315,13 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-subset-of
     pub func IsSubsetOf(self: &HashSet<T>, other: &HashSet<T>) -> bool {
-        if self.Length() > other.Length() {
-            return false;
-        }
+        if self.Length() > other.Length() { return false; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 .Some(value) => {
-                    if !other.Contains(value) {
-                        return false;
-                    }
+                    if !other.Contains(value) { return false; }
                 },
                 .None => {
                     walking = false;
@@ -361,20 +351,14 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/is-disjoint-from
     pub func IsDisjointFrom(self: &HashSet<T>, other: &HashSet<T>) -> bool {
-        if self.Length() > other.Length() {
-            return other.IsDisjointFrom(self);
-        }
-        if self.Length() == 0 {
-            return true;
-        }
+        if self.Length() > other.Length() { return other.IsDisjointFrom(self); }
+        if self.Length() == 0 { return true; }
         var walker = self.Iterate();
         var walking = true;
         while walking {
             match walker.Next() {
                 .Some(value) => {
-                    if other.Contains(value) {
-                        return false;
-                    }
+                    if other.Contains(value) { return false; }
                 },
                 .None => {
                     walking = false;
@@ -408,13 +392,9 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/union-with
     pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
-        if other.Length() == 0 {
-            return CollectionError::None;
-        }
+        if other.Length() == 0 { return CollectionError::None; }
         let room = self.Reserve(other.Length());
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
 
         var walker = other.Iterate();
         var walking = true;
@@ -423,9 +403,7 @@ extend HashSet<T> {
             match walker.Next() {
                 .Some(value) => {
                     let error = self.Insert(value, @added);
-                    if error.IsError() {
-                        return error;
-                    }
+                    if error.IsError() { return error; }
                 },
                 .None => {
                     walking = false;
@@ -444,9 +422,7 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/intersect-with
     pub func IntersectWith(self: &var HashSet<T>, other: &HashSet<T>) {
-        if self.Length() == 0 {
-            return;
-        }
+        if self.Length() == 0 { return; }
         // Removing shifts the entries that follow a slot back into it, and a chain that runs past the end of the
         // table shifts them past the end too -- so no single sweep in either direction can be sure it looked at
         // everything, and which entries move depends on where the seed happened to put them. Staying on a slot that
@@ -477,9 +453,7 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/subtract
     pub func Subtract(self: &var HashSet<T>, other: &HashSet<T>) {
-        if self.Length() == 0 || other.Length() == 0 {
-            return;
-        }
+        if self.Length() == 0 || other.Length() == 0 { return; }
         // Swept the way `IntersectWith` is, and for the same reason.
         var sweeping = true;
         while sweeping {
@@ -508,13 +482,9 @@ extend HashSet<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/hash-set/symmetric-difference-with
     pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
-        if other.Length() == 0 {
-            return CollectionError::None;
-        }
+        if other.Length() == 0 { return CollectionError::None; }
         let room = self.Reserve(other.Length());
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
 
         var walker = other.Iterate();
         var walking = true;
@@ -529,9 +499,7 @@ extend HashSet<T> {
                     }
                     else {
                         let error = self.Insert(value, @added);
-                        if error.IsError() {
-                            return error;
-                        }
+                        if error.IsError() { return error; }
                     }
                 },
                 .None => {
