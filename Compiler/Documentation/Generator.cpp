@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -35,6 +36,8 @@ struct SearchEntry {
 struct Findings {
     std::vector<Diagnostic> diagnostics;
     std::map<std::string, std::string> routes;
+    std::map<std::string, std::vector<std::string>> references;
+    std::unordered_map<const Decl *, std::string> plannedRoutes;
     std::size_t rendered = 0;
     std::string sourceName;
     SourceLocation location;
@@ -269,7 +272,16 @@ void RenderTagGroup(std::ostringstream &output, const Syntax::Documentation &doc
             continue;
         }
         if (references) {
-            output << "<li><code>" << EscapeHtml(tag.subject) << "</code>";
+            output << "<li>";
+            const auto target = findings.references.find(tag.subject);
+            const bool resolved = target != findings.references.end() && target->second.size() == 1;
+            if (resolved) {
+                output << "<a href=\"" << EscapeHtml(target->second.front()) << "\"><code>" << EscapeHtml(tag.subject)
+                       << "</code></a>";
+            }
+            else {
+                output << "<code>" << EscapeHtml(tag.subject) << "</code>";
+            }
             if (!tag.markdown.empty()) {
                 output << RenderMarkdown(tag.markdown, &findings);
             }
@@ -580,6 +592,68 @@ void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
     }
 }
 
+void AddReference(Findings &findings, const std::string &name, const std::string &href) {
+    auto &targets = findings.references[name];
+    if (!std::ranges::contains(targets, href)) {
+        targets.push_back(href);
+    }
+}
+
+void PlanRoutes(const Decl &decl, const std::string &moduleName, const std::string &source, const bool includePrivate,
+                Findings &findings, const std::unordered_set<std::string> &publicTypes, const std::string &prefix = {},
+                const bool containingModulesPublic = true) {
+    if (!Visible(decl, includePrivate, containingModulesPublic, publicTypes)) {
+        return;
+    }
+    if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
+        for (const auto &item : block->items) {
+            PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, prefix,
+                       containingModulesPublic);
+        }
+        return;
+    }
+    const std::string name = DeclName(decl);
+    if (name.empty()) {
+        return;
+    }
+    const std::string qualified = prefix.empty() ? name : prefix + "::" + name;
+    std::string id = Anchor(moduleName + "-" + qualified);
+    if (const auto claimed = findings.routes.find(id); claimed != findings.routes.end()) {
+        if (claimed->second == qualified) {
+            std::size_t occurrence = 2;
+            while (findings.routes.contains(id + "-" + std::to_string(occurrence))) {
+                ++occurrence;
+            }
+            id += "-" + std::to_string(occurrence);
+            findings.routes.emplace(id, qualified);
+        }
+        else {
+            Diagnostic problem = ErrorDiagnostic(
+                std::format("'{}' and '{}' both claim the documentation route '#{}'", claimed->second, qualified, id),
+                {}, "rename one of them, or move one into a module of its own");
+            problem.sourceName = source;
+            problem.location = decl.location;
+            findings.diagnostics.push_back(std::move(problem));
+        }
+    }
+    else {
+        findings.routes.emplace(id, qualified);
+    }
+
+    const std::string href = "#" + id;
+    findings.plannedRoutes.emplace(&decl, id);
+    AddReference(findings, name, href);
+    AddReference(findings, qualified, href);
+    AddReference(findings, moduleName + "::" + qualified, href);
+
+    if (const auto *module = dynamic_cast<const ModuleDecl *>(&decl)) {
+        for (const auto &item : module->items) {
+            PlanRoutes(*item, moduleName, source, includePrivate, findings, publicTypes, qualified,
+                       containingModulesPublic && module->isPublic);
+        }
+    }
+}
+
 void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &moduleName, const std::string &source,
                 const bool includePrivate, std::vector<SearchEntry> &search, Findings &findings,
                 const std::unordered_set<std::string> &publicTypes, const std::string &prefix = {},
@@ -598,34 +672,9 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     if (name.empty())
         return;
     const std::string qualified = prefix.empty() ? name : prefix + "::" + name;
-    std::string id = Anchor(moduleName + "-" + qualified);
+    const std::string &id = findings.plannedRoutes.at(&decl);
     findings.sourceName = source;
     findings.location = decl.location;
-    // A route is built by folding the name, so two declarations can land on one. Sharing a name is ordinary --
-    // an overload set, or a type extended in several blocks -- and those are numbered so each has a route of its
-    // own. Two *different* names folding together is the harmful case: one of them becomes unreachable, and
-    // every link to it lands on the other without saying so.
-    if (const auto claimed = findings.routes.find(id); claimed != findings.routes.end()) {
-        if (claimed->second == qualified) {
-            std::size_t occurrence = 2;
-            while (findings.routes.contains(id + "-" + std::to_string(occurrence))) {
-                occurrence = occurrence + 1;
-            }
-            id = id + "-" + std::to_string(occurrence);
-            findings.routes.emplace(id, qualified);
-        }
-        else {
-            Diagnostic problem = ErrorDiagnostic(
-                std::format("'{}' and '{}' both claim the documentation route '#{}'", claimed->second, qualified, id),
-                {}, "rename one of them, or move one into a module of its own");
-            problem.sourceName = source;
-            problem.location = decl.location;
-            findings.diagnostics.push_back(std::move(problem));
-        }
-    }
-    else {
-        findings.routes.emplace(id, qualified);
-    }
     findings.rendered = findings.rendered + 1;
     search.push_back({qualified, DeclKind(decl), moduleName, "#" + id});
     html << "<article class=\"item\" id=\"" << EscapeHtml(id) << "\"><div class=\"kind\">" << EscapeHtml(DeclKind(decl))
@@ -656,7 +705,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
             const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
             html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
                  << EscapeHtml(variant.name) << "</h4><code>" << EscapeHtml(CaseSignature(*enumeration, variant))
-                 << "</code>" << RenderDocumentation(variant.documentation, findings) << "</section>";
+                 << "</code>" << RenderDocumentation(variant.documentation, findings);
+            for (const auto &field : variant.namedFields) {
+                html << "<section class=\"named-field\"><div class=\"member-kind\">variant case field</div><h5>"
+                     << EscapeHtml(field.name) << "</h5><code>"
+                     << EscapeHtml(field.name + ": " + TypeText(field.type.get())) << "</code>"
+                     << RenderDocumentation(field.documentation, findings) << "</section>";
+            }
+            html << "</section>";
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
@@ -769,25 +825,31 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
             CollectPublicTypes(*declaration, true, publicTypes);
         }
     }
+    auto SourceDisplayName = [&](const std::filesystem::path &sourcePath) {
+        if (!sourcePath.is_absolute()) {
+            return sourcePath.generic_string();
+        }
+        const auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
+        if (!ec && !relative.empty() && *relative.begin() != "..") {
+            return relative.generic_string();
+        }
+        ec.clear();
+        return sourcePath.filename().generic_string();
+    };
+    for (const auto &module : modules) {
+        const std::filesystem::path sourcePath(module.module.name);
+        const std::string source = SourceDisplayName(sourcePath);
+        const std::string moduleName = sourcePath.stem().string();
+        for (const auto &declaration : module.module.items) {
+            PlanRoutes(*declaration, moduleName, source, options.includePrivate, findings, publicTypes);
+        }
+    }
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
         // A name that is already relative is shown as written: measuring it against the root would drag the working
         // directory into the result. An absolute path is shown relative to the package root, and one the root does
         // not contain keeps only its file name rather than a chain of parent steps.
-        std::string source;
-        if (!sourcePath.is_absolute()) {
-            source = sourcePath.generic_string();
-        }
-        else {
-            const auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
-            if (!ec && !relative.empty() && *relative.begin() != "..") {
-                source = relative.generic_string();
-            }
-            else {
-                source = sourcePath.filename().generic_string();
-            }
-            ec.clear();
-        }
+        const std::string source = SourceDisplayName(sourcePath);
         const std::string moduleName = sourcePath.stem().string();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";
         for (const auto &declaration : module.module.items) {

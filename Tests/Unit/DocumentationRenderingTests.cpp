@@ -354,3 +354,238 @@ pub func Download() -> String;
     CHECK_FALSE(html.contains("<a href=\"https://example.com/reference\""));
     RemoveRenderingRoot(root);
 }
+
+TEST_CASE("See Also resolves forward local and qualified declaration targets") {
+    auto parsed = ParseDocumentation(R"(
+/// Uses the target.
+/// @see Target Forward target.
+/// @see Core::Nested Qualified target.
+pub func Source();
+
+/// A target.
+pub struct Target {}
+
+/// Public namespace.
+pub module Core {
+    /// Nested target.
+    pub struct Nested {}
+}
+)");
+    const auto root = RenderingRoot("rux-documentation-local-references");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<a href=\"#structured-target\"><code>Target</code></a>"));
+    CHECK(html.contains("<a href=\"#structured-core--nested\"><code>Core::Nested</code></a>"));
+    CHECK(html.find("#structured-target") < html.find("<h3>Target</h3>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("backticked symbols use the same deterministic local lookup") {
+    auto parsed = ParseDocumentation(R"(
+/// Calls another item.
+/// @see `Destination` Backticked target.
+pub func Source();
+
+/// Destination item.
+pub func Destination();
+)");
+    const auto root = RenderingRoot("rux-documentation-symbol-references");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<a href=\"#structured-destination\"><code>Destination</code></a>"));
+    CHECK_FALSE(html.contains("<code>`Destination`</code>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("ambiguous short references stay code while qualified references link") {
+    auto parsed = ParseDocumentation(R"(
+/// Left namespace.
+pub module Left {
+    /// Left item.
+    pub struct Item {}
+}
+/// Right namespace.
+pub module Right {
+    /// Right item.
+    pub struct Item {}
+}
+/// Chooses targets.
+/// @see Item Ambiguous short name.
+/// @see Left::Item Exact left name.
+/// @see Right::Item Exact right name.
+pub func Choose();
+)");
+    const auto root = RenderingRoot("rux-documentation-ambiguous-references");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<li><code>Item</code><p>Ambiguous short name.</p></li>"));
+    CHECK(html.contains("<a href=\"#structured-left--item\"><code>Left::Item</code></a>"));
+    CHECK(html.contains("<a href=\"#structured-right--item\"><code>Right::Item</code></a>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("overload references remain deterministic and unresolved") {
+    const std::string source = R"(
+/// Refers to an overload set.
+/// @see Parse Ambiguous overload.
+/// @see https://example.com/external External reference.
+pub func Caller();
+/// First overload.
+pub func Parse();
+/// Second overload.
+pub func Parse(value: int);
+)";
+    const auto root = RenderingRoot("rux-documentation-overload-references");
+    auto first = GenerateDocumentationSite(ParseDocumentation(source), root);
+    REQUIRE(first.ok);
+    const std::string firstHtml = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(firstHtml.contains("<li><code>Parse</code><p>Ambiguous overload.</p></li>"));
+    CHECK(firstHtml.contains("<li><code>https://example.com/external</code><p>External reference.</p></li>"));
+    CHECK(firstHtml.contains("id=\"structured-parse\""));
+    CHECK(firstHtml.contains("id=\"structured-parse-2\""));
+
+    auto second = GenerateDocumentationSite(ParseDocumentation(source), root);
+    REQUIRE(second.ok);
+    CHECK_EQ(ReadRenderingFile(root / "site" / "index.html"), firstHtml);
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("qualified references resolve across source modules") {
+    auto caller = ParseDocumentation(R"(
+/// Uses another source module.
+/// @see Types::Value Cross-module target.
+pub func Read();
+)",
+                                     "Src/Caller.rux");
+    auto target = ParseDocumentation(R"(
+/// Shared value.
+pub struct Value {}
+)",
+                                     "Src/Types.rux");
+    const auto root = RenderingRoot("rux-documentation-cross-module-reference");
+    const std::array modules{std::move(caller), std::move(target)};
+    const auto generated = Documentation::Generate(DocumentationManifest(), modules,
+                                                   {.packageRoot = root, .outputDirectory = root / "site"});
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<a href=\"#types-value\"><code>Types::Value</code></a>"));
+    CHECK(html.find("#types-value") < html.find("<h2>Module Types</h2>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("named variant fields render prose and structured documentation") {
+    auto parsed = ParseDocumentation(R"(
+/// A message.
+pub variant Message {
+    /// Record message.
+    Record {
+        /// Message payload.
+        /// @deprecated Use data.
+        /// @see Payload Related payload.
+        value: int;
+    }
+}
+/// Payload target.
+pub struct Payload {}
+)");
+    const auto root = RenderingRoot("rux-documentation-named-variant-fields");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<section class=\"named-field\"><div class=\"member-kind\">variant case field</div>"));
+    CHECK(html.contains("<h5>value</h5><code>value: int</code><p>Message payload.</p>"));
+    CHECK(html.contains("<aside class=\"deprecated\"><h4>Deprecated</h4><p>Use data.</p></aside>"));
+    CHECK(html.contains("<a href=\"#structured-payload\"><code>Payload</code></a>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("extern block members render prose tags and local references") {
+    auto parsed = ParseDocumentation(R"(
+/// Handle target.
+pub struct Handle {}
+
+#Link("system")
+extern {
+    /// Opens a handle.
+    /// @param flags Open flags.
+    /// @returns The handle.
+    /// @see Handle Returned type.
+    pub func Open(flags: int) -> int;
+
+    /// Shared handle.
+    /// @deprecated Use Open.
+    /// @see Open Constructor.
+    pub Shared: int;
+}
+)");
+    const auto root = RenderingRoot("rux-documentation-extern-member-docs");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    REQUIRE(generated.ok);
+    const std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("pub extern func Open(flags: int) -&gt; int"));
+    CHECK(html.contains("<h4>Parameters</h4>"));
+    CHECK(html.contains("<h4>Returns</h4>"));
+    CHECK(html.contains("<a href=\"#structured-handle\"><code>Handle</code></a>"));
+    CHECK(html.contains("pub extern Shared: int"));
+    CHECK(html.contains("<h4>Deprecated</h4>"));
+    CHECK(html.contains("<a href=\"#structured-open\"><code>Open</code></a>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("references never expose routes for filtered private declarations") {
+    const std::string source = R"(
+/// Public caller.
+/// @see Hidden Filtered target.
+pub func Caller();
+
+/// Private target.
+struct Hidden {}
+)";
+    const auto root = RenderingRoot("rux-documentation-private-reference");
+    auto generated = GenerateDocumentationSite(ParseDocumentation(source), root);
+    REQUIRE(generated.ok);
+    std::string html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<li><code>Hidden</code><p>Filtered target.</p></li>"));
+    CHECK_FALSE(html.contains("href=\"#structured-hidden\""));
+    CHECK_FALSE(html.contains("<h3>Hidden</h3>"));
+
+    std::error_code error;
+    std::filesystem::remove_all(root / "site", error);
+    generated = GenerateDocumentationSite(ParseDocumentation(source), root, true);
+    REQUIRE(generated.ok);
+    html = ReadRenderingFile(root / "site" / "index.html");
+    CHECK(html.contains("<a href=\"#structured-hidden\"><code>Hidden</code></a>"));
+    CHECK(html.contains("<h3>Hidden</h3>"));
+    RemoveRenderingRoot(root);
+}
+
+TEST_CASE("named field documentation issues fail only when their case is rendered") {
+    auto parsed = ParseDocumentation(R"(
+/// Public variant.
+pub variant PublicMessage {
+    Record {
+        /// @unknown Invalid named field docs.
+        value: int;
+    }
+}
+
+/// Private variant.
+variant PrivateMessage {
+    Record {
+        /// @unknown Filtered invalid docs.
+        value: int;
+    }
+}
+)");
+    const auto root = RenderingRoot("rux-documentation-named-field-issues");
+    const auto generated = GenerateDocumentationSite(std::move(parsed), root);
+    CHECK_FALSE(generated.ok);
+    REQUIRE_EQ(generated.diagnostics.size(), 1);
+    CHECK(generated.diagnostics.front().message.contains("unknown documentation tag '@unknown'"));
+    CHECK_EQ(generated.diagnostics.front().location.line, 5);
+    CHECK_FALSE(std::filesystem::exists(root / "site"));
+    RemoveRenderingRoot(root);
+}
