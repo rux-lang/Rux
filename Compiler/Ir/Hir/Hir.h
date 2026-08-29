@@ -48,6 +48,7 @@ struct HirPartialDropAction {
     };
 
     Kind kind = Kind::Element;
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     std::size_t ordinal = 0;
     std::string name;
     TypeRef type;

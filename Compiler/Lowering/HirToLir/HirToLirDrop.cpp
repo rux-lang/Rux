@@ -125,11 +125,14 @@ void HirToLirContext::EmitDropGlueArrayElements(const DropGlueStep &step, const 
     SetBlock(afterBlock);
 }
 
-/// Destroy the payload of one enum variant, when the value stored is that variant.
+/// Destroy one variant case's payload when that case is active.
 ///
 /// The aggregate representation is a tag followed by payloads at aligned offsets, laid out exactly as construction
-/// writes them. Payload enums always use this representation so every droppable payload has an addressable home.
+/// writes them. Variants always use this representation so every droppable payload has an addressable home.
 void HirToLirContext::EmitDropGlueEnumVariant(const DropGlueStep &step, const LirReg base) {
+    if (step.form != CaseTypeForm::Variant) {
+        BuilderFailure("scalar enum reached active variant drop lowering");
+    }
     if (!IsAggregateEnumType(step.type)) {
         return;
     }
@@ -209,6 +212,9 @@ void HirToLirContext::PushPartialCleanupFrame(const std::vector<HirFailureCleanu
             break;
         }
         case HirPartialDropAction::Kind::EnumPayload: {
+            if (action.form != CaseTypeForm::Variant) {
+                BuilderFailure("scalar enum reached variant partial-cleanup lowering");
+            }
             const auto payloads = enumPayloadSlots.find(aggregateSlot);
             if (payloads == enumPayloadSlots.end() || action.ordinal >= payloads->second.size()) {
                 BuilderFailure(

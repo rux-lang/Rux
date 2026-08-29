@@ -256,12 +256,13 @@ std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const HirExpr &ta
 
 std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPartialDropAction::Kind kind,
                                                                     const TypeRef &type, const std::size_t ordinal,
-                                                                    std::string name, SourceLocation origin) const {
+                                                                    std::string name, SourceLocation origin,
+                                                                    const CaseTypeForm form) const {
     const DropGluePlan *glue = model.TryGetDropGlue(type);
     if (!glue) {
         return std::nullopt;
     }
-    return HirPartialDropAction{kind, ordinal, std::move(name), type, glue->symbol, origin};
+    return HirPartialDropAction{kind, form, ordinal, std::move(name), type, glue->symbol, origin};
 }
 
 void AstToHirContext::AppendFailureCleanup(std::vector<HirFailureCleanup> &edges,
