@@ -8,34 +8,24 @@
 
 /// The sine and cosine of `angle`, in radians.
 ///
-/// `sine` and `cosine` both receive their value. Equivalent to calling `Sin` and `Cos` separately, at roughly
-/// half the cost.
-///
-/// # Safety
-///
-/// `sine` and `cosine` must be non-null and writable.
+/// Returns `(sine, cosine)`. Equivalent to calling `Sin` and `Cos` separately, at roughly half the cost.
 ///
 /// https://rux-lang.dev/docs/api/math/sin-cos
-pub func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
+pub func SinCos(angle: float64) -> (float64, float64) {
     // NaN propagates into both.
     if angle != angle {
-        *sine = angle;
-        *cosine = angle;
-        return;
+        return (angle, angle);
     }
     var zero = 0.0;
     // Neither has a limit at infinity.
     if angle - angle != 0.0 {
-        *sine = zero / zero;
-        *cosine = zero / zero;
-        return;
+        let notANumber = zero / zero;
+        return (notANumber, notANumber);
     }
     // Below 2^-27 the sine is the angle -- which also keeps the sign of a zero -- and the cosine is one, since
     // the quadratic term is under half an ulp.
     if angle < 7.450580596923828e-9 && angle > -7.450580596923828e-9 {
-        *sine = angle;
-        *cosine = 1.0;
-        return;
+        return (angle, 1.0);
     }
 
     let negative = angle < 0.0;
@@ -70,21 +60,15 @@ pub func SinCos(angle: float64, sine: *var float64, cosine: *var float64) {
     }
 
     // Sine is odd and cosine is even, so only one of them notices the sign.
-    *sine = negative ? -sineOfMagnitude : sineOfMagnitude;
-    *cosine = cosineValue;
+    return (negative ? -sineOfMagnitude : sineOfMagnitude, cosineValue);
 }
 
 /// The sine and cosine of `angle`, at the narrow width.
 ///
-/// # Safety
-///
-/// `sine` and `cosine` must be non-null and writable.
+/// Returns `(sine, cosine)`.
 ///
 /// https://rux-lang.dev/docs/api/math/sin-cos-32
-pub func SinCos(angle: float32, sine: *var float32, cosine: *var float32) {
-    var wideSine = 0.0;
-    var wideCosine = 0.0;
-    SinCos(angle as float64, @wideSine, @wideCosine);
-    *sine = wideSine as float32;
-    *cosine = wideCosine as float32;
+pub func SinCos(angle: float32) -> (float32, float32) {
+    let (wideSine, wideCosine) = SinCos(angle as float64);
+    return (wideSine as float32, wideCosine as float32);
 }
