@@ -70,14 +70,19 @@ func Main() -> int {
     Assert(retimed.modified.UnixSeconds() == 1000000000i64, "the modification time is the one written");
     Assert(retimed.accessed.UnixSeconds() == 1000000000i64, "and so is the access time");
 
-    // Read-only is the one permission every supported system honors: setting it refuses a write, clearing it
-    // allows one again. The mode bits underneath are only checked where they are the system's own answer.
+    // Read-only is the one permission every supported system records: setting and clearing it round trips. An
+    // ordinary writer is refused, while a privileged Unix process may validly bypass the mode bits.
     Assert(SetPermissions(allocator, file, Permissions::FromReadOnly(true)).IsOk(), "read-only is set");
     let locked = MetadataOf(allocator, file, true, @error);
-    Assert(error.IsOk() && !locked.permissions.IsWritable(), "and reads back as refusing writes");
-    var refused = File::Open(allocator, file, OpenOptions::Writing(), @error);
-    Assert(!refused.IsOpen() && error.kind == IoErrorKind::PermissionDenied,
-           "a write to a read-only file is PermissionDenied");
+    Assert(error.IsOk() && !locked.permissions.IsWritable(), "and reads back without owner-write permission");
+    var probe = File::Open(allocator, file, OpenOptions::Writing(), @error);
+    if probe.IsOpen() {
+        Assert(able.unixPermissions && error.IsOk(), "only a privileged Unix writer may bypass read-only");
+        Assert(probe.Close().IsOk(), "and the privileged probe closes");
+    }
+    else {
+        Assert(error.kind == IoErrorKind::PermissionDenied, "an ordinary write is PermissionDenied");
+    }
 
     Assert(SetPermissions(allocator, file, Permissions::FromReadOnly(false)).IsOk(), "read-only is cleared");
     let unlocked = MetadataOf(allocator, file, true, @error);
