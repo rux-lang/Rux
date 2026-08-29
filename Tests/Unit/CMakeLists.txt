@@ -50,6 +50,7 @@ set(RUX_TEST_SOURCES
     DiagnosticsTests.cpp
     DocumentationAttachmentTests.cpp
     DocumentationCommentTests.cpp
+    DocumentationTagTests.cpp
     DocumentationTests.cpp
     DropGlueLoweringTests.cpp
     EnumRepresentationTests.cpp
