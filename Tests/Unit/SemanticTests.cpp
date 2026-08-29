@@ -272,6 +272,120 @@ TEST_CASE("semantic model records resolved enum and variant case patterns") {
     CHECK(model.TryGetCasePattern(outside) == nullptr);
 }
 
+TEST_CASE("semantic model records reusable structural variant equality plans") {
+    Lexer lexer(R"(
+        struct Label { value: int; }
+        extend Label {
+            func ==(self: &Label, other: Label) -> bool { return self.value == other.value; }
+        }
+        variant Inner {
+            None,
+            Number(int)
+        }
+        variant Outer<T> {
+            Unit,
+            Pair(T, T),
+            Named { inner: Inner; label: Label; },
+            Composite((int, bool), int[2]),
+            Link(*Outer<T>)
+        }
+        func Equal(left: Outer<int>, right: Outer<int>) -> bool { return left == right; }
+        func Different(left: Outer<int>, right: Outer<int>) -> bool { return left != right; }
+    )",
+                "variant-equality-facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "variant-equality-facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "facts", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto findFunction = [&](const std::string_view name) -> const FuncDecl * {
+        for (const auto &declaration : parsed.module.items) {
+            const auto *function = dynamic_cast<const FuncDecl *>(declaration.get());
+            if (function && function->name == name) {
+                return function;
+            }
+        }
+        return nullptr;
+    };
+    const auto returnedBinary = [](const FuncDecl &function) -> const BinaryExpr * {
+        if (!function.body || function.body->stmts.empty()) {
+            return nullptr;
+        }
+        const auto *returned = dynamic_cast<const ReturnStmt *>(function.body->stmts.front().get());
+        return returned && returned->value ? dynamic_cast<const BinaryExpr *>((*returned->value).get()) : nullptr;
+    };
+
+    const FuncDecl *equalFunction = findFunction("Equal");
+    const FuncDecl *differentFunction = findFunction("Different");
+    REQUIRE(equalFunction != nullptr);
+    REQUIRE(differentFunction != nullptr);
+    const BinaryExpr *equalExpression = returnedBinary(*equalFunction);
+    const BinaryExpr *differentExpression = returnedBinary(*differentFunction);
+    REQUIRE(equalExpression != nullptr);
+    REQUIRE(differentExpression != nullptr);
+
+    const ResolvedVariantEquality *equal = model.TryGetVariantEquality(*equalExpression);
+    const ResolvedVariantEquality *different = model.TryGetVariantEquality(*differentExpression);
+    REQUIRE(equal != nullptr);
+    REQUIRE(different != nullptr);
+    CHECK_EQ(equal->type.ToString(), "Outer<int>");
+    CHECK_FALSE(equal->negated);
+    CHECK_EQ(different->type.ToString(), "Outer<int>");
+    CHECK(different->negated);
+
+    const VariantEqualityPlan *outer = model.TryGetVariantEqualityPlan(equal->type);
+    REQUIRE(outer != nullptr);
+    REQUIRE(outer->declaration != nullptr);
+    CHECK_EQ(outer->declaration->name, "Outer");
+    REQUIRE_EQ(outer->cases.size(), 5);
+    CHECK_EQ(outer->cases[0].name, "Unit");
+    CHECK_EQ(outer->cases[0].discriminant, "0");
+    CHECK(outer->cases[0].payloads.empty());
+
+    REQUIRE_EQ(outer->cases[1].payloads.size(), 2);
+    CHECK_EQ(outer->cases[1].payloads[0].index, 0);
+    CHECK_EQ(outer->cases[1].payloads[0].type.ToString(), "int");
+    CHECK(outer->cases[1].payloads[0].operation == VariantEqualityPayload::Operation::Builtin);
+    CHECK_EQ(outer->cases[1].payloads[1].index, 1);
+    CHECK_EQ(outer->cases[1].payloads[1].type.ToString(), "int");
+
+    REQUIRE_EQ(outer->cases[2].payloads.size(), 2);
+    CHECK_EQ(outer->cases[2].payloads[0].name, "inner");
+    CHECK(outer->cases[2].payloads[0].operation == VariantEqualityPayload::Operation::Variant);
+    CHECK_EQ(outer->cases[2].payloads[0].nestedVariantType, "Inner");
+    CHECK_EQ(outer->cases[2].payloads[1].name, "label");
+    CHECK(outer->cases[2].payloads[1].operation == VariantEqualityPayload::Operation::Custom);
+    REQUIRE(outer->cases[2].payloads[1].customEquality != nullptr);
+    CHECK_EQ(outer->cases[2].payloads[1].customEquality->name, "==");
+
+    REQUIRE_EQ(outer->cases[3].payloads.size(), 2);
+    CHECK(outer->cases[3].payloads[0].operation == VariantEqualityPayload::Operation::Tuple);
+    CHECK_EQ(outer->cases[3].payloads[0].elements.size(), 2);
+    CHECK(outer->cases[3].payloads[1].operation == VariantEqualityPayload::Operation::Array);
+    CHECK_EQ(outer->cases[3].payloads[1].elements.size(), 1);
+
+    REQUIRE_EQ(outer->cases[4].payloads.size(), 1);
+    CHECK(outer->cases[4].payloads[0].operation == VariantEqualityPayload::Operation::Builtin);
+    CHECK_EQ(outer->cases[4].payloads[0].type.ToString(), "*Outer<int>");
+
+    const VariantEqualityPlan *inner = model.TryGetVariantEqualityPlan(TypeRef::MakeNamed("Inner"));
+    REQUIRE(inner != nullptr);
+    CHECK_EQ(inner->cases.size(), 2);
+    CHECK_EQ(inner->cases[1].name, "Number");
+
+    BinaryExpr outside;
+    CHECK(model.TryGetVariantEquality(outside) == nullptr);
+    CHECK(model.TryGetVariantEqualityPlan(TypeRef::MakeNamed("Missing")) == nullptr);
+}
+
 TEST_CASE("semantic model omits unresolved type facts") {
     Lexer lexer("func Main() { let value: Missing = absent; }", "unresolved.rux");
     auto lexed = lexer.Tokenize();
@@ -433,6 +547,8 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         {},
                         {},
                         {},
+                        {},
+                        {},
                         std::move(symbolIdentities),
                         {},
                         {},
@@ -499,6 +615,8 @@ TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
                         {&parsed.module},
                         CompileTimeContext{},
                         std::move(expressionTypes),
+                        {},
+                        {},
                         {},
                         {},
                         {},

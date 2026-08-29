@@ -100,6 +100,44 @@ struct ResolvedCasePattern {
     std::unordered_map<std::string, TypeRef> substitutions;
 };
 
+struct VariantEqualityPayload {
+    enum class Operation {
+        Builtin,
+        Custom,
+        Variant,
+        Tuple,
+        Array,
+        Deferred,
+    };
+
+    std::size_t index = 0;
+    std::string name;
+    TypeRef type;
+    Operation operation = Operation::Builtin;
+    const FuncDecl *customEquality = nullptr;
+    std::string nestedVariantType;
+    std::vector<VariantEqualityPayload> elements;
+};
+
+struct VariantEqualityCase {
+    std::string name;
+    std::string discriminant;
+    std::vector<VariantEqualityPayload> payloads;
+};
+
+/// A reusable structural comparison recipe for one concrete variant type.
+struct VariantEqualityPlan {
+    const EnumDecl *declaration = nullptr;
+    TypeRef type;
+    std::vector<VariantEqualityCase> cases;
+};
+
+/// The structural recipe selected for one accepted variant equality expression.
+struct ResolvedVariantEquality {
+    TypeRef type;
+    bool negated = false;
+};
+
 /// Which concrete method satisfies each operation of one interface bound, for one type argument that satisfied it.
 /// Analysis proves a bound at the use site, so the witness is what lets a constrained call be lowered to a direct call
 /// per instantiation instead of through a vtable. Entries are ordered by the interface's method declarations.
@@ -218,6 +256,8 @@ struct SemanticModel {
                   std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
                   std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
                   std::unordered_map<const EnumPattern *, ResolvedCasePattern> inputCasePatterns,
+                  std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> inputVariantEqualities,
+                  std::unordered_map<std::string, VariantEqualityPlan> inputVariantEqualityPlans,
                   std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
                   std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
                   std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
@@ -243,6 +283,9 @@ struct SemanticModel {
 
     /// Returns null for non-case patterns and case patterns rejected during semantic analysis.
     [[nodiscard]] const ResolvedCasePattern *TryGetCasePattern(const EnumPattern &pattern) const noexcept;
+
+    [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
+    [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
     [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;
@@ -304,6 +347,8 @@ private:
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
+    std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
+    std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
