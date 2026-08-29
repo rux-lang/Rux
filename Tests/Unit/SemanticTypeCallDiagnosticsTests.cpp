@@ -273,7 +273,7 @@ TEST_CASE("enum constructors diagnose positional and named payload expectations"
     REQUIRE_EQ(diagnostics.size(), 3);
     CHECK_EQ(diagnostics[0].message, "call to 'Choice::Empty' expects 0 arguments, but 1 was provided");
     CHECK_EQ(diagnostics[1].message,
-             "argument 2 to enum variant 'Choice::Pair' has type 'Slice<char8>', but field 2 requires 'bool8'");
+             "argument 2 to variant case 'Choice::Pair' has type 'Slice<char8>', but field 2 requires 'bool8'");
     CHECK_EQ(diagnostics[2].message,
              "field 'value' in initializer for 'Choice::Named' has type 'bool8', but its declaration requires 'int'");
 }

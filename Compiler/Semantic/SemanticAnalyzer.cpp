@@ -1028,7 +1028,7 @@ private:
             if (const EnumDecl *enumeration = EnumNamed(t->name)) {
                 const auto &decl = *enumeration;
                 if (resolvedArgs.size() != decl.typeParams.size()) {
-                    EmitGenericArityError(expr, std::format("enum type '{}'", t->name), decl.typeParams.size(),
+                    EmitGenericArityError(expr, std::format("variant type '{}'", t->name), decl.typeParams.size(),
                                           resolvedArgs.size());
                     return TypeRef::MakeUnknown();
                 }

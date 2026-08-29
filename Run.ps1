@@ -110,6 +110,8 @@ $policyChecks = @(
     "Tests/Policy/NoExternalToolchain/Check.sh",
     "Tests/Policy/LanguageCutover/Test.sh",
     "Tests/Policy/LanguageCutover/Check.sh",
+    "Tests/Policy/EnumVariantCutover/Test.sh",
+    "Tests/Policy/EnumVariantCutover/Check.sh",
     "Tests/Policy/OversizedFiles/Test.sh",
     "Tests/Policy/OversizedFiles/Check.sh",
     "Tests/Policy/ScriptMessages/Check.sh",

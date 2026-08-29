@@ -648,7 +648,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                             }
                         }
                         if (typeArgs.size() != decl.typeParams.size()) {
-                            EmitError(e->location, std::format("enum variant '{}::{}' requires {}, but {} provided",
+                            EmitError(e->location, std::format("variant case '{}::{}' requires {}, but {} provided",
                                                                path->segments[0], path->segments[1],
                                                                Counted(decl.typeParams.size(), "type argument"),
                                                                e->typeArgs.size() == 1
@@ -668,7 +668,7 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
                                 if (!canPassArgument(i, argTypes[i], paramType)) {
                                     callAccepted = false;
                                     EmitError(e->args[i]->location,
-                                              std::format("argument {} to enum variant '{}::{}' has type '{}', but "
+                                              std::format("argument {} to variant case '{}::{}' has type '{}', but "
                                                           "field {} requires '{}'",
                                                           i + 1, path->segments[0], path->segments[1],
                                                           argTypes[i].ToString(), i + 1, paramType.ToString()),

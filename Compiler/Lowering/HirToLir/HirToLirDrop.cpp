@@ -218,7 +218,7 @@ void HirToLirContext::PushPartialCleanupFrame(const std::vector<HirFailureCleanu
             const auto payloads = enumPayloadSlots.find(aggregateSlot);
             if (payloads == enumPayloadSlots.end() || action.ordinal >= payloads->second.size()) {
                 BuilderFailure(
-                    std::format("enum payload {} has no completed storage for partial cleanup", action.ordinal));
+                    std::format("variant payload {} has no completed storage for partial cleanup", action.ordinal));
                 continue;
             }
             address = payloads->second[action.ordinal];

@@ -537,7 +537,7 @@ bool AArch64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
     }
 }
 
-// An aggregate whose whole value is a literal -- an enum variant carrying no payload, or a zeroed structure.
+// An aggregate whose whole value is a literal -- a unit variant case, or a zeroed structure.
 //
 // The literal names the low bytes and says nothing about the rest, so the rest is written as zero rather than left
 // holding whatever the slot had. That is a strictly narrower promise than leaving it: a reader of those bytes is

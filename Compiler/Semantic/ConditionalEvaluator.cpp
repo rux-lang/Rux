@@ -527,7 +527,7 @@ std::optional<std::string> ConditionalEvaluator::Impl::IntrinsicArgument(const I
             }
         }
     }
-    EmitError(expr.args[0]->location, allowEnum ? "compile-time intrinsic argument must be a string or enum variant"
+    EmitError(expr.args[0]->location, allowEnum ? "compile-time intrinsic argument must be a string or enum member"
                                                 : "compile-time intrinsic argument must be a string");
     reportedError = true;
     return std::nullopt;
@@ -995,7 +995,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
     }
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
-        // An empty enum type marks a shorthand; the comparison then rejects
+        // An empty case type marks a shorthand; the comparison then rejects
         // it and asks for the fully-qualified form.
         return Value{EnumValue{"", e->variant}};
     }
@@ -1006,7 +1006,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                 return PrimitiveValue(*constant);
             }
         }
-        // The long form of an enum variant: OperatingSystem::Windows. A
+        // The long form of an enum member: OperatingSystem::Windows. A
         // built-in Rux enum must be imported; the program's own need not be.
         if (e->segments.size() == 2) {
             const std::string &enumName = e->segments[0];

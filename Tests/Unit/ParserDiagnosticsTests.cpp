@@ -125,7 +125,7 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
         {"func F(value int);", "expected ':' after the parameter name before 'int'"},
         {"func F(first: int second: bool);", "expected ',' between parameters before 'second'"},
         {"struct Box<T U> {}", "expected ',' between type parameters before 'U'"},
-        {"enum Choice { First Second }", "expected ',' between enum variants before 'Second'"},
+        {"enum Choice { First Second }", "expected ',' between enum members before 'Second'"},
         {"variant Choice { First Second }", "expected ',' between variant cases before 'Second'"},
         {"union Bits { low: int high: int }", "expected ',' between union fields before 'high'"},
         {"import Core::{First Second};", "expected ',' between imported names before 'Second'"},
