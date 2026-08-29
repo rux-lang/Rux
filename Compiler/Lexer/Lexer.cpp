@@ -132,6 +132,7 @@ LexerResult Lexer::FromFile(const std::filesystem::path &path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         return {{},
+                {},
                 {ErrorDiagnostic(std::format("cannot open source file '{}'", path.string()), {},
                                  "check that the path exists and the file is readable")}};
     }
@@ -139,6 +140,7 @@ LexerResult Lexer::FromFile(const std::filesystem::path &path) {
     ss << f.rdbuf();
     if (!f && !f.eof()) {
         return {{},
+                {},
                 {ErrorDiagnostic(std::format("failed to read source file '{}'", path.string()), {},
                                  "check the file and retry")}};
     }
@@ -148,6 +150,7 @@ LexerResult Lexer::FromFile(const std::filesystem::path &path) {
 
 LexerResult Lexer::Tokenize() {
     tokens.clear();
+    comments.clear();
     diagnostics.clear();
     pos = 0;
     line = 1;
@@ -175,16 +178,18 @@ LexerResult Lexer::Tokenize() {
             EmitError({utf8Line, utf8Column, static_cast<std::uint32_t>(offset)},
                       std::format("source contains invalid UTF-8 byte 0x{:02X}", byte),
                       "save the source file as valid UTF-8");
-            tokens.push_back(Token{TokenKind::EndOfFile, {}, CurrentLocation()});
-            return LexerResult{std::move(tokens), std::move(diagnostics)};
+            const SourceLocation eof = CurrentLocation();
+            tokens.push_back(Token{TokenKind::EndOfFile, {}, eof, eof});
+            return LexerResult{std::move(tokens), std::move(comments), std::move(diagnostics)};
         }
         offset += decoded->width;
         utf8Column += static_cast<std::uint32_t>(decoded->width);
     }
     ScanAll();
     // Always append a synthetic EOF token
-    tokens.push_back(Token{TokenKind::EndOfFile, {}, CurrentLocation()});
-    return LexerResult{std::move(tokens), std::move(diagnostics)};
+    const SourceLocation eof = CurrentLocation();
+    tokens.push_back(Token{TokenKind::EndOfFile, {}, eof, eof});
+    return LexerResult{std::move(tokens), std::move(comments), std::move(diagnostics)};
 }
 
 bool Lexer::DumpTokens(const LexerResult &result, const std::filesystem::path &path) {
@@ -290,7 +295,7 @@ std::optional<std::uint32_t> Lexer::DecodeCharLiteralCodePoint(std::string_view 
 void Lexer::ScanAll() {
     while (!IsAtEnd()) {
         const std::size_t beforeTrivia = pos;
-        SkipWhitespace();
+        const bool sawOrdinaryComment = SkipWhitespace();
         if (IsAtEnd()) {
             break;
         }
@@ -300,6 +305,9 @@ void Lexer::ScanAll() {
         const bool separated = pos != beforeTrivia || tokens.empty();
         if (Token tok = NextToken(); tok.kind != TokenKind::Unknown || !tok.text.empty()) {
             tok.precededBySpace = separated;
+            if (tok.kind == TokenKind::DocComment) {
+                tok.precededByOrdinaryComment = sawOrdinaryComment;
+            }
             tokens.push_back(std::move(tok));
         }
     }
@@ -309,8 +317,11 @@ void Lexer::ScanAll() {
 Token Lexer::NextToken() {
     const SourceLocation start = CurrentLocation();
     const char c = Peek();
-    if (c == '/' && Peek(1) == '/' && Peek(2) == '/') {
-        return ScanDocComment(start);
+    if (IsDocumentationLineStart()) {
+        return ScanDocumentationLine(start);
+    }
+    if (IsDocumentationBlockStart()) {
+        return ScanDocumentationBlock(start);
     }
     // Prefixed string literals
     if (c == 'c') {
@@ -428,7 +439,8 @@ SourceLocation Lexer::CurrentLocation() const noexcept {
 }
 
 // Whitespace / comments
-void Lexer::SkipWhitespace() {
+bool Lexer::SkipWhitespace() {
+    bool sawOrdinaryComment = false;
     while (!IsAtEnd()) {
         const char c = Peek();
         // Inline whitespace
@@ -443,43 +455,57 @@ void Lexer::SkipWhitespace() {
             continue;
         }
         // Line comment
-        if (c == '/' && Peek(1) == '/' && Peek(2) != '/') {
-            SkipLineComment();
+        if (c == '/' && Peek(1) == '/' && !IsDocumentationLineStart()) {
+            ScanLineComment(CommentKind::Line);
+            sawOrdinaryComment = true;
             continue;
         }
         // Block comment
-        if (c == '/' && Peek(1) == '*') {
-            SkipBlockComment();
+        if (c == '/' && Peek(1) == '*' && !IsDocumentationBlockStart()) {
+            ScanBlockComment(CommentKind::Block);
+            sawOrdinaryComment = true;
             continue;
         }
         break;
     }
+    return sawOrdinaryComment;
 }
 
-Token Lexer::ScanDocComment(const SourceLocation start) {
-    Advance();
-    Advance();
-    Advance();
-    if (Peek() == ' ')
-        Advance();
-    const std::size_t contentStart = pos;
-    while (!IsAtEnd() && Peek() != '\n')
-        Advance();
-    return Token{
-        .kind = TokenKind::DocComment, .text = source.substr(contentStart, pos - contentStart), .location = start};
-}
-
-void Lexer::SkipLineComment() {
-    while (!IsAtEnd() && Peek() != '\n') {
-        Advance();
+bool Lexer::IsLineLeading(const std::size_t offset) const noexcept {
+    std::size_t cursor = offset;
+    while (cursor > 0 && source[cursor - 1] != '\n' && source[cursor - 1] != '\r') {
+        const char c = source[cursor - 1];
+        if (c != ' ' && c != '\t') {
+            return false;
+        }
+        --cursor;
     }
-    if (!IsAtEnd()) {
-        Advance(); // consume the newline so the line counter advances
-    }
+    return true;
 }
 
-void Lexer::SkipBlockComment() {
+bool Lexer::IsDocumentationLineStart() const noexcept {
+    return Peek() == '/' && Peek(1) == '/' && Peek(2) == '/' && Peek(3) != '/';
+}
+
+bool Lexer::IsDocumentationBlockStart() const noexcept {
+    return Peek() == '/' && Peek(1) == '*' && Peek(2) == '*' && Peek(3) != '*' && Peek(3) != '/';
+}
+
+SourceRange Lexer::ScanLineComment(const CommentKind kind) {
     const SourceLocation start = CurrentLocation();
+    const std::size_t startOffset = pos;
+    while (!IsAtEnd() && Peek() != '\n' && Peek() != '\r') {
+        Advance();
+    }
+    const SourceRange range{start, CurrentLocation()};
+    comments.push_back(
+        CommentTrivia{kind, source.substr(startOffset, pos - startOffset), range, IsLineLeading(startOffset), true});
+    return range;
+}
+
+SourceRange Lexer::ScanBlockComment(const CommentKind kind) {
+    const SourceLocation start = CurrentLocation();
+    const std::size_t startOffset = pos;
     // Consume opening  /*
     Advance();
     Advance();
@@ -502,6 +528,28 @@ void Lexer::SkipBlockComment() {
     if (depth > 0) {
         EmitError(start, "block comment is not terminated", "close the comment with '*/'");
     }
+    const SourceRange range{start, CurrentLocation()};
+    comments.push_back(CommentTrivia{kind, source.substr(startOffset, pos - startOffset), range,
+                                     IsLineLeading(startOffset), depth == 0});
+    return range;
+}
+
+Token Lexer::ScanDocumentationLine(const SourceLocation start) {
+    const SourceRange range = ScanLineComment(CommentKind::DocumentationLine);
+    return Token{.kind = TokenKind::DocComment,
+                 .text = comments.back().raw,
+                 .location = start,
+                 .endLocation = range.end,
+                 .lineLeading = comments.back().lineLeading};
+}
+
+Token Lexer::ScanDocumentationBlock(const SourceLocation start) {
+    const SourceRange range = ScanBlockComment(CommentKind::DocumentationBlock);
+    return Token{.kind = TokenKind::DocComment,
+                 .text = comments.back().raw,
+                 .location = start,
+                 .endLocation = range.end,
+                 .lineLeading = comments.back().lineLeading};
 }
 
 Token Lexer::ScanIdent(SourceLocation start) {
@@ -515,7 +563,7 @@ Token Lexer::ScanIdent(SourceLocation start) {
     }
     std::string text = source.substr(tokenStart, pos - tokenStart);
     const TokenKind kind = KeywordKind(text);
-    return Token{kind, std::move(text), start};
+    return Token{kind, std::move(text), start, CurrentLocation()};
 }
 
 Token Lexer::ScanNumber(SourceLocation start) {
@@ -723,14 +771,16 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
         if (Peek() == '\n') {
             EmitError(start, "string literal is not terminated before the end of the line",
                       "add a closing '\"' before the line ends", std::string(LiteralDocumentation));
-            return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
+            return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start,
+                         CurrentLocation()};
         }
         if (Peek() == '\\') {
             const bool incomplete = Peek(1) == '\0' || Peek(1) == '\n';
             const std::size_t diagnosticCount = diagnostics.size();
             value += ScanEscapeSequence();
             if (incomplete || (diagnostics.size() != diagnosticCount && (IsAtEnd() || Peek() == '\n'))) {
-                return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
+                return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start,
+                             CurrentLocation()};
             }
         }
         else if (static_cast<unsigned char>(Peek()) < 0x20) {
@@ -752,7 +802,7 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
     }
 
     // token text preserves the original source spelling (including quotes)
-    return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start};
+    return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
 }
 
 // ScanChar
@@ -765,18 +815,18 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
     if (IsAtEnd()) {
         EmitError(start, "character literal is not terminated before the end of the file", "add a character and '\''",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
     }
     if (Peek() == '\'') {
         Advance();
         EmitError(start, "character literal is empty", "put exactly one character between the quotes",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
     }
     if (Peek() == '\n') {
         EmitError(start, "character literal is not terminated before the end of the line", "add a closing '\''",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
     }
     if (Peek() == '\\') {
         const std::size_t diagnosticCount = diagnostics.size();
@@ -786,14 +836,14 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
                 AdvanceUtf8CodePoint();
             }
             Match('\'');
-            return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+            return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
         }
     }
     else {
         AdvanceUtf8CodePoint();
     }
     if (Match('\'')) {
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
     }
 
     while (!IsAtEnd() && Peek() != '\n' && Peek() != '\'') {
@@ -810,7 +860,7 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
                             : "character literal is not terminated before the end of the line",
                   "add a closing '\''", std::string(LiteralDocumentation));
     }
-    return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start};
+    return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
 }
 
 // ScanEscapeSequence (shared by string and char scanners)
@@ -1127,11 +1177,11 @@ Token Lexer::ScanUnknown(const SourceLocation start) {
                       "remove the character or replace it with a valid Rux token");
         }
     }
-    return Token{TokenKind::Unknown, source.substr(tokenStart, pos - tokenStart), start};
+    return Token{TokenKind::Unknown, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
 }
 
 Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
-    return Token{kind, source.substr(tokenStart, pos - tokenStart), start};
+    return Token{kind, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
 }
 
 void Lexer::EmitError(const SourceLocation loc, std::string message, std::optional<std::string> help,

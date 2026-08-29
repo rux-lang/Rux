@@ -136,10 +136,17 @@ struct Token {
     TokenKind kind = TokenKind::Unknown;
     std::string text; ///< original source spelling
     SourceLocation location;
+    /// Half-open end of this token when the lexer needs its complete spelling for tooling. Documentation tokens always
+    /// set it; older hand-built and ordinary tokens may leave it at the default location.
+    SourceLocation endLocation;
     /// Whether whitespace, a newline or a comment separates this token from the one before it. Only `?` reads it: `x?`
     /// propagates a failure while `x ? a : b` selects between two values, and the separation is what tells them apart.
     /// Defaults to separated, so a token built by hand rather than scanned keeps the older of the two meanings.
     bool precededBySpace = true;
+    /// Documentation attachment metadata. `lineLeading` means only indentation precedes the comment on its source
+    /// line. `precededByOrdinaryComment` records an ordinary comment in the trivia since the previous token.
+    bool lineLeading = false;
+    bool precededByOrdinaryComment = false;
 
     // Convenience predicates
     [[nodiscard]] bool Is(const TokenKind k) const noexcept {
