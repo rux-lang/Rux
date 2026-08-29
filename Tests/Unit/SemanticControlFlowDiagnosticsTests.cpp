@@ -122,3 +122,144 @@ TEST_CASE("match diagnostics validate guards patterns duplicates reachability an
     CHECK(HasMessage(diagnostics, "pattern has type 'int', but the matched value has type 'bool8'"));
     CHECK(HasMessage(diagnostics, "match arm is unreachable because an earlier pattern matches every value"));
 }
+
+TEST_CASE("case pattern diagnostics distinguish enum enumerators from variant cases") {
+    const auto diagnostics = AnalyzeControlFlow(R"(
+        enum Mode { Fast, Slow }
+        variant Signal { Waiting, Ready }
+        variant Event {
+            Empty,
+            Pair(int, bool),
+            Named { value: int; flag: bool; }
+        }
+
+        func EnumPayload(mode: Mode) {
+            match mode {
+                Mode::Fast(value) => 1,
+                .Slow => 2
+            }
+        }
+
+        func MissingEnum(mode: Mode) {
+            match mode {
+                Mode::Missing => 1,
+                else => 2
+            }
+        }
+
+        func MissingVariant(signal: Signal) {
+            match signal {
+                Signal::Missing => 1,
+                else => 2
+            }
+        }
+
+        func UnitPayload(signal: Signal) {
+            match signal {
+                Signal::Ready(value) => 1,
+                else => 2
+            }
+        }
+
+        func WrongOwner(mode: Mode) {
+            match mode {
+                Signal::Waiting => 1,
+                else => 2
+            }
+        }
+
+        func NamedFields(event: Event) {
+            match event {
+                Event::Named { value, value: other } => 1,
+                Event::Pair { unknown: item, flag } => 2,
+                else => 3
+            }
+        }
+
+        func NotCaseType(value: int) {
+            match value {
+                .Ready => 1,
+                else => 2
+            }
+        }
+    )");
+
+    CHECK(HasMessage(diagnostics, "enum enumerator 'Mode::Fast' cannot bind payload fields"));
+    CHECK(HasMessage(diagnostics, "match on 'Mode' is not exhaustive; missing Mode::Fast"));
+    CHECK(HasMessage(diagnostics, "enum 'Mode' has no enumerator 'Missing'"));
+    CHECK(HasMessage(diagnostics, "variant 'Signal' has no case 'Missing'"));
+    CHECK(HasMessage(diagnostics, "pattern for 'Signal::Ready' expects 0 fields, but found 1"));
+    CHECK(HasMessage(diagnostics, "variant pattern 'Signal::Waiting' cannot match value of type 'Mode'"));
+    CHECK(HasMessage(diagnostics, "duplicate field 'value' in variant pattern"));
+    CHECK(HasMessage(diagnostics, "unknown field 'unknown' in variant pattern"));
+    CHECK(HasMessage(diagnostics, "unknown field 'flag' in variant pattern"));
+    CHECK(HasMessage(diagnostics, "cannot infer enum or variant type for shorthand pattern '.Ready' from type 'int'"));
+}
+
+TEST_CASE("enum and variant matches accept qualified contextual generic and borrowed patterns") {
+    const auto diagnostics = AnalyzeControlFlow(R"(
+        enum Mode { Fast, Slow }
+        variant Signal { Waiting, Ready }
+        variant Envelope<T> {
+            Empty,
+            Pair(T, bool),
+            Named { value: T; flag: bool; }
+        }
+
+        func ReadMode(mode: Mode) -> int {
+            return match mode {
+                Mode::Fast => 1,
+                .Slow => 2
+            };
+        }
+
+        func ReadSignal(signal: &Signal) -> int {
+            return match signal {
+                Signal::Waiting => 1,
+                .Ready => 2
+            };
+        }
+
+        func ReadEnvelope(value: &Envelope<int>) -> int {
+            return match value {
+                Envelope::Empty => 0,
+                .Pair(number, flag) if flag => number,
+                .Pair(number, _) => number,
+                .Named { value: number, flag: _ } => number
+            };
+        }
+    )");
+
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+    }
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("all-unit variants remain closed variants for coverage and reachability") {
+    const auto missing = AnalyzeControlFlow(R"(
+        variant Phase { Start, Middle, End }
+        func Inspect(phase: Phase) -> int {
+            return match phase {
+                .Start => 1,
+                .Middle => 2
+            };
+        }
+    )");
+    CHECK(HasMessage(missing, "match on 'Phase' is not exhaustive; missing Phase::End"));
+
+    const auto guarded = AnalyzeControlFlow(R"(
+        variant Phase { Start, End }
+        func Inspect(phase: Phase, enabled: bool) -> int {
+            return match phase {
+                .Start if enabled => 1,
+                .Start => 2,
+                .End => 3,
+                .End => 4
+            };
+        }
+    )");
+    CHECK(HasMessage(guarded, "duplicate pattern in match"));
+    CHECK_FALSE(HasMessage(guarded, "match on 'Phase' is not exhaustive; missing Phase::Start"));
+    CHECK_FALSE(HasMessage(guarded, "match on 'Phase' is not exhaustive; missing Phase::End"));
+}

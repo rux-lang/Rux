@@ -611,8 +611,9 @@ TypeRef SemanticAnalyzerContext::CheckCallExpression(const CallExpr &expression)
             Symbol *first = currentScope->Lookup(path->segments[0]);
             if (first && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
                 if (const EnumDecl *enumeration = EnumNamed(path->segments[0])) {
-                    if (const EnumDecl::Variant *variant = LookupEnumVariant(path->segments[0], path->segments[1])) {
+                    if (const auto resolved = LookupCase(path->segments[0], path->segments[1])) {
                         const EnumDecl &decl = *enumeration;
+                        const EnumDecl::Variant *variant = resolved->selectedCase;
                         const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
                         std::vector<TypeRef> typeArgs;
                         typeArgs.reserve(e->typeArgs.size());

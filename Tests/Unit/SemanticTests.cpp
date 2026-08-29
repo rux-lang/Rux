@@ -171,6 +171,107 @@ TEST_CASE("semantic model retains resolved AST type facts") {
     CHECK(model.TryGetType(nodeOutsideAnalyzedModules) == nullptr);
 }
 
+TEST_CASE("semantic model records resolved enum and variant case patterns") {
+    Lexer lexer(R"(
+        enum Mode { Fast, Slow }
+        variant Choice<T> {
+            Empty,
+            Pair(T, bool),
+            Named { value: T; flag: bool; }
+        }
+        func Inspect(choice: &Choice<int>, mode: Mode) {
+            match choice {
+                Choice::Empty => {},
+                .Pair(value, _) => {},
+                .Named { value, flag } => {}
+            }
+            match mode {
+                Mode::Fast => {},
+                .Slow => {}
+            }
+        }
+    )",
+                "case-pattern-facts.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "case-pattern-facts.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "facts", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+
+    const auto *mode = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    const auto *choice = dynamic_cast<const EnumDecl *>(parsed.module.items[1].get());
+    const auto *inspect = dynamic_cast<const FuncDecl *>(parsed.module.items[2].get());
+    REQUIRE(mode != nullptr);
+    REQUIRE(choice != nullptr);
+    REQUIRE(inspect != nullptr);
+    REQUIRE(inspect->body != nullptr);
+    REQUIRE_EQ(inspect->body->stmts.size(), 2);
+
+    const auto *choiceMatch = dynamic_cast<const MatchStmt *>(inspect->body->stmts[0].get());
+    const auto *modeMatch = dynamic_cast<const MatchStmt *>(inspect->body->stmts[1].get());
+    REQUIRE(choiceMatch != nullptr);
+    REQUIRE(modeMatch != nullptr);
+    REQUIRE_EQ(choiceMatch->arms.size(), 3);
+    REQUIRE_EQ(modeMatch->arms.size(), 2);
+
+    const auto *emptyPattern = dynamic_cast<const EnumPattern *>(choiceMatch->arms[0].pattern.get());
+    const auto *pairPattern = dynamic_cast<const EnumPattern *>(choiceMatch->arms[1].pattern.get());
+    const auto *namedPattern = dynamic_cast<const EnumPattern *>(choiceMatch->arms[2].pattern.get());
+    const auto *fastPattern = dynamic_cast<const EnumPattern *>(modeMatch->arms[0].pattern.get());
+    const auto *slowPattern = dynamic_cast<const EnumPattern *>(modeMatch->arms[1].pattern.get());
+    REQUIRE(emptyPattern != nullptr);
+    REQUIRE(pairPattern != nullptr);
+    REQUIRE(namedPattern != nullptr);
+    REQUIRE(fastPattern != nullptr);
+    REQUIRE(slowPattern != nullptr);
+
+    const ResolvedCasePattern *empty = model.TryGetCasePattern(*emptyPattern);
+    const ResolvedCasePattern *pair = model.TryGetCasePattern(*pairPattern);
+    const ResolvedCasePattern *named = model.TryGetCasePattern(*namedPattern);
+    const ResolvedCasePattern *fast = model.TryGetCasePattern(*fastPattern);
+    const ResolvedCasePattern *slow = model.TryGetCasePattern(*slowPattern);
+    REQUIRE(empty != nullptr);
+    REQUIRE(pair != nullptr);
+    REQUIRE(named != nullptr);
+    REQUIRE(fast != nullptr);
+    REQUIRE(slow != nullptr);
+
+    CHECK(empty->declaration == choice);
+    CHECK(empty->selectedCase == &choice->variants[0]);
+    CHECK(empty->form == EnumDecl::Form::Variant);
+    CHECK_EQ(empty->subjectType.ToString(), "Choice<int>");
+    REQUIRE_EQ(empty->substitutions.size(), 1);
+    CHECK_EQ(empty->substitutions.at("T").ToString(), "int");
+
+    CHECK(pair->declaration == choice);
+    CHECK(pair->selectedCase == &choice->variants[1]);
+    CHECK_EQ(pair->substitutions.at("T").ToString(), "int");
+    CHECK(named->declaration == choice);
+    CHECK(named->selectedCase == &choice->variants[2]);
+    CHECK(named->form == EnumDecl::Form::Variant);
+
+    CHECK(fast->declaration == mode);
+    CHECK(fast->selectedCase == &mode->variants[0]);
+    CHECK(fast->form == EnumDecl::Form::Enumeration);
+    CHECK_EQ(fast->subjectType.ToString(), "Mode");
+    CHECK(fast->substitutions.empty());
+    CHECK(slow->declaration == mode);
+    CHECK(slow->selectedCase == &mode->variants[1]);
+    CHECK(slow->form == EnumDecl::Form::Enumeration);
+
+    EnumPattern outside;
+    CHECK(model.TryGetCasePattern(*emptyPattern) == empty);
+    CHECK(model.TryGetCasePattern(outside) == nullptr);
+}
+
 TEST_CASE("semantic model omits unresolved type facts") {
     Lexer lexer("func Main() { let value: Missing = absent; }", "unresolved.rux");
     auto lexed = lexer.Tokenize();
@@ -331,6 +432,7 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
                         {},
                         {},
                         {},
+                        {},
                         std::move(symbolIdentities),
                         {},
                         {},
@@ -397,6 +499,7 @@ TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
                         {&parsed.module},
                         CompileTimeContext{},
                         std::move(expressionTypes),
+                        {},
                         {},
                         {},
                         {},
@@ -1254,7 +1357,7 @@ TEST_CASE("contextual variant patterns diagnose unknown cases") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics.front().message, "enum 'Option' has no variant 'Missing'");
+    CHECK_EQ(diagnostics.front().message, "variant 'Option' has no case 'Missing'");
 }
 
 TEST_CASE("prefix operators bind more tightly than casts") {

@@ -88,6 +88,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     std::unordered_map<const Expr *, TypeRef> &inputExpressionTypes,
     std::unordered_map<const TypeExpr *, TypeRef> &inputTypeNodeTypes,
     std::unordered_map<const Pattern *, TypeRef> &inputPatternTypes,
+    std::unordered_map<const EnumPattern *, ResolvedCasePattern> &inputCasePatterns,
     std::unordered_map<const Expr *, ValueConsumption> &inputValueConsumptions,
     std::unordered_map<const Expr *, ValueCopy> &inputValueCopies,
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &inputCallableBindings,
@@ -104,6 +105,7 @@ SemanticAnalyzerContext::SemanticAnalyzerContext(
     , expressionTypes(inputExpressionTypes)
     , typeNodeTypes(inputTypeNodeTypes)
     , patternTypes(inputPatternTypes)
+    , casePatterns(inputCasePatterns)
     , valueConsumptions(inputValueConsumptions)
     , valueCopies(inputValueCopies)
     , callableBindings(inputCallableBindings)
