@@ -22,6 +22,8 @@ std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string 
         return std::format("prefix the return value with '<-', as in 'return <-{}'", place);
     case ValueConsumptionKind::Aggregate:
         return std::format("prefix the aggregate value with '<-', as in '{{ field: <-{} }}'", place);
+    case ValueConsumptionKind::ArrayRepeat:
+        return "write the elements explicitly or initialize move-only elements in a loop";
     case ValueConsumptionKind::ConditionalArm:
         return std::format("prefix the selected value with '<-', as in 'condition ? <-{} : fallback'", place);
     case ValueConsumptionKind::ExplicitMove:
@@ -526,6 +528,12 @@ void SemanticAnalyzerContext::ConsumeValue(const Expr &expression, const TypeRef
             }
             valueCopies.insert_or_assign(&expression, ValueCopy{kind, type, custom, location});
         }
+        return;
+    }
+    if (kind == ValueConsumptionKind::ArrayRepeat && properties.IsMoveOnly()) {
+        EmitError(location, std::format("array repeat element type '{}' must be copyable", type.ToString()),
+                  {"'[value; count]' evaluates 'value' once and copies it into every element"},
+                  "write the elements explicitly or initialize move-only elements in a loop");
         return;
     }
     if (!properties.IsMoveOnly()) {

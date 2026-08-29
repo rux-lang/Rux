@@ -344,6 +344,18 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        Pad();
+        out << "ArrayRepeatExpr\n";
+        ++indent;
+        if (repeat->value) {
+            Print(*repeat->value);
+        }
+        if (repeat->count) {
+            Print(*repeat->count);
+        }
+        --indent;
+    }
     else if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
         Pad();
         out << "CastExpr as " << TypeString(cast->type.get()) << '\n';

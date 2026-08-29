@@ -139,6 +139,9 @@ static std::string PrintExprCore(const HirExpr &expr) {
         return s + " }" + PrintFailureCleanups(e->failureCleanups);
     }
     if (auto *e = dynamic_cast<const HirArrayExpr *>(&expr)) {
+        if (e->repeatedElement) {
+            return std::format("[{}; {}]", PrintExpr(*e->repeatedElement), e->repeatCount);
+        }
         std::string s = "[";
         for (std::size_t i = 0; i < e->elements.size(); ++i) {
             if (i) {

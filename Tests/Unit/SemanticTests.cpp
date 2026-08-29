@@ -1402,6 +1402,51 @@ TEST_CASE("fixed arrays require matching literal extents") {
     CHECK(diagnostics.front().message.find("cannot assign") != std::string::npos);
 }
 
+TEST_CASE("array repeat expressions infer extents and use contextual element types") {
+    CHECK(AnalyzeSource(R"(
+        struct Slice<T> { data: *T; length: uint; }
+        const Zeros: uint8[4] = [0; 4];
+
+        func Sum(values: Slice<int>) -> int {
+            return values[0] + values[2];
+        }
+
+        func Main() {
+            let inferred = [7u16; 3];
+            let contextual: uint8[2] = [255; 2];
+            let nested: int[2][3] = [[1; 2]; 3];
+            let empty: int[0] = [0; 0];
+            let sum = Sum([3; 4]);
+        }
+    )")
+              .empty());
+
+    const auto mismatched = AnalyzeSource("func Main() { let values: int[2] = [0; 3]; }");
+    REQUIRE_EQ(mismatched.size(), 1);
+    CHECK(mismatched.front().message.contains("cannot assign"));
+
+    const auto nonConstant = AnalyzeSource("func Main() { let count = 3; let values = [0; count]; }");
+    REQUIRE_EQ(nonConstant.size(), 1);
+    CHECK_EQ(nonConstant.front().message, "array repeat count must be a non-negative compile-time integer");
+}
+
+TEST_CASE("array repeat expressions require copyable elements") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Owner { value: int; }
+        extend Owner {
+            func =(self: &var Owner, other: &Owner);
+            func ~Owner(self: &var Owner) {}
+        }
+
+        func Main() {
+            let values = [Owner { value: 1 }; 2];
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "array repeat element type 'Owner' must be copyable");
+}
+
 TEST_CASE("contextual variant patterns infer generic subject types") {
     const auto diagnostics = AnalyzeSource(R"(
         variant Result<T, E> {

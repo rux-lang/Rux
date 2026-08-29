@@ -144,6 +144,8 @@ protected:
     [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
+    [[nodiscard]] std::unique_ptr<HirArrayExpr>
+    LowerArrayRepeatAs(const ArrayRepeatExpr &expression, const TypeRef &elementType, const TypeRef &arrayType);
     [[nodiscard]] TypeRef ResolvedExpressionType(const Expr &expression) const;
     [[nodiscard]] TypeRef SubstituteCurrentType(TypeRef type) const;
     [[nodiscard]] TypeRef RestoreEnumLayoutMarkers(TypeRef type) const;

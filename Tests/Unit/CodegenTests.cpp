@@ -57,6 +57,24 @@ static LirPackage CompileToLir(const std::string &source) {
     return CompileToLirFor(source, RUX_OS_WINDOWS ? "windows" : "linux", TargetContext::CreateNative());
 }
 
+static HirPackage CompileToHir(const std::string &source) {
+    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "test.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    std::vector<Module *> modules = {&parsed.module};
+    SemanticAnalyzer analyzer(modules, {}, "test", RUX_OS_WINDOWS ? "windows" : "linux");
+    auto semaModel = analyzer.Analyze();
+    REQUIRE_FALSE(semaModel.HasErrors());
+
+    AstToHirLowering lowering(semaModel);
+    return lowering.Generate();
+}
+
 // The printer defaults its target OS to the host, which is only correct when the
 // two agree. Pass the same target the LIR was lowered for, so the rendered ABI
 // describes the triple below rather than whatever machine the suite runs on.
@@ -493,6 +511,57 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
 
     CHECK(hasInlineArray);
     CHECK(hasSliceView);
+}
+
+TEST_CASE("array repeats remain compact in HIR and evaluate their operand once") {
+    const HirPackage hir = CompileToHir(R"(
+        func Next(counter: *var int) -> int {
+            *counter = *counter + 1;
+            return *counter;
+        }
+
+        func Main() -> int {
+            var counter = 0;
+            let values = [Next(@counter); 4];
+            return values[3];
+        }
+    )");
+
+    const auto function = std::ranges::find_if(hir.modules.front().funcs,
+                                               [](const HirFunc &candidate) { return candidate.name == "Main"; });
+    REQUIRE(function != hir.modules.front().funcs.end());
+    REQUIRE(function->body.has_value());
+    const auto *binding = dynamic_cast<const HirLetStmt *>(function->body->stmts[1].get());
+    REQUIRE(binding != nullptr);
+    const auto *repeat = dynamic_cast<const HirArrayExpr *>(binding->init.get());
+    REQUIRE(repeat != nullptr);
+    CHECK(repeat->elements.empty());
+    REQUIRE(repeat->repeatedElement != nullptr);
+    CHECK_EQ(repeat->repeatCount, 4);
+
+    const LirPackage lir = CompileToLir(R"(
+        func Next(counter: *var int) -> int {
+            *counter = *counter + 1;
+            return *counter;
+        }
+
+        func Main() -> int {
+            var counter = 0;
+            let values = [Next(@counter); 4];
+            return values[3];
+        }
+    )");
+
+    const auto main = std::ranges::find_if(lir.modules.front().funcs,
+                                           [](const LirFunc &candidate) { return candidate.name == "Main"; });
+    REQUIRE(main != lir.modules.front().funcs.end());
+    std::size_t calls = 0;
+    for (const LirBlock &block : main->blocks) {
+        calls += std::ranges::count_if(block.instrs, [](const LirInstr &instruction) {
+            return instruction.op == LirOpcode::Call && instruction.strArg == "Next";
+        });
+    }
+    CHECK_EQ(calls, 1);
 }
 
 TEST_CASE("address-of an indexed array element uses the original storage") {

@@ -648,6 +648,20 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
         return arrayType;
     }
 
+    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        const TypeRef elementType = CheckExpr(*repeat->value);
+        const std::optional<std::uint64_t> count = EvalArrayLength(*repeat->count);
+        if (!count) {
+            EmitError(repeat->count->location, "array repeat count must be a non-negative compile-time integer");
+        }
+        if (!elementType.IsUnknown()) {
+            ConsumeValue(*repeat->value, elementType, ValueConsumptionKind::ArrayRepeat, repeat->value->location);
+        }
+        TypeRef arrayType = TypeRef::MakeArray(elementType, count.value_or(0));
+        ValidateStoredType(arrayType, repeat->location, "array value");
+        return arrayType;
+    }
+
     if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
         std::vector<TypeRef> elementTypes;
         for (const auto &element : tuple->elements) {

@@ -756,6 +756,14 @@ private:
                 }
             }
         }
+        else if (const auto *repeatExpr = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
+            if (repeatExpr->value) {
+                VisitExpr(*repeatExpr->value);
+            }
+            if (repeatExpr->count) {
+                VisitExpr(*repeatExpr->count);
+            }
+        }
         else if (const auto *spreadExpr = dynamic_cast<const SpreadExpr *>(&expr)) {
             if (spreadExpr->operand) {
                 VisitExpr(*spreadExpr->operand);

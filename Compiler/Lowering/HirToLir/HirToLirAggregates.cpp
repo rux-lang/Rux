@@ -900,6 +900,56 @@ void HirToLirContext::StoreArrayInit(const HirArrayExpr &e, LirReg slot) {
     if (elemType.IsUnknown() && !e.elements.empty()) {
         elemType = e.elements.front()->type;
     }
+    if (e.repeatedElement) {
+        const LirReg source = EmitAlloca(elemType);
+        StoreExprIntoSlot(*e.repeatedElement, source, elemType);
+        if (e.repeatCount == 0) {
+            if (!e.repeatElementDropGlue.empty()) {
+                EmitDropGlueCall(e.repeatElementDropGlue, source);
+            }
+            return;
+        }
+
+        if (e.repeatCount == 1) {
+            EmitCopyPlan(e.repeatCopyPlan, source, EmitIndexPtr(slot, EmitConst("0", TypeRef::MakeUInt64()), elemType));
+            if (!e.repeatElementDropGlue.empty()) {
+                EmitDropGlueCall(e.repeatElementDropGlue, source);
+            }
+            return;
+        }
+
+        const TypeRef indexType = TypeRef::MakeUInt64();
+        const LirReg indexSlot = EmitAlloca(indexType);
+        EmitStore(EmitConst("0", indexType), indexSlot, indexType);
+        const std::uint32_t conditionBlock = NewBlock("array.repeat.cond");
+        const std::uint32_t bodyBlock = NewBlock("array.repeat.body");
+        const std::uint32_t stepBlock = NewBlock("array.repeat.step");
+        const std::uint32_t afterBlock = NewBlock("array.repeat.after");
+        Jump(conditionBlock);
+
+        SetBlock(conditionBlock);
+        const LirReg index = EmitLoad(indexSlot, indexType);
+        Branch(EmitBinary(LirOpcode::CmpLt, index, EmitConst(std::to_string(e.repeatCount), indexType),
+                          TypeRef::MakeBool()),
+               bodyBlock, afterBlock);
+
+        SetBlock(bodyBlock);
+        EmitCopyPlan(e.repeatCopyPlan, source, EmitIndexPtr(slot, index, elemType));
+        if (!IsTerminated()) {
+            Jump(stepBlock);
+        }
+
+        SetBlock(stepBlock);
+        const LirReg current = EmitLoad(indexSlot, indexType);
+        EmitStore(EmitBinary(LirOpcode::Add, current, EmitConst("1", indexType), indexType), indexSlot, indexType);
+        Jump(conditionBlock);
+
+        SetBlock(afterBlock);
+        if (!e.repeatElementDropGlue.empty()) {
+            EmitDropGlueCall(e.repeatElementDropGlue, source);
+        }
+        return;
+    }
     if (IsArrayType(e.type)) {
         for (std::size_t i = 0; i < e.elements.size(); ++i) {
             const LirReg idx = EmitConst(std::to_string(i), TypeRef::MakeUInt64());

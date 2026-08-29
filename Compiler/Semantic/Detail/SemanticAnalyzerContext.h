@@ -614,6 +614,7 @@ private:
                                                                              const FuncDecl &method) = 0;
     [[nodiscard]] virtual TypeRef ResolveOperatorReturnType(const TypeRef &receiverType, const FuncDecl &method) = 0;
     virtual void CheckDecl(const Decl &declaration) = 0;
+    [[nodiscard]] virtual std::optional<std::uint64_t> EvalArrayLength(const Expr &expression) const = 0;
     virtual void ValidateArrayType(const TypeExpr &type, bool allowFlexibleTail) = 0;
     [[nodiscard]] virtual bool CanAssignExprTo(const Expr &expression, const TypeRef &expressionType,
                                                const TypeRef &targetType) = 0;

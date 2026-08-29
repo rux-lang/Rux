@@ -529,6 +529,11 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         return lowered;
     }
 
+    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression);
+        repeat && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
+        return LowerArrayRepeatAs(*repeat, targetType.inner[0], targetType);
+    }
+
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
         if (const auto sliceElement = SliceElementType(targetType)) {
             auto lowered = std::make_unique<HirArrayExpr>();
@@ -551,6 +556,22 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
             view->type = targetType;
             view->elementType = *sliceElement;
             view->length = array->elements.size();
+            view->value = std::move(lowered);
+            return view;
+        }
+    }
+
+    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        if (const auto sliceElement = SliceElementType(targetType)) {
+            const TypeRef resolved = ResolvedExpressionType(*repeat);
+            const std::uint64_t count = resolved.arrayLength.value_or(0);
+            auto lowered = LowerArrayRepeatAs(*repeat, *sliceElement, TypeRef::MakeArray(*sliceElement, count));
+
+            auto view = std::make_unique<HirArrayToSliceExpr>();
+            view->location = repeat->location;
+            view->type = targetType;
+            view->elementType = *sliceElement;
+            view->length = count;
             view->value = std::move(lowered);
             return view;
         }
@@ -654,6 +675,22 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         coercion->length = *lowered->type.arrayLength;
         coercion->value = std::move(lowered);
         return coercion;
+    }
+    return lowered;
+}
+
+std::unique_ptr<HirArrayExpr> AstToHirContext::LowerArrayRepeatAs(const ArrayRepeatExpr &expression,
+                                                                  const TypeRef &elementType,
+                                                                  const TypeRef &arrayType) {
+    auto lowered = std::make_unique<HirArrayExpr>();
+    lowered->location = expression.location;
+    lowered->type = arrayType;
+    lowered->elementType = elementType;
+    lowered->repeatCount = arrayType.arrayLength.value_or(0);
+    lowered->repeatCopyPlan = BuildCopyPlan(elementType);
+    lowered->repeatedElement = LowerExprAs(*expression.value, elementType);
+    if (const DropGluePlan *glue = model.TryGetDropGlue(elementType)) {
+        lowered->repeatElementDropGlue = glue->symbol;
     }
     return lowered;
 }
@@ -797,6 +834,13 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         }
         lowered->type = ResolvedExpressionType(*range);
         return lowered;
+    }
+    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        const TypeRef type = ResolvedExpressionType(*repeat);
+        const TypeRef elementType = type.kind == TypeRef::Kind::Array && !type.inner.empty()
+                                      ? type.inner[0]
+                                      : ResolvedExpressionType(*repeat->value);
+        return LowerArrayRepeatAs(*repeat, elementType, type);
     }
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
         auto lowered = std::make_unique<HirArrayExpr>();

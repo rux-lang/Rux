@@ -690,7 +690,10 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
     }
     if (auto *arr = dynamic_cast<const HirArrayExpr *>(value)) {
         std::vector<std::string> elements;
-        for (const auto &element : arr->elements) {
+        const std::size_t count =
+            arr->repeatedElement ? static_cast<std::size_t>(arr->repeatCount) : arr->elements.size();
+        for (std::size_t index = 0; index < count; ++index) {
+            const HirExpr *element = arr->repeatedElement ? arr->repeatedElement.get() : arr->elements[index].get();
             const auto printed = PrintConstElement(*element);
             if (!printed) {
                 return;
