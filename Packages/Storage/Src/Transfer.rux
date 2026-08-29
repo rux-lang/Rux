@@ -31,9 +31,7 @@ when #target.os {
 func NativePathPair(allocator: Allocator, first: Path, second: Path, firstNative: *var *var OsUnit,
                     secondNative: *var *var OsUnit) -> IoError {
     let converted = NativePath(allocator, first, firstNative);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     let again = NativePath(allocator, second, secondNative);
     if again.IsError() {
         ReleaseNativePath(allocator, *firstNative, first.name.units.length);
@@ -58,9 +56,7 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
     var fromNative: *var OsUnit = null;
     var toNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if MoveFileExW(fromNative as *char16, toNative as *char16, MOVEFILE_REPLACE_EXISTING) == 0 {
@@ -88,9 +84,7 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoE
     var existingNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, existing, link, @existingNative, @linkNative);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if CreateHardLinkW(linkNative as *char16, existingNative as *char16, null) == 0 {
@@ -119,9 +113,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
     var targetNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
     let converted = NativePathPair(allocator, target, link, @targetNative, @linkNative);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
@@ -153,9 +145,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
         var fromNative: *var OsUnit = null;
         var toNative: *var OsUnit = null;
         let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
-        if converted.IsError() {
-            return converted;
-        }
+        if converted.IsError() { return converted; }
         var outcome = IoError::Ok();
         if CopyFileW(fromNative as *char16, toNative as *char16, 0) == 0 {
             outcome = TranslateNative(GetLastError() as int32);
@@ -166,9 +156,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
     else {
         var error = IoError::Ok();
         var source = File::Open(allocator, from, OpenOptions::Reading(), @error);
-        if error.IsError() {
-            return error;
-        }
+        if error.IsError() { return error; }
         var destination = File::Open(allocator, to, OpenOptions::Writing(), @error);
         if error.IsError() {
             source.Close();

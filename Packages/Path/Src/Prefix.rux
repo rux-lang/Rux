@@ -125,9 +125,7 @@ pub func IsAbsolute(path: Path) -> bool {
     when #target.os == .Windows {
         var kind = PrefixKind::None;
         let prefix = PrefixLength(path, @kind);
-        if kind == PrefixKind::Share || kind == PrefixKind::Verbatim {
-            return true;
-        }
+        if kind == PrefixKind::Share || kind == PrefixKind::Verbatim { return true; }
         if kind == PrefixKind::Drive {
             let units = path.AsView().Units();
             return prefix < units.length && IsSeparator(units.data[prefix]);

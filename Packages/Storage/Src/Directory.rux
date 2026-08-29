@@ -37,9 +37,7 @@ when #target.os {
 pub func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if CreateDirectoryW(native as *char16, null) == 0 {
@@ -63,9 +61,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
 pub func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if RemoveDirectoryW(native as *char16) == 0 {
@@ -88,9 +84,7 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
 pub func DeleteFile(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
-    if converted.IsError() {
-        return converted;
-    }
+    if converted.IsError() { return converted; }
     var outcome = IoError::Ok();
     when #target.os == .Windows {
         if DeleteFileW(native as *char16) == 0 {
@@ -299,9 +293,7 @@ extend DirectoryIterator {
                         *failure = TranslateNative((0i64 - filled) as int32);
                         return false;
                     }
-                    if filled == 0 {
-                        return false;
-                    }
+                    if filled == 0 { return false; }
                     self.length = filled as uint;
                     self.offset = 0;
                 }
@@ -379,15 +371,11 @@ extend DirectoryIterator {
 }
 
 func IsDotEntry8(name: *char8, length: uint) -> bool {
-    if length == 1 {
-        return name[0] == c8'.';
-    }
+    if length == 1 { return name[0] == c8'.'; }
     return length == 2 && name[0] == c8'.' && name[1] == c8'.';
 }
 
 func IsDotEntry16(name: *uint16, length: uint) -> bool {
-    if length == 1 {
-        return name[0] == 0x2Eu16;
-    }
+    if length == 1 { return name[0] == 0x2Eu16; }
     return length == 2 && name[0] == 0x2Eu16 && name[1] == 0x2Eu16;
 }

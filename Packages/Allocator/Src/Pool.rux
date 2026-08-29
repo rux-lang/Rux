@@ -194,9 +194,7 @@ extend Pool {
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool/class-size
     pub func ClassSize(self: &Pool, index: uint) -> uint {
-        if index >= PoolClassCount {
-            return 0;
-        }
+        if index >= PoolClassCount { return 0; }
         return PoolSmallestClass << index;
     }
 
@@ -223,27 +221,19 @@ extend Pool {
     func TakeChunk(self: *var Pool, classIndex: uint) -> AllocError {
         let blockSize = PoolSmallestClass << classIndex;
         let blocks = self.blocksPerChunk;
-        if blocks > uint::Max / blockSize {
-            return AllocError::Unsupported;
-        }
+        if blocks > uint::Max / blockSize { return AllocError::Unsupported; }
         let payload = blocks * blockSize;
         let header = Pool::ChunkHeaderSize();
-        if payload > uint::Max - header {
-            return AllocError::Unsupported;
-        }
+        if payload > uint::Max - header { return AllocError::Unsupported; }
         let total = header + payload;
 
         let checked = Layout::New(total, PoolAlignment);
-        if checked.IsNone() {
-            return AllocError::Unsupported;
-        }
+        if checked.IsNone() { return AllocError::Unsupported; }
         let layout = checked.ValueOr(Layout { size: total, alignment: PoolAlignment });
 
         var storage: *var opaque = null;
         let error = self.backing.Allocate(layout, @storage);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
 
         let chunk = storage as *var PoolChunk;
         chunk.previous = self.chunks;
@@ -316,15 +306,11 @@ extend PoolHandle : Allocator {
         }
 
         let classIndex = ClassIndexFor(layout);
-        if classIndex >= PoolClassCount {
-            return self.pool.backing.Allocate(layout, result);
-        }
+        if classIndex >= PoolClassCount { return self.pool.backing.Allocate(layout, result); }
 
         if self.pool.free[classIndex] == 0 {
             let error = self.pool.TakeChunk(classIndex);
-            if error != AllocError::None {
-                return error;
-            }
+            if error != AllocError::None { return error; }
         }
 
         let address = self.pool.free[classIndex];
@@ -347,17 +333,11 @@ extend PoolHandle : Allocator {
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/deallocate
     pub func Deallocate(self: &var PoolHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 {
-            return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
-        }
-        if block == null {
-            return AllocError::InvalidBlock;
-        }
+        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
+        if block == null { return AllocError::InvalidBlock; }
 
         let classIndex = ClassIndexFor(layout);
-        if classIndex >= PoolClassCount {
-            return self.pool.backing.Deallocate(block, layout);
-        }
+        if classIndex >= PoolClassCount { return self.pool.backing.Deallocate(block, layout); }
 
         let address = block as uint;
         *(address as *var uint) = self.pool.free[classIndex];
@@ -377,9 +357,7 @@ extend PoolHandle : Allocator {
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/reallocate
     pub func Reallocate(self: &var PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment {
-            return AllocError::Unsupported;
-        }
+        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
             *result = block;
             return AllocError::None;
@@ -397,9 +375,7 @@ extend PoolHandle : Allocator {
 
         var fresh: *var opaque = null;
         let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         Copy(fresh, block as *opaque, keep);
         self.Deallocate(block, oldLayout);
@@ -420,12 +396,8 @@ extend PoolHandle : Allocator {
 ///
 /// https://rux-lang.dev/docs/api/allocator/class-index-for
 pub func ClassIndexFor(layout: Layout) -> uint {
-    if layout.alignment > PoolAlignment {
-        return PoolClassCount;
-    }
-    if layout.size > PoolLargestClass {
-        return PoolClassCount;
-    }
+    if layout.alignment > PoolAlignment { return PoolClassCount; }
+    if layout.size > PoolLargestClass { return PoolClassCount; }
     var index: uint = 0;
     var size = PoolSmallestClass;
     while size < layout.size {

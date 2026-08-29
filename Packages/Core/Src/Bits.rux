@@ -34,13 +34,9 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 /// https://rux-lang.dev/docs/api/core/shift-right-logical
 pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
-    if amount == 0u64 {
-        return value;
-    }
+    if amount == 0u64 { return value; }
     let bits = sizeof(T) * 8u64;
-    if amount >= bits {
-        return zero;
-    }
+    if amount >= bits { return zero; }
     // Every bit the shift kept lives below `bits - amount`, so a mask of that many ones drops whatever an arithmetic
     // shift replicated above them. Building the mask by subtraction works at either signedness: the one bit above the
     // mask is the sign bit only when the mask spans the whole type, which `amount == 0` has already been sent home.
@@ -57,9 +53,7 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 /// https://rux-lang.dev/docs/api/core/bit-at
 pub func BitAt<T>(value: T, index: uint64) -> bool {
     let zero = value - value;
-    if index >= sizeof(T) * 8u64 {
-        return false;
-    }
+    if index >= sizeof(T) * 8u64 { return false; }
     // Masking with one leaves nothing for an arithmetic shift to have replicated, so signedness does not matter here.
     return ((value >> index) & (zero + 1)) != zero;
 }
@@ -107,9 +101,7 @@ pub func LeadingZeros<T>(value: T) -> uint32 {
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
         index = index - 1u64;
-        if BitAt<T>(value, index) {
-            return count;
-        }
+        if BitAt<T>(value, index) { return count; }
         count = count + 1u32;
     }
     return count;
@@ -126,9 +118,7 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
     while index < bits {
-        if BitAt<T>(value, index) {
-            return index as uint32;
-        }
+        if BitAt<T>(value, index) { return index as uint32; }
         index = index + 1u64;
     }
     return bits as uint32;
@@ -146,9 +136,7 @@ pub func LeadingOnes<T>(value: T) -> uint32 {
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
         index = index - 1u64;
-        if !BitAt<T>(value, index) {
-            return count;
-        }
+        if !BitAt<T>(value, index) { return count; }
         count = count + 1u32;
     }
     return count;
@@ -165,9 +153,7 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
     while index < bits {
-        if !BitAt<T>(value, index) {
-            return index as uint32;
-        }
+        if !BitAt<T>(value, index) { return index as uint32; }
         index = index + 1u64;
     }
     return bits as uint32;
@@ -184,9 +170,7 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
 pub func RotateLeft<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
-    if shift == 0u64 {
-        return value;
-    }
+    if shift == 0u64 { return value; }
     // The bits that ran off the top are exactly the ones a logical shift of the complementary distance keeps.
     return (value << shift) | ShiftRightLogical<T>(value, bits - shift);
 }
@@ -201,9 +185,7 @@ pub func RotateLeft<T>(value: T, amount: uint64) -> T {
 pub func RotateRight<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
-    if shift == 0u64 {
-        return value;
-    }
+    if shift == 0u64 { return value; }
     return ShiftRightLogical<T>(value, shift) | (value << (bits - shift));
 }
 
@@ -240,9 +222,7 @@ pub func ReverseBits<T>(value: T) -> T {
 pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
-    if bytes <= 1u64 {
-        return value;
-    }
+    if bytes <= 1u64 { return value; }
     var result = zero;
     var index = 0u64;
     while index < bytes {

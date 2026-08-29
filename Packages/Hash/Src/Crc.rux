@@ -177,9 +177,7 @@ extend Crc32 : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32/write
     pub func Write(self: &var Crc32, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         var index: uint = 0;
         while index < length {
             let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;
@@ -259,9 +257,7 @@ extend Crc32c : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/crc32c/write
     pub func Write(self: &var Crc32c, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         var index: uint = 0;
         while index < length {
             let slot = ((self.register ^ (*(bytes + index) as uint32)) & 0xFF) as uint;

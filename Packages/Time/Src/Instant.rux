@@ -69,9 +69,7 @@ extend Instant {
     ///
     /// https://rux-lang.dev/docs/api/time/instant/since
     pub func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
-        if self.ticks < earlier.ticks {
-            return Option::None<Duration>();
-        }
+        if self.ticks < earlier.ticks { return Option::None<Duration>(); }
         let gap = self.ticks - earlier.ticks;
         var result = Duration::FromSeconds((gap / 1000000000u64) as int64);
         result.nanoseconds = (gap % 1000000000u64) as uint32;
@@ -96,9 +94,7 @@ extend Instant {
 ///
 /// https://rux-lang.dev/docs/api/time/sleep
 pub func SleepFor(span: Duration) {
-    if span.IsNegative() || span.IsZero() {
-        return;
-    }
+    if span.IsNegative() || span.IsZero() { return; }
     when #target.os == .Windows {
         // The system sleep is millisecond-grained, so the span rounds up: at least, never less.
         let millis = span.TotalMilliseconds().ValueOr(4294967294i64);
@@ -127,9 +123,7 @@ pub func SleepFor(span: Duration) {
             status = Nanosleep(@request, @remaining);
         }
         while status != 0i64 {
-            if remaining.seconds == 0i64 && remaining.nanoseconds == 0i64 {
-                return;
-            }
+            if remaining.seconds == 0i64 && remaining.nanoseconds == 0i64 { return; }
             request = remaining;
             remaining = Timespec { seconds: 0, nanoseconds: 0 };
             when #target.os == .macOS {

@@ -140,23 +140,17 @@ pub func PageSize() -> uint {
 ///
 /// https://rux-lang.dev/docs/api/memory/page-allocate
 pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
-    if length == 0 {
-        return PageError::InvalidLength;
-    }
+    if length == 0 { return PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             let mapped = VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection));
-            if mapped == null {
-                return WindowsError(GetLastError());
-            }
+            if mapped == null { return WindowsError(GetLastError()); }
             *result = mapped;
             return PageError::None;
         }
         else => {
             let mapped = Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0);
-            if IsError(mapped) {
-                return UnixError(Errno(mapped));
-            }
+            if IsError(mapped) { return UnixError(Errno(mapped)); }
             *result = mapped as *var opaque;
             return PageError::None;
         }
@@ -179,25 +173,17 @@ pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque
 ///
 /// https://rux-lang.dev/docs/api/memory/page-release
 pub func PageRelease(address: *var opaque, length: uint) -> PageError {
-    if address == null {
-        return PageError::InvalidAddress;
-    }
-    if length == 0 {
-        return PageError::InvalidLength;
-    }
+    if address == null { return PageError::InvalidAddress; }
+    if length == 0 { return PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             // MEM_RELEASE takes the whole reservation and requires a size of zero; the length is checked above only
             // so that a caller's arithmetic error is reported on every system rather than on some of them.
-            if VirtualFree(address, 0, MEM_RELEASE) == 0 {
-                return WindowsError(GetLastError());
-            }
+            if VirtualFree(address, 0, MEM_RELEASE) == 0 { return WindowsError(GetLastError()); }
             return PageError::None;
         }
         else => {
-            if Munmap(address as *opaque, length) != 0 {
-                return PageError::Failed;
-            }
+            if Munmap(address as *opaque, length) != 0 { return PageError::Failed; }
             return PageError::None;
         }
     }
@@ -218,12 +204,8 @@ pub func PageRelease(address: *var opaque, length: uint) -> PageError {
 ///
 /// https://rux-lang.dev/docs/api/memory/page-protect
 pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
-    if address == null {
-        return PageError::InvalidAddress;
-    }
-    if length == 0 {
-        return PageError::InvalidLength;
-    }
+    if address == null { return PageError::InvalidAddress; }
+    if length == 0 { return PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             var previous: uint32 = 0;
@@ -233,9 +215,7 @@ pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> 
             return PageError::None;
         }
         else => {
-            if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 {
-                return PageError::Failed;
-            }
+            if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 { return PageError::Failed; }
             return PageError::None;
         }
     }
@@ -263,21 +243,11 @@ when #target.os {
             let execute = (protection & PageExecute) != 0;
             let write = (protection & PageWrite) != 0;
             let read = (protection & PageRead) != 0;
-            if execute && write {
-                return PAGE_EXECUTE_READWRITE;
-            }
-            if execute && read {
-                return PAGE_EXECUTE_READ;
-            }
-            if execute {
-                return PAGE_EXECUTE;
-            }
-            if write {
-                return PAGE_READWRITE;
-            }
-            if read {
-                return PAGE_READONLY;
-            }
+            if execute && write { return PAGE_EXECUTE_READWRITE; }
+            if execute && read { return PAGE_EXECUTE_READ; }
+            if execute { return PAGE_EXECUTE; }
+            if write { return PAGE_READWRITE; }
+            if read { return PAGE_READONLY; }
             return PAGE_NOACCESS;
         }
 
@@ -285,15 +255,9 @@ when #target.os {
             if code == ERROR_NOT_ENOUGH_MEMORY || code == ERROR_OUTOFMEMORY || code == ERROR_COMMITMENT_LIMIT {
                 return PageError::OutOfMemory;
             }
-            if code == ERROR_ACCESS_DENIED {
-                return PageError::PermissionDenied;
-            }
-            if code == ERROR_INVALID_ADDRESS {
-                return PageError::InvalidAddress;
-            }
-            if code == ERROR_INVALID_PARAMETER {
-                return PageError::InvalidLength;
-            }
+            if code == ERROR_ACCESS_DENIED { return PageError::PermissionDenied; }
+            if code == ERROR_INVALID_ADDRESS { return PageError::InvalidAddress; }
+            if code == ERROR_INVALID_PARAMETER { return PageError::InvalidLength; }
             return PageError::Failed;
         }
     }
@@ -315,15 +279,9 @@ when #target.os {
         }
 
         func UnixError(number: int64) -> PageError {
-            if number == ENOMEM {
-                return PageError::OutOfMemory;
-            }
-            if number == EACCES || number == EPERM {
-                return PageError::PermissionDenied;
-            }
-            if number == EINVAL {
-                return PageError::InvalidLength;
-            }
+            if number == ENOMEM { return PageError::OutOfMemory; }
+            if number == EACCES || number == EPERM { return PageError::PermissionDenied; }
+            if number == EINVAL { return PageError::InvalidLength; }
             return PageError::Failed;
         }
     }

@@ -84,16 +84,12 @@ func IsConjunctExtend(scalar: char32) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
 pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
-    if index == 0 || index >= text.length {
-        return true;
-    }
+    if index == 0 || index >= text.length { return true; }
     let before = GraphemeBreakOf(text.data[index - 1]);
     let after = GraphemeBreakOf(text.data[index]);
 
     // GB3: a CR joins the LF after it, and only that.
-    if before == GraphemeBreak::CarriageReturn && after == GraphemeBreak::LineFeed {
-        return false;
-    }
+    if before == GraphemeBreak::CarriageReturn && after == GraphemeBreak::LineFeed { return false; }
     // GB4 and GB5: controls stand alone on both sides.
     if before == GraphemeBreak::Control || before == GraphemeBreak::CarriageReturn ||
        before == GraphemeBreak::LineFeed {
@@ -123,9 +119,7 @@ pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
         return false;
     }
     // GB9b: a prepend binds forward.
-    if before == GraphemeBreak::Prepend {
-        return false;
-    }
+    if before == GraphemeBreak::Prepend { return false; }
     // GB9c: a consonant, a linker somewhere in the marks behind, and this consonant, all one conjunct.
     if IsConjunctConsonant(text.data[index]) {
         var walk = index;
@@ -138,9 +132,7 @@ pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
                 sawLinker = true;
             }
             else if IsConjunctConsonant(each) {
-                if sawLinker {
-                    return false;
-                }
+                if sawLinker { return false; }
                 joined = true;
             }
             else if !IsConjunctExtend(each) {
@@ -155,9 +147,7 @@ pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
             walk = walk - 1;
             let kind = GraphemeBreakOf(text.data[walk]);
             if kind != GraphemeBreak::Extend {
-                if IsPictographic(text.data[walk]) {
-                    return false;
-                }
+                if IsPictographic(text.data[walk]) { return false; }
                 walk = 0;
             }
         }
@@ -170,9 +160,7 @@ pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
             run = run + 1;
             walk = walk - 1;
         }
-        if run % 2 == 1 {
-            return false;
-        }
+        if run % 2 == 1 { return false; }
     }
     // GB999: everything else breaks.
     return true;

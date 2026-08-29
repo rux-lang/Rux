@@ -68,9 +68,7 @@ extend Shake {
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/update
     pub func Update(self: &var Shake, bytes: Slice<char8>) {
-        if self.reading {
-            return;
-        }
+        if self.reading { return; }
         var index: uint = 0;
         while index < bytes.length {
             let lane = self.position / 8u;

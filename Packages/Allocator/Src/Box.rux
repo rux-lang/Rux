@@ -56,9 +56,7 @@ extend Box<T> {
         let layout = LayoutOf<T>();
         var block: *var opaque = null;
         *error = allocator.Allocate(layout, @block);
-        if *error != AllocError::None {
-            return Box<T> { pointer: null, allocator: allocator };
-        }
+        if *error != AllocError::None { return Box<T> { pointer: null, allocator: allocator }; }
         let typed = block as *var T;
         *typed <- value;
         return Box<T> { pointer: typed, allocator: allocator };
@@ -104,9 +102,7 @@ extend Box<T> {
     ///
     /// https://rux-lang.dev/docs/api/allocator/box/try-take
     pub func TryTake(self: &var Box<T>, destination: *var T) -> bool {
-        if self.pointer == null || destination == null {
-            return false;
-        }
+        if self.pointer == null || destination == null { return false; }
         let held = self.pointer;
         *destination <- *held;
         let layout = LayoutOf<T>();

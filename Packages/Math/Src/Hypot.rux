@@ -30,9 +30,7 @@ pub func Hypot(x: float64, y: float64) -> float64 {
 
     // a is more than 2^60 times b, so b is lost in the rounding of a. This
     // also carries every infinity and NaN whose partner is finite.
-    if (ha - hb) > 0x3C00000u64 {
-        return a + b;
-    }
+    if (ha - hb) > 0x3C00000u64 { return a + b; }
 
     var k = 0i64;
 
@@ -60,9 +58,7 @@ pub func Hypot(x: float64, y: float64) -> float64 {
 
     if hb < 0x20B00000u64 { // b < 2^-500
         if hb <= 0xFFFFFu64 { // b is subnormal or zero
-            if (hb | (FloatBits(b) & 0xFFFFFFFFu64)) == 0u64 {
-                return a;
-            }
+            if (hb | (FloatBits(b) & 0xFFFFFFFFu64)) == 0u64 { return a; }
             let scale = FromHighWord(0x7FD00000u64); // 2^1022
             a *= scale;
             b *= scale;
@@ -94,9 +90,7 @@ pub func Hypot(x: float64, y: float64) -> float64 {
         w = Sqrt(t1 * y1 - (w * (-w) - (t1 * y2 + t2 * b)));
     }
 
-    if k != 0i64 {
-        return Scalb(w, k);
-    }
+    if k != 0i64 { return Scalb(w, k); }
     return w;
 }
 

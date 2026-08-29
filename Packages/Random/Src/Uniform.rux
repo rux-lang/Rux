@@ -21,9 +21,7 @@ import Math::{ IsInfinite, NextDown };
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-below
 pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
-    if bound == 0u64 {
-        return 0u64;
-    }
+    if bound == 0u64 { return 0u64; }
     var product = (generator.NextUint64() as uint128) * (bound as uint128);
     var low = product as uint64;
     if low < bound {
@@ -47,9 +45,7 @@ pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> u
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-in-range
 pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high: uint64) -> uint64 {
-    if high < low {
-        return low;
-    }
+    if high < low { return low; }
     let span = high - low;
     if span == 0xFFFFFFFFFFFFFFFFu64 {
         // Every value is in range, so no reduction is needed and none would fit.
@@ -65,13 +61,9 @@ pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-in-signed-range
 pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
-    if high < low {
-        return low;
-    }
+    if high < low { return low; }
     let span = (high as uint64) - (low as uint64);
-    if span == 0xFFFFFFFFFFFFFFFFu64 {
-        return generator.NextUint64() as int64;
-    }
+    if span == 0xFFFFFFFFFFFFFFFFu64 { return generator.NextUint64() as int64; }
     return ((low as uint64) + UniformBelow<G>(generator, span + 1u64)) as int64;
 }
 
@@ -82,9 +74,7 @@ pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64,
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-float-in-range
 pub func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64, high: float64) -> float64 {
-    if !(low < high) {
-        return low;
-    }
+    if !(low < high) { return low; }
     let unit = NextFloat64<G>(generator);
     let span = high - low;
     if IsInfinite(span) {

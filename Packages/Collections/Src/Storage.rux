@@ -26,9 +26,7 @@ func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
     let elementSize = sizeof(T) == 0 ? 1u : sizeof(T);
     var bytes: uint = 0;
     let sizing = ByteSize(count, elementSize, @bytes);
-    if sizing.IsError() {
-        return sizing;
-    }
+    if sizing.IsError() { return sizing; }
 
     let alignment = alignof(T) == 0 ? 1u : alignof(T);
     let checked = Layout::New(bytes, alignment);
@@ -48,15 +46,11 @@ func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
 pub func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) -> CollectionError {
     var layout = Layout { size: 0, alignment: 1 };
     let sizing = ElementLayout<T>(count, @layout);
-    if sizing.IsError() {
-        return sizing;
-    }
+    if sizing.IsError() { return sizing; }
 
     var block: *var opaque = null;
     let error = allocator.Allocate(layout, @block);
-    if error != AllocError::None {
-        return FromAllocError(error);
-    }
+    if error != AllocError::None { return FromAllocError(error); }
     *result = block as *var T;
     return CollectionError::None;
 }
@@ -71,20 +65,14 @@ pub func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint,
                         result: *var *var T) -> CollectionError {
     var oldLayout = Layout { size: 0, alignment: 1 };
     let oldSizing = ElementLayout<T>(oldCount, @oldLayout);
-    if oldSizing.IsError() {
-        return oldSizing;
-    }
+    if oldSizing.IsError() { return oldSizing; }
     var newLayout = Layout { size: 0, alignment: 1 };
     let newSizing = ElementLayout<T>(newCount, @newLayout);
-    if newSizing.IsError() {
-        return newSizing;
-    }
+    if newSizing.IsError() { return newSizing; }
 
     var moved: *var opaque = null;
     let error = allocator.Reallocate(block as *var opaque, oldLayout, newLayout, @moved);
-    if error != AllocError::None {
-        return FromAllocError(error);
-    }
+    if error != AllocError::None { return FromAllocError(error); }
     *result = moved as *var T;
     return CollectionError::None;
 }

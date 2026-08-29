@@ -68,9 +68,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteE
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
-    if sink.Write(quote[0..1]) != TextError::None {
-        return JsonWriteError::Failed;
-    }
+    if sink.Write(quote[0..1]) != TextError::None { return JsonWriteError::Failed; }
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
@@ -116,43 +114,31 @@ pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteE
         if escapeLength > 0u {
             if index > runStart {
                 let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
-                if sink.Write(run) != TextError::None {
-                    return JsonWriteError::Failed;
-                }
+                if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
             }
-            if sink.Write(escape[0..escapeLength]) != TextError::None {
-                return JsonWriteError::Failed;
-            }
+            if sink.Write(escape[0..escapeLength]) != TextError::None { return JsonWriteError::Failed; }
             runStart = index + 1u;
         }
         index = index + 1u;
     }
     if index > runStart {
         let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
-        if sink.Write(run) != TextError::None {
-            return JsonWriteError::Failed;
-        }
+        if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
     }
-    if sink.Write(quote[0..1]) != TextError::None {
-        return JsonWriteError::Failed;
-    }
+    if sink.Write(quote[0..1]) != TextError::None { return JsonWriteError::Failed; }
     return JsonWriteError::None;
 }
 
 // Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
 // non-finite value gets in is a caller writing one there deliberately -- and this is where it is caught.
 func IsFiniteNumberText(text: Slice<char8>) -> bool {
-    if text.length == 0u {
-        return false;
-    }
+    if text.length == 0u { return false; }
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         let allowed = (c >= 0x30u8 && c <= 0x39u8) || c == 0x2Du8 || c == 0x2Bu8 || c == 0x2Eu8 ||
                       c == 0x65u8 || c == 0x45u8;
-        if !allowed {
-            return false;
-        }
+        if !allowed { return false; }
         index = index + 1u;
     }
     return true;
@@ -164,15 +150,11 @@ func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> JsonWriteError 
 }
 
 func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
-    if style.indent == 0u {
-        return JsonWriteError::None;
-    }
+    if style.indent == 0u { return JsonWriteError::None; }
     var newline: char8[1];
     newline[0] = 0x0Au8 as char8;
     let broke = WriteBytes(writer, newline[0..1]);
-    if broke != JsonWriteError::None {
-        return broke;
-    }
+    if broke != JsonWriteError::None { return broke; }
     var spaces: char8[64];
     var index: uint = 0;
     while index < 64u {
@@ -183,9 +165,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
     while remaining > 0u {
         let step = remaining < 64u ? remaining : 64u;
         let padded = WriteBytes(writer, spaces[0..step]);
-        if padded != JsonWriteError::None {
-            return padded;
-        }
+        if padded != JsonWriteError::None { return padded; }
         remaining = remaining - step;
     }
     return JsonWriteError::None;
@@ -199,13 +179,9 @@ pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle
 }
 
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
-    if level > 512u {
-        return JsonWriteError::TooDeep;
-    }
+    if level > 512u { return JsonWriteError::TooDeep; }
     let kind = value.Kind();
-    if kind == JsonKind::Null {
-        return WriteBytes(writer, "null");
-    }
+    if kind == JsonKind::Null { return WriteBytes(writer, "null"); }
     if kind == JsonKind::Boolean {
         var flag = false;
         value.AsBoolean(@flag);
@@ -220,17 +196,13 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, 
         }
         return WriteBytes(writer, text);
     }
-    if kind == JsonKind::Text {
-        return WriteEscaped(writer, value.AsText().Bytes());
-    }
+    if kind == JsonKind::Text { return WriteEscaped(writer, value.AsText().Bytes()); }
 
     let isObject = kind == JsonKind::Object;
     let opening = isObject ? "{" : "[";
     let closing = isObject ? "}" : "]";
     var outcome = WriteBytes(writer, opening);
-    if outcome != JsonWriteError::None {
-        return outcome;
-    }
+    if outcome != JsonWriteError::None { return outcome; }
     let count = value.Length();
     if count == 0u {
         // An empty container stays on one line even when indenting, since a line holding only a bracket says
@@ -241,43 +213,29 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, 
     while index < count {
         if index > 0u {
             outcome = WriteBytes(writer, ",");
-            if outcome != JsonWriteError::None {
-                return outcome;
-            }
+            if outcome != JsonWriteError::None { return outcome; }
         }
         outcome = WriteNewlineAndIndent(writer, style, level + 1u);
-        if outcome != JsonWriteError::None {
-            return outcome;
-        }
+        if outcome != JsonWriteError::None { return outcome; }
         if isObject {
             let member = value.MemberAt(index);
             outcome = WriteEscaped(writer, member.name.View().Bytes());
-            if outcome != JsonWriteError::None {
-                return outcome;
-            }
+            if outcome != JsonWriteError::None { return outcome; }
             outcome = WriteBytes(writer, ":");
-            if outcome != JsonWriteError::None {
-                return outcome;
-            }
+            if outcome != JsonWriteError::None { return outcome; }
             if style.indent > 0u || style.spaceAfterColon {
                 outcome = WriteBytes(writer, " ");
-                if outcome != JsonWriteError::None {
-                    return outcome;
-                }
+                if outcome != JsonWriteError::None { return outcome; }
             }
             outcome = WriteAtLevel(writer, (*member).value, style, level + 1u);
         }
         else {
             outcome = WriteAtLevel(writer, *value.At(index), style, level + 1u);
         }
-        if outcome != JsonWriteError::None {
-            return outcome;
-        }
+        if outcome != JsonWriteError::None { return outcome; }
         index = index + 1u;
     }
     outcome = WriteNewlineAndIndent(writer, style, level);
-    if outcome != JsonWriteError::None {
-        return outcome;
-    }
+    if outcome != JsonWriteError::None { return outcome; }
     return WriteBytes(writer, closing);
 }

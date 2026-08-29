@@ -45,15 +45,9 @@ pub enum UuidParseError: int32 {
 
 // The value of one hexadecimal digit, or sixteen for anything else.
 func HexValue(c: uint8) -> uint8 {
-    if c >= 0x30u8 && c <= 0x39u8 {
-        return c - 0x30u8;
-    }
-    if c >= 0x61u8 && c <= 0x66u8 {
-        return c - 0x61u8 + 10u8;
-    }
-    if c >= 0x41u8 && c <= 0x46u8 {
-        return c - 0x41u8 + 10u8;
-    }
+    if c >= 0x30u8 && c <= 0x39u8 { return c - 0x30u8; }
+    if c >= 0x61u8 && c <= 0x66u8 { return c - 0x61u8 + 10u8; }
+    if c >= 0x41u8 && c <= 0x46u8 { return c - 0x41u8 + 10u8; }
     return 16u8;
 }
 

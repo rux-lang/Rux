@@ -139,9 +139,7 @@ extend Array<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/array/get
     pub func Get(self: &Array<T>, index: uint) -> Option<T> {
-        if index >= self.length {
-            return Option::None<T>();
-        }
+        if index >= self.length { return Option::None<T>(); }
         return Option::Some<T>(self.data[index]);
     }
 
@@ -156,9 +154,7 @@ extend Array<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/array/reference
     pub func Reference(self: &Array<T>, index: uint) -> Option<*T> {
-        if index >= self.length {
-            return Option::None<*T>();
-        }
+        if index >= self.length { return Option::None<*T>(); }
         return Option::Some<*T>(@self.data[index]);
     }
 
@@ -173,9 +169,7 @@ extend Array<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/array/set
     pub func Set(self: &var Array<T>, index: uint, value: T) -> CollectionError {
-        if index >= self.length {
-            return CollectionError::IndexOutOfRange;
-        }
+        if index >= self.length { return CollectionError::IndexOutOfRange; }
         self.data[index] <- value;
         return CollectionError::None;
     }
@@ -236,9 +230,7 @@ extend Array<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/array/destructor
     func ~Array(self: &var Array<T>) {
-        if self.data == null {
-            return;
-        }
+        if self.data == null { return; }
         var index: uint = 0;
         while index < self.length {
             // Reading the element into a local moves it there, and the local's life ends on the next line -- which

@@ -78,12 +78,8 @@ pub func Maximum<T>(left: T, right: T) -> T {
 ///
 /// https://rux-lang.dev/docs/api/math/clamp
 pub func Clamp<T>(value: T, low: T, high: T) -> T {
-    if value < low {
-        return low;
-    }
-    if high < value {
-        return high;
-    }
+    if value < low { return low; }
+    if high < value { return high; }
     return value;
 }
 
@@ -138,24 +134,16 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     *result = zero;
-    if left == zero || right == zero {
-        return false;
-    }
+    if left == zero || right == zero { return false; }
     var divisor = zero;
-    if GcdChecked<T>(left, right, @divisor) {
-        return true;
-    }
+    if GcdChecked<T>(left, right, @divisor) { return true; }
     var magnitude = zero;
-    if AbsChecked<T>(left, @magnitude) {
-        return true;
-    }
+    if AbsChecked<T>(left, @magnitude) { return true; }
     // `magnitude / divisor` is exact, and doing it first keeps `Lcm(a, b)` in range whenever the answer itself
     // is, where multiplying first would overflow for perfectly representable results.
     let reduced = magnitude / divisor;
     var other = zero;
-    if AbsChecked<T>(right, @other) {
-        return true;
-    }
+    if AbsChecked<T>(right, @other) { return true; }
     return MulChecked<T>(reduced, other, result);
 }
 

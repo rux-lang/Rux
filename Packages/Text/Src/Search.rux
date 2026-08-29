@@ -24,14 +24,10 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/starts-with
     pub func StartsWith(self: &StringView, prefix: StringView) -> bool {
-        if prefix.bytes.length > self.bytes.length {
-            return false;
-        }
+        if prefix.bytes.length > self.bytes.length { return false; }
         var index: uint = 0;
         while index < prefix.bytes.length {
-            if self.bytes.data[index] != prefix.bytes.data[index] {
-                return false;
-            }
+            if self.bytes.data[index] != prefix.bytes.data[index] { return false; }
             index = index + 1;
         }
         return true;
@@ -41,15 +37,11 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/ends-with
     pub func EndsWith(self: &StringView, suffix: StringView) -> bool {
-        if suffix.bytes.length > self.bytes.length {
-            return false;
-        }
+        if suffix.bytes.length > self.bytes.length { return false; }
         let offset = self.bytes.length - suffix.bytes.length;
         var index: uint = 0;
         while index < suffix.bytes.length {
-            if self.bytes.data[offset + index] != suffix.bytes.data[index] {
-                return false;
-            }
+            if self.bytes.data[offset + index] != suffix.bytes.data[index] { return false; }
             index = index + 1;
         }
         return true;
@@ -64,12 +56,8 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/index-of
     pub func IndexOf(self: &StringView, needle: StringView) -> Option<uint> {
-        if needle.bytes.length == 0 {
-            return Option::Some<uint>(0);
-        }
-        if needle.bytes.length > self.bytes.length {
-            return Option::None<uint>();
-        }
+        if needle.bytes.length == 0 { return Option::Some<uint>(0); }
+        if needle.bytes.length > self.bytes.length { return Option::None<uint>(); }
         let last = self.bytes.length - needle.bytes.length;
         var start: uint = 0;
         while start <= last {
@@ -84,9 +72,7 @@ extend StringView {
                     index = index + 1;
                 }
             }
-            if matched {
-                return Option::Some<uint>(start);
-            }
+            if matched { return Option::Some<uint>(start); }
             start = start + 1;
         }
         return Option::None<uint>();
@@ -96,12 +82,8 @@ extend StringView {
     ///
     /// https://rux-lang.dev/docs/api/text/string-view/last-index-of
     pub func LastIndexOf(self: &StringView, needle: StringView) -> Option<uint> {
-        if needle.bytes.length == 0 {
-            return Option::Some<uint>(self.bytes.length);
-        }
-        if needle.bytes.length > self.bytes.length {
-            return Option::None<uint>();
-        }
+        if needle.bytes.length == 0 { return Option::Some<uint>(self.bytes.length); }
+        if needle.bytes.length > self.bytes.length { return Option::None<uint>(); }
         var start = self.bytes.length - needle.bytes.length + 1;
         while start > 0 {
             start = start - 1;
@@ -116,9 +98,7 @@ extend StringView {
                     index = index + 1;
                 }
             }
-            if matched {
-                return Option::Some<uint>(start);
-            }
+            if matched { return Option::Some<uint>(start); }
         }
         return Option::None<uint>();
     }
@@ -201,9 +181,7 @@ extend SplitIterator {
     ///
     /// https://rux-lang.dev/docs/api/text/split-iterator/next
     pub func Next(self: &var SplitIterator) -> Option<StringView> {
-        if self.finished {
-            return Option::None<StringView>();
-        }
+        if self.finished { return Option::None<StringView>(); }
         if self.separator.bytes.length == 0 {
             self.finished = true;
             return Option::Some<StringView>(self.rest);

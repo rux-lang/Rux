@@ -6,25 +6,19 @@
 /// https://rux-lang.dev/docs/api/math/cotan
 pub func Cotan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     var zero = 0.0;
 
     // x - x is NaN for an infinity and 0.0 for anything else finite. The
     // cotangent has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 {
-        return zero / zero;
-    }
+    if x - x != 0.0 { return zero / zero; }
 
     // cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under
     // half an ulp of the first. The reciprocal also carries the pole at
     // zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf.
     // Stopping here is what keeps NegRecip's argument away from overflow.
-    if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 {
-        return 1.0 / x;
-    }
+    if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return 1.0 / x; }
 
     let negative = x < 0.0;
     let ax = negative ? -x : x;

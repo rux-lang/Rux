@@ -114,9 +114,7 @@ extend Timestamp {
     pub func Plus(self: &Timestamp, span: Duration) -> Option<Timestamp> {
         let mine = Duration { seconds: self.seconds, nanoseconds: self.nanoseconds };
         let shifted = mine.Plus(span);
-        if shifted.IsNone() {
-            return Option::None<Timestamp>();
-        }
+        if shifted.IsNone() { return Option::None<Timestamp>(); }
         let landed = shifted.ValueOr(Duration::Zero());
         return Option::Some<Timestamp>(Timestamp { seconds: landed.seconds, nanoseconds: landed.nanoseconds });
     }

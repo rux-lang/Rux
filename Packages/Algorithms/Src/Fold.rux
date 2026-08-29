@@ -112,9 +112,7 @@ pub func Product<T>(items: Slice<T>, initial: T) -> T {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/transform
 pub func Transform<T, U>(destination: MutableSlice<U>, source: Slice<T>, transform: func(T) -> U) -> bool {
-    if destination.length != source.length {
-        return false;
-    }
+    if destination.length != source.length { return false; }
     var index: uint = 0;
     while index < source.length {
         destination.data[index] = transform(source.data[index]);

@@ -57,9 +57,7 @@ pub func Count<T>(items: Slice<T>, value: T) -> uint {
 pub func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
-        if items.data[index] == value {
-            return Option::Some<uint>(index);
-        }
+        if items.data[index] == value { return Option::Some<uint>(index); }
         index++;
     }
     return Option::None<uint>();
@@ -77,9 +75,7 @@ pub func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
-        if items.data[remaining] == value {
-            return Option::Some<uint>(remaining);
-        }
+        if items.data[remaining] == value { return Option::Some<uint>(remaining); }
     }
     return Option::None<uint>();
 }
@@ -95,9 +91,7 @@ pub func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
 pub func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
-        if predicate(items.data[index]) {
-            return Option::Some<uint>(index);
-        }
+        if predicate(items.data[index]) { return Option::Some<uint>(index); }
         index++;
     }
     return Option::None<uint>();
@@ -115,9 +109,7 @@ pub func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Optio
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
-        if predicate(items.data[remaining]) {
-            return Option::Some<uint>(remaining);
-        }
+        if predicate(items.data[remaining]) { return Option::Some<uint>(remaining); }
     }
     return Option::None<uint>();
 }
@@ -153,9 +145,7 @@ pub func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
 pub func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
     var index: uint = 0;
     while index < items.length {
-        if !predicate(items.data[index]) {
-            return false;
-        }
+        if !predicate(items.data[index]) { return false; }
         index++;
     }
     return true;
@@ -198,14 +188,10 @@ pub func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
-        if !(left.data[index] == right.data[index]) {
-            return Option::Some<uint>(index);
-        }
+        if !(left.data[index] == right.data[index]) { return Option::Some<uint>(index); }
         index++;
     }
-    if left.length != right.length {
-        return Option::Some<uint>(shorter);
-    }
+    if left.length != right.length { return Option::Some<uint>(shorter); }
     return Option::None<uint>();
 }
 
@@ -218,9 +204,7 @@ pub func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sequence-equal
 pub func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
-    if left.length != right.length {
-        return false;
-    }
+    if left.length != right.length { return false; }
     return Mismatch<T>(left, right).IsNone();
 }
 
@@ -240,20 +224,12 @@ pub func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
-        if left.data[index] < right.data[index] {
-            return Ordering::Less;
-        }
-        if right.data[index] < left.data[index] {
-            return Ordering::Greater;
-        }
+        if left.data[index] < right.data[index] { return Ordering::Less; }
+        if right.data[index] < left.data[index] { return Ordering::Greater; }
         index++;
     }
-    if left.length < right.length {
-        return Ordering::Less;
-    }
-    if right.length < left.length {
-        return Ordering::Greater;
-    }
+    if left.length < right.length { return Ordering::Less; }
+    if right.length < left.length { return Ordering::Greater; }
     return Ordering::Equal;
 }
 
@@ -271,16 +247,10 @@ pub func CompareBy<T>(left: Slice<T>, right: Slice<T>, compare: func(T, T) -> Or
     var index: uint = 0;
     while index < shorter {
         let order = compare(left.data[index], right.data[index]);
-        if !order.IsEqual() {
-            return order;
-        }
+        if !order.IsEqual() { return order; }
         index++;
     }
-    if left.length < right.length {
-        return Ordering::Less;
-    }
-    if right.length < left.length {
-        return Ordering::Greater;
-    }
+    if left.length < right.length { return Ordering::Less; }
+    if right.length < left.length { return Ordering::Greater; }
     return Ordering::Equal;
 }

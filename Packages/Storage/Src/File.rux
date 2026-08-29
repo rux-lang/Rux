@@ -109,12 +109,8 @@ extend OpenOptions {
 
     // The contradictions, refused before any platform is asked.
     func Validate(self: &OpenOptions) -> IoError {
-        if !self.read && !self.write && !self.append {
-            return IoError::Of(IoErrorKind::InvalidInput);
-        }
-        if self.truncate && !self.write {
-            return IoError::Of(IoErrorKind::InvalidInput);
-        }
+        if !self.read && !self.write && !self.append { return IoError::Of(IoErrorKind::InvalidInput); }
+        if self.truncate && !self.write { return IoError::Of(IoErrorKind::InvalidInput); }
         if (self.create || self.createNew) && !self.write && !self.append {
             return IoError::Of(IoErrorKind::InvalidInput);
         }
@@ -144,21 +140,15 @@ func NativePath(allocator: Allocator, path: Path, block: *var *var OsUnit) -> Io
     while index < units.length {
         // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
         // not be the file named. Refused here on every platform.
-        if (units.data[index] as uint32) == 0u32 {
-            return IoError::Of(IoErrorKind::InvalidInput);
-        }
+        if (units.data[index] as uint32) == 0u32 { return IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
     let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit));
-    if layout.IsNone() {
-        return IoError::Of(IoErrorKind::InvalidInput);
-    }
+    if layout.IsNone() { return IoError::Of(IoErrorKind::InvalidInput); }
     let fallback = Layout { size: (units.length + 1) * sizeof(OsUnit), alignment: alignof(OsUnit) };
     var borrowed = allocator;
     var raw: *var opaque = null;
-    if borrowed.Allocate(layout.ValueOr(fallback), @raw) != AllocError::None {
-        return IoError::Of(IoErrorKind::Other);
-    }
+    if borrowed.Allocate(layout.ValueOr(fallback), @raw) != AllocError::None { return IoError::Of(IoErrorKind::Other); }
     let copied = raw as *var OsUnit;
     index = 0;
     while index < units.length {
@@ -194,14 +184,10 @@ extend File {
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
         *error = options.Validate();
         var file = File { handle: NoFile(), open: false };
-        if (*error).IsError() {
-            return <-file;
-        }
+        if (*error).IsError() { return <-file; }
         var native: *var OsUnit = null;
         *error = NativePath(allocator, path, @native);
-        if (*error).IsError() {
-            return <-file;
-        }
+        if (*error).IsError() { return <-file; }
         when #target.os == .Windows {
             var access = 0u32;
             if options.read {
@@ -290,21 +276,15 @@ extend File {
     ///
     /// https://rux-lang.dev/docs/api/storage/file/close
     pub func Close(self: &var File) -> IoError {
-        if !self.open {
-            return IoError::Ok();
-        }
+        if !self.open { return IoError::Ok(); }
         self.open = false;
         when #target.os == .Windows {
-            if !CloseHandle(self.handle) {
-                return TranslateNative(GetLastError() as int32);
-            }
+            if !CloseHandle(self.handle) { return TranslateNative(GetLastError() as int32); }
             return IoError::Ok();
         }
         else {
             let result = Close(self.handle);
-            if result < 0 {
-                return TranslateNative((0i64 - result) as int32);
-            }
+            if result < 0 { return TranslateNative((0i64 - result) as int32); }
             return IoError::Ok();
         }
     }

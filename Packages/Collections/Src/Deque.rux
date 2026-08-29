@@ -166,9 +166,7 @@ extend Deque<T> {
     // than a copy: the bytes move and the originals are not destroyed, because there is exactly one of each
     // afterwards.
     func CopyInto(self: &Deque<T>, block: *var T) {
-        if self.length == 0 {
-            return;
-        }
+        if self.length == 0 { return; }
 
         var front = self.capacity - self.head;
         if front > self.length {
@@ -187,24 +185,18 @@ extend Deque<T> {
     //
     // Internal: `Reserve` is the public way to ask for room, because it counts from the current length.
     func Grow(self: &var Deque<T>, required: uint) -> CollectionError {
-        if required <= self.capacity {
-            return CollectionError::None;
-        }
+        if required <= self.capacity { return CollectionError::None; }
 
         var capacity: uint = 0;
         let planned = PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T), @capacity);
-        if planned.IsError() {
-            return planned;
-        }
+        if planned.IsError() { return planned; }
 
         // A fresh block rather than a reallocation: the elements may wrap, and unwrapping them in place would need a
         // rotation the new block gets for free. Nothing is released until the relocation has happened, so a refused
         // allocation leaves the deque exactly as it was.
         var block: *var T = null;
         let taken = AllocateBlock<T>(self.allocator, capacity, @block);
-        if taken.IsError() {
-            return taken;
-        }
+        if taken.IsError() { return taken; }
 
         self.CopyInto(block);
         if self.data != null {
@@ -224,9 +216,7 @@ extend Deque<T> {
     pub func Reserve(self: &var Deque<T>, additional: uint) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, additional, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         return self.Grow(required);
     }
 
@@ -252,18 +242,12 @@ extend Deque<T> {
 
         var capacity: uint = 0;
         let planned = PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T), @capacity);
-        if planned.IsError() {
-            return planned;
-        }
-        if capacity == self.capacity {
-            return CollectionError::None;
-        }
+        if planned.IsError() { return planned; }
+        if capacity == self.capacity { return CollectionError::None; }
 
         var block: *var T = null;
         let taken = AllocateBlock<T>(self.allocator, capacity, @block);
-        if taken.IsError() {
-            return taken;
-        }
+        if taken.IsError() { return taken; }
 
         self.CopyInto(block);
         ReleaseBlock<T>(self.allocator, self.data, self.capacity);
@@ -322,13 +306,9 @@ extend Deque<T> {
     pub func PushFront(self: &var Deque<T>, value: T) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         let room = self.Grow(required);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
 
         // One step back around the ring, which for a head of zero is the last slot.
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
@@ -347,13 +327,9 @@ extend Deque<T> {
     pub func PushBack(self: &var Deque<T>, value: T) -> CollectionError {
         var required: uint = 0;
         let total = AddLength(self.length, 1, @required);
-        if total.IsError() {
-            return total;
-        }
+        if total.IsError() { return total; }
         let room = self.Grow(required);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
 
         self.data[self.SlotOf(self.length)] <- value;
         self.length = self.length + 1;
@@ -369,9 +345,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/pop-front
     pub func PopFront(self: &var Deque<T>) -> Option<T> {
-        if self.length == 0 {
-            return Option::None<T>();
-        }
+        if self.length == 0 { return Option::None<T>(); }
         let taken <- self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
@@ -385,9 +359,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/pop-back
     pub func PopBack(self: &var Deque<T>) -> Option<T> {
-        if self.length == 0 {
-            return Option::None<T>();
-        }
+        if self.length == 0 { return Option::None<T>(); }
         self.length = self.length - 1;
         return Option::Some<T>(<-self.data[self.SlotOf(self.length)]);
     }
@@ -411,9 +383,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/back
     pub func Back(self: &Deque<T>) -> Option<*T> {
-        if self.length == 0 {
-            return Option::None<*T>();
-        }
+        if self.length == 0 { return Option::None<*T>(); }
         return self.Reference(self.length - 1);
     }
 
@@ -424,9 +394,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/get
     pub func Get(self: &Deque<T>, index: uint) -> Option<T> {
-        if index >= self.length {
-            return Option::None<T>();
-        }
+        if index >= self.length { return Option::None<T>(); }
         return Option::Some<T>(self.data[self.SlotOf(index)]);
     }
 
@@ -440,9 +408,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/reference
     pub func Reference(self: &Deque<T>, index: uint) -> Option<*T> {
-        if index >= self.length {
-            return Option::None<*T>();
-        }
+        if index >= self.length { return Option::None<*T>(); }
         return Option::Some<*T>(@self.data[self.SlotOf(index)]);
     }
 
@@ -456,9 +422,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/set
     pub func Set(self: &var Deque<T>, index: uint, value: T) -> CollectionError {
-        if index >= self.length {
-            return CollectionError::IndexOutOfRange;
-        }
+        if index >= self.length { return CollectionError::IndexOutOfRange; }
         self.data[self.SlotOf(index)] <- value;
         return CollectionError::None;
     }
@@ -472,9 +436,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/is-contiguous
     pub func IsContiguous(self: &Deque<T>) -> bool {
-        if self.capacity == 0 {
-            return true;
-        }
+        if self.capacity == 0 { return true; }
         return self.head + self.length <= self.capacity;
     }
 
@@ -531,9 +493,7 @@ extend Deque<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/make-contiguous
     pub func MakeContiguous(self: &var Deque<T>) {
-        if self.capacity == 0 || self.head == 0 {
-            return;
-        }
+        if self.capacity == 0 || self.head == 0 { return; }
         Rotate<T>(MutableSlice<T> { data: self.data, length: self.capacity }, self.head);
         self.head = 0;
     }

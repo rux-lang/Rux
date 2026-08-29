@@ -50,9 +50,7 @@ extend Xoshiro256 {
     ///
     /// https://rux-lang.dev/docs/api/random/xoshiro256/from-state
     pub func FromState(words: uint64[4]) -> Xoshiro256 {
-        if words[0] == 0u64 && words[1] == 0u64 && words[2] == 0u64 && words[3] == 0u64 {
-            return Xoshiro256(0u64);
-        }
+        if words[0] == 0u64 && words[1] == 0u64 && words[2] == 0u64 && words[3] == 0u64 { return Xoshiro256(0u64); }
         return Xoshiro256 { state: words };
     }
 }

@@ -20,14 +20,10 @@ extend Date {
     /// https://rux-lang.dev/docs/api/time/date/plus-days
     pub func PlusDays(self: &Date, days: int64) -> Option<Date> {
         var landed: int64 = 0;
-        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) {
-            return Option::None<Date>();
-        }
+        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) { return Option::None<Date>(); }
         // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
         // but the answers would be dates nothing else here can speak.
-        if landed < -719468i64 || landed > 2932896i64 {
-            return Option::None<Date>();
-        }
+        if landed < -719468i64 || landed > 2932896i64 { return Option::None<Date>(); }
         return Option::Some<Date>(Date::FromEpochDays(landed));
     }
 
@@ -39,18 +35,14 @@ extend Date {
     pub func PlusMonths(self: &Date, months: int64) -> Option<Date> {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
         var flat: int64 = (self.year as int64) * 12i64 + (self.month as int64) - 1i64;
-        if AddChecked<int64>(flat, months, @flat) {
-            return Option::None<Date>();
-        }
+        if AddChecked<int64>(flat, months, @flat) { return Option::None<Date>(); }
         var year = flat / 12i64;
         var month = flat % 12i64;
         if month < 0i64 {
             year = year - 1i64;
             month = month + 12i64;
         }
-        if year < 0i64 || year > 9999i64 {
-            return Option::None<Date>();
-        }
+        if year < 0i64 || year > 9999i64 { return Option::None<Date>(); }
         let cap = DaysInMonth(year as int32, (month + 1i64) as uint8);
         let day = self.day <= cap ? self.day : cap;
         return Date::New(year as int32, (month + 1i64) as uint8, day);
@@ -61,12 +53,8 @@ extend Date {
     /// https://rux-lang.dev/docs/api/time/date/plus-years
     pub func PlusYears(self: &Date, years: int64) -> Option<Date> {
         var target: int64 = 0;
-        if AddChecked<int64>(self.year as int64, years, @target) {
-            return Option::None<Date>();
-        }
-        if target < 0i64 || target > 9999i64 {
-            return Option::None<Date>();
-        }
+        if AddChecked<int64>(self.year as int64, years, @target) { return Option::None<Date>(); }
+        if target < 0i64 || target > 9999i64 { return Option::None<Date>(); }
         let cap = DaysInMonth(target as int32, self.month);
         let day = self.day <= cap ? self.day : cap;
         return Date::New(target as int32, self.month, day);

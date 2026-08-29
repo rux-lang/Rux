@@ -271,9 +271,7 @@ func WriteFixedPrecision(cursor: &var ByteCursor, value: float64, precision: uin
         cursor.Push(digits[index]);
     }
 
-    if precision == 0 {
-        return;
-    }
+    if precision == 0 { return; }
     cursor.Push(c8'.');
     var fracDigits: char8[20];
     var fracCount: uint = 0;
@@ -293,9 +291,7 @@ func WriteFixedPrecision(cursor: &var ByteCursor, value: float64, precision: uin
 // Whether `value` is one precision formatting can honour: finite, and small enough that scaling it by the
 // precision still fits the integer word the rounding happens in.
 func FitsPrecision(value: float64, precision: uint) -> bool {
-    if !IsFinite(value) || precision > 17 {
-        return false;
-    }
+    if !IsFinite(value) || precision > 17 { return false; }
     let abs = value < 0.0 ? -value : value;
     return abs * Pow10(precision) < 9007199254740992.0;
 }

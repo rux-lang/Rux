@@ -171,9 +171,7 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 ///
 /// https://rux-lang.dev/docs/api/macos/getcwd
 pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
-    if getcwd(buffer, size) == null {
-        return 0i64 - (*__error() as int64);
-    }
+    if getcwd(buffer, size) == null { return 0i64 - (*__error() as int64); }
     return 0;
 }
 

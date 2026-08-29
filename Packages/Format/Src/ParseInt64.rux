@@ -7,9 +7,7 @@ import Text::StringView;
 ///
 /// https://rux-lang.dev/docs/api/format/try-parse-int64
 pub func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
-    if value == null {
-        return false;
-    }
+    if value == null { return false; }
 
     match ParseInt64(str) {
         .Success(parsed) => {

@@ -63,9 +63,7 @@ extend RwLock<T> {
             let cur = self.state.Load(MemoryOrder::Relaxed);
             if (cur & 0x80000000u32) == 0u32 {
                 let res = self.state.CompareExchange(cur, cur + 1u32, MemoryOrder::Acquire, MemoryOrder::Relaxed);
-                if res.1 {
-                    break;
-                }
+                if res.1 { break; }
             } else {
                 SpinLoopHint();
             }
@@ -80,9 +78,7 @@ extend RwLock<T> {
     pub func Write(self: &var RwLock<T>) -> RwLockWriteGuard<T> {
         while true {
             let res = self.state.CompareExchange(0u32, 0x80000000u32, MemoryOrder::Acquire, MemoryOrder::Relaxed);
-            if res.1 {
-                break;
-            }
+            if res.1 { break; }
             while self.state.Load(MemoryOrder::Relaxed) != 0u32 {
                 SpinLoopHint();
             }

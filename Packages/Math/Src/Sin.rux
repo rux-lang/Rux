@@ -7,23 +7,17 @@
 /// https://rux-lang.dev/docs/api/math/sin
 pub func Sin(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     var zero = 0.0;
 
     // x - x is NaN for an infinity and 0.0 for anything else finite. Sine
     // has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 {
-        return zero / zero;
-    }
+    if x - x != 0.0 { return zero / zero; }
 
     // Below 2^-27 the cubic term is under half an ulp of x, so sin(x) is x.
     // Returning x also keeps the sign of a zero: sin(-0.0) is -0.0.
-    if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 {
-        return x;
-    }
+    if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 { return x; }
 
     let negative = x < 0.0;
     let ax = negative ? -x : x;

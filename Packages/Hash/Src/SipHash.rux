@@ -222,9 +222,7 @@ extend SipHash24 : Hasher {
     ///
     /// https://rux-lang.dev/docs/api/hash/sip-hash24/write
     pub func Write(self: &var SipHash24, bytes: *byte, length: uint) {
-        if length == 0 {
-            return;
-        }
+        if length == 0 { return; }
         self.total = self.total + (length as uint64);
 
         var offset: uint = 0;

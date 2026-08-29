@@ -27,16 +27,12 @@ pub func Cbrt(x: float64) -> float64 {
     let hx = (bits >> 32u64) & 0x7FFFFFFFu64;
 
     // Cbrt(NaN) and Cbrt(+-Inf) are themselves.
-    if hx >= 0x7FF00000u64 {
-        return x + x;
-    }
+    if hx >= 0x7FF00000u64 { return x + x; }
 
     var t = 0.0;
     if hx < 0x00100000u64 {
         // Cbrt(+-0) is +-0, sign and all.
-        if (hx | (bits & 0xFFFFFFFFu64)) == 0u64 {
-            return x;
-        }
+        if (hx | (bits & 0xFFFFFFFFu64)) == 0u64 { return x; }
         // A subnormal has no leading one, so scale it into the normals and
         // pay for it with a shifted seed constant.
         let scaled = x * 1.8014398509481984e16; // 2^54

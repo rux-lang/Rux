@@ -35,9 +35,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
     while true {
         let filled = reader.Fill();
         if filled.IsError() {
-            if !filled.IsEnd() {
-                return filled;
-            }
+            if !filled.IsEnd() { return filled; }
             // The stream is over. A sequence still waiting for its continuation bytes was cut by the end,
             // and a carriage return still waiting for a line feed turns out to have been content.
             if carryLength > 0 && failure == IoErrorKind::None {

@@ -190,9 +190,7 @@ extend JsonEventReader {
             self.data = grown;
             self.capacity = wanted;
         }
-        if self.exhausted {
-            return false;
-        }
+        if self.exhausted { return false; }
         var read: uint = 0;
         let room = MutableSlice<char8> { data: @self.data[self.filled], length: self.capacity - self.filled };
         let outcome = self.source.Read(room, @read);
@@ -232,9 +230,7 @@ extend JsonEventReader {
     // Ensures at least one unread byte is available, pulling more if needed.
     func Available(self: &var JsonEventReader) -> bool {
         while self.position >= self.filled {
-            if !self.Refill() {
-                return self.position < self.filled;
-            }
+            if !self.Refill() { return self.position < self.filled; }
         }
         return true;
     }
@@ -242,9 +238,7 @@ extend JsonEventReader {
     func SkipWhitespace(self: &var JsonEventReader) {
         while self.Available() {
             let c = self.data[self.position] as uint8;
-            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 {
-                return;
-            }
+            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 { return; }
             self.position = self.position + 1u;
         }
     }
@@ -304,9 +298,7 @@ extend JsonEventReader {
             else {
                 let ends = c == 0x2Cu8 || c == 0x5Du8 || c == 0x7Du8 || c == 0x20u8 || c == 0x09u8 ||
                            c == 0x0Du8 || c == 0x0Au8;
-                if ends {
-                    break;
-                }
+                if ends { break; }
             }
             index = index + 1u;
         }
@@ -337,9 +329,7 @@ extend JsonEventReader {
     }
 
     func InObject(self: &JsonEventReader) -> bool {
-        if self.depth == 0u {
-            return false;
-        }
+        if self.depth == 0u { return false; }
         let index = self.depth - 1u;
         return (self.stack[index / 64u] & (1u64 << ((index % 64u) as uint64))) != 0u64;
     }
@@ -348,13 +338,9 @@ extend JsonEventReader {
         var index: uint = 0;
         while index < word.length {
             while self.position + index >= self.filled {
-                if !self.Refill() {
-                    return false;
-                }
+                if !self.Refill() { return false; }
             }
-            if self.data[self.position + index] != word.data[index] {
-                return false;
-            }
+            if self.data[self.position + index] != word.data[index] { return false; }
             index = index + 1u;
         }
         self.position = self.position + word.length;
@@ -368,16 +354,12 @@ extend JsonEventReader {
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/next
     pub func Next(self: &var JsonEventReader) -> JsonEvent {
-        if self.failure != JsonParseError::None {
-            return JsonEvent::Error;
-        }
+        if self.failure != JsonParseError::None { return JsonEvent::Error; }
         self.SkipWhitespace();
         // Skip a separator, whichever kind is due here.
         while self.position < self.filled {
             let c = self.data[self.position] as uint8;
-            if c != 0x2Cu8 && c != 0x3Au8 {
-                break;
-            }
+            if c != 0x2Cu8 && c != 0x3Au8 { break; }
             self.position = self.position + 1u;
             self.SkipWhitespace();
         }
@@ -391,17 +373,13 @@ extend JsonEventReader {
         let c = self.data[self.position] as uint8;
         if c == 0x7Bu8 {
             self.position = self.position + 1u;
-            if !self.PushContainer(true) {
-                return JsonEvent::Error;
-            }
+            if !self.PushContainer(true) { return JsonEvent::Error; }
             self.expectingValue = false;
             return JsonEvent::ObjectStart;
         }
         if c == 0x5Bu8 {
             self.position = self.position + 1u;
-            if !self.PushContainer(false) {
-                return JsonEvent::Error;
-            }
+            if !self.PushContainer(false) { return JsonEvent::Error; }
             self.expectingValue = true;
             return JsonEvent::ArrayStart;
         }
@@ -420,9 +398,7 @@ extend JsonEventReader {
         }
         if c == 0x22u8 {
             let isName = self.InObject() && !self.expectingValue;
-            if !self.ScanWhile(true) {
-                return JsonEvent::Error;
-            }
+            if !self.ScanWhile(true) { return JsonEvent::Error; }
             if isName {
                 self.expectingValue = true;
                 return JsonEvent::Name;
@@ -432,20 +408,12 @@ extend JsonEventReader {
         }
         self.expectingValue = !self.InObject();
         if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) {
-            if !self.ScanWhile(false) {
-                return JsonEvent::Error;
-            }
+            if !self.ScanWhile(false) { return JsonEvent::Error; }
             return JsonEvent::Number;
         }
-        if self.Matches("true") {
-            return JsonEvent::True;
-        }
-        if self.Matches("false") {
-            return JsonEvent::False;
-        }
-        if self.Matches("null") {
-            return JsonEvent::Null;
-        }
+        if self.Matches("true") { return JsonEvent::True; }
+        if self.Matches("false") { return JsonEvent::False; }
+        if self.Matches("null") { return JsonEvent::Null; }
         self.failure = JsonParseError::Lexical;
         self.lexical = JsonLexError::UnexpectedByte;
         return JsonEvent::Error;

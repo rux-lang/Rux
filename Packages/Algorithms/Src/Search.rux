@@ -45,14 +45,10 @@ pub func IsSorted<T>(items: Slice<T>) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted-until
 pub func IsSortedUntil<T>(items: Slice<T>) -> uint {
-    if items.length == 0 {
-        return 0;
-    }
+    if items.length == 0 { return 0; }
     var index: uint = 1;
     while index < items.length {
-        if items.data[index] < items.data[index - 1] {
-            return index;
-        }
+        if items.data[index] < items.data[index - 1] { return index; }
         index++;
     }
     return items.length;
@@ -124,9 +120,7 @@ pub func UpperBound<T>(items: Slice<T>, value: T) -> uint {
 /// https://rux-lang.dev/docs/api/algorithms/binary-search
 pub func BinarySearch<T>(items: Slice<T>, value: T) -> Option<uint> {
     let at = LowerBound<T>(items, value);
-    if at < items.length && !(value < items.data[at]) {
-        return Option::Some<uint>(at);
-    }
+    if at < items.length && !(value < items.data[at]) { return Option::Some<uint>(at); }
     return Option::None<uint>();
 }
 
@@ -166,14 +160,10 @@ pub func IsSortedBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
 pub func IsSortedUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
-    if items.length == 0 {
-        return 0;
-    }
+    if items.length == 0 { return 0; }
     var index: uint = 1;
     while index < items.length {
-        if compare(items.data[index], items.data[index - 1]).IsLess() {
-            return index;
-        }
+        if compare(items.data[index], items.data[index - 1]).IsLess() { return index; }
         index++;
     }
     return items.length;
@@ -236,9 +226,7 @@ pub func UpperBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Order
 /// https://rux-lang.dev/docs/api/algorithms/binary-search-by
 pub func BinarySearchBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
     let at = LowerBoundBy<T>(items, value, compare);
-    if at < items.length && !compare(value, items.data[at]).IsLess() {
-        return Option::Some<uint>(at);
-    }
+    if at < items.length && !compare(value, items.data[at]).IsLess() { return Option::Some<uint>(at); }
     return Option::None<uint>();
 }
 

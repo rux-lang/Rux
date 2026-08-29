@@ -22,9 +22,7 @@ import Memory::Copy;
 ///
 /// https://rux-lang.dev/docs/api/memory/is-aligned
 pub func IsAligned(address: uint, alignment: uint) -> bool {
-    if alignment == 0 {
-        return false;
-    }
+    if alignment == 0 { return false; }
     return address % alignment == 0;
 }
 
@@ -55,9 +53,7 @@ pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/memory/align-up
 pub func AlignUp(value: uint, alignment: uint) -> uint {
-    if alignment <= 1 {
-        return value;
-    }
+    if alignment <= 1 { return value; }
     let remainder = value % alignment;
     return remainder == 0 ? value : value + (alignment - remainder);
 }
@@ -84,9 +80,7 @@ pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool
         return false;
     }
     let padding = alignment - remainder;
-    if value > uint::Max - padding {
-        return true;
-    }
+    if value > uint::Max - padding { return true; }
     *result = value + padding;
     return false;
 }
@@ -99,9 +93,7 @@ pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool
 ///
 /// https://rux-lang.dev/docs/api/memory/align-down
 pub func AlignDown(value: uint, alignment: uint) -> uint {
-    if alignment <= 1 {
-        return value;
-    }
+    if alignment <= 1 { return value; }
     return value - (value % alignment);
 }
 
@@ -155,9 +147,7 @@ pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
 ///
 /// https://rux-lang.dev/docs/api/memory/reverse-block
 pub func ReverseBlock(buffer: *var opaque, length: uint) {
-    if length < 2 {
-        return;
-    }
+    if length < 2 { return; }
     let bytes = buffer as *var byte;
     var front: uint = 0;
     var back: uint = length - 1;
@@ -272,8 +262,6 @@ pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
 ///
 /// https://rux-lang.dev/docs/api/memory/zeroize-block
 pub func ZeroizeBlock(buffer: *var opaque, length: uint) {
-    if length == 0 {
-        return;
-    }
+    if length == 0 { return; }
     Zeroize(buffer as *var uint8, length as uint64);
 }

@@ -118,9 +118,7 @@ extend Arena {
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena/reset
     pub func Reset(self: &var Arena) {
-        if self.current == null {
-            return;
-        }
+        if self.current == null { return; }
         var block = self.current.previous;
         while block != null {
             let earlier = block.previous;
@@ -170,22 +168,16 @@ extend Arena {
             capacity = payload;
         }
         let header = sizeof(ArenaBlock);
-        if capacity > uint::Max - header {
-            return AllocError::Unsupported;
-        }
+        if capacity > uint::Max - header { return AllocError::Unsupported; }
         let total = header + capacity;
         var layout = Layout { size: total, alignment: ArenaBlockAlignment };
         let checked = Layout::New(total, ArenaBlockAlignment);
-        if checked.IsNone() {
-            return AllocError::Unsupported;
-        }
+        if checked.IsNone() { return AllocError::Unsupported; }
         layout = checked.ValueOr(layout);
 
         var storage: *var opaque = null;
         let error = self.backing.Allocate(layout, @storage);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
         let block = storage as *var ArenaBlock;
         block.previous = self.current;
         block.capacity = capacity;
@@ -199,23 +191,15 @@ extend Arena {
 
     // The bump allocation itself: align within the current block, take the space, and remember where it went.
     func Bump(self: *var Arena, layout: Layout) -> uint {
-        if self.current == null {
-            return 0;
-        }
+        if self.current == null { return 0; }
         let payloadStart = (self.current as uint) + sizeof(ArenaBlock);
         let unaligned = payloadStart + self.current.used;
         let aligned = AlignUp(unaligned, layout.alignment);
-        if aligned < unaligned {
-            return 0;
-        }
+        if aligned < unaligned { return 0; }
         let padding = aligned - unaligned;
-        if padding > self.current.capacity - self.current.used {
-            return 0;
-        }
+        if padding > self.current.capacity - self.current.used { return 0; }
         let remaining = self.current.capacity - self.current.used - padding;
-        if layout.size > remaining {
-            return 0;
-        }
+        if layout.size > remaining { return 0; }
         self.current.used = self.current.used + padding + layout.size;
         self.lastAllocation = aligned;
         return aligned;
@@ -272,20 +256,14 @@ extend ArenaHandle : Allocator {
             *result = EmptyBlockAddress();
             return AllocError::None;
         }
-        if layout.alignment > ArenaBlockAlignment {
-            return AllocError::Unsupported;
-        }
+        if layout.alignment > ArenaBlockAlignment { return AllocError::Unsupported; }
 
         var address = self.arena.Bump(layout);
         if address == 0 {
             let error = self.arena.TakeBlock(layout.size + layout.alignment);
-            if error != AllocError::None {
-                return error;
-            }
+            if error != AllocError::None { return error; }
             address = self.arena.Bump(layout);
-            if address == 0 {
-                return AllocError::OutOfMemory;
-            }
+            if address == 0 { return AllocError::OutOfMemory; }
         }
         *result = address as *var opaque;
         return AllocError::None;
@@ -302,12 +280,8 @@ extend ArenaHandle : Allocator {
     ///
     /// https://rux-lang.dev/docs/api/allocator/arena-handle/deallocate
     pub func Deallocate(self: &var ArenaHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 {
-            return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock;
-        }
-        if block == null {
-            return AllocError::InvalidBlock;
-        }
+        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
+        if block == null { return AllocError::InvalidBlock; }
         let address = block as uint;
         if address == self.arena.lastAllocation && self.arena.current != null {
             let payloadStart = (self.arena.current as uint) + sizeof(ArenaBlock);
@@ -329,9 +303,7 @@ extend ArenaHandle : Allocator {
     /// https://rux-lang.dev/docs/api/allocator/arena-handle/reallocate
     pub func Reallocate(self: &var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment {
-            return AllocError::Unsupported;
-        }
+        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
             *result = block;
             return AllocError::None;
@@ -358,9 +330,7 @@ extend ArenaHandle : Allocator {
 
         var fresh: *var opaque = null;
         let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None {
-            return error;
-        }
+        if error != AllocError::None { return error; }
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         var offset: uint = 0;
         let target = fresh as *var byte;

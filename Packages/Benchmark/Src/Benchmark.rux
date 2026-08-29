@@ -17,9 +17,7 @@ pub struct BenchmarkResult {
 extend BenchmarkResult {
     /// Calculates the throughput in megabytes per second (MB/s).
     pub func MegabytesPerSecond(self: BenchmarkResult) -> float64 {
-        if self.nanosPerOp == 0u64 || self.bytesPerOp == 0u64 {
-            return 0.0f64;
-        }
+        if self.nanosPerOp == 0u64 || self.bytesPerOp == 0u64 { return 0.0f64; }
         let bytesPerSec = (self.bytesPerOp as float64) * 1000000000.0f64 / (self.nanosPerOp as float64);
         return bytesPerSec / 1000000.0f64;
     }

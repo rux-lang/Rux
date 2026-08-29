@@ -29,9 +29,7 @@ pub func Expm1(x: float64) -> float64 {
         if hx >= 0x40862E42u64 { // |x| >= 709.78...
             if hx >= 0x7FF00000u64 {
                 // A NaN propagates; expm1(+Inf) is +Inf and expm1(-Inf) is -1.
-                if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 {
-                    return x + x;
-                }
+                if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 { return x + x; }
                 return negative ? -1.0 : x;
             }
             if x > 709.782712893384 {
@@ -83,22 +81,16 @@ pub func Expm1(x: float64) -> float64 {
     let t = 3.0 - r1 * hfx;
     var e = hxs * ((r1 - t) / (6.0 - xx * t));
 
-    if k == 0i64 {
-        return xx - (xx * e - hxs);
-    }
+    if k == 0i64 { return xx - (xx * e - hxs); }
 
     e = xx * (e - c) - c;
     e -= hxs;
 
     // Undo the reduction. 2^k * (1 + r) - 1 cancels differently in each of
     // these ranges, and each form is the one that does not lose the answer.
-    if k == -1i64 {
-        return 0.5 * (xx - e) - 0.5;
-    }
+    if k == -1i64 { return 0.5 * (xx - e) - 0.5; }
     if k == 1i64 {
-        if xx < -0.25 {
-            return -2.0 * (e - (xx + 0.5));
-        }
+        if xx < -0.25 { return -2.0 * (e - (xx + 0.5)); }
         return 1.0 + 2.0 * (xx - e);
     }
 

@@ -5,22 +5,14 @@
 /// https://rux-lang.dev/docs/api/math/arc-sin
 pub func ArcSin(x: float64) -> float64 {
     let pio2 = 1.5707963267948966;
-    if x != x {
-        return x;
-    }
-    if x == 1.0 {
-        return pio2;
-    }
-    if x == -1.0 {
-        return -pio2;
-    }
+    if x != x { return x; }
+    if x == 1.0 { return pio2; }
+    if x == -1.0 { return -pio2; }
     if x > 1.0 || x < -1.0 {
         var zero = 0.0;
         return zero / zero;
     }
-    if x == 0.0 {
-        return x;
-    }
+    if x == 0.0 { return x; }
     let root = Sqrt((1.0 - Abs(x)) * (1.0 + Abs(x)));
     return ArcTan(x / root);
 }

@@ -43,9 +43,7 @@ pub func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> TextError {
 ///
 /// https://rux-lang.dev/docs/api/format/write-ascii
 pub func WriteAscii(writer: &var TextWriter, byte: char8) -> TextError {
-    if (byte as uint32) > 0x7F {
-        return TextError::InvalidUtf8;
-    }
+    if (byte as uint32) > 0x7F { return TextError::InvalidUtf8; }
     var one: char8[1];
     one[0] = byte;
     return WriteBytes(writer, Slice<char8> { data: @one[0], length: 1 });
@@ -60,9 +58,7 @@ pub func WriteScalar(writer: &var TextWriter, scalar: char32) -> TextError {
     var encoded: char8[4];
     var written: uint = 0;
     let sink = MutableSlice::From<char8>(@encoded[0], 4);
-    if Encode(scalar, sink, @written).IsError() {
-        return TextError::InvalidUtf8;
-    }
+    if Encode(scalar, sink, @written).IsError() { return TextError::InvalidUtf8; }
     return WriteBytes(writer, Slice<char8> { data: @encoded[0], length: written });
 }
 

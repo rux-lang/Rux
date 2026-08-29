@@ -257,12 +257,8 @@ extend Tree<K, V> {
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/successor
     pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        if node == null {
-            return null;
-        }
-        if node.right != null {
-            return Tree::Minimum<K, V>(node.right);
-        }
+        if node == null { return null; }
+        if node.right != null { return Tree::Minimum<K, V>(node.right); }
         var walk = node;
         var above = node.parent;
         while above != null && walk == above.right {
@@ -278,12 +274,8 @@ extend Tree<K, V> {
     ///
     /// https://rux-lang.dev/docs/api/collections/tree/predecessor
     pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
-        if node == null {
-            return null;
-        }
-        if node.left != null {
-            return Tree::Maximum<K, V>(node.left);
-        }
+        if node == null { return null; }
+        if node.left != null { return Tree::Maximum<K, V>(node.left); }
         var walk = node;
         var above = node.parent;
         while above != null && walk == above.left {
@@ -392,9 +384,7 @@ extend Tree<K, V> {
 
         var fresh: *var TreeNode<K, V> = null;
         let error = AllocateBlock<TreeNode<K, V>>(self.allocator, 1, @fresh);
-        if error.IsError() {
-            return error;
-        }
+        if error.IsError() { return error; }
 
         // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
         // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
@@ -453,9 +443,7 @@ extend Tree<K, V> {
         var walk = node;
         var above = parent;
         while walk != self.root && !Tree::IsRed<K, V>(walk) {
-            if above == null {
-                break;
-            }
+            if above == null { break; }
             if walk == above.left {
                 var sibling = above.right;
                 if Tree::IsRed<K, V>(sibling) {
@@ -498,9 +486,7 @@ extend Tree<K, V> {
                     self.RotateRight(above);
                     sibling = above.left;
                 }
-                if sibling == null {
-                    break;
-                }
+                if sibling == null { break; }
                 if !Tree::IsRed<K, V>(sibling.left) && !Tree::IsRed<K, V>(sibling.right) {
                     sibling.red = true;
                     walk = above;

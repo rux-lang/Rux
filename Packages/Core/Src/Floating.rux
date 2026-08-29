@@ -109,8 +109,6 @@ pub func IsSignPositive<T>(value: T) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/core/sign-of
 pub func SignOf<T>(value: T) -> T {
-    if IsNaN<T>(value) || IsZero<T>(value) {
-        return value;
-    }
+    if IsNaN<T>(value) || IsZero<T>(value) { return value; }
     return value < (0 as T) ? (0 as T) - (1 as T) : 1 as T;
 }

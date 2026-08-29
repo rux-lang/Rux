@@ -23,9 +23,7 @@ pub func ArcTan2(y: float64, x: float64) -> float64 {
     let halfPi = 1.5707963267948966;
     let quarterPi = 0.7853981633974483;
 
-    if IsNan(x) || IsNan(y) {
-        return x + y;
-    }
+    if IsNan(x) || IsNan(y) { return x + y; }
 
     let yNegative = SignBit(y);
 
@@ -35,9 +33,7 @@ pub func ArcTan2(y: float64, x: float64) -> float64 {
         return yNegative ? -angle : angle;
     }
     // A vertical direction: x finite (or zero) and y infinite, or x zero and y nonzero.
-    if IsInfinite(y) || (IsZero(x) && !IsZero(y)) {
-        return yNegative ? -halfPi : halfPi;
-    }
+    if IsInfinite(y) || (IsZero(x) && !IsZero(y)) { return yNegative ? -halfPi : halfPi; }
     // A horizontal direction: y zero, or x infinite with y finite.
     if IsZero(y) || IsInfinite(x) {
         if SignBit(x) {

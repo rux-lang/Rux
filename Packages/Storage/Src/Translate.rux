@@ -18,20 +18,14 @@ import Io::{ IoError, IoErrorKind };
 pub func NativeKind(raw: int32) -> IoErrorKind {
     when #target.os == .Windows {
         // winerror.h, the handful whose meaning a portable caller acts on.
-        if raw == 2 || raw == 3 {
-            return IoErrorKind::NotFound;
-        }
+        if raw == 2 || raw == 3 { return IoErrorKind::NotFound; }
         if raw == 5 || raw == 19 || raw == 32 || raw == 1314 {
             // Access denied, write-protected media, a sharing violation, and a privilege the account does not
             // hold: four spellings of "you may not". The last is what refuses an unprivileged symbolic link.
             return IoErrorKind::PermissionDenied;
         }
-        if raw == 6 {
-            return IoErrorKind::InvalidHandle;
-        }
-        if raw == 80 || raw == 183 {
-            return IoErrorKind::AlreadyExists;
-        }
+        if raw == 6 { return IoErrorKind::InvalidHandle; }
+        if raw == 80 || raw == 183 { return IoErrorKind::AlreadyExists; }
         if raw == 87 || raw == 123 || raw == 206 {
             // An invalid parameter, an invalid name, and a name too long: the request itself was wrong.
             return IoErrorKind::InvalidInput;
@@ -40,18 +34,10 @@ pub func NativeKind(raw: int32) -> IoErrorKind {
             // The pipe's writing end has closed; for a reader that is the end of the stream.
             return IoErrorKind::EndOfStream;
         }
-        if raw == 112 {
-            return IoErrorKind::StorageFull;
-        }
-        if raw == 121 {
-            return IoErrorKind::TimedOut;
-        }
-        if raw == 267 {
-            return IoErrorKind::NotDirectory;
-        }
-        if raw == 995 {
-            return IoErrorKind::Interrupted;
-        }
+        if raw == 112 { return IoErrorKind::StorageFull; }
+        if raw == 121 { return IoErrorKind::TimedOut; }
+        if raw == 267 { return IoErrorKind::NotDirectory; }
+        if raw == 995 { return IoErrorKind::Interrupted; }
         return IoErrorKind::Other;
     }
     else {
@@ -60,57 +46,25 @@ pub func NativeKind(raw: int32) -> IoErrorKind {
             // EPERM, EACCES and EROFS: three spellings of "you may not".
             return IoErrorKind::PermissionDenied;
         }
-        if raw == 2 {
-            return IoErrorKind::NotFound;
-        }
-        if raw == 4 {
-            return IoErrorKind::Interrupted;
-        }
-        if raw == 9 {
-            return IoErrorKind::InvalidHandle;
-        }
-        if raw == 17 {
-            return IoErrorKind::AlreadyExists;
-        }
-        if raw == 20 {
-            return IoErrorKind::NotDirectory;
-        }
-        if raw == 21 {
-            return IoErrorKind::IsDirectory;
-        }
-        if raw == 22 {
-            return IoErrorKind::InvalidInput;
-        }
-        if raw == 28 {
-            return IoErrorKind::StorageFull;
-        }
+        if raw == 2 { return IoErrorKind::NotFound; }
+        if raw == 4 { return IoErrorKind::Interrupted; }
+        if raw == 9 { return IoErrorKind::InvalidHandle; }
+        if raw == 17 { return IoErrorKind::AlreadyExists; }
+        if raw == 20 { return IoErrorKind::NotDirectory; }
+        if raw == 21 { return IoErrorKind::IsDirectory; }
+        if raw == 22 { return IoErrorKind::InvalidInput; }
+        if raw == 28 { return IoErrorKind::StorageFull; }
         when #target.os == .Linux {
-            if raw == 11 {
-                return IoErrorKind::WouldBlock;
-            }
-            if raw == 36 {
-                return IoErrorKind::InvalidInput;
-            }
-            if raw == 110 {
-                return IoErrorKind::TimedOut;
-            }
-            if raw == 122 {
-                return IoErrorKind::StorageFull;
-            }
+            if raw == 11 { return IoErrorKind::WouldBlock; }
+            if raw == 36 { return IoErrorKind::InvalidInput; }
+            if raw == 110 { return IoErrorKind::TimedOut; }
+            if raw == 122 { return IoErrorKind::StorageFull; }
         }
         else {
-            if raw == 35 {
-                return IoErrorKind::WouldBlock;
-            }
-            if raw == 63 {
-                return IoErrorKind::InvalidInput;
-            }
-            if raw == 60 {
-                return IoErrorKind::TimedOut;
-            }
-            if raw == 69 {
-                return IoErrorKind::StorageFull;
-            }
+            if raw == 35 { return IoErrorKind::WouldBlock; }
+            if raw == 63 { return IoErrorKind::InvalidInput; }
+            if raw == 60 { return IoErrorKind::TimedOut; }
+            if raw == 69 { return IoErrorKind::StorageFull; }
         }
         return IoErrorKind::Other;
     }

@@ -70,9 +70,7 @@ extend TreeMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map/get
     pub func Get(self: &TreeMap<K, V>, key: K) -> Option<V> {
         let node = self.tree.Find(key, self.compare);
-        if node == null {
-            return Option::None<V>();
-        }
+        if node == null { return Option::None<V>(); }
         return Option::Some<V>(node.value);
     }
 
@@ -85,9 +83,7 @@ extend TreeMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map/reference
     pub func Reference(self: &TreeMap<K, V>, key: K) -> Option<*V> {
         let node = self.tree.Find(key, self.compare);
-        if node == null {
-            return Option::None<*V>();
-        }
+        if node == null { return Option::None<*V>(); }
         return Option::Some<*V>(@node.value);
     }
 
@@ -100,9 +96,7 @@ extend TreeMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map/try-reference-mutable
     pub func TryReferenceMutable(self: &var TreeMap<K, V>, key: K, value: *var *var V) -> bool {
         let node = self.tree.Find(key, self.compare);
-        if node == null {
-            return false;
-        }
+        if node == null { return false; }
         *value = @node.value;
         return true;
     }
@@ -141,9 +135,7 @@ extend TreeMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map/remove
     pub func Remove(self: &var TreeMap<K, V>, key: K) -> Option<V> {
         let node = self.tree.Find(key, self.compare);
-        if node == null {
-            return Option::None<V>();
-        }
+        if node == null { return Option::None<V>(); }
         let entry = self.tree.Detach(node);
         return Option::Some<V>(entry.value);
     }
@@ -156,9 +148,7 @@ extend TreeMap<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map/remove-entry
     pub func RemoveEntry(self: &var TreeMap<K, V>, key: K) -> Option<KeyValue<K, V>> {
         let node = self.tree.Find(key, self.compare);
-        if node == null {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if node == null { return Option::None<KeyValue<K, V>>(); }
         let entry = self.tree.Detach(node);
         return Option::Some<KeyValue<K, V>>(<-entry);
     }
@@ -175,9 +165,7 @@ extend TreeMap<K, V> {
     // The entry a node holds, or `None` for a node that is not there. Every ordered query ends in one of these, and
     // writing it once keeps the null check off each of them.
     func EntryOf(node: *var TreeNode<K, V>) -> Option<KeyValue<K, V>> {
-        if node == null {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if node == null { return Option::None<KeyValue<K, V>>(); }
         return Option::Some<KeyValue<K, V>>(KeyValue<K, V> { key: node.key, value: node.value });
     }
 
@@ -210,9 +198,7 @@ extend TreeMap<K, V> {
         var walk = self.tree.root;
         while walk != null {
             let order = self.compare(key, walk.key);
-            if order.IsEqual() {
-                return TreeMap::EntryOf<K, V>(walk);
-            }
+            if order.IsEqual() { return TreeMap::EntryOf<K, V>(walk); }
             if order.IsGreater() {
                 best = walk;
                 walk = walk.right;
@@ -232,9 +218,7 @@ extend TreeMap<K, V> {
         var walk = self.tree.root;
         while walk != null {
             let order = self.compare(key, walk.key);
-            if order.IsEqual() {
-                return TreeMap::EntryOf<K, V>(walk);
-            }
+            if order.IsEqual() { return TreeMap::EntryOf<K, V>(walk); }
             if order.IsLess() {
                 best = walk;
                 walk = walk.left;
@@ -266,9 +250,7 @@ extend TreeMapIterator<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map-iterator/next
     pub func Next(self: &var TreeMapIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = self.next;
-        if node == null {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if node == null { return Option::None<KeyValue<K, V>>(); }
         self.next = Tree::Successor<K, V>(node);
         return Option::Some<KeyValue<K, V>>(KeyValue<K, V> { key: node.key, value: node.value });
     }
@@ -292,9 +274,7 @@ extend TreeMapRangeIterator<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map-range-iterator/next
     pub func Next(self: &var TreeMapRangeIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = self.next;
-        if node == null {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if node == null { return Option::None<KeyValue<K, V>>(); }
         if !self.compare(node.key, self.end).IsLess() {
             self.next = null;
             return Option::None<KeyValue<K, V>>();
@@ -328,9 +308,7 @@ extend TreeMapIntoIterator<K, V> {
     /// https://rux-lang.dev/docs/api/collections/tree-map-into-iterator/next
     pub func Next(self: &var TreeMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {
         let node = Tree::Minimum<K, V>(self.tree.root);
-        if node == null {
-            return Option::None<KeyValue<K, V>>();
-        }
+        if node == null { return Option::None<KeyValue<K, V>>(); }
         let entry = self.tree.Detach(node);
         return Option::Some<KeyValue<K, V>>(<-entry);
     }

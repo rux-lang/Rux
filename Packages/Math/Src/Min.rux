@@ -6,22 +6,12 @@
 ///
 /// https://rux-lang.dev/docs/api/math/min
 pub func Min(a: float64, b: float64) -> float64 {
-    if a != a {
-        return b;
-    }
-    if b != b {
-        return a;
-    }
-    if a < b {
-        return a;
-    }
-    if b < a {
-        return b;
-    }
+    if a != a { return b; }
+    if b != b { return a; }
+    if a < b { return a; }
+    if b < a { return b; }
     // Equal, so the only thing left to separate them is the sign.
-    if (FloatBits(a) >> 63u64) != 0u64 {
-        return a;
-    }
+    if (FloatBits(a) >> 63u64) != 0u64 { return a; }
     return b;
 }
 

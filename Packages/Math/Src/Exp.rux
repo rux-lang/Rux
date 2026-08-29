@@ -21,9 +21,7 @@ func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
 
     if k >= -1021i64 {
         // 2^1024 has no exponent field of its own, so it is reached in two steps.
-        if k == 1024i64 {
-            return y * 2.0 * 8.98846567431158e307;
-        }
+        if k == 1024i64 { return y * 2.0 * 8.98846567431158e307; }
         return y * FromBits(((1023i64 + k) as uint64) << 52u64);
     }
 
@@ -51,9 +49,7 @@ pub func Exp(x: float64) -> float64 {
     if hx >= 0x40862E42u64 { // |x| >= 709.78...
         if hx >= 0x7FF00000u64 {
             // A NaN propagates; exp(+Inf) is +Inf and exp(-Inf) is +0.0.
-            if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 {
-                return x + x;
-            }
+            if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 { return x + x; }
             return negative ? 0.0 : x;
         }
         if x > 709.782712893384 {

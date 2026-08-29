@@ -25,9 +25,7 @@ import Entropy::{ EntropyError, Fill };
 pub func Random(error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
-    if *error != EntropyError::None {
-        return Uuid::Nil();
-    }
+    if *error != EntropyError::None { return Uuid::Nil(); }
     var value = Uuid::FromBytes(Slice<char8> { data: @bytes[0], length: 16 });
     // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
     value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;

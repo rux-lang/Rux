@@ -32,9 +32,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     var tmp = BigNat(allocator);
     var base = BigNat(allocator);
     var scratch = BigNat(allocator);
-    if !r.SetWide(f) || !high.SetSmall(1u64) || !low.SetSmall(1u64) {
-        return false;
-    }
+    if !r.SetWide(f) || !high.SetSmall(1u64) || !low.SetSmall(1u64) { return false; }
     if e >= 0 {
         let shift = e as uint;
         if !r.ShiftLeft(shift + (lonely ? 2u : 1u)) || !s.SetSmall(lonely ? 4u64 : 2u64) ||
@@ -47,9 +45,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
         if !r.ShiftLeft(lonely ? 2u : 1u) || !s.SetSmall(1u64) || !s.ShiftLeft(shift + (lonely ? 2u : 1u)) {
             return false;
         }
-        if lonely && !high.ShiftLeft(1u) {
-            return false;
-        }
+        if lonely && !high.ShiftLeft(1u) { return false; }
     }
 
     // Where the first digit goes, estimated from the bit length and corrected below in whichever direction the
@@ -73,53 +69,33 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     }
     // Too low: the upper edge of the rounding interval reaches the next power of ten.
     while true {
-        if !tmp.Assign(r) || !tmp.Add(high) {
-            return false;
-        }
+        if !tmp.Assign(r) || !tmp.Add(high) { return false; }
         let reaches = even ? tmp.Compare(s) >= 0i32 : tmp.Compare(s) > 0i32;
-        if !reaches {
-            break;
-        }
-        if !s.MultiplySmall(10u64) {
-            return false;
-        }
+        if !reaches { break; }
+        if !s.MultiplySmall(10u64) { return false; }
         k = k + 1;
     }
     // Too high: even the upper edge falls short of the previous power of ten, so the first digit would be zero.
     while true {
-        if !tmp.Assign(r) || !tmp.Add(high) || !tmp.MultiplySmall(10u64) {
-            return false;
-        }
+        if !tmp.Assign(r) || !tmp.Add(high) || !tmp.MultiplySmall(10u64) { return false; }
         let short = even ? tmp.Compare(s) < 0i32 : tmp.Compare(s) <= 0i32;
-        if !short {
-            break;
-        }
-        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) {
-            return false;
-        }
+        if !short { break; }
+        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) { return false; }
         k = k - 1;
     }
 
     var produced: uint = 0;
     while true {
-        if produced >= digits.length {
-            return false;
-        }
-        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) {
-            return false;
-        }
+        if produced >= digits.length { return false; }
+        if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) { return false; }
         var digit = r.TakeDigit(s);
         let withinLow = even ? r.Compare(low) <= 0i32 : r.Compare(low) < 0i32;
-        if !tmp.Assign(r) || !tmp.Add(high) {
-            return false;
-        }
+        if !tmp.Assign(r) || !tmp.Add(high) { return false; }
         let withinHigh = even ? tmp.Compare(s) >= 0i32 : tmp.Compare(s) > 0i32;
         if withinLow && withinHigh {
             // Both the digit and the one above read back correctly; the closer one wins, and a dead heat goes
             // to the even digit so that the choice is at least a rule.
-            if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
-                return false;
-            }
+            if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
             let order = tmp.Compare(s);
             if order > 0i32 || (order == 0i32 && (digit & 1u) == 1u) {
                 digit = digit + 1u;
@@ -130,9 +106,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
         }
         digits.data[produced] = (digit as uint8 + 0x30u8) as char8;
         produced = produced + 1u;
-        if withinLow || withinHigh {
-            break;
-        }
+        if withinLow || withinHigh { break; }
     }
     *count = produced;
     *exponent10 = k - 1;
@@ -160,13 +134,9 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     var tmp = BigNat(allocator);
     var base = BigNat(allocator);
     var scratch = BigNat(allocator);
-    if !r.SetWide(value.significand) || !s.SetSmall(1u64) {
-        return false;
-    }
+    if !r.SetWide(value.significand) || !s.SetSmall(1u64) { return false; }
     if value.exponent >= 0 {
-        if !r.ShiftLeft(value.exponent as uint) {
-            return false;
-        }
+        if !r.ShiftLeft(value.exponent as uint) { return false; }
     }
     else if !s.ShiftLeft((0 - value.exponent) as uint) {
         return false;
@@ -187,21 +157,13 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     }
     // Settle on r/s in [1/10, 1), so that the value is 0.d1d2... times ten to the k.
     while r.Compare(s) >= 0i32 {
-        if !s.MultiplySmall(10u64) {
-            return false;
-        }
+        if !s.MultiplySmall(10u64) { return false; }
         k = k + 1;
     }
     while true {
-        if !tmp.Assign(r) || !tmp.MultiplySmall(10u64) {
-            return false;
-        }
-        if tmp.Compare(s) >= 0i32 {
-            break;
-        }
-        if !r.MultiplySmall(10u64) {
-            return false;
-        }
+        if !tmp.Assign(r) || !tmp.MultiplySmall(10u64) { return false; }
+        if tmp.Compare(s) >= 0i32 { break; }
+        if !r.MultiplySmall(10u64) { return false; }
         k = k - 1;
     }
 
@@ -214,9 +176,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     }
     if wanted == 0 {
         // Between a tenth and one unit in the last place: it is that unit, or nothing.
-        if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
-            return false;
-        }
+        if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
         if tmp.Compare(s) > 0i32 {
             digits.data[0] = c8'1';
             *count = 1;
@@ -227,22 +187,16 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         return true;
     }
     let needed = wanted as uint;
-    if needed + 1u > digits.length {
-        return false;
-    }
+    if needed + 1u > digits.length { return false; }
     var produced: uint = 0;
     while produced < needed {
-        if !r.MultiplySmall(10u64) {
-            return false;
-        }
+        if !r.MultiplySmall(10u64) { return false; }
         digits.data[produced] = (r.TakeDigit(s) as uint8 + 0x30u8) as char8;
         produced = produced + 1u;
     }
     // What is left decides the last digit: over half rounds up, under half rounds down, and exactly half goes to
     // the even digit.
-    if !tmp.Assign(r) || !tmp.ShiftLeft(1u) {
-        return false;
-    }
+    if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
     let order = tmp.Compare(s);
     let lastOdd = ((digits.data[needed - 1u] as uint8) & 1u8) == 1u8;
     if order > 0i32 || (order == 0i32 && lastOdd) {

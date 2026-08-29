@@ -4,22 +4,16 @@
 /// https://rux-lang.dev/docs/api/math/cos
 pub func Cos(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     var zero = 0.0;
 
     // x - x is NaN for an infinity and 0.0 for anything else finite. Cosine
     // has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 {
-        return zero / zero;
-    }
+    if x - x != 0.0 { return zero / zero; }
 
     // Below 2^-27 the quadratic term is under half an ulp of 1.
-    if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 {
-        return 1.0;
-    }
+    if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 { return 1.0; }
 
     // Cosine is even, so the sign of the argument never reaches the result.
     let ax = x < 0.0 ? -x : x;

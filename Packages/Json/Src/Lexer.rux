@@ -184,22 +184,16 @@ extend JsonLexer {
     func SkipWhitespace(self: &var JsonLexer) {
         while self.position < self.input.length {
             let c = self.input.data[self.position] as uint8;
-            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 {
-                return;
-            }
+            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 { return; }
             self.position = self.position + 1u;
         }
     }
 
     func MatchesWord(self: &JsonLexer, word: Slice<char8>) -> bool {
-        if self.position + word.length > self.input.length {
-            return false;
-        }
+        if self.position + word.length > self.input.length { return false; }
         var index: uint = 0;
         while index < word.length {
-            if self.input.data[self.position + index] != word.data[index] {
-                return false;
-            }
+            if self.input.data[self.position + index] != word.data[index] { return false; }
             index = index + 1;
         }
         return true;
@@ -217,9 +211,7 @@ extend JsonLexer {
             let c = self.input.data[self.position] as uint8;
             if c == 0x22u8 {
                 let end = self.position;
-                if end - start > self.limits.maximumTextBytes {
-                    return self.Fail(JsonLexError::TextTooLong);
-                }
+                if end - start > self.limits.maximumTextBytes { return self.Fail(JsonLexError::TextTooLong); }
                 self.position = self.position + 1u;
                 return JsonToken {
                     kind: JsonTokenKind::Text, start: start, end: end, escaped: escaped,
@@ -301,9 +293,7 @@ extend JsonLexer {
         else if first >= 0x31u8 && first <= 0x39u8 {
             while self.position < self.input.length {
                 let d = self.input.data[self.position] as uint8;
-                if d < 0x30u8 || d > 0x39u8 {
-                    break;
-                }
+                if d < 0x30u8 || d > 0x39u8 { break; }
                 self.position = self.position + 1u;
             }
         }
@@ -317,9 +307,7 @@ extend JsonLexer {
             var digits: uint = 0;
             while self.position < self.input.length {
                 let d = self.input.data[self.position] as uint8;
-                if d < 0x30u8 || d > 0x39u8 {
-                    break;
-                }
+                if d < 0x30u8 || d > 0x39u8 { break; }
                 digits = digits + 1u;
                 self.position = self.position + 1u;
             }
@@ -342,9 +330,7 @@ extend JsonLexer {
                 var digits: uint = 0;
                 while self.position < self.input.length {
                     let d = self.input.data[self.position] as uint8;
-                    if d < 0x30u8 || d > 0x39u8 {
-                        break;
-                    }
+                    if d < 0x30u8 || d > 0x39u8 { break; }
                     digits = digits + 1u;
                     self.position = self.position + 1u;
                 }
@@ -366,9 +352,7 @@ extend JsonLexer {
     ///
     /// https://rux-lang.dev/docs/api/json/json-lexer/next
     pub func Next(self: &var JsonLexer) -> JsonToken {
-        if self.input.length > self.limits.maximumBytes {
-            return self.Fail(JsonLexError::TooManyBytes);
-        }
+        if self.input.length > self.limits.maximumBytes { return self.Fail(JsonLexError::TooManyBytes); }
         self.SkipWhitespace();
         if self.position >= self.input.length {
             return JsonToken {
@@ -377,39 +361,17 @@ extend JsonLexer {
             };
         }
         let c = self.input.data[self.position] as uint8;
-        if c == 0x7Bu8 {
-            return self.Simple(JsonTokenKind::ObjectStart);
-        }
-        if c == 0x7Du8 {
-            return self.Simple(JsonTokenKind::ObjectEnd);
-        }
-        if c == 0x5Bu8 {
-            return self.Simple(JsonTokenKind::ArrayStart);
-        }
-        if c == 0x5Du8 {
-            return self.Simple(JsonTokenKind::ArrayEnd);
-        }
-        if c == 0x3Au8 {
-            return self.Simple(JsonTokenKind::Colon);
-        }
-        if c == 0x2Cu8 {
-            return self.Simple(JsonTokenKind::Comma);
-        }
-        if c == 0x22u8 {
-            return self.LexText();
-        }
-        if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) {
-            return self.LexNumber();
-        }
-        if self.MatchesWord("true") {
-            return self.Word(JsonTokenKind::True, 4u);
-        }
-        if self.MatchesWord("false") {
-            return self.Word(JsonTokenKind::False, 5u);
-        }
-        if self.MatchesWord("null") {
-            return self.Word(JsonTokenKind::Null, 4u);
-        }
+        if c == 0x7Bu8 { return self.Simple(JsonTokenKind::ObjectStart); }
+        if c == 0x7Du8 { return self.Simple(JsonTokenKind::ObjectEnd); }
+        if c == 0x5Bu8 { return self.Simple(JsonTokenKind::ArrayStart); }
+        if c == 0x5Du8 { return self.Simple(JsonTokenKind::ArrayEnd); }
+        if c == 0x3Au8 { return self.Simple(JsonTokenKind::Colon); }
+        if c == 0x2Cu8 { return self.Simple(JsonTokenKind::Comma); }
+        if c == 0x22u8 { return self.LexText(); }
+        if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) { return self.LexNumber(); }
+        if self.MatchesWord("true") { return self.Word(JsonTokenKind::True, 4u); }
+        if self.MatchesWord("false") { return self.Word(JsonTokenKind::False, 5u); }
+        if self.MatchesWord("null") { return self.Word(JsonTokenKind::Null, 4u); }
         return self.Fail(JsonLexError::UnexpectedByte);
     }
 

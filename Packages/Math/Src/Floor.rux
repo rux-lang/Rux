@@ -7,9 +7,7 @@
 /// https://rux-lang.dev/docs/api/math/floor
 pub func Floor(x: float64) -> float64 {
     let t = Trunc(x);
-    if x < 0.0 && t != x {
-        return t - 1.0;
-    }
+    if x < 0.0 && t != x { return t - 1.0; }
     return t;
 }
 

@@ -73,9 +73,7 @@ extend JsonNumber {
     /// https://rux-lang.dev/docs/api/json/json-number/as-int64
     pub func AsInt64(self: &JsonNumber, result: *var int64) -> bool {
         let parsed = ParseInt64(self.text.View().Bytes());
-        if parsed.IsError() {
-            return false;
-        }
+        if parsed.IsError() { return false; }
         *result = parsed.ValueOr(0i64);
         return true;
     }
@@ -85,9 +83,7 @@ extend JsonNumber {
     /// https://rux-lang.dev/docs/api/json/json-number/as-uint64
     pub func AsUint64(self: &JsonNumber, result: *var uint64) -> bool {
         let parsed = ParseUint64(self.text.View().Bytes());
-        if parsed.IsError() {
-            return false;
-        }
+        if parsed.IsError() { return false; }
         *result = parsed.ValueOr(0u64);
         return true;
     }
@@ -100,9 +96,7 @@ extend JsonNumber {
     /// https://rux-lang.dev/docs/api/json/json-number/as-float64
     pub func AsFloat64(self: &JsonNumber, result: *var float64) -> bool {
         let parsed = ParseFloat64(self.text.View().Bytes());
-        if parsed.IsError() {
-            return false;
-        }
+        if parsed.IsError() { return false; }
         *result = parsed.ValueOr(0.0);
         return true;
     }
@@ -115,9 +109,7 @@ extend JsonNumber {
         var index: uint = 0;
         while index < bytes.length {
             let c = bytes.data[index] as uint8;
-            if c == 0x2Eu8 || c == 0x65u8 || c == 0x45u8 {
-                return false;
-            }
+            if c == 0x2Eu8 || c == 0x65u8 || c == 0x45u8 { return false; }
             index = index + 1;
         }
         return bytes.length > 0u;
@@ -255,9 +247,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-boolean
     pub func AsBoolean(self: &JsonValue, result: *var bool) -> bool {
-        if self.kind != JsonKind::Boolean {
-            return false;
-        }
+        if self.kind != JsonKind::Boolean { return false; }
         *result = self.boolean;
         return true;
     }
@@ -273,9 +263,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-text
     pub func AsText(self: &JsonValue) -> StringView {
-        if self.kind != JsonKind::Text {
-            return StringView();
-        }
+        if self.kind != JsonKind::Text { return StringView(); }
         return self.text.View();
     }
 
@@ -283,12 +271,8 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/length
     pub func Length(self: &JsonValue) -> uint {
-        if self.kind == JsonKind::Array {
-            return self.elements.Length();
-        }
-        if self.kind == JsonKind::Object {
-            return self.members.Length();
-        }
+        if self.kind == JsonKind::Array { return self.elements.Length(); }
+        if self.kind == JsonKind::Object { return self.members.Length(); }
         return 0u;
     }
 }
@@ -301,9 +285,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/push
     pub func Push(self: &var JsonValue, value: JsonValue) -> bool {
-        if self.kind != JsonKind::Array {
-            return false;
-        }
+        if self.kind != JsonKind::Array { return false; }
         return self.elements.Push(<-value) == CollectionError::None;
     }
 
@@ -315,9 +297,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/insert
     pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
-        if self.kind != JsonKind::Object {
-            return false;
-        }
+        if self.kind != JsonKind::Object { return false; }
         var member = JsonMember { name: name, value: <-value };
         return self.members.Push(<-member) == CollectionError::None;
     }
@@ -326,9 +306,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/at
     pub func At(self: &JsonValue, index: uint) -> *JsonValue {
-        if self.kind != JsonKind::Array || index >= self.elements.Length() {
-            return null;
-        }
+        if self.kind != JsonKind::Array || index >= self.elements.Length() { return null; }
         let slice = self.elements.AsSlice();
         return @slice.data[index];
     }
@@ -340,16 +318,12 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/find
     pub func Find(self: &JsonValue, name: StringView) -> *JsonValue {
-        if self.kind != JsonKind::Object {
-            return null;
-        }
+        if self.kind != JsonKind::Object { return null; }
         let slice = self.members.AsSlice();
         var index: uint = 0;
         while index < slice.length {
             var held = name;
-            if slice.data[index].name.View().Equals(held) {
-                return @slice.data[index].value;
-            }
+            if slice.data[index].name.View().Equals(held) { return @slice.data[index].value; }
             index = index + 1;
         }
         return null;
@@ -359,9 +333,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/member-at
     pub func MemberAt(self: &JsonValue, index: uint) -> *JsonMember {
-        if self.kind != JsonKind::Object || index >= self.members.Length() {
-            return null;
-        }
+        if self.kind != JsonKind::Object || index >= self.members.Length() { return null; }
         let slice = self.members.AsSlice();
         return @slice.data[index];
     }
@@ -379,9 +351,7 @@ extend JsonValue {
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/remove-first
     pub func RemoveFirst(self: &var JsonValue, name: StringView) -> bool {
-        if self.kind != JsonKind::Object {
-            return false;
-        }
+        if self.kind != JsonKind::Object { return false; }
         var target = self.members.Length();
         let slice = self.members.AsSlice();
         var index: uint = 0;
@@ -395,15 +365,11 @@ extend JsonValue {
                 index = index + 1;
             }
         }
-        if target >= self.members.Length() {
-            return false;
-        }
+        if target >= self.members.Length() { return false; }
         var tail = Vector<JsonMember>(self.allocator);
         while self.members.Length() > target + 1u {
             var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
-            if !self.members.TryPop(@moved) {
-                break;
-            }
+            if !self.members.TryPop(@moved) { break; }
             tail.Push(<-moved);
         }
         var discarded = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
@@ -411,9 +377,7 @@ extend JsonValue {
         // `discarded` dies here, taking its name and value with it.
         while tail.Length() > 0u {
             var restored = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
-            if !tail.TryPop(@restored) {
-                break;
-            }
+            if !tail.TryPop(@restored) { break; }
             self.members.Push(<-restored);
         }
         return true;

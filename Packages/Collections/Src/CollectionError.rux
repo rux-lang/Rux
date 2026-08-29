@@ -89,11 +89,7 @@ extend CollectionError {
 ///
 /// https://rux-lang.dev/docs/api/collections/from-alloc-error
 pub func FromAllocError(error: AllocError) -> CollectionError {
-    if error == AllocError::None {
-        return CollectionError::None;
-    }
-    if error == AllocError::OutOfMemory {
-        return CollectionError::OutOfMemory;
-    }
+    if error == AllocError::None { return CollectionError::None; }
+    if error == AllocError::OutOfMemory { return CollectionError::OutOfMemory; }
     return CollectionError::Unsupported;
 }

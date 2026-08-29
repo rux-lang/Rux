@@ -155,9 +155,7 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     // Put the integer part back into the exponent field, or fall back on a
     // scaling when the answer is subnormal and the field has no room for it.
     let jj = (((FloatBits(e) >> 32u64) & 0xFFFFFFFFu64) as int64) + (nn << 20i64);
-    if (jj >> 20i64) <= 0i64 {
-        return Scalb(e, nn);
-    }
+    if (jj >> 20i64) <= 0i64 { return Scalb(e, nn); }
     return WithHighWord(e, jj as uint64);
 }
 
@@ -197,14 +195,10 @@ pub func Pow(x: float64, y: float64) -> float64 {
     let yNegative = (hy >> 31u64) == 1u64;
 
     // x^0 is 1 for every x, a NaN included.
-    if (iy | ly) == 0u64 {
-        return 1.0;
-    }
+    if (iy | ly) == 0u64 { return 1.0; }
 
     // 1^y is 1 for every y, a NaN included.
-    if hx == 0x3FF00000u64 && lx == 0u64 {
-        return 1.0;
-    }
+    if hx == 0x3FF00000u64 && lx == 0u64 { return 1.0; }
 
     // With those out of the way, a NaN anywhere gives a NaN.
     if ix > 0x7FF00000u64 || (ix == 0x7FF00000u64 && lx != 0u64) ||
@@ -251,9 +245,7 @@ pub func Pow(x: float64, y: float64) -> float64 {
             return 0.0; // |x| < 1
         }
         if iy == 0x3FF00000u64 { // y is +-1
-            if yNegative {
-                return 1.0 / x;
-            }
+            if yNegative { return 1.0 / x; }
             return x;
         }
         if hy == 0x40000000u64 {
@@ -271,9 +263,7 @@ pub func Pow(x: float64, y: float64) -> float64 {
         if ix == 0u64 {
             if xNegative && yisint == 1i64 {
                 let negZero = FromBits(0x8000000000000000u64);
-                if yNegative {
-                    return 1.0 / negZero;
-                }
+                if yNegative { return 1.0 / negZero; }
                 return negZero;
             }
             var z0 = ax;

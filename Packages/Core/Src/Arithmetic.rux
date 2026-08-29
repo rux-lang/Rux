@@ -121,12 +121,8 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
         // before the check below would attempt it. It does overflow: negating the most negative value cannot fit.
         let minimum = MinimumOf<T>(left);
         let negativeOne = zero - 1;
-        if left == negativeOne && right == minimum {
-            return true;
-        }
-        if right == negativeOne && left == minimum {
-            return true;
-        }
+        if left == negativeOne && right == minimum { return true; }
+        if right == negativeOne && left == minimum { return true; }
     }
     // Recovering the other operand from the product is exact exactly when nothing was lost.
     return product / left != right;
@@ -177,9 +173,7 @@ pub func MulWrapping<T>(left: T, right: T) -> T {
 /// https://rux-lang.dev/docs/api/core/add-saturating
 pub func AddSaturating<T>(left: T, right: T) -> T {
     var sum = left - left;
-    if !AddChecked<T>(left, right, @sum) {
-        return sum;
-    }
+    if !AddChecked<T>(left, right, @sum) { return sum; }
     let zero = left - left;
     if (zero - 1) < zero {
         // Adding a negative operand can only have run off the bottom, and a positive one off the top.
@@ -198,9 +192,7 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
 /// https://rux-lang.dev/docs/api/core/sub-saturating
 pub func SubSaturating<T>(left: T, right: T) -> T {
     var difference = left - left;
-    if !SubChecked<T>(left, right, @difference) {
-        return difference;
-    }
+    if !SubChecked<T>(left, right, @difference) { return difference; }
     let zero = left - left;
     if (zero - 1) < zero {
         // Subtracting a negative operand can only have run off the top, and a positive one off the bottom.
@@ -219,9 +211,7 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
 /// https://rux-lang.dev/docs/api/core/mul-saturating
 pub func MulSaturating<T>(left: T, right: T) -> T {
     var product = left - left;
-    if !MulChecked<T>(left, right, @product) {
-        return product;
-    }
+    if !MulChecked<T>(left, right, @product) { return product; }
     let zero = left - left;
     if (zero - 1) < zero {
         // The true product's sign is the operands' signs combined, and it ran past the limit on that side.

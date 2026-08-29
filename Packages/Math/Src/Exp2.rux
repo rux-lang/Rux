@@ -7,9 +7,7 @@
 ///
 /// https://rux-lang.dev/docs/api/math/exp2
 pub func Exp2(x: float64) -> float64 {
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
 
     // 2^1024 overflows, and 2^-1075 sits exactly halfway to zero, so it and
     // everything below it round to zero. Both tests also swallow an infinity.
@@ -17,9 +15,7 @@ pub func Exp2(x: float64) -> float64 {
         let huge = 1.0e300;
         return huge * huge;
     }
-    if x < -1075.0 {
-        return 0.0;
-    }
+    if x < -1075.0 { return 0.0; }
 
     // x = k + r with |r| <= 0.5, so 2^x = 2^k * exp(r*ln2) and the reduced
     // argument |r*ln2| never leaves the exponential kernel's range.

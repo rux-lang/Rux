@@ -64,21 +64,13 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-from-source
 pub func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
-    if length == 0 {
-        return EntropyError::None;
-    }
-    if length > MaxEntropyRequest {
-        return EntropyError::TooLarge;
-    }
-    if buffer == null {
-        return EntropyError::Failed;
-    }
+    if length == 0 { return EntropyError::None; }
+    if length > MaxEntropyRequest { return EntropyError::TooLarge; }
+    if buffer == null { return EntropyError::Failed; }
 
     when #target.os {
         .Windows => {
-            if GetRandom(buffer, length) {
-                return EntropyError::None;
-            }
+            if GetRandom(buffer, length) { return EntropyError::None; }
             ZeroizeBlock(buffer, length);
             return EntropyError::Failed;
         },

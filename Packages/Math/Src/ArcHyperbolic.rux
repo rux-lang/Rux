@@ -16,9 +16,7 @@
 /// https://rux-lang.dev/docs/api/math/arc-sinh
 pub func ArcSinh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
-    if IsNan(x) || IsInfinite(x) {
-        return x;
-    }
+    if IsNan(x) || IsInfinite(x) { return x; }
     let magnitude = Abs(x);
     var result = 0.0;
     if magnitude < 3.725290298461914e-9 {
@@ -56,24 +54,12 @@ pub func ArcSinh(x: float32) -> float32 {
 /// https://rux-lang.dev/docs/api/math/arc-cosh
 pub func ArcCosh(x: float64) -> float64 {
     let ln2 = 0.6931471805599453;
-    if IsNan(x) {
-        return x;
-    }
-    if x < 1.0 {
-        return QuietNan64();
-    }
-    if x == 1.0 {
-        return 0.0;
-    }
-    if IsInfinite(x) {
-        return x;
-    }
-    if x > 268435456.0 {
-        return Log(x) + ln2;
-    }
-    if x > 2.0 {
-        return Log(2.0 * x - 1.0 / (x + Sqrt(x * x - 1.0)));
-    }
+    if IsNan(x) { return x; }
+    if x < 1.0 { return QuietNan64(); }
+    if x == 1.0 { return 0.0; }
+    if IsInfinite(x) { return x; }
+    if x > 268435456.0 { return Log(x) + ln2; }
+    if x > 2.0 { return Log(2.0 * x - 1.0 / (x + Sqrt(x * x - 1.0))); }
     // Between one and two the difference x - 1 is exact, and phrasing everything in it avoids the cancellation
     // that x + sqrt(x*x - 1) suffers as x approaches one.
     let above = x - 1.0;
@@ -94,16 +80,10 @@ pub func ArcCosh(x: float32) -> float32 {
 ///
 /// https://rux-lang.dev/docs/api/math/arc-tanh
 pub func ArcTanh(x: float64) -> float64 {
-    if IsNan(x) {
-        return x;
-    }
+    if IsNan(x) { return x; }
     let magnitude = Abs(x);
-    if magnitude > 1.0 {
-        return QuietNan64();
-    }
-    if magnitude == 1.0 {
-        return x > 0.0 ? PositiveInfinity64() : -PositiveInfinity64();
-    }
+    if magnitude > 1.0 { return QuietNan64(); }
+    if magnitude == 1.0 { return x > 0.0 ? PositiveInfinity64() : -PositiveInfinity64(); }
     if magnitude < 3.725290298461914e-9 {
         // Below 2^-28, as with the inverse sine, the argument is the answer and its zero keeps its sign.
         return x;

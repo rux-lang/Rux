@@ -13,9 +13,7 @@
 /// https://rux-lang.dev/docs/api/math/sin-cos
 pub func SinCos(angle: float64) -> (float64, float64) {
     // NaN propagates into both.
-    if angle != angle {
-        return (angle, angle);
-    }
+    if angle != angle { return (angle, angle); }
     var zero = 0.0;
     // Neither has a limit at infinity.
     if angle - angle != 0.0 {
@@ -24,9 +22,7 @@ pub func SinCos(angle: float64) -> (float64, float64) {
     }
     // Below 2^-27 the sine is the angle -- which also keeps the sign of a zero -- and the cosine is one, since
     // the quadratic term is under half an ulp.
-    if angle < 7.450580596923828e-9 && angle > -7.450580596923828e-9 {
-        return (angle, 1.0);
-    }
+    if angle < 7.450580596923828e-9 && angle > -7.450580596923828e-9 { return (angle, 1.0); }
 
     let negative = angle < 0.0;
     let magnitude = negative ? -angle : angle;

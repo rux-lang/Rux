@@ -63,9 +63,7 @@ extend ValueIterator<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/value-iterator/next
     pub func Next(self: &var ValueIterator<T>) -> Option<T> {
-        if self.position >= self.length {
-            return Option::None<T>();
-        }
+        if self.position >= self.length { return Option::None<T>(); }
         let value = self.data[self.position];
         self.position = self.position + 1;
         return Option::Some<T>(value);
@@ -114,9 +112,7 @@ extend ReferenceIterator<T> {
     ///
     /// https://rux-lang.dev/docs/api/collections/reference-iterator/next
     pub func Next(self: &var ReferenceIterator<T>) -> Option<*T> {
-        if self.position >= self.length {
-            return Option::None<*T>();
-        }
+        if self.position >= self.length { return Option::None<*T>(); }
         let element = @self.data[self.position];
         self.position = self.position + 1;
         return Option::Some<*T>(element);

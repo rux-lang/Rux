@@ -93,12 +93,8 @@ extend SystemEntropy : EntropySource {
 ///
 /// https://rux-lang.dev/docs/api/entropy/fill-from
 pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
-    if length == 0 {
-        return EntropyError::None;
-    }
-    if buffer == null {
-        return EntropyError::Failed;
-    }
+    if length == 0 { return EntropyError::None; }
+    if buffer == null { return EntropyError::Failed; }
 
     var filled: uint = 0;
     while filled < length {

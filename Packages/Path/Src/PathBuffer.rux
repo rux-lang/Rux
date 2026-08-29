@@ -71,9 +71,7 @@ extend PathBuffer {
     // Room for `additional` more units, by doubling.
     func Reserve(self: &var PathBuffer, additional: uint) -> TextError {
         let required = self.length + additional;
-        if required <= self.capacity {
-            return TextError::None;
-        }
+        if required <= self.capacity { return TextError::None; }
         var wanted = self.capacity * 2u;
         if wanted < required {
             wanted = required;
@@ -83,15 +81,11 @@ extend PathBuffer {
         }
         let unitSize = sizeof(OsUnit) as uint;
         let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint);
-        if layout.IsNone() {
-            return TextError::LengthOverflow;
-        }
+        if layout.IsNone() { return TextError::LengthOverflow; }
         var block: *var opaque = null;
         var borrowed = self.allocator;
         let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: wanted * unitSize, alignment: 1 }), @block);
-        if allocated != AllocError::None {
-            return FromAllocError(allocated);
-        }
+        if allocated != AllocError::None { return FromAllocError(allocated); }
         if self.data != null {
             Copy(block, self.data as *opaque, self.length * unitSize);
             let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
@@ -105,13 +99,9 @@ extend PathBuffer {
 
     // Appends raw units, structure unexamined.
     func AppendUnits(self: &var PathBuffer, units: Slice<OsUnit>) -> TextError {
-        if units.length == 0 {
-            return TextError::None;
-        }
+        if units.length == 0 { return TextError::None; }
         let room = self.Reserve(units.length);
-        if room.IsError() {
-            return room;
-        }
+        if room.IsError() { return room; }
         var index: uint = 0;
         while index < units.length {
             self.data[self.length + index] = units.data[index];
@@ -129,9 +119,7 @@ extend PathBuffer {
     /// https://rux-lang.dev/docs/api/path/path-buffer/push
     pub func Push(self: &var PathBuffer, segment: OsStringView) -> TextError {
         let units = segment.Units();
-        if units.length == 0 {
-            return TextError::None;
-        }
+        if units.length == 0 { return TextError::None; }
         if IsSeparator(units.data[0]) {
             self.length = 0;
             return self.AppendUnits(units);
@@ -140,9 +128,7 @@ extend PathBuffer {
             var one: OsUnit[1];
             one[0] = PreferredSeparator();
             let separated = self.AppendUnits(one[0..1]);
-            if separated.IsError() {
-                return separated;
-            }
+            if separated.IsError() { return separated; }
         }
         return self.AppendUnits(units);
     }
@@ -172,9 +158,7 @@ extend PathBuffer {
 /// https://rux-lang.dev/docs/api/path/join
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *var TextError) -> PathBuffer {
     var buffer = PathBuffer::FromPath(allocator, base, error);
-    if error.IsError() {
-        return <-buffer;
-    }
+    if error.IsError() { return <-buffer; }
     *error = buffer.Push(segment);
     return <-buffer;
 }
@@ -198,9 +182,7 @@ pub func Normalize(allocator: Allocator, path: Path, error: *var TextError) -> P
         var one: OsUnit[1];
         one[0] = PreferredSeparator();
         *error = buffer.AppendUnits(one[0..1]);
-        if error.IsError() {
-            return <-buffer;
-        }
+        if error.IsError() { return <-buffer; }
     }
 
     // How many real segments the buffer holds, and where each begins, tracked so `..` can drop the last one

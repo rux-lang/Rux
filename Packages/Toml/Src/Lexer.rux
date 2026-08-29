@@ -151,9 +151,7 @@ extend TomlLexer {
     }
 
     func At(self: &TomlLexer, offset: uint) -> uint8 {
-        if self.position + offset >= self.input.length {
-            return 0u8;
-        }
+        if self.position + offset >= self.input.length { return 0u8; }
         return self.input.data[self.position + offset] as uint8;
     }
 
@@ -260,9 +258,7 @@ extend TomlLexer {
                         let h = self.At(1u + digit);
                         let isDigit = (h >= 0x30u8 && h <= 0x39u8) || (h >= 0x61u8 && h <= 0x66u8) ||
                                       (h >= 0x41u8 && h <= 0x46u8);
-                        if !isDigit {
-                            return self.Fail(TomlLexError::BadUnicodeEscape);
-                        }
+                        if !isDigit { return self.Fail(TomlLexError::BadUnicodeEscape); }
                         digit = digit + 1u;
                     }
                     self.position = self.position + 1u + digits;
@@ -361,9 +357,7 @@ extend TomlLexer {
             break;
         }
         let end = index;
-        if end == start {
-            return self.Fail(TomlLexError::UnexpectedByte);
-        }
+        if end == start { return self.Fail(TomlLexError::UnexpectedByte); }
         let first = self.input.data[start] as uint8;
         let digitLike = (first >= 0x30u8 && first <= 0x39u8) || first == 0x2Bu8 || first == 0x2Du8;
         var kind = TomlTokenKind::BareKey;
@@ -391,15 +385,11 @@ extend TomlLexer {
     // A date opens with four digits and a hyphen. Requiring the shape rather than merely the presence of a
     // hyphen is what keeps `6.626e-34` a float: its hyphen belongs to the exponent, not to a month.
     func LooksLikeDate(self: &TomlLexer, start: uint, end: uint) -> bool {
-        if end - start < 5u {
-            return false;
-        }
+        if end - start < 5u { return false; }
         var index: uint = 0;
         while index < 4u {
             let c = self.input.data[start + index] as uint8;
-            if c < 0x30u8 || c > 0x39u8 {
-                return false;
-            }
+            if c < 0x30u8 || c > 0x39u8 { return false; }
             index = index + 1u;
         }
         return (self.input.data[start + 4u] as uint8) == 0x2Du8;
@@ -407,9 +397,7 @@ extend TomlLexer {
 
     func LooksLikeTime(self: &TomlLexer, at: uint) -> bool {
         // `HH:MM`, the shortest thing that can follow a date across a space.
-        if at + 4u >= self.input.length {
-            return false;
-        }
+        if at + 4u >= self.input.length { return false; }
         return (self.input.data[at + 2u] as uint8) == 0x3Au8;
     }
 
@@ -418,30 +406,22 @@ extend TomlLexer {
     func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
         if end - start > 2u && (self.input.data[start] as uint8) == 0x30u8 {
             let radix = self.input.data[start + 1u] as uint8;
-            if radix == 0x78u8 || radix == 0x6Fu8 || radix == 0x62u8 {
-                return false;
-            }
+            if radix == 0x78u8 || radix == 0x6Fu8 || radix == 0x62u8 { return false; }
         }
         var index = start;
         while index < end {
             let c = self.input.data[index] as uint8;
-            if c == 0x65u8 || c == 0x45u8 {
-                return true;
-            }
+            if c == 0x65u8 || c == 0x45u8 { return true; }
             index = index + 1u;
         }
         return false;
     }
 
     func Matches(self: &TomlLexer, start: uint, end: uint, word: Slice<char8>) -> bool {
-        if end - start != word.length {
-            return false;
-        }
+        if end - start != word.length { return false; }
         var index: uint = 0;
         while index < word.length {
-            if self.input.data[start + index] != word.data[index] {
-                return false;
-            }
+            if self.input.data[start + index] != word.data[index] { return false; }
             index = index + 1u;
         }
         return true;
@@ -474,9 +454,7 @@ extend TomlLexer {
             self.lineStart = self.position;
             return token;
         }
-        if c == 0x22u8 || c == 0x27u8 {
-            return self.LexText(c);
-        }
+        if c == 0x22u8 || c == 0x27u8 { return self.LexText(c); }
         if c == 0x3Du8 {
             let token = self.Make(TomlTokenKind::Equals, TomlTextForm::NotText, self.position,
                                   self.position + 1u);
@@ -518,9 +496,7 @@ extend TomlLexer {
             self.position = self.position + 1u;
             return token;
         }
-        if TomlLexer::IsBareKeyByte(c) || c == 0x2Bu8 {
-            return self.LexBare();
-        }
+        if TomlLexer::IsBareKeyByte(c) || c == 0x2Bu8 { return self.LexBare(); }
         return self.Fail(TomlLexError::UnexpectedByte);
     }
 
@@ -617,9 +593,7 @@ pub func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlText
             index = index - 1u;
             while index < span.length {
                 let w = span.data[index] as uint8;
-                if w != 0x20u8 && w != 0x09u8 && w != 0x0Au8 && w != 0x0Du8 {
-                    break;
-                }
+                if w != 0x20u8 && w != 0x09u8 && w != 0x0Au8 && w != 0x0Du8 { break; }
                 index = index + 1u;
             }
         }

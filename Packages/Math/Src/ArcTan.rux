@@ -23,9 +23,7 @@ pub func ArcTan(x: float64) -> float64 {
     let aT8 = 4.97687799461593236017e-02;
     let aT9 = -3.65315727442169155270e-02;
     let aT10 = 1.62858201153657823623e-02;
-    if x != x {
-        return x;
-    }
+    if x != x { return x; }
     let bits = FloatBits(x);
     let negative = (bits >> 63u64) == 1u64;
     var ax = Abs(x);
@@ -33,9 +31,7 @@ pub func ArcTan(x: float64) -> float64 {
         let y = atanhi3 + atanlo3;
         return negative ? -y : y;
     }
-    if ax < 1.862645149230957e-9 {
-        return x;
-    }
+    if ax < 1.862645149230957e-9 { return x; }
     var id = -1i64;
     if ax < 0.4375 {
         id = -1i64;

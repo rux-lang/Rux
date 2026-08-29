@@ -35,14 +35,10 @@ pub func Alloc(size: uint) -> *var opaque {
             // Two machine words keep the returned address aligned to 16 bytes.
             const HeaderSize: uint = 16;
             let total = size + HeaderSize;
-            if total < size {
-                return null;
-            }
+            if total < size { return null; }
             let mapping = Mmap(null, total, ProtectionRead | ProtectionWrite,
                 MapPrivate | MapAnonymous, -1, 0);
-            if IsError(mapping) {
-                return null;
-            }
+            if IsError(mapping) { return null; }
             let header = mapping as *var uint;
             *header = size;
             return (header + 2) as *var opaque;

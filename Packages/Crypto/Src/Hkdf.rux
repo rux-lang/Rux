@@ -55,9 +55,7 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: Slice<char8>, info: Slice<char
                            into: MutableSlice<char8>) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();
-    if into.length > HkdfMaximumBlocks * digestLength {
-        return false;
-    }
+    if into.length > HkdfMaximumBlocks * digestLength { return false; }
     var previous: char8[64];
     var previousLength: uint = 0;
     var written: uint = 0;

@@ -202,16 +202,12 @@ extend TomlEventReader {
     // Whether the innermost open container is an inline table. The stack is a single word, one bit per
     // container, which is also why the depth limit here is sixty-four.
     func InsideInlineTable(self: &TomlEventReader) -> bool {
-        if self.depth == 0u {
-            return false;
-        }
+        if self.depth == 0u { return false; }
         return (self.containers >> ((self.depth - 1u) as uint64) & 1u64) == 1u64;
     }
 
     func OpenContainer(self: &var TomlEventReader, inlineTable: bool) -> bool {
-        if self.depth >= 64u {
-            return false;
-        }
+        if self.depth >= 64u { return false; }
         if inlineTable {
             self.containers = self.containers | (1u64 << (self.depth as uint64));
         }
@@ -259,32 +255,18 @@ extend TomlEventReader {
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/next
     pub func Next(self: &var TomlEventReader) -> TomlEvent {
-        if self.state == TomlEventState::Finished {
-            return TomlEvent::End;
-        }
-        if self.state == TomlEventState::Document {
-            return self.NextAtDocument();
-        }
-        if self.state == TomlEventState::HeaderKey {
-            return self.NextHeaderKey();
-        }
-        if self.state == TomlEventState::PairKey {
-            return self.NextPairKey();
-        }
-        if self.state == TomlEventState::Value {
-            return self.NextValue();
-        }
-        if self.state == TomlEventState::InlineKey {
-            return self.NextInlineKey();
-        }
+        if self.state == TomlEventState::Finished { return TomlEvent::End; }
+        if self.state == TomlEventState::Document { return self.NextAtDocument(); }
+        if self.state == TomlEventState::HeaderKey { return self.NextHeaderKey(); }
+        if self.state == TomlEventState::PairKey { return self.NextPairKey(); }
+        if self.state == TomlEventState::Value { return self.NextValue(); }
+        if self.state == TomlEventState::InlineKey { return self.NextInlineKey(); }
         return self.NextAfterValue();
     }
 
     func NextAtDocument(self: &var TomlEventReader) -> TomlEvent {
         self.SkipNewlines();
-        if self.ahead.kind == TomlTokenKind::Error {
-            return self.Fail(TomlParseError::Lexical);
-        }
+        if self.ahead.kind == TomlTokenKind::Error { return self.Fail(TomlParseError::Lexical); }
         if self.ahead.kind == TomlTokenKind::End {
             self.current = self.ahead;
             self.state = TomlEventState::Finished;
@@ -309,14 +291,10 @@ extend TomlEventReader {
     func NextHeaderKey(self: &var TomlEventReader) -> TomlEvent {
         if self.ahead.kind == TomlTokenKind::RightBracket {
             // `[]` names no table, and a header that names nothing is not a header.
-            if !self.namedSomething {
-                return self.Fail(TomlParseError::Unexpected);
-            }
+            if !self.namedSomething { return self.Fail(TomlParseError::Unexpected); }
             self.current = self.Advance();
             if self.tableArray {
-                if self.ahead.kind != TomlTokenKind::RightBracket {
-                    return self.Fail(TomlParseError::Unexpected);
-                }
+                if self.ahead.kind != TomlTokenKind::RightBracket { return self.Fail(TomlParseError::Unexpected); }
                 self.Advance();
             }
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
@@ -325,9 +303,7 @@ extend TomlEventReader {
             self.state = TomlEventState::Document;
             return TomlEvent::HeaderEnd;
         }
-        if !self.TakeKeyPart() {
-            return TomlEvent::Error;
-        }
+        if !self.TakeKeyPart() { return TomlEvent::Error; }
         self.namedSomething = true;
         if self.ahead.kind == TomlTokenKind::Dot {
             self.Advance();
@@ -339,16 +315,12 @@ extend TomlEventReader {
     }
 
     func NextPairKey(self: &var TomlEventReader) -> TomlEvent {
-        if !self.TakeKeyPart() {
-            return TomlEvent::Error;
-        }
+        if !self.TakeKeyPart() { return TomlEvent::Error; }
         if self.ahead.kind == TomlTokenKind::Dot {
             self.Advance();
             return TomlEvent::KeyPart;
         }
-        if self.ahead.kind != TomlTokenKind::Equals {
-            return self.Fail(TomlParseError::Unexpected);
-        }
+        if self.ahead.kind != TomlTokenKind::Equals { return self.Fail(TomlParseError::Unexpected); }
         self.Advance();
         self.state = TomlEventState::Value;
         return TomlEvent::KeyPart;
@@ -360,12 +332,8 @@ extend TomlEventReader {
         if self.depth > 0u {
             self.SkipNewlines();
         }
-        if self.ahead.kind == TomlTokenKind::Error {
-            return self.Fail(TomlParseError::Lexical);
-        }
-        if self.ahead.kind == TomlTokenKind::End {
-            return self.Fail(TomlParseError::Truncated);
-        }
+        if self.ahead.kind == TomlTokenKind::Error { return self.Fail(TomlParseError::Lexical); }
+        if self.ahead.kind == TomlTokenKind::End { return self.Fail(TomlParseError::Truncated); }
         // An empty array, or one whose last element was followed by a comma.
         if self.ahead.kind == TomlTokenKind::RightBracket && self.depth > 0u && !self.InsideInlineTable() {
             self.current = self.Advance();
@@ -375,16 +343,12 @@ extend TomlEventReader {
         }
         if self.ahead.kind == TomlTokenKind::LeftBracket {
             self.current = self.Advance();
-            if !self.OpenContainer(false) {
-                return self.Fail(TomlParseError::TooDeep);
-            }
+            if !self.OpenContainer(false) { return self.Fail(TomlParseError::TooDeep); }
             return TomlEvent::ArrayStart;
         }
         if self.ahead.kind == TomlTokenKind::LeftBrace {
             self.current = self.Advance();
-            if !self.OpenContainer(true) {
-                return self.Fail(TomlParseError::TooDeep);
-            }
+            if !self.OpenContainer(true) { return self.Fail(TomlParseError::TooDeep); }
             self.state = TomlEventState::InlineKey;
             return TomlEvent::InlineTableStart;
         }
@@ -394,18 +358,10 @@ extend TomlEventReader {
             token.kind == TomlTokenKind::DateTime {
             self.current = self.Advance();
             self.state = TomlEventState::AfterValue;
-            if token.kind == TomlTokenKind::Text {
-                return TomlEvent::Text;
-            }
-            if token.kind == TomlTokenKind::Integer {
-                return TomlEvent::Integer;
-            }
-            if token.kind == TomlTokenKind::Float {
-                return TomlEvent::Float;
-            }
-            if token.kind == TomlTokenKind::Boolean {
-                return TomlEvent::Boolean;
-            }
+            if token.kind == TomlTokenKind::Text { return TomlEvent::Text; }
+            if token.kind == TomlTokenKind::Integer { return TomlEvent::Integer; }
+            if token.kind == TomlTokenKind::Float { return TomlEvent::Float; }
+            if token.kind == TomlTokenKind::Boolean { return TomlEvent::Boolean; }
             return TomlEvent::DateTime;
         }
         return self.Fail(TomlParseError::Unexpected);
@@ -419,9 +375,7 @@ extend TomlEventReader {
             self.state = TomlEventState::AfterValue;
             return TomlEvent::InlineTableEnd;
         }
-        if self.ahead.kind == TomlTokenKind::End {
-            return self.Fail(TomlParseError::Truncated);
-        }
+        if self.ahead.kind == TomlTokenKind::End { return self.Fail(TomlParseError::Truncated); }
         self.current = self.ahead;
         self.state = TomlEventState::PairKey;
         return TomlEvent::KeyStart;
@@ -445,9 +399,7 @@ extend TomlEventReader {
         }
         if inlineTable {
             if self.ahead.kind != TomlTokenKind::RightBrace {
-                if self.ahead.kind == TomlTokenKind::End {
-                    return self.Fail(TomlParseError::Truncated);
-                }
+                if self.ahead.kind == TomlTokenKind::End { return self.Fail(TomlParseError::Truncated); }
                 return self.Fail(TomlParseError::Unexpected);
             }
             self.current = self.Advance();
@@ -455,9 +407,7 @@ extend TomlEventReader {
             return TomlEvent::InlineTableEnd;
         }
         if self.ahead.kind != TomlTokenKind::RightBracket {
-            if self.ahead.kind == TomlTokenKind::End {
-                return self.Fail(TomlParseError::Truncated);
-            }
+            if self.ahead.kind == TomlTokenKind::End { return self.Fail(TomlParseError::Truncated); }
             return self.Fail(TomlParseError::Unexpected);
         }
         self.current = self.Advance();

@@ -34,9 +34,7 @@ func DecomposeHangul(offset: uint32, into: MutableSlice<char32>, at: uint, writt
     let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
     let trail = offset % HangulTrailCount;
     let needed: uint = trail == 0u32 ? 2u : 3u;
-    if at + needed > into.length {
-        return false;
-    }
+    if at + needed > into.length { return false; }
     into.data[at] = lead as char32;
     into.data[at + 1] = vowel as char32;
     if trail != 0 {
@@ -64,16 +62,12 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32
         found = IndexWindow(CanonicalDecompositionIndex[..], value, @offset, @length);
     }
     if !found {
-        if at + 1 > into.length {
-            return false;
-        }
+        if at + 1 > into.length { return false; }
         into.data[at] = scalar;
         *written = 1;
         return true;
     }
-    if at + length > into.length {
-        return false;
-    }
+    if at + length > into.length { return false; }
     var each: uint = 0;
     while each < length {
         if compatibility {
@@ -140,9 +134,7 @@ func Decompose(text: Slice<char32>, compatibility: bool, into: MutableSlice<char
     var index: uint = 0;
     while index < text.length {
         var wrote: uint = 0;
-        if !DecomposeOne(text.data[index], compatibility, into, length, @wrote) {
-            return false;
-        }
+        if !DecomposeOne(text.data[index], compatibility, into, length, @wrote) { return false; }
         length = length + wrote;
         index = index + 1;
     }
@@ -201,9 +193,7 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
 // and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
 // conformance vectors are what hold it to the standard.
 func Compose(items: MutableSlice<char32>, length: uint) -> uint {
-    if length == 0 {
-        return 0;
-    }
+    if length == 0 { return 0; }
     var result: uint = 1;
     var starterAt: uint = 0;
     var haveStarter = CombiningClassOf(items.data[0]) == 0u32;
@@ -253,9 +243,7 @@ func Compose(items: MutableSlice<char32>, length: uint) -> uint {
 /// https://rux-lang.dev/docs/api/unicode/normalize-canonical
 pub func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     var length: uint = 0;
-    if !DecomposeCanonical(text, into, @length) {
-        return false;
-    }
+    if !DecomposeCanonical(text, into, @length) { return false; }
     *written = Compose(into, length);
     return true;
 }
@@ -269,9 +257,7 @@ pub func NormalizeCanonical(text: Slice<char32>, into: MutableSlice<char32>, wri
 /// https://rux-lang.dev/docs/api/unicode/normalize-compatibility
 pub func NormalizeCompatibility(text: Slice<char32>, into: MutableSlice<char32>, written: *var uint) -> bool {
     var length: uint = 0;
-    if !DecomposeCompatibility(text, into, @length) {
-        return false;
-    }
+    if !DecomposeCompatibility(text, into, @length) { return false; }
     *written = Compose(into, length);
     return true;
 }

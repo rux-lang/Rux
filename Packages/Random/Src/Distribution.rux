@@ -16,12 +16,8 @@ import Math::{ Cos, Log, Sin, Sqrt };
 ///
 /// https://rux-lang.dev/docs/api/random/bernoulli
 pub func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) -> bool {
-    if !(probability > 0.0) {
-        return false;
-    }
-    if probability >= 1.0 {
-        return true;
-    }
+    if !(probability > 0.0) { return false; }
+    if probability >= 1.0 { return true; }
     return NextFloat64<G>(generator) < probability;
 }
 
@@ -44,9 +40,7 @@ pub func Exponential<G: RandomGenerator>(generator: &var G) -> float64 {
 ///
 /// https://rux-lang.dev/docs/api/random/exponential-with-rate
 pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float64) -> float64 {
-    if !(rate > 0.0) {
-        return 0.0;
-    }
+    if !(rate > 0.0) { return 0.0; }
     return Exponential<G>(generator) / rate;
 }
 

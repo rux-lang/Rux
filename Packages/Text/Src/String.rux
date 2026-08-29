@@ -49,16 +49,12 @@ extend String {
         self.length = other.length;
         self.capacity = other.length;
         self.allocator = other.allocator;
-        if other.length == 0 {
-            return;
-        }
+        if other.length == 0 { return; }
 
         let layout = Layout::New(other.length, 1).ValueOr(Layout { size: other.length, alignment: 1 });
         var block: *var opaque = null;
         var allocator = other.allocator;
-        if allocator.Allocate(layout, @block) != AllocError::None {
-            Panic("copying a String requires an allocation");
-        }
+        if allocator.Allocate(layout, @block) != AllocError::None { Panic("copying a String requires an allocation"); }
         Copy(block, other.data as *opaque, other.length);
         self.data = block as *var char8;
     }
@@ -89,9 +85,7 @@ extend String {
     /// https://rux-lang.dev/docs/api/text/string/from-validated
     pub func FromValidated(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
         *error = TextError::None;
-        if bytes.length == 0 {
-            return String(allocator);
-        }
+        if bytes.length == 0 { return String(allocator); }
 
         let layout = Layout::New(bytes.length, 1);
         if layout.IsNone() {

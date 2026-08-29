@@ -136,14 +136,10 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-slice
 pub func EqualsSlice(left: Slice<char8>, right: Slice<char8>) -> bool {
-    if left.length != right.length {
-        return false;
-    }
+    if left.length != right.length { return false; }
     var index: uint = 0;
     while index < left.length {
-        if left.data[index] != right.data[index] {
-            return false;
-        }
+        if left.data[index] != right.data[index] { return false; }
         index++;
     }
     return true;

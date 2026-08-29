@@ -32,17 +32,13 @@ pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Displa
         let paired = index + 1 < format.length;
         if ch == c8'{' && paired && format[index + 1] == c8'{' {
             let written = WriteAscii(writer, c8'{');
-            if written.IsError() {
-                return written;
-            }
+            if written.IsError() { return written; }
             index += 2;
             continue;
         }
         if ch == c8'}' && paired && format[index + 1] == c8'}' {
             let written = WriteAscii(writer, c8'}');
-            if written.IsError() {
-                return written;
-            }
+            if written.IsError() { return written; }
             index += 2;
             continue;
         }
@@ -68,9 +64,7 @@ pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Displa
             if placeholder {
                 if next < args.length {
                     let written = args[next].Format(writer, spec);
-                    if written.IsError() {
-                        return written;
-                    }
+                    if written.IsError() { return written; }
                     next++;
                 }
                 index = close + 1;
@@ -78,9 +72,7 @@ pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Displa
             }
         }
         let written = WriteAscii(writer, ch);
-        if written.IsError() {
-            return written;
-        }
+        if written.IsError() { return written; }
         index++;
     }
     return TextError::None;
@@ -97,9 +89,7 @@ pub func Format(allocator: Allocator, format: Slice<char8>, error: *var TextErro
     // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
     // builder is there to absorb; the short calls that most of them are fill in without one.
     *error = builder.Reserve(format.length + args.length * 8);
-    if error.IsError() {
-        return builder.IntoString();
-    }
+    if error.IsError() { return builder.IntoString(); }
     let sink: &var TextWriter = builder;
     let writer: &var TextWriter = sink;
     *error = WriteFormat(writer, format, args...);

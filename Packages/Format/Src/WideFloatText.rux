@@ -19,15 +19,9 @@ import Text::TextError;
 pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
                     layout: &FloatLayout) -> TextError {
     let value = UnpackWide(bits, layout);
-    if value.class == WideClass::NaN {
-        return WriteAligned(writer, spec, "NaN", true);
-    }
-    if value.class == WideClass::Infinity {
-        return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true);
-    }
-    if spec.hasPrecision {
-        return WriteWidePrecision(allocator, writer, spec, value, layout);
-    }
+    if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true); }
+    if value.class == WideClass::Infinity { return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true); }
+    if spec.hasPrecision { return WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 254));
@@ -41,9 +35,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         var count: uint = 0;
         var exponent10: int = 0;
         let room = MutableSlice::From<char8>(@digits[0], 160);
-        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) {
-            return TextError::OutOfMemory;
-        }
+        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) { return TextError::OutOfMemory; }
         if value.negative {
             cursor.Push(c8'-');
         }
@@ -73,13 +65,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let textRoom = digitRoom + fraction + 8u;
     let empty = Layout { size: 0, alignment: 1 };
     let blockLayout = Layout::New(digitRoom + textRoom, 1u).ValueOr(empty);
-    if blockLayout.size == 0u {
-        return TextError::LengthOverflow;
-    }
+    if blockLayout.size == 0u { return TextError::LengthOverflow; }
     var block: *var opaque = null;
-    if allocator.Allocate(blockLayout, @block) != AllocError::None {
-        return TextError::OutOfMemory;
-    }
+    if allocator.Allocate(blockLayout, @block) != AllocError::None { return TextError::OutOfMemory; }
     let digits = block as *var char8;
     let text = digits + digitRoom;
     var count: uint = 0;
