@@ -820,6 +820,10 @@ bool SemanticAnalyzerContext::TypeStoresReference(const TypeRef &type) {
         return stores;
     }
     if (const auto enumeration = enumDecls.find(base); enumeration != enumDecls.end()) {
+        if (!enumeration->second->IsVariant()) {
+            finish();
+            return false;
+        }
         std::unordered_map<std::string, TypeRef> substitutions;
         for (std::size_t index = 0; index < std::min(arguments.size(), enumeration->second->typeParams.size());
              ++index) {

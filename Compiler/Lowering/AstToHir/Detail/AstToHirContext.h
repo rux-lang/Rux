@@ -286,6 +286,7 @@ private:
                                                        const FuncDecl &method);
     [[nodiscard]] HirCopyPlan BuildCopyPlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] HirCopyPlan BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration);
+    [[nodiscard]] HirMovePlan BuildEnumMovePlan(const TypeRef &type, const EnumDecl &declaration);
     [[nodiscard]] HirMovePlan BuildMovePlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);

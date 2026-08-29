@@ -509,6 +509,9 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
         return;
     }
     if (plan.kind == HirCopyPlan::Kind::Enum) {
+        if (plan.form != CaseTypeForm::Variant) {
+            BuilderFailure("scalar enum reached variant copy-plan lowering");
+        }
         // Preserve the tag, inactive storage, and every trivial payload first. The active variant then replaces only
         // the payloads that require a recursive or custom copy. Custom copy operations initialize scratch storage, so
         // the shallow bits temporarily present in the destination are never observed or destroyed.
@@ -602,6 +605,59 @@ void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source,
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             EmitMovePlan(element, EmitIndexPtr(source, offset, element.type),
                          EmitIndexPtr(destination, offset, element.type));
+        }
+        return;
+    }
+    if (plan.kind == HirMovePlan::Kind::Variant) {
+        if (plan.form != CaseTypeForm::Variant) {
+            BuilderFailure("scalar enum reached variant move-plan lowering");
+        }
+        // Relocate all trivial bytes first. The active case then replaces only payload fields whose own move has
+        // behavior, leaving inactive storage untouched and never invoking a move operation for the wrong case.
+        EmitStore(EmitLoad(source, plan.type), destination, plan.type);
+        const TypeRef tagType = EnumTagType(plan.type);
+        const LirReg tag = EmitLoad(source, tagType);
+        const std::size_t variantCount = std::min(
+            {plan.variantDiscriminants.size(), plan.variantPayloadTypes.size(), plan.variantComponents.size()});
+        for (std::size_t variantIndex = 0; variantIndex < variantCount; ++variantIndex) {
+            const auto &payloadTypes = plan.variantPayloadTypes[variantIndex];
+            const auto &payloadPlans = plan.variantComponents[variantIndex];
+            if (std::ranges::none_of(payloadPlans, [](const HirMovePlan &component) {
+                    return component.kind != HirMovePlan::Kind::Trivial;
+                })) {
+                continue;
+            }
+
+            const std::uint32_t payloadBlock = NewBlock("move.variant");
+            const std::uint32_t afterBlock = NewBlock("move.variant.after");
+            Branch(EmitBinary(LirOpcode::CmpEq, tag, EmitConst(plan.variantDiscriminants[variantIndex], tagType),
+                              TypeRef::MakeBool()),
+                   payloadBlock, afterBlock);
+            SetBlock(payloadBlock);
+            std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+            const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
+            for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
+                const TypeRef &payloadType = payloadTypes[payloadIndex];
+                const std::uint64_t size = payloadType.SizeInBytes().value_or(8);
+                const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+                offset = (offset + alignment - 1) / alignment * alignment;
+                const HirMovePlan &component = payloadPlans[payloadIndex];
+                if (component.kind != HirMovePlan::Kind::Trivial) {
+                    const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
+                    const LirReg sourceBytes = EmitIndexPtr(source, byteOffset, TypeRef::MakeChar8());
+                    const LirReg destinationBytes = EmitIndexPtr(destination, byteOffset, TypeRef::MakeChar8());
+                    EmitMovePlan(component,
+                                 EmitCast(sourceBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                          TypeRef::MakePointer(payloadType)),
+                                 EmitCast(destinationBytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                          TypeRef::MakePointer(payloadType)));
+                }
+                offset += size;
+            }
+            if (!IsTerminated()) {
+                Jump(afterBlock);
+            }
+            SetBlock(afterBlock);
         }
         return;
     }
