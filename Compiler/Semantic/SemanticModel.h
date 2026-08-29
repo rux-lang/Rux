@@ -159,6 +159,17 @@ struct ResolvedIndexOperator {
     TypeRef resultType;
 };
 
+/// The `[]=` operator one accepted indexed assignment resolved to. Analysis picks the overload from the index type and
+/// checks the assigned value against the setter's value parameter, so lowering builds the call from this rather than
+/// resolving the operator again. `v[i] = x` is that call and nothing else: there is no store, and the index expression
+/// it was written as is never lowered as a value.
+struct ResolvedIndexAssignment {
+    const FuncDecl *method = nullptr;
+    TypeRef receiverType;
+    TypeRef indexType;
+    TypeRef valueType;
+};
+
 /// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variant cases and checks
 /// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
 struct ResolvedPropagation {
@@ -280,6 +291,7 @@ struct SemanticModel {
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                   std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
                   std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
+                  std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> inputIndexAssignments,
                   std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
@@ -333,6 +345,9 @@ struct SemanticModel {
     /// Returns null for built-in array, slice, and pointer indexing, which needs no declared operator.
     [[nodiscard]] const ResolvedIndexOperator *TryGetIndexOperator(const IndexExpr &expression) const noexcept;
 
+    /// Returns null unless this index expression is the target of an assignment that resolved to a declared `[]=`.
+    [[nodiscard]] const ResolvedIndexAssignment *TryGetIndexAssignment(const IndexExpr &expression) const noexcept;
+
     /// Returns null for a `for` loop whose subject analysis rejected as not iterable.
     [[nodiscard]] const ResolvedIteration *TryGetIteration(const ForStmt &statement) const noexcept;
 
@@ -375,6 +390,7 @@ private:
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
+    std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;

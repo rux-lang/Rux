@@ -248,10 +248,22 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
         checkingPlainAssignmentTarget = simpleAssignment;
+        // A plain assignment whose target is an index may be a call to `[]=` rather than a store. Naming the exact
+        // node lets the target check resolve the setter while it already holds the object and index types, so
+        // neither is checked twice, and leaves every other index in the expression a read.
+        const IndexExpr *savedAssignmentIndex = indexAssignmentTarget;
+        indexAssignmentTarget = simpleAssignment ? dynamic_cast<const IndexExpr *>(assignment->target.get()) : nullptr;
         TypeRef target = CheckExpr(*assignment->target);
+        indexAssignmentTarget = savedAssignmentIndex;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         TypeRef value = CheckExpr(*assignment->value);
         checkingPlainAssignmentTarget = simpleAssignment;
+        if (const auto *indexTarget = dynamic_cast<const IndexExpr *>(assignment->target.get());
+            indexTarget && indexAssignments.contains(indexTarget)) {
+            FinishIndexedAssignment(*assignment, target, value);
+            checkingPlainAssignmentTarget = savedAssignmentTarget;
+            return TypeRef::MakeOpaque();
+        }
         const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
@@ -1048,12 +1060,28 @@ bool SemanticAnalyzerContext::CheckAssignableTarget(const Expr &target, const Ty
     if (const IndexExpr *indexOperator = IndexOperatorInPlace(target)) {
         // `v[i]` on a type that declares `[]` calls the operator and yields its result, which no assignment can write
         // back through -- nor can one reach a field of that result. A reference cannot be returned, so a
-        // place-returning indexer is not expressible either.
+        // place-returning indexer is not expressible either. Writing goes through `[]=`, which takes the new value.
         const ResolvedIndexOperator &resolved = indexOperators.at(indexOperator);
-        EmitError(target.location,
-                  std::format("cannot assign through the '[]' operator on '{}'", resolved.receiverType.ToString()),
+        const std::string receiver = resolved.receiverType.ToString();
+        const bool writesTheIndexItself = static_cast<const Expr *>(indexOperator) == &target;
+        const bool declaresSetter = !AccessibleMethodCandidates(resolved.receiverType, "[]=").empty();
+        if (writesTheIndexItself && declaresSetter) {
+            // The receiver can be written, just not in one step: combining the read and the write would evaluate the
+            // receiver and the index twice, and an operator call is not a place a single store can reach.
+            EmitError(target.location,
+                      std::format("operator '{}' cannot read and write through the '[]' operator on '{}' at once",
+                                  operatorName, receiver),
+                      {"'[]' and '[]=' are separate operations, and neither reads and writes on its own"},
+                      "read with '[]' and write the result back with a separate '=' assignment");
+            return false;
+        }
+        EmitError(target.location, std::format("cannot assign through the '[]' operator on '{}'", receiver),
                   {"the indexer returns a value, so its result is not a place"},
-                  "assign through a method that takes the new value, such as 'Set(index, value)'");
+                  writesTheIndexItself
+                      ? std::format("declare 'func []=(self: &var {}, index: I, value: E)' to assign through the index",
+                                    receiver)
+                      : std::format("read the element into a local, write to that, and store it back through '{}'",
+                                    receiver));
         return false;
     }
     if (!IsAssignablePlace(target)) {

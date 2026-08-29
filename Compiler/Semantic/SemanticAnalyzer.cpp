@@ -2360,6 +2360,7 @@ private:
                 }
             }
             ValidateSpecialOperation(*m, currentExtendedType);
+            ValidateIndexOperator(*m, currentExtendedType);
             ValidateDestructor(*m, currentExtendedType);
             ValidateConstructor(*m, currentExtendedType);
             CheckFuncDecl(*m, /*isMethod=*/true);
@@ -3608,6 +3609,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          analyzer.TakeConstraintWitnesses(),
                          analyzer.TakePropagations(),
                          analyzer.TakeIndexOperators(),
+                         analyzer.TakeIndexAssignments(),
                          analyzer.TakeIterations(),
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),

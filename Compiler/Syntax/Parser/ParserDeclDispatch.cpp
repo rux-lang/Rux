@@ -243,12 +243,17 @@ std::unique_ptr<FuncDecl> Parser::ParseFuncDecl(const bool isPublic, const bool 
         decl->name = prefix + Advance().text;
     }
     else if (Check(TokenKind::LeftBracket) && Peek(1).Is(TokenKind::RightBracket) && !Peek(1).precededBySpace) {
-        // The indexer operator: `func [](self: &T, index: uint) -> E`. Its name is two punctuation tokens rather
-        // than one operator token, and the brackets must be adjacent so that the name reads as the `[]` it stands
-        // for rather than an empty index list someone left a space inside.
+        // The indexer operators: `func [](self: &T, index: uint) -> E` reads and
+        // `func []=(self: &var T, index: uint, value: E)` writes. Their names are separate punctuation tokens rather
+        // than one operator token, and each must be adjacent to the last so that a name reads as the operator it
+        // stands for rather than an empty index list someone left a space inside.
         Advance(); // consume '['
         Advance(); // consume ']'
         decl->name = "[]";
+        if (Check(TokenKind::Assign) && !Peek().precededBySpace) {
+            Advance(); // consume '='
+            decl->name = "[]=";
+        }
     }
     else if (Peek().IsOperator()) {
         decl->name = Advance().text;

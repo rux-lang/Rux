@@ -233,7 +233,7 @@ The element type must be copyable. Construct move-only elements explicitly or in
 
 ## Indexing
 
-A type indexes itself by declaring `[]` in an `extend` block, the same way it declares `==` or `<`. The receiver is written like any other, and the index is an ordinary parameter:
+A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:
 
 ```rux
 struct Vect {
@@ -244,12 +244,16 @@ extend Vect {
     func [](self: &Vect, index: uint) -> int {
         return self.data[index];
     }
+
+    func []=(self: &var Vect, index: uint, value: int) {
+        self.data[index] = value;
+    }
 }
 ```
 
-`v[i]` on such a type is a call to that operator. Arrays, slices, and pointers keep their built-in indexing, which no `extend` block can displace or redefine; the operator is reached only for a type the language does not index on its own.
+`v[i]` on such a type is a call to `[]`, and `v[i] = x` is a call to `[]=`. Each has exactly one shape, checked where it is declared: a read takes `self: &T` and one index and returns the element; a write takes `self: &var T`, the index, and the new value, and returns nothing. Neither takes type parameters, variadics, or default arguments. Arrays, slices, and pointers keep their built-in indexing, which no `extend` block can displace or redefine; the operators are reached only for a type the language does not index on its own.
 
-Nothing fixes the index type. Overloads are separated by it, so one type may answer several index forms, including a range:
+Nothing fixes the index type. Overloads of either operator are separated by it, so one type may answer several index forms, including a range:
 
 ```rux
 extend Vect {
@@ -259,9 +263,11 @@ extend Vect {
 }
 ```
 
-The operator produces a value, not a place. A reference cannot be returned, so there is no place-returning indexer to write back through: `v[i] = x`, `v[i] += x`, `v[i]++`, `v[i].field = x`, and borrowing `v[i]` as a `&T` are all rejected, and writing is expressed as an ordinary method such as `Set(index, value)`. Indexed assignment through a paired `[]=` operator is not part of the language today.
+The two are independent. A type may declare only `[]` and be read but not written, only `[]=` and be written but not read, or both. Declaring both does not make the pair act as one: neither operator reads and writes on its own, and combining them would evaluate the receiver and the index twice, so `v[i] += x`, `v[i]++`, and `v[i]--` are rejected in favour of writing the read and the write out. A field of a read result is not a place either — `[]` returns a value, and a reference cannot be returned, so there is no place-returning indexer — which leaves `v[i].field = x` and borrowing `v[i]` as a `&T` rejected as well.
 
-An indexer call borrows its receiver whole for the duration of the call, exactly as a method call does. Reading `v[i]` therefore conflicts with an exclusive borrow of any part of `v`, and never counts as a partial move out of it — the result is a fresh value that transfers on its own.
+Either call borrows its receiver whole for the duration of the call, exactly as a method call does: `[]` reads it, and `[]=` needs a receiver it may write, so a `let` binding or an access through `&T` is rejected. Both therefore conflict with an exclusive borrow of any part of the receiver, and a read never counts as a partial move out of it — the result is a fresh value that transfers on its own. The value written by `v[i] = x` reaches `[]=` as an ordinary by-value argument, so it copies or, with `v[i] <- x`, moves.
+
+Only the assignment's own target is written. In `v[keys[j]] = x`, the subscript on `keys` is a read through `[]` and only the outer index writes.
 
 ## Destruction
 

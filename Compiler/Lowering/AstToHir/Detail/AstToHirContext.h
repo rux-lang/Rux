@@ -241,10 +241,19 @@ private:
                                                       HirExprPtr &right);
     [[nodiscard]] HirExprPtr LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left,
                                                        HirExprPtr &right, const FuncDecl &resolved);
-    [[nodiscard]] HirExprPtr LowerOperatorMethodCall(HirExprPtr receiver, HirExprPtr argument,
-                                                     const Expr &argumentExpression, const FuncDecl &method,
-                                                     SourceLocation location);
+
+    /// One lowered operator argument beside the source expression it came from. The source is what decides whether an
+    /// unsuffixed literal takes the parameter's type, which only the written form can answer.
+    struct OperatorArgument {
+        HirExprPtr value;
+        const Expr *source = nullptr;
+    };
+
+    [[nodiscard]] HirExprPtr LowerOperatorMethodCall(HirExprPtr receiver, std::vector<OperatorArgument> arguments,
+                                                     const FuncDecl &method, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerIndexOperatorCall(const IndexExpr &expression, const ResolvedIndexOperator &resolved);
+    [[nodiscard]] HirExprPtr LowerIndexAssignment(const AssignExpr &assignment, const IndexExpr &index,
+                                                  const ResolvedIndexAssignment &resolved);
     [[nodiscard]] HirExprPtr LowerDerivedOrderingCompare(const BinaryExpr &expression, HirExprPtr &left,
                                                          HirExprPtr &right, const FuncDecl &lessThan,
                                                          const FuncDecl &equals);

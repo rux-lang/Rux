@@ -1,9 +1,14 @@
-44:9: error: cannot assign through the '[]' operator on 'Vect'
-45:9: error: cannot assign through the '[]' operator on 'Vect'
-46:9: error: cannot assign through the '[]' operator on 'Vect'
-50:14: error: cannot assign through the '[]' operator on 'Holder'
-53:16: error: argument 1 to 'Borrow' has type 'int', but parameter 'value' requires '&int'
-58:20: error: type 'Plain' cannot be indexed
-58:5: warning: cannot infer type of 'rejected'
-61:23: error: cannot slice value of type 'Vect'
-61:5: warning: cannot infer type of 'spanned'
+59:5: error: the '[]' operator on 'Malformed' must have signature 'func [](self: &Malformed, index: I) -> E'
+62:5: error: the '[]=' operator on 'Malformed' must have signature 'func []=(self: &var Malformed, index: I, value: E)'
+77:9: error: operator '+=' cannot read and write through the '[]' operator on 'Vect' at once
+78:9: error: operator '++' cannot read and write through the '[]' operator on 'Vect' at once
+82:5: error: cannot modify immutable variable 'frozen'
+86:15: error: cannot pass 'Slice<char8>' to parameter of type 'int'
+87:10: error: no '[]=' on 'Vect' accepts an index of type 'Slice<char8>'
+92:14: error: cannot assign through the '[]' operator on 'Holder'
+95:16: error: argument 1 to 'Borrow' has type 'int', but parameter 'value' requires '&int'
+100:20: error: type 'Plain' cannot be indexed
+100:5: warning: cannot infer type of 'rejected'
+104:13: error: cannot assign through the '[]' operator on 'ReadOnly'
+107:23: error: cannot slice value of type 'Vect'
+107:5: warning: cannot infer type of 'spanned'
