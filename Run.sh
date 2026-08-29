@@ -216,6 +216,8 @@ run_policy() {
     run_checked NoExternalToolchain sh Tests/Policy/NoExternalToolchain/Check.sh
     run_checked LanguageCutover sh Tests/Policy/LanguageCutover/Test.sh
     run_checked LanguageCutover sh Tests/Policy/LanguageCutover/Check.sh
+    run_checked EnumVariantCutover sh Tests/Policy/EnumVariantCutover/Test.sh
+    run_checked EnumVariantCutover sh Tests/Policy/EnumVariantCutover/Check.sh
     run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Test.sh
     run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Check.sh
     run_checked ScriptMessages sh Tests/Policy/ScriptMessages/Check.sh

@@ -101,7 +101,7 @@ public:
         return enums;
     }
 
-    /// The struct and enum type parameters declared in `sourceName`.
+    /// The struct and variant type parameters declared in `sourceName`.
     ///
     /// `Structs()` and `Enums()` are keyed by bare name across every package, so the last declaration of a name wins
     /// and a program that declares its own `Option` displaces the one in `Core`. An `extend` block has to resolve the

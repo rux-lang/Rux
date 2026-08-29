@@ -1099,7 +1099,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
     if (Match(TokenKind::Dot)) {
         auto p = std::make_unique<EnumPattern>();
         p->location = loc;
-        p->path.push_back(ExpectBefore(TokenKind::Ident, "an enum variant name after '.'").text);
+        p->path.push_back(ExpectBefore(TokenKind::Ident, "an enum member or variant case name after '.'").text);
         return parseEnumPatternSuffix(std::move(p));
     }
 

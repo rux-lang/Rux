@@ -485,7 +485,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     const bool isVariant = Check(TokenKind::VariantKeyword);
     const TokenKind declarationToken = isVariant ? TokenKind::VariantKeyword : TokenKind::EnumKeyword;
     const std::string_view declarationName = isVariant ? "variant" : "enum";
-    const std::string_view memberName = isVariant ? "variant case" : "enum variant";
+    const std::string_view memberName = isVariant ? "variant case" : "enum member";
     ExpectBefore(declarationToken,
                  isVariant ? "'variant' to start the variant declaration" : "'enum' to start the enum declaration");
 

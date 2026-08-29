@@ -192,8 +192,8 @@ struct TypeQueryExpr : Expr {
     TypeExprPtr type;
 };
 
-/// .Windows — an enum variant named without its type, which the surrounding context supplies. Currently the context is
-/// a `#if` condition, where the variant is matched against the enum on the other side of the comparison.
+/// .Windows — an enum member or variant case named without its type, which the surrounding context supplies. The
+/// context is a `#if` condition, where the variant is matched against the enum on the other side of the comparison.
 struct EnumShorthandExpr : Expr {
     std::string variant;
 };

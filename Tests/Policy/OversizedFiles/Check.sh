@@ -58,6 +58,10 @@ review_exception() {
         reviewed_limit=1400
         reviewed_reason='end-to-end CLI stream, option, workspace, and process contracts sharing one filesystem fixture'
         ;;
+    Tests/Unit/MoveConsumptionTests.cpp)
+        reviewed_limit=1400
+        reviewed_reason='shared ownership-analysis fixtures covering moves, initialization rollback, and aggregate consumption'
+        ;;
     Tests/Unit/OptimizerTests.cpp)
         reviewed_limit=1300
         reviewed_reason='shared hand-built HIR/LIR pass fixtures and pipeline contract tests'

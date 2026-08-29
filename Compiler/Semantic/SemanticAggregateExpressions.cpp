@@ -264,9 +264,9 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expression.typeName); enumDecl) {
             if (!variant) {
                 EmitError(expression.location,
-                          std::format("enum '{}' has no variant '{}'", enumDecl->name,
+                          std::format("variant '{}' has no case '{}'", enumDecl->name,
                                       expression.typeName.substr(expression.typeName.find("::") + 2)),
-                          {std::format("available variants are {}",
+                          {std::format("available cases are {}",
                                        AvailableNames(enumDecl->variants, [](const EnumDecl::Variant &candidate) {
                                            return candidate.name;
                                        }))});
@@ -277,7 +277,7 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
             }
             if (variant->namedFields.empty()) {
                 EmitError(expression.location,
-                          std::format("enum variant '{}' cannot use a named-field initializer because it has no named "
+                          std::format("variant case '{}' cannot use a named-field initializer because it has no named "
                                       "fields",
                                       expression.typeName));
                 for (const auto &field : expression.fields) {
@@ -306,7 +306,7 @@ void SemanticAnalyzerContext::CheckStructInitExpression(const StructInitExpr &ex
                 const auto expectedField = fields.find(field.name);
                 if (expectedField == fields.end()) {
                     EmitError(field.location,
-                              std::format("enum variant '{}' has no field '{}'", expression.typeName, field.name),
+                              std::format("variant case '{}' has no field '{}'", expression.typeName, field.name),
                               {std::format("available fields are {}",
                                            AvailableNames(variant->namedFields,
                                                           [](const auto &candidate) { return candidate.name; }))});

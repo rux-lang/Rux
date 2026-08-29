@@ -3,6 +3,8 @@
 /// `Option<T>` is what an operation returns when having nothing to give is an ordinary outcome rather than a failure:
 /// a lookup that found no entry, a sequence that has ended. A failure that the caller should be told the reason for
 /// belongs in `Result<T, E>` instead.
+/// It is an ordinary library-declared variant: `Some` carries one `T`, while payload-less `None` reports absence. The
+/// compiler recognizes that exact case shape for `?` and iterator completion; the name `Option` itself is not built in.
 ///
 /// Inspecting which case an option holds borrows it, so an option is still the caller's afterwards. Reaching the
 /// value consumes the option, because handing out a `T` that the option also still held would give two owners to one

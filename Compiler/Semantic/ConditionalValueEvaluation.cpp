@@ -73,7 +73,7 @@ std::string_view ValueTypeName(const CompileTimeValue &value) {
         return "float";
     if (std::holds_alternative<std::string>(value))
         return "string";
-    return "enum variant";
+    return "enum member";
 }
 
 std::string_view OperatorName(const TokenKind op) {

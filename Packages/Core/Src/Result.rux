@@ -2,6 +2,8 @@
 ///
 /// `Result<T, E>` is what an operation returns when a caller should be told why something did not work. An outcome
 /// where absence carries no reason worth reporting belongs in `Option<T>` instead.
+/// It is an ordinary library-declared variant: `Success` carries one `T` and `Error` carries one `E`. The compiler
+/// recognizes that exact case shape for `?`; the name `Result` itself is not built in.
 ///
 /// Inspecting which case a result holds borrows it, so the result is still the caller's afterwards. Reaching either
 /// payload consumes the result, because handing out the value while the result still held it would give two owners to

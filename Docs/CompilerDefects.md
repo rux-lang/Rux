@@ -14,7 +14,7 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ### A generic iterator reporting `Option<*var T>` does not survive lowering
 
-*Loud.* The instantiation is named one way where its layout is recorded and another where it is looked up, the two disagreeing over whether the pointee's `var` belongs in the name, and lowering fails with "enum type `Option<*int32>` reached lowering without a layout marker". It rules out the obvious writable iterator, so `Rux/Collections` has none.
+*Loud.* The instantiation is named one way where its layout is recorded and another where it is looked up, the two disagreeing over whether the pointee's `var` belongs in the name, and lowering fails with "variant type `Option<*int32>` reached lowering without a layout marker". It rules out the obvious writable iterator, so `Rux/Collections` has none.
 
 The non-generic form works since `19beafa`, which fixed the two layers above this one: a type read back from its name lost the `var` entirely, and substituting a type argument dropped the mark `*var T` puts on its `T` slot. What remains is the instantiation name itself. `alignof(T)` on a type parameter returning the size was a third defect in the same area, fixed in `4a83949`.
 
@@ -34,9 +34,9 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 
 *Loud.* Found in `Rux/Memory`; `Layout::ForValue<T>` had to become the free function `LayoutOf<T>`.
 
-### Equality on a multiword aggregate compares only its leading doubleword
+### Equality on a multiword struct or tuple compares only its leading doubleword
 
-*Silent.* `==` between two values wider than one register loads the first eight bytes of each side and compares those. For an enum whose payload does not pack beside its tag that is the discriminant alone: `ParseError::InvalidCharacter(3) == ParseError::InvalidCharacter(4)` is true. The x86-64 backend has always done this; the AArch64 backend now does the same for such enums deliberately so the two targets agree, and still refuses a tuple comparison rather than quietly answering from its first element — x86-64 silently does the latter. Compact payload enums whose tag and payload share one word compare fully, which hides the defect in most code. A correct comparison cannot be a byte comparison either, because a variant that carries no payload leaves those bytes unwritten; it has to branch on the variant, which is frontend work. Until then, a test that compares payload-carrying variants is only comparing which variant it is.
+*Silent.* `==` between two aggregate values wider than one register still loads the first eight bytes of each side and compares those unless the frontend supplies a structural operation. The AArch64 backend refuses a tuple comparison rather than quietly answering from its first element, while x86-64 silently does the latter. Variants no longer take this path: their equality is case-aware and structural, as recorded below.
 
 ### A captured-output unit test is load-dependent
 
@@ -76,7 +76,7 @@ The canonical destructor is `func ~T(self: &var T)` inside `extend T`. It is a d
 
 ### Recursive and partial drop glue could miss or corrupt cleanup — fixed in `4ab7a38d`
 
-Drop planning now handles recursive owners, partially constructed aggregates, non-generic enum payloads, generic destructors, and control-flow exits through branches, loops, returns, and `?`. The explicit `JsonValue` and `TomlValue` destructors remain because they state ownership clearly, not because synthesized recursive glue needs a workaround.
+Drop planning now handles recursive owners, partially constructed aggregates, non-generic variant payloads, generic destructors, and control-flow exits through branches, loops, returns, and `?`. The explicit `JsonValue` and `TomlValue` destructors remain because they state ownership clearly, not because synthesized recursive glue needs a workaround.
 
 ### A `const` array crossing a file boundary read garbage — fixed in `f090653`
 
@@ -92,10 +92,14 @@ Reference provenance and explicit move operands now answer the public legality q
 
 A payload bound by a match arm now owns what it took and is destroyed when the arm ends, and the subject it came out of is not destroyed as well. The two halves landed together: before them, taking a value out of an option destroyed it twice; between them, not at all. Ownership follows the subject — an arm binding is registered for cleanup only where the subject was handed over, so matching a borrowed option still copies nothing and destroys nothing. Reading an aggregate subject straight out of its slot also had to clear the consumption, which was the one path that skipped it.
 
+### Wide variant equality compared only the tag — fixed in `0b58cdd0` and `85dff083`
+
+Variant equality now branches on the active case. Different cases are unequal without reading payload storage; equal cases compare only their active positional or named payloads, recursively and in declaration order. Wide payloads, nested variants, generic substitutions, inactive bytes, and padding therefore no longer depend on the backend's one-word aggregate comparison.
+
 ### A generic's interface bound resolved in the instantiator's scope — fixed in `4a96861`
 
 A call from a package that had not imported the interface recorded no conformance — silently, since a use site does not report — and lowering then aborted the compiler with no output at all in a release build. This is why `Rux/Hash` is written with bounded generics, and why that was not possible before it was fixed.
 
 ### AArch64 could not open a 512-byte frame or write an aggregate constant — fixed in `64175ef4`
 
-Two backend defects that `rux check --target` cannot see, because the frontend accepts the programs and only code generation fails. The frame record's immediate spans 512 bytes below the stack pointer but only 504 above it, and the limit was taken from the negative reach alone, so a frame of exactly 512 bytes encoded a prologue its epilogue could not close. Separately, an aggregate whose whole value is a literal — an enum variant carrying no payload, a zeroed structure — had no lowering at all. Found by cross-building the language suite for all seven non-host target cells, which is worth repeating whenever the backend changes.
+Two backend defects that `rux check --target` cannot see, because the frontend accepts the programs and only code generation fails. The frame record's immediate spans 512 bytes below the stack pointer but only 504 above it, and the limit was taken from the negative reach alone, so a frame of exactly 512 bytes encoded a prologue its epilogue could not close. Separately, an aggregate whose whole value is a literal — a unit variant case, a zeroed structure — had no lowering at all. Found by cross-building the language suite for all seven non-host target cells, which is worth repeating whenever the backend changes.

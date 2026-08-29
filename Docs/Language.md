@@ -40,11 +40,76 @@ extend Buffer {
 }
 ```
 
-An external struct initializer must be able to name every field, so a public struct with private representation fields is constructed through a public constructor or factory. Enum variants and their payload fields inherit the enum's effective visibility; they do not take individual `pub` markers. Interface requirements likewise inherit the interface's visibility. A concrete method may remain private while satisfying a public interface: dispatch through the public interface is allowed, but a direct call on the concrete type is not.
+An external struct initializer must be able to name every field, so a public struct with private representation fields is constructed through a public constructor or factory. Enum members and variant cases inherit their type's effective visibility; variant payload fields do not take individual `pub` markers. Interface requirements likewise inherit the interface's visibility. A concrete method may remain private while satisfying a public interface: dispatch through the public interface is allowed, but a direct call on the concrete type is not.
 
 Compiler-generated copy and move operations are available wherever their type is available. A custom copy or move implementation, like any other source operator, must be `pub` for cross-package source use. A canonical bodyless copy or move declaration still prohibits the capability everywhere regardless of visibility. Destructors are invoked by compiler glue regardless of visibility and normally remain private.
 
-Public API signatures must close over public types. An effectively public function, method, constructor, alias, constant, extern, generic bound, field, enum payload, or interface requirement cannot expose a private type through a parameter, return, inferred type, nested generic argument, or bound. Publishing an item does not implicitly re-export the private declarations used by its signature; the compiler rejects the leak instead.
+Public API signatures must close over public types. An effectively public function, method, constructor, alias, constant, extern, generic bound, field, variant payload, or interface requirement cannot expose a private type through a parameter, return, inferred type, nested generic argument, or bound. Publishing an item does not implicitly re-export the private declarations used by its signature; the compiler rejects the leak instead.
+
+## Enums, Variants, and Unions
+
+`enum` is a named scalar integer type. It declares a closed set of unit members, may choose an integer base type, and may assign integer discriminants. It has no type parameters or payload fields:
+
+```rux
+enum Month: uint8 {
+    January = 1,
+    February,
+    March
+}
+```
+
+Members are values, written `Month::January` or `.January` where context already fixes `Month`. Their discriminants participate in the existing explicit enum/integer conversions and scalar comparisons. Matching an enum selects members and cannot bind data:
+
+```rux
+func Days(month: Month) -> int32 {
+    return match month {
+        .January => 31i32,
+        .February => 28i32,
+        .March => 31i32
+    };
+}
+```
+
+`variant` is a closed tagged union. A case may be unit-like, carry positional values, or carry named fields, and the declaration may be generic. Its tag is private: source cannot choose a base type or assign case discriminants.
+
+```rux
+variant Result<T, E> {
+    Success(T),
+    Error(E)
+}
+
+variant Shape {
+    Point,
+    Circle { radius: float64; },
+    Rectangle { width: float64; height: float64; }
+}
+```
+
+Cases are constructed with their declaration name. A unit case may omit `()` where it is already a value; positional and named payloads use the corresponding call or initializer syntax. A match tests the active case before reading its payload, and an exhaustive match covers every declared case:
+
+```rux
+func Area(shape: Shape) -> float64 {
+    return match shape {
+        .Point => 0.0,
+        .Circle { radius } => radius * radius * 3.0,
+        .Rectangle { width, height } => width * height
+    };
+}
+```
+
+Variant equality is structural. Values with different active cases are unequal without inspecting inactive storage. Values with the same case compare each active payload in declaration order, recursively using that payload type's equality; a variant is not equality-comparable when one of its reachable payloads is not. This applies to wide, nested, generic, tuple, and named payloads and does not compare padding or stale bytes.
+
+Copy, move, and destruction are also case-aware. A variant is copyable or movable only when every reachable payload supports the operation. Moving transfers the active payload and invalidates the source. Destruction reads the tag once and destroys only the active payload, in reverse field order, exactly once; partially constructed cases roll back only the payloads already initialized.
+
+The runtime representation is a private tag followed by storage aligned for the widest case. Calls and returns use the aggregate ABI selected for that complete layout; a variant is never passed as only its tag. The compiler keeps the tag width, payload offsets, construction, matching, equality, moves, and drop glue on one layout contract for every target. This representation is compiler-managed, not a substitute for a C ABI declaration.
+
+Both forms are closed, so adding a member or case makes exhaustive matches fail until callers handle it. For an enum, an explicitly assigned discriminant is part of the source-visible numeric contract; append or assign members deliberately when those values are serialized or cross an ABI. A variant's tag numbers are not a source contract and must never be serialized directly. Stable files, protocols, and foreign interfaces should encode an explicit scalar enum and then translate to or from the in-memory variant.
+
+Removing or renaming an enum member or variant case is likewise a source-breaking change. Changing a variant payload changes its value layout and the operations required from that payload, including equality, copying, moving, and destruction. Public library evolution should therefore treat case lists and payload types as part of the API even though the private tag representation is not.
+
+`union` remains the explicit overlapping-storage type. It has fields rather than cases, stores no tag, performs no active-case check, and is appropriate for foreign or manually tracked layouts. Use `variant` when the compiler must know which alternative is active; use `union` only when the program or an external ABI owns that invariant.
+
+The source cutover is intentionally narrow. Scalar enums retain their syntax, discriminants, conversions, and representation. First-party payload types that used the compiler's default enum layout migrate directly to `variant`. External payload enums that exposed an integer base or assigned discriminants are not source-compatible: because a variant's tag is private, those declarations require an explicit redesign, usually a scalar wire enum plus a separate payload type or a manually controlled union.
 
 ## Bindings and Parameters
 

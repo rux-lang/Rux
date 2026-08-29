@@ -507,7 +507,7 @@ std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type
         return type.SizeInBytes();
     }
     if (IsInstantiatedPayloadEnum(type)) {
-        BuilderFailure(std::format("enum type '{}' reached lowering without a layout marker", type.name));
+        BuilderFailure(std::format("variant type '{}' reached lowering without a layout marker", type.name));
     }
     return std::nullopt;
 }
