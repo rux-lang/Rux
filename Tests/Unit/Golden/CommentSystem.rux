@@ -1,0 +1,12 @@
+// Exact documentation-marker recognition reaches the lexer diagnostic path too.
+//// ordinary decorative line
+/***/
+/* nested /* ordinary */ block */
+
+/// This declaration parses before the failure.
+func Ready() -> int {
+    return 0;
+}
+
+/** Unterminated documentation block.
+ * The range reaches EOF and the lexer reports the opening delimiter.

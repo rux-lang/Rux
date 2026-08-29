@@ -38,6 +38,7 @@ set(RUX_TEST_SOURCES
     CliContractTests.cpp
     CliProcessTests.cpp
     CliScaffoldProcessTests.cpp
+    CommentSystemAcceptanceTests.cpp
     CmdInspectProcessTests.cpp
     CoalescingLoweringTests.cpp
     CompilerDriverTests.cpp
