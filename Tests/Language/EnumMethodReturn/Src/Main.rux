@@ -1,12 +1,12 @@
 import Core::Assert;
 
-// A generic enum carrying a payload is wider than the word a tag and a payload are packed into, so it is built and
+// A generic variant carrying a payload is wider than the word a tag and a payload are packed into, so it is built and
 // read as an aggregate: the tag at offset 0, the payload after it. The type a method returns has to say so as
 // plainly as the type a variant is built at -- when it did not, the caller decoded the returned value as a packed
 // word the method never wrote, and made the call itself under an ABI too narrow to carry the result. A single match
 // happened to survive that; matching the same method's result again did not.
 
-enum Option<T> {
+variant Option<T> {
     Some(T),
     None
 }

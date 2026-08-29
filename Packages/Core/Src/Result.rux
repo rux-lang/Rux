@@ -10,7 +10,7 @@
 /// A `Result<T, E>` is as wide as its tag plus the larger of `T` and `E`, and never allocates on its own.
 ///
 /// https://rux-lang.dev/docs/api/core/result
-pub enum Result<T, E> {
+pub variant Result<T, E> {
     Success(T),
     Error(E)
 }

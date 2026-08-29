@@ -1,5 +1,5 @@
-// One representation per enum: the shape a variant is built in has to be the shape a match decodes, wherever the value
-// came from. A generic enum wider than a word is an aggregate -- a tag at offset 0 and payloads after it -- and a
+// One representation per variant: the shape a case is built in has to be the shape a match decodes, wherever the value
+// came from. A generic variant wider than a word is an aggregate -- a tag at offset 0 and payloads after it -- and a
 // value returned from a method is no different from one built in the same function.
 
 #include "Lexer/Lexer.h"
@@ -59,7 +59,7 @@ bool Contains(const std::vector<LirOpcode> &opcodes, const LirOpcode op) {
     return std::find(opcodes.begin(), opcodes.end(), op) != opcodes.end();
 }
 
-/// A payload reached by byte offset from the enum's own storage is the aggregate representation; one reached by
+/// A payload reached by byte offset from the variant's own storage is the aggregate representation; one reached by
 /// shifting the tag out of a single word is the compact one.
 bool ReadsPayloadByOffset(const LirFunc &function) {
     return Contains(OpcodesOf(function), LirOpcode::IndexPtr);
@@ -70,7 +70,7 @@ bool ReadsPayloadByShift(const LirFunc &function) {
 }
 
 const std::string kOptionPrelude = R"(
-    enum Option<T> { Some(T), None }
+    variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
         func Next(self: &var Counter) -> Option<int32> {
@@ -83,7 +83,7 @@ const std::string kOptionPrelude = R"(
 )";
 } // namespace
 
-TEST_CASE("a returned enum is matched in the representation it was built in") {
+TEST_CASE("a returned variant is matched in the representation it was built in") {
     const LirPackage package = LowerSource(kOptionPrelude + R"(
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 3i32 };
@@ -106,7 +106,7 @@ TEST_CASE("a returned enum is matched in the representation it was built in") {
     CHECK_FALSE(ReadsPayloadByShift(main));
 }
 
-TEST_CASE("a method's returned enum type carries the same layout as one built in place") {
+TEST_CASE("a method's returned variant type carries the same layout as one built in place") {
     const LirPackage package = LowerSource(kOptionPrelude + R"(
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 1i32 };
@@ -128,7 +128,7 @@ TEST_CASE("a method's returned enum type carries the same layout as one built in
     }
 
     // A locally built value and a returned one are the same type, so they have to agree on their size: the returned
-    // one used to arrive as a bare name with no layout at all, which read as a compact enum.
+    // one used to arrive as a bare name with no layout at all, which read as a compact variant.
     REQUIRE_GE(optionSlots.size(), 2);
     for (const TypeRef &slot : optionSlots) {
         CHECK_EQ(slot.SizeInBytes(), optionSlots.front().SizeInBytes());

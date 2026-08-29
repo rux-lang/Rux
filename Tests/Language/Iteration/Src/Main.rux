@@ -5,8 +5,8 @@
 */
 import Core::Assert;
 
-// The end of iteration is reported with an ordinary enum; nothing here is built in.
-enum Option {
+// The end of iteration is reported with an ordinary variant; nothing here is built in.
+variant Option {
     Some(int32),
     None
 }

@@ -67,7 +67,7 @@ std::string CalleeName(const HirExpr &expr) {
 }
 
 const std::string kIterationPrelude = R"(
-    enum Option<T> { Some(T), None }
+    variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
         func Next(self: &var Counter) -> Option<int32> {

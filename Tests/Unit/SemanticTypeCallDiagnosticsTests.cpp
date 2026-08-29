@@ -258,7 +258,7 @@ TEST_CASE("struct initializer diagnostics identify duplicate unknown missing and
 
 TEST_CASE("enum constructors diagnose positional and named payload expectations") {
     const auto diagnostics = AnalyzeSource(R"(
-        enum Choice {
+        variant Choice {
             Empty,
             Pair(int, bool),
             Named { value: int; }

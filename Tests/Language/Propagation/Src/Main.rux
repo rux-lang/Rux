@@ -10,13 +10,13 @@ enum ParseError: int32 {
     Bad
 }
 
-// `Result` and `Option` are ordinary enums; `?` recognizes them by their variants.
-enum Result<T, E> {
+// `Result` and `Option` are ordinary variants; `?` recognizes them by their cases.
+variant Result<T, E> {
     Success(T),
     Error(E)
 }
 
-enum Option<T> {
+variant Option<T> {
     Some(T),
     None
 }

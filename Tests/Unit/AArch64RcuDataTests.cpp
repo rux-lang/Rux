@@ -25,12 +25,12 @@ using namespace Rux::Testing;
 // constant rather than that nothing was reported.
 
 TEST_CASE("AArch64 RCU emitter writes every byte of an aggregate constant") {
-    // A payload-carrying enum written as its empty variant is one constant whose type is not a register value. The
+    // A payload-carrying variant written as its empty case is one constant whose type is not a register value. The
     // literal names the low bytes and says nothing about the rest, so the rest is written as zero: leaving it would
     // hand the slot whatever the last value there happened to be, which is the sort of difference that shows up as
     // a test passing on one target and not the other.
     const auto package = CompileToAArch64Lir(R"(
-        enum Parcel {
+        variant Parcel {
             Nothing,
             Count(int64)
         }

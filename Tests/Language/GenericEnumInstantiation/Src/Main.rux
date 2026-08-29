@@ -42,6 +42,6 @@ func Hold(counter: *var int32) {
 func Main() -> int {
     var counter = 0i32;
     Hold(@counter);
-    Assert(counter == 1i32, "a generic enum payload receives destruction glue after substitution");
+    Assert(counter == 1i32, "a generic variant payload receives destruction glue after substitution");
     return 0;
 }

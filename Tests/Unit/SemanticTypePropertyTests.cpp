@@ -35,7 +35,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
             func ~GenericOwner(self: &var GenericOwner<T>) {}
         }
 
-        enum Maybe<T> {
+        variant Maybe<T> {
             None,
             Some(T)
         }
@@ -378,7 +378,7 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
 
         struct Unused { leaf: Leaf; }
 
-        enum Choice<T> {
+        variant Choice<T> {
             None,
             Both(T, int32, T)
         }

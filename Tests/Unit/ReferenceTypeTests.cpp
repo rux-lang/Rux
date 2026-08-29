@@ -154,7 +154,7 @@ TEST_CASE("references reject pointer-only operations") {
 
 TEST_CASE("borrowed enum values can be inspected by match") {
     const auto diagnostics = AnalyzeReferences(R"(
-        enum Choice<T> { Some(T), None }
+        variant Choice<T> { Some(T), None }
         extend Choice<T> {
             func IsSome(self: &Choice<T>) -> bool {
                 return match self {

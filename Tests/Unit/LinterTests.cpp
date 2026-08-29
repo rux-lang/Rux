@@ -25,7 +25,7 @@ TEST_CASE("linter accepts correct naming conventions") {
                 someField: int32;
             }
 
-            enum MyEnum {
+            variant MyEnum {
                 FirstVariant,
                 SecondVariant{innerValue: int32;}
             }
@@ -121,7 +121,7 @@ TEST_CASE("linter warns on bad enum variant name") {
 }
 
 TEST_CASE("linter warns on bad enum variant field name") {
-    auto result = Rux::Linting::Lint("enum Test { Variant{BadField: int;} }", "var_field_bad.rux");
+    auto result = Rux::Linting::Lint("variant Test { Variant{BadField: int;} }", "var_field_bad.rux");
     REQUIRE(result.diagnostics.size() == 1);
     CHECK(result.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(result.diagnostics[0].message == "enum variant field name 'BadField' should be camelCase");

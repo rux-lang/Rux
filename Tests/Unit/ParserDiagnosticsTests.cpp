@@ -264,7 +264,7 @@ TEST_CASE("generic declarations retain single and multiple interface bounds in t
     const auto parsed = ParseSource(R"(
         func Render<T: Display + Core::Debug, Context>(value: T, context: Context);
         struct Table<Key: Hash + Equal, Value> { key: Key; value: Value; }
-        enum Outcome<Value, Error: Display> { Ok(Value), Fail(Error) }
+        variant Outcome<Value, Error: Display> { Ok(Value), Fail(Error) }
     )");
 
     CAPTURE(DiagnosticMessages(parsed));
@@ -305,7 +305,7 @@ TEST_CASE("generic bound diagnostics identify missing names and separators") {
     constexpr Case cases[] = {
         {"func Missing<T:>(value: T);", "expected an interface bound after ':' before '>'"},
         {"struct Trailing<T: Display +> {}", "expected an interface bound after '+' before '>'"},
-        {"enum Adjacent<T: Display Debug> { Value(T) }", "expected '+' between interface bounds before 'Debug'"},
+        {"variant Adjacent<T: Display Debug> { Value(T) }", "expected '+' between interface bounds before 'Debug'"},
         {"func Invalid<T: *Value>();", "expected an interface name in the type parameter bound before '*'"},
     };
 

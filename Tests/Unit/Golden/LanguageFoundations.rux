@@ -13,12 +13,12 @@ enum IoError: int32 {
     Closed
 }
 
-enum Result<T, E> {
+variant Result<T, E> {
     Success(T),
     Error(E)
 }
 
-enum Option<T> {
+variant Option<T> {
     Some(T),
     None
 }
