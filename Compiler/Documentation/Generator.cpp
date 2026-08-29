@@ -3,6 +3,7 @@
 #include "Diagnostics/Diagnostics.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -148,6 +149,7 @@ std::string RenderMarkdown(const std::string_view source, Findings *findings = n
     std::string paragraph;
     bool list = false;
     bool fence = false;
+    char fenceMarker = '\0';
     auto flushParagraph = [&] {
         if (!paragraph.empty()) {
             output << "<p>" << InlineMarkdown(paragraph, findings) << "</p>";
@@ -155,14 +157,24 @@ std::string RenderMarkdown(const std::string_view source, Findings *findings = n
         }
     };
     while (std::getline(input, line)) {
-        if (line.starts_with("```")) {
+        if (line.starts_with("```") || line.starts_with("~~~")) {
             flushParagraph();
             if (list) {
                 output << "</ul>";
                 list = false;
             }
-            output << (fence ? "</code></pre>" : "<pre><code>");
-            fence = !fence;
+            if (!fence) {
+                fence = true;
+                fenceMarker = line.front();
+                output << "<pre><code>";
+            }
+            else if (line.front() == fenceMarker) {
+                fence = false;
+                output << "</code></pre>";
+            }
+            else {
+                output << EscapeHtml(line) << '\n';
+            }
             continue;
         }
         if (fence) {
@@ -176,6 +188,22 @@ std::string RenderMarkdown(const std::string_view source, Findings *findings = n
                 list = true;
             }
             output << "<li>" << InlineMarkdown(std::string_view(line).substr(2), findings) << "</li>";
+            continue;
+        }
+        std::size_t headingDepth = 0;
+        while (headingDepth < line.size() && headingDepth < 6 && line[headingDepth] == '#') {
+            ++headingDepth;
+        }
+        if (headingDepth > 0 && headingDepth < line.size() && line[headingDepth] == ' ') {
+            flushParagraph();
+            if (list) {
+                output << "</ul>";
+                list = false;
+            }
+            const std::size_t level = std::min<std::size_t>(6, headingDepth + 3);
+            output << "<h" << level << " class=\"doc-heading\">"
+                   << InlineMarkdown(std::string_view(line).substr(headingDepth + 1), findings) << "</h" << level
+                   << '>';
             continue;
         }
         if (list) {
@@ -196,6 +224,80 @@ std::string RenderMarkdown(const std::string_view source, Findings *findings = n
         output << "</ul>";
     if (fence)
         output << "</code></pre>";
+    return output.str();
+}
+
+void RecordDocumentationIssues(const Syntax::Documentation &documentation, Findings &findings) {
+    for (const auto &issue : documentation.issues) {
+        Diagnostic problem = ErrorDiagnostic("invalid documentation: " + issue.message, {},
+                                             "fix the documentation comment before generating this item");
+        problem.sourceName = findings.sourceName;
+        problem.location = issue.range.start;
+        findings.diagnostics.push_back(std::move(problem));
+    }
+}
+
+void RenderTagGroup(std::ostringstream &output, const Syntax::Documentation &documentation,
+                    const Syntax::DocumentationTagKind kind, Findings &findings) {
+    using Syntax::DocumentationTagKind;
+    if (kind == DocumentationTagKind::Deprecated) {
+        const auto tag = std::ranges::find(documentation.tags, kind, &Syntax::DocumentationTag::kind);
+        output << "<aside class=\"deprecated\"><h4>Deprecated</h4>" << RenderMarkdown(tag->markdown, &findings)
+               << "</aside>";
+        return;
+    }
+    if (kind == DocumentationTagKind::Returns) {
+        const auto tag = std::ranges::find(documentation.tags, kind, &Syntax::DocumentationTag::kind);
+        output << "<section class=\"doc-section returns\"><h4>Returns</h4>" << RenderMarkdown(tag->markdown, &findings)
+               << "</section>";
+        return;
+    }
+
+    const bool references = kind == DocumentationTagKind::See;
+    const bool parameters = kind == DocumentationTagKind::Parameter;
+    output << "<section class=\"doc-section "
+           << (references   ? "see-also"
+               : parameters ? "parameters"
+                            : "type-parameters")
+           << "\"><h4>"
+           << (references   ? "See Also"
+               : parameters ? "Parameters"
+                            : "Type Parameters")
+           << "</h4>" << (references ? "<ul>" : "<dl>");
+    for (const auto &tag : documentation.tags) {
+        if (tag.kind != kind) {
+            continue;
+        }
+        if (references) {
+            output << "<li><code>" << EscapeHtml(tag.subject) << "</code>";
+            if (!tag.markdown.empty()) {
+                output << RenderMarkdown(tag.markdown, &findings);
+            }
+            output << "</li>";
+        }
+        else {
+            output << "<dt><code>" << EscapeHtml(tag.subject) << "</code></dt><dd>"
+                   << RenderMarkdown(tag.markdown, &findings) << "</dd>";
+        }
+    }
+    output << (references ? "</ul></section>" : "</dl></section>");
+}
+
+std::string RenderDocumentation(const Syntax::Documentation &documentation, Findings &findings) {
+    RecordDocumentationIssues(documentation, findings);
+    if (documentation.Present()) {
+        findings.location = documentation.range.start;
+    }
+    std::ostringstream output;
+    output << RenderMarkdown(documentation.markdown, &findings);
+    std::array<bool, 5> rendered{};
+    for (const auto &tag : documentation.tags) {
+        const auto index = static_cast<std::size_t>(tag.kind);
+        if (!rendered[index]) {
+            RenderTagGroup(output, documentation, tag.kind, findings);
+            rendered[index] = true;
+        }
+    }
     return output.str();
 }
 
@@ -529,7 +631,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     html << "<article class=\"item\" id=\"" << EscapeHtml(id) << "\"><div class=\"kind\">" << EscapeHtml(DeclKind(decl))
          << "</div><h3>" << EscapeHtml(name) << "</h3><pre><code>" << EscapeHtml(DeclSignature(decl))
          << "</code></pre><div class=\"location\">" << EscapeHtml(source) << ':' << decl.location.line << "</div>"
-         << RenderMarkdown(decl.documentation.markdown, &findings);
+         << RenderDocumentation(decl.documentation, findings);
 
     if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
         for (const auto &field : structure->fields) {
@@ -537,7 +639,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
-                 << "</code>" << RenderMarkdown(field.documentation.markdown, &findings) << "</section>";
+                 << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
     else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&decl)) {
@@ -546,7 +648,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
-                 << "</code>" << RenderMarkdown(field.documentation.markdown, &findings) << "</section>";
+                 << "</code>" << RenderDocumentation(field.documentation, findings) << "</section>";
         }
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
@@ -554,14 +656,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
             const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
             html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
                  << EscapeHtml(variant.name) << "</h4><code>" << EscapeHtml(CaseSignature(*enumeration, variant))
-                 << "</code>" << RenderMarkdown(variant.documentation.markdown, &findings) << "</section>";
+                 << "</code>" << RenderDocumentation(variant.documentation, findings) << "</section>";
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
         for (const auto &method : interface->methods) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
-                 << RenderMarkdown(method->documentation.markdown, &findings) << "</section>";
+                 << RenderDocumentation(method->documentation, findings) << "</section>";
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
@@ -570,7 +672,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
-                 << RenderMarkdown(method->documentation.markdown, &findings) << "</section>";
+                 << RenderDocumentation(method->documentation, findings) << "</section>";
         }
     }
     html << "</article>";
@@ -722,6 +824,9 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
         "var(--line);border-radius:.5rem;background:var(--card);color:inherit}"
         ".module{margin:2rem 0}.item{padding:1.25rem;margin:1rem 0;border:1px solid "
         "var(--line);border-radius:.75rem}.kind,.location{color:var(--muted);font-size:.85rem}"
+        ".doc-heading,.doc-section h4,.deprecated h4{margin-bottom:.35rem}.doc-section{margin-top:1.25rem}"
+        ".doc-section dl{display:grid;grid-template-columns:max-content 1fr;gap:.4rem 1rem}.doc-section dd{margin:0}"
+        ".deprecated{margin-top:1rem;padding:.75rem 1rem;border-left:3px solid #d97706;background:var(--card)}"
         "pre{overflow:auto;padding:1rem;background:var(--card);border-radius:.5rem}.member{margin:1rem 0 0 "
         "1rem;padding-left:1rem;border-left:3px solid var(--line)}a{color:#4d7cfe}";
     constexpr std::string_view script =

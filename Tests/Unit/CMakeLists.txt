@@ -51,6 +51,7 @@ set(RUX_TEST_SOURCES
     DocumentationAttachmentTests.cpp
     DocumentationCommentTests.cpp
     DocumentationLintTests.cpp
+    DocumentationRenderingTests.cpp
     DocumentationTagTests.cpp
     DocumentationTests.cpp
     DropGlueLoweringTests.cpp
