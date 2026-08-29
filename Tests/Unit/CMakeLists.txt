@@ -112,6 +112,7 @@ set(RUX_TEST_SOURCES
     SourceModelTests.cpp
     UserMessageProcessTests.cpp
     VariantEqualityTests.cpp
+    VariantDropGlueTests.cpp
     VariantRepresentationTests.cpp
     ZeroizationTests.cpp
     X86_64AssemblyControlFlowPrinterTests.cpp

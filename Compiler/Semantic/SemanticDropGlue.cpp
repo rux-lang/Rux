@@ -120,6 +120,10 @@ std::vector<DropGlueStep> SemanticAnalyzerContext::BuildDropGlueSteps(const Type
         else if (const auto enumeration = enumDecls.find(baseName);
                  enumeration != enumDecls.end() && arguments.size() == enumeration->second->typeParams.size()) {
             const EnumDecl &declaration = *enumeration->second;
+            if (!declaration.IsVariant()) {
+                activeTypes.erase(key);
+                return steps;
+            }
             const Substitutions substitutions = BindTypeArguments(declaration.typeParams, arguments);
             for (std::size_t variantIndex = 0; variantIndex < declaration.variants.size(); ++variantIndex) {
                 const EnumDecl::Variant &variant = declaration.variants[variantIndex];
@@ -147,6 +151,7 @@ std::vector<DropGlueStep> SemanticAnalyzerContext::BuildDropGlueSteps(const Type
                 if (!payload.empty()) {
                     DropGlueStep step = AggregateStep(DropGlueStep::Kind::EnumVariant, type, variant.name, variantIndex,
                                                       std::move(payload));
+                    step.form = CaseTypeForm::Variant;
                     step.payloadTypes = std::move(payloadTypes);
                     steps.push_back(std::move(step));
                 }

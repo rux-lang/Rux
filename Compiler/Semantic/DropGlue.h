@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ir/CaseTypeForm.h"
 #include "Semantic/Type.h"
 
 #include <cstdint>
@@ -19,6 +20,7 @@ struct DropGlueStep {
     };
 
     Kind kind;
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     TypeRef type;
     std::string name;
     std::uint64_t ordinal = 0;

@@ -388,7 +388,7 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
         AppendFailureCleanup(lowered->failureCleanups, completed);
         lowered->payloads.push_back(LowerExprAs(*call.args[i], constructor.inner[i]));
         if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, constructor.inner[i], i, {},
-                                          call.args[i]->location)) {
+                                          call.args[i]->location, CaseTypeForm::Variant)) {
             completed.push_back(std::move(*cleanup));
         }
     }

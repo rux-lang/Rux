@@ -687,7 +687,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                         AppendFailureCleanup(lowered->failureCleanups, completed);
                         lowered->payloads.push_back(LowerExprAs(*initialized->value, fieldType));
                         if (auto cleanup = PartialCleanup(HirPartialDropAction::Kind::EnumPayload, fieldType, index,
-                                                          field.name, initialized->location)) {
+                                                          field.name, initialized->location, CaseTypeForm::Variant)) {
                             completed.push_back(std::move(*cleanup));
                         }
                     }
