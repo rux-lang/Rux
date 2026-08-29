@@ -36,6 +36,8 @@ Working on the compiler itself is covered by the guides in [`Docs/`](Docs/), ind
 
 The [language ownership contract](Docs/Language.md) records the value, reference, copy, move, construction, and destruction model used by the compiler and first-party packages, including the narrow compatibility boundary that remains before final cutover. The [compiler architecture guide](Docs/Architecture.md) documents component ownership, semantic and lowering boundaries, optimization, code generation, and linking. The [package build guide](Docs/Builds.md) covers target names, artifact paths, cross-compilation, and the 16-cell `rux build --all` matrix. Contributors changing diagnostics or CLI output should follow the [user-facing message contract](Docs/Workflow.md#user-facing-message-contract).
 
+The [comment and documentation contract](Docs/Comments.md) defines ordinary and API comment syntax, attachment, structured tags, formatting, linting, generated sections, and the source-aware model future completion tools consume.
+
 Commands in this repository use POSIX shell syntax unless a PowerShell example is provided; on Windows, replace `./Bin/rux` with `.\Bin\rux.exe`.
 
 ## Installing a Release

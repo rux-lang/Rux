@@ -1,0 +1,174 @@
+// Ordinary line comments discard everything through the line ending.
+//// A fourth slash stays an ordinary decorative comment.
+
+/* Ordinary block comments may be one line. */
+/* Outer ordinary block.
+   /* Nested ordinary block. */
+   Outer ordinary block resumes here.
+*/
+
+/**/ // The empty two-star form is ordinary.
+/***/ // Three opening stars are decorative ordinary text.
+/**** A decorative banner remains ordinary. ****/
+
+/// Returns a value documented with line comments.
+///
+/// # Safety
+/// This function has no unsafe preconditions.
+///
+/// @returns The stable value `11`.
+func LineDocumented() -> int {
+    return 11;
+}
+
+/** Returns a value documented with a one-line block. */
+func OneLineBlockDocumented() -> int {
+    return 13;
+}
+
+/**
+ * Returns a value documented with an aligned multiline block.
+ *
+ * # Failures
+ * This function cannot fail.
+ *
+ * @returns The stable value `17`.
+ */
+func MultilineBlockDocumented() -> int {
+    return 17;
+}
+
+/// The first half of a mixed documentation group.
+/** The second half of the same group. */
+func MixedDocumented() -> int {
+    return 19;
+}
+
+/**
+ * Undecorated block documentation keeps Markdown indentation.
+ *
+ *   code remains indented
+ */
+func UndecoratedBlockDocumented() -> int {
+    return 23;
+}
+
+/// A generic record used to exercise type and member documentation.
+///
+/// @typeParam T Stored value type.
+/// @deprecated This fixture intentionally exercises the tag.
+struct Box<T> {
+    /// Stored value.
+    ///
+    /// @see Box Related record.
+    value: T;
+}
+
+/// A documented variant.
+///
+/// @typeParam T Payload type.
+variant Option<T> {
+    /// No payload.
+    None,
+    /// Positional payload.
+    Some(T),
+    /// Named payload.
+    Named {
+        /// Stored payload.
+        ///
+        /// @deprecated Prefer `Some`.
+        value: T;
+    }
+}
+
+/// Adds two values.
+///
+/// @param left Left operand.
+/// @param right Right operand.
+/// @returns Their sum.
+/// @see LineDocumented Related function.
+func Add(left: int, right: int) -> int {
+    return left + right;
+}
+
+/// Tag-looking text inside a fence remains prose.
+///
+/// ```text
+/// @param not_a_tag not structured metadata
+/// /** also not a comment delimiter here */
+/// ```
+func FencedDocumentation() -> int {
+    return 29;
+}
+
+/// Malformed tags are tooling warnings, not language parse errors.
+///
+/// @param
+/// @unknown retained-for-tooling
+func MalformedDocumentation() -> int {
+    return 31;
+}
+
+/// A documentation group interrupted by an ordinary comment is detached.
+// The ordinary comment deliberately breaks attachment.
+func InterruptedDocumentation() -> int {
+    return 37;
+}
+
+/// A blank line also detaches a documentation group.
+
+func BlankSeparatedDocumentation() -> int {
+    return 41;
+}
+
+func CommentPlacement() -> int {
+    let/* between keyword and name */value = 43;
+    let sum = value /* between operands */ + 4;
+    let nested = 1 /* outer /* inner */ resumed */ + 2;
+    let lineText = "/// text inside a string";
+    let blockText = "/** text inside a string */";
+    let ordinaryText = "/* text */ // still a string";
+
+    if lineText.length != 24 {
+        return 1;
+    }
+    if blockText.length != 27 {
+        return 2;
+    }
+    if ordinaryText.length != 28 {
+        return 3;
+    }
+    return sum + nested;
+}
+
+func Main() -> int {
+    // Every result makes comment placement observable without depending on a test library.
+    if LineDocumented() != 11 {
+        return 10;
+    }
+    if OneLineBlockDocumented() != 13 {
+        return 11;
+    }
+    if MultilineBlockDocumented() != 17 {
+        return 12;
+    }
+    if MixedDocumented() != 19 {
+        return 13;
+    }
+    if UndecoratedBlockDocumented() != 23 {
+        return 14;
+    }
+    if Add(2, 3) != 5 {
+        return 15;
+    }
+    if FencedDocumentation() != 29 || MalformedDocumentation() != 31 {
+        return 16;
+    }
+    if InterruptedDocumentation() != 37 || BlankSeparatedDocumentation() != 41 {
+        return 17;
+    }
+    if CommentPlacement() != 50 {
+        return 18;
+    }
+    return 0;
+}

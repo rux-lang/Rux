@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Comments"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: ordinary and documentation comments"
+
+[Build]
+Output = "../../../Bin/Tests/Language"
