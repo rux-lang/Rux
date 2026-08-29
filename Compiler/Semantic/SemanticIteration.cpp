@@ -13,7 +13,7 @@ namespace Rux::SemanticDetail {
 namespace {
 constexpr std::string_view kNextMethod = "Next";
 constexpr std::string_view kIterateMethod = "Iterate";
-/// The variants a `Next` reports with. They are `Option`'s, named here because the loop matches them by name.
+/// The cases a `Next` reports with. They are `Option`'s, named here because the loop matches them by name.
 constexpr std::string_view kOptionSomeVariant = "Some";
 constexpr std::string_view kOptionNoneVariant = "None";
 
@@ -166,7 +166,7 @@ void SemanticAnalyzerContext::RecordIteration(const ForStmt &statement, const It
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
     if (shape.reportedDeclaration) {
-        iteration.optionEnumName = shape.reportedDeclaration->name;
+        iteration.optionVariantName = shape.reportedDeclaration->name;
         iteration.someVariant = std::string(kOptionSomeVariant);
         iteration.noneVariant = std::string(kOptionNoneVariant);
     }
@@ -180,8 +180,10 @@ void SemanticAnalyzerContext::EmitNotIterable(const SourceLocation location, con
     const std::string typeName = NamedBaseTypeName(subject);
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
-            notes.push_back(std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> Option<T>'",
-                                        subject.ToString(), typeName));
+            notes.push_back(
+                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> Option<T>' returning "
+                            "an Option-shaped variant",
+                            subject.ToString(), typeName));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
             notes.push_back(
@@ -204,6 +206,12 @@ void SemanticAnalyzerContext::ValidateIteratorConvention(const FuncDecl &declara
             declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
         const auto reported = PropagationShapeOf(returned);
         if (!reported || reported->kind != PropagationShape::Kind::Option) {
+            if (auto issue = PropagationShapeIssue(returned, PropagationShape::Kind::Option)) {
+                EmitError(declaration.location,
+                          std::format("iterator method 'Next' on '{}' must return an Option-shaped variant",
+                                      currentExtendedType.ToString()),
+                          {std::move(*issue)}, "return a variant with exactly 'Some(T)' and payload-less 'None' cases");
+            }
             return;
         }
         if (WrittenParameterCount(declaration) != 0) {

@@ -33,13 +33,13 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     const std::string payloadName = PropagationBindingName("value", ordinal);
     const std::string failureName = PropagationBindingName("failure", ordinal);
 
-    // Every unit variant of the operand's enum, which is how pattern lowering tells a payload-carrying value in the
+    // Every unit case of the operand's variant, which is how pattern lowering tells a payload-carrying value in the
     // compact representation from one that has no payload to read.
     std::vector<std::string> unitDiscriminants;
-    if (const auto declaration = enumDecls.find(fact->enumName); declaration != enumDecls.end()) {
+    if (const auto declaration = enumDecls.find(fact->variantName); declaration != enumDecls.end()) {
         for (const auto &variant : declaration->second->variants) {
             if (variant.fields.empty() && variant.namedFields.empty()) {
-                if (auto discriminant = LookupEnumVariantDiscriminant(fact->enumName, variant.name)) {
+                if (auto discriminant = LookupEnumVariantDiscriminant(fact->variantName, variant.name)) {
                     unitDiscriminants.push_back(*discriminant);
                 }
             }
@@ -50,10 +50,10 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
                                     const TypeRef &bindingType, const bool hasPayload) {
         auto pattern = std::make_unique<HirEnumPattern>();
         pattern->location = expression.location;
-        pattern->path = {fact->enumName, variant};
+        pattern->path = {fact->variantName, variant};
         pattern->resolvedType = operandType;
         pattern->form = CaseTypeForm::Variant;
-        pattern->discriminant = LookupEnumVariantDiscriminant(fact->enumName, variant);
+        pattern->discriminant = LookupEnumVariantDiscriminant(fact->variantName, variant);
         pattern->hasPayload = hasPayload;
         pattern->unitDiscriminants = unitDiscriminants;
         if (hasPayload) {
@@ -83,20 +83,13 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
 
     // The failure travels out unchanged: the same payload, re-wrapped in the failure variant of what this function
     // returns. Building it as an ordinary return is what gives it the destruction of every live local for free.
-    TypeRef failureType = TypeRef::MakeUnknown();
-    if (fact->failureType) {
-        const std::vector<TypeRef> returnArguments = ParseTypeArgsFromTypeName(returnType.name);
-        constexpr std::size_t kFailureArgument = 1;
-        if (returnArguments.size() > kFailureArgument) {
-            failureType = returnArguments[kFailureArgument];
-        }
-    }
+    const TypeRef failureType = fact->failureType.value_or(TypeRef::MakeUnknown());
     auto failureValue = std::make_unique<HirEnumConstructExpr>();
     failureValue->location = expression.location;
     failureValue->form = CaseTypeForm::Variant;
     failureValue->type = returnType;
     failureValue->discriminant =
-        LookupEnumVariantDiscriminant(fact->returnEnumName, fact->failureVariant).value_or("0");
+        LookupEnumVariantDiscriminant(fact->returnVariantName, fact->failureVariant).value_or("0");
     if (fact->failureType) {
         failureValue->payloads.push_back(namedValue(failureName, failureType));
     }

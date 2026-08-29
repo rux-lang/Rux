@@ -69,6 +69,92 @@ TEST_CASE("a container that hands out an iterator is iterable through it") {
     CHECK(diagnostics.empty());
 }
 
+TEST_CASE("iterator completion accepts custom generic and non-generic variant type names") {
+    const auto generic = AnalyzeSource(R"(
+        variant Step<T> { Some(T), None }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step<int32> {
+                return Step::None<int32>();
+            }
+        }
+        func Walk() {
+            var counter = Counter { value: 0i32 };
+            for item in counter {}
+        }
+    )");
+    CHECK(generic.empty());
+
+    const auto concrete = AnalyzeSource(R"(
+        variant Step { Some(int32), None }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step { return Step::None(); }
+        }
+        func Walk() {
+            var counter = Counter { value: 0i32 };
+            for item in counter {}
+        }
+    )");
+    CHECK(concrete.empty());
+}
+
+TEST_CASE("a scalar enum cannot report iterator completion") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Step: uint8 { None = 1, Some = 2 }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step { return Step::None; }
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "iterator method 'Next' on 'Counter' must return an Option-shaped variant");
+    REQUIRE_EQ(diagnostics[0].notes.size(), 1);
+    CHECK_EQ(diagnostics[0].notes[0],
+             "type 'Step' uses a scalar enum for the Option protocol; declare it with 'variant'");
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "return a variant with exactly 'Some(T)' and payload-less 'None' cases");
+}
+
+TEST_CASE("iterator completion rejects malformed Option-shaped variants") {
+    const auto payloadlessSome = AnalyzeSource(R"(
+        variant Step { Some, None }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step { return Step::None(); }
+        }
+    )");
+    REQUIRE_EQ(payloadlessSome.size(), 1);
+    REQUIRE_EQ(payloadlessSome[0].notes.size(), 1);
+    CHECK_EQ(payloadlessSome[0].notes[0],
+             "type 'Step' is not a valid Option variant; expected exactly 'Some(T)' and payload-less 'None' cases");
+
+    const auto payloadNone = AnalyzeSource(R"(
+        variant Step { Some(int32), None(int32) }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step { return Step::None(0i32); }
+        }
+    )");
+    REQUIRE_EQ(payloadNone.size(), 1);
+    REQUIRE_EQ(payloadNone[0].notes.size(), 1);
+    CHECK_EQ(payloadNone[0].notes[0],
+             "type 'Step' is not a valid Option variant; expected exactly 'Some(T)' and payload-less 'None' cases");
+
+    const auto extraCase = AnalyzeSource(R"(
+        variant Step { Some(int32), None, Paused }
+        struct Counter { value: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step { return Step::None(); }
+        }
+    )");
+    REQUIRE_EQ(extraCase.size(), 1);
+    REQUIRE_EQ(extraCase[0].notes.size(), 1);
+    CHECK_EQ(extraCase[0].notes[0],
+             "type 'Step' is not a valid Option variant; expected exactly 'Some(T)' and payload-less 'None' cases");
+}
+
 TEST_CASE("the loop variable takes the item type the iterator reports") {
     const auto diagnostics = AnalyzeSource(kIterationPrelude + R"(
         func Mistyped() -> int32 {
@@ -129,6 +215,23 @@ TEST_CASE("a method named Next that reports no end is not the convention's") {
     CHECK(diagnostics.empty());
 }
 
+TEST_CASE("methods named Next returning non-Option protocols are ordinary methods") {
+    const auto diagnostics = AnalyzeSource(R"(
+        enum Event: int32 { End = 0, Error = 1 }
+        variant Outcome { Success(int32), Error(int32) }
+        struct Reader { value: int32; }
+        struct Operation { value: int32; }
+        extend Reader {
+            func Next(self: &var Reader) -> Event { return Event::End; }
+        }
+        extend Operation {
+            func Next(self: &var Operation) -> Outcome { return Outcome::Success(self.value); }
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
 TEST_CASE("an Iterate that does not return an iterator is rejected at its declaration") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Span { limit: int32; }
@@ -177,7 +280,8 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     CHECK_EQ(diagnostics[0].message, "cannot iterate over 'Cursor'");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0],
-             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> Option<T>'");
+             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> Option<T>' returning an "
+             "Option-shaped variant");
 }
 
 TEST_CASE("arrays and ranges keep their own iteration") {

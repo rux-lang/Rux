@@ -8,9 +8,9 @@
 
 namespace Rux::SemanticDetail {
 namespace {
-/// The variants a propagatable type is recognized by. Neither `Result` nor `Option` is built in: both are ordinary
-/// generic enums, so the compiler identifies them by the shape it has to generate an early return for -- a success
-/// variant carrying the value and a failure variant carrying whatever the caller receives.
+/// The cases a propagatable type is recognized by. Neither `Result` nor `Option` is built in: both are ordinary
+/// variants, so the compiler identifies them by the shape it has to generate an early return for -- a success case
+/// carrying the value and a failure case carrying whatever the caller receives.
 constexpr std::string_view kResultSuccess = "Success";
 constexpr std::string_view kResultError = "Error";
 constexpr std::string_view kOptionSome = "Some";
@@ -23,6 +23,29 @@ constexpr std::string_view kOptionNone = "None";
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] bool IsUnitCase(const EnumDecl::Variant &variant) {
+    return variant.fields.empty() && variant.namedFields.empty();
+}
+
+[[nodiscard]] bool IsSinglePayloadCase(const EnumDecl::Variant &variant) {
+    return variant.fields.size() == 1 && variant.namedFields.empty();
+}
+
+enum class ProtocolKind {
+    Result,
+    Option
+};
+
+[[nodiscard]] std::optional<ProtocolKind> ProtocolKindOf(const EnumDecl &declaration) {
+    if (FindVariant(declaration, kResultSuccess) || FindVariant(declaration, kResultError)) {
+        return ProtocolKind::Result;
+    }
+    if (FindVariant(declaration, kOptionSome) || FindVariant(declaration, kOptionNone)) {
+        return ProtocolKind::Option;
+    }
+    return std::nullopt;
 }
 } // namespace
 
@@ -38,8 +61,15 @@ SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) {
     }
 
     const EnumDecl &enumeration = *declaration;
-    const bool isResult = FindVariant(enumeration, kResultSuccess) && FindVariant(enumeration, kResultError);
-    const bool isOption = FindVariant(enumeration, kOptionSome) && FindVariant(enumeration, kOptionNone);
+    if (!enumeration.IsVariant() || enumeration.variants.size() != 2) {
+        return std::nullopt;
+    }
+    const EnumDecl::Variant *success = FindVariant(enumeration, kResultSuccess);
+    const EnumDecl::Variant *error = FindVariant(enumeration, kResultError);
+    const EnumDecl::Variant *some = FindVariant(enumeration, kOptionSome);
+    const EnumDecl::Variant *none = FindVariant(enumeration, kOptionNone);
+    const bool isResult = success && error && IsSinglePayloadCase(*success) && IsSinglePayloadCase(*error);
+    const bool isOption = some && none && IsSinglePayloadCase(*some) && IsUnitCase(*none);
     if (!isResult && !isOption) {
         return std::nullopt;
     }
@@ -76,6 +106,36 @@ SemanticAnalyzerContext::PropagationShapeOf(const TypeRef &type) {
     return shape;
 }
 
+std::optional<std::string>
+SemanticAnalyzerContext::PropagationShapeIssue(const TypeRef &type,
+                                               const std::optional<PropagationShape::Kind> expectedKind) const {
+    if (type.kind != TypeRef::Kind::Named) {
+        return std::nullopt;
+    }
+    const EnumDecl *declaration = EnumNamed(BaseTypeName(type.name));
+    if (!declaration) {
+        return std::nullopt;
+    }
+    const auto kind = ProtocolKindOf(*declaration);
+    if (!kind) {
+        return std::nullopt;
+    }
+    const PropagationShape::Kind shapeKind =
+        *kind == ProtocolKind::Result ? PropagationShape::Kind::Result : PropagationShape::Kind::Option;
+    if (expectedKind && *expectedKind != shapeKind) {
+        return std::nullopt;
+    }
+    const std::string_view protocol = shapeKind == PropagationShape::Kind::Result ? "Result" : "Option";
+    if (!declaration->IsVariant()) {
+        return std::format("type '{}' uses a scalar enum for the {} protocol; declare it with 'variant'",
+                           type.ToString(), protocol);
+    }
+    const std::string_view cases = shapeKind == PropagationShape::Kind::Result
+                                     ? "exactly 'Success(T)' and 'Error(E)'"
+                                     : "exactly 'Some(T)' and payload-less 'None'";
+    return std::format("type '{}' is not a valid {} variant; expected {} cases", type.ToString(), protocol, cases);
+}
+
 std::string_view SemanticAnalyzerContext::PropagationKindName(const PropagationShape::Kind kind) {
     return kind == PropagationShape::Kind::Result ? "Result" : "Option";
 }
@@ -92,21 +152,30 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckTryExpression(const TryExpr
 
     const auto operand = PropagationShapeOf(operandType);
     if (!operand) {
+        std::vector<std::string> notes;
+        if (auto issue = PropagationShapeIssue(operandType)) {
+            notes.push_back(std::move(*issue));
+        }
         EmitError(expression.location,
                   std::format("'{}' cannot be propagated with '?' because it is neither a Result nor an Option",
                               operandType.ToString()),
-                  {}, "'?' propagates a 'Result<T, E>' or an 'Option<T>'");
+                  std::move(notes), "'?' propagates a variant shaped as 'Result<T, E>' or 'Option<T>'");
         return TypeRef::MakeUnknown();
     }
 
     const std::string_view operandKind = PropagationKindPhrase(operand->kind);
     const auto enclosing = PropagationShapeOf(currentReturnType);
     if (!enclosing) {
+        std::vector<std::string> notes;
+        if (auto issue = PropagationShapeIssue(currentReturnType)) {
+            notes.push_back(std::move(*issue));
+        }
         const std::string returned = currentReturnType.kind == TypeRef::Kind::Opaque
                                        ? "nothing"
                                        : std::format("'{}'", currentReturnType.ToString());
         EmitError(expression.location,
-                  std::format("'?' propagates {}, but the enclosing function returns {}", operandKind, returned), {},
+                  std::format("'?' propagates {}, but the enclosing function returns {}", operandKind, returned),
+                  std::move(notes),
                   std::format("give the function a '{}' return type, or handle the failure with 'match'",
                               PropagationKindName(operand->kind)));
         return operand->payload;
@@ -137,10 +206,10 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckTryExpression(const TryExpr
 
     ResolvedPropagation propagation;
     propagation.isResult = operand->kind == PropagationShape::Kind::Result;
-    propagation.enumName = operand->declaration->name;
+    propagation.variantName = operand->declaration->name;
     propagation.successVariant = propagation.isResult ? std::string(kResultSuccess) : std::string(kOptionSome);
     propagation.failureVariant = propagation.isResult ? std::string(kResultError) : std::string(kOptionNone);
-    propagation.returnEnumName = enclosing->declaration->name;
+    propagation.returnVariantName = enclosing->declaration->name;
     propagation.payloadType = operand->payload;
     propagation.failureType = operand->failure;
     propagation.returnType = currentReturnType;

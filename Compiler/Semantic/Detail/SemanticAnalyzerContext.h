@@ -286,8 +286,8 @@ protected:
     void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
     [[nodiscard]] bool CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const;
 
-    /// A type `?` can propagate from, recognized by its variants rather than by a built-in identity: `Result` carries a
-    /// payload and a failure, `Option` only a payload.
+    /// A type `?` can propagate from, recognized by its declared variant cases rather than by a built-in identity:
+    /// `Result` carries a payload and a failure, `Option` only a payload.
     struct PropagationShape {
         enum class Kind {
             Result,
@@ -301,6 +301,8 @@ protected:
     };
 
     [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type);
+    [[nodiscard]] std::optional<std::string>
+    PropagationShapeIssue(const TypeRef &type, std::optional<PropagationShape::Kind> expectedKind = std::nullopt) const;
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);

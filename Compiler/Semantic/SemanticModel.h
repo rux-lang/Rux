@@ -147,15 +147,15 @@ struct ResolvedConstraintWitness {
     std::vector<const FuncDecl *> operations;
 };
 
-/// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variants and checks the
-/// enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
+/// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variant cases and checks
+/// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
 struct ResolvedPropagation {
     bool isResult = false;
-    /// The operand's enum declaration and the variants to test, and the declaration the early return constructs.
-    std::string enumName;
+    /// The operand's variant declaration and the cases to test, and the declaration the early return constructs.
+    std::string variantName;
     std::string successVariant;
     std::string failureVariant;
-    std::string returnEnumName;
+    std::string returnVariantName;
     /// Payload of the success variant, which is what the expression evaluates to, and of the failure variant, which the
     /// early return carries unchanged. A failure with no payload, such as `Option::None`, leaves the second unset.
     TypeRef payloadType;
@@ -181,10 +181,10 @@ struct ResolvedIteration {
     TypeRef iteratorType;
     const FuncDecl *advance = nullptr;
     const FuncDecl *entry = nullptr;
-    /// What `Next` reports, and the enum it reports it with: the loop matches the item variant to continue and the end
-    /// variant to leave.
+    /// What `Next` reports, and the variant type it reports it with: the loop matches the item case to continue and the
+    /// end case to leave.
     TypeRef reportedType;
-    std::string optionEnumName;
+    std::string optionVariantName;
     std::string someVariant;
     std::string noneVariant;
 };
