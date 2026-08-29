@@ -64,6 +64,7 @@ TEST_CASE("declaration diagnostics identify the rejected starter and expected de
         {"func () {}", "expected a function name after 'func' before '('"},
         {"struct {}", "expected a structure name after 'struct' before '{'"},
         {"enum {}", "expected an enum name after 'enum' before '{'"},
+        {"variant {}", "expected a variant name after 'variant' before '{'"},
         {"union {}", "expected a union name after 'union' before '{'"},
         {"interface {}", "expected an interface name after 'interface' before '{'"},
         {"module {}", "expected a module name after 'module' before '{'"},
@@ -115,6 +116,7 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
         {"func F(first: int second: bool);", "expected ',' between parameters before 'second'"},
         {"struct Box<T U> {}", "expected ',' between type parameters before 'U'"},
         {"enum Choice { First Second }", "expected ',' between enum variants before 'Second'"},
+        {"variant Choice { First Second }", "expected ',' between variant cases before 'Second'"},
         {"union Bits { low: int high: int }", "expected ',' between union fields before 'high'"},
         {"import Core::{First Second};", "expected ',' between imported names before 'Second'"},
         {"type Pair = Pair<int bool>;", "expected ',' between type arguments before 'bool'"},
@@ -130,6 +132,88 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
         CAPTURE(DiagnosticMessages(parsed));
         CHECK(FindDiagnostic(parsed, testCase.expected) != nullptr);
     }
+}
+
+TEST_CASE("variant diagnostics identify case grammar roles") {
+    struct Case {
+        std::string_view source;
+        std::string_view expected;
+        std::string_view help;
+    };
+
+    constexpr Case cases[] = {
+        {"variant Choice { First(int bool) }", "expected ',' between variant case field types before 'bool'", ""},
+        {"variant Choice { First(int, }", "expected a type before '}'", ""},
+        {"variant Choice { First { : int; } }", "expected a variant case field name before ':'", ""},
+        {"variant Choice { First { value int; } }", "expected ':' after the variant field name before 'int'",
+         "write named variant fields as 'name: Type;'"},
+        {"variant Choice { First { value: int next: bool; } }",
+         "expected ';' after the variant case field before 'next'", ""},
+        {"variant Choice { First = }", "expected an integer variant discriminant after '=' before '}'", ""},
+        {"variant Choice { First, }", "trailing comma is not allowed in variant declarations", ""},
+    };
+
+    for (const Case &testCase : cases) {
+        CAPTURE(testCase.source);
+        const ParseResult parsed = ParseSource(testCase.source);
+        CAPTURE(DiagnosticMessages(parsed));
+        const Diagnostic *diagnostic = FindDiagnostic(parsed, testCase.expected);
+        REQUIRE(diagnostic != nullptr);
+        if (!testCase.help.empty()) {
+            REQUIRE(diagnostic->help.has_value());
+            CHECK_EQ(*diagnostic->help, testCase.help);
+        }
+    }
+}
+
+TEST_CASE("variant declaration recovery reaches following cases and declarations") {
+    const ParseResult parsed = ParseSource(R"(
+variant Recovered {
+    123,
+    Unit,
+    Named { value: int; },
+    Tuple(int, bool)
+}
+variant MissingBody
+func AfterMissingBody();
+variant MissingBrace {
+    Item(int)
+func AfterMissingBrace();
+)");
+
+    CAPTURE(DiagnosticMessages(parsed));
+    CHECK(FindDiagnostic(parsed, "expected a variant case name before '123'") != nullptr);
+    CHECK(FindDiagnostic(parsed, "expected '{' to start the variant body before 'func'") != nullptr);
+    CHECK(FindDiagnostic(parsed, "expected ',' between variant cases before 'func'") != nullptr);
+
+    REQUIRE(parsed.module.items.size() >= 4);
+    const auto *recovered = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    REQUIRE(recovered != nullptr);
+    CHECK(recovered->IsVariant());
+    REQUIRE(recovered->variants.size() >= 3);
+    CHECK_EQ(recovered->variants[0].name, "Unit");
+    CHECK_EQ(recovered->variants[1].name, "Named");
+    CHECK_EQ(recovered->variants[2].name, "Tuple");
+
+    bool foundFollowingFunction = false;
+    for (const auto &item : parsed.module.items) {
+        const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+        if (function && function->name == "AfterMissingBody") {
+            foundFollowingFunction = true;
+        }
+    }
+    CHECK(foundFollowingFunction);
+}
+
+TEST_CASE("variant keyword cannot be reused as an identifier") {
+    const ParseResult parameter = ParseSource("func Accept(variant: int);");
+    CHECK(FindDiagnostic(parameter, "expected a parameter name before 'variant'") != nullptr);
+
+    const ParseResult declaration = ParseSource("struct variant {}");
+    CHECK(FindDiagnostic(declaration, "expected a structure name after 'struct' before 'variant'") != nullptr);
+
+    const ParseResult typeParameter = ParseSource("variant Box<variant> { Value }");
+    CHECK(FindDiagnostic(typeParameter, "expected a type parameter name before 'variant'") != nullptr);
 }
 
 TEST_CASE("removed mutable parameters provide final binding and reference syntax") {

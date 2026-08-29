@@ -114,8 +114,8 @@ StmtPtr Parser::ParseStmt() {
 
     // Allow nested declarations inside blocks
     if (CheckAny({TokenKind::PubKeyword, TokenKind::FuncKeyword, TokenKind::StructKeyword, TokenKind::EnumKeyword,
-                  TokenKind::UnionKeyword, TokenKind::InterfaceKeyword, TokenKind::ExtendKeyword,
-                  TokenKind::ModuleKeyword, TokenKind::ConstKeyword, TokenKind::TypeKeyword,
+                  TokenKind::VariantKeyword, TokenKind::UnionKeyword, TokenKind::InterfaceKeyword,
+                  TokenKind::ExtendKeyword, TokenKind::ModuleKeyword, TokenKind::ConstKeyword, TokenKind::TypeKeyword,
                   TokenKind::ExternKeyword})) {
         auto ds = std::make_unique<DeclStmt>();
         ds->location = loc;

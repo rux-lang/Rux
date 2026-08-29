@@ -264,10 +264,53 @@ TEST_CASE("KeywordKind distinguishes keywords from identifiers") {
     CHECK(KeywordKind("intrinsic") == TokenKind::IntrinsicKeyword);
     CHECK(TokenKindName(TokenKind::IntrinsicKeyword) == "IntrinsicKeyword");
     CHECK(KeywordKind("func") == TokenKind::FuncKeyword);
+    CHECK(KeywordKind("enum") == TokenKind::EnumKeyword);
+    CHECK(KeywordKind("variant") == TokenKind::VariantKeyword);
+    CHECK(TokenKindName(TokenKind::VariantKeyword) == "VariantKeyword");
     CHECK(KeywordKind("while") == TokenKind::WhileKeyword);
     CHECK(KeywordKind("if") == TokenKind::IfKeyword);
     CHECK(KeywordKind("when") == TokenKind::WhenKeyword);
     CHECK(KeywordKind("funcy") == TokenKind::Ident);
     CHECK(KeywordKind("whenever") == TokenKind::Ident);
     CHECK(KeywordKind("") == TokenKind::Ident);
+}
+
+TEST_CASE("Token keyword predicate covers the alphabetized keyword range") {
+    for (std::uint8_t value = static_cast<std::uint8_t>(TokenKind::AsKeyword);
+         value <= static_cast<std::uint8_t>(TokenKind::WhileKeyword); ++value) {
+        Token token;
+        token.kind = static_cast<TokenKind>(value);
+        CHECK(token.IsKeyword());
+    }
+
+    Token identifier;
+    identifier.kind = TokenKind::Ident;
+    CHECK_FALSE(identifier.IsKeyword());
+
+    Token punctuation;
+    punctuation.kind = TokenKind::LeftParen;
+    CHECK_FALSE(punctuation.IsKeyword());
+}
+
+TEST_CASE("variant is reserved without capturing longer identifiers") {
+    const auto result = Lex("variant Result { Value } variantValue variant_result variants");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.tokens.size(), 9);
+
+    CHECK(result.tokens[0].Is(TokenKind::VariantKeyword));
+    CHECK_EQ(result.tokens[0].text, "variant");
+    CHECK(result.tokens[1].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[1].text, "Result");
+    CHECK(result.tokens[2].Is(TokenKind::LeftBrace));
+    CHECK(result.tokens[3].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[3].text, "Value");
+    CHECK(result.tokens[4].Is(TokenKind::RightBrace));
+
+    CHECK(result.tokens[5].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[5].text, "variantValue");
+    CHECK(result.tokens[6].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[6].text, "variant_result");
+    CHECK(result.tokens[7].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[7].text, "variants");
+    CHECK(result.tokens.back().IsEof());
 }

@@ -613,8 +613,14 @@ struct StructDecl : Decl {
     std::vector<Field> fields;
 };
 
-// enum Name<T> { Variant, Variant(Type, ...), ... }
+// enum Name { Member, ... } or variant Name<T> { Case, Case(Type, ...), ... }
 struct EnumDecl : Decl {
+    enum class Form : std::uint8_t {
+        Enumeration,
+        Variant,
+    };
+
+    Form form = Form::Enumeration;
     std::string name;
     std::vector<TypeParameter> typeParams;
     TypeExprPtr baseType;
@@ -637,6 +643,10 @@ struct EnumDecl : Decl {
     };
 
     std::vector<Variant> variants;
+
+    [[nodiscard]] bool IsVariant() const noexcept {
+        return form == Form::Variant;
+    }
 };
 
 // union Name { field: Type, ... }
