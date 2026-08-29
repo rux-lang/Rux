@@ -282,15 +282,16 @@ HirExprPtr AstToHirContext::LowerDerivedOrderingCompare(const BinaryExpr &expres
 
 HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left, HirExprPtr &right,
                                                       const FuncDecl &resolved) {
-    return LowerOperatorMethodCall(std::move(left), std::move(right), *expression.right, resolved, expression.location);
+    std::vector<OperatorArgument> arguments;
+    arguments.push_back({std::move(right), expression.right.get()});
+    return LowerOperatorMethodCall(std::move(left), std::move(arguments), resolved, expression.location);
 }
 
-/// The call one one-argument operator method becomes. A binary operator and an index share it because they differ only
-/// in how the source spells the receiver and the argument: by the time either reaches here both are lowered values and
-/// the target is a method analysis already selected.
-HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, HirExprPtr argument,
-                                                    const Expr &argumentExpression, const FuncDecl &method,
-                                                    const SourceLocation location) {
+/// The call one operator method becomes. A binary operator, an index, and an indexed assignment share it because they
+/// differ only in how the source spells the receiver and the arguments: by the time any of them reaches here those are
+/// lowered values and the target is a method analysis already selected.
+HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::vector<OperatorArgument> arguments,
+                                                    const FuncDecl &method, const SourceLocation location) {
     const std::string receiverBase = NamedBaseTypeName(receiver->type);
     HirExprPtr selfArg = LowerReceiverFor(method, std::move(receiver));
 
@@ -305,19 +306,25 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, HirExpr
     call->type = callee->type.inner.empty() ? TypeRef::MakeUnknown() : callee->type.inner.back();
     call->callee = std::move(callee);
     call->args.push_back(std::move(selfArg));
-    if (call->callee->type.inner.size() > 2) {
-        const TypeRef &expectedType = call->callee->type.inner[1];
-        if (UnsuffixedIntegerLiteralFits(argumentExpression, expectedType)) {
-            argument->type = expectedType;
-        }
-        else if (IsNullLiteral(argumentExpression) && expectedType.kind == TypeRef::Kind::Pointer) {
-            argument->type = expectedType;
-            if (auto *literal = dynamic_cast<HirLiteralExpr *>(argument.get())) {
-                literal->value = "0";
+
+    // The callee's function type reads as receiver, parameters, return, so parameter `index` sits one past the
+    // receiver and exists only while the return type still follows it.
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        OperatorArgument &argument = arguments[index];
+        if (call->callee->type.inner.size() > index + 2 && argument.source) {
+            const TypeRef &expectedType = call->callee->type.inner[index + 1];
+            if (UnsuffixedIntegerLiteralFits(*argument.source, expectedType)) {
+                argument.value->type = expectedType;
+            }
+            else if (IsNullLiteral(*argument.source) && expectedType.kind == TypeRef::Kind::Pointer) {
+                argument.value->type = expectedType;
+                if (auto *literal = dynamic_cast<HirLiteralExpr *>(argument.value.get())) {
+                    literal->value = "0";
+                }
             }
         }
+        call->args.push_back(std::move(argument.value));
     }
-    call->args.push_back(std::move(argument));
     return call;
 }
 
@@ -325,9 +332,20 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, HirExpr
 /// receiver's type arguments, so this only builds the call it named.
 HirExprPtr AstToHirContext::LowerIndexOperatorCall(const IndexExpr &expression, const ResolvedIndexOperator &resolved) {
     HirExprPtr receiver = LowerExpr(*expression.object);
-    HirExprPtr argument = LowerExpr(*expression.index);
-    return LowerOperatorMethodCall(std::move(receiver), std::move(argument), *expression.index, *resolved.method,
-                                   expression.location);
+    std::vector<OperatorArgument> arguments;
+    arguments.push_back({LowerExpr(*expression.index), expression.index.get()});
+    return LowerOperatorMethodCall(std::move(receiver), std::move(arguments), *resolved.method, expression.location);
+}
+
+/// `v[i] = x` on a type that declares `[]=`. The assignment is that call and nothing else: there is no store, and the
+/// index expression is never lowered as a value. Receiver, index, and value are each lowered once, in written order.
+HirExprPtr AstToHirContext::LowerIndexAssignment(const AssignExpr &assignment, const IndexExpr &index,
+                                                 const ResolvedIndexAssignment &resolved) {
+    HirExprPtr receiver = LowerExpr(*index.object);
+    std::vector<OperatorArgument> arguments;
+    arguments.push_back({LowerExpr(*index.index), index.index.get()});
+    arguments.push_back({LowerExpr(*assignment.value), assignment.value.get()});
+    return LowerOperatorMethodCall(std::move(receiver), std::move(arguments), *resolved.method, assignment.location);
 }
 
 HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const VariantEqualityPayload &payload) {

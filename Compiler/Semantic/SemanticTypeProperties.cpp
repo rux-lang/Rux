@@ -103,6 +103,57 @@ std::vector<const FuncDecl *> SemanticAnalyzerContext::AccessibleMethodCandidate
     return result;
 }
 
+/// The two indexing operators are a matched pair: `[]` reads one element and `[]=` writes one, so each has exactly one
+/// shape. Checking it here reports a malformed declaration once, whether or not anything indexes the type, and lets
+/// every use site assume the shape instead of re-deriving it from whatever the author wrote.
+void SemanticAnalyzerContext::ValidateIndexOperator(const FuncDecl &method, const TypeRef &extendedType) {
+    const bool writes = method.name == "[]=";
+    if (!writes && method.name != "[]") {
+        return;
+    }
+
+    const auto sameValueType = [](TypeRef left, TypeRef right) {
+        left.isMut = false;
+        right.isMut = false;
+        return left == right;
+    };
+    // `self` plus the index, and the new value as well when writing.
+    const std::size_t expectedParams = writes ? 3 : 2;
+    const bool operatorSignature = [&] {
+        if (!method.typeParams.empty() || method.params.size() != expectedParams || method.params[0].name != "self") {
+            return false;
+        }
+        if (std::ranges::any_of(method.params, [](const Param &parameter) {
+                return parameter.isVariadic || parameter.defaultValue.has_value();
+            })) {
+            return false;
+        }
+        const TypeRef receiver = ResolveType(*method.params[0].type);
+        if (receiver.kind != TypeRef::Kind::Reference || receiver.inner.empty() ||
+            !sameValueType(receiver.inner.front(), extendedType)) {
+            return false;
+        }
+        // Writing needs a writable receiver; reading must be available on a value nobody may write.
+        if (receiver.inner.front().isMut != writes) {
+            return false;
+        }
+        // A read is an expression and a write is a statement, so exactly one of them has a result.
+        return writes ? !method.returnType : method.returnType.has_value();
+    }();
+    if (operatorSignature) {
+        return;
+    }
+
+    const std::string type = extendedType.ToString();
+    EmitError(method.location,
+              std::format("the '{}' operator on '{}' must have signature '{}'", method.name, type,
+                          writes ? std::format("func []=(self: &var {}, index: I, value: E)", type)
+                                 : std::format("func [](self: &{}, index: I) -> E", type)),
+              {writes ? "an indexed assignment writes one element and evaluates to nothing"
+                      : "an index reads one element and evaluates to it"},
+              "the index and element types are the author's to choose; overloads are separated by the index type");
+}
+
 void SemanticAnalyzerContext::ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType) {
     if (!IsDestructorName(method.name)) {
         return;

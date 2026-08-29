@@ -545,3 +545,163 @@ TEST_CASE("an indexer result transfers as a temporary and leaves its receiver wh
 
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("a declared indexed assignment writes through the setter and picks its overload by index type") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Coord { row: uint; column: uint; }
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+            func []=(self: &var Vect, at: Coord, value: int) { self.data[at.row] = value; }
+            func Clear(self: &var Vect) { self[0] = 0; }
+        }
+        struct Box<T> { items: T[2]; }
+        extend Box<T> {
+            func []=(self: &var Box<T>, index: uint, value: T) { self.items[index] = value; }
+        }
+        func Write(target: &var Vect) { target[1] = 2; }
+        func Main() {
+            var vect = Vect { data: [1, 2, 3, 4] };
+            vect[0] = 5;
+            let at = Coord { row: 1, column: 0 };
+            vect[at] = 6;
+            var boxed = Box<int32> { items: [1i32, 2i32] };
+            boxed[0] = 3i32;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("an indexed assignment checks its value and index against the setter it resolved") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+        }
+        func Main() {
+            var vect = Vect { data: [1, 2, 3, 4] };
+            vect[0] = "text";
+            vect["key"] = 1;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "cannot pass 'Slice<char8>' to parameter of type 'int'");
+    CHECK_EQ(diagnostics[1].message, "no '[]=' on 'Vect' accepts an index of type 'Slice<char8>'");
+}
+
+TEST_CASE("an indexed assignment needs a receiver it may write, and conflicts with an exclusive borrow") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+        }
+        func ReadOnly(source: &Vect) { source[0] = 1; }
+        func Main() {
+            let frozen = Vect { data: [1, 2, 3, 4] };
+            frozen[0] = 9;
+            var vect = Vect { data: [1, 2, 3, 4] };
+            var exclusive: &var Vect = vect;
+            vect[0] = 5;
+            exclusive[1] = 6;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[0].message, "cannot modify data through immutable reference '&Vect'");
+    CHECK_EQ(diagnostics[1].message, "cannot modify immutable variable 'frozen'");
+    CHECK_EQ(diagnostics[2].message, "cannot modify 'vect' while it is exclusively borrowed");
+}
+
+TEST_CASE("only the assignment's own target is written, so a nested subscript is still read") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Keys { data: uint[4]; }
+        extend Keys {
+            func [](self: &Keys, index: uint) -> uint { return self.data[index]; }
+        }
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+        }
+        func Main() {
+            let keys = Keys { data: [0, 1, 2, 3] };
+            var vect = Vect { data: [1, 2, 3, 4] };
+            vect[keys[1]] = 7;
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("neither indexing operator reads and writes, so a compound assignment resolves to neither") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
+        }
+        func Main() {
+            var vect = Vect { data: [1, 2, 3, 4] };
+            vect[0] += 1;
+            vect[1]++;
+            vect[2] = vect[2] + 1;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "operator '+=' cannot read and write through the '[]' operator on 'Vect' at once");
+    CHECK_EQ(diagnostics[1].message, "operator '++' cannot read and write through the '[]' operator on 'Vect' at once");
+}
+
+TEST_CASE("an assignment to a type that only reads names the operator that would write") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Vect { data: int[4]; }
+        extend Vect {
+            func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+        }
+        func Main() {
+            var vect = Vect { data: [1, 2, 3, 4] };
+            vect[0] = 9;
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "cannot assign through the '[]' operator on 'Vect'");
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help,
+             "declare 'func []=(self: &var Vect, index: I, value: E)' to assign through the index");
+}
+
+TEST_CASE("each indexing operator has one shape, reported where it is declared") {
+    // Each malformed declaration is on its own type, so nothing here is also a duplicate overload.
+    const auto diagnostics = AnalyzeSource(R"(
+        struct NoResult { data: int[4]; }
+        extend NoResult { func [](self: &NoResult, index: uint) {} }
+
+        struct WritableRead { data: int[4]; }
+        extend WritableRead { func [](self: &var WritableRead, index: uint) -> int { return 0; } }
+
+        struct ReadOnlySelf { data: int[4]; }
+        extend ReadOnlySelf { func []=(self: &ReadOnlySelf, index: uint, value: int) {} }
+
+        struct NoValue { data: int[4]; }
+        extend NoValue { func []=(self: &var NoValue, index: uint) {} }
+
+        struct WriteResult { data: int[4]; }
+        extend WriteResult { func []=(self: &var WriteResult, index: uint, value: int) -> int { return value; } }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 5);
+    CHECK_EQ(diagnostics[0].message,
+             "the '[]' operator on 'NoResult' must have signature 'func [](self: &NoResult, index: I) -> E'");
+    CHECK_EQ(diagnostics[1].message, "the '[]' operator on 'WritableRead' must have signature "
+                                     "'func [](self: &WritableRead, index: I) -> E'");
+    CHECK_EQ(diagnostics[2].message, "the '[]=' operator on 'ReadOnlySelf' must have signature "
+                                     "'func []=(self: &var ReadOnlySelf, index: I, value: E)'");
+    CHECK_EQ(diagnostics[3].message,
+             "the '[]=' operator on 'NoValue' must have signature 'func []=(self: &var NoValue, index: I, value: E)'");
+    CHECK_EQ(diagnostics[4].message, "the '[]=' operator on 'WriteResult' must have signature "
+                                     "'func []=(self: &var WriteResult, index: I, value: E)'");
+}

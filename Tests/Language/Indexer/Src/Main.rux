@@ -16,8 +16,13 @@ extend Vect {
         return self.data[index];
     }
 
-    // A second overload, separated only by its index type. Overload resolution
-    // on the index is what lets one type answer both `v[i]` and `v[a..b]`.
+    func []=(self: &var Vect, index: uint, value: int) {
+        self.data[index] = value;
+    }
+
+    // A second overload of each, separated only by its index type. Overload
+    // resolution on the index is what lets one type answer both `v[i]` and
+    // `v[a..b]`, and read and write on the same index shape.
     func [](self: &Vect, span: Range<int>) -> Slice<int> {
         return self.data[span];
     }
@@ -33,9 +38,13 @@ extend Vect {
         return total;
     }
 
-    // Writing is a method, because the indexer produces a value.
-    func Set(self: &var Vect, index: uint, value: int) {
-        self.data[index] = value;
+    // The receiver writes through its own setter too.
+    func Clear(self: &var Vect, count: uint) {
+        var index: uint = 0;
+        while index < count {
+            self[index] = 0;
+            index++;
+        }
     }
 }
 
@@ -54,6 +63,10 @@ extend Grid {
     func [](self: &Grid, at: Coord) -> int32 {
         return self.cells[at.row * 3 + at.column];
     }
+
+    func []=(self: &var Grid, at: Coord, value: int32) {
+        self.cells[at.row * 3 + at.column] = value;
+    }
 }
 
 // A generic receiver substitutes its type arguments into the operator's
@@ -65,6 +78,10 @@ struct Box<T> {
 extend Box<T> {
     func [](self: &Box<T>, index: uint) -> T {
         return self.items[index];
+    }
+
+    func []=(self: &var Box<T>, index: uint, value: T) {
+        self.items[index] = value;
     }
 }
 
@@ -89,10 +106,27 @@ func Main() -> int {
     // The receiver's own use of the operator resolves the same way.
     Assert(vect.Sum(3) == 33, "a method reads through its own indexer");
 
-    // Writing goes through a method; the indexer still reads the new value.
+    // Writing goes through `[]=`, and `[]` reads back what it wrote.
     var mutable = Vect { data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
-    mutable.Set(2, 7);
-    Assert(mutable[2] == 7, "the indexer observes a write made by a method");
+    mutable[2] = 7;
+    Assert(mutable[2] == 7, "the setter writes the element the getter reads");
+    Assert(mutable[3] == 0, "the setter writes nothing else");
+
+    // The index is an ordinary argument on the writing side too.
+    var slot: uint = 8;
+    mutable[slot] = 21;
+    mutable[slot - 1] = 20;
+    Assert(mutable[8] == 21, "the setter writes through a uint variable");
+    Assert(mutable[7] == 20, "the setter index is an ordinary expression");
+
+    // A method writes through its own setter the way any other caller does.
+    mutable.Clear(9);
+    Assert(mutable[2] == 0 && mutable[8] == 0, "a method writes through its own setter");
+
+    // Writing through an exclusive borrow reaches the same operator.
+    var borrowed: &var Vect = mutable;
+    borrowed[1] = 6;
+    Assert(mutable[1] == 6, "a mutable reference writes through the setter");
 
     // A non-integer index.
     let grid = Grid { cells: [0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32] };
@@ -100,11 +134,17 @@ func Main() -> int {
     Assert(grid[corner] == 8i32, "the indexer accepts a struct index");
     let origin = Coord { row: 0, column: 1 };
     Assert(grid[origin] == 1i32, "a struct index is an ordinary argument");
+    var writable = Grid { cells: [0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32] };
+    writable[corner] = 5i32;
+    Assert(writable[corner] == 5i32, "a struct index writes as well as reads");
 
     // A generic receiver.
     let boxed = Box<int32> { items: [3i32, 5i32, 8i32, 13i32] };
     Assert(boxed[1] == 5i32, "a generic indexer substitutes its element type");
     Assert(boxed[3] == 13i32, "a generic indexer indexes its whole extent");
+    var writableBox = Box<int32> { items: [0i32, 0i32, 0i32, 0i32] };
+    writableBox[2] = 17i32;
+    Assert(writableBox[2] == 17i32, "a generic setter substitutes its element type");
 
     // The built-in forms are untouched by any of this.
     let numbers: int[3] = [4, 5, 6];

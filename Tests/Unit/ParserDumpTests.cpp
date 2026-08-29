@@ -169,12 +169,13 @@ func Transfer(source: Cell) -> Cell {
     CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
 }
 
-TEST_CASE("AST dumps name the indexer operator by the brackets it is declared with") {
+TEST_CASE("AST dumps name the indexing operators by the punctuation they are declared with") {
     constexpr std::string_view source = R"(
 struct Vect { data: int[4]; }
 extend Vect {
     func [](self: &Vect, index: uint) -> int { return self.data[index]; }
     func [](self: &Vect, span: Range<int>) -> Slice<int> { return self.data[span]; }
+    func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
 }
 )";
 
@@ -194,6 +195,7 @@ extend Vect {
 
     CHECK(output.contains("FuncDecl '[]' (self: &Vect, index: uint)"));
     CHECK(output.contains("FuncDecl '[]' (self: &Vect, span: Range<int>)"));
+    CHECK(output.contains("FuncDecl '[]=' (self: &var Vect, index: uint, value: int)"));
 }
 
 TEST_CASE("AST dumps adjacent stars as multiplication followed by dereference") {

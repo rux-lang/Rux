@@ -58,7 +58,81 @@ template <typename Range, typename Projection, typename Predicate>
 
 bool SemanticAnalyzerContext::IsIndexOperatorCall(const Expr &expression) const {
     const auto *index = dynamic_cast<const IndexExpr *>(&expression);
-    return index && indexOperators.contains(index);
+    return index && (indexOperators.contains(index) || indexAssignments.contains(index));
+}
+
+std::optional<TypeRef> SemanticAnalyzerContext::ResolveIndexAssignment(const IndexExpr &index,
+                                                                       const TypeRef &objectType,
+                                                                       const TypeRef &indexType) {
+    const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(objectType, "[]=");
+    if (candidates.empty()) {
+        return std::nullopt;
+    }
+
+    // From here the receiver does declare the operator, so every remaining outcome is reported against it rather than
+    // falling back to the read operator's diagnostics, which would name the wrong problem. A malformed declaration was
+    // already reported where it was written, so it is skipped here rather than reported a second time per use.
+    std::vector<const FuncDecl *> wellFormed;
+    std::vector<std::vector<TypeRef>> wellFormedParameters;
+    for (const FuncDecl *candidate : candidates) {
+        std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(objectType, *candidate);
+        if (parameterTypes.size() == 2 && !candidate->returnType) {
+            wellFormed.push_back(candidate);
+            wellFormedParameters.push_back(std::move(parameterTypes));
+        }
+    }
+    if (wellFormed.empty()) {
+        return TypeRef::MakeUnknown();
+    }
+
+    // Overloads are separated by their index type, exactly as the read operator's are.
+    std::vector<std::size_t> matched;
+    for (std::size_t candidate = 0; candidate < wellFormed.size(); ++candidate) {
+        const TypeRef &declaredIndex = wellFormedParameters[candidate][0];
+        if (declaredIndex.IsUnknown() || indexType.IsUnknown() ||
+            CanAssignExprTo(*index.index, indexType, declaredIndex)) {
+            matched.push_back(candidate);
+        }
+    }
+    if (matched.empty()) {
+        EmitError(index.index->location, std::format("no '[]=' on '{}' accepts an index of type '{}'",
+                                                     objectType.ToString(), indexType.ToString()));
+        return TypeRef::MakeUnknown();
+    }
+    if (matched.size() > 1) {
+        EmitError(index.location,
+                  std::format("index of type '{}' matches {} '[]=' overloads on '{}'", indexType.ToString(),
+                              matched.size(), objectType.ToString()),
+                  {"overloads of an indexed assignment are separated by their index type"});
+        return TypeRef::MakeUnknown();
+    }
+
+    const FuncDecl *method = wellFormed[matched.front()];
+    const TypeRef &valueType = wellFormedParameters[matched.front()][1];
+    indexAssignments.insert_or_assign(&index, ResolvedIndexAssignment{method, objectType, indexType, valueType});
+    return valueType;
+}
+
+void SemanticAnalyzerContext::FinishIndexedAssignment(const AssignExpr &assignment, const TypeRef &valueParameterType,
+                                                      const TypeRef &valueType) {
+    if (valueParameterType.IsUnknown() || valueType.IsUnknown()) {
+        return;
+    }
+    if (!CanAssignExprTo(*assignment.value, valueType, valueParameterType)) {
+        EmitError(assignment.value->location,
+                  AssignmentErrorMessage(*assignment.value, valueParameterType,
+                                         std::format("cannot pass '{}' to parameter of type '{}'", valueType.ToString(),
+                                                     valueParameterType.ToString())));
+        return;
+    }
+    // The new value reaches the setter as an ordinary by-value argument, so it transfers under the argument rules
+    // rather than the rules for overwriting a place: nothing here is being replaced.
+    if (assignment.op == TokenKind::MoveArrow) {
+        ConsumeExplicitValue(*assignment.value, valueType, assignment.location);
+    }
+    else {
+        ConsumeValue(*assignment.value, valueType, ValueConsumptionKind::Argument, assignment.location);
+    }
 }
 
 MovePlace SemanticAnalyzerContext::AnalyzeMovePlace(const Expr &expression) const {
@@ -479,6 +553,34 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
         const std::optional<TypeRef> builtinElementType = IndexElementType(objectType);
         const bool readsPlace = !wasProjectionRoot && !checkingPlainAssignmentTarget;
 
+        // Written to rather than read, this index is an assignment through `[]=`, and the value it must accept comes
+        // from that operator rather than from `[]`. Only the assignment's own target takes this route, so a subscript
+        // nested inside one is still read.
+        if (!builtinElementType && !objectType.IsUnknown() && index == indexAssignmentTarget) {
+            if (std::optional<TypeRef> assigned = ResolveIndexAssignment(*index, objectType, indexType)) {
+                // The setter declares `self: &var T`, so the receiver has to be writable, and it is mutated for the
+                // duration of one call. Writability is the same question assigning into a built-in element asks: a
+                // reference or pointer carries the permission in its own type, and anything else is as writable as
+                // the place it names.
+                if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+                    !objectType.inner.empty()) {
+                    if (!objectType.inner.front().isMut) {
+                        EmitError(index->location,
+                                  objectType.kind == TypeRef::Kind::Reference
+                                      ? std::format("cannot modify data through immutable reference '{}'",
+                                                    objectType.ToString())
+                                      : std::format("cannot modify data through read-only pointer '{}'",
+                                                    objectType.ToString()));
+                    }
+                }
+                else {
+                    CheckMutability(*index->object);
+                }
+                CheckBorrowedMutation(*index->object, index->location);
+                return *assigned;
+            }
+        }
+
         // A type the language does not index itself may declare `[]` in an `extend` block. The operator is tried after
         // the built-in forms, so indexing an array, slice, or pointer never depends on what an `extend` block declares,
         // and before the range and integer rules below, so an overload may accept whichever index type its author
@@ -492,12 +594,8 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
                 }
                 const std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(objectType, *method);
                 TypeRef returnType = ResolveOperatorReturnType(objectType, *method);
-                if (parameterTypes.size() != 1) {
-                    EmitError(index->location,
-                              std::format("operator '[]' expects 1 argument, got {}", parameterTypes.size()));
-                }
-                else if (!parameterTypes[0].IsUnknown() &&
-                         !CanAssignExprTo(*index->index, indexType, parameterTypes[0])) {
+                if (parameterTypes.size() == 1 && !parameterTypes[0].IsUnknown() &&
+                    !CanAssignExprTo(*index->index, indexType, parameterTypes[0])) {
                     EmitError(index->index->location, std::format("cannot pass '{}' to parameter of type '{}'",
                                                                   indexType.ToString(), parameterTypes[0].ToString()));
                 }

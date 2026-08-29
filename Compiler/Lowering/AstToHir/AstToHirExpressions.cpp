@@ -232,6 +232,11 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     }
 
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
+        if (const auto *index = dynamic_cast<const IndexExpr *>(assignment->target.get())) {
+            if (const ResolvedIndexAssignment *resolved = model.TryGetIndexAssignment(*index)) {
+                return LowerIndexAssignment(*assignment, *index, *resolved);
+            }
+        }
         auto lowered = std::make_unique<HirAssignExpr>();
         lowered->location = assignment->location;
         lowered->op = assignment->op;

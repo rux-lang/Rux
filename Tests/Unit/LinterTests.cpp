@@ -67,11 +67,12 @@ TEST_CASE("linter accepts symbolic operator function names") {
     CHECK(result.diagnostics.empty());
 }
 
-TEST_CASE("linter accepts the indexer operator name") {
+TEST_CASE("linter accepts the indexing operator names") {
     auto result = Rux::Linting::Lint(R"(
         struct Vect { data: int[4]; }
         extend Vect {
             func [](self: &Vect, index: uint) -> int { return self.data[index]; }
+            func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
         }
     )",
                                      "indexer.rux");

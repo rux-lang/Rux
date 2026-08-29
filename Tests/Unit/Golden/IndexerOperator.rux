@@ -1,6 +1,7 @@
-// What indexing reports once a type can declare `[]`. The operator produces a
-// value, so an accepted `v[i]` is a call and every place-shaped use of it is
-// rejected; a type that declares no `[]` is still unindexable, and says so.
+// What indexing reports once a type can declare `[]` and `[]=`. The two are
+// separate operations: `[]` produces a value, so every place-shaped use of it is
+// rejected, and `[]=` takes the new value, so neither reads and writes on its
+// own. A type that declares neither is still unindexable, and says so.
 
 struct Vect {
     data: int[4];
@@ -8,6 +9,20 @@ struct Vect {
 
 extend Vect {
     func [](self: &Vect, index: uint) -> int {
+        return self.data[index];
+    }
+
+    func []=(self: &var Vect, index: uint, value: int) {
+        self.data[index] = value;
+    }
+}
+
+struct ReadOnly {
+    data: int[4];
+}
+
+extend ReadOnly {
+    func [](self: &ReadOnly, index: uint) -> int {
         return self.data[index];
     }
 }
@@ -24,10 +39,28 @@ extend Holder {
     func [](self: &Holder, index: uint) -> Cell {
         return self.inner;
     }
+
+    func []=(self: &var Holder, index: uint, value: Cell) {
+        self.inner = value;
+    }
 }
 
 struct Plain {
     value: int;
+}
+
+// Neither operator has any other shape. A malformed one is reported where it is
+// written, once, whether or not anything ever indexes the type.
+struct Malformed {
+    data: int[4];
+}
+
+extend Malformed {
+    func [](self: &Malformed, index: uint) {
+    }
+
+    func []=(self: &Malformed, index: uint, value: int) {
+    }
 }
 
 func Borrow(value: &int) {
@@ -36,26 +69,39 @@ func Borrow(value: &int) {
 func Main() -> int {
     var vect = Vect { data: [1, 2, 3, 4] };
 
-    // Reading through the operator is what it is for.
+    // Reading and writing are what the two operators are for.
     let read = vect[0];
-
-    // Assigning is not: the call's result is a value, and a reference cannot be
-    // returned, so no place-returning indexer exists to write back through.
     vect[0] = 9;
+
+    // Neither does both, so a read-modify-write has no operator to resolve to.
     vect[1] += 1;
     vect[2]++;
 
-    // A field of that result is no more a place than the result itself.
+    // A receiver that cannot be written cannot be written through.
+    let frozen = Vect { data: [1, 2, 3, 4] };
+    frozen[0] = 5;
+
+    // The new value is an argument, so it is checked against the setter's
+    // parameter, and the index against the overloads' index types.
+    vect[0] = "text";
+    vect["key"] = 1;
+
+    // A field of a read result is no more a place than the result itself, and no
+    // setter reaches it either.
     var holder = Holder { inner: Cell { value: 1 } };
     holder[0].value = 3;
 
-    // Nor can the result be borrowed: it does not outlive the call.
+    // A read result does not outlive its call, so nothing borrows it.
     Borrow(vect[0]);
 
-    // A type that declares no `[]` cannot be indexed at all, and the diagnostic
-    // names the operator that would let it be.
+    // A type that declares neither operator cannot be indexed at all, and the
+    // diagnostic names the operator that would let it be.
     let plain = Plain { value: 1 };
     let rejected = plain[0];
+
+    // Writing to a type that only reads names the operator that would write.
+    var readOnly = ReadOnly { data: [1, 2, 3, 4] };
+    readOnly[0] = 1;
 
     // A range index reaches the same rule when no overload accepts one.
     let spanned = vect[0..2];

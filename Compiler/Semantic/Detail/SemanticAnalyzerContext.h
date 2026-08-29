@@ -51,6 +51,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
     [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
     [[nodiscard]] std::unordered_map<const IndexExpr *, ResolvedIndexOperator> TakeIndexOperators();
+    [[nodiscard]] std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> TakeIndexAssignments();
     [[nodiscard]] std::unordered_map<const ForStmt *, ResolvedIteration> TakeIterations();
     [[nodiscard]] std::unordered_map<const Decl *, bool> EffectiveVisibilities() const;
 
@@ -120,6 +121,7 @@ protected:
     [[nodiscard]] static bool IsSpecialOperationName(std::string_view name);
     [[nodiscard]] static bool IsDestructorName(std::string_view name);
     void ValidateSpecialOperation(const FuncDecl &method, const TypeRef &extendedType);
+    void ValidateIndexOperator(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateDestructor(const FuncDecl &method, const TypeRef &extendedType);
     void ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType);
     [[nodiscard]] bool IsConstructorCandidate(const FuncDecl &method, const TypeRef &type);
@@ -366,14 +368,25 @@ protected:
     [[nodiscard]] std::optional<ResolvedCase> LookupCase(const std::string &typeName,
                                                          const std::string &caseName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
-    /// Whether this expression is an index that resolved to a declared `[]`. Such an expression is a call producing a
-    /// value, so it is neither an assignable place nor a projection any borrow or move can reach through, and every
-    /// place walk stops at it.
+    /// Whether this expression is an index that resolved to a declared `[]` or `[]=`. Such an expression is a call, so
+    /// it is neither an assignable place nor a projection any borrow or move can reach through, and every place walk
+    /// stops at it.
     [[nodiscard]] bool IsIndexOperatorCall(const Expr &expression) const;
 
     /// The nearest index expression this place path passes through that resolved to a declared `[]`, or null when the
     /// path reaches its root without one. `v[i].field` has no place to write to for the same reason `v[i]` does not.
     [[nodiscard]] const IndexExpr *IndexOperatorInPlace(const Expr &place) const;
+
+    /// Resolve the `[]=` an index expression is being written through, returning the type the assigned value must
+    /// have. Returns nothing when the receiver declares no `[]=` at all, which leaves the expression to be read
+    /// through `[]` and rejected as a target like any other non-place.
+    [[nodiscard]] std::optional<TypeRef> ResolveIndexAssignment(const IndexExpr &index, const TypeRef &objectType,
+                                                                const TypeRef &indexType);
+
+    /// Check the assigned value of an indexed assignment against the setter's value parameter and consume it, the way
+    /// the call this assignment becomes would.
+    void FinishIndexedAssignment(const AssignExpr &assignment, const TypeRef &valueParameterType,
+                                 const TypeRef &valueType);
 
     /// Place decomposition that knows which index expressions resolved to a declared `[]`. These hide the namespace
     /// forms of the same names, so every decomposition inside analysis sees an operator index as the call it is.
@@ -416,6 +429,11 @@ protected:
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
     /// without resolving it again and analysis knows the expression is a call rather than a place.
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
+    /// One entry per accepted index expression assigned through a declared `[]=`, for the same two reasons.
+    std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
+    /// The index expression currently being checked as the direct target of a plain assignment, if any. The setter is
+    /// resolved only for that exact node, so `outer[inner[i]] = x` reads its subscript and writes only the outer index.
+    const IndexExpr *indexAssignmentTarget = nullptr;
     /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> &typeQueryValues;
