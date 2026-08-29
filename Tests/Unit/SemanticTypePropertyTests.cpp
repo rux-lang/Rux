@@ -479,3 +479,85 @@ TEST_CASE("drop glue expands concrete aggregates in reverse construction order")
     REQUIRE(loweredPair != hir.dropGlues.end());
     CHECK_EQ(loweredPair->steps.size(), pair.steps.size());
 }
+
+TEST_CASE("scalar enums stay trivial while variants combine every payload ownership property") {
+    Lexer lexer(R"(
+        enum Status: uint8 { Ready = 1, Busy = 2 }
+
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
+
+        struct Copier { value: int32; }
+        extend Copier {
+            func =(self: &var Copier, other: &Copier) { self.value = other.value; }
+            func ~Copier(self: &var Copier) {}
+        }
+
+        variant Units { Empty, Ready, Busy }
+        variant Maybe<T> { None, Some(T) }
+        variant Nested { Empty, Direct(Handle), Wrapped(Maybe<Handle>) }
+
+        func Observe(status: Status, units: Units, number: Maybe<int32>, owner: Maybe<Handle>,
+                     copier: Maybe<Copier>, nested: Nested) {}
+    )",
+                "variant_type_properties.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "variant_type_properties.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto observe = std::ranges::find_if(parsed.module.items, [](const DeclPtr &item) {
+        const auto *function = dynamic_cast<const FuncDecl *>(item.get());
+        return function && function->name == "Observe";
+    });
+    REQUIRE(observe != parsed.module.items.end());
+    const auto *function = dynamic_cast<const FuncDecl *>(observe->get());
+    REQUIRE(function != nullptr);
+    REQUIRE_EQ(function->params.size(), 6);
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto properties = [&](const std::size_t index) -> const TypeProperties & {
+        const TypeProperties *value = model.TryGetProperties(*function->params[index].type);
+        REQUIRE(value != nullptr);
+        return *value;
+    };
+
+    for (const std::size_t index : {0U, 1U, 2U}) {
+        CHECK(properties(index).IsCopy());
+        CHECK(properties(index).IsMovable());
+        CHECK_FALSE(properties(index).IsDroppable());
+        CHECK_EQ(properties(index).copyOperation, TypeProperties::SpecialOperationState::Generated);
+        CHECK_EQ(properties(index).moveOperation, TypeProperties::SpecialOperationState::Generated);
+    }
+    const TypeProperties &owner = properties(3);
+    CHECK(owner.IsMoveOnly());
+    CHECK(owner.IsMovable());
+    CHECK(owner.IsDroppable());
+    CHECK_EQ(owner.copyOperation, TypeProperties::SpecialOperationState::Prohibited);
+    CHECK_EQ(owner.moveOperation, TypeProperties::SpecialOperationState::Generated);
+    const TypeProperties &copier = properties(4);
+    CHECK(copier.IsCopy());
+    CHECK(copier.IsMovable());
+    CHECK(copier.IsDroppable());
+    CHECK_EQ(copier.copyOperation, TypeProperties::SpecialOperationState::Generated);
+    CHECK_EQ(copier.moveOperation, TypeProperties::SpecialOperationState::Generated);
+    const TypeProperties &nested = properties(5);
+    CHECK(nested.IsMoveOnly());
+    CHECK(nested.IsMovable());
+    CHECK(nested.IsDroppable());
+    CHECK_EQ(nested.copyOperation, TypeProperties::SpecialOperationState::Prohibited);
+    CHECK_EQ(nested.moveOperation, TypeProperties::SpecialOperationState::Generated);
+    const TypeProperties *status = model.TryGetProperties(TypeRef::MakeNamed("Status"));
+    const TypeProperties *units = model.TryGetProperties(TypeRef::MakeNamed("Units"));
+    REQUIRE(status != nullptr);
+    REQUIRE(units != nullptr);
+    CHECK(status->IsCopy());
+    CHECK_EQ(status->copyOperation, TypeProperties::SpecialOperationState::Generated);
+    CHECK(units->IsCopy());
+}

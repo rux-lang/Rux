@@ -509,6 +509,7 @@ TEST_CASE("generated variant copies recursively copy the active owning payload")
     const auto *copy = dynamic_cast<const HirCopyExpr *>(call->args.front().get());
     REQUIRE(copy != nullptr);
     CHECK_EQ(copy->plan.kind, HirCopyPlan::Kind::Enum);
+    CHECK_EQ(copy->plan.form, CaseTypeForm::Variant);
     REQUIRE_EQ(copy->plan.variantComponents.size(), 2);
     REQUIRE_EQ(copy->plan.variantComponents[0].size(), 1);
     CHECK_EQ(copy->plan.variantComponents[0][0].kind, HirCopyPlan::Kind::Custom);
@@ -517,6 +518,147 @@ TEST_CASE("generated variant copies recursively copy the active owning payload")
 
     const LirPackage lir = LowerConsumptionLir(source);
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Clone"), copySymbol), 1);
+}
+
+TEST_CASE("variant move plans dispatch custom moves for only the active case") {
+    const std::string source = R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
+            func ~Handle(self: &var Handle) {}
+        }
+
+        variant Choice {
+            Empty,
+            Direct(Handle),
+            Pair(int32, Handle),
+            Named { sequence: uint64; handle: Handle; }
+        }
+
+        func Take(value: Choice) {}
+        func Transfer(source: Choice) {
+            let moved <- source;
+            Take(<-moved);
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &transfer = RequireFunction(hir, "Transfer");
+    REQUIRE(transfer.body.has_value());
+    REQUIRE_GE(transfer.body->stmts.size(), 2);
+    const auto *binding = dynamic_cast<const HirLetStmt *>(transfer.body->stmts[0].get());
+    REQUIRE(binding != nullptr);
+    const auto *move = dynamic_cast<const HirMoveExpr *>(binding->init.get());
+    REQUIRE(move != nullptr);
+    CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Variant);
+    CHECK_EQ(move->plan.form, CaseTypeForm::Variant);
+    CHECK_EQ(move->plan.variantDiscriminants, std::vector<std::string>{"0", "1", "2", "3"});
+    REQUIRE_EQ(move->plan.variantPayloadTypes.size(), 4);
+    CHECK(move->plan.variantPayloadTypes[0].empty());
+    CHECK_EQ(move->plan.variantPayloadTypes[1], std::vector<TypeRef>{TypeRef::MakeNamed("Handle")});
+    CHECK_EQ(move->plan.variantPayloadTypes[2],
+             std::vector<TypeRef>{TypeRef::MakeInt32(), TypeRef::MakeNamed("Handle")});
+    CHECK_EQ(move->plan.variantPayloadTypes[3],
+             std::vector<TypeRef>{TypeRef::MakeUInt64(), TypeRef::MakeNamed("Handle")});
+    REQUIRE_EQ(move->plan.variantComponents.size(), 4);
+    CHECK(move->plan.variantComponents[0].empty());
+    REQUIRE_EQ(move->plan.variantComponents[1].size(), 1);
+    CHECK_EQ(move->plan.variantComponents[1][0].kind, HirMovePlan::Kind::Custom);
+    REQUIRE_EQ(move->plan.variantComponents[2].size(), 2);
+    CHECK_EQ(move->plan.variantComponents[2][0].kind, HirMovePlan::Kind::Trivial);
+    CHECK_EQ(move->plan.variantComponents[2][1].kind, HirMovePlan::Kind::Custom);
+    REQUIRE_EQ(move->plan.variantComponents[3].size(), 2);
+    CHECK_EQ(move->plan.variantComponents[3][1].kind, HirMovePlan::Kind::Custom);
+    const std::string moveSymbol = move->plan.variantComponents[1][0].customCallee;
+    CHECK_FALSE(moveSymbol.empty());
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    const LirFunc &lowered = RequireLirFunction(lir, "Transfer");
+    CHECK_GE(LirCallCount(lowered, moveSymbol), 3);
+    CHECK_GE(std::ranges::count_if(lowered.blocks,
+                                   [](const LirBlock &block) { return block.label.starts_with("move.variant"); }),
+             3);
+}
+
+TEST_CASE("nested generic variant move plans preserve substituted active-case structure") {
+    const std::string source = R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
+            func ~Handle(self: &var Handle) {}
+        }
+        variant Maybe<T> { None, Some(T) }
+        variant Envelope<T> { Empty, Direct(T), Nested(Maybe<T>) }
+        func Transfer(source: Envelope<Handle>) {
+            let moved <- source;
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &transfer = RequireFunction(hir, "Transfer");
+    REQUIRE(transfer.body.has_value());
+    const auto *binding = dynamic_cast<const HirLetStmt *>(transfer.body->stmts.front().get());
+    REQUIRE(binding != nullptr);
+    const auto *move = dynamic_cast<const HirMoveExpr *>(binding->init.get());
+    REQUIRE(move != nullptr);
+    CHECK_EQ(move->plan.kind, HirMovePlan::Kind::Variant);
+    REQUIRE_EQ(move->plan.variantPayloadTypes.size(), 3);
+    CHECK_EQ(move->plan.variantPayloadTypes[1], std::vector<TypeRef>{TypeRef::MakeNamed("Handle")});
+    CHECK_EQ(move->plan.variantPayloadTypes[2], std::vector<TypeRef>{TypeRef::MakeNamed("Maybe<Handle>")});
+    REQUIRE_EQ(move->plan.variantComponents[2].size(), 1);
+    CHECK_EQ(move->plan.variantComponents[2][0].kind, HirMovePlan::Kind::Variant);
+    CHECK_EQ(move->plan.variantComponents[2][0].form, CaseTypeForm::Variant);
+}
+
+TEST_CASE("scalar enums remain trivial copies and never acquire variant lifecycle plans") {
+    const std::string source = R"(
+        enum Status: uint8 { Ready = 1, Busy = 2 }
+        func Take(value: Status) {}
+        func Copy(source: Status) -> Status {
+            let local = source;
+            Take(source);
+            return local;
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &copy = RequireFunction(hir, "Copy");
+    REQUIRE(copy.body.has_value());
+    const auto *binding = dynamic_cast<const HirLetStmt *>(copy.body->stmts[0].get());
+    REQUIRE(binding != nullptr);
+    CHECK(dynamic_cast<const HirCopyExpr *>(binding->init.get()) == nullptr);
+    const LirPackage lir = LowerConsumptionLir(source);
+    const LirFunc &lowered = RequireLirFunction(lir, "Copy");
+    CHECK_FALSE(std::ranges::any_of(lowered.blocks, [](const LirBlock &block) {
+        return block.label.starts_with("copy.variant") || block.label.starts_with("move.variant");
+    }));
+    CHECK(AnalyzeConsumptionDiagnostics(source).empty());
+}
+
+TEST_CASE("consuming a move-only variant reports later use while borrowed inspection remains reusable") {
+    const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func ~Handle(self: &var Handle) {}
+        }
+        variant Held { Empty, Full(Handle) }
+
+        func Consume(value: Held) {
+            match <-value { .Empty => {}, .Full(handle) => {} }
+            value;
+        }
+
+        func Inspect(value: *Held) {
+            match *value { .Empty => {}, .Full(handle) => {} }
+            match *value { .Empty => {}, .Full(_) => {} }
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics.front().message, "value 'value' is used after it was moved");
 }
 
 TEST_CASE("named move-only values require explicit transfer syntax in every by-value context") {

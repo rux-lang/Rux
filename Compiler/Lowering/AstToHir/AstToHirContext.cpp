@@ -560,6 +560,10 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
 HirCopyPlan AstToHirContext::BuildEnumCopyPlan(const TypeRef &type, const EnumDecl &declaration) {
     HirCopyPlan plan;
     plan.type = type;
+    plan.form = declaration.IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
+    if (!declaration.IsVariant()) {
+        return plan;
+    }
 
     std::unordered_map<std::string, TypeRef> substitutions;
     const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
@@ -593,6 +597,55 @@ HirCopyPlan AstToHirContext::BuildEnumCopyPlan(const TypeRef &type, const EnumDe
     }
     if (needsPlan) {
         plan.kind = HirCopyPlan::Kind::Enum;
+    }
+    else {
+        plan.variantDiscriminants.clear();
+        plan.variantPayloadTypes.clear();
+        plan.variantComponents.clear();
+    }
+    return plan;
+}
+
+HirMovePlan AstToHirContext::BuildEnumMovePlan(const TypeRef &type, const EnumDecl &declaration) {
+    HirMovePlan plan;
+    plan.type = type;
+    plan.form = declaration.IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
+    if (!declaration.IsVariant()) {
+        return plan;
+    }
+
+    std::unordered_map<std::string, TypeRef> substitutions;
+    const std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(type.name);
+    const std::size_t count = std::min(arguments.size(), declaration.typeParams.size());
+    for (std::size_t index = 0; index < count; ++index) {
+        substitutions.emplace(declaration.typeParams[index].name, arguments[index]);
+    }
+
+    bool needsPlan = false;
+    const std::string base = BaseTypeName(type.name);
+    for (const EnumDecl::Variant &variant : declaration.variants) {
+        plan.variantDiscriminants.push_back(LookupEnumVariantDiscriminant(base, variant.name).value_or("0"));
+        std::vector<TypeRef> payloadTypes;
+        std::vector<HirMovePlan> payloadPlans;
+        payloadTypes.reserve(variant.fields.size() + variant.namedFields.size());
+        payloadPlans.reserve(variant.fields.size() + variant.namedFields.size());
+        for (const TypeExprPtr &field : variant.fields) {
+            TypeRef fieldType = ResolveTypeWithSubstitution(*field, substitutions);
+            payloadTypes.push_back(fieldType);
+            payloadPlans.push_back(BuildMovePlan(fieldType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirMovePlan::Kind::Trivial;
+        }
+        for (const EnumDecl::Variant::NamedField &field : variant.namedFields) {
+            TypeRef fieldType = ResolveTypeWithSubstitution(*field.type, substitutions);
+            payloadTypes.push_back(fieldType);
+            payloadPlans.push_back(BuildMovePlan(fieldType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirMovePlan::Kind::Trivial;
+        }
+        plan.variantPayloadTypes.push_back(std::move(payloadTypes));
+        plan.variantComponents.push_back(std::move(payloadPlans));
+    }
+    if (needsPlan) {
+        plan.kind = HirMovePlan::Kind::Variant;
     }
     else {
         plan.variantDiscriminants.clear();

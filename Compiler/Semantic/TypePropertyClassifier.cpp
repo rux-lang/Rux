@@ -140,6 +140,9 @@ TypeProperties TypePropertyClassifier::ClassifyStruct(const StructDecl &declarat
 
 TypeProperties TypePropertyClassifier::ClassifyEnum(const EnumDecl &declaration,
                                                     const std::vector<TypeRef> &arguments) {
+    if (!declaration.IsVariant()) {
+        return TypeProperties::Copy();
+    }
     if (arguments.size() != declaration.typeParams.size()) {
         return TypeProperties::Unresolved();
     }

@@ -229,6 +229,7 @@ struct HirCopyPlan {
     };
 
     Kind kind = Kind::Trivial;
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     TypeRef type;
     std::string customCallee;
     std::vector<std::string> componentNames;
@@ -252,13 +253,18 @@ struct HirMovePlan {
         Structure,
         Array,
         Tuple,
+        Variant,
     };
 
     Kind kind = Kind::Trivial;
+    CaseTypeForm form = CaseTypeForm::Enumeration;
     TypeRef type;
     std::string customCallee;
     std::vector<std::string> componentNames;
     std::vector<HirMovePlan> components;
+    std::vector<std::string> variantDiscriminants;
+    std::vector<std::vector<TypeRef>> variantPayloadTypes;
+    std::vector<std::vector<HirMovePlan>> variantComponents;
 };
 
 struct HirMoveExpr : HirExpr {
