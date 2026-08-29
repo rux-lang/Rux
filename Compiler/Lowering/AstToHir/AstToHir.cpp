@@ -6,6 +6,7 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include <cassert>
 #include <format>
 #include <memory>
 #include <string>
@@ -309,6 +310,93 @@ HirExprPtr AstToHirContext::LowerOverloadedBinaryCall(const BinaryExpr &expressi
     }
     call->args.push_back(std::move(right));
     return call;
+}
+
+HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const VariantEqualityPayload &payload) {
+    HirVariantEqualityPayload lowered;
+    lowered.type = SubstituteCurrentType(payload.type);
+    using SemanticOperation = VariantEqualityPayload::Operation;
+    using HirOperation = HirVariantEqualityPayload::Operation;
+    switch (payload.operation) {
+    case SemanticOperation::Builtin:
+        lowered.operation = HirOperation::Builtin;
+        break;
+    case SemanticOperation::Custom: {
+        lowered.operation = HirOperation::Custom;
+        const FuncDecl &method = *payload.customEquality;
+        const Param *receiver = method.Receiver();
+        const auto substitutions = MethodTypeSubstitutions(lowered.type);
+        lowered.customReceiverType =
+            receiver ? ResolveTypeWithSubstitution(*receiver->type, substitutions) : TypeRef::MakePointer(lowered.type);
+        for (const Param &parameter : method.params) {
+            if (parameter.name != "self" && !parameter.isVariadic) {
+                lowered.customArgumentType = ResolveTypeWithSubstitution(*parameter.type, substitutions);
+                break;
+            }
+        }
+        if (lowered.customArgumentType.IsUnknown()) {
+            lowered.customArgumentType = lowered.type;
+        }
+        lowered.customCallee =
+            ConcreteMethodCalleeName(NamedBaseTypeName(lowered.type), lowered.customReceiverType, method);
+        break;
+    }
+    case SemanticOperation::Variant:
+        lowered.operation = HirOperation::Variant;
+        if (const VariantEqualityPlan *nested = model.TryGetVariantEqualityPlan(payload.type)) {
+            lowered.variantCases.reserve(nested->cases.size());
+            for (const VariantEqualityCase &sourceCase : nested->cases) {
+                HirVariantEqualityCase loweredCase;
+                loweredCase.discriminant = sourceCase.discriminant;
+                loweredCase.payloads.reserve(sourceCase.payloads.size());
+                for (const VariantEqualityPayload &casePayload : sourceCase.payloads) {
+                    loweredCase.payloads.push_back(LowerVariantEqualityPayload(casePayload));
+                }
+                lowered.variantCases.push_back(std::move(loweredCase));
+            }
+        }
+        break;
+    case SemanticOperation::Tuple:
+        lowered.operation = HirOperation::Tuple;
+        break;
+    case SemanticOperation::Array:
+        lowered.operation = HirOperation::Array;
+        break;
+    case SemanticOperation::Deferred:
+        assert(false && "deferred variant equality reached concrete lowering");
+        break;
+    }
+    lowered.elements.reserve(payload.elements.size());
+    for (const VariantEqualityPayload &element : payload.elements) {
+        lowered.elements.push_back(LowerVariantEqualityPayload(element));
+    }
+    return lowered;
+}
+
+HirExprPtr AstToHirContext::LowerVariantEquality(const BinaryExpr &expression, HirExprPtr left, HirExprPtr right,
+                                                 const ResolvedVariantEquality &resolved) {
+    const TypeRef variantType = SubstituteCurrentType(resolved.type);
+    const VariantEqualityPlan *plan = model.TryGetVariantEqualityPlan(variantType);
+    assert(plan && "resolved variant equality is missing its structural plan");
+
+    auto lowered = std::make_unique<HirVariantEqualityExpr>();
+    lowered->location = expression.location;
+    lowered->type = TypeRef::MakeBool();
+    lowered->left = std::move(left);
+    lowered->right = std::move(right);
+    lowered->variantType = variantType;
+    lowered->negated = resolved.negated;
+    lowered->cases.reserve(plan->cases.size());
+    for (const VariantEqualityCase &sourceCase : plan->cases) {
+        HirVariantEqualityCase loweredCase;
+        loweredCase.discriminant = sourceCase.discriminant;
+        loweredCase.payloads.reserve(sourceCase.payloads.size());
+        for (const VariantEqualityPayload &payload : sourceCase.payloads) {
+            loweredCase.payloads.push_back(LowerVariantEqualityPayload(payload));
+        }
+        lowered->cases.push_back(std::move(loweredCase));
+    }
+    return lowered;
 }
 
 HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {

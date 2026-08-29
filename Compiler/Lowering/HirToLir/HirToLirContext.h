@@ -157,6 +157,12 @@ private:
     LirReg LowerPostfix(const HirPostfixExpr &expression);
     LirReg LowerUnary(const HirUnaryExpr &expression);
     LirReg LowerBinary(const HirBinaryExpr &expression);
+    LirReg LowerVariantEquality(const HirVariantEqualityExpr &expression);
+    LirReg EmitVariantEquality(const TypeRef &type, const std::vector<HirVariantEqualityCase> &cases, LirReg left,
+                               LirReg right);
+    LirReg EmitVariantPayloadEquality(const HirVariantEqualityPayload &payload, LirReg left, LirReg right);
+    LirReg EmitVariantPayloadsEquality(const std::vector<HirVariantEqualityPayload> &payloads, LirReg left,
+                                       LirReg right, const TypeRef &tagType);
     LirReg LowerAssign(const HirAssignExpr &expression);
     LirReg LowerCopy(const HirCopyExpr &expression);
     LirReg LowerMove(const HirMoveExpr &expression);

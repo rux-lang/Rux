@@ -242,6 +242,9 @@ private:
     [[nodiscard]] HirExprPtr LowerDerivedOrderingCompare(const BinaryExpr &expression, HirExprPtr &left,
                                                          HirExprPtr &right, const FuncDecl &lessThan,
                                                          const FuncDecl &equals);
+    [[nodiscard]] HirExprPtr LowerVariantEquality(const BinaryExpr &expression, HirExprPtr left, HirExprPtr right,
+                                                  const ResolvedVariantEquality &resolved);
+    [[nodiscard]] HirVariantEqualityPayload LowerVariantEqualityPayload(const VariantEqualityPayload &payload);
     [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type) const;
     [[nodiscard]] TypeRef LiteralType(const Token &token) const;
     [[nodiscard]] std::string StripNumericLiteralSuffix(const std::string &text) const;

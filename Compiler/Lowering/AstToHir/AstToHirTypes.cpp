@@ -651,7 +651,10 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
         if (t->typeArgs.empty()) {
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
-                return it->second;
+                return RestoreEnumLayoutMarkers(it->second);
+            }
+            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+                return EnumType(*enumIt->second);
             }
             return ResolvedType(expr);
         }

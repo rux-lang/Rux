@@ -43,6 +43,20 @@ variant Nested<T> {
     Optional(Maybe<T>)
 }
 
+variant ParseError {
+    End,
+    InvalidCharacter(int32)
+}
+
+variant Outcome<T, E> {
+    Success(T),
+    Error(E)
+}
+
+func MakeParseError() -> Outcome<int32, ParseError> {
+    return Outcome::Error<int32, ParseError>(ParseError::InvalidCharacter(2i32));
+}
+
 func StateCode(state: UnitState) -> int {
     return match state {
         .Idle => 10,
@@ -186,6 +200,42 @@ func CheckNestedCases() {
     Assert(ReadNested(present) == 42i32, "a nested tuple case is decoded through both tags");
 }
 
+func CheckEquality() {
+    Assert(Parcel::Nothing == Parcel::Nothing, "equal unit cases compare equal");
+    Assert(Parcel::Nothing != Parcel::Count(0i64), "different cases compare unequal without reading payloads");
+    Assert(Parcel::Count(42i64) == Parcel::Count(42i64), "equal wide payloads compare equal");
+    Assert(Parcel::Count(3i64) != Parcel::Count(4i64), "different wide payloads compare unequal");
+    Assert(Parcel::Pair(20i32, 22i32) == Parcel::Pair(20i32, 22i32),
+           "all positional payloads participate in equality");
+    Assert(Parcel::Pair(20i32, 22i32) != Parcel::Pair(20i32, 23i32),
+           "the final positional payload participates in equality");
+
+    let absent = Nested::Optional<int32>(Maybe::None<int32>());
+    let present = Nested::Optional<int32>(Maybe::Some<int32>(42i32));
+    Assert(absent == Nested::Optional<int32>(Maybe::None<int32>()), "nested unit cases compare equal");
+    Assert(present == Nested::Optional<int32>(Maybe::Some<int32>(42i32)),
+           "nested active payloads compare equal");
+    Assert(absent != present, "nested variants compare their inner tags");
+
+    let third = ParseError::InvalidCharacter(3i32);
+    let fourth = ParseError::InvalidCharacter(4i32);
+    Assert(third == ParseError::InvalidCharacter(3i32), "an inline case constructor compares by its payload");
+    Assert(third != fourth, "ParseError payload values participate in inequality");
+
+    let parsed = MakeParseError();
+    let expectedError = ParseError::InvalidCharacter(2i32);
+    let decoded = match MakeParseError() {
+        .Success(_) => false,
+        .Error(error) => match error { .End => false, .InvalidCharacter(index) => index == 2i32 }
+    };
+    Assert(decoded, "a nested variant payload bound by match retains its own payload");
+    let matched = match parsed {
+        .Success(_) => false,
+        .Error(error) => error == expectedError
+    };
+    Assert(matched, "a nested variant payload bound by match compares through its borrowed storage");
+}
+
 func Main() -> int {
     CheckUnitCases();
     CheckGenericCases();
@@ -194,5 +244,6 @@ func Main() -> int {
     CheckRepeatedPayloadTypes();
     CheckMixedLayouts();
     CheckNestedCases();
+    CheckEquality();
     return 0;
 }

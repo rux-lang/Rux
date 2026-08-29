@@ -177,6 +177,43 @@ struct HirBinaryExpr : HirExpr {
     HirExprPtr right;
 };
 
+/// One payload comparison in a structural variant equality recipe. Aggregate operations recursively compare their
+/// elements; custom operations call the concrete `==` implementation selected during semantic analysis.
+struct HirVariantEqualityCase;
+
+struct HirVariantEqualityPayload {
+    enum class Operation {
+        Builtin,
+        Custom,
+        Variant,
+        Tuple,
+        Array,
+    };
+
+    TypeRef type;
+    Operation operation = Operation::Builtin;
+    std::string customCallee;
+    TypeRef customReceiverType;
+    TypeRef customArgumentType;
+    std::vector<HirVariantEqualityPayload> elements;
+    std::vector<HirVariantEqualityCase> variantCases;
+};
+
+struct HirVariantEqualityCase {
+    std::string discriminant;
+    std::vector<HirVariantEqualityPayload> payloads;
+};
+
+/// Case-aware equality evaluates both operands once, compares their tags, and reads only payloads belonging to the
+/// shared active case. `negated` derives `!=` from the same traversal.
+struct HirVariantEqualityExpr : HirExpr {
+    HirExprPtr left;
+    HirExprPtr right;
+    TypeRef variantType;
+    std::vector<HirVariantEqualityCase> cases;
+    bool negated = false;
+};
+
 /// Recursive recipe for constructing an independent value from a named source place. Trivial leaves are copied as
 /// bits; custom leaves call the selected `=` operation; aggregate nodes visit their components in declaration order.
 struct HirCopyPlan {

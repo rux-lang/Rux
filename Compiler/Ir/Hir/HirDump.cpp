@@ -86,6 +86,9 @@ static std::string PrintExprCore(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirBinaryExpr *>(&expr)) {
         return std::format("({} {} {})", PrintExpr(*e->left), OpStr(e->op), PrintExpr(*e->right));
     }
+    if (auto *e = dynamic_cast<const HirVariantEqualityExpr *>(&expr)) {
+        return std::format("variant-{}({}, {})", e->negated ? "ne" : "eq", PrintExpr(*e->left), PrintExpr(*e->right));
+    }
     if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
         const std::string operation = e->plan.customCallee.empty() ? "generated" : e->plan.customCallee;
         return std::format("copy<{}>({})", operation, PrintExpr(*e->value));
