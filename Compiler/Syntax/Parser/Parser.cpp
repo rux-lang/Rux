@@ -362,13 +362,13 @@ void Parser::Synchronize() {
         }
 
         if (k == TokenKind::FuncKeyword || k == TokenKind::StructKeyword || k == TokenKind::EnumKeyword ||
-            k == TokenKind::UnionKeyword || k == TokenKind::InterfaceKeyword || k == TokenKind::ExtendKeyword ||
-            k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword || k == TokenKind::ConstKeyword ||
-            k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword || k == TokenKind::PubKeyword ||
-            k == TokenKind::LetKeyword || k == TokenKind::VarKeyword || k == TokenKind::IfKeyword ||
-            k == TokenKind::WhenKeyword || k == TokenKind::WhileKeyword || k == TokenKind::DoKeyword ||
-            k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword || k == TokenKind::ReturnKeyword ||
-            k == TokenKind::MatchKeyword) {
+            k == TokenKind::VariantKeyword || k == TokenKind::UnionKeyword || k == TokenKind::InterfaceKeyword ||
+            k == TokenKind::ExtendKeyword || k == TokenKind::ModuleKeyword || k == TokenKind::ImportKeyword ||
+            k == TokenKind::ConstKeyword || k == TokenKind::TypeKeyword || k == TokenKind::ExternKeyword ||
+            k == TokenKind::PubKeyword || k == TokenKind::LetKeyword || k == TokenKind::VarKeyword ||
+            k == TokenKind::IfKeyword || k == TokenKind::WhenKeyword || k == TokenKind::WhileKeyword ||
+            k == TokenKind::DoKeyword || k == TokenKind::LoopKeyword || k == TokenKind::ForKeyword ||
+            k == TokenKind::ReturnKeyword || k == TokenKind::MatchKeyword) {
             return;
         }
 

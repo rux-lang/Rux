@@ -103,7 +103,7 @@ DeclPtr Parser::ParseDecl() {
     if (Check(TokenKind::StructKeyword)) {
         return AttachDocumentation(ApplyAttrs(ParseStructDecl(isPublic), attrs));
     }
-    if (Check(TokenKind::EnumKeyword)) {
+    if (CheckAny({TokenKind::EnumKeyword, TokenKind::VariantKeyword})) {
         return AttachDocumentation(ApplyAttrs(ParseEnumDecl(isPublic), attrs));
     }
     if (Check(TokenKind::UnionKeyword)) {
@@ -138,9 +138,10 @@ DeclPtr Parser::ParseDecl() {
     else if (hadAttrs) {
         expected += " after the attributes";
     }
-    EmitExpected(CurrentLocation(), expected,
-                 "start a declaration with 'func', 'struct', 'enum', 'union', 'interface', 'extend', 'module', "
-                 "'import', 'const', 'type', 'extern', or 'intrinsic'");
+    EmitExpected(
+        CurrentLocation(), expected,
+        "start a declaration with 'func', 'struct', 'enum', 'variant', 'union', 'interface', 'extend', 'module', "
+        "'import', 'const', 'type', 'extern', or 'intrinsic'");
     return nullptr;
 }
 

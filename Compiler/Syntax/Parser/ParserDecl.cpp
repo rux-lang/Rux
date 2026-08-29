@@ -479,23 +479,32 @@ std::unique_ptr<StructDecl> Parser::ParseStructDecl(bool isPublic) {
     return decl;
 }
 
-// enum
+// enum / variant
 std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
     const auto loc = CurrentLocation();
-    ExpectBefore(TokenKind::EnumKeyword, "'enum' to start the enum declaration");
+    const bool isVariant = Check(TokenKind::VariantKeyword);
+    const TokenKind declarationToken = isVariant ? TokenKind::VariantKeyword : TokenKind::EnumKeyword;
+    const std::string_view declarationName = isVariant ? "variant" : "enum";
+    const std::string_view memberName = isVariant ? "variant case" : "enum variant";
+    ExpectBefore(declarationToken,
+                 isVariant ? "'variant' to start the variant declaration" : "'enum' to start the enum declaration");
 
     auto decl = std::make_unique<EnumDecl>();
     decl->location = loc;
     decl->isPublic = isPublic;
-    decl->name = ExpectBefore(TokenKind::Ident, "an enum name after 'enum'").text;
+    decl->form = isVariant ? EnumDecl::Form::Variant : EnumDecl::Form::Enumeration;
+    decl->name =
+        ExpectBefore(TokenKind::Ident, isVariant ? "a variant name after 'variant'" : "an enum name after 'enum'").text;
     if (Check(TokenKind::Less)) {
         decl->typeParams = ParseTypeParams();
     }
     if (Match(TokenKind::Colon)) {
-        decl->baseType = ParseType("add the enum base type after ':'");
+        decl->baseType =
+            ParseType(isVariant ? "add the variant base type after ':'" : "add the enum base type after ':'");
     }
 
-    if (!ConsumeBodyStart("the enum body")) {
+    const std::string bodyName = "the " + std::string(declarationName) + " body";
+    if (!ConsumeBodyStart(bodyName)) {
         return decl;
     }
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -503,7 +512,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
         variant.documentation = ParseDocumentation();
         variant.location = CurrentLocation();
         if (!Check(TokenKind::Ident)) {
-            EmitExpected(CurrentLocation(), "an enum variant name");
+            EmitExpected(CurrentLocation(), "a " + std::string(memberName) + " name");
             while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
                 Advance();
             }
@@ -514,7 +523,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
 
         if (Match(TokenKind::LeftParen)) {
             while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
-                auto fieldType = ParseType("add the enum variant field type after '(' or ','");
+                auto fieldType = ParseType("add the " + std::string(memberName) + " field type after '(' or ','");
                 if (!fieldType) {
                     while (!CheckAny({TokenKind::Comma, TokenKind::RightParen, TokenKind::RightBrace}) && !IsAtEnd()) {
                         Advance();
@@ -531,9 +540,9 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
                 if (Check(TokenKind::RightParen) || IsAtEnd()) {
                     break;
                 }
-                EmitExpected(CurrentLocation(), "',' between enum variant field types");
+                EmitExpected(CurrentLocation(), "',' between " + std::string(memberName) + " field types");
             }
-            ExpectBefore(TokenKind::RightParen, "')' to close the enum variant fields");
+            ExpectBefore(TokenKind::RightParen, "')' to close the " + std::string(memberName) + " fields");
         }
         else if (Match(TokenKind::LeftBrace)) {
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
@@ -541,7 +550,7 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
                 field.documentation = ParseDocumentation();
                 field.location = CurrentLocation();
                 if (!Check(TokenKind::Ident)) {
-                    EmitExpected(CurrentLocation(), "an enum variant field name");
+                    EmitExpected(CurrentLocation(), "a " + std::string(memberName) + " field name");
                     while (!CheckAny({TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
                         Advance();
                     }
@@ -553,11 +562,11 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
                              "write named variant fields as 'name: Type;'");
                 field.type = ParseType("add the variant field type after ':'");
                 if (field.type) {
-                    ExpectBefore(TokenKind::Semicolon, "';' after the enum variant field");
+                    ExpectBefore(TokenKind::Semicolon, "';' after the " + std::string(memberName) + " field");
                 }
                 variant.namedFields.push_back(std::move(field));
             }
-            ExpectBefore(TokenKind::RightBrace, "'}' to close the enum variant fields");
+            ExpectBefore(TokenKind::RightBrace, "'}' to close the " + std::string(memberName) + " fields");
         }
 
         if (Match(TokenKind::Assign)) {
@@ -565,24 +574,28 @@ std::unique_ptr<EnumDecl> Parser::ParseEnumDecl(const bool isPublic) {
             if (Match(TokenKind::Minus)) {
                 value = "-";
             }
-            value += ExpectBefore(TokenKind::IntLiteral, "an integer enum discriminant after '='").text;
+            value += ExpectBefore(TokenKind::IntLiteral, isVariant ? "an integer variant discriminant after '='"
+                                                                   : "an integer enum discriminant after '='")
+                         .text;
             variant.discriminant = std::move(value);
         }
 
         decl->variants.push_back(std::move(variant));
         if (Match(TokenKind::Comma)) {
             if (Check(TokenKind::RightBrace)) {
-                EmitError(Previous().location, "trailing comma is not allowed in enum declarations");
+                EmitError(Previous().location,
+                          "trailing comma is not allowed in " + std::string(declarationName) + " declarations");
             }
         }
         else if (Check(TokenKind::RightBrace) || IsAtEnd()) {
             break;
         }
         else {
-            EmitExpected(CurrentLocation(), "',' between enum variants", "separate adjacent enum variants with ','");
+            EmitExpected(CurrentLocation(), "',' between " + std::string(memberName) + "s",
+                         "separate adjacent " + std::string(memberName) + "s with ','");
         }
     }
-    ExpectBefore(TokenKind::RightBrace, "'}' to close the enum body");
+    ExpectBefore(TokenKind::RightBrace, "'}' to close the " + std::string(declarationName) + " body");
     return decl;
 }
 

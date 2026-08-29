@@ -344,7 +344,7 @@ void DeclarationPrinter::PrintEnumDecl(const EnumDecl &decl) {
     if (decl.isPublic) {
         out << "pub ";
     }
-    out << "EnumDecl '" << decl.name << "'";
+    out << (decl.IsVariant() ? "VariantDecl '" : "EnumDecl '") << decl.name << "'";
     PrintTypeParameters(decl.typeParams);
     if (decl.baseType) {
         out << " : " << TypeString(decl.baseType.get());
@@ -353,7 +353,7 @@ void DeclarationPrinter::PrintEnumDecl(const EnumDecl &decl) {
     ++indent;
     for (const auto &variant : decl.variants) {
         Pad();
-        out << "Variant '" << variant.name << "'";
+        out << (decl.IsVariant() ? "Case '" : "Variant '") << variant.name << "'";
         if (!variant.fields.empty()) {
             out << " (";
             for (std::size_t index = 0; index < variant.fields.size(); ++index) {

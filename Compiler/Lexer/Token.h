@@ -17,47 +17,44 @@ enum class TokenKind : std::uint8_t {
     CharLiteral,   // 'A'
     BoolLiteral,   // true  false
 
-    // Identifiers & keywords
+    // Identifiers
     Ident, // foo  Bar  _x
 
-    // Control flow
-    IfKeyword,       // if
-    WhenKeyword,     // when
-    ElseKeyword,     // else
-    WhileKeyword,    // while
-    DoKeyword,       // do
-    LoopKeyword,     // loop
-    ForKeyword,      // for
-    InKeyword,       // in
-    BreakKeyword,    // break
-    ContinueKeyword, // continue
-    ReturnKeyword,   // return
-    MatchKeyword,    // match
-    DeferKeyword,    // defer
-
-    // Declarations
-    IntrinsicKeyword, // intrinsic
-    FuncKeyword,      // func
-    LetKeyword,       // let
-    VarKeyword,       // var
+    // Keywords, alphabetized by source spelling
+    AsKeyword,        // as
+    BreakKeyword,     // break
     ConstKeyword,     // const
-    TypeKeyword,      // type
-    StructKeyword,    // struct
+    ContinueKeyword,  // continue
+    DeferKeyword,     // defer
+    DoKeyword,        // do
+    ElseKeyword,      // else
     EnumKeyword,      // enum
-    UnionKeyword,     // union
-    InterfaceKeyword, // interface
     ExtendKeyword,    // extend
-    ModuleKeyword,    // module
-    ImportKeyword,    // import
-    PubKeyword,       // pub
     ExternKeyword,    // extern
-
-    // Other keywords
-    AsKeyword,    // as
-    IsKeyword,    // is
-    NullKeyword,  // null
-    SelfKeyword,  // self
-    SuperKeyword, // super
+    ForKeyword,       // for
+    FuncKeyword,      // func
+    IfKeyword,        // if
+    ImportKeyword,    // import
+    InKeyword,        // in
+    InterfaceKeyword, // interface
+    IntrinsicKeyword, // intrinsic
+    IsKeyword,        // is
+    LetKeyword,       // let
+    LoopKeyword,      // loop
+    MatchKeyword,     // match
+    ModuleKeyword,    // module
+    NullKeyword,      // null
+    PubKeyword,       // pub
+    ReturnKeyword,    // return
+    SelfKeyword,      // self
+    StructKeyword,    // struct
+    SuperKeyword,     // super
+    TypeKeyword,      // type
+    UnionKeyword,     // union
+    VarKeyword,       // var
+    VariantKeyword,   // variant
+    WhenKeyword,      // when
+    WhileKeyword,     // while
 
     // Punctuation
     LeftParen,    // (

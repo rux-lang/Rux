@@ -235,6 +235,122 @@ enum Result<Value, Error: Display> { Ok(Value), Fail(Error) }
     CHECK_EQ(output, expected);
 }
 
+TEST_CASE("AST dumps preserve variant declarations and case forms") {
+    constexpr std::string_view source = R"(
+variant Maybe<T> {
+    None,
+    Some(T)
+}
+
+pub variant NetworkResult<Value, Error: Display>: uint16 {
+    Pending = 0,
+    Success(Value) = 1,
+    Failure { code: int32; error: Error; } = 2
+}
+
+enum State: uint8 {
+    Idle = 0,
+    Busy = 1
+}
+)";
+
+    Lexer lexer(std::string(source), "variant-dump.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+
+    Parser parser(std::move(lexed.tokens), "variant-dump.rux");
+    auto parsed = parser.Parse();
+    for (const auto &diagnostic : parsed.diagnostics) {
+        INFO("unexpected diagnostic: ", diagnostic.message);
+        REQUIRE(diagnostic.severity != Diagnostic::Severity::Error);
+    }
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+
+    const auto *maybe = dynamic_cast<const EnumDecl *>(parsed.module.items[0].get());
+    REQUIRE(maybe != nullptr);
+    CHECK(maybe->IsVariant());
+    CHECK(maybe->form == EnumDecl::Form::Variant);
+    CHECK_EQ(maybe->variants.size(), 2);
+
+    const auto *networkResult = dynamic_cast<const EnumDecl *>(parsed.module.items[1].get());
+    REQUIRE(networkResult != nullptr);
+    CHECK(networkResult->IsVariant());
+    CHECK(networkResult->isPublic);
+    REQUIRE_EQ(networkResult->typeParams.size(), 2);
+    CHECK_EQ(networkResult->typeParams[1].bounds.size(), 1);
+    REQUIRE(networkResult->baseType != nullptr);
+    REQUIRE_EQ(networkResult->variants.size(), 3);
+    CHECK_EQ(networkResult->variants[0].name, "Pending");
+    CHECK(networkResult->variants[0].fields.empty());
+    CHECK(networkResult->variants[0].namedFields.empty());
+    CHECK(networkResult->variants[0].discriminant == "0");
+    CHECK_EQ(networkResult->variants[1].name, "Success");
+    CHECK_EQ(networkResult->variants[1].fields.size(), 1);
+    CHECK(networkResult->variants[1].discriminant == "1");
+    CHECK_EQ(networkResult->variants[2].name, "Failure");
+    CHECK_EQ(networkResult->variants[2].namedFields.size(), 2);
+    CHECK_EQ(networkResult->variants[2].namedFields[0].name, "code");
+    CHECK_EQ(networkResult->variants[2].namedFields[1].name, "error");
+    CHECK(networkResult->variants[2].discriminant == "2");
+
+    const auto *state = dynamic_cast<const EnumDecl *>(parsed.module.items[2].get());
+    REQUIRE(state != nullptr);
+    CHECK_FALSE(state->IsVariant());
+    CHECK(state->form == EnumDecl::Form::Enumeration);
+    CHECK_EQ(state->variants.size(), 2);
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-variant-dump.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    constexpr std::string_view expected = R"(Module "variant-dump.rux"
+  VariantDecl 'Maybe'<T>
+    Case 'None'
+    Case 'Some' (T)
+  pub VariantDecl 'NetworkResult'<Value, Error: Display> : uint16
+    Case 'Pending' = 0
+    Case 'Success' (Value) = 1
+    Case 'Failure' { code: int32; error: Error; } = 2
+  EnumDecl 'State' : uint8
+    Variant 'Idle' = 0
+    Variant 'Busy' = 1
+)";
+    CHECK_EQ(output, expected);
+}
+
+TEST_CASE("nested variant declarations keep their source form") {
+    constexpr std::string_view source = R"(
+func Parse() {
+    variant Local<T> {
+        Missing,
+        Present { value: T; }
+    }
+}
+)";
+
+    Lexer lexer(std::string(source), "nested-variant.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "nested-variant.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-nested-variant.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    CHECK(output.contains("VariantDecl 'Local'<T>"));
+    CHECK(output.contains("Case 'Missing'"));
+    CHECK(output.contains("Case 'Present' { value: T; }"));
+    CHECK_FALSE(output.contains("EnumDecl 'Local'"));
+}
+
 TEST_CASE("AST dumps name each compile-time layout query") {
     constexpr std::string_view source = R"(
 func Main() -> int {
