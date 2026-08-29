@@ -10,11 +10,19 @@
 namespace Rux {
 
 DeclPtr Parser::ParseDecl() {
-    std::string documentation = ParseDocumentation();
+    Syntax::Documentation documentation = ParseDocumentation();
     const auto loc = CurrentLocation();
+    if (documentation.Present() && (Check(TokenKind::RightBrace) || IsAtEnd())) {
+        RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
+        return nullptr;
+    }
     auto AttachDocumentation = [&](DeclPtr declaration) -> DeclPtr {
-        if (declaration)
-            declaration->documentation = documentation;
+        if (declaration) {
+            declaration->documentation = std::move(documentation);
+        }
+        else {
+            RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
+        }
         return declaration;
     };
 
@@ -142,7 +150,7 @@ DeclPtr Parser::ParseDecl() {
         CurrentLocation(), expected,
         "start a declaration with 'func', 'struct', 'enum', 'variant', 'union', 'interface', 'extend', 'module', "
         "'import', 'const', 'type', 'extern', or 'intrinsic'");
-    return nullptr;
+    return AttachDocumentation(nullptr);
 }
 
 Param Parser::ParseParam(const bool allowVariadic) {

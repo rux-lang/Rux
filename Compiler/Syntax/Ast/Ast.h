@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lexer/Token.h"
+#include "Syntax/DocumentationComment.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
 
@@ -496,7 +497,7 @@ struct DeclStmt : Stmt {
 struct Decl {
     SourceLocation location;
     bool isPublic = false;
-    std::string documentation;
+    Syntax::Documentation documentation;
     /// Non-empty for declarations whose implementation/value is supplied by the compiler rather than Rux source: the
     /// `intrinsic` keyword sets it to the registry key derived from the declaration itself (see ParseDecl).
     std::string intrinsicName;
@@ -611,7 +612,7 @@ struct StructDecl : Decl {
     struct Field {
         SourceLocation location;
         bool isPublic = false;
-        std::string documentation;
+        Syntax::Documentation documentation;
         std::string name;
         TypeExprPtr type;
     };
@@ -633,13 +634,13 @@ struct EnumDecl : Decl {
 
     struct Variant {
         SourceLocation location;
-        std::string documentation;
+        Syntax::Documentation documentation;
         std::string name;
         std::vector<TypeExprPtr> fields; // empty = unit variant
 
         struct NamedField {
             SourceLocation location;
-            std::string documentation;
+            Syntax::Documentation documentation;
             std::string name;
             TypeExprPtr type;
         };
@@ -662,7 +663,7 @@ struct UnionDecl : Decl {
     struct Field {
         SourceLocation location;
         bool isPublic = false;
-        std::string documentation;
+        Syntax::Documentation documentation;
         std::string name;
         TypeExprPtr type;
     };
@@ -760,6 +761,7 @@ struct ExternBlockDecl : Decl {
 struct Module {
     std::string name; // source file name
     std::vector<DeclPtr> items;
+    std::vector<Syntax::DocumentationIssue> documentationIssues;
 };
 
 inline ArrayTypeExpr::~ArrayTypeExpr() = default;

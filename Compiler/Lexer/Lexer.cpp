@@ -305,9 +305,7 @@ void Lexer::ScanAll() {
         const bool separated = pos != beforeTrivia || tokens.empty();
         if (Token tok = NextToken(); tok.kind != TokenKind::Unknown || !tok.text.empty()) {
             tok.precededBySpace = separated;
-            if (tok.kind == TokenKind::DocComment) {
-                tok.precededByOrdinaryComment = sawOrdinaryComment;
-            }
+            tok.precededByOrdinaryComment = sawOrdinaryComment;
             tokens.push_back(std::move(tok));
         }
     }

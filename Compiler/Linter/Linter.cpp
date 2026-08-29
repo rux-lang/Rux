@@ -354,14 +354,14 @@ private:
         if (!containingModulesPublic || !decl.isPublic) {
             return;
         }
-        if (decl.documentation.empty()) {
+        if (decl.documentation.Empty()) {
             if (!Allows(decl, "docs.missing")) {
                 Warn(decl.location, std::format("public {} '{}' has no documentation comment", description, name),
                      "describe it with a '///' comment above the declaration");
             }
             return;
         }
-        if (decl.documentation.find(kApiLinkPrefix) == std::string::npos && !Allows(decl, "docs.api-url")) {
+        if (decl.documentation.markdown.find(kApiLinkPrefix) == std::string::npos && !Allows(decl, "docs.api-url")) {
             Warn(decl.location, std::format("documentation for public {} '{}' names no API page", description, name),
                  std::format("end the comment with its page, as in '{}<package>/<name>'", kApiLinkPrefix));
         }

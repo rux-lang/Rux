@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Rux {
+namespace Rux::Syntax {
 namespace {
 bool IsHorizontalWhitespace(const char value) noexcept {
     return value == ' ' || value == '\t';
@@ -171,4 +171,17 @@ std::string NormalizeDocumentationComment(const std::string_view raw) {
     }
     return std::string(raw);
 }
-} // namespace Rux
+
+bool Documentation::Empty() const noexcept {
+    return markdown.empty() && tags.empty();
+}
+
+bool Documentation::Present() const noexcept {
+    return !range.Empty();
+}
+
+std::string_view Documentation::Summary() const noexcept {
+    const std::size_t paragraphEnd = markdown.find("\n\n");
+    return std::string_view(markdown).substr(0, paragraphEnd);
+}
+} // namespace Rux::Syntax

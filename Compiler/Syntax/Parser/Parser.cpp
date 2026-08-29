@@ -42,6 +42,7 @@ std::optional<ParseResult> Parser::FromLexResult(const LexerResult &lex, const s
 ParseResult Parser::Parse() {
     Module mod;
     mod.name = sourceName;
+    documentationIssues.clear();
 
     while (!IsAtEnd()) {
         if (auto decl = ParseDecl()) {
@@ -52,24 +53,73 @@ ParseResult Parser::Parse() {
         }
     }
 
+    mod.documentationIssues = std::move(documentationIssues);
     return ParseResult{std::move(mod), std::move(diagnostics)};
 }
 
-std::string Parser::ParseDocumentation() {
-    std::string documentation;
-    std::uint32_t previousLine = 0;
+Syntax::Documentation Parser::ParseDocumentation() {
+    struct Group {
+        Syntax::Documentation documentation;
+        bool lineLeading = true;
+        std::size_t commentCount = 0;
+    };
+
+    std::vector<Group> groups;
     while (Check(TokenKind::DocComment)) {
         const Token &comment = Advance();
-        if (previousLine != 0 && comment.location.line != previousLine + 1)
-            documentation.clear();
-        if (!documentation.empty())
-            documentation += '\n';
-        documentation += NormalizeDocumentationComment(comment.text);
-        previousLine = comment.endLocation.line;
+        const bool joinsPrevious = !groups.empty() && groups.back().lineLeading && comment.lineLeading &&
+                                   !comment.precededByOrdinaryComment &&
+                                   comment.location.line == groups.back().documentation.range.end.line + 1;
+        if (!joinsPrevious) {
+            Group group;
+            group.documentation.range.start = comment.location;
+            group.lineLeading = comment.lineLeading;
+            groups.push_back(std::move(group));
+        }
+
+        Group &group = groups.back();
+        if (group.commentCount != 0) {
+            group.documentation.markdown += '\n';
+        }
+        group.documentation.markdown += Syntax::NormalizeDocumentationComment(comment.text);
+        group.documentation.range.end = comment.endLocation;
+        ++group.commentCount;
     }
-    if (previousLine != 0 && CurrentLocation().line > previousLine + 1)
-        documentation.clear();
-    return documentation;
+
+    if (groups.empty()) {
+        return {};
+    }
+
+    for (std::size_t index = 0; index + 1 < groups.size(); ++index) {
+        RecordDetachedDocumentation(std::move(groups[index].documentation),
+                                    groups[index].lineLeading ? Syntax::DocumentationIssueKind::Detached
+                                                              : Syntax::DocumentationIssueKind::Trailing);
+    }
+
+    Group candidate = std::move(groups.back());
+    if (!candidate.lineLeading) {
+        RecordDetachedDocumentation(std::move(candidate.documentation), Syntax::DocumentationIssueKind::Trailing);
+        return {};
+    }
+
+    const Token &target = Peek();
+    if (target.precededByOrdinaryComment || target.location.line > candidate.documentation.range.end.line + 1) {
+        RecordDetachedDocumentation(std::move(candidate.documentation), Syntax::DocumentationIssueKind::Detached);
+        return {};
+    }
+    return candidate.documentation;
+}
+
+void Parser::RecordDetachedDocumentation(Syntax::Documentation documentation,
+                                         const Syntax::DocumentationIssueKind kind) {
+    if (!documentation.Present()) {
+        return;
+    }
+    const std::string message = kind == Syntax::DocumentationIssueKind::Trailing
+                                  ? "trailing documentation comment is not attached to an item"
+                                  : "documentation comment is not attached to an item";
+    documentationIssues.push_back(
+        Syntax::DocumentationIssue{kind, documentation.range, std::move(documentation.markdown), message});
 }
 
 // Token helpers

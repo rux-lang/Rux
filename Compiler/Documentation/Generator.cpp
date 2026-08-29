@@ -529,7 +529,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     html << "<article class=\"item\" id=\"" << EscapeHtml(id) << "\"><div class=\"kind\">" << EscapeHtml(DeclKind(decl))
          << "</div><h3>" << EscapeHtml(name) << "</h3><pre><code>" << EscapeHtml(DeclSignature(decl))
          << "</code></pre><div class=\"location\">" << EscapeHtml(source) << ':' << decl.location.line << "</div>"
-         << RenderMarkdown(decl.documentation, &findings);
+         << RenderMarkdown(decl.documentation.markdown, &findings);
 
     if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
         for (const auto &field : structure->fields) {
@@ -537,7 +537,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
-                 << "</code>" << RenderMarkdown(field.documentation, &findings) << "</section>";
+                 << "</code>" << RenderMarkdown(field.documentation.markdown, &findings) << "</section>";
         }
     }
     else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&decl)) {
@@ -546,7 +546,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(field.name) << "</h4><code>"
                  << (field.isPublic ? "pub " : "") << EscapeHtml(field.name + ": " + TypeText(field.type.get()))
-                 << "</code>" << RenderMarkdown(field.documentation, &findings) << "</section>";
+                 << "</code>" << RenderMarkdown(field.documentation.markdown, &findings) << "</section>";
         }
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
@@ -554,14 +554,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
             const std::string_view kind = enumeration->IsVariant() ? "variant case" : "enum member";
             html << "<section class=\"member\"><div class=\"member-kind\">" << kind << "</div><h4>"
                  << EscapeHtml(variant.name) << "</h4><code>" << EscapeHtml(CaseSignature(*enumeration, variant))
-                 << "</code>" << RenderMarkdown(variant.documentation, &findings) << "</section>";
+                 << "</code>" << RenderMarkdown(variant.documentation.markdown, &findings) << "</section>";
         }
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&decl)) {
         for (const auto &method : interface->methods) {
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
-                 << RenderMarkdown(method->documentation, &findings) << "</section>";
+                 << RenderMarkdown(method->documentation.markdown, &findings) << "</section>";
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
@@ -570,7 +570,7 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
                 continue;
             html << "<section class=\"member\"><h4>" << EscapeHtml(method->name) << "</h4><code>"
                  << EscapeHtml(FunctionSignature(*method)) << "</code>"
-                 << RenderMarkdown(method->documentation, &findings) << "</section>";
+                 << RenderMarkdown(method->documentation.markdown, &findings) << "</section>";
         }
     }
     html << "</article>";
