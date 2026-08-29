@@ -241,6 +241,10 @@ private:
                                                       HirExprPtr &right);
     [[nodiscard]] HirExprPtr LowerOverloadedBinaryCall(const BinaryExpr &expression, HirExprPtr &left,
                                                        HirExprPtr &right, const FuncDecl &resolved);
+    [[nodiscard]] HirExprPtr LowerOperatorMethodCall(HirExprPtr receiver, HirExprPtr argument,
+                                                     const Expr &argumentExpression, const FuncDecl &method,
+                                                     SourceLocation location);
+    [[nodiscard]] HirExprPtr LowerIndexOperatorCall(const IndexExpr &expression, const ResolvedIndexOperator &resolved);
     [[nodiscard]] HirExprPtr LowerDerivedOrderingCompare(const BinaryExpr &expression, HirExprPtr &left,
                                                          HirExprPtr &right, const FuncDecl &lessThan,
                                                          const FuncDecl &equals);

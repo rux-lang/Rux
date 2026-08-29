@@ -147,6 +147,18 @@ struct ResolvedConstraintWitness {
     std::vector<const FuncDecl *> operations;
 };
 
+/// The `[]` operator one accepted index expression resolved to. Built-in array, slice, and pointer indexing records
+/// nothing; only an index expression that reached a source-declared indexer has this fact. Analysis picks the overload
+/// from the index type and substitutes the receiver's type arguments, so lowering builds the call from this rather
+/// than resolving the operator again. Its presence is also what tells analysis the expression is a call producing a
+/// value, not a place projection into the receiver.
+struct ResolvedIndexOperator {
+    const FuncDecl *method = nullptr;
+    TypeRef receiverType;
+    TypeRef indexType;
+    TypeRef resultType;
+};
+
 /// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variant cases and checks
 /// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
 struct ResolvedPropagation {
@@ -267,6 +279,7 @@ struct SemanticModel {
                   std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
                   std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
                   std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
+                  std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
                   std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
                   std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
                   std::unordered_map<std::string, TypeProperties> inputTypeProperties,
@@ -317,6 +330,9 @@ struct SemanticModel {
     /// Returns null for a rejected `?`, which has no early return to build.
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
 
+    /// Returns null for built-in array, slice, and pointer indexing, which needs no declared operator.
+    [[nodiscard]] const ResolvedIndexOperator *TryGetIndexOperator(const IndexExpr &expression) const noexcept;
+
     /// Returns null for a `for` loop whose subject analysis rejected as not iterable.
     [[nodiscard]] const ResolvedIteration *TryGetIteration(const ForStmt &statement) const noexcept;
 
@@ -358,6 +374,7 @@ private:
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;

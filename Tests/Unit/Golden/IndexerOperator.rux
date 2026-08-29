@@ -1,0 +1,64 @@
+// What indexing reports once a type can declare `[]`. The operator produces a
+// value, so an accepted `v[i]` is a call and every place-shaped use of it is
+// rejected; a type that declares no `[]` is still unindexable, and says so.
+
+struct Vect {
+    data: int[4];
+}
+
+extend Vect {
+    func [](self: &Vect, index: uint) -> int {
+        return self.data[index];
+    }
+}
+
+struct Cell {
+    value: int;
+}
+
+struct Holder {
+    inner: Cell;
+}
+
+extend Holder {
+    func [](self: &Holder, index: uint) -> Cell {
+        return self.inner;
+    }
+}
+
+struct Plain {
+    value: int;
+}
+
+func Borrow(value: &int) {
+}
+
+func Main() -> int {
+    var vect = Vect { data: [1, 2, 3, 4] };
+
+    // Reading through the operator is what it is for.
+    let read = vect[0];
+
+    // Assigning is not: the call's result is a value, and a reference cannot be
+    // returned, so no place-returning indexer exists to write back through.
+    vect[0] = 9;
+    vect[1] += 1;
+    vect[2]++;
+
+    // A field of that result is no more a place than the result itself.
+    var holder = Holder { inner: Cell { value: 1 } };
+    holder[0].value = 3;
+
+    // Nor can the result be borrowed: it does not outlive the call.
+    Borrow(vect[0]);
+
+    // A type that declares no `[]` cannot be indexed at all, and the diagnostic
+    // names the operator that would let it be.
+    let plain = Plain { value: 1 };
+    let rejected = plain[0];
+
+    // A range index reaches the same rule when no overload accepts one.
+    let spanned = vect[0..2];
+
+    return read;
+}

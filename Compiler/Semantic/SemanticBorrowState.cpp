@@ -531,6 +531,10 @@ const Symbol *SemanticAnalyzerContext::ReferenceSourceAlias(const Expr &expressi
             continue;
         }
         if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+            // An operator index produces a fresh value, so no reference the object was reached through aliases it.
+            if (IsIndexOperatorCall(*index)) {
+                return nullptr;
+            }
             root = index->object.get();
             continue;
         }

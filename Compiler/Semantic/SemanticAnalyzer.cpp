@@ -805,9 +805,12 @@ private:
             if (exprType.kind == TypeRef::Kind::Reference) {
                 return !exprType.inner.empty() && (!targetType.inner.front().isMut || exprType.inner.front().isMut);
             }
+            // An index that resolved to a declared `[]` is a call whose result is a temporary, so it is not a place a
+            // reference can borrow, however much it looks like one.
             const bool addressable =
                 dynamic_cast<const IdentExpr *>(&expr) || dynamic_cast<const SelfExpr *>(&expr) ||
-                dynamic_cast<const FieldExpr *>(&expr) || dynamic_cast<const IndexExpr *>(&expr) ||
+                dynamic_cast<const FieldExpr *>(&expr) ||
+                (dynamic_cast<const IndexExpr *>(&expr) && !IsIndexOperatorCall(expr)) ||
                 (dynamic_cast<const UnaryExpr *>(&expr) && static_cast<const UnaryExpr &>(expr).op == TokenKind::Star);
             if (!addressable) {
                 return false;
@@ -3604,6 +3607,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
                          std::move(vtableIdentities),
                          analyzer.TakeConstraintWitnesses(),
                          analyzer.TakePropagations(),
+                         analyzer.TakeIndexOperators(),
                          analyzer.TakeIterations(),
                          std::move(typeLayouts),
                          analyzer.TakeTypeProperties(),

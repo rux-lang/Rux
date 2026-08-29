@@ -56,6 +56,39 @@ template <typename Range, typename Projection, typename Predicate>
 
 } // namespace
 
+bool SemanticAnalyzerContext::IsIndexOperatorCall(const Expr &expression) const {
+    const auto *index = dynamic_cast<const IndexExpr *>(&expression);
+    return index && indexOperators.contains(index);
+}
+
+MovePlace SemanticAnalyzerContext::AnalyzeMovePlace(const Expr &expression) const {
+    return SemanticDetail::AnalyzeMovePlace(expression,
+                                            [this](const IndexExpr &index) { return indexOperators.contains(&index); });
+}
+
+bool SemanticAnalyzerContext::SameStoragePlace(const Expr &left, const Expr &right) const {
+    return SemanticDetail::SameStoragePlace(left, right,
+                                            [this](const IndexExpr &index) { return indexOperators.contains(&index); });
+}
+
+const IndexExpr *SemanticAnalyzerContext::IndexOperatorInPlace(const Expr &place) const {
+    const Expr *root = &place;
+    while (true) {
+        if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+            root = field->object.get();
+            continue;
+        }
+        if (const auto *index = dynamic_cast<const IndexExpr *>(root)) {
+            if (indexOperators.contains(index)) {
+                return index;
+            }
+            root = index->object.get();
+            continue;
+        }
+        return nullptr;
+    }
+}
+
 std::string SemanticAnalyzerContext::NamedBaseTypeName(const TypeRef &type) const {
     const TypeRef *named = &type;
     if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
@@ -443,9 +476,43 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
         checkingBorrowProjectionRoot = wasProjectionRoot;
         const TypeRef &objectValueType = ReferencedValue(objectType);
         const TypeRef indexType = CheckExpr(*index->index);
-        if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
+        const std::optional<TypeRef> builtinElementType = IndexElementType(objectType);
+        const bool readsPlace = !wasProjectionRoot && !checkingPlainAssignmentTarget;
+
+        // A type the language does not index itself may declare `[]` in an `extend` block. The operator is tried after
+        // the built-in forms, so indexing an array, slice, or pointer never depends on what an `extend` block declares,
+        // and before the range and integer rules below, so an overload may accept whichever index type its author
+        // chose. Overloads are separated by that index type, which is what lets `v[i]` and `v[1..4]` coexist.
+        if (!builtinElementType && !objectType.IsUnknown() && !indexType.IsUnknown()) {
+            if (const FuncDecl *method = LookupOperatorMethod(objectType, "[]", {indexType})) {
+                // The object is a call receiver here, not a place the expression projects into, so the whole object
+                // is what this reads and an exclusive borrow of any part of it conflicts.
+                if (readsPlace) {
+                    CheckBorrowedPlaceRead(*index->object, index->object->location);
+                }
+                const std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(objectType, *method);
+                TypeRef returnType = ResolveOperatorReturnType(objectType, *method);
+                if (parameterTypes.size() != 1) {
+                    EmitError(index->location,
+                              std::format("operator '[]' expects 1 argument, got {}", parameterTypes.size()));
+                }
+                else if (!parameterTypes[0].IsUnknown() &&
+                         !CanAssignExprTo(*index->index, indexType, parameterTypes[0])) {
+                    EmitError(index->index->location, std::format("cannot pass '{}' to parameter of type '{}'",
+                                                                  indexType.ToString(), parameterTypes[0].ToString()));
+                }
+                indexOperators.insert_or_assign(index,
+                                                ResolvedIndexOperator{method, objectType, indexType, returnType});
+                return returnType;
+            }
+        }
+
+        if (readsPlace) {
             CheckBorrowedPlaceRead(*index, index->location);
         }
+        // A named type that reaches an index error could have declared the operator, so its diagnostics name that
+        // route instead of only listing the forms the language indexes on its own.
+        const bool isNamedType = !builtinElementType && !NamedBaseTypeName(objectType).empty();
         if (indexType.IsRange()) {
             std::optional<TypeRef> elementType;
             if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
@@ -457,21 +524,29 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
             if (elementType) {
                 return TypeRef::MakeNamed(SliceTypeName(*elementType));
             }
-            EmitError(index->location, std::format("cannot slice value of type '{}'", objectType.ToString()));
+            std::optional<std::string> sliceHelp;
+            if (isNamedType) {
+                sliceHelp = std::format("declare 'func []' taking a range on '{}'", objectType.ToString());
+            }
+            EmitError(index->location, std::format("cannot slice value of type '{}'", objectType.ToString()), {},
+                      std::move(sliceHelp));
             return TypeRef::MakeUnknown();
         }
-        if (!indexType.IsUnknown() && !indexType.IsInteger()) {
+        if (!indexType.IsUnknown() && !indexType.IsInteger() && !isNamedType) {
+            // A named type with no `[]` is reported as unindexable below; only the built-in forms, which do fix the
+            // index type, report a wrong index type here.
             EmitError(index->index->location,
                       std::format("index for type '{}' must be an integer or range, but has type '{}'",
                                   objectType.ToString(), indexType.ToString()));
             return TypeRef::MakeUnknown();
         }
-        if (auto elementType = IndexElementType(objectType)) {
-            return *elementType;
+        if (builtinElementType) {
+            return *builtinElementType;
         }
         if (!objectType.IsUnknown()) {
             EmitError(index->object->location, std::format("type '{}' cannot be indexed", objectType.ToString()), {},
-                      "only arrays, slices, and pointers support indexing");
+                      isNamedType ? std::format("declare 'func []' on '{}'", objectType.ToString())
+                                  : std::string("only arrays, slices, and pointers support indexing"));
         }
         return TypeRef::MakeUnknown();
     }

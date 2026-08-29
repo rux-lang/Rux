@@ -260,6 +260,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     }
 
     if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+        if (const ResolvedIndexOperator *resolved = model.TryGetIndexOperator(*index)) {
+            return LowerIndexOperatorCall(*index, *resolved);
+        }
         auto lowered = std::make_unique<HirIndexExpr>();
         lowered->location = index->location;
         lowered->object = LowerExpr(*index->object);

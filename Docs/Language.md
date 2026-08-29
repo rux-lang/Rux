@@ -231,6 +231,38 @@ let contextual: uint8[16] = [0; 16];
 
 The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`Slice<T>` coercion as ordinary array literals.
 
+## Indexing
+
+A type indexes itself by declaring `[]` in an `extend` block, the same way it declares `==` or `<`. The receiver is written like any other, and the index is an ordinary parameter:
+
+```rux
+struct Vect {
+    data: int[10];
+}
+
+extend Vect {
+    func [](self: &Vect, index: uint) -> int {
+        return self.data[index];
+    }
+}
+```
+
+`v[i]` on such a type is a call to that operator. Arrays, slices, and pointers keep their built-in indexing, which no `extend` block can displace or redefine; the operator is reached only for a type the language does not index on its own.
+
+Nothing fixes the index type. Overloads are separated by it, so one type may answer several index forms, including a range:
+
+```rux
+extend Vect {
+    func [](self: &Vect, span: Range<int>) -> Slice<int> {
+        return self.data[span];
+    }
+}
+```
+
+The operator produces a value, not a place. A reference cannot be returned, so there is no place-returning indexer to write back through: `v[i] = x`, `v[i] += x`, `v[i]++`, `v[i].field = x`, and borrowing `v[i]` as a `&T` are all rejected, and writing is expressed as an ordinary method such as `Set(index, value)`. Indexed assignment through a paired `[]=` operator is not part of the language today.
+
+An indexer call borrows its receiver whole for the duration of the call, exactly as a method call does. Reading `v[i]` therefore conflicts with an exclusive borrow of any part of `v`, and never counts as a partial move out of it — the result is a fresh value that transfers on its own.
+
 ## Destruction
 
 A destructor is a body-bearing special function named after its type with a leading `~`:

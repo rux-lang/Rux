@@ -50,6 +50,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, DropGluePlan> TakeDropGluePlans();
     [[nodiscard]] std::unordered_map<std::string, ResolvedConstraintWitness> TakeConstraintWitnesses();
     [[nodiscard]] std::unordered_map<const TryExpr *, ResolvedPropagation> TakePropagations();
+    [[nodiscard]] std::unordered_map<const IndexExpr *, ResolvedIndexOperator> TakeIndexOperators();
     [[nodiscard]] std::unordered_map<const ForStmt *, ResolvedIteration> TakeIterations();
     [[nodiscard]] std::unordered_map<const Decl *, bool> EffectiveVisibilities() const;
 
@@ -365,6 +366,20 @@ protected:
     [[nodiscard]] std::optional<ResolvedCase> LookupCase(const std::string &typeName,
                                                          const std::string &caseName) const;
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
+    /// Whether this expression is an index that resolved to a declared `[]`. Such an expression is a call producing a
+    /// value, so it is neither an assignable place nor a projection any borrow or move can reach through, and every
+    /// place walk stops at it.
+    [[nodiscard]] bool IsIndexOperatorCall(const Expr &expression) const;
+
+    /// The nearest index expression this place path passes through that resolved to a declared `[]`, or null when the
+    /// path reaches its root without one. `v[i].field` has no place to write to for the same reason `v[i]` does not.
+    [[nodiscard]] const IndexExpr *IndexOperatorInPlace(const Expr &place) const;
+
+    /// Place decomposition that knows which index expressions resolved to a declared `[]`. These hide the namespace
+    /// forms of the same names, so every decomposition inside analysis sees an operator index as the call it is.
+    [[nodiscard]] MovePlace AnalyzeMovePlace(const Expr &expression) const;
+    [[nodiscard]] bool SameStoragePlace(const Expr &left, const Expr &right) const;
+
     [[nodiscard]] std::string NamedBaseTypeName(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> SliceElementType(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> IndexElementType(const TypeRef &type);
@@ -398,6 +413,9 @@ protected:
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
+    /// without resolving it again and analysis knows the expression is a call rather than a place.
+    std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> &typeQueryValues;

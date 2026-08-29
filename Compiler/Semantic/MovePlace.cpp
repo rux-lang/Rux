@@ -12,9 +12,9 @@ std::string ReadableCanonical(const std::string &value) {
     return value;
 }
 
-std::string CanonicalIndex(const Expr &expression) {
+std::string CanonicalIndex(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
     if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
-        return CanonicalIndex(*move->operand);
+        return CanonicalIndex(*move->operand, isOperatorCall);
     }
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
         return "$" + identifier->name;
@@ -36,21 +36,26 @@ std::string CanonicalIndex(const Expr &expression) {
         return value;
     }
     if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
-        const std::string object = CanonicalIndex(*field->object);
+        const std::string object = CanonicalIndex(*field->object, isOperatorCall);
         return object.empty() ? std::string{} : object + "." + field->field;
     }
     if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
-        const std::string object = CanonicalIndex(*index->object);
-        const std::string subscript = CanonicalIndex(*index->index);
+        // A call has no stable identity to name, so an operator index leaves the whole path unknown rather than
+        // reading as the projection its spelling resembles.
+        if (isOperatorCall && isOperatorCall(*index)) {
+            return {};
+        }
+        const std::string object = CanonicalIndex(*index->object, isOperatorCall);
+        const std::string subscript = CanonicalIndex(*index->index, isOperatorCall);
         return object.empty() || subscript.empty() ? std::string{} : object + "[" + subscript + "]";
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
-        const std::string operand = CanonicalIndex(*unary->operand);
+        const std::string operand = CanonicalIndex(*unary->operand, isOperatorCall);
         return operand.empty() ? std::string{} : std::format("u{}({})", static_cast<unsigned int>(unary->op), operand);
     }
     if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
-        const std::string left = CanonicalIndex(*binary->left);
-        const std::string right = CanonicalIndex(*binary->right);
+        const std::string left = CanonicalIndex(*binary->left, isOperatorCall);
+        const std::string right = CanonicalIndex(*binary->right, isOperatorCall);
         return left.empty() || right.empty()
                  ? std::string{}
                  : std::format("b{}({},{})", static_cast<unsigned int>(binary->op), left, right);
@@ -58,9 +63,9 @@ std::string CanonicalIndex(const Expr &expression) {
     return {};
 }
 
-MovePlace AnalyzeImpl(const Expr &expression) {
+MovePlace AnalyzeImpl(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
     if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
-        return AnalyzeImpl(*move->operand);
+        return AnalyzeImpl(*move->operand, isOperatorCall);
     }
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
         return {MovePlace::RootKind::Named, identifier->name, &expression, {}};
@@ -69,7 +74,7 @@ MovePlace AnalyzeImpl(const Expr &expression) {
         return {MovePlace::RootKind::Self, "self", &expression, {}};
     }
     if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
-        MovePlace place = AnalyzeImpl(*field->object);
+        MovePlace place = AnalyzeImpl(*field->object, isOperatorCall);
         if (place.rootKind == MovePlace::RootKind::Temporary) {
             place.rootExpression = &expression;
         }
@@ -77,16 +82,21 @@ MovePlace AnalyzeImpl(const Expr &expression) {
         return place;
     }
     if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
-        MovePlace place = AnalyzeImpl(*index->object);
+        // The operator returns a value, so this computes fresh storage rather than reaching into the object. Reading
+        // it as a projection would make `<- v[i]` a partial move of `v`, and a borrow of `v` reach the result.
+        if (isOperatorCall && isOperatorCall(*index)) {
+            return {MovePlace::RootKind::Temporary, {}, &expression, {}};
+        }
+        MovePlace place = AnalyzeImpl(*index->object, isOperatorCall);
         if (place.rootKind == MovePlace::RootKind::Temporary) {
             place.rootExpression = &expression;
         }
         place.projections.push_back(
-            {MovePlace::Projection::Kind::Index, CanonicalIndex(*index->index), index->location});
+            {MovePlace::Projection::Kind::Index, CanonicalIndex(*index->index, isOperatorCall), index->location});
         return place;
     }
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression); unary && unary->op == TokenKind::Star) {
-        return {MovePlace::RootKind::Dereference, CanonicalIndex(*unary->operand), &expression, {}};
+        return {MovePlace::RootKind::Dereference, CanonicalIndex(*unary->operand, isOperatorCall), &expression, {}};
     }
     return {MovePlace::RootKind::Temporary, {}, &expression, {}};
 }
@@ -175,13 +185,13 @@ std::string MovePlace::LastProjectionDescription() const {
     return projections.back().Description();
 }
 
-MovePlace AnalyzeMovePlace(const Expr &expression) {
-    return AnalyzeImpl(expression);
+MovePlace AnalyzeMovePlace(const Expr &expression, const IndexIsOperatorCall &isOperatorCall) {
+    return AnalyzeImpl(expression, isOperatorCall);
 }
 
-bool SameStoragePlace(const Expr &left, const Expr &right) {
-    const MovePlace leftPlace = AnalyzeMovePlace(left);
-    const MovePlace rightPlace = AnalyzeMovePlace(right);
+bool SameStoragePlace(const Expr &left, const Expr &right, const IndexIsOperatorCall &isOperatorCall) {
+    const MovePlace leftPlace = AnalyzeMovePlace(left, isOperatorCall);
+    const MovePlace rightPlace = AnalyzeMovePlace(right, isOperatorCall);
     if (!leftPlace.HasKnownIdentity() || !rightPlace.HasKnownIdentity() || leftPlace.rootKind != rightPlace.rootKind ||
         leftPlace.rootName != rightPlace.rootName || leftPlace.projections.size() != rightPlace.projections.size()) {
         return false;
