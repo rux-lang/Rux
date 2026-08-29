@@ -17,7 +17,7 @@ std::string ImplTypeName(const TypeExpr &type);
 
 /// Every rule `#Allow` accepts. Naming one the linter does not have is a typo that would otherwise silence nothing, so
 /// the list lives beside the parse rather than in the linter: a source is rejected before it is ever linted.
-constexpr std::array<std::string_view, 4> kLintRules{"naming.type", "naming.const", "docs.missing", "docs.api-url"};
+constexpr std::array<std::string_view, 3> kLintRules{"naming.type", "naming.const", "docs.missing"};
 
 [[nodiscard]] static std::string LintRuleList() {
     std::string list;

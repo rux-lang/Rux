@@ -268,10 +268,6 @@ bool Allows(const Decl &decl, const std::string_view rule) {
     return std::ranges::find(decl.allowedLints, rule) != decl.allowedLints.end();
 }
 
-/// The prefix every published API link shares. A doc comment that names one is what makes a declaration findable from
-/// its own source; the page it points at may not exist yet, which is a website concern rather than a source one.
-constexpr std::string_view kApiLinkPrefix = "https://rux-lang.dev/docs/api/";
-
 /// How wide a line of source may be. The formatter wraps code to this; a comment is the one thing it cannot rewrap, so
 /// the width is the author's to keep.
 constexpr std::size_t kMaximumColumns = 120;
@@ -312,6 +308,9 @@ public:
     std::vector<Diagnostic> diagnostics;
 
     void VisitModule(const Module &module) {
+        for (const auto &issue : module.documentationIssues) {
+            Warn(issue.range.start, issue.message);
+        }
         const auto names = DeclNames(module.items);
         for (const auto &item : module.items) {
             if (item) {
@@ -348,8 +347,8 @@ private:
         Warn(loc, std::format("{} '{}' should be {}", description, name, ConventionName(convention)), std::move(help));
     }
 
-    /// What a published declaration owes its readers: a comment at all, and a link to the page that documents it. Both
-    /// are checked here rather than per declaration kind, because the rule is the same for every one of them.
+    /// What a published declaration owes its readers. Structured tags remain optional, but a public declaration still
+    /// needs one of the two documentation comment forms unless it explicitly allows the missing-doc rule.
     void CheckDocumentation(const Decl &decl, const std::string_view description, const std::string_view name) {
         if (!containingModulesPublic || !decl.isPublic) {
             return;
@@ -357,17 +356,103 @@ private:
         if (decl.documentation.Empty()) {
             if (!Allows(decl, "docs.missing")) {
                 Warn(decl.location, std::format("public {} '{}' has no documentation comment", description, name),
-                     "describe it with a '///' comment above the declaration");
+                     "describe it with a '///' or '/** ... */' comment above the declaration");
             }
-            return;
         }
-        if (decl.documentation.markdown.find(kApiLinkPrefix) == std::string::npos && !Allows(decl, "docs.api-url")) {
-            Warn(decl.location, std::format("documentation for public {} '{}' names no API page", description, name),
-                 std::format("end the comment with its page, as in '{}<package>/<name>'", kApiLinkPrefix));
+    }
+
+    void CheckDocumentationIssues(const Syntax::Documentation &documentation) {
+        for (const auto &issue : documentation.issues) {
+            Warn(issue.range.start, issue.message);
+        }
+    }
+
+    void CheckMemberDocumentation(const Syntax::Documentation &documentation, const std::string_view description,
+                                  const std::string_view name) {
+        CheckDocumentationIssues(documentation);
+        for (const auto &tag : documentation.tags) {
+            if (tag.kind == Syntax::DocumentationTagKind::Parameter ||
+                tag.kind == Syntax::DocumentationTagKind::TypeParameter ||
+                tag.kind == Syntax::DocumentationTagKind::Returns) {
+                Warn(tag.range.start, std::format("structured tag is not valid on {} '{}'", description, name));
+            }
+        }
+    }
+
+    void CheckStructuredDocumentation(const Decl &decl) {
+        CheckDocumentationIssues(decl.documentation);
+
+        const std::vector<Param> *parameters = nullptr;
+        const std::vector<TypeParameter> *typeParameters = nullptr;
+        bool callable = false;
+        bool returnsValue = false;
+        std::string name = DeclName(decl).value_or("item");
+        if (const auto *functionDecl = dynamic_cast<const FuncDecl *>(&decl)) {
+            parameters = &functionDecl->params;
+            typeParameters = &functionDecl->typeParams;
+            callable = true;
+            returnsValue = functionDecl->returnType.has_value() && !functionDecl->isNoReturn &&
+                           !IsDestructorName(functionDecl->name);
+        }
+        else if (const auto *externFunction = dynamic_cast<const ExternFuncDecl *>(&decl)) {
+            parameters = &externFunction->params;
+            callable = true;
+            returnsValue = externFunction->returnType.has_value() && !externFunction->isNoReturn;
+        }
+        else if (const auto *structure = dynamic_cast<const StructDecl *>(&decl)) {
+            typeParameters = &structure->typeParams;
+        }
+        else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&decl)) {
+            typeParameters = &enumeration->typeParams;
+        }
+
+        for (const auto &tag : decl.documentation.tags) {
+            const bool duplicate = std::ranges::any_of(decl.documentation.issues, [&](const auto &issue) {
+                return issue.kind == Syntax::DocumentationIssueKind::DuplicateTag && issue.range == tag.range;
+            });
+            if (duplicate) {
+                continue;
+            }
+            if (tag.kind == Syntax::DocumentationTagKind::Parameter) {
+                const bool matches = parameters != nullptr && std::ranges::any_of(*parameters, [&](const Param &param) {
+                                         return !param.IsReceiver() && !param.isVariadic && param.name == tag.subject;
+                                     });
+                if (!callable) {
+                    Warn(tag.range.start, std::format("@param is not valid on '{}'", name));
+                }
+                else if (tag.subject == "self") {
+                    Warn(tag.range.start, "@param cannot document the self receiver",
+                         "describe receiver ownership or mutation in the prose or Safety section");
+                }
+                else if (!matches) {
+                    Warn(tag.range.start,
+                         std::format("@param '{}' does not name a documentable parameter of '{}'", tag.subject, name));
+                }
+            }
+            else if (tag.kind == Syntax::DocumentationTagKind::TypeParameter) {
+                const bool matches = typeParameters != nullptr &&
+                                     std::ranges::any_of(*typeParameters, [&](const TypeParameter &parameter) {
+                                         return parameter.name == tag.subject;
+                                     });
+                if (!matches) {
+                    Warn(tag.range.start,
+                         std::format("@typeParam '{}' does not name a type parameter introduced by '{}'", tag.subject,
+                                     name));
+                }
+            }
+            else if (tag.kind == Syntax::DocumentationTagKind::Returns) {
+                if (!callable) {
+                    Warn(tag.range.start, std::format("@returns is not valid on '{}'", name));
+                }
+                else if (!returnsValue) {
+                    Warn(tag.range.start, std::format("@returns is not valid because '{}' returns no value", name));
+                }
+            }
         }
     }
 
     void VisitDecl(const Decl &decl, const std::span<const std::string> siblingNames) {
+        CheckStructuredDocumentation(decl);
         if (const auto *fn = dynamic_cast<const FuncDecl *>(&decl)) {
             CheckDocumentation(decl, "function", fn->name);
             if (!IsIntrinsicName(fn->name) && !IsSymbolicOperatorName(fn->name) && !IsDestructorName(fn->name) &&
@@ -392,6 +477,7 @@ private:
             }
             const auto fieldNames = Names(st->fields);
             for (const auto &f : st->fields) {
+                CheckMemberDocumentation(f.documentation, "struct field", f.name);
                 if (!allowTypeNaming && !IsCamelCase(f.name)) {
                     WarnNaming(f.location, "struct field name", f.name, NamingConvention::CamelCase, fieldNames);
                 }
@@ -408,12 +494,14 @@ private:
             }
             const auto variantNames = Names(en->variants);
             for (const auto &v : en->variants) {
+                CheckMemberDocumentation(v.documentation, memberKind, v.name);
                 if (!allowTypeNaming && !IsPascalCase(v.name)) {
                     WarnNaming(v.location, std::string(memberKind) + " name", v.name, NamingConvention::PascalCase,
                                variantNames);
                 }
                 const auto fieldNames = Names(v.namedFields);
                 for (const auto &nf : v.namedFields) {
+                    CheckMemberDocumentation(nf.documentation, "variant case field", nf.name);
                     if (!allowTypeNaming && !IsCamelCase(nf.name)) {
                         WarnNaming(nf.location, "variant case field name", nf.name, NamingConvention::CamelCase,
                                    fieldNames);
@@ -429,6 +517,7 @@ private:
             }
             const auto fieldNames = Names(un->fields);
             for (const auto &f : un->fields) {
+                CheckMemberDocumentation(f.documentation, "union field", f.name);
                 if (!allowTypeNaming && !IsCamelCase(f.name)) {
                     WarnNaming(f.location, "union field name", f.name, NamingConvention::CamelCase, fieldNames);
                 }
