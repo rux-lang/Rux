@@ -32,10 +32,10 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     // Which of the reporting enum's variants carry nothing, which is how pattern lowering tells a value with a payload
     // to read from one without.
     std::vector<std::string> unitDiscriminants;
-    if (const auto declaration = enumDecls.find(fact.optionEnumName); declaration != enumDecls.end()) {
+    if (const auto declaration = enumDecls.find(fact.optionVariantName); declaration != enumDecls.end()) {
         for (const auto &variant : declaration->second->variants) {
             if (variant.fields.empty() && variant.namedFields.empty()) {
-                if (auto discriminant = LookupEnumVariantDiscriminant(fact.optionEnumName, variant.name)) {
+                if (auto discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, variant.name)) {
                     unitDiscriminants.push_back(*discriminant);
                 }
             }
@@ -91,10 +91,10 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     const std::string itemName = ItemBindingName(ordinal);
     auto itemPattern = std::make_unique<HirEnumPattern>();
     itemPattern->location = statement.location;
-    itemPattern->path = {fact.optionEnumName, fact.someVariant};
+    itemPattern->path = {fact.optionVariantName, fact.someVariant};
     itemPattern->resolvedType = reportedType;
     itemPattern->form = CaseTypeForm::Variant;
-    itemPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionEnumName, fact.someVariant);
+    itemPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, fact.someVariant);
     itemPattern->hasPayload = true;
     itemPattern->payloadTypes.push_back(itemType);
     itemPattern->unitDiscriminants = unitDiscriminants;
@@ -141,10 +141,10 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
 
     auto endPattern = std::make_unique<HirEnumPattern>();
     endPattern->location = statement.location;
-    endPattern->path = {fact.optionEnumName, fact.noneVariant};
+    endPattern->path = {fact.optionVariantName, fact.noneVariant};
     endPattern->resolvedType = reportedType;
     endPattern->form = CaseTypeForm::Variant;
-    endPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionEnumName, fact.noneVariant);
+    endPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, fact.noneVariant);
     endPattern->unitDiscriminants = unitDiscriminants;
 
     auto exit = std::make_unique<HirBreakStmt>();

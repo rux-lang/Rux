@@ -162,6 +162,38 @@ TEST_CASE("a container is asked for its iterator once, before the loop") {
     CHECK_EQ(CalleeName(*RequireAdvanceStep(scope).subject), "Counter::Next");
 }
 
+TEST_CASE("custom Option-shaped variants retain their declared name in iterator matches") {
+    const HirPackage package = LowerSource(R"(
+        variant Step<T> { Some(T), None }
+        struct Counter { value: int32; limit: int32; }
+        extend Counter {
+            func Next(self: &var Counter) -> Step<int32> {
+                if self.value >= self.limit { return Step::None<int32>(); }
+                let current = self.value;
+                self.value = self.value + 1i32;
+                return Step::Some<int32>(current);
+            }
+        }
+        func Walk() {
+            var counter = Counter { value: 0i32, limit: 1i32 };
+            for item in counter {}
+        }
+    )");
+
+    const HirMatchStmt &step = RequireAdvanceStep(RequireIterationScope(RequireFunction(package, "Walk"), 1));
+    REQUIRE_EQ(step.arms.size(), 2);
+    const auto *item = dynamic_cast<const HirEnumPattern *>(step.arms[0].pattern.get());
+    const auto *end = dynamic_cast<const HirEnumPattern *>(step.arms[1].pattern.get());
+    REQUIRE(item != nullptr);
+    REQUIRE(end != nullptr);
+    CHECK_EQ(item->path, std::vector<std::string>{"Step", "Some"});
+    CHECK_EQ(end->path, std::vector<std::string>{"Step", "None"});
+    CHECK_EQ(item->form, CaseTypeForm::Variant);
+    CHECK_EQ(end->form, CaseTypeForm::Variant);
+    CHECK(item->hasPayload);
+    CHECK_FALSE(end->hasPayload);
+}
+
 TEST_CASE("nested convention-driven loops advance separate iterators") {
     const HirPackage package = LowerSource(kIterationPrelude + R"(
         func Walk() -> int32 {
