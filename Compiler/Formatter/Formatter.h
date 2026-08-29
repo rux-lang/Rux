@@ -11,7 +11,7 @@ struct FormatResult {
     bool changed = false;
 };
 
-/// Conservative source normalization. Structural formatting will build on the syntax tree once the lexer preserves
-/// comments and other trivia.
+/// Normalize line endings and documentation-comment spelling using lossless lexer ranges. Ordinary comments, literals,
+/// Markdown structure, and unterminated blocks retain their authored content.
 [[nodiscard]] FormatResult Format(std::string_view source);
 } // namespace Rux::Formatting
