@@ -117,6 +117,63 @@ func Do() -> Mode {
     CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Enum::Fast'");
 }
 
+TEST_CASE("compile-time evaluation accepts scalar enums and rejects variants") {
+    auto scalar = ParseSource(R"(
+enum Mode { Fast, Small }
+when Mode::Fast == Mode::Fast {
+    func Selected() {}
+}
+)");
+    CompileTimeContext context;
+    const std::vector<Module *> scalarModules = {&scalar.module};
+    ConditionalEvaluator scalarEvaluator(context, scalarModules);
+    scalarEvaluator.SetSourceContext(scalar.module.name, "test", "");
+    scalarEvaluator.SetImports(scalar.module);
+    REQUIRE_EQ(scalar.module.items.size(), 2);
+    const auto *scalarWhen = dynamic_cast<const WhenDecl *>(scalar.module.items[1].get());
+    REQUIRE(scalarWhen != nullptr);
+    const auto scalarResult = scalarEvaluator.Evaluate(*scalarWhen->branches[0].condition);
+    REQUIRE(scalarResult.value.has_value());
+    CHECK(std::get<bool>(*scalarResult.value));
+    CHECK(scalarResult.diagnostics.empty());
+
+    auto tagged = ParseSource(R"(
+variant Mode { Fast, Small }
+when Mode::Fast == Mode::Fast {
+    func Selected() {}
+}
+)");
+    const std::vector<Module *> taggedModules = {&tagged.module};
+    ConditionalEvaluator taggedEvaluator(context, taggedModules);
+    taggedEvaluator.SetSourceContext(tagged.module.name, "test", "");
+    taggedEvaluator.SetImports(tagged.module);
+    REQUIRE_EQ(tagged.module.items.size(), 2);
+    const auto *taggedWhen = dynamic_cast<const WhenDecl *>(tagged.module.items[1].get());
+    REQUIRE(taggedWhen != nullptr);
+    const auto taggedResult = taggedEvaluator.Evaluate(*taggedWhen->branches[0].condition);
+    CHECK_FALSE(taggedResult.value.has_value());
+    REQUIRE_EQ(taggedResult.diagnostics.size(), 1);
+    CHECK_EQ(taggedResult.diagnostics[0].message, "compile-time 'when' cannot evaluate variant type 'Mode'");
+}
+
+TEST_CASE("compile-time variant rejection applies to when match subjects") {
+    auto parsed = ParseSource(R"(
+variant Mode { Fast, Small }
+func Select() -> int {
+    when Mode::Fast {
+        Mode::Fast => { return 1; }
+        else => { return 2; }
+    }
+    return 0;
+}
+)");
+    const auto model = Analyze(parsed.module);
+    REQUIRE(model.HasErrors());
+    CHECK(std::ranges::any_of(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "compile-time 'when' cannot evaluate variant type 'Mode'";
+    }));
+}
+
 TEST_CASE("build profiles derive coherent compile-time metadata") {
     CompileTimeContext context;
     CHECK(context.ProfileName() == "Debug");

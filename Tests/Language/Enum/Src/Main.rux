@@ -47,9 +47,22 @@ func IdentityDirection(direction: Direction) -> Direction {
     return direction;
 }
 
+func DecodeDirection(value: int) -> Direction {
+    return value as Direction;
+}
+
+func EncodeDirection(value: Direction) -> int {
+    return value as int;
+}
+
 func Main() -> int {
     Assert(IdentityDirection(Direction::North) == Direction::North,
            "Expected enum argument and return types to match");
+    Assert(EncodeDirection(Direction::East) == 30, "Expected an enum to expose its scalar representation explicitly");
+    Assert(DecodeDirection(40) == Direction::West, "Expected an integer to decode through an explicit enum cast");
+    Assert(Direction::North < Direction::South, "Expected scalar enum ordering to follow discriminants");
+    Assert((Color::Green as uint8) == 10u8, "Expected a narrow enum cast to retain its declared width");
+    Assert((-1i8 as Ordering) == Ordering::Less, "Expected signed enum casts to retain negative discriminants");
     let fallback = match 7 {
         0 => 1,
         else => 2

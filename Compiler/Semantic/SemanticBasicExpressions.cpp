@@ -349,24 +349,48 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckBasicExpression(const Expr 
 /// Whether one type's values can be respelled as another's at all, which is the whole of what a cast requires: the
 /// value's own range is checked separately, and only for a constant.
 bool SemanticAnalyzerContext::CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const {
-    const auto isCastValue = [&](const TypeRef &type) {
-        if (IsCastValue(type)) {
-            return true;
-        }
-        const std::string typeName = NamedBaseTypeName(type);
-        return !typeName.empty() && enumDecls.contains(typeName);
-    };
     if (operand.IsUnknown() || target.IsUnknown()) {
         return true;
     }
     if (operand.kind == TypeRef::Kind::Func || target.kind == TypeRef::Kind::Func) {
         return IsAddressValue(operand) && IsAddressValue(target);
     }
-    return isCastValue(operand) && isCastValue(target);
+
+    const std::string operandName = NamedBaseTypeName(operand);
+    const std::string targetName = NamedBaseTypeName(target);
+    const CaseTypeDeclaration operandCase = operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
+    const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+    if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
+        return false;
+    }
+    if (operandCase || targetCase) {
+        if (operandCase && targetCase) {
+            return operandName == targetName;
+        }
+        return operandCase ? target.IsInteger() : operand.IsInteger();
+    }
+    return IsCastValue(operand) && IsCastValue(target);
 }
 
 void SemanticAnalyzerContext::CheckCast(const TypeRef &operand, const TypeRef &target, const SourceLocation location) {
     if (!CastTypesAreCompatible(operand, target)) {
+        const std::string operandName = NamedBaseTypeName(operand);
+        const std::string targetName = NamedBaseTypeName(target);
+        const CaseTypeDeclaration operandCase =
+            operandName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(operandName);
+        const CaseTypeDeclaration targetCase = targetName.empty() ? CaseTypeDeclaration{} : CaseTypeNamed(targetName);
+        if ((operandCase && operandCase.IsVariant()) || (targetCase && targetCase.IsVariant())) {
+            const std::string sourceKind = operandCase && operandCase.IsVariant() ? "variant" : "scalar type";
+            const std::string destinationKind = targetCase && targetCase.IsVariant() ? "variant" : "scalar type";
+            EmitError(location, std::format("cannot cast {} '{}' to {} '{}'", sourceKind, operand.ToString(),
+                                            destinationKind, target.ToString()));
+            return;
+        }
+        if (operandCase && targetCase) {
+            EmitError(location, std::format("cannot cast enum '{}' directly to unrelated enum '{}'", operand.ToString(),
+                                            target.ToString()));
+            return;
+        }
         EmitError(location,
                   std::format("cannot cast value of type '{}' to '{}'", operand.ToString(), target.ToString()));
     }
@@ -697,6 +721,13 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
                 variantEqualities.insert_or_assign(binaryExpression,
                                                    ResolvedVariantEquality{left, operation == TK::BangEqual});
             }
+            return TypeRef::MakeBool();
+        }
+        if (caseType.IsVariant()) {
+            EmitError(location,
+                      std::format("operator '{}' is not defined for variant '{}'", operatorName, left.ToString()),
+                      {"variants have structural equality but no built-in ordering"},
+                      std::format("declare '{}' on '{}' to define this ordering", operatorName, left.ToString()));
             return TypeRef::MakeBool();
         }
 
