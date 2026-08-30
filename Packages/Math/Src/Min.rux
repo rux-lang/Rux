@@ -1,23 +1,28 @@
-// A NaN is not an answer, so it loses to anything else: Min(NaN, y) is y and
-// Min(x, NaN) is x, and only two NaNs give a NaN. When the arguments compare
-// equal the sign of a zero is still worth something, and Min(0.0, -0.0) is
-// -0.0.
-/// Provides the public `Min` operation.
+/// Selects the smaller of `a` and `b`.
 ///
-/// https://rux-lang.dev/docs/api/math/min
+/// A NaN loses to a number, so one NaN returns the other argument and two NaNs return a NaN. When both arguments
+/// are zeros, a negative zero wins.
+///
+/// @param a First value to compare.
+/// @param b Second value to compare.
+/// @returns The smaller non-NaN value, or a NaN when both arguments are NaNs.
+/// @see https://rux-lang.dev/docs/api/math/min
 pub func Min(a: float64, b: float64) -> float64 {
-    if a != a { return b; }
-    if b != b { return a; }
+    if IsNan(a) { return b; }
+    if IsNan(b) { return a; }
     if a < b { return a; }
     if b < a { return b; }
     // Equal, so the only thing left to separate them is the sign.
-    if (FloatBits(a) >> 63u64) != 0u64 { return a; }
+    if SignBit(a) { return a; }
     return b;
 }
 
-/// Provides the public `Min` operation.
+/// Selects the smaller of `a` and `b` at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/min
+/// @param a First value to compare.
+/// @param b Second value to compare.
+/// @returns The smaller non-NaN value, or a NaN when both arguments are NaNs.
+/// @see https://rux-lang.dev/docs/api/math/min
 pub func Min(a: float32, b: float32) -> float32 {
     return Min(a as float64, b as float64) as float32;
 }

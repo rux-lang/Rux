@@ -130,16 +130,16 @@ func KernelTan(x: float64, y: float64, reciprocal: bool) -> float64 {
 // positions 32j+1 through 32j+32 after the point. The largest float64
 // exponent reaches limb 38, so 40 limbs cover every argument.
 const TwoOverPi: uint32[40] = [
-    0xA2F9836Eu32, 0x4E441529u32, 0xFC2757D1u32, 0xF534DDC0u32,
-    0xDB629599u32, 0x3C439041u32, 0xFE5163ABu32, 0xDEBBC561u32,
-    0xB7246E3Au32, 0x424DD2E0u32, 0x06492EEAu32, 0x09D1921Cu32,
-    0xFE1DEB1Cu32, 0xB129A73Eu32, 0xE88235F5u32, 0x2EBB4484u32,
-    0xE99C7026u32, 0xB45F7E41u32, 0x3991D639u32, 0x835339F4u32,
-    0x9C845F8Bu32, 0xBDF9283Bu32, 0x1FF897FFu32, 0xDE05980Fu32,
-    0xEF2F118Bu32, 0x5A0A6D1Fu32, 0x6D367ECFu32, 0x27CB09B7u32,
-    0x4F463F66u32, 0x9E5FEA2Du32, 0x7527BAC7u32, 0xEBE5F17Bu32,
-    0x3D0739F7u32, 0x8A5292EAu32, 0x6BFB5FB1u32, 0x1F8D5D08u32,
-    0x56033046u32, 0xFC7B6BABu32, 0xF0CFBC20u32, 0x9AF4361Du32
+    0xA2F9836E, 0x4E441529, 0xFC2757D1, 0xF534DDC0,
+    0xDB629599, 0x3C439041, 0xFE5163AB, 0xDEBBC561,
+    0xB7246E3A, 0x424DD2E0, 0x06492EEA, 0x09D1921C,
+    0xFE1DEB1C, 0xB129A73E, 0xE88235F5, 0x2EBB4484,
+    0xE99C7026, 0xB45F7E41, 0x3991D639, 0x835339F4,
+    0x9C845F8B, 0xBDF9283B, 0x1FF897FF, 0xDE05980F,
+    0xEF2F118B, 0x5A0A6D1F, 0x6D367ECF, 0x27CB09B7,
+    0x4F463F66, 0x9E5FEA2D, 0x7527BAC7, 0xEBE5F17B,
+    0x3D0739F7, 0x8A5292EA, 0x6BFB5FB1, 0x1F8D5D08,
+    0x56033046, 0xFC7B6BAB, 0xF0CFBC20, 0x9AF4361D
 ];
 
 // Payne-Hanek reduction of a positive x. Subtracting n*(Pi/2) in double
@@ -166,71 +166,71 @@ const TwoOverPi: uint32[40] = [
 // whole exercise exists for.
 func RemPio2(x: float64) -> Reduction {
     let bits = FloatBits(x);
-    let biased = ((bits >> 52u64) & 0x7FFu64) as int64;
-    let mantissa = (bits & 0xFFFFFFFFFFFFFu64) | 0x10000000000000u64;
+    let biased = ((bits >> 52) & 0x7FF) as int64;
+    let mantissa = (bits & 0xFFFFFFFFFFFFF) | 0x10000000000000;
     // x = mantissa * 2^shift, with mantissa a 53-bit integer.
-    let shift = biased - 1075i64;
-    let mantLow = mantissa & 0xFFFFFFFFu64;
-    let mantHigh = mantissa >> 32u64;
+    let shift = biased - 1075;
+    let mantLow = mantissa & 0xFFFFFFFF;
+    let mantHigh = mantissa >> 32;
     // Gather the 256 bits of 2/Pi starting at bit (shift - 1). Bits at or
     // before the point are zero, which is what the range check produces for
     // a negative limb index. The window is stored least significant first.
     var window: uint32[8];
     for k in 0..8 {
-        let offset = shift - 2i64 + 32i64 * (7i64 - (k as int64));
-        let limb = offset >> 5i64;
-        let bit = offset - (limb << 5i64);
+        let offset = shift - 2 + 32 * (7 - (k as int64));
+        let limb = offset >> 5;
+        let bit = offset - (limb << 5);
 
-        var first = 0u32;
-        var second = 0u32;
-        if limb >= 0i64 && limb < 40i64 {
+        var first: uint32 = 0;
+        var second: uint32 = 0;
+        if limb >= 0 && limb < 40 {
             first = TwoOverPi[limb as uint];
         }
-        if limb + 1i64 >= 0i64 && limb + 1i64 < 40i64 {
-            second = TwoOverPi[(limb + 1i64) as uint];
+        if limb + 1 >= 0 && limb + 1 < 40 {
+            second = TwoOverPi[(limb + 1) as uint];
         }
 
-        if bit == 0i64 {
+        if bit == 0 {
             window[k] = first;
         } else {
             let s = bit as uint32;
-            window[k] = (first << s) | (second >> (32u32 - s));
+            window[k] = (first << s) | (second >> (32 - s));
         }
     }
     // product = mantissa * window, keeping only the low 256 bits. Anything
     // above them is a multiple of four quadrants and cannot affect the sine.
     var product: uint32[8];
-    var carry = 0u64;
+    var carry: uint64 = 0;
     for i in 0..8 {
         let t = mantLow * (window[i] as uint64) + carry;
-        product[i] = (t & 0xFFFFFFFFu64) as uint32;
-        carry = t >> 32u64;
+        product[i] = (t & 0xFFFFFFFF) as uint32;
+        carry = t >> 32;
     }
-    carry = 0u64;
+    carry = 0;
     for i in 0..7 {
         let t = mantHigh * (window[i] as uint64) + (product[i + 1] as uint64) + carry;
-        product[i + 1] = (t & 0xFFFFFFFFu64) as uint32;
-        carry = t >> 32u64;
+        product[i + 1] = (t & 0xFFFFFFFF) as uint32;
+        carry = t >> 32;
     }
     // The two bits above the point are the quadrant; the 254 below it are
     // the fraction of x / (Pi/2).
-    var quadrant = ((product[7] >> 30u32) & 3u32) as int64;
-    product[7] = product[7] & 0x3FFFFFFFu32;
+    var quadrant = ((product[7] >> 30) & 3) as int64;
+    product[7] = product[7] & 0x3FFFFFFF;
     // A fraction past one half belongs to the next quadrant, and its
     // complement is the reduced argument, now negative.
     var sign = 1.0;
-    if ((product[7] >> 29u32) & 1u32) == 1u32 {
-        quadrant = quadrant + 1i64;
+    if ((product[7] >> 29) & 1) == 1 {
+        quadrant = quadrant + 1;
         for i in 0..8 {
             product[i] = ~product[i];
         }
-        var borrow = 1u64;
+        var borrow: uint64 = 1;
         for i in 0..8 {
             let t = (product[i] as uint64) + borrow;
-            product[i] = (t & 0xFFFFFFFFu64) as uint32;
-            borrow = t >> 32u64;
+            product[i] = (t & 0xFFFFFFFF) as uint32;
+            borrow = t >> 32;
         }
-        product[7] = product[7] & 0x3FFFFFFFu32;
+        product[7] = product[7] & 0x3FFFFFFF;
         sign = -1.0;
     }
     // Sum the limbs smallest first, tracking the rounding each addition
@@ -270,7 +270,7 @@ func RemPio2(x: float64) -> Reduction {
                     fracHiLow * pio2HiLow;
     let tail = ((headError + fracHi * pio2Lo) + fracLo * pio2Hi) + fracHi * pio2Lo2;
     var out: Reduction;
-    out.quadrant = quadrant & 3i64;
+    out.quadrant = quadrant & 3;
     out.hi = head + tail;
     out.lo = tail - (out.hi - head);
     return out;

@@ -14,7 +14,7 @@ import Core::MaximumOf;
 
 /// Which way a value that falls between two integers should go. `Copy`.
 ///
-/// https://rux-lang.dev/docs/api/math/rounding-mode
+/// @see https://rux-lang.dev/docs/api/math/roundingmode
 pub enum RoundingMode: int32 {
     /// Toward zero, discarding the fraction: `Trunc`.
     TowardZero = 0,
@@ -35,7 +35,9 @@ pub enum RoundingMode: int32 {
 /// `RoundTiesToEven(2.5)` is 2 and `RoundTiesToEven(3.5)` is 4, where `Round` gives 3 and 4. The sign of a zero
 /// is preserved, and a NaN or infinity passes through unchanged.
 ///
-/// https://rux-lang.dev/docs/api/math/round-ties-to-even
+/// @param value Value to round.
+/// @returns The nearest integral value, resolving halfway cases toward the even neighbour.
+/// @see https://rux-lang.dev/docs/api/math/roundtiestoeven
 pub func RoundTiesToEven(value: float64) -> float64 {
     let whole = Trunc(value);
     let fraction = value - whole;
@@ -51,9 +53,11 @@ pub func RoundTiesToEven(value: float64) -> float64 {
     return whole;
 }
 
-/// Provides the public `RoundTiesToEven` operation.
+/// Rounds `value` to the nearest integral `float32`, with halfway cases going to the even neighbour.
 ///
-/// https://rux-lang.dev/docs/api/math/round-ties-to-even
+/// @param value Value to round.
+/// @returns The nearest integral value, resolving halfway cases toward the even neighbour.
+/// @see https://rux-lang.dev/docs/api/math/roundtiestoeven
 pub func RoundTiesToEven(value: float32) -> float32 {
     // Widening is exact and the answer is an integer a float32 holds whenever the input was one, so the single
     // narrowing at the end cannot move it.
@@ -62,7 +66,10 @@ pub func RoundTiesToEven(value: float32) -> float32 {
 
 /// `value` rounded to an integer in the named direction.
 ///
-/// https://rux-lang.dev/docs/api/math/round-to
+/// @param value Value to round.
+/// @param mode Direction and halfway rule to use.
+/// @returns The integral value selected by `mode`.
+/// @see https://rux-lang.dev/docs/api/math/roundto
 pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
     if mode == RoundingMode::TowardZero { return Trunc(value); }
     if mode == RoundingMode::TowardNegative { return Floor(value); }
@@ -71,9 +78,12 @@ pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
     return RoundTiesToEven(value);
 }
 
-/// Provides the public `RoundTo` operation.
+/// Rounds `value` in the requested direction at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/round-to
+/// @param value Value to round.
+/// @param mode Direction and halfway rule to use.
+/// @returns The integral value selected by `mode`.
+/// @see https://rux-lang.dev/docs/api/math/roundto
 pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
     if mode == RoundingMode::TowardZero { return Trunc(value); }
     if mode == RoundingMode::TowardNegative { return Floor(value); }
@@ -95,7 +105,13 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 ///
 /// `result` must be non-null and writable.
 ///
-/// https://rux-lang.dev/docs/api/math/to-integer-checked
+/// @typeParam T Destination integer type.
+/// @param value Floating-point value to convert.
+/// @param sample Value used only to select `T`.
+/// @param mode Rounding rule applied before conversion.
+/// @param result Receives the converted integer or zero on failure.
+/// @returns `true` when the rounded value is not representable as `T`.
+/// @see https://rux-lang.dev/docs/api/math/tointegerchecked
 pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
     *result = zero;
@@ -105,8 +121,8 @@ pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, resu
     // Both bounds are compared in floating point, where the integer limits are exactly representable only up to
     // 53 bits. Comparing against the next power of two instead is exact at every width: a rounded value is in
     // range exactly when it is strictly below 2^(bits-1) for a signed type, or below 2^bits for an unsigned one.
-    let bits = sizeof(T) * 8u64;
-    let limit = ScaleByPowerOfTwo(1.0, signed ? (bits as int64) - 1i64 : bits as int64);
+    let bits = sizeof(T) * 8;
+    let limit = ScaleByPowerOfTwo(1.0, signed ? (bits as int64) - 1 : bits as int64);
     if rounded >= limit { return true; }
     if signed {
         if rounded < 0.0 - limit { return true; }

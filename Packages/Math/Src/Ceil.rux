@@ -1,18 +1,21 @@
-// The smallest integer at or above x, the mirror of Floor. Note that
-// Ceil(-0.5) is -0.0 rather than 0.0: truncation carries the sign across,
-// and that is the answer IEEE-754 asks for.
-/// Provides the public `Ceil` operation.
+/// Rounds `x` toward positive infinity to an integral value.
 ///
-/// https://rux-lang.dev/docs/api/math/ceil
+/// A negative value between zero and negative one becomes `-0.0`. A NaN or infinity passes through unchanged.
+///
+/// @param x Value to round upward.
+/// @returns The smallest integral value greater than or equal to `x`.
+/// @see https://rux-lang.dev/docs/api/math/ceil
 pub func Ceil(x: float64) -> float64 {
     let t = Trunc(x);
     if x > 0.0 && t != x { return t + 1.0; }
     return t;
 }
 
-/// Provides the public `Ceil` operation.
+/// Rounds `x` toward positive infinity at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/ceil
+/// @param x Value to round upward.
+/// @returns The smallest integral value greater than or equal to `x`.
+/// @see https://rux-lang.dev/docs/api/math/ceil
 pub func Ceil(x: float32) -> float32 {
     return Ceil(x as float64) as float32;
 }
