@@ -33,11 +33,13 @@ public:
         depRoot = root / "Dependency";
         nonTargetRoot = root / "WindowsOnly";
         transitiveRoot = root / "Transitive";
+        secondDependencyRoot = root / "SecondDependency";
 
         std::filesystem::create_directories(appRoot / "Src");
         std::filesystem::create_directories(depRoot / "Src");
         std::filesystem::create_directories(nonTargetRoot / "Src");
         std::filesystem::create_directories(transitiveRoot / "Src");
+        std::filesystem::create_directories(secondDependencyRoot / "Src");
 
         dependency.package.name = *IdentitySegment::Parse("Dependency");
         dependency.package.version = *SemanticVersion::Parse("0.1.0");
@@ -87,6 +89,37 @@ func Main() -> int {
 
     void SetDependencyTargets(std::vector<Target::OS> targetOS) {
         application.dependencies.front().targetOS = std::move(targetOS);
+    }
+
+    void ConfigureSameNamedGenericDependencies() {
+        REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", R"(
+pub module Api {
+    pub func Identity<T>(value: T) -> T {
+        return value;
+    }
+}
+)"));
+
+        Manifest secondDependency;
+        secondDependency.package.name = *IdentitySegment::Parse("SecondDependency");
+        secondDependency.package.version = *SemanticVersion::Parse("0.1.0");
+        secondDependency.package.type = ManifestPackageType::SourceLibrary;
+        REQUIRE(secondDependency.Save(secondDependencyRoot / "Rux.toml"));
+        REQUIRE(WriteFile(secondDependencyRoot / "Src" / "Api.rux", R"(
+pub module Api {
+    pub func Identity<T>(value: T) -> T {
+        return value;
+    }
+}
+)"));
+        REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("SecondDependency"), "../SecondDependency"));
+        SetApplicationSource(R"(
+import Dependency::Api::Identity;
+
+func Main() -> int {
+    return Identity<int>(42);
+}
+)");
     }
 
     void ConfigureMacOSTargetDependencies() {
@@ -213,6 +246,7 @@ private:
     std::filesystem::path depRoot;
     std::filesystem::path nonTargetRoot;
     std::filesystem::path transitiveRoot;
+    std::filesystem::path secondDependencyRoot;
     Manifest application;
     Manifest dependency;
 };
@@ -547,6 +581,22 @@ TEST_CASE("compiler driver loads path dependencies when building") {
     CHECK(ArtifactTargetPath(result.primaryArtifactPath) == TargetOutputPath(Target::TargetTriple::Host()));
     CHECK(ArtifactProfile(result.primaryArtifactPath) == "Debug");
     CHECK(std::filesystem::is_regular_file(result.primaryArtifactPath));
+}
+
+TEST_CASE("compiler driver qualifies same-named public generics from different packages") {
+    DependencyFixture fixture;
+    fixture.ConfigureSameNamedGenericDependencies();
+    std::vector<Diagnostic> diagnostics;
+
+    const auto build = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+
+    CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+    REQUIRE(build.ok);
+    REQUIRE(diagnostics.empty());
+    REQUIRE(std::filesystem::is_regular_file(build.primaryArtifactPath));
+    const auto run = RunCaptured(build.primaryArtifactPath);
+    REQUIRE(run.has_value());
+    CHECK_MESSAGE(run->exitCode == 42, "qualified generic call returned ", run->exitCode, ", output: ", run->output);
 }
 
 TEST_CASE("compiler driver builds one architecture for a foreign operating system") {
