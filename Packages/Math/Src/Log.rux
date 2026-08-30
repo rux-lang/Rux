@@ -4,10 +4,11 @@ struct LogReduction {
     m: float64;
 }
 
-// The correction s*(hfsq + R) that turns f - f^2/2 into log(1 + f), for
-// |f| < sqrt(2) - 1. Log, Log2 and Log10 all reduce to this same series in
-// s = f/(2+f); they differ only in the base they scale by and in how they
-// add the exponent back.
+/*
+    The correction s*(hfsq + R) that turns f - f^2/2 into log(1 + f), for |f| < sqrt(2) - 1. Log, Log2 and Log10 all
+    reduce to this same series in s = f/(2+f); they differ only in the base they scale by and in how they add the
+    exponent back.
+*/
 func LogPoly(f: float64) -> float64 {
     let lg1 = 6.666666666666735130e-01;
     let lg2 = 3.999999999940941908e-01;
@@ -26,10 +27,11 @@ func LogPoly(f: float64) -> float64 {
     return s * (hfsq + t2 + t1);
 }
 
-// Split a finite positive x into m * 2^k. The caller must already have ruled
-// out zero, the negatives, the infinities and the NaNs. Picking m nearest to
-// one, rather than simply in [1, 2), halves the range the series has to
-// cover and keeps |f| below sqrt(2) - 1.
+/*
+    Split a finite positive x into m * 2^k. The caller must already have ruled out zero, the negatives, the infinities
+    and the NaNs. Picking m nearest to one, rather than simply in [1, 2), halves the range the series has to cover and
+    keeps |f| below sqrt(2) - 1.
+*/
 func LogNormalize(x: float64) -> LogReduction {
     var k: int64 = 0;
     var bits = FloatBits(x);
@@ -41,8 +43,8 @@ func LogNormalize(x: float64) -> LogReduction {
     var hx = bits >> 32;
     k += ((hx >> 20) as int64) - 1023;
     hx &= 0xFFFFF;
-    // 0x95F64 is (sqrt(2) - 1) in the top 20 mantissa bits, so this carry
-    // out of bit 20 is set exactly when m would otherwise exceed sqrt(2).
+    // 0x95F64 is (sqrt(2) - 1) in the top 20 mantissa bits, so this carry out of bit 20 is set exactly when m would
+    // otherwise exceed sqrt(2).
     let i = (hx + 0x95F64) & 0x100000;
     k += (i >> 20) as int64;
     var out: LogReduction;
@@ -51,14 +53,13 @@ func LogNormalize(x: float64) -> LogReduction {
     return out;
 }
 
-/// Computes the natural logarithm of `x`.
-///
-/// The error is at most one ulp. Either signed zero returns negative infinity, a negative value returns a NaN,
-/// positive infinity returns itself, and a NaN remains a NaN.
-///
-/// @param x Positive value whose logarithm is computed.
-/// @returns The base-`e` logarithm of `x`.
-/// @see https://rux-lang.dev/docs/api/math/log
+/**
+    Computes the natural logarithm of `x`. The error is at most one ulp. Either signed zero returns negative infinity,
+    a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
+    @param x Positive value whose logarithm is computed.
+    @returns The base-`e` logarithm of `x`.
+    @see https://rux-lang.dev/docs/api/math/log
+*/
 pub func Log(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -73,16 +74,16 @@ pub func Log(x: float64) -> float64 {
     let hfsq = 0.5 * f * f;
     let r = LogPoly(f);
     let dk = red.k as float64;
-    // dk*ln2Hi is exact, and the rest is grouped so that the small terms
-    // meet each other before they meet it.
+    // dk*ln2Hi is exact, and the rest is grouped so that the small terms meet each other before they meet it.
     return dk * ln2Hi - ((hfsq - (r + dk * ln2Lo)) - f);
 }
 
-/// Computes the natural logarithm of `x` at `float32` precision.
-///
-/// @param x Positive value whose logarithm is computed.
-/// @returns The base-`e` logarithm of `x`.
-/// @see https://rux-lang.dev/docs/api/math/log
+/**
+    Computes the natural logarithm of `x` at `float32` precision.
+    @param x Positive value whose logarithm is computed.
+    @returns The base-`e` logarithm of `x`.
+    @see https://rux-lang.dev/docs/api/math/log
+*/
 pub func Log(x: float32) -> float32 {
     return Log(x as float64) as float32;
 }

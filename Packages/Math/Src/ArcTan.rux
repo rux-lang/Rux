@@ -1,11 +1,10 @@
-/// Computes the inverse tangent of `x` in radians.
-///
-/// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, infinities approach the matching endpoint,
-/// and a NaN remains a NaN.
-///
-/// @param x Tangent value to invert.
-/// @returns The angle in radians whose tangent is `x`.
-/// @see https://rux-lang.dev/docs/api/math/arctan
+/**
+    Computes the inverse tangent of `x` in radians. The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns
+    itself, infinities approach the matching endpoint, and a NaN remains a NaN.
+    @param x Tangent value to invert.
+    @returns The angle in radians whose tangent is `x`.
+    @see https://rux-lang.dev/docs/api/math/arctan
+*/
 pub func ArcTan(x: float64) -> float64 {
     let atanhi0 = 4.63647609000806093515e-01; // atan(0.5), high
     let atanhi1 = 7.85398163397448278999e-01; // atan(1.0), high
@@ -78,11 +77,12 @@ pub func ArcTan(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-/// Computes the inverse tangent of `x` in radians at `float32` precision.
-///
-/// @param x Tangent value to invert.
-/// @returns The angle in radians whose tangent is `x`.
-/// @see https://rux-lang.dev/docs/api/math/arctan
+/**
+    Computes the inverse tangent of `x` in radians at `float32` precision.
+    @param x Tangent value to invert.
+    @returns The angle in radians whose tangent is `x`.
+    @see https://rux-lang.dev/docs/api/math/arctan
+*/
 pub func ArcTan(x: float32) -> float32 {
     return ArcTan(x as float64) as float32;
 }

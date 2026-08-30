@@ -1,12 +1,12 @@
-/// Computes the Euclidean length `Sqrt(x * x + y * y)` without intermediate overflow or underflow.
-///
-/// The error is at most one ulp. An infinity in either argument returns positive infinity even when the other is a
-/// NaN; otherwise a NaN remains a NaN.
-///
-/// @param x First Cartesian component.
-/// @param y Second Cartesian component.
-/// @returns The non-negative length of `(x, y)`.
-/// @see https://rux-lang.dev/docs/api/math/hypot
+/**
+    Computes the Euclidean length `Sqrt(x * x + y * y)` without intermediate overflow or underflow. The error is at most
+    one ulp. An infinity in either argument returns positive infinity even when the other is a NaN; otherwise a NaN
+    remains a NaN.
+    @param x First Cartesian component.
+    @param y Second Cartesian component.
+    @returns The non-negative length of `(x, y)`.
+    @see https://rux-lang.dev/docs/api/math/hypot
+*/
 pub func Hypot(x: float64, y: float64) -> float64 {
     var a = Abs(x);
     var b = Abs(y);
@@ -21,14 +21,14 @@ pub func Hypot(x: float64, y: float64) -> float64 {
         ha = hb;
         hb = th;
     }
-    // a is more than 2^60 times b, so b is lost in the rounding of a. This also carries every infinity
-    // and NaN whose partner is finite.
+    // a is more than 2^60 times b, so b is lost in the rounding of a. This also carries every infinity and NaN whose
+    // partner is finite.
     if (ha - hb) > 0x3C00000 { return a + b; }
     var k: int64 = 0;
     if ha > 0x5F300000 { // a > 2^500
         if ha >= 0x7FF00000 {
-            // Hypot is infinite if either argument is, even if the other is
-            // a NaN; otherwise the NaN propagates through a + b.
+            // Hypot is infinite if either argument is, even if the other is a NaN; otherwise the NaN propagates through
+            // a + b.
             var w = a + b;
             if (ha & 0xFFFFF) == 0 && (FloatBits(a) & 0xFFFFFFFF) == 0 {
                 w = a;
@@ -38,8 +38,7 @@ pub func Hypot(x: float64, y: float64) -> float64 {
             }
             return w;
         }
-        // Scale both down by 2^600. The early return above guarantees b is
-        // large enough that its exponent survives.
+        // Scale both down by 2^600. The early return above guarantees b is large enough that its exponent survives.
         ha -= 0x25800000;
         hb -= 0x25800000;
         k += 600;
@@ -69,8 +68,8 @@ pub func Hypot(x: float64, y: float64) -> float64 {
         let t2 = a - t1;
         w = Sqrt(t1 * t1 - (b * (-b) - t2 * (a + t1)));
     } else {
-        // a and b are within a factor of two, and a - b has cancelled, so the
-        // identity a^2 + b^2 = 2a*b + (a - b)^2 keeps the lost bits.
+        // a and b are within a factor of two, and a - b has cancelled, so the identity a^2 + b^2 = 2a*b + (a - b)^2
+        // keeps the lost bits.
         a = a + a;
         let y1 = FromHighWord(hb);
         let y2 = b - y1;
@@ -82,12 +81,13 @@ pub func Hypot(x: float64, y: float64) -> float64 {
     return w;
 }
 
-/// Computes the Euclidean length of `(x, y)` at `float32` precision.
-///
-/// @param x First Cartesian component.
-/// @param y Second Cartesian component.
-/// @returns The non-negative length of `(x, y)`.
-/// @see https://rux-lang.dev/docs/api/math/hypot
+/**
+    Computes the Euclidean length of `(x, y)` at `float32` precision.
+    @param x First Cartesian component.
+    @param y Second Cartesian component.
+    @returns The non-negative length of `(x, y)`.
+    @see https://rux-lang.dev/docs/api/math/hypot
+*/
 pub func Hypot(x: float32, y: float32) -> float32 {
     return Hypot(x as float64, y as float64) as float32;
 }

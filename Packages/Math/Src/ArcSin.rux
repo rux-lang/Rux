@@ -1,11 +1,11 @@
-/// Computes the inverse sine of `x` in radians.
-///
-/// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, either endpoint maps to the matching
-/// endpoint of the result range, an input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
-///
-/// @param x Sine value to invert.
-/// @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
-/// @see https://rux-lang.dev/docs/api/math/arcsin
+/**
+    Computes the inverse sine of `x` in radians. The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself,
+    either endpoint maps to the matching endpoint of the result range, an input outside `[-1, 1]` returns a NaN, and a
+    NaN remains a NaN.
+    @param x Sine value to invert.
+    @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
+    @see https://rux-lang.dev/docs/api/math/arcsin
+*/
 pub func ArcSin(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return HalfPi; }
@@ -16,11 +16,12 @@ pub func ArcSin(x: float64) -> float64 {
     return ArcTan(x / root);
 }
 
-/// Computes the inverse sine of `x` in radians at `float32` precision.
-///
-/// @param x Sine value to invert.
-/// @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
-/// @see https://rux-lang.dev/docs/api/math/arcsin
+/**
+    Computes the inverse sine of `x` in radians at `float32` precision.
+    @param x Sine value to invert.
+    @returns The angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain.
+    @see https://rux-lang.dev/docs/api/math/arcsin
+*/
 pub func ArcSin(x: float32) -> float32 {
     return ArcSin(x as float64) as float32;
 }

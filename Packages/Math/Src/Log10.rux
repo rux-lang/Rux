@@ -1,11 +1,11 @@
-/// Computes the base-ten logarithm of `x`.
-///
-/// The error is at most one ulp, and an exact power of ten returns its exact exponent. Either signed zero returns
-/// negative infinity, a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
-///
-/// @param x Positive value whose logarithm is computed.
-/// @returns The base-ten logarithm of `x`.
-/// @see https://rux-lang.dev/docs/api/math/log10
+/**
+    Computes the base-ten logarithm of `x`. The error is at most one ulp, and an exact power of ten returns its exact
+    exponent. Either signed zero returns negative infinity, a negative value returns a NaN, positive infinity returns
+    itself, and a NaN remains a NaN.
+    @param x Positive value whose logarithm is computed.
+    @returns The base-ten logarithm of `x`.
+    @see https://rux-lang.dev/docs/api/math/log10
+*/
 pub func Log10(x: float64) -> float64 {
     let ivln10Hi = 4.34294481878168880939e-01;
     let ivln10Lo = 2.50829467116452752298e-11;
@@ -33,11 +33,12 @@ pub func Log10(x: float64) -> float64 {
     return valLo + valHi;
 }
 
-/// Computes the base-ten logarithm of `x` at `float32` precision.
-///
-/// @param x Positive value whose logarithm is computed.
-/// @returns The base-ten logarithm of `x`.
-/// @see https://rux-lang.dev/docs/api/math/log10
+/**
+    Computes the base-ten logarithm of `x` at `float32` precision.
+    @param x Positive value whose logarithm is computed.
+    @returns The base-ten logarithm of `x`.
+    @see https://rux-lang.dev/docs/api/math/log10
+*/
 pub func Log10(x: float32) -> float32 {
     return Log10(x as float64) as float32;
 }

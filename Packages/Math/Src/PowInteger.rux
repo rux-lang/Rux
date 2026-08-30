@@ -1,23 +1,24 @@
-// A power with an integer exponent, by repeated squaring.
-//
-// **Accuracy: error at most one ulp per squaring, so about log2(|n|) ulps in the worst case -- and exactly zero
-// whenever every intermediate is representable.** That exactness is the reason to have this beside `Pow`, which
-// goes through a logarithm and an exponential and so returns 999.9999999999999 for a cube of ten as readily as
-// 1000. A caller raising a value to a whole number almost always wants the exact answer where one exists.
-//
-// The sign rules are decided by the exponent's parity rather than derived from a logarithm, so a negative base
-// is ordinary here where `Pow` has to work to make it meaningful at all.
+/*
+    A power with an integer exponent, by repeated squaring.
 
-/// `base` raised to the integer power `exponent`.
-///
-/// A zero exponent gives one for every base, including zero and a NaN, which is the same rule `Pow` follows: the
-/// empty product is one. A negative exponent takes the reciprocal at the end rather than dividing as it goes,
-/// which keeps the intermediates as large as possible and loses the least.
-///
-/// @param base Value to raise.
-/// @param exponent Integer power.
-/// @returns `base` raised to `exponent`.
-/// @see https://rux-lang.dev/docs/api/math/powinteger
+    **Accuracy: error at most one ulp per squaring, so about log2(|n|) ulps in the worst case -- and exactly zero
+    whenever every intermediate is representable.** That exactness is the reason to have this beside `Pow`, which goes
+    through a logarithm and an exponential and so returns 999.9999999999999 for a cube of ten as readily as 1000. A
+    caller raising a value to a whole number almost always wants the exact answer where one exists.
+
+    The sign rules are decided by the exponent's parity rather than derived from a logarithm, so a negative base is
+    ordinary here where `Pow` has to work to make it meaningful at all.
+*/
+
+/**
+    `base` raised to the integer power `exponent`. A zero exponent gives one for every base, including zero and a NaN,
+    which is the same rule `Pow` follows: the empty product is one. A negative exponent takes the reciprocal at the end
+    rather than dividing as it goes, which keeps the intermediates as large as possible and loses the least.
+    @param base Value to raise.
+    @param exponent Integer power.
+    @returns `base` raised to `exponent`.
+    @see https://rux-lang.dev/docs/api/math/powinteger
+*/
 pub func PowInteger(base: float64, exponent: int64) -> float64 {
     if exponent == 0 { return 1.0; }
     if IsNan(base) { return base; }
@@ -38,14 +39,15 @@ pub func PowInteger(base: float64, exponent: int64) -> float64 {
     return accumulated;
 }
 
-/// Raises `base` to the integer power `exponent` at `float32` precision.
-///
-/// @param base Value to raise.
-/// @param exponent Integer power.
-/// @returns `base` raised to `exponent`.
-/// @see https://rux-lang.dev/docs/api/math/powinteger
+/**
+    Raises `base` to the integer power `exponent` at `float32` precision.
+    @param base Value to raise.
+    @param exponent Integer power.
+    @returns `base` raised to `exponent`.
+    @see https://rux-lang.dev/docs/api/math/powinteger
+*/
 pub func PowInteger(base: float32, exponent: int64) -> float32 {
-    // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type,
-    // where every intermediate would round.
+    // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type, where every
+    // intermediate would round.
     return PowInteger(base as float64, exponent) as float32;
 }

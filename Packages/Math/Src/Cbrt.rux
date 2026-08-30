@@ -1,11 +1,10 @@
-/// Computes the real cube root of `x`.
-///
-/// The error is at most one ulp. Negative inputs produce negative roots, a signed zero or infinity returns itself,
-/// and a NaN remains a NaN.
-///
-/// @param x Value whose cube root is computed.
-/// @returns The real cube root of `x`.
-/// @see https://rux-lang.dev/docs/api/math/cbrt
+/**
+    Computes the real cube root of `x`. The error is at most one ulp. Negative inputs produce negative roots, a signed
+    zero or infinity returns itself, and a NaN remains a NaN.
+    @param x Value whose cube root is computed.
+    @returns The real cube root of `x`.
+    @see https://rux-lang.dev/docs/api/math/cbrt
+*/
 pub func Cbrt(x: float64) -> float64 {
     // 1023 - 1023/3 - 0.03306235651, in the top 20 bits of the significand.
     let b1: uint64 = 715094163;
@@ -25,25 +24,23 @@ pub func Cbrt(x: float64) -> float64 {
     if hx < 0x00100000 {
         // Cbrt(+-0) is +-0, sign and all.
         if (hx | (bits & 0xFFFFFFFF)) == 0 { return x; }
-        // A subnormal has no leading one, so scale it into the normals and
-        // pay for it with a shifted seed constant.
+        // A subnormal has no leading one, so scale it into the normals and pay for it with a shifted seed constant.
         let scaled = x * 1.8014398509481984e16; // 2^54
         let high = (FloatBits(scaled) >> 32) & 0x7FFFFFFF;
         t = FromHighWord(signHigh | (high / 3 + b2));
     } else {
-        // Dividing the biased exponent by three is a cube root to five bits:
-        // cbrt(2^e * (1+m)) ~ 2^(e/3) * (1 + (e%3 + m)/3).
+        // Dividing the biased exponent by three is a cube root to five bits: cbrt(2^e * (1+m)) ~ 2^(e/3) * (1 + (e%3 +
+        // m)/3).
         t = FromHighWord(signHigh | (hx / 3 + b1));
     }
     // Lift the seed to 23 bits: cbrt(x) = t * cbrt(x/t^3) ~ t * P(t^3/x).
     var r = (t * t) * (t / x);
     t = t * ((p0 + r * (p1 + r * p2)) + ((r * r) * r) * (p3 + r * p4));
-    // Round t away from zero to 23 bits. That makes t*t exact below, and it
-    // puts t on the far side of the root so the Newton step closes in from a
-    // known direction.
+    // Round t away from zero to 23 bits. That makes t*t exact below, and it puts t on the far side of the root so the
+    // Newton step closes in from a known direction.
     t = FromBits((FloatBits(t) + 0x80000000) & 0xFFFFFFFFC0000000);
-    // One Newton step, to within 0.667 ulp. Each cancellation here is exact:
-    // t*t and t+t by construction, and r - t because the two are close.
+    // One Newton step, to within 0.667 ulp. Each cancellation here is exact: t*t and t+t by construction, and r - t
+    // because the two are close.
     let s = t * t;
     r = x / s;
     let w = t + t;
@@ -51,11 +48,12 @@ pub func Cbrt(x: float64) -> float64 {
     return t + t * r;
 }
 
-/// Computes the real cube root of `x` at `float32` precision.
-///
-/// @param x Value whose cube root is computed.
-/// @returns The real cube root of `x`.
-/// @see https://rux-lang.dev/docs/api/math/cbrt
+/**
+    Computes the real cube root of `x` at `float32` precision.
+    @param x Value whose cube root is computed.
+    @returns The real cube root of `x`.
+    @see https://rux-lang.dev/docs/api/math/cbrt
+*/
 pub func Cbrt(x: float32) -> float32 {
     return Cbrt(x as float64) as float32;
 }
