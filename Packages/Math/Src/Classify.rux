@@ -400,11 +400,11 @@ pub func ExponentOf(value: float32) -> int64 {
 
 /// What `ExponentOf` reports for zero, which has no exponent at all.
 /// @see https://rux-lang.dev/docs/api/math/noexponent
-pub const NoExponent = int64::Min;
+pub const NoExponent: int64 = int64::Min;
 
 /// What `ExponentOf` reports for a NaN or an infinity.
 /// @see https://rux-lang.dev/docs/api/math/indeterminateexponent
-pub const IndeterminateExponent = int64::Max;
+pub const IndeterminateExponent: int64 = int64::Max;
 
 /**
     Splits `value` into a fraction in `[0.5, 1)` and a power of two, so that `fraction * 2^exponent == value`. The
