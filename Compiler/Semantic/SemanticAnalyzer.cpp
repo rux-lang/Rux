@@ -2943,29 +2943,31 @@ private:
     void BuildFinalSymbolIdentities() override {
         std::unordered_map<std::string, std::unordered_set<std::string>> owners;
         for (const auto &[name, declarations] : functionsByName) {
+            (void)name;
             for (const auto *declaration : declarations) {
-                if (declaration->typeParams.empty()) {
-                    const std::string local =
-                        FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : name;
-                    owners[local].insert(functionModulePaths.at(declaration));
-                }
+                const std::string local = FunctionIsOverloadedInModule(*declaration)
+                                            ? MangleFunctionWithParams(*declaration)
+                                            : declaration->name;
+                owners[local].insert(functionModulePaths.at(declaration));
             }
         }
+
+        const auto localFunctionName = [&](const FuncDecl &declaration) {
+            return FunctionIsOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
+        };
+        const auto qualifyFunctionName = [&](const FuncDecl &declaration, std::string name) {
+            const std::string local = localFunctionName(declaration);
+            const std::string &modulePath = functionModulePaths.at(&declaration);
+            if (owners[local].size() > 1 && !modulePath.empty()) {
+                return modulePath + "::" + name;
+            }
+            return name;
+        };
+
         for (const auto &[name, declarations] : functionsByName) {
+            (void)name;
             for (const auto *declaration : declarations) {
-                if (!declaration->typeParams.empty()) {
-                    const bool overloaded = declarations.size() > 1;
-                    symbolIdentities.insert_or_assign(
-                        declaration,
-                        ResolvedSymbolIdentity{overloaded ? MangleFunctionWithParams(*declaration) : name});
-                    continue;
-                }
-                std::string local =
-                    FunctionIsOverloadedInModule(*declaration) ? MangleFunctionWithParams(*declaration) : name;
-                const std::string &modulePath = functionModulePaths.at(declaration);
-                if (owners[local].size() > 1 && !modulePath.empty()) {
-                    local = modulePath + "::" + local;
-                }
+                std::string local = qualifyFunctionName(*declaration, localFunctionName(*declaration));
                 symbolIdentities.insert_or_assign(declaration, ResolvedSymbolIdentity{std::move(local)});
             }
         }
@@ -3026,7 +3028,11 @@ private:
                 // bound to it — so a four-argument call reached a three-parameter function and quietly dropped an
                 // argument. Overloaded methods already carry their parameter types in the name; free functions now
                 // do too, built through the same recipe so a later re-instantiation spells it identically.
-                binding.linkerNameBase = function->name;
+                // The source declaration and every concrete instantiation must share the same package-qualified base.
+                // Otherwise two dependencies exporting the same generic signature both publish (for example)
+                // `Clamp__T_T_T`, and calls would still name an unqualified `Clamp_int_int_int` after fixing only the
+                // declaration identity.
+                binding.linkerNameBase = qualifyFunctionName(*function, function->name);
                 binding.linkerNameHasOverloadSignature = FunctionIsOverloadedInModule(*function);
                 if (binding.linkerNameHasOverloadSignature) {
                     for (const auto &parameter : function->params) {
