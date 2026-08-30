@@ -67,7 +67,7 @@ struct Item {}
     CHECK_EQ(result.text, expected);
 }
 
-TEST_CASE("formatter aligns multiline block documentation") {
+TEST_CASE("formatter indents multiline block documentation without a star margin") {
     constexpr std::string_view source = R"(    /**
       Summary.
 
@@ -76,10 +76,10 @@ TEST_CASE("formatter aligns multiline block documentation") {
     func Read();
 )";
     constexpr std::string_view expected = R"(    /**
-     * Summary.
-     *
-     *   Continued paragraph.
-     */
+        Summary.
+
+          Continued paragraph.
+    */
     func Read();
 )";
     const auto result = Rux::Formatting::Format(source);
@@ -87,7 +87,7 @@ TEST_CASE("formatter aligns multiline block documentation") {
     CHECK_EQ(result.text, expected);
 }
 
-TEST_CASE("formatter inserts one documentation line before line tags") {
+TEST_CASE("formatter keeps direct line tags compact") {
     constexpr std::string_view source = R"(/// Reads a value.
 /// @param   input    Source text.
 /// @returns    Parsed value.
@@ -95,7 +95,6 @@ TEST_CASE("formatter inserts one documentation line before line tags") {
 func Read(input: String) -> int;
 )";
     constexpr std::string_view expected = R"(/// Reads a value.
-///
 /// @param input Source text.
 /// @returns Parsed value.
 ///  continuation stays indented
@@ -106,7 +105,7 @@ func Read(input: String) -> int;
     CHECK_EQ(result.text, expected);
 }
 
-TEST_CASE("formatter inserts one block line before block tags") {
+TEST_CASE("formatter keeps multiline block tags compact") {
     constexpr std::string_view source = R"(/**
  * Reads a value.
  * @typeParam   T   Result type.
@@ -116,12 +115,11 @@ TEST_CASE("formatter inserts one block line before block tags") {
 func Read<T>(input: String) -> T;
 )";
     constexpr std::string_view expected = R"(/**
- * Reads a value.
- *
- * @typeParam T Result type.
- * @param input Input value.
- * @see Core::Result Related result.
- */
+    Reads a value.
+    @typeParam T Result type.
+    @param input Input value.
+    @see Core::Result Related result.
+*/
 func Read<T>(input: String) -> T;
 )";
     const auto result = Rux::Formatting::Format(source);
@@ -242,7 +240,6 @@ TEST_CASE("formatter preserves tag order and malformed tag text") {
 func Read();
 )";
     constexpr std::string_view expected = R"(/// Summary.
-///
 /// @see Core::Item First.
 /// @param
 /// @unknown   keep   exact
@@ -258,7 +255,7 @@ TEST_CASE("formatter is idempotent for documentation forms") {
     constexpr std::string_view inputs[] = {
         "///Summary.\nfunc Read();\n",
         "/** Summary. */\nstruct Item {}\n",
-        "/**\n * Summary.\n * @returns   Value.\n */\nfunc Value() -> int;\n",
+        "/**\n    Summary.\n    @returns Value.\n*/\nfunc Value() -> int;\n",
         "/// Summary.\n///\n/// @param value Text.\nfunc Read(value: int);\n",
     };
     for (const std::string_view input : inputs) {

@@ -100,9 +100,7 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
     is not representable in the integer type -- because it is a NaN, an infinity, or simply out of range -- and leaves
     `result` zero in that case. This is the only place a float becomes an integer, and it refuses rather than
     saturating, because a caller who has not thought about the out-of-range case is better served by a flag than by a
-    plausible wrong number.
-    # Safety
-    `result` must be non-null and writable.
+    plausible wrong number. `result` must be non-null and writable.
     @typeParam T Destination integer type.
     @param value Floating-point value to convert.
     @param sample Value used only to select `T`.
