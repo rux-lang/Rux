@@ -11,11 +11,9 @@ pub func Cotan(x: float64) -> float64 {
     if IsNan(x) { return x; }
     // The cotangent has no limit at infinity.
     if IsInfinite(x) { return float64::NaN; }
-    /*
-        cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under half an ulp of the first. The reciprocal also
-        carries the pole at zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf. Stopping here is what
-        keeps NegRecip's argument away from overflow.
-    */
+    // cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under half an ulp of the first. The reciprocal also
+    // carries the pole at zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf. Stopping here is what
+    // keeps NegRecip's argument away from overflow.
     if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return 1.0 / x; }
     let negative = x < 0.0;
     let ax = negative ? -x : x;

@@ -159,7 +159,6 @@ func RemPio2(x: float64) -> Reduction {
         let offset = shift - 2 + 32 * (7 - (k as int64));
         let limb = offset >> 5;
         let bit = offset - (limb << 5);
-
         var first: uint32 = 0;
         var second: uint32 = 0;
         if limb >= 0 && limb < 40 {
@@ -168,7 +167,6 @@ func RemPio2(x: float64) -> Reduction {
         if limb + 1 >= 0 && limb + 1 < 40 {
             second = TwoOverPi[(limb + 1) as uint];
         }
-
         if bit == 0 {
             window[k] = first;
         } else {
