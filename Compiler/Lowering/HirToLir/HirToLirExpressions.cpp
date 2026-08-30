@@ -562,7 +562,12 @@ LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
     // so the callee read the pointer as the array's first word and the array's stack slots as whatever the caller
     // happened to leave there. Win64 and AAPCS64 pass a wide aggregate by reference to a copy, so a pointer was
     // indistinguishable from the value there. Loading the value makes the argument what the parameter is.
-    if (argument.type.kind == TypeRef::Kind::Array || argument.type.kind == TypeRef::Kind::Tuple) {
+    // A range is the same story at sixteen bytes. One held in a variable was loaded on the way to the call and
+    // arrived as the value the callee reads, but one written at the call site — `v[2..5]` — handed over the address
+    // of its slot, which System V and AAPCS64 placed as the first of the two registers the callee reads the pair
+    // from, leaving `end` whatever the second register happened to hold.
+    if (argument.type.kind == TypeRef::Kind::Array || argument.type.kind == TypeRef::Kind::Tuple ||
+        argument.type.IsRange()) {
         return EmitLoad(LowerLValue(argument), argument.type);
     }
     return LowerExpr(argument);

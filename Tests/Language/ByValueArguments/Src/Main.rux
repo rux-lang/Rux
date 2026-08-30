@@ -6,6 +6,9 @@
 // is written as a literal, as a constant and as a local, and each puts a scalar after the aggregate, which is the
 // argument that lands in the wrong place when the aggregate consumes registers it should not.
 //
+// A range is the same story at sixteen bytes: `f(2..5)` handed over the slot the range was built in, so System V and
+// AAPCS64 placed that address as the first of the two registers the callee reads the pair from.
+//
 // A slice parameter is the one aggregate lowered as an address on every convention, and an interface call passed
 // the 16-byte value instead, so the method read `data` as the address of the pair. The sink at the end checks a
 // slice arrives intact through the vtable.
@@ -28,6 +31,10 @@ func SumPair(pair: (uint64, uint64), tail: uint64) -> uint64 {
 
 func SumBytes(values: uint8[3], tail: uint64) -> uint64 {
     return (values[0] as uint64) + (values[1] as uint64) + (values[2] as uint64) + tail;
+}
+
+func SpanWidth(span: Range<int>, tail: int) -> int {
+    return span.end - span.start + tail;
 }
 
 interface Sink {
@@ -61,6 +68,12 @@ func Main() -> int {
 
     // Sixteen bytes: two registers on System V and AAPCS64, by address on Win64.
     Assert(SumPair((7u64, 8u64), 100u64) == 115u64, "a two-word tuple literal is passed whole with the scalar after it");
+
+    // A range has the same classes as the two-word tuple, and the named-variable form was already loaded on the way
+    // to the call. A range written at the call site is the form that lowered to the address of its own slot.
+    Assert(SpanWidth(2..5, 100) == 103, "a range literal is passed whole with the scalar after it");
+    let span = 3..9;
+    Assert(SpanWidth(span, 1) == 7, "a local range is passed whole with the scalar after it");
 
     // Three bytes: one register everywhere, and the tail must not be read from the next one.
     Assert(SumBytes([1u8, 2u8, 3u8], 100u64) == 106u64, "a three-byte array literal is passed whole with the scalar after it");
