@@ -495,7 +495,9 @@ pub func UlpDistance(left: float64, right: float64) -> uint64 {
     // Ordering the magnitude bits matches ordering the values, so within one sign the distance is a subtraction.
     let leftBits = FloatBits(left) & 0x7FFFFFFFFFFFFFFF;
     let rightBits = FloatBits(right) & 0x7FFFFFFFFFFFFFFF;
-    if SignBit(left) == SignBit(right) { return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits; }
+    if SignBit(left) == SignBit(right) {
+        return leftBits > rightBits ? leftBits - rightBits : rightBits - leftBits;
+    }
     // Opposite signs: cross at zero, which both sides share, so the two halves simply add.
     return leftBits + rightBits;
 }

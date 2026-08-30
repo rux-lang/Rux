@@ -1,11 +1,9 @@
 /*
     Rounding, in every direction anyone means by the word.
-
     `Floor`, `Ceil`, `Trunc` and `Round` already name four of the five directions, each with its own file. What was
-    missing is the fifth -- ties to even, the default IEEE 754 rounds arithmetic with, and the one that keeps a long sum
-    of rounded values from drifting upward -- and a way to name a direction as a value rather than by choosing a
+    missing is the fifth - ties to even, the default IEEE 754 rounds arithmetic with, and the one that keeps a long sum
+    of rounded values from drifting upward - and a way to name a direction as a value rather than by choosing a
     function at the call site.
-
     All five agree on everything except the halfway cases, which is exactly why the halfway cases are what the test
     spends its time on. Every one of them returns a float rather than an integer, because the answer is not always
     representable as one and quietly saturating would hide that; `ToIntegerChecked` is where the conversion happens, and

@@ -19,10 +19,8 @@
 pub func Log1p(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
-
     let bits = FloatBits(x);
     let magnitude = bits & 0x7FFFFFFFFFFFFFFF;
-
     // A NaN, or +Inf, passes straight through: log1p(+Inf) is +Inf.
     if magnitude >= 0x7FF0000000000000 { return x + x; }
     if x == -1.0 { return -float64::Infinity; }
@@ -30,11 +28,9 @@ pub func Log1p(x: float64) -> float64 {
     // Below 2^-54 the answer is the argument to every bit the type holds, and returning it keeps the sign of a zero as
     // well.
     if magnitude < 0x3C90000000000000 { return x; }
-
     var correction = 0.0;
     var reduced = x;
     var k: int64 = 0;
-
     // For an argument near zero the sum 1 + x would lose bits, so the series runs on x itself.
     if x > -0.2928932188134525 && x < 0.4142135623730951 {
         k = 0;
@@ -50,7 +46,6 @@ pub func Log1p(x: float64) -> float64 {
         correction = dropped / sum;
         reduced = red.m - 1.0;
     }
-
     let hfsq = 0.5 * reduced * reduced;
     let r = LogPoly(reduced);
     let dk = k as float64;
