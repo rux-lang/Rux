@@ -284,11 +284,17 @@ jobs:
       # image ships with third-party taps Homebrew no longer trusts by
       # default; nothing here uses them, so drop them rather than trusting
       # them or silencing the check.
+      # The image also ships llvm@20. Unlinking it is not enough: Homebrew
+      # refuses to link a versioned formula while another version is
+      # installed at all, so `brew install llvm@22` annotated every run with
+      # a link warning. Nothing here uses llvm@20 and the runner is
+      # discarded after the job, so remove it outright; --ignore-dependencies
+      # keeps preinstalled formulae that name it from blocking the removal.
       - name: Install Clang 22
         run: |
           brew untap aws/tap || true
           if brew list --versions llvm@20 >/dev/null; then
-            brew unlink llvm@20
+            brew uninstall --ignore-dependencies llvm@20
           fi
           brew install llvm@22
           echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
