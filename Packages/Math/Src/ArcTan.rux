@@ -1,8 +1,11 @@
-// Returns the inverse tangent, in radians
-// https://rux-lang.dev/api/math/arctan
-/// Provides the public `ArcTan` operation.
+/// Computes the inverse tangent of `x` in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/arc-tan
+/// The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself, infinities approach the matching endpoint,
+/// and a NaN remains a NaN.
+///
+/// @param x Tangent value to invert.
+/// @returns The angle in radians whose tangent is `x`.
+/// @see https://rux-lang.dev/docs/api/math/arctan
 pub func ArcTan(x: float64) -> float64 {
     let atanhi0 = 4.63647609000806093515e-01; // atan(0.5), high
     let atanhi1 = 7.85398163397448278999e-01; // atan(1.0), high
@@ -23,31 +26,30 @@ pub func ArcTan(x: float64) -> float64 {
     let aT8 = 4.97687799461593236017e-02;
     let aT9 = -3.65315727442169155270e-02;
     let aT10 = 1.62858201153657823623e-02;
-    if x != x { return x; }
-    let bits = FloatBits(x);
-    let negative = (bits >> 63u64) == 1u64;
+    if IsNan(x) { return x; }
+    let negative = SignBit(x);
     var ax = Abs(x);
     if ax >= 4.722366482869645e21 { // 2^72, including infinity
         let y = atanhi3 + atanlo3;
         return negative ? -y : y;
     }
     if ax < 1.862645149230957e-9 { return x; }
-    var id = -1i64;
+    var id: int64 = -1;
     if ax < 0.4375 {
-        id = -1i64;
+        id = -1;
     } else if ax < 1.1875 {
         if ax < 0.6875 {
-            id = 0i64;
+            id = 0;
             ax = (2.0 * ax - 1.0) / (2.0 + ax);
         } else {
-            id = 1i64;
+            id = 1;
             ax = (ax - 1.0) / (ax + 1.0);
         }
     } else if ax < 2.4375 {
-        id = 2i64;
+        id = 2;
         ax = (ax - 1.5) / (1.0 + 1.5 * ax);
     } else {
-        id = 3i64;
+        id = 3;
         ax = -1.0 / ax;
     }
     let z = ax * ax;
@@ -56,18 +58,18 @@ pub func ArcTan(x: float64) -> float64 {
     let s2 = w * (aT1 + w * (aT3 + w * (aT5 + w * (aT7 + w * aT9))));
     let correction = ax * (s1 + s2);
     var y = 0.0;
-    if id < 0i64 {
+    if id < 0 {
         y = ax - correction;
     } else {
         var hi = atanhi0;
         var lo = atanlo0;
-        if id == 1i64 {
+        if id == 1 {
             hi = atanhi1;
             lo = atanlo1;
-        } else if id == 2i64 {
+        } else if id == 2 {
             hi = atanhi2;
             lo = atanlo2;
-        } else if id == 3i64 {
+        } else if id == 3 {
             hi = atanhi3;
             lo = atanlo3;
         }
@@ -76,11 +78,11 @@ pub func ArcTan(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-// Returns the inverse tangent, in radians
-// https://rux-lang.dev/api/math/arctan
-/// Provides the public `ArcTan` operation.
+/// Computes the inverse tangent of `x` in radians at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/arc-tan
+/// @param x Tangent value to invert.
+/// @returns The angle in radians whose tangent is `x`.
+/// @see https://rux-lang.dev/docs/api/math/arctan
 pub func ArcTan(x: float32) -> float32 {
     return ArcTan(x as float64) as float32;
 }

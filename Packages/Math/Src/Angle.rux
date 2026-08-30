@@ -1,34 +1,45 @@
-// The two conversions between degrees and radians. Each scales by the
-// nearest float64 to its exact ratio, so one rounding in the constant and
-// one in the product hold the result within an ulp. Both constants are
-// faithful enough that the round numbers come out exact: DegToRad(180.0) is
-// Pi and RadToDeg(Pi) is 180.0. Infinities, NaN and the sign of a zero all
-// fall out of the multiplication.
-
-/// Provides the public `DegToRad` operation.
+/// Converts an angle from degrees to radians.
 ///
-/// https://rux-lang.dev/docs/api/math/deg-to-rad
+/// The conversion scales by the nearest `float64` to `Pi / 180`, making `DegToRad(180.0)` exactly `Pi`.
+/// A signed zero keeps its sign, infinities keep their sign, and a NaN remains a NaN.
+///
+/// @param x Angle in degrees.
+/// @returns The equivalent angle in radians.
+/// @see https://rux-lang.dev/docs/api/math/degtorad
 pub func DegToRad(x: float64) -> float64 {
-    return x * 0.017453292519943295; // Pi/180
+    return x * RadPerDeg;
 }
 
-/// Provides the public `DegToRad` operation.
+/// Converts an angle from degrees to radians at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/deg-to-rad
+/// The input widens exactly to `float64`; the wide conversion is then rounded back to `float32`.
+///
+/// @param x Angle in degrees.
+/// @returns The equivalent angle in radians.
+/// @see https://rux-lang.dev/docs/api/math/degtorad
 pub func DegToRad(x: float32) -> float32 {
     return DegToRad(x as float64) as float32;
 }
 
-/// Provides the public `RadToDeg` operation.
+/// Converts an angle from radians to degrees.
 ///
-/// https://rux-lang.dev/docs/api/math/rad-to-deg
+/// The conversion scales by the nearest `float64` to `180 / Pi`, making `RadToDeg(Pi)` exactly `180.0`.
+/// A signed zero keeps its sign, infinities keep their sign, and a NaN remains a NaN.
+///
+/// @param x Angle in radians.
+/// @returns The equivalent angle in degrees.
+/// @see https://rux-lang.dev/docs/api/math/radtodeg
 pub func RadToDeg(x: float64) -> float64 {
-    return x * 57.29577951308232; // 180/Pi
+    return x * DegPerRad;
 }
 
-/// Provides the public `RadToDeg` operation.
+/// Converts an angle from radians to degrees at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/rad-to-deg
+/// The input widens exactly to `float64`; the wide conversion is then rounded back to `float32`.
+///
+/// @param x Angle in radians.
+/// @returns The equivalent angle in degrees.
+/// @see https://rux-lang.dev/docs/api/math/radtodeg
 pub func RadToDeg(x: float32) -> float32 {
     return RadToDeg(x as float64) as float32;
 }

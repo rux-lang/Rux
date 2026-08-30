@@ -1,44 +1,42 @@
-// **Accuracy: error at most 1 ulp**, at every argument the type holds.
-/// Provides the public `Cos` operation.
+/// Computes the cosine of `x`, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/cos
+/// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less
+/// accurate than a small one. Either signed zero returns `1.0`; an infinity returns a NaN, and a NaN remains a NaN.
+///
+/// @param x Angle in radians.
+/// @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/cos
 pub func Cos(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x { return x; }
-
-    var zero = 0.0;
-
-    // x - x is NaN for an infinity and 0.0 for anything else finite. Cosine
-    // has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 { return zero / zero; }
-
+    if IsNan(x) { return x; }
+    // Cosine has no limit at infinity.
+    if IsInfinite(x) { return float64::NaN; }
     // Below 2^-27 the quadratic term is under half an ulp of 1.
     if x < 7.450580596923828e-9 && x > -7.450580596923828e-9 { return 1.0; }
-
     // Cosine is even, so the sign of the argument never reaches the result.
     let ax = x < 0.0 ? -x : x;
-
-    if ax <= 0.7853981633974483 {
+    if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
         return KernelCos(ax, 0.0);
     }
-
     let red = RemPio2(ax);
-    if red.quadrant == 0i64 {
+    if red.quadrant == 0 {
         return KernelCos(red.hi, red.lo);
-    } else if red.quadrant == 1i64 {
+    } else if red.quadrant == 1 {
         return -KernelSin(red.hi, red.lo);
-    } else if red.quadrant == 2i64 {
+    } else if red.quadrant == 2 {
         return -KernelCos(red.hi, red.lo);
     }
     return KernelSin(red.hi, red.lo);
 }
 
-// float32 has fewer bits than the float64 result is accurate to, so the
-// double-precision cosine rounded once to float32 is faithful.
-/// Provides the public `Cos` operation.
+/// Computes the cosine of `x` at `float32` precision, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/cos
+/// The wide computation carries more precision than the result requires before being rounded to `float32`.
+///
+/// @param x Angle in radians.
+/// @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/cos
 pub func Cos(x: float32) -> float32 {
     return Cos(x as float64) as float32;
 }

@@ -1,39 +1,42 @@
-// **Accuracy: error at most 1 ulp.** Near an odd multiple of Pi/2 the true
-// value is unbounded, and the answer there is as accurate as the reduced
-// argument allows -- which, the reduction being exact, is fully accurate.
-/// Provides the public `Tan` operation.
+/// Computes the tangent of `x`, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/tan
+/// The error is at most one ulp for finite arguments away from poles. Exact argument reduction retains all available
+/// information near an odd multiple of `Pi / 2`. A signed zero returns itself; an infinity returns a NaN, and a NaN
+/// remains a NaN.
+///
+/// @param x Angle in radians.
+/// @returns The tangent of `x`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/tan
 pub func Tan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x { return x; }
-    var zero = 0.0;
-    // x - x is NaN for an infinity and 0.0 for anything else finite. The
-    // tangent has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 { return zero / zero; }
+    if IsNan(x) { return x; }
+    // The tangent has no limit at infinity.
+    if IsInfinite(x) { return float64::NaN; }
     // Below 2^-28 the cubic term is under half an ulp of x, so tan(x) is x.
     // Returning x also keeps the sign of a zero: tan(-0.0) is -0.0.
     if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return x; }
     let negative = x < 0.0;
     let ax = negative ? -x : x;
     var result = 0.0;
-    if ax <= 0.7853981633974483 {
+    if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
         result = KernelTan(ax, 0.0, false);
     } else {
         let red = RemPio2(ax);
         // An odd quadrant lands on tan(r + Pi/2), which is -1/tan(r).
-        result = KernelTan(red.hi, red.lo, (red.quadrant & 1i64) == 1i64);
+        result = KernelTan(red.hi, red.lo, (red.quadrant & 1) == 1);
     }
     // The tangent is odd.
     return negative ? -result : result;
 }
 
-// float32 has fewer bits than the float64 result is accurate to, so the
-// double-precision tangent rounded once to float32 is faithful.
-/// Provides the public `Tan` operation.
+/// Computes the tangent of `x` at `float32` precision, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/tan
+/// The wide computation carries more precision than the result requires before being rounded to `float32`.
+///
+/// @param x Angle in radians.
+/// @returns The tangent of `x`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/tan
 pub func Tan(x: float32) -> float32 {
     return Tan(x as float64) as float32;
 }

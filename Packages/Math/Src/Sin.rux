@@ -1,19 +1,17 @@
-// Returns the sine of an angle in radians
-// https://rux-lang.dev/api/math/sin
-// **Accuracy: error at most 1 ulp**, at every argument the type holds --
-// the reduction is exact, so a huge argument is no worse than a small one.
-/// Provides the public `Sin` operation.
+/// Computes the sine of `x`, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/sin
+/// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less
+/// accurate than a small one. A signed zero returns itself; an infinity returns a NaN, and a NaN remains a NaN.
+///
+/// @param x Angle in radians.
+/// @returns The sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/sin
 pub func Sin(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
-    if x != x { return x; }
+    if IsNan(x) { return x; }
 
-    var zero = 0.0;
-
-    // x - x is NaN for an infinity and 0.0 for anything else finite. Sine
-    // has no limit at infinity, so the result is NaN.
-    if x - x != 0.0 { return zero / zero; }
+    // Sine has no limit at infinity.
+    if IsInfinite(x) { return float64::NaN; }
 
     // Below 2^-27 the cubic term is under half an ulp of x, so sin(x) is x.
     // Returning x also keeps the sign of a zero: sin(-0.0) is -0.0.
@@ -23,16 +21,16 @@ pub func Sin(x: float64) -> float64 {
     let ax = negative ? -x : x;
 
     var result = 0.0;
-    if ax <= 0.7853981633974483 {
+    if ax <= QuarterPi {
         // Already inside the kernel's range, so nothing to reduce.
         result = KernelSin(ax, 0.0);
     } else {
         let red = RemPio2(ax);
-        if red.quadrant == 0i64 {
+        if red.quadrant == 0 {
             result = KernelSin(red.hi, red.lo);
-        } else if red.quadrant == 1i64 {
+        } else if red.quadrant == 1 {
             result = KernelCos(red.hi, red.lo);
-        } else if red.quadrant == 2i64 {
+        } else if red.quadrant == 2 {
             result = -KernelSin(red.hi, red.lo);
         } else {
             result = -KernelCos(red.hi, red.lo);
@@ -42,11 +40,11 @@ pub func Sin(x: float64) -> float64 {
     return negative ? -result : result;
 }
 
-// Returns the sine of an angle in radians
-// https://rux-lang.dev/api/math/sin
-/// Provides the public `Sin` operation.
+/// Computes the sine of `x` at `float32` precision, where `x` is in radians.
 ///
-/// https://rux-lang.dev/docs/api/math/sin
+/// @param x Angle in radians.
+/// @returns The sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+/// @see https://rux-lang.dev/docs/api/math/sin
 pub func Sin(x: float32) -> float32 {
     return Sin(x as float64) as float32;
 }

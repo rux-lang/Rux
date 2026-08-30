@@ -16,15 +16,12 @@ func LogPoly(f: float64) -> float64 {
     let lg5 = 1.818357216161805012e-01;
     let lg6 = 1.531383769920937332e-01;
     let lg7 = 1.479819860511658591e-01;
-
     let s = f / (2.0 + f);
     let z = s * s;
     let w = z * z;
-
     // The odd and even coefficients ride separate Horner chains in w = z^2.
     let t1 = w * (lg2 + w * (lg4 + w * lg6));
     let t2 = z * (lg1 + w * (lg3 + w * (lg5 + w * lg7)));
-
     let hfsq = 0.5 * f * f;
     return s * (hfsq + t2 + t1);
 }
@@ -34,69 +31,58 @@ func LogPoly(f: float64) -> float64 {
 // one, rather than simply in [1, 2), halves the range the series has to
 // cover and keeps |f| below sqrt(2) - 1.
 func LogNormalize(x: float64) -> LogReduction {
-    var k = 0i64;
+    var k: int64 = 0;
     var bits = FloatBits(x);
-
     // A subnormal has no leading one in place; scale it into the normals.
-    if (bits >> 52u64) == 0u64 {
-        k -= 54i64;
+    if (bits >> 52) == 0 {
+        k -= 54;
         bits = FloatBits(x * 1.8014398509481984e16); // 2^54
     }
-
-    var hx = bits >> 32u64;
-    k += ((hx >> 20u64) as int64) - 1023i64;
-    hx &= 0xFFFFFu64;
-
+    var hx = bits >> 32;
+    k += ((hx >> 20) as int64) - 1023;
+    hx &= 0xFFFFF;
     // 0x95F64 is (sqrt(2) - 1) in the top 20 mantissa bits, so this carry
     // out of bit 20 is set exactly when m would otherwise exceed sqrt(2).
-    let i = (hx + 0x95F64u64) & 0x100000u64;
-    k += (i >> 20u64) as int64;
-
+    let i = (hx + 0x95F64) & 0x100000;
+    k += (i >> 20) as int64;
     var out: LogReduction;
     out.k = k;
-    out.m = FromBits(((hx | (i ^ 0x3FF00000u64)) << 32u64) | (bits & 0xFFFFFFFFu64));
+    out.m = FromBits(((hx | (i ^ 0x3FF00000)) << 32) | (bits & 0xFFFFFFFF));
     return out;
 }
 
-// The natural logarithm.
-//
-// **Accuracy: error at most 1 ulp.** The reduction picks the significand
-// nearest one rather than simply in [1, 2), which halves the range the series
-// must cover; the exponent is added back as a two-part ln 2 so the small terms
-// meet each other before they meet it.
-/// Provides the public `Log` operation.
+/// Computes the natural logarithm of `x`.
 ///
-/// https://rux-lang.dev/docs/api/math/log
+/// The error is at most one ulp. Either signed zero returns negative infinity, a negative value returns a NaN,
+/// positive infinity returns itself, and a NaN remains a NaN.
+///
+/// @param x Positive value whose logarithm is computed.
+/// @returns The base-`e` logarithm of `x`.
+/// @see https://rux-lang.dev/docs/api/math/log
 pub func Log(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
-
-    var zero = 0.0;
-    let bits = FloatBits(x);
-
     // log(+-0) is -Inf.
-    if (bits & 0x7FFFFFFFFFFFFFFFu64) == 0u64 { return -1.0 / zero; }
-    // log of a negative has no value, and a negative NaN falls here too.
-    if (bits >> 63u64) == 1u64 { return (x - x) / zero; }
-    // log(+Inf) is +Inf, and a NaN propagates.
-    if ((bits >> 32u64) & 0x7FFFFFFFu64) >= 0x7FF00000u64 { return x + x; }
-
+    if IsZero(x) { return -float64::Infinity; }
+    if IsNan(x) { return x; }
+    // A negative value has no real logarithm.
+    if x < 0.0 { return float64::NaN; }
+    if IsInfinite(x) { return x; }
     let red = LogNormalize(x);
     let f = red.m - 1.0;
     let hfsq = 0.5 * f * f;
     let r = LogPoly(f);
     let dk = red.k as float64;
-
     // dk*ln2Hi is exact, and the rest is grouped so that the small terms
     // meet each other before they meet it.
     return dk * ln2Hi - ((hfsq - (r + dk * ln2Lo)) - f);
 }
 
-// float32 has fewer bits than the float64 result is accurate to, so the
-// double-precision logarithm rounded once to float32 is faithful.
-/// Provides the public `Log` operation.
+/// Computes the natural logarithm of `x` at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/log
+/// @param x Positive value whose logarithm is computed.
+/// @returns The base-`e` logarithm of `x`.
+/// @see https://rux-lang.dev/docs/api/math/log
 pub func Log(x: float32) -> float32 {
     return Log(x as float64) as float32;
 }

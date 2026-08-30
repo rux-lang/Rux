@@ -1,61 +1,74 @@
-// Common mathematical constants, rounded to nearest float64.
-/// The public `E` value.
+/// Euler's number, the base of the natural logarithm, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/e
-pub const E = 2.718281828459045;
-/// The public `Log2E` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const E: float64 = 2.718281828459045;
+
+/// The natural logarithm of two, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/log2-e
-pub const Log2E = 1.4426950408889634;
-/// The public `Log10E` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Ln2: float64 = 0.6931471805599453;
+
+/// The base-two logarithm of `E`, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/log10-e
-pub const Log10E = 0.4342944819032518;
-/// The public `Ln2` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Log2E: float64 = 1.4426950408889634;
+
+/// The natural logarithm of ten, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/ln2
-pub const Ln2 = 0.6931471805599453;
-/// The public `Ln10` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Ln10: float64 = 2.302585092994046;
+
+/// The base-ten logarithm of `E`, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/ln10
-pub const Ln10 = 2.302585092994046;
-/// The public `Pi` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Log10E: float64 = 0.4342944819032518;
+
+/// The ratio of a circle's circumference to its diameter, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/pi
-pub const Pi = 3.141592653589793;
-/// The public `Tau` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Pi: float64 = 3.141592653589793;
+
+/// One full turn in radians, equal to `2 * Pi` and rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/tau
-pub const Tau = 6.283185307179586;
-/// The public `HalfPi` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Tau: float64 = 6.283185307179586;
+
+/// One quarter turn in radians, equal to `Pi / 2` and rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/half-pi
-pub const HalfPi = 1.5707963267948966;
-/// The public `QuarterPi` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const HalfPi: float64 = 1.5707963267948966;
+
+/// One eighth turn in radians, equal to `Pi / 4` and rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/quarter-pi
-pub const QuarterPi = 0.7853981633974483;
-/// The public `InvPi` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const QuarterPi: float64 = 0.7853981633974483;
+
+/// The reciprocal of `Pi`, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/inv-pi
-pub const InvPi = 0.3183098861837907;
-/// The public `InvTau` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const InvPi: float64 = 0.3183098861837907;
+
+/// The reciprocal of `Tau`, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/inv-tau
-pub const InvTau = 0.15915494309189535;
-/// The public `Sqrt2` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const InvTau: float64 = 0.15915494309189535;
+
+/// The square root of two, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/sqrt2
-pub const Sqrt2 = 1.4142135623730951;
-/// The public `InvSqrt2` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const Sqrt2: float64 = 1.4142135623730951;
+
+/// The reciprocal of `Sqrt2`, rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/inv-sqrt2
-pub const InvSqrt2 = 0.7071067811865476;
-/// The public `RadPerDeg` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const InvSqrt2: float64 = 0.7071067811865476;
+
+/// Radians per degree, equal to `Pi / 180` and rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/rad-per-deg
-pub const RadPerDeg = 0.017453292519943295;
-/// The public `DegPerRad` value.
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const RadPerDeg: float64 = 0.017453292519943295;
+
+/// Degrees per radian, equal to `180 / Pi` and rounded to the nearest `float64`.
 ///
-/// https://rux-lang.dev/docs/api/math/deg-per-rad
-pub const DegPerRad = 57.29577951308232;
+/// @see https://rux-lang.dev/docs/api/math#constants
+pub const DegPerRad: float64 = 57.29577951308232;

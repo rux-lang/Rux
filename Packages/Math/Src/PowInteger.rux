@@ -14,30 +14,36 @@
 /// empty product is one. A negative exponent takes the reciprocal at the end rather than dividing as it goes,
 /// which keeps the intermediates as large as possible and loses the least.
 ///
-/// https://rux-lang.dev/docs/api/math/pow-integer
+/// @param base Value to raise.
+/// @param exponent Integer power.
+/// @returns `base` raised to `exponent`.
+/// @see https://rux-lang.dev/docs/api/math/powinteger
 pub func PowInteger(base: float64, exponent: int64) -> float64 {
-    if exponent == 0i64 { return 1.0; }
+    if exponent == 0 { return 1.0; }
     if IsNan(base) { return base; }
     // The magnitude is taken in unsigned form so the most negative exponent has one too.
-    var remaining = exponent < 0i64 ? (0u64 - (exponent as uint64)) : (exponent as uint64);
+    var remaining = exponent < 0 ? (0 - (exponent as uint64)) : (exponent as uint64);
     var accumulated = 1.0;
     var factor = base;
-    while remaining > 0u64 {
-        if (remaining & 1u64) != 0u64 {
+    while remaining > 0 {
+        if (remaining & 1) != 0 {
             accumulated = accumulated * factor;
         }
-        remaining = remaining >> 1u64;
-        if remaining > 0u64 {
+        remaining = remaining >> 1;
+        if remaining > 0 {
             factor = factor * factor;
         }
     }
-    if exponent < 0i64 { return 1.0 / accumulated; }
+    if exponent < 0 { return 1.0 / accumulated; }
     return accumulated;
 }
 
-/// `base` raised to the integer power `exponent`, at the narrow width.
+/// Raises `base` to the integer power `exponent` at `float32` precision.
 ///
-/// https://rux-lang.dev/docs/api/math/pow-integer-32
+/// @param base Value to raise.
+/// @param exponent Integer power.
+/// @returns `base` raised to `exponent`.
+/// @see https://rux-lang.dev/docs/api/math/powinteger
 pub func PowInteger(base: float32, exponent: int64) -> float32 {
     // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type,
     // where every intermediate would round.

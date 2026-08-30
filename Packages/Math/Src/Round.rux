@@ -1,29 +1,29 @@
-// The nearest integer to x, with a tie going away from zero: Round(2.5) is
-// 3.0 and Round(-2.5) is -3.0.
-//
-// Adding 0.5 and flooring would be shorter and wrong. The largest double
-// below 0.5 is 0.49999999999999994, and adding 0.5 to it rounds up to
-// exactly 1.0, so that argument would round to one instead of to zero.
-// Taking the fractional part first avoids the question: x - Trunc(x) is
-// exact, because both are representable and their difference is under one.
-/// Provides the public `Round` operation.
+/// Rounds `x` to the nearest integral value, with halfway cases away from zero.
 ///
-/// https://rux-lang.dev/docs/api/math/round
+/// Thus `Round(2.5)` is `3.0` and `Round(-2.5)` is `-3.0`. The sign of zero is preserved, and a NaN or infinity
+/// passes through unchanged.
+///
+/// The fractional part is compared directly instead of adding one half, which avoids prematurely rounding the
+/// largest representable value below `0.5` up to `1.0`.
+///
+/// @param x Value to round.
+/// @returns The nearest integral value.
+/// @see https://rux-lang.dev/docs/api/math/round
 pub func Round(x: float64) -> float64 {
     let t = Trunc(x);
     let frac = x - t;
-
     if frac >= 0.5 { return t + 1.0; }
     if frac <= -0.5 { return t - 1.0; }
-
     // Also the path for the infinities and the NaNs, whose frac is a NaN and
     // so compares false against both halves.
     return t;
 }
 
-/// Provides the public `Round` operation.
+/// Rounds `x` to the nearest integral value at `float32` precision, with halfway cases away from zero.
 ///
-/// https://rux-lang.dev/docs/api/math/round
+/// @param x Value to round.
+/// @returns The nearest integral value.
+/// @see https://rux-lang.dev/docs/api/math/round
 pub func Round(x: float32) -> float32 {
     return Round(x as float64) as float32;
 }

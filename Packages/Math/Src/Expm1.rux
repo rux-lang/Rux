@@ -1,35 +1,29 @@
-// exp(x) - 1, computed without ever forming that difference. For a small x
-// the exponential is 1 + x + ..., so subtracting one from it throws away
-// every bit that mattered. Sinh, Cosh, Tanh and Cotanh are all built on this
-// rather than on Exp for exactly that reason.
-//
-// **Accuracy: error at most 1 ulp, and the relative error stays that small
-// as the argument approaches zero** -- which is the property Exp(x) - 1 does
-// not have at any accuracy, because the subtraction itself destroys the
-// answer long before the exponential's own error matters.
-/// Provides the public `Expm1` operation.
+/// Computes `Exp(x) - 1` without losing precision near zero.
 ///
-/// https://rux-lang.dev/docs/api/math/expm1
+/// The error is at most one ulp and remains small relative to the result as `x` approaches zero. A signed zero
+/// returns itself, positive infinity returns positive infinity, negative infinity returns `-1.0`, and a NaN remains
+/// a NaN.
+///
+/// @param x Exponent.
+/// @returns `e` raised to `x`, minus one.
+/// @see https://rux-lang.dev/docs/api/math/expm1
 pub func Expm1(x: float64) -> float64 {
     let q1 = -3.33333333333331316428e-02;
     let q2 = 1.58730158725481460165e-03;
     let q3 = -7.93650757867487942473e-05;
     let q4 = 4.00821782732936239552e-06;
     let q5 = -2.01099218183624371326e-07;
-
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
     let invln2 = 1.44269504088896338700e+00;
-
     let bits = FloatBits(x);
-    let hx = (bits >> 32u64) & 0x7FFFFFFFu64;
-    let negative = (bits >> 63u64) == 1u64;
-
-    if hx >= 0x4043687Au64 { // |x| >= 56*ln2
-        if hx >= 0x40862E42u64 { // |x| >= 709.78...
-            if hx >= 0x7FF00000u64 {
+    let hx = (bits >> 32) & 0x7FFFFFFF;
+    let negative = SignBit(x);
+    if hx >= 0x4043687A { // |x| >= 56*ln2
+        if hx >= 0x40862E42 { // |x| >= 709.78...
+            if hx >= 0x7FF00000 {
                 // A NaN propagates; expm1(+Inf) is +Inf and expm1(-Inf) is -1.
-                if ((hx & 0xFFFFFu64) | (bits & 0xFFFFFFFFu64)) != 0u64 { return x + x; }
+                if ((hx & 0xFFFFF) | (bits & 0xFFFFFFFF)) != 0 { return x + x; }
                 return negative ? -1.0 : x;
             }
             if x > 709.782712893384 {
@@ -42,23 +36,21 @@ pub func Expm1(x: float64) -> float64 {
             return -1.0;
         }
     }
-
     var xx = x;
     var c = 0.0;
-    var k = 0i64;
-
-    if hx > 0x3FD62E42u64 { // |x| > 0.5*ln2
+    var k: int64 = 0;
+    if hx > 0x3FD62E42 { // |x| > 0.5*ln2
         var hi = 0.0;
         var lo = 0.0;
-        if hx < 0x3FF0A2B2u64 { // and |x| < 1.5*ln2
+        if hx < 0x3FF0A2B2 { // and |x| < 1.5*ln2
             if negative {
                 hi = x + ln2Hi;
                 lo = -ln2Lo;
-                k = -1i64;
+                k = -1;
             } else {
                 hi = x - ln2Hi;
                 lo = ln2Lo;
-                k = 1i64;
+                k = 1;
             }
         } else {
             k = (invln2 * x + (negative ? -0.5 : 0.5)) as int64;
@@ -68,11 +60,10 @@ pub func Expm1(x: float64) -> float64 {
         }
         xx = hi - lo;
         c = (hi - xx) - lo; // the bits the subtraction above dropped
-    } else if hx < 0x3C900000u64 {
+    } else if hx < 0x3C900000 {
         // Below 2^-54 the quadratic term is under half an ulp of x.
         return x;
     }
-
     // exp(r) - 1 on the reduced r, by the rational form fdlibm uses. The
     // leading r stays outside the polynomial so it keeps all of its bits.
     let hfx = 0.5 * xx;
@@ -80,50 +71,43 @@ pub func Expm1(x: float64) -> float64 {
     let r1 = 1.0 + hxs * (q1 + hxs * (q2 + hxs * (q3 + hxs * (q4 + hxs * q5))));
     let t = 3.0 - r1 * hfx;
     var e = hxs * ((r1 - t) / (6.0 - xx * t));
-
-    if k == 0i64 { return xx - (xx * e - hxs); }
-
+    if k == 0 { return xx - (xx * e - hxs); }
     e = xx * (e - c) - c;
     e -= hxs;
-
     // Undo the reduction. 2^k * (1 + r) - 1 cancels differently in each of
     // these ranges, and each form is the one that does not lose the answer.
-    if k == -1i64 { return 0.5 * (xx - e) - 0.5; }
-    if k == 1i64 {
+    if k == -1 { return 0.5 * (xx - e) - 0.5; }
+    if k == 1 {
         if xx < -0.25 { return -2.0 * (e - (xx + 0.5)); }
         return 1.0 + 2.0 * (xx - e);
     }
-
-    let twopk = FromBits(((1023i64 + k) as uint64) << 52u64);
-
-    if k <= -2i64 || k > 56i64 {
+    let twopk = FromBits(((1023 + k) as uint64) << 52);
+    if k <= -2 || k > 56 {
         // The 1 is lost in the rounding either way, so exp(x) - 1 will do.
         var y = 1.0 - (e - xx);
-        if k == 1024i64 {
+        if k == 1024 {
             y = y * 2.0 * 8.98846567431158e307;
         } else {
             y = y * twopk;
         }
         return y - 1.0;
     }
-
-    if k < 20i64 {
-        let t2 = FromHighWord(0x3FF00000u64 - (0x200000u64 >> (k as uint64))); // 1 - 2^-k
+    if k < 20 {
+        let scaleBit: uint64 = 0x200000;
+        let t2 = FromHighWord(0x3FF00000 - (scaleBit >> (k as uint64))); // 1 - 2^-k
         return (t2 - (e - xx)) * twopk;
     }
-
-    let t2 = FromHighWord(((1023i64 - k) as uint64) << 20u64); // 2^-k
+    let t2 = FromHighWord(((1023 - k) as uint64) << 20); // 2^-k
     var y = xx - (e + t2);
     y += 1.0;
     return y * twopk;
 }
 
-// Widening is exact and the wide answer is correct to within a ulp of the wide
-// type, so the single narrowing at the end is the only rounding a float32
-// caller sees.
-/// Provides the public `Expm1` operation.
+/// Computes `Exp(x) - 1` at `float32` precision without losing precision near zero.
 ///
-/// https://rux-lang.dev/docs/api/math/expm1
+/// @param x Exponent.
+/// @returns `e` raised to `x`, minus one.
+/// @see https://rux-lang.dev/docs/api/math/expm1
 pub func Expm1(x: float32) -> float32 {
     return Expm1(x as float64) as float32;
 }
