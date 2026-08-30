@@ -27,13 +27,12 @@ func OneLineBlockDocumented() -> int {
 }
 
 /**
- * Returns a value documented with an aligned multiline block.
- *
- * # Failures
- * This function cannot fail.
- *
- * @returns The stable value `17`.
- */
+    Returns a value documented with an indented multiline block.
+
+    # Failures
+    This function cannot fail.
+    @returns The stable value `17`.
+*/
 func MultilineBlockDocumented() -> int {
     return 17;
 }
@@ -45,10 +44,10 @@ func MixedDocumented() -> int {
 }
 
 /**
- * Undecorated block documentation keeps Markdown indentation.
- *
- *   code remains indented
- */
+    Undecorated block documentation keeps Markdown indentation.
+
+      code remains indented
+*/
 func UndecoratedBlockDocumented() -> int {
     return 23;
 }

@@ -11,7 +11,8 @@ struct FormatResult {
     bool changed = false;
 };
 
-/// Normalize line endings and documentation-comment spelling using lossless lexer ranges. Ordinary comments, literals,
-/// Markdown structure, and unterminated blocks retain their authored content.
+/// Normalize line endings and documentation-comment spelling using lossless lexer ranges. Multiline documentation
+/// blocks use four-space content indentation without a star margin. Ordinary comments, literals, Markdown structure,
+/// and unterminated blocks retain their authored content.
 [[nodiscard]] FormatResult Format(std::string_view source);
 } // namespace Rux::Formatting

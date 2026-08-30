@@ -38,15 +38,14 @@ Use one documentation form consistently within a short API description. Adjacent
 func Parse(input: String) -> Value;
 ```
 
-Block documentation is equivalent. `rux fmt` uses an aligned star margin for multiline blocks:
+Block documentation is equivalent. `rux fmt` indents multiline content by four spaces without a star margin:
 
 ```rux
 /**
- * Parses one value.
- *
- * @param input Source text.
- * @returns The parsed value.
- */
+    Parses one value.
+    @param input Source text.
+    @returns The parsed value.
+*/
 func Parse(input: String) -> Value;
 ```
 
@@ -69,7 +68,7 @@ A trailing `///` after code never attaches forward. Detached, interrupted, trail
 
 ## Structured Tags
 
-Tags form a terminal block after prose. They are case-sensitive and recognized only outside fenced code. Put one empty documentation line between prose and the first tag; `rux fmt` inserts it when needed. Preserve the authored tag order.
+Tags form a terminal block after prose. They are case-sensitive and recognized only outside fenced code. An authored empty documentation line before the first tag is preserved, but `rux fmt` does not insert one. Preserve the authored tag order.
 
 | Tag                            | Valid use                                                              |
 | ------------------------------ | ---------------------------------------------------------------------- |
@@ -85,7 +84,7 @@ A continuation line begins with two spaces after the documentation marker. Empty
 
 ## Tool Behavior
 
-`rux fmt` edits only lexer-recognized documentation ranges. It canonicalizes `/// text`, empty `///`, one-line `/** text */`, multiline star margins, tag separators, and tag spacing. Ordinary comments, decorative banners, Markdown-sensitive whitespace, literals containing delimiters, and unterminated blocks retain their content. Formatting the result again must produce the same bytes.
+`rux fmt` edits only lexer-recognized documentation ranges. It canonicalizes `/// text`, empty `///`, one-line `/** text */`, four-space multiline block indentation, and tag spacing. Ordinary comments, decorative banners, Markdown-sensitive whitespace, tag separators, literals containing delimiters, and unterminated blocks retain their content. Formatting the result again must produce the same bytes.
 
 `rux lint` reports malformed structured tags, invalid tag context, detached documentation, and missing documentation on public declarations. Missing-documentation help shows both `///` and `/** ... */`. Documentation does not need to carry an API-page URL, and `docs.api-url` is not a lint rule.
 

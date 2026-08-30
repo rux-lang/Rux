@@ -106,7 +106,6 @@ std::vector<std::string> SplitLines(const std::string_view markdown) {
 void CanonicalizeTagBlock(std::vector<std::string> &lines) {
     bool fenced = false;
     char openMarker = '\0';
-    std::size_t firstTag = lines.size();
     for (std::size_t index = 0; index < lines.size(); ++index) {
         char marker = '\0';
         if (FenceMarker(lines[index], marker)) {
@@ -120,14 +119,8 @@ void CanonicalizeTagBlock(std::vector<std::string> &lines) {
             continue;
         }
         if (!fenced && lines[index].starts_with('@')) {
-            if (firstTag == lines.size()) {
-                firstTag = index;
-            }
             lines[index] = CanonicalTagLine(lines[index]);
         }
-    }
-    if (firstTag > 0 && firstTag < lines.size() && !lines[firstTag - 1].empty()) {
-        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(firstTag), "");
     }
 }
 
@@ -148,12 +141,15 @@ std::string BlockDocumentation(const CommentTrivia &comment) {
     std::string result = "/**";
     for (const std::string &line : lines) {
         result += '\n';
-        result += indent;
-        result += line.empty() ? " *" : " * " + line;
+        if (!line.empty()) {
+            result += indent;
+            result += "    ";
+            result += line;
+        }
     }
     result += '\n';
     result += indent;
-    result += " */";
+    result += "*/";
     return result;
 }
 
