@@ -4,9 +4,9 @@ struct Log2Pair {
     lo: float64;
 }
 
-// log2(ax) for a finite positive ax, to about twice double precision. The interval is folded around either
-// 1 or 1.5, whichever leaves the ratio (ax - bp)/(ax + bp) smaller, and the series in that ratio converges
-// fast enough that six terms carry it. Every TruncLow makes some product exact.
+// log2(ax) for a finite positive ax, to about twice double precision. The interval is folded around either 1 or 1.5,
+// whichever leaves the ratio (ax - bp)/(ax + bp) smaller, and the series in that ratio converges fast enough that six
+// terms carry it. Every TruncLow makes some product exact.
 func PowLog2(ax: float64) -> Log2Pair {
     let dpH1 = 5.84962487220764160156e-01; // log2(1.5), high part
     let dpL1 = 1.35003920212974897128e-08; // log2(1.5), low part
@@ -77,8 +77,8 @@ func PowLog2(ax: float64) -> Log2Pair {
     return out;
 }
 
-// log2(ax) when |1 - ax| is under 2^-20, where four terms of the series for log(1 + t) already reach full
-// precision and the reduction above would only lose bits to cancellation.
+// log2(ax) when |1 - ax| is under 2^-20, where four terms of the series for log(1 + t) already reach full precision and
+// the reduction above would only lose bits to cancellation.
 func PowLog2NearOne(ax: float64) -> Log2Pair {
     let ivln2 = 1.44269504088896338700e+00;
     let ivln2H = 1.44269502162933349609e+00;
@@ -93,9 +93,9 @@ func PowLog2NearOne(ax: float64) -> Log2Pair {
     return out;
 }
 
-// 2^(pHigh + pLow), for a sum the caller has already checked to be inside the exponent range. z is that sum,
-// rounded. The integer part is lifted out of the exponent field directly and the fraction goes through
-// the polynomial the exponential uses.
+// 2^(pHigh + pLow), for a sum the caller has already checked to be inside the exponent range. z is that sum, rounded.
+// The integer part is lifted out of the exponent field directly and the fraction goes through the polynomial the
+// exponential uses.
 func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     let p1 = 1.66666666666666019037e-01;
     let p2 = -2.77777777770155933842e-03;
@@ -131,27 +131,28 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     let poly = e - e2 * (p1 + e2 * (p2 + e2 * (p3 + e2 * (p4 + e2 * p5))));
     let r = (e * poly) / (poly - 2.0) - (w + e * w);
     e = 1.0 - (r - e);
-    // Put the integer part back into the exponent field, or fall back on a
-    // scaling when the answer is subnormal and the field has no room for it.
+    // Put the integer part back into the exponent field, or fall back on a scaling when the answer is subnormal and the
+    // field has no room for it.
     let jj = (((FloatBits(e) >> 32) & 0xFFFFFFFF) as int64) + (nn << 20);
     if (jj >> 20) <= 0 { return Scalb(e, nn); }
     return WithHighWord(e, jj as uint64);
 }
 
-// The shape of the problem is that y * log2(x) has to be known to more than double precision before it is
-// exponentiated: an error of one ulp in the product becomes an error of 2^1024 ulps in the answer when
-// y is large. So log2(|x|) is built as an unevaluated sum, y is split the same way, and the product is
-// accumulated in that form before 2^z is taken. The special cases come first and there are many, because
-// x^y has an answer for almost every pair - including several where one argument is a NaN.
-/// Raises `x` to the power `y`.
-///
-/// The error is at most one ulp. A negative base requires an integer exponent; otherwise the result is a NaN.
-/// `PowInteger` is both faster and able to preserve exact results when the exponent is an integer.
-///
-/// @param x Base.
-/// @param y Exponent.
-/// @returns `x` raised to `y`.
-/// @see https://rux-lang.dev/docs/api/math/pow
+/*
+    The shape of the problem is that y * log2(x) has to be known to more than double precision before it is
+    exponentiated: an error of one ulp in the product becomes an error of 2^1024 ulps in the answer when y is large. So
+    log2(|x|) is built as an unevaluated sum, y is split the same way, and the product is accumulated in that form
+    before 2^z is taken. The special cases come first and there are many, because x^y has an answer for almost every
+    pair - including several where one argument is a NaN.
+*/
+/**
+    Raises `x` to the power `y`. The error is at most one ulp. A negative base requires an integer exponent; otherwise
+    the result is a NaN. `PowInteger` is both faster and able to preserve exact results when the exponent is an integer.
+    @param x Base.
+    @param y Exponent.
+    @returns `x` raised to `y`.
+    @see https://rux-lang.dev/docs/api/math/pow
+*/
 pub func Pow(x: float64, y: float64) -> float64 {
     let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
     let huge = 1.0e300;
@@ -175,14 +176,13 @@ pub func Pow(x: float64, y: float64) -> float64 {
         iy > 0x7FF00000 || (iy == 0x7FF00000 && ly != 0) {
         return (x + 0.0) + (y + 0.0);
     }
-    // Whether y is an integer, and whether it is odd, decides the sign of the
-    // result and whether it exists at all when x is negative.
-    //   0 = not an integer, 1 = an odd integer, 2 = an even integer
+    // Whether y is an integer, and whether it is odd, decides the sign of the result and whether it exists at all when
+    // x is negative. 0 = not an integer, 1 = an odd integer, 2 = an even integer
     var yisint: int64 = 0;
     if xNegative {
         if iy >= 0x43400000 {
-            // |y| >= 2^53: every significand bit is above the binary point,
-            // and the lowest of them is a multiple of two.
+            // |y| >= 2^53: every significand bit is above the binary point, and the lowest of them is a multiple of
+            // two.
             yisint = 2;
         } else if iy >= 0x3FF00000 {
             let k = ((iy >> 20) as int64) - 0x3FF;
@@ -257,8 +257,7 @@ pub func Pow(x: float64, y: float64) -> float64 {
     if xNegative && yisint == 0 {
         return float64::NaN;
     }
-    // The sign of the result: negative only for a negative x raised to an odd
-    // integer power.
+    // The sign of the result: negative only for a negative x raised to an odd integer power.
     var s = 1.0;
     if xNegative && yisint == 1 {
         s = -1.0;
@@ -313,12 +312,13 @@ pub func Pow(x: float64, y: float64) -> float64 {
     return s * Pow2(pHigh, pLow, z);
 }
 
-/// Raises `x` to the power `y` at `float32` precision.
-///
-/// @param x Base.
-/// @param y Exponent.
-/// @returns `x` raised to `y`.
-/// @see https://rux-lang.dev/docs/api/math/pow
+/**
+    Raises `x` to the power `y` at `float32` precision.
+    @param x Base.
+    @param y Exponent.
+    @returns `x` raised to `y`.
+    @see https://rux-lang.dev/docs/api/math/pow
+*/
 pub func Pow(x: float32, y: float32) -> float32 {
     return Pow(x as float64, y as float64) as float32;
 }

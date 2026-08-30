@@ -1,20 +1,21 @@
-/// Computes the cotangent of `x`, where `x` is in radians.
-///
-/// The reciprocal is computed directly instead of as `1 / Tan(x)`, avoiding a second rounding near a pole. A signed
-/// zero maps to an infinity with the same sign; an infinite input returns a NaN, and a NaN remains a NaN.
-///
-/// @param x Angle in radians.
-/// @returns The cotangent of `x`, or a NaN when `x` is not finite.
-/// @see https://rux-lang.dev/docs/api/math/cotan
+/**
+    Computes the cotangent of `x`, where `x` is in radians. The reciprocal is computed directly instead of as
+    `1 / Tan(x)`, avoiding a second rounding near a pole. A signed zero maps to an infinity with the same sign; an
+    infinite input returns a NaN, and a NaN remains a NaN.
+    @param x Angle in radians.
+    @returns The cotangent of `x`, or a NaN when `x` is not finite.
+    @see https://rux-lang.dev/docs/api/math/cotan
+*/
 pub func Cotan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if IsNan(x) { return x; }
     // The cotangent has no limit at infinity.
     if IsInfinite(x) { return float64::NaN; }
-    // cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under
-    // half an ulp of the first. The reciprocal also carries the pole at
-    // zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf.
-    // Stopping here is what keeps NegRecip's argument away from overflow.
+    /*
+        cot(x) = 1/x - x/3 - ..., and below 2^-28 the second term is under half an ulp of the first. The reciprocal also
+        carries the pole at zero with the right sign: Cotan(0.0) is +Inf, Cotan(-0.0) is -Inf. Stopping here is what
+        keeps NegRecip's argument away from overflow.
+    */
     if x < 3.725290298461914e-9 && x > -3.725290298461914e-9 { return 1.0 / x; }
     let negative = x < 0.0;
     let ax = negative ? -x : x;
@@ -24,22 +25,21 @@ pub func Cotan(x: float64) -> float64 {
         result = -KernelTan(ax, 0.0, true);
     } else {
         let red = RemPio2(ax);
-        // An even quadrant leaves cot(r), which is 1/tan(r); an odd one
-        // lands on cot(r + Pi/2), which is -tan(r). The kernel returns the
-        // negative of each, so one negation covers both.
+        // An even quadrant leaves cot(r), which is 1/tan(r); an odd one lands on cot(r + Pi/2), which is -tan(r). The
+        // kernel returns the negative of each, so one negation covers both.
         result = -KernelTan(red.hi, red.lo, (red.quadrant & 1) == 0);
     }
     // The cotangent is odd.
     return negative ? -result : result;
 }
 
-/// Computes the cotangent of `x` at `float32` precision, where `x` is in radians.
-///
-/// The wide computation carries more precision than the result requires before being rounded to `float32`.
-///
-/// @param x Angle in radians.
-/// @returns The cotangent of `x`, or a NaN when `x` is not finite.
-/// @see https://rux-lang.dev/docs/api/math/cotan
+/**
+    Computes the cotangent of `x` at `float32` precision, where `x` is in radians. The wide computation carries more
+    precision than the result requires before being rounded to `float32`.
+    @param x Angle in radians.
+    @returns The cotangent of `x`, or a NaN when `x` is not finite.
+    @see https://rux-lang.dev/docs/api/math/cotan
+*/
 pub func Cotan(x: float32) -> float32 {
     return Cotan(x as float64) as float32;
 }

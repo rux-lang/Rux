@@ -1,9 +1,10 @@
-// exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose
-// leading part is hi. Keeping hi and lo apart rather than passing their sum
-// is what carries the last bits: the sum has already rounded, and near the
-// ends of the reduction that rounding is the whole error.
-//
-// Exp2 reaches the same reduced form by a different route and shares this.
+/*
+    exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose leading part is hi. Keeping hi and lo apart
+    rather than passing their sum is what carries the last bits: the sum has already rounded, and near the ends of the
+    reduction that rounding is the whole error.
+
+    Exp2 reaches the same reduced form by a different route and shares this.
+*/
 func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
     let p1 = 1.66666666666666019037e-01;
     let p2 = -2.77777777770155933842e-03;
@@ -12,8 +13,8 @@ func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
     let p5 = 4.13813679705723846039e-08;
     let x = hi - lo;
     let t = x * x;
-    // exp(x) = 1 + 2x / (c - x*c/(2 - c)) rearranged, with c the remainder of
-    // x against the even polynomial. The division keeps the leading 1 exact.
+    // exp(x) = 1 + 2x / (c - x*c/(2 - c)) rearranged, with c the remainder of x against the even polynomial. The
+    // division keeps the leading 1 exact.
     let c = x - t * (p1 + t * (p2 + t * (p3 + t * (p4 + t * p5))));
     let y = 1.0 - ((lo - (x * c) / (2.0 - c)) - hi);
     if k >= -1021 {
@@ -21,19 +22,18 @@ func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
         if k == 1024 { return y * 2.0 * 8.98846567431158e307; }
         return y * FromBits(((1023 + k) as uint64) << 52);
     }
-    // The answer is subnormal. Scaling in two steps leaves the single
-    // rounding at the end, where it belongs.
+    // The answer is subnormal. Scaling in two steps leaves the single rounding at the end, where it belongs.
     return y * FromBits(((2023 + k) as uint64) << 52) * 9.332636185032189e-302;
 }
 
-/// Computes `e` raised to `x`.
-///
-/// The error is at most one ulp. Positive infinity returns positive infinity, negative infinity returns `+0.0`,
-/// and a NaN remains a NaN. Finite results overflow to infinity or underflow to zero when required by `float64`.
-///
-/// @param x Exponent.
-/// @returns `e` raised to `x`.
-/// @see https://rux-lang.dev/docs/api/math/exp
+/**
+    Computes `e` raised to `x`. The error is at most one ulp. Positive infinity returns positive infinity, negative
+    infinity returns `+0.0`, and a NaN remains a NaN. Finite results overflow to infinity or underflow to zero when
+    required by `float64`.
+    @param x Exponent.
+    @returns `e` raised to `x`.
+    @see https://rux-lang.dev/docs/api/math/exp
+*/
 pub func Exp(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -87,11 +87,12 @@ pub func Exp(x: float64) -> float64 {
     return ExpScaled(hi, lo, k);
 }
 
-/// Computes `e` raised to `x` at `float32` precision.
-///
-/// @param x Exponent.
-/// @returns `e` raised to `x`.
-/// @see https://rux-lang.dev/docs/api/math/exp
+/**
+    Computes `e` raised to `x` at `float32` precision.
+    @param x Exponent.
+    @returns `e` raised to `x`.
+    @see https://rux-lang.dev/docs/api/math/exp
+*/
 pub func Exp(x: float32) -> float32 {
     return Exp(x as float64) as float32;
 }

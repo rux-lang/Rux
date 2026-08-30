@@ -1,11 +1,11 @@
-/// Computes the cosine of `x`, where `x` is in radians.
-///
-/// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less
-/// accurate than a small one. Either signed zero returns `1.0`; an infinity returns a NaN, and a NaN remains a NaN.
-///
-/// @param x Angle in radians.
-/// @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
-/// @see https://rux-lang.dev/docs/api/math/cos
+/**
+    Computes the cosine of `x`, where `x` is in radians. The error is at most one ulp for every finite argument. Exact
+    argument reduction keeps a large angle no less accurate than a small one. Either signed zero returns `1.0`; an
+    infinity returns a NaN, and a NaN remains a NaN.
+    @param x Angle in radians.
+    @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+    @see https://rux-lang.dev/docs/api/math/cos
+*/
 pub func Cos(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if IsNan(x) { return x; }
@@ -30,13 +30,13 @@ pub func Cos(x: float64) -> float64 {
     return KernelSin(red.hi, red.lo);
 }
 
-/// Computes the cosine of `x` at `float32` precision, where `x` is in radians.
-///
-/// The wide computation carries more precision than the result requires before being rounded to `float32`.
-///
-/// @param x Angle in radians.
-/// @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
-/// @see https://rux-lang.dev/docs/api/math/cos
+/**
+    Computes the cosine of `x` at `float32` precision, where `x` is in radians. The wide computation carries more
+    precision than the result requires before being rounded to `float32`.
+    @param x Angle in radians.
+    @returns The cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
+    @see https://rux-lang.dev/docs/api/math/cos
+*/
 pub func Cos(x: float32) -> float32 {
     return Cos(x as float64) as float32;
 }

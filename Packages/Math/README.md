@@ -77,9 +77,7 @@ let failed = ToIntegerChecked<int32>(42.5, 0, RoundingMode::ToNearestTiesEven, @
 | Scaling           | `ScaleByPowerOfTwo`                                                                              |
 | Error measurement | `UlpDistance`                                                                                    |
 
-`ExponentOf` reports `NoExponent` for zero and `IndeterminateExponent` for a NaN or infinity. `UlpDistance` counts
-representable steps rather than subtracting values, making it useful for numerical error checks across the full
-floating-point range.
+`ExponentOf` reports `NoExponent` for zero and `IndeterminateExponent` for a NaN or infinity. `UlpDistance` counts representable steps rather than subtracting values, making it useful for numerical error checks across the full floating-point range.
 
 ### Generic integer operations
 
@@ -90,27 +88,20 @@ The integer APIs are generic over signed and unsigned integer widths:
 - `GcdChecked<T>` and `LcmChecked<T>` implement number-theory operations.
 - `PowChecked<T>` raises an integer to a non-negative integer power.
 
-Checked operations follow the same convention as checked arithmetic in `Rux/Core`: they return `true` when the
-mathematical result is not representable. Their raw output pointers must be non-null, correctly aligned, and writable
-for one value for the duration of the call.
+Checked operations follow the same convention as checked arithmetic in `Rux/Core`: they return `true` when the mathematical result is not representable. Their raw output pointers must be non-null, correctly aligned, and writable for one value for the duration of the call.
 
 ## Numerical behavior
 
-- **IEEE 754 special values are part of each contract.** Signed zeros, infinities, NaNs, subnormals, and domain errors
-  are handled deliberately rather than left to host-library behavior.
-- **Accuracy is documented per function.** The primary trigonometric, exponential, logarithmic, and root operations
-  target an error of at most one ulp; inverse hyperbolic functions document a two-ulp bound.
-- **Large-angle reduction retains precision.** Trigonometric functions reduce large finite inputs without first
-  rounding them to a low-precision multiple of `Pi / 2`.
+- **IEEE 754 special values are part of each contract.** Signed zeros, infinities, NaNs, subnormals, and domain errors are handled deliberately rather than left to host-library behavior.
+- **Accuracy is documented per function.** The primary trigonometric, exponential, logarithmic, and root operations target an error of at most one ulp; inverse hyperbolic functions document a two-ulp bound.
+- **Large-angle reduction retains precision.** Trigonometric functions reduce large finite inputs without first rounding them to a low-precision multiple of `Pi / 2`.
 - **No allocation or hidden global state.** Every operation works on ordinary values and caller-provided outputs.
 
 The bit-level implementation currently supports x86-64 and AArch64 targets.
 
 ## Value and ownership model
 
-The package owns no storage. `FloatClass` and `RoundingMode` are structural `Copy` values, and multi-result operations
-such as `SinCos` return tuples. Ordinary inputs are passed by value. Raw pointers appear only in checked operations
-and decomposition helpers that write an additional result supplied by the caller.
+The package owns no storage. `FloatClass` and `RoundingMode` are structural `Copy` values, and multi-result operations such as `SinCos` return tuples. Ordinary inputs are passed by value. Raw pointers appear only in checked operations and decomposition helpers that write an additional result supplied by the caller.
 
 ## Documentation
 

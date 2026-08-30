@@ -1,10 +1,10 @@
-/// Computes the hyperbolic cotangent of `x`.
-///
-/// A signed zero maps to an infinity with the same sign, infinities map to `-1` or `1`, and a NaN remains a NaN.
-///
-/// @param x Hyperbolic angle.
-/// @returns The hyperbolic cotangent of `x`.
-/// @see https://rux-lang.dev/docs/api/math/cotanh
+/**
+    Computes the hyperbolic cotangent of `x`. A signed zero maps to an infinity with the same sign, infinities map to
+    `-1` or `1`, and a NaN remains a NaN.
+    @param x Hyperbolic angle.
+    @returns The hyperbolic cotangent of `x`.
+    @see https://rux-lang.dev/docs/api/math/cotanh
+*/
 pub func Cotanh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     let negative = SignBit(x);
@@ -17,11 +17,12 @@ pub func Cotanh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-/// Computes the hyperbolic cotangent of `x` at `float32` precision.
-///
-/// @param x Hyperbolic angle.
-/// @returns The hyperbolic cotangent of `x`.
-/// @see https://rux-lang.dev/docs/api/math/cotanh
+/**
+    Computes the hyperbolic cotangent of `x` at `float32` precision.
+    @param x Hyperbolic angle.
+    @returns The hyperbolic cotangent of `x`.
+    @see https://rux-lang.dev/docs/api/math/cotanh
+*/
 pub func Cotanh(x: float32) -> float32 {
     return Cotanh(x as float64) as float32;
 }

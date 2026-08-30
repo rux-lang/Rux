@@ -1,21 +1,22 @@
-/// Rounds `x` toward positive infinity to an integral value.
-///
-/// A negative value between zero and negative one becomes `-0.0`. A NaN or infinity passes through unchanged.
-///
-/// @param x Value to round upward.
-/// @returns The smallest integral value greater than or equal to `x`.
-/// @see https://rux-lang.dev/docs/api/math/ceil
+/**
+    Rounds `x` toward positive infinity to an integral value. A negative value between zero and negative one becomes
+    `-0.0`. A NaN or infinity passes through unchanged.
+    @param x Value to round upward.
+    @returns The smallest integral value greater than or equal to `x`.
+    @see https://rux-lang.dev/docs/api/math/ceil
+*/
 pub func Ceil(x: float64) -> float64 {
     let t = Trunc(x);
     if x > 0.0 && t != x { return t + 1.0; }
     return t;
 }
 
-/// Rounds `x` toward positive infinity at `float32` precision.
-///
-/// @param x Value to round upward.
-/// @returns The smallest integral value greater than or equal to `x`.
-/// @see https://rux-lang.dev/docs/api/math/ceil
+/**
+    Rounds `x` toward positive infinity at `float32` precision.
+    @param x Value to round upward.
+    @returns The smallest integral value greater than or equal to `x`.
+    @see https://rux-lang.dev/docs/api/math/ceil
+*/
 pub func Ceil(x: float32) -> float32 {
     return Ceil(x as float64) as float32;
 }

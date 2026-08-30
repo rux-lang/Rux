@@ -1,23 +1,22 @@
-/// Computes the absolute value of `x`.
-///
-/// This clears the sign bit rather than comparing with zero. Either signed zero therefore becomes `+0.0`, either
-/// infinity becomes positive infinity, and a NaN remains a NaN.
-///
-/// @param x Value whose magnitude is returned.
-/// @returns `x` without its sign.
-/// @see https://rux-lang.dev/docs/api/math/abs
+/**
+    Computes the absolute value of `x`. This clears the sign bit rather than comparing with zero. Either signed zero
+    therefore becomes `+0.0`, either infinity becomes positive infinity, and a NaN remains a NaN.
+    @param x Value whose magnitude is returned.
+    @returns `x` without its sign.
+    @see https://rux-lang.dev/docs/api/math/abs
+*/
 pub func Abs(x: float64) -> float64 {
     return FromBits(FloatBits(x) & 0x7FFFFFFFFFFFFFFF);
 }
 
-/// Computes the absolute value of `x` at `float32` precision.
-///
-/// Widening a finite `float32` to `float64` and narrowing its magnitude back is exact. As with the wide overload,
-/// either signed zero becomes `+0.0`, either infinity becomes positive infinity, and a NaN remains a NaN.
-///
-/// @param x Value whose magnitude is returned.
-/// @returns `x` without its sign.
-/// @see https://rux-lang.dev/docs/api/math/abs
+/**
+    Computes the absolute value of `x` at `float32` precision. Widening a finite `float32` to `float64` and narrowing
+    its magnitude back is exact. As with the wide overload, either signed zero becomes `+0.0`, either infinity becomes
+    positive infinity, and a NaN remains a NaN.
+    @param x Value whose magnitude is returned.
+    @returns `x` without its sign.
+    @see https://rux-lang.dev/docs/api/math/abs
+*/
 pub func Abs(x: float32) -> float32 {
     return Abs(x as float64) as float32;
 }

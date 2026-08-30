@@ -1,23 +1,22 @@
-/// Computes the inverse cotangent of `x` in radians.
-///
-/// The result lies in `[0, Pi]`: positive infinity maps to zero, either signed zero maps to `Pi / 2`, and negative
-/// infinity maps to `Pi`. A NaN remains a NaN.
-///
-/// @param x Cotangent value to invert.
-/// @returns The angle in radians whose cotangent is `x`.
-/// @see https://rux-lang.dev/docs/api/math/arccot
+/**
+    Computes the inverse cotangent of `x` in radians. The result lies in `[0, Pi]`: positive infinity maps to zero,
+    either signed zero maps to `Pi / 2`, and negative infinity maps to `Pi`. A NaN remains a NaN.
+    @param x Cotangent value to invert.
+    @returns The angle in radians whose cotangent is `x`.
+    @see https://rux-lang.dev/docs/api/math/arccot
+*/
 pub func ArcCot(x: float64) -> float64 {
     if IsNan(x) { return x; }
     return HalfPi - ArcTan(x);
 }
 
-/// Computes the inverse cotangent of `x` in radians at `float32` precision.
-///
-/// The input widens exactly to `float64`; the wide result is then rounded back to `float32`.
-///
-/// @param x Cotangent value to invert.
-/// @returns The angle in radians whose cotangent is `x`.
-/// @see https://rux-lang.dev/docs/api/math/arccot
+/**
+    Computes the inverse cotangent of `x` in radians at `float32` precision. The input widens exactly to `float64`; the
+    wide result is then rounded back to `float32`.
+    @param x Cotangent value to invert.
+    @returns The angle in radians whose cotangent is `x`.
+    @see https://rux-lang.dev/docs/api/math/arccot
+*/
 pub func ArcCot(x: float32) -> float32 {
     return ArcCot(x as float64) as float32;
 }

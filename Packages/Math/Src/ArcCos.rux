@@ -1,11 +1,10 @@
-/// Computes the inverse cosine of `x` in radians.
-///
-/// The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero maps to `Pi / 2`, and `-1.0` maps to
-/// `Pi`. An input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
-///
-/// @param x Cosine value to invert.
-/// @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
-/// @see https://rux-lang.dev/docs/api/math/arccos
+/**
+    Computes the inverse cosine of `x` in radians. The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero
+    maps to `Pi / 2`, and `-1.0` maps to `Pi`. An input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
+    @param x Cosine value to invert.
+    @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
+    @see https://rux-lang.dev/docs/api/math/arccos
+*/
 pub func ArcCos(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return 0.0; }
@@ -17,13 +16,13 @@ pub func ArcCos(x: float64) -> float64 {
     return Pi - ArcTan(root / -x);
 }
 
-/// Computes the inverse cosine of `x` in radians at `float32` precision.
-///
-/// The input widens exactly to `float64`; the wide result is then rounded back to `float32`.
-///
-/// @param x Cosine value to invert.
-/// @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
-/// @see https://rux-lang.dev/docs/api/math/arccos
+/**
+    Computes the inverse cosine of `x` in radians at `float32` precision. The input widens exactly to `float64`; the
+    wide result is then rounded back to `float32`.
+    @param x Cosine value to invert.
+    @returns The angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain.
+    @see https://rux-lang.dev/docs/api/math/arccos
+*/
 pub func ArcCos(x: float32) -> float32 {
     return ArcCos(x as float64) as float32;
 }

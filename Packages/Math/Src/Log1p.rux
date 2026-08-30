@@ -1,23 +1,21 @@
-// log(1 + x), computed without ever forming that sum.
-//
-// **Accuracy: error at most 1 ulp, and the relative error stays that small as the argument approaches zero.**
-// That last property is the reason this exists at all, and `Log(1.0 + x)` cannot have it at any accuracy: for a
-// small `x` the sum `1 + x` rounds away every bit of `x` below the fifty-third, so the logarithm is handed an
-// argument that has already lost the answer. This is the mirror of `Expm1`, and the two are inverses across the
-// range where both matter.
-//
-// The method is fdlibm's: for a small argument the series in `f/(2+f)` is applied directly to `x`, and for a
-// large one the sum is formed deliberately, its rounding error recovered exactly, and that error folded back in
-// as a correction. The exactness of the recovery is what keeps the boundary between the two paths invisible.
+/*
+    log(1 + x), computed without ever forming that sum.
+    Accuracy: error at most 1 ulp, and the relative error stays that small as the argument approaches zero. That
+    last property is the reason this exists at all, and `Log(1.0 + x)` cannot have it at any accuracy: for a small `x`
+    the sum `1 + x` rounds away every bit of `x` below the fifty-third, so the logarithm is handed an argument that has
+    already lost the answer. This is the mirror of `Expm1`, and the two are inverses across the range where both matter.
+    The method is fdlibm's: for a small argument the series in `f/(2+f)` is applied directly to `x`, and for a large one
+    the sum is formed deliberately, its rounding error recovered exactly, and that error folded back in as a correction.
+    The exactness of the recovery is what keeps the boundary between the two paths invisible.
+*/
 
-/// Computes `Log(1 + x)` without losing precision near zero.
-///
-/// `Log1p(0.0)` is zero with the argument's sign, `Log1p(-1.0)` is negative infinity, and an argument below -1
-/// has no real logarithm and gives a NaN.
-///
-/// @param x Value added to one before taking the logarithm.
-/// @returns The natural logarithm of `1 + x`.
-/// @see https://rux-lang.dev/docs/api/math/log1p
+/**
+    Computes `Log(1 + x)` without losing precision near zero. `Log1p(0.0)` is zero with the argument's sign,
+    `Log1p(-1.0)` is negative infinity, and an argument below -1 has no real logarithm and gives a NaN.
+    @param x Value added to one before taking the logarithm.
+    @returns The natural logarithm of `1 + x`.
+    @see https://rux-lang.dev/docs/api/math/log1p
+*/
 pub func Log1p(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -29,8 +27,8 @@ pub func Log1p(x: float64) -> float64 {
     if magnitude >= 0x7FF0000000000000 { return x + x; }
     if x == -1.0 { return -float64::Infinity; }
     if x < -1.0 { return float64::NaN; }
-    // Below 2^-54 the answer is the argument to every bit the type holds, and returning it keeps the sign of a
-    // zero as well.
+    // Below 2^-54 the answer is the argument to every bit the type holds, and returning it keeps the sign of a zero as
+    // well.
     if magnitude < 0x3C90000000000000 { return x; }
 
     var correction = 0.0;
@@ -46,8 +44,8 @@ pub func Log1p(x: float64) -> float64 {
         let sum = 1.0 + x;
         let red = LogNormalize(sum);
         k = red.k;
-        // The rounding error of `1 + x`, recovered exactly: for a large argument the one was rounded away, and
-        // for a small one the argument was. Either way this is the part the sum dropped.
+        // The rounding error of `1 + x`, recovered exactly: for a large argument the one was rounded away, and for a
+        // small one the argument was. Either way this is the part the sum dropped.
         let dropped = x > 1.0 ? 1.0 - (sum - x) : x - (sum - 1.0);
         correction = dropped / sum;
         reduced = red.m - 1.0;
@@ -60,11 +58,12 @@ pub func Log1p(x: float64) -> float64 {
     return dk * ln2Hi - ((hfsq - (r + (dk * ln2Lo + correction))) - reduced);
 }
 
-/// Computes `Log(1 + x)` at `float32` precision without losing precision near zero.
-///
-/// @param x Value added to one before taking the logarithm.
-/// @returns The natural logarithm of `1 + x`.
-/// @see https://rux-lang.dev/docs/api/math/log1p
+/**
+    Computes `Log(1 + x)` at `float32` precision without losing precision near zero.
+    @param x Value added to one before taking the logarithm.
+    @returns The natural logarithm of `1 + x`.
+    @see https://rux-lang.dev/docs/api/math/log1p
+*/
 pub func Log1p(x: float32) -> float32 {
     return Log1p(x as float64) as float32;
 }

@@ -1,21 +1,22 @@
-/// Rounds `x` toward negative infinity to an integral value.
-///
-/// The sign of zero is preserved. A NaN or infinity passes through unchanged.
-///
-/// @param x Value to round downward.
-/// @returns The largest integral value less than or equal to `x`.
-/// @see https://rux-lang.dev/docs/api/math/floor
+/**
+    Rounds `x` toward negative infinity to an integral value. The sign of zero is preserved. A NaN or infinity passes
+    through unchanged.
+    @param x Value to round downward.
+    @returns The largest integral value less than or equal to `x`.
+    @see https://rux-lang.dev/docs/api/math/floor
+*/
 pub func Floor(x: float64) -> float64 {
     let t = Trunc(x);
     if x < 0.0 && t != x { return t - 1.0; }
     return t;
 }
 
-/// Rounds `x` toward negative infinity at `float32` precision.
-///
-/// @param x Value to round downward.
-/// @returns The largest integral value less than or equal to `x`.
-/// @see https://rux-lang.dev/docs/api/math/floor
+/**
+    Rounds `x` toward negative infinity at `float32` precision.
+    @param x Value to round downward.
+    @returns The largest integral value less than or equal to `x`.
+    @see https://rux-lang.dev/docs/api/math/floor
+*/
 pub func Floor(x: float32) -> float32 {
     return Floor(x as float64) as float32;
 }

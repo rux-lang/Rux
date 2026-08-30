@@ -87,8 +87,8 @@ func TruncLow(x: float64) -> float64 {
 }
 
 // x * 2^k. The power of two is built straight into an exponent field, so multiplication performs the only rounding.
-// Stepping through 2^1023 keeps that true when k would otherwise overflow the field, and stepping through
-// 2^-1022 * 2^53 keeps it true when the answer lands in the subnormals, where a naive scaling would round twice.
+// Stepping through 2^1023 keeps that true when k would otherwise overflow the field, and stepping through 2^-1022 *
+// 2^53 keeps it true when the answer lands in the subnormals, where a naive scaling would round twice.
 func Scalb(x: float64, k: int64) -> float64 {
     let big = 8.98846567431158e307; // 2^1023
     let small = 2.2250738585072014e-308 * 9007199254740992.0; // 2^-969
