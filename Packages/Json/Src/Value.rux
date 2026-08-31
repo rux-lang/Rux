@@ -200,6 +200,13 @@ extend JsonValue {
         return <-held;
     }
 
+    /// Provides the public `Number` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-value/number
+    pub func Number(allocator: Allocator, text: string, error: *var TextError) -> JsonValue {
+        return JsonValue::Number(allocator, Slice<char8> { data: text.data, length: text.length }, error);
+    }
+
     /// A string value.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/text
@@ -208,6 +215,13 @@ extend JsonValue {
         held.kind = JsonKind::Text;
         held.text = String::FromBytes(allocator, value, error);
         return <-held;
+    }
+
+    /// Provides the public `Text` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-value/text
+    pub func Text(allocator: Allocator, value: string, error: *var TextError) -> JsonValue {
+        return JsonValue::Text(allocator, Slice<char8> { data: value.data, length: value.length }, error);
     }
 
     /// An empty array.

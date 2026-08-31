@@ -274,6 +274,13 @@ extend OsString {
             return OsString::FromView(allocator, OsStringView { units: text }, error);
         }
     }
+
+    /// Provides the public `FromText` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/path/os-string/from-text
+    pub func FromText(allocator: Allocator, text: string, error: *var TextError) -> OsString {
+        return OsString::FromText(allocator, Slice<char8> { data: text.data, length: text.length }, error);
+    }
 }
 
 extend OsStringView {

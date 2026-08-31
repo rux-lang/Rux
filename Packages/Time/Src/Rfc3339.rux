@@ -112,6 +112,13 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
     return true;
 }
 
+/// Provides the public `ParseRfc3339` operation for text.
+///
+/// https://rux-lang.dev/docs/api/time/parse-rfc3339
+pub func ParseRfc3339(text: string, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
+    return ParseRfc3339(Slice<char8> { data: text.data, length: text.length }, dateTime, offset);
+}
+
 // Writes `value` as `width` ASCII digits, zero-padded, into the cursor position.
 func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: uint) -> bool {
     if *at + width > into.length { return false; }

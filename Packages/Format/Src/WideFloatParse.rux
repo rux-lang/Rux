@@ -211,6 +211,13 @@ pub func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80
     return Result::Success<Float80, ParseError>(Float80::FromBits(parsed.ValueOr(0u512) as uint128));
 }
 
+/// Provides the public `ParseFloat80` operation for text.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float80
+pub func ParseFloat80(allocator: Allocator, str: string) -> Result<Float80, ParseError> {
+    return ParseFloat80(allocator, Slice<char8> { data: str.data, length: str.length });
+}
+
 /// Reads `str` as a binary128 value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float128
@@ -220,6 +227,13 @@ pub func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float1
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) { return Result::Error<Float128, ParseError>(failure); }
     return Result::Success<Float128, ParseError>(Float128::FromBits(parsed.ValueOr(0u512) as uint128));
+}
+
+/// Provides the public `ParseFloat128` operation for text.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float128
+pub func ParseFloat128(allocator: Allocator, str: string) -> Result<Float128, ParseError> {
+    return ParseFloat128(allocator, Slice<char8> { data: str.data, length: str.length });
 }
 
 /// Reads `str` as a binary256 value.
@@ -233,6 +247,13 @@ pub func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float2
     return Result::Success<Float256, ParseError>(Float256::FromBits(parsed.ValueOr(0u512) as uint256));
 }
 
+/// Provides the public `ParseFloat256` operation for text.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float256
+pub func ParseFloat256(allocator: Allocator, str: string) -> Result<Float256, ParseError> {
+    return ParseFloat256(allocator, Slice<char8> { data: str.data, length: str.length });
+}
+
 /// Reads `str` as a binary512 value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float512
@@ -242,4 +263,11 @@ pub func ParseFloat512(allocator: Allocator, str: Slice<char8>) -> Result<Float5
     var failure = ParseError::Empty;
     if parsed.TryIntoError(@failure) { return Result::Error<Float512, ParseError>(failure); }
     return Result::Success<Float512, ParseError>(Float512::FromBits(parsed.ValueOr(0u512) as uint512));
+}
+
+/// Provides the public `ParseFloat512` operation for text.
+///
+/// https://rux-lang.dev/docs/api/format/parse-float512
+pub func ParseFloat512(allocator: Allocator, str: string) -> Result<Float512, ParseError> {
+    return ParseFloat512(allocator, Slice<char8> { data: str.data, length: str.length });
 }

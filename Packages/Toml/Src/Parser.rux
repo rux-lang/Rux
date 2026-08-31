@@ -697,3 +697,10 @@ pub func TomlParse(allocator: Allocator, input: Slice<char8>, outcome: *var Toml
     *outcome = parser.Outcome();
     return <-root;
 }
+
+/// Provides the public `TomlParse` operation for text.
+///
+/// https://rux-lang.dev/docs/api/toml/parse
+pub func TomlParse(allocator: Allocator, input: string, outcome: *var TomlParseOutcome) -> TomlValue {
+    return TomlParse(allocator, Slice<char8> { data: input.data, length: input.length }, outcome);
+}

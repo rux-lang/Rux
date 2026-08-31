@@ -138,6 +138,13 @@ extend TomlValue {
         return <-held;
     }
 
+    /// Provides the public `Text` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/value/text
+    pub func Text(allocator: Allocator, value: string, error: *var TextError) -> TomlValue {
+        return TomlValue::Text(allocator, Slice<char8> { data: value.data, length: value.length }, error);
+    }
+
     /// A string value copying an already-built string.
     ///
     /// https://rux-lang.dev/docs/api/toml/value/from-string

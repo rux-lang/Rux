@@ -271,6 +271,16 @@ pub func TomlParseDateTime(text: Slice<char8>, date: *var Date, time: *var TimeO
     return TomlDateTimeShape::Offset;
 }
 
+/// Provides the public `TomlParseDateTime` operation for text.
+///
+/// https://rux-lang.dev/docs/api/toml/parse-date-time
+pub func TomlParseDateTime(text: string,
+                           date: *var Date,
+                           time: *var TimeOfDay,
+                           offset: *var UtcOffset) -> TomlDateTimeShape {
+    return TomlParseDateTime(Slice<char8> { data: text.data, length: text.length }, date, time, offset);
+}
+
 // `YYYY-MM-DD` at `at`, validated by the calendar rather than by digit ranges: the thirty-first of February is
 // four correct digit pairs and not a date.
 func ReadDate(text: Slice<char8>, at: uint, date: *var Date) -> bool {
