@@ -87,3 +87,55 @@ TEST_CASE("an interface-typed field occupies a fat pointer rather than one word"
     CHECK_EQ(layout.fields[2].offset, 24);
     CHECK_EQ(layout.totalSize, 32);
 }
+
+TEST_CASE("a wider string encoding is transcoded rather than widened byte by byte") {
+    // ASCII, a two-byte sequence, a three-byte one, and a supplementary code point that needs a surrogate pair:
+    // 'A', U+00A2, U+20AC, U+1F680.
+    const std::string_view mixed = "A\xC2\xA2\xE2\x82\xAC\xF0\x9F\x9A\x80";
+
+    // UTF-8 is the value itself, and every encoding leaves room for all but the last byte of the terminator that
+    // interning writes.
+    CHECK_EQ(EncodeStringLiteral(mixed, 1), std::string(mixed));
+
+    CHECK_EQ(EncodeStringLiteral(mixed, 2), std::string("\x41\x00\xA2\x00\xAC\x20\x3D\xD8\x80\xDE\x00", 11));
+    CHECK_EQ(EncodeStringLiteral(mixed, 4), std::string("\x41\x00\x00\x00"
+                                                        "\xA2\x00\x00\x00"
+                                                        "\xAC\x20\x00\x00"
+                                                        "\x80\xF6\x01\x00"
+                                                        "\x00\x00\x00",
+                                                        19));
+
+    // An unrecognized element size is the byte encoding, as it always was.
+    CHECK_EQ(EncodeStringLiteral(mixed, 3), std::string(mixed));
+}
+
+TEST_CASE("a string is the same sixteen-byte view a slice is") {
+    for (const TypeRef::Kind kind : {TypeRef::Kind::String8, TypeRef::Kind::String16, TypeRef::Kind::String32}) {
+        const TypeRef text = TypeRef::MakePrimitive(kind);
+        CAPTURE(text.ToString());
+        CHECK_EQ(SizeOf(text), 16);
+        CHECK_EQ(AlignOf(text), 8);
+        CHECK_EQ(RuntimeSizeOf(text, {}, interfaceNames), 16);
+
+        const TypeRef pointer = TypeRef::MakePointer(text);
+        CHECK_EQ(FieldOffsetOf(pointer, "data", {}, interfaceNames), 0);
+        CHECK_EQ(FieldOffsetOf(pointer, "length", {}, interfaceNames), 8);
+    }
+}
+
+TEST_CASE("a string field is laid out like the slice it shares a shape with") {
+    LirStructDecl header;
+    header.name = "Header";
+    header.fields.push_back({"tag", TypeRef::MakeInt32()});
+    header.fields.push_back({"text", TypeRef::MakeString8()});
+    header.fields.push_back({"trailing", TypeRef::MakeInt32()});
+
+    const StructLayout layout = ComputeStructLayout(header, {}, interfaceNames);
+    REQUIRE_EQ(layout.fields.size(), 3);
+    CHECK_EQ(layout.fields[0].offset, 0);
+    CHECK_EQ(layout.fields[1].offset, 8);
+    CHECK_EQ(layout.fields[1].size, 16);
+    CHECK_EQ(layout.fields[2].offset, 24);
+    CHECK_EQ(layout.alignment, 8);
+    CHECK_EQ(layout.totalSize, 32);
+}

@@ -241,6 +241,18 @@ TEST_CASE("A string prefix needs its quote to be a prefix at all") {
     CHECK(result.tokens[5].IsEof());
 }
 
+TEST_CASE("A string literal carries only well-formed UTF-8") {
+    // Every later stage transcodes a literal's value, and this is what lets a transcoder be total: the whole source
+    // is validated, and the only other way bytes enter a literal is an escape, which encodes a scalar value.
+    const auto malformed = Lex("let a = \"caf\xE9\";");
+    REQUIRE_EQ(malformed.diagnostics.size(), 1);
+    CHECK_EQ(malformed.diagnostics[0].message, "source contains invalid UTF-8 byte 0xE9");
+
+    // The same character spelled in UTF-8, and as an escape, are both fine.
+    CHECK(Lex("let a = \"caf\xC3\xA9\";").diagnostics.empty());
+    CHECK(Lex(R"(let a = "caf\u{E9}";)").diagnostics.empty());
+}
+
 TEST_CASE("Comments preserve spacing-sensitive token separation") {
     const auto result = Lex("a?; a /* gap */ ?; [] [/* gap */] []= [/* gap */] =");
     REQUIRE(result.diagnostics.empty());

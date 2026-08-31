@@ -1,6 +1,7 @@
 #include "CodeGen/Layout.h"
 
 #include "Semantic/PrimitiveCatalog.h"
+#include "Unicode/Utf.h"
 
 #include <charconv>
 
@@ -25,12 +26,22 @@ std::string EncodeStringLiteral(const std::string_view value, int elementSize) {
         elementSize = 1;
     }
 
+    // A literal's value is UTF-8, so the byte-wide encoding is the value itself and a wider one is a real
+    // transcoding. Widening each byte on its own would spell a different text: every code point above U+007F would
+    // become one bogus code unit per byte of its UTF-8 sequence.
     std::string encoded;
-    encoded.reserve(value.size() * static_cast<std::size_t>(elementSize) + static_cast<std::size_t>(elementSize - 1));
-    for (const unsigned char byte : value) {
-        encoded.push_back(static_cast<char>(byte));
-        encoded.append(static_cast<std::size_t>(elementSize - 1), '\0');
+    if (elementSize == 1) {
+        encoded = std::string(value);
     }
+    else {
+        const auto transcoded = elementSize == 2 ? TranscodeUtf8ToUtf16LE(value) : TranscodeUtf8ToUtf32LE(value);
+        // The lexer rejects a source file that is not valid UTF-8, and an escape only ever produces well-formed
+        // UTF-8, so there is nothing here to transcode from; the empty answer keeps a malformed value from being
+        // emitted as text that would read as valid.
+        encoded = transcoded.value_or(std::string());
+    }
+    // Interning writes the last byte of the terminator, so what is appended here is the rest of it: the terminator
+    // is one whole code unit however wide the encoding is.
     encoded.append(static_cast<std::size_t>(elementSize - 1), '\0');
     return encoded;
 }
@@ -309,6 +320,11 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
             return 0;
         }
         return TupleElementOffset(pointee, index);
+    }
+
+    // A string is the same {data, length} pair a slice is, under a primitive kind rather than a declared name.
+    if (pointee.IsString()) {
+        return fieldName == "length" ? 8 : 0;
     }
 
     if (pointee.kind != TypeRef::Kind::Named) {

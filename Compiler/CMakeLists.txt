@@ -220,7 +220,7 @@ rux_add_component(RuxLowering
     Lowering/HirToLir/HirToLirExpressions.cpp
     Lowering/HirToLir/HirToLirStatements.cpp)
 target_link_libraries(RuxLowering PUBLIC
-    RuxSyntax RuxSemantic RuxHir RuxLir)
+    RuxSyntax RuxSemantic RuxHir RuxLir RuxUnicode)
 
 rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
@@ -231,7 +231,7 @@ rux_add_component(RuxCodeGenCommon
     CodeGen/Layout.cpp
     CodeGen/RcuModuleBuilder.cpp
     CodeGen/RuntimeFailure.cpp)
-target_link_libraries(RuxCodeGenCommon PUBLIC RuxNumeric RuxLir RuxObjectRcu RuxDiagnostics)
+target_link_libraries(RuxCodeGenCommon PUBLIC RuxNumeric RuxLir RuxObjectRcu RuxDiagnostics RuxUnicode)
 
 rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/Assembler.cpp

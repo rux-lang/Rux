@@ -468,7 +468,7 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
 
 LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     const bool simpleAssignment = e.op == TokenKind::Assign || e.op == TokenKind::MoveArrow;
-    if (simpleAssignment && (IsInterfaceType(e.type) || IsSliceType(e.type))) {
+    if (simpleAssignment && (IsInterfaceType(e.type) || IsViewType(e.type))) {
         const LirReg ptr = LowerLValue(*e.target);
         StoreExprIntoSlot(*e.value, ptr, e.type);
         return ptr;
@@ -553,7 +553,7 @@ LirReg HirToLirContext::LowerArgument(const HirExpr &argument) {
     // address too: handing over the 16-byte value put `data` and `length` in two registers on System V and AAPCS64,
     // and the callee read `data` as the pointer to the pair. Win64 passes such a value by reference to a copy, which
     // is the one ABI where the two happened to agree.
-    if (IsSliceType(argument.type)) {
+    if (IsViewType(argument.type)) {
         return LowerLValue(argument);
     }
     // An array or tuple parameter is a value, like a struct parameter, and the back ends place a value by its own
@@ -682,7 +682,7 @@ LirReg HirToLirContext::LowerSliceDataPtr(const HirExpr &object, const TypeRef &
     if (IsArrayType(object.type)) {
         return LowerLValue(object);
     }
-    if (!IsSliceType(object.type)) {
+    if (!IsViewType(object.type)) {
         return LowerExpr(object);
     }
     LirReg slicePtr = LowerLValue(object);
@@ -773,7 +773,7 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
             return LowerLValue(*constIt->second.value);
         }
         if (const auto constIt = globalConsts.find(e->name); constIt != globalConsts.end()) {
-            if (IsSliceType(constIt->second->type) || IsArrayType(constIt->second->type)) {
+            if (IsViewType(constIt->second->type) || IsArrayType(constIt->second->type)) {
                 return EmitGlobalAddr(e->name, constIt->second->type);
             }
             return LowerLValue(*constIt->second->value);
