@@ -16,15 +16,15 @@ pub struct Source {
     /// The one-based column of the reading expression.
     pub column: uint;
     /// The source file as the build named it, which is the spelling a diagnostic uses.
-    pub file: Slice<char8>;
+    pub file: string;
     /// The file's last path component, with its extension.
-    pub fileName: Slice<char8>;
+    pub fileName: string;
     /// The file's path, relative to the package root where the file belongs to one.
-    pub filePath: Slice<char8>;
+    pub filePath: string;
     /// The enclosing function, qualified with its type for a method.
-    pub function: Slice<char8>;
+    pub function: string;
     /// The enclosing module path, relative to the package root.
-    pub module: Slice<char8>;
+    pub module: string;
 }
 
 /// The reading expression's own location, as a compile-time value.

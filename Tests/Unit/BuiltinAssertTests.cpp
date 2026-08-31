@@ -20,9 +20,9 @@ namespace {
 constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
 
 constexpr std::string_view AssertIntrinsics = R"(
-    intrinsic func Assert(condition: bool, message: Slice<char8>);
+    intrinsic func Assert(condition: bool, message: string);
 
-    intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
+    intrinsic func DebugAssert(condition: bool, message: string);
 )";
 
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
@@ -161,8 +161,8 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        intrinsic func Assert(condition: bool, message: Slice<char8>);
-        intrinsic func DebugAssert(condition: bool, message: Slice<char8>);
+        intrinsic func Assert(condition: bool, message: string);
+        intrinsic func DebugAssert(condition: bool, message: string);
 
         func Main() -> int {
             Assert("not bool", "condition");
@@ -171,11 +171,11 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "argument 1 to 'Assert' has type 'Slice<char8>', but parameter 'condition' "
+        return diagnostic.message == "argument 1 to 'Assert' has type 'string8', but parameter 'condition' "
                                      "requires 'bool8'";
     }));
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
         return diagnostic.message ==
-               "argument 2 to 'DebugAssert' has type 'int', but parameter 'message' requires 'Slice<char8>'";
+               "argument 2 to 'DebugAssert' has type 'int', but parameter 'message' requires 'string8'";
     }));
 }

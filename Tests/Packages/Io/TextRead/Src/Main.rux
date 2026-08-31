@@ -71,13 +71,9 @@ func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: ui
 }
 
 // The same helper for text.
-func CheckBytes(allocator: Allocator,
-                bytes: string,
-                step: uint,
-                limit: uint,
-                expectedKind: IoErrorKind,
-                expected: string) {
-    CheckBytes(allocator, TextBytes(bytes), step, limit, expectedKind, TextBytes(expected));
+func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: uint,
+                expectedKind: IoErrorKind, expected: string) {
+    CheckBytes(allocator, bytes, step, limit, expectedKind, TextBytes(expected));
 }
 
 
@@ -86,38 +82,38 @@ func Main() -> int {
     let allocator: Allocator = system;
 
     // A plain line, whole and in one piece.
-    CheckBytes(allocator, "alpha\nbeta", 64, 256, IoErrorKind::None, "alpha");
+    CheckBytes(allocator, TextBytes("alpha\nbeta"), 64, 256, IoErrorKind::None, "alpha");
     // A CRLF ending reads the same as a bare LF: the CR belongs to the ending.
-    CheckBytes(allocator, "alpha\r\nbeta", 64, 256, IoErrorKind::None, "alpha");
+    CheckBytes(allocator, TextBytes("alpha\r\nbeta"), 64, 256, IoErrorKind::None, "alpha");
     // A CR anywhere else is content, not an ending.
-    CheckBytes(allocator, "al\rpha\n", 64, 256, IoErrorKind::None, "al\rpha");
+    CheckBytes(allocator, TextBytes("al\rpha\n"), 64, 256, IoErrorKind::None, "al\rpha");
     // The last line of a stream needs no ending.
-    CheckBytes(allocator, "closing", 64, 256, IoErrorKind::None, "closing");
+    CheckBytes(allocator, TextBytes("closing"), 64, 256, IoErrorKind::None, "closing");
     // An empty line is a line; an ended stream with nothing before it is not.
-    CheckBytes(allocator, "\nrest", 64, 256, IoErrorKind::None, "");
-    CheckBytes(allocator, "", 64, 256, IoErrorKind::EndOfStream, "");
+    CheckBytes(allocator, TextBytes("\nrest"), 64, 256, IoErrorKind::None, "");
+    CheckBytes(allocator, TextBytes(""), 64, 256, IoErrorKind::EndOfStream, "");
     // A line longer than the buffer crosses refills without seams; three bytes a call forces many of them.
-    CheckBytes(allocator, "a long line that dwarfs the sixteen-byte buffer\nnext", 3, 256,
+    CheckBytes(allocator, TextBytes("a long line that dwarfs the sixteen-byte buffer\nnext"), 3, 256,
               IoErrorKind::None, "a long line that dwarfs the sixteen-byte buffer");
     // A CRLF split across two fills still normalizes: the CR is last in one chunk, the LF first in the next.
-    CheckBytes(allocator, "0123456789abcde\r\ntail", 16, 256, IoErrorKind::None, "0123456789abcde");
+    CheckBytes(allocator, TextBytes("0123456789abcde\r\ntail"), 16, 256, IoErrorKind::None, "0123456789abcde");
     // The bound is met, the offending line is consumed, and the error names the reason.
-    CheckBytes(allocator, "0123456789\n", 64, 4, IoErrorKind::LimitExceeded, "");
+    CheckBytes(allocator, TextBytes("0123456789\n"), 64, 4, IoErrorKind::LimitExceeded, "");
     // Bytes that are not UTF-8 are refused, and the builder comes back empty.
     var raw: char8[8];
     raw[0] = c8'o'; raw[1] = c8'k'; raw[2] = 0xFFu8 as char8;
     raw[3] = c8'b'; raw[4] = c8'a'; raw[5] = c8'd'; raw[6] = 0x0Au8 as char8;
     CheckBytes(allocator, raw[0..7], 64, 256, IoErrorKind::InvalidText, "");
     // A multi-byte scalar split by the buffer's edge is completed, not condemned.
-    CheckBytes(allocator, "0123456789abcde\u{00E9}f\n", 16, 256, IoErrorKind::None, "0123456789abcde\u{00E9}f");
+    CheckBytes(allocator, TextBytes("0123456789abcde\u{00E9}f\n"), 16, 256, IoErrorKind::None, "0123456789abcde\u{00E9}f");
     // Even served one byte at a time, so every continuation byte arrives in its own conversation.
-    CheckBytes(allocator, "\u{1F600} grin\n", 1, 256, IoErrorKind::None, "\u{1F600} grin");
+    CheckBytes(allocator, TextBytes("\u{1F600} grin\n"), 1, 256, IoErrorKind::None, "\u{1F600} grin");
     // A sequence cut short by the end of the stream itself is invalid, not silently dropped.
     raw[0] = c8'a'; raw[1] = 0xC3u8 as char8;
     CheckBytes(allocator, raw[0..2], 64, 256, IoErrorKind::InvalidText, "");
 
     // Reading on after a line: the reader's position is exactly past the ending.
-    var state = ScriptState { bytes: "one\ntwo\nthree", offset: 0, step: 64 };
+    var state = ScriptState { bytes: TextBytes("one\ntwo\nthree"), offset: 0, step: 64 };
     let source: Reader = ScriptHandle { state: @state };
     var error = IoError::Ok();
     var reader = BufferedReader::New(allocator, source, 16, @error);

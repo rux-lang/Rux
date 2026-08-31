@@ -21,7 +21,7 @@ func View(bytes: string) -> StringView {
     return View(TextBytes(bytes));
 }
 
-func Refuses(allocator: Allocator, text: Slice<char8>, expected: JsonParseError, what: Slice<char8>) {
+func Refuses(allocator: Allocator, text: Slice<char8>, expected: JsonParseError, what: string) {
     var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var value = Parse(allocator, text, @outcome);
     Assert(outcome.error == expected, what);
@@ -29,10 +29,10 @@ func Refuses(allocator: Allocator, text: Slice<char8>, expected: JsonParseError,
 
 // The same helper for text.
 func Refuses(allocator: Allocator, text: string, expected: JsonParseError, what: string) {
-    Refuses(allocator, TextBytes(text), expected, TextBytes(what));
+    Refuses(allocator, TextBytes(text), expected, what);
 }
 
-func Accepts(allocator: Allocator, text: Slice<char8>, what: Slice<char8>) -> JsonValue {
+func Accepts(allocator: Allocator, text: Slice<char8>, what: string) -> JsonValue {
     var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var value = Parse(allocator, text, @outcome);
     Assert(outcome.error == JsonParseError::None, what);
@@ -41,7 +41,7 @@ func Accepts(allocator: Allocator, text: Slice<char8>, what: Slice<char8>) -> Js
 
 // The same helper for text.
 func Accepts(allocator: Allocator, text: string, what: string) -> JsonValue {
-    return Accepts(allocator, TextBytes(text), TextBytes(what));
+    return Accepts(allocator, TextBytes(text), what);
 }
 
 func Main() -> int {

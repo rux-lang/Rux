@@ -190,7 +190,7 @@ private:
 
                 writeStatic(layout.prefix);
                 prepareWrite();
-                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeString8()));
                 TI("mov     r10, rax");
                 TI("mov     rdx, [r10]");
                 TI("mov     r8, [r10 + 8]");
@@ -211,7 +211,7 @@ private:
                 };
 
                 writeStatic(layout.prefix);
-                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                instructionPrinter.LoadA(messageRegister, TypeRef::MakePointer(TypeRef::MakeString8()));
                 TI("mov     r10, rax");
                 TI("mov     rsi, [r10]");
                 TI("mov     rdx, [r10 + 8]");

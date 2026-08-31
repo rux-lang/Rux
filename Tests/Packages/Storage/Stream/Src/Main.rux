@@ -34,7 +34,7 @@ func Main() -> int {
     var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the scratch file opens for writing");
     var sink: Writer = written.Stream();
-    Assert(WriteAll(sink, "0123456789").IsOk(), "the body writes");
+    Assert(WriteAll(sink, TextBytes("0123456789")).IsOk(), "the body writes");
     var size: uint64 = 0;
     Assert(written.Sync().IsOk(), "and reaches the device");
     Assert(written.Size(@size).IsOk() && size == 10u64, "ten bytes long, measured while open");
@@ -75,7 +75,7 @@ func Main() -> int {
     Assert(appending.IsOpen() && error.IsOk(), "it reopens for appending");
     Assert(appending.Seek(SeekFrom::Start, 0, @position).IsOk(), "the position moves to the start");
     var appendSink: Writer = appending.Stream();
-    Assert(WriteAll(appendSink, "XY").IsOk(), "but the append writes");
+    Assert(WriteAll(appendSink, TextBytes("XY")).IsOk(), "but the append writes");
     Assert(appending.Size(@size).IsOk() && size == 6u64, "at the end, not the position");
     Assert(appending.Close().IsOk(), "and the appender closes");
 
@@ -83,7 +83,7 @@ func Main() -> int {
     var lines = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(lines.IsOpen(), "the file opens once more for line content");
     var lineSink: Writer = lines.Stream();
-    Assert(WriteAll(lineSink, "alpha\r\nbeta\ngamma").IsOk(), "three lines write");
+    Assert(WriteAll(lineSink, TextBytes("alpha\r\nbeta\ngamma")).IsOk(), "three lines write");
     Assert(lines.Close().IsOk(), "and close");
     var back = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
     let backSource: Reader = back.Stream();

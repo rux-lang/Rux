@@ -22,8 +22,8 @@ func Matches(allocator: Allocator, rendered: Slice<char8>, expected: Slice<char8
 }
 
 // The same helper for text.
-func Matches(allocator: Allocator, rendered: string, expected: string) -> bool {
-    return Matches(allocator, TextBytes(rendered), TextBytes(expected));
+func Matches(allocator: Allocator, rendered: Slice<char8>, expected: string) -> bool {
+    return Matches(allocator, rendered, TextBytes(expected));
 }
 
 func Main() -> int {

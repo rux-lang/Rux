@@ -807,11 +807,11 @@ TypeRef SemanticAnalyzerContext::CheckBinary(const TokenKind op, const TypeRef &
         }
 
         // Comparing two views would compare the addresses they hold rather than the text they name, and comparing
-        // the text is a decision the language has not made yet. Neither is done silently.
-        if (left.IsString() || right.IsString()) {
+        // the text is a decision the language has not made yet. Neither is done silently. A string against
+        // something else is an ordinary mismatch, and the message below names both operands more usefully.
+        if (left.IsString() && right.IsString()) {
             EmitError(location,
-                      std::format("operator '{}' is not defined for string type '{}'", operatorName,
-                                  (left.IsString() ? left : right).ToString()),
+                      std::format("operator '{}' is not defined for string type '{}'", operatorName, left.ToString()),
                       {"a string is a view, so comparing the views would compare addresses rather than text"},
                       "compare the code units through 'Rux/Text' instead");
             return TypeRef::MakeBool();

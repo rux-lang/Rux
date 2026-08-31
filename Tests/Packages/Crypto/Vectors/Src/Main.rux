@@ -36,7 +36,7 @@ func BitsDiffering(left: Slice<char8>, right: Slice<char8>) -> uint {
 
 // Runs the avalanche check on one algorithm: every single-bit flip in a message must change roughly half the
 // output bits. A hash whose diffusion is incomplete fails this while passing everything structural.
-func CheckAvalanche(digestLength: uint, which: uint, what: Slice<char8>) {
+func CheckAvalanche(digestLength: uint, which: uint, what: string) {
     var message: char8[64];
     var index: uint = 0;
     while index < 64u {
@@ -74,11 +74,6 @@ func CheckAvalanche(digestLength: uint, which: uint, what: Slice<char8>) {
     }
     Assert(worstLow > 0u, "and no flipped bit leaves the output unchanged");
     Assert(worstHigh < totalBits, "nor inverts it entirely");
-}
-
-// The same helper for text.
-func CheckAvalanche(digestLength: uint, which: uint, what: string) {
-    CheckAvalanche(digestLength, which, TextBytes(what));
 }
 
 // Dispatches to one of the algorithms by index, since they do not share an interface uniformly.

@@ -12,9 +12,14 @@ import Format::{ ByteCursor, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
                TomlWriteDocument, TomlWriteError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Documents TOML 1.1 accepts. Each is one feature of the grammar, and a reader that refuses any of them is
 // refusing a document someone is entitled to write.
-func Valid(index: uint) -> Slice<char8> {
+func Valid(index: uint) -> string {
     if index == 0u {
         return "key = \"value\"";
     }
@@ -154,7 +159,7 @@ const ValidCount: uint = 44;
 
 // Documents TOML refuses. Each is a form some reader accepts and some does not, which is exactly the set that
 // makes one document mean two things.
-func Invalid(index: uint) -> Slice<char8> {
+func Invalid(index: uint) -> string {
     if index == 0u {
         return "key = # no value";
     }
@@ -287,7 +292,7 @@ func Invalid(index: uint) -> Slice<char8> {
 const InvalidCount: uint = 42;
 
 // The index a failing vector sits at, so a refusal names the document rather than the loop.
-func Label(index: uint) -> Slice<char8> {
+func Label(index: uint) -> string {
     if index == 0u {
         return "vector 0";
     }
@@ -423,7 +428,7 @@ func Label(index: uint) -> Slice<char8> {
     return "vector past the end";
 }
 
-func Reparsed(index: uint) -> Slice<char8> {
+func Reparsed(index: uint) -> string {
     if index == 0u {
         return "rewritten vector 0";
     }
@@ -558,7 +563,7 @@ func Reparsed(index: uint) -> Slice<char8> {
     }
     return "rewritten vector past the end";
 }
-func Fixed(index: uint) -> Slice<char8> {
+func Fixed(index: uint) -> string {
     if index == 0u {
         return "fixed point of vector 0";
     }
@@ -693,7 +698,7 @@ func Fixed(index: uint) -> Slice<char8> {
     }
     return "fixed point of vector past the end";
 }
-func Refusal(index: uint) -> Slice<char8> {
+func Refusal(index: uint) -> string {
     if index == 0u {
         return "invalid vector 0";
     }
@@ -822,7 +827,7 @@ func Refusal(index: uint) -> Slice<char8> {
     }
     return "invalid vector past the end";
 }
-func Differential(index: uint) -> Slice<char8> {
+func Differential(index: uint) -> string {
     if index == 0u {
         return "differential vector 0";
     }
@@ -979,6 +984,11 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     return true;
 }
 
+// The rendered side is bytes and the expected side is text, which is the comparison every vector makes.
+func Same(left: Slice<char8>, right: string) -> bool {
+    return Same(left, TextBytes(right));
+}
+
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
 func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
     var reader = TomlEventReader(text);
@@ -1000,6 +1010,11 @@ func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
     }
     *clean = false;
     return count;
+}
+
+// The same helper for text.
+func StreamedScalars(text: string, clean: *var bool) -> uint {
+    return StreamedScalars(TextBytes(text), clean);
 }
 
 // How many scalar values a tree holds, counted the same way.

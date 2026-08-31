@@ -7,8 +7,8 @@ func Main() -> int {
     Assert(sizeof(Wide) == 16u, "the field type is two words");
     Assert(sizeof(Walk) == 40u, "and the struct holding two of them and a flag is laid out from that");
 
-    let text: Slice<char8> = "one,two,,three";
-    let comma: Slice<char8> = ",";
+    let text = "one,two,,three";
+    let comma = ",";
     let walk = Walk {
         first: Wide { data: text.data, length: text.length },
         second: Wide { data: comma.data, length: comma.length },

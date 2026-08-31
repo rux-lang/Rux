@@ -18,7 +18,7 @@ namespace {
 constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
 
 constexpr std::string_view PanicIntrinsic = R"(
-    intrinsic func Panic(message: Slice<char8>);
+    intrinsic func Panic(message: string);
 )";
 
 LirPackage CompileToLir(const std::string &source) {
@@ -91,7 +91,7 @@ bool HasConstant(const LirFunc &function, const std::string_view value) {
 TEST_CASE("the imported Panic intrinsic lowers with source context") {
     const auto package = CompileToLir(R"(
         func Main() {
-            let message: Slice<char8> = "unrecoverable state";
+            let message: string = "unrecoverable state";
             Panic(message);
         }
     )");
@@ -115,7 +115,7 @@ TEST_CASE("the imported Panic intrinsic lowers with source context") {
 TEST_CASE("#NoReturn marks functions and terminates caller control flow") {
     const auto package = CompileToLir(R"(
         #NoReturn()
-        func Stop(message: Slice<char8>) {
+        func Stop(message: string) {
             Panic(message);
         }
 
@@ -147,15 +147,14 @@ TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") 
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        intrinsic func Panic(message: Slice<char8>);
+        intrinsic func Panic(message: string);
 
         func Main() {
             Panic(42);
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message ==
-               "argument 1 to 'Panic' has type 'int', but parameter 'message' requires 'Slice<char8>'";
+        return diagnostic.message == "argument 1 to 'Panic' has type 'int', but parameter 'message' requires 'string8'";
     }));
 }
 

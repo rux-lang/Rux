@@ -216,7 +216,7 @@ TEST_CASE("AArch64 RCU emitter publishes a constant slice as a header pointing a
     const auto package = CompileToAArch64Lir(R"(
         struct Slice<T> { data: *T; length: uint; }
 
-        const TEXT: Slice<char8> = "abc";
+        const TEXT: string = "abc";
 
         func Main() -> int {
             let length = TEXT.length;

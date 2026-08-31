@@ -1,6 +1,11 @@
 import Core::{ Assert, Ordering, Slice };
 import Text::StringView;
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // A view is bytes plus a promise that they are UTF-8, and the promise is what everything downstream is allowed to
 // rely on. So the checks are about where the promise is made -- bytes that are not UTF-8 are refused rather than
 // producing a view nobody can trust -- and about the places a byte index can land: a cut through the middle of a
@@ -11,7 +16,7 @@ import Text::StringView;
 
 func Main() -> int {
     // "hi" + U+00E9 (2 bytes) + U+20AC (3 bytes) + U+1F600 (4 bytes): eleven bytes, five scalar values.
-    let text: Slice<char8> = "hié€😀";
+    let text = TextBytes("hié€😀");
     let view = StringView::FromBytes(text);
     Assert(view.IsSome(), "well-formed bytes make a view");
 

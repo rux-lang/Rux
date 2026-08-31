@@ -41,7 +41,8 @@ func Main() -> int {
     Assert(nums.Contains(3), "Expected nums to contain 3");
     Assert(!nums.Contains(99), "Expected nums to not contain 99");
 
-    var text: Slice<char8> = "Hello";
+    let greeting = "Hello";
+    var text: Slice<char8> = Slice<char8> { data: greeting.data, length: greeting.length };
     Assert(text.Count() == 5, "Expected count of 5");
 
     return 0;

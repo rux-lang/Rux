@@ -41,7 +41,7 @@ func FromHex(text: string, into: MutableSlice<char8>) {
 func Main() -> int {
     // The published hash of the empty message.
     var digest: char8[64];
-    Blake3Of("", MutableSlice::From<char8>(@digest[0], 32));
+    Blake3Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 32));
     var expected: char8[32];
     FromHex("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
             MutableSlice::From<char8>(@expected[0], 32));

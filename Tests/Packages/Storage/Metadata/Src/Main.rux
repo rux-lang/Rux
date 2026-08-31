@@ -47,7 +47,7 @@ func Main() -> int {
     var written = File::Open(allocator, file, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the file opens for writing");
     var sink: Writer = written.Stream();
-    Assert(WriteAll(sink, "0123456789").IsOk(), "ten bytes are written");
+    Assert(WriteAll(sink, TextBytes("0123456789")).IsOk(), "ten bytes are written");
     let openMetadata = written.Metadata(@error);
     Assert(error.IsOk(), "the open handle describes itself");
     Assert(openMetadata.kind == FileKind::File, "as a file");

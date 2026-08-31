@@ -77,20 +77,16 @@ TEST_CASE("a string prefix names the encoding the literal is text in") {
     CHECK_EQ(types[2], "string32");
 }
 
-TEST_CASE("an unprefixed or character-prefixed literal is still a slice of code units") {
-    // The bare form keeps its slice type until the whole tree moves over; the character prefixes are the ones being
-    // replaced, and this pins that they have not changed yet.
+TEST_CASE("an unprefixed literal is UTF-8 text") {
+    // The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is. The character
+    // prefixes it replaced no longer spell a string at all.
     const auto types = LetInitializerTypes(R"(
         let bare = "text";
-        let eight = c8"text";
-        let sixteen = c16"text";
-        let thirtyTwo = c32"text";
+        let eight = s8"text";
     )");
-    REQUIRE_EQ(types.size(), 4);
-    CHECK_EQ(types[0], "Slice<char8>");
-    CHECK_EQ(types[1], "Slice<char8>");
-    CHECK_EQ(types[2], "Slice<char16>");
-    CHECK_EQ(types[3], "Slice<char32>");
+    REQUIRE_EQ(types.size(), 2);
+    CHECK_EQ(types[0], "string8");
+    CHECK_EQ(types[1], "string8");
 }
 
 TEST_CASE("string is a spelling of string8") {

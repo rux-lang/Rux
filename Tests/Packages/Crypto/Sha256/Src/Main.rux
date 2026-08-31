@@ -33,7 +33,7 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, what: Slice<char8>) {
+func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, what: string) {
     var expected: char8[32];
     let expectedRoom = MutableSlice::From<char8>(@expected[0], wide ? 32u : 28u);
     FromHex(expectedHex, expectedRoom);
@@ -52,7 +52,7 @@ func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, w
 
 // The same helper for text.
 func CheckDigest(message: string, expectedHex: string, wide: bool, what: string) {
-    CheckDigest(TextBytes(message), TextBytes(expectedHex), wide, TextBytes(what));
+    CheckDigest(TextBytes(message), TextBytes(expectedHex), wide, what);
 }
 
 func Main() -> int {
@@ -77,8 +77,8 @@ func Main() -> int {
     var narrowDigest: char8[32];
     let wideRoom = MutableSlice::From<char8>(@wideDigest[0], 32);
     let narrowRoom = MutableSlice::From<char8>(@narrowDigest[0], 28);
-    Sha256Of("abc", wideRoom);
-    Sha224Of("abc", narrowRoom);
+    Sha256Of(TextBytes("abc"), wideRoom);
+    Sha224Of(TextBytes("abc"), narrowRoom);
     let widePrefix = Slice<char8> { data: @wideDigest[0], length: 28 };
     let narrowBytes = Slice<char8> { data: @narrowDigest[0], length: 28 };
     Assert(!Equal(widePrefix, narrowBytes), "SHA-224 is not the first bytes of SHA-256");
@@ -135,33 +135,33 @@ func Main() -> int {
 
     // An empty update changes nothing.
     var withEmpties = Sha256();
-    withEmpties.Update("");
-    withEmpties.Update("abc");
-    withEmpties.Update("");
+    withEmpties.Update(TextBytes(""));
+    withEmpties.Update(TextBytes("abc"));
+    withEmpties.Update(TextBytes(""));
     var emptied: char8[32];
     let emptiedRoom = MutableSlice::From<char8>(@emptied[0], 32);
     withEmpties.Finish(emptiedRoom);
     var plain: char8[32];
     let plainRoom = MutableSlice::From<char8>(@plain[0], 32);
-    Sha256Of("abc", plainRoom);
+    Sha256Of(TextBytes("abc"), plainRoom);
     Assert(Equal(Slice<char8> { data: @emptied[0], length: 32 }, Slice<char8> { data: @plain[0], length: 32 }),
            "empty updates change nothing");
 
     // Digest states are structural Copy values. Copies branch from one prefix without sharing later mutations.
     var prefix = Sha256();
-    prefix.Update("ab");
+    prefix.Update(TextBytes("ab"));
     var abc = prefix;
     var abd = prefix;
-    abc.Update("c");
-    abd.Update("d");
+    abc.Update(TextBytes("c"));
+    abd.Update(TextBytes("d"));
     var abcDigest: char8[32];
     var abdDigest: char8[32];
     abc.Finish(MutableSlice::From<char8>(@abcDigest[0], 32));
     abd.Finish(MutableSlice::From<char8>(@abdDigest[0], 32));
     var abcExpected: char8[32];
     var abdExpected: char8[32];
-    Sha256Of("abc", MutableSlice::From<char8>(@abcExpected[0], 32));
-    Sha256Of("abd", MutableSlice::From<char8>(@abdExpected[0], 32));
+    Sha256Of(TextBytes("abc"), MutableSlice::From<char8>(@abcExpected[0], 32));
+    Sha256Of(TextBytes("abd"), MutableSlice::From<char8>(@abdExpected[0], 32));
     Assert(Equal(Slice<char8> { data: @abcDigest[0], length: 32 },
                  Slice<char8> { data: @abcExpected[0], length: 32 }),
            "a digest copy continues independently from its prefix");

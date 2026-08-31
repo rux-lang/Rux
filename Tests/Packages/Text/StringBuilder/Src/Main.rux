@@ -2,6 +2,11 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
 import Text::{ String, StringBuilder, StringView, TextError };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be
 // handed over at the end instead of copied. Both are ownership questions, so that is what is checked: what happens
 // to the block when the builder is done with it, and whether the builder is still usable afterwards.
@@ -58,7 +63,7 @@ func Main() -> int {
     builder.Clear();
     Assert(builder.IsEmpty() && builder.Capacity() == kept, "clearing forgets the bytes and keeps the room");
 
-    Assert(builder.AppendBytes("hello") == TextError::None, "and the builder is usable again");
+    Assert(builder.AppendBytes(TextBytes("hello")) == TextError::None, "and the builder is usable again");
     let copied = builder.ToString(@error);
     Assert(error == TextError::None && copied.Length() == 5, "a copy of what it holds is made");
     Assert(builder.Length() == 5, "leaving the builder as it was");
@@ -70,7 +75,7 @@ func Main() -> int {
     Assert(taken.Bytes().data == handedFrom, "in the very block the builder had, uncopied");
     Assert(builder.IsEmpty() && builder.Capacity() == 0, "and the builder owns nothing afterwards");
 
-    Assert(builder.AppendBytes("again") == TextError::None, "a builder that gave its block away still works");
+    Assert(builder.AppendBytes(TextBytes("again")) == TextError::None, "a builder that gave its block away still works");
     Assert(builder.Length() == 5, "and holds what it is given");
 
     // Room asked for up front is room the appends do not have to find.

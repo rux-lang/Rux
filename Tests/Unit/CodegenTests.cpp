@@ -111,7 +111,7 @@ TEST_CASE("RCU backends preserve injected build metadata") {
 
 TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
     const auto package = CompileToLir(R"(
-        func Sink(text: Slice<char8>, value: float32) {}
+        func Sink(text: string, value: float32) {}
 
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.25f32);
@@ -151,7 +151,7 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
 
 TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
     const auto package = CompileToLir(R"(
-        func Sink(text: Slice<char8>, value: float32) {}
+        func Sink(text: string, value: float32) {}
 
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.3f32);
@@ -471,7 +471,7 @@ TEST_CASE("assembly printer uses shared x86-64 frame slots and register homes") 
 
 TEST_CASE("string literal slices reference static storage") {
     const std::string output = CompileToAsm(R"(
-        func Name() -> Slice<char8> {
+        func Name() -> string {
             return "Windows";
         }
     )");

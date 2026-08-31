@@ -9,6 +9,11 @@ import Storage::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory,
                   TemporaryFile };
 import Text::TextError;
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Whether two paths hold the same units.
 func SamePath(left: Path, right: Path) -> bool {
     let a = left.name.Units();
@@ -69,7 +74,7 @@ func Main() -> int {
 
     // It is a real file, open for reading and writing.
     var sink: Writer = first.file.Stream();
-    Assert(WriteAll(sink, "held briefly").IsOk(), "the temporary file takes content");
+    Assert(WriteAll(sink, TextBytes("held briefly")).IsOk(), "the temporary file takes content");
     var position: uint64 = 0;
     Assert(first.file.Seek(SeekFrom::Start, 0, @position).IsOk(), "and rewinds");
     var storage: char8[16];

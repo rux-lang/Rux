@@ -80,7 +80,7 @@ func Main() -> int {
     }
 
     // A message split across writes is the same message.
-    let message: Slice<char8> = "123456789";
+    let message = TextBytes("123456789");
     let bytes = message.data as *byte;
     var split = Crc32();
     split.Write(bytes, 4);

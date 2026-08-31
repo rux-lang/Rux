@@ -293,31 +293,18 @@ private:
         return args;
     }
 
-    static TypeRef StringLiteralElementType(const Token &tok) {
-        if (tok.text.starts_with("c16\"")) {
-            return TypeRef::MakeChar16();
-        }
-        if (tok.text.starts_with("c32\"")) {
-            return TypeRef::MakeChar32();
-        }
-        return TypeRef::MakeChar8();
-    }
-
     /// The type a string literal has.
     ///
-    /// An `s`-prefixed literal is text: a string of the encoding the prefix names, whose length is counted in that
-    /// encoding's code units. Every other spelling is still a slice of raw code units.
+    /// A literal is text: a string of the encoding the prefix names, whose length is counted in that encoding's
+    /// code units. The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is.
     static TypeRef StringLiteralType(const Token &tok) {
-        if (tok.text.starts_with("s8\"")) {
-            return TypeRef::MakeString8();
-        }
         if (tok.text.starts_with("s16\"")) {
             return TypeRef::MakeString16();
         }
         if (tok.text.starts_with("s32\"")) {
             return TypeRef::MakeString32();
         }
-        return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+        return TypeRef::MakeString8();
     }
 
     // The text of a string-literal token, with the surrounding quotes and any
@@ -3209,8 +3196,7 @@ private:
                 }
                 else {
                     const TypeRef argType = CheckExpr(*e->args[0]);
-                    const std::string stringType = SliceTypeName(TypeRef::MakeChar8());
-                    if (!argType.IsUnknown() && !(argType.kind == TypeRef::Kind::Named && argType.name == stringType)) {
+                    if (!argType.IsUnknown() && !argType.IsString()) {
                         EmitError(e->args[0]->location, "compile-time intrinsic argument must be a string");
                     }
                 }
@@ -3241,7 +3227,7 @@ private:
                 EmitError(e->location, std::string("'") + name + "' can only be used in a 'when' condition");
                 return TypeRef::MakeUnknown();
             }
-            return TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+            return TypeRef::MakeString8();
         }
 
         if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {

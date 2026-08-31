@@ -2,6 +2,11 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, MutableSlice, Slice };
 import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // What buffering promises is fewer conversations, and the way to test a count of conversations is to count them:
 // the scripted source and sink tally their calls, and the assertions are about the tallies as much as the bytes.
 // The bypass, the ordering across a bypass, and the flush contracts each get the shape that would catch them.
@@ -145,7 +150,7 @@ func Main() -> int {
     var piece: uint = 0;
     while piece < 8 {
         var taken: uint = 0;
-        Assert(writer.Write("ab", @taken).IsOk() && taken == 2, "each small write is taken whole");
+        Assert(writer.Write(TextBytes("ab"), @taken).IsOk() && taken == 2, "each small write is taken whole");
         piece = piece + 1;
     }
     Assert(sink.calls == 0, "and none of them reached the sink yet");
@@ -157,8 +162,8 @@ func Main() -> int {
 
     // A write larger than the buffer goes around it -- after what was gathered, so order holds.
     var taken: uint = 0;
-    Assert(writer.Write("xy", @taken).IsOk(), "a small write gathers");
-    Assert(writer.Write("0123456789abcdefghijklmnopqrstuvwxyz", @taken).IsOk(), "a huge one goes around");
+    Assert(writer.Write(TextBytes("xy"), @taken).IsOk(), "a small write gathers");
+    Assert(writer.Write(TextBytes("0123456789abcdefghijklmnopqrstuvwxyz"), @taken).IsOk(), "a huge one goes around");
     Assert(sinkStorage[16] == c8'x' && sinkStorage[17] == c8'y', "the gathered bytes went first");
     Assert(sinkStorage[18] == c8'0', "then the bypass");
     Assert(writer.Pending() == 0, "and nothing waits");

@@ -241,29 +241,16 @@ TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
     return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
 }
 
-TypeRef AstToHirContext::StringLiteralElementType(const Token &tok) {
-    if (tok.text.starts_with("c16\"")) {
-        return TypeRef::MakeChar16();
-    }
-    if (tok.text.starts_with("c32\"")) {
-        return TypeRef::MakeChar32();
-    }
-    return TypeRef::MakeChar8();
-}
-
 // The type a string literal has. Deliberately the same rule the semantic analyzer applies, spelled out in both
 // places the way every other literal type already is.
 TypeRef AstToHirContext::StringLiteralType(const Token &tok) {
-    if (tok.text.starts_with("s8\"")) {
-        return TypeRef::MakeString8();
-    }
     if (tok.text.starts_with("s16\"")) {
         return TypeRef::MakeString16();
     }
     if (tok.text.starts_with("s32\"")) {
         return TypeRef::MakeString32();
     }
-    return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+    return TypeRef::MakeString8();
 }
 
 TypeRef AstToHirContext::CharLiteralType(const Token &tok) {

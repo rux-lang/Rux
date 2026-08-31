@@ -55,7 +55,7 @@ extend JsonStyle {
 }
 
 // The sixteen hex digits, lower case, which is what the escape form uses.
-const JsonHexDigits: Slice<char8> = "0123456789abcdef";
+const JsonHexDigits: string = "0123456789abcdef";
 
 /// Writes the escaped form of `text`, including its surrounding quotes.
 ///
