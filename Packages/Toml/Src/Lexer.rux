@@ -136,6 +136,13 @@ extend TomlLexer {
         return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
     }
 
+    /// Provides the public `TomlLexer` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/lexer/new
+    pub func TomlLexer(input: string) -> TomlLexer {
+        return TomlLexer(Slice<char8> { data: input.data, length: input.length });
+    }
+
     func Make(self: &TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
         return TomlToken {
             kind: kind, form: form, start: start, end: end, line: self.line,

@@ -124,6 +124,13 @@ pub func Parse(text: Slice<char8>, error: *var UuidParseError) -> Uuid {
     return value;
 }
 
+/// Provides the public `Parse` operation for text.
+///
+/// https://rux-lang.dev/docs/api/uuid/parse
+pub func Parse(text: string, error: *var UuidParseError) -> Uuid {
+    return Parse(Slice<char8> { data: text.data, length: text.length }, error);
+}
+
 /// Writes the canonical text form into `into`, in lower case.
 ///
 /// `into` must be at least thirty-six bytes. Lower case because RFC 9562 says so, and because a canonical form

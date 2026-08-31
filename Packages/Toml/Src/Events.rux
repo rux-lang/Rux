@@ -112,6 +112,13 @@ extend TomlEventReader {
         };
     }
 
+    /// Provides the public `TomlEventReader` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/toml/event-reader/new
+    pub func TomlEventReader(input: string) -> TomlEventReader {
+        return TomlEventReader(Slice<char8> { data: input.data, length: input.length });
+    }
+
     /// Why reading stopped, or `None`.
     ///
     /// https://rux-lang.dev/docs/api/toml/event-reader/error

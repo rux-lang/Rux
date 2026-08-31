@@ -105,6 +105,13 @@ extend JsonParser {
         };
     }
 
+    /// Provides the public `JsonParser` operation for text.
+    ///
+    /// https://rux-lang.dev/docs/api/json/json-parser/new
+    pub func JsonParser(allocator: Allocator, input: string, limits: JsonLimits) -> JsonParser {
+        return JsonParser(allocator, Slice<char8> { data: input.data, length: input.length }, limits);
+    }
+
     /// Chooses what to do about duplicate object names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy
@@ -405,6 +412,13 @@ pub func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonPars
     return <-value;
 }
 
+/// Provides the public `Parse` operation for text.
+///
+/// https://rux-lang.dev/docs/api/json/parse
+pub func Parse(allocator: Allocator, input: string, outcome: *var JsonParseOutcome) -> JsonValue {
+    return Parse(allocator, Slice<char8> { data: input.data, length: input.length }, outcome);
+}
+
 /// Parses `input` under chosen limits and a chosen duplicate-name policy.
 ///
 /// The long form of `Parse`, for a caller who needs something other than the defaults. The policy is a
@@ -419,4 +433,15 @@ pub func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits
     var value = parser.Parse();
     *outcome = parser.Outcome();
     return <-value;
+}
+
+/// Provides the public `ParseWith` operation for text.
+///
+/// https://rux-lang.dev/docs/api/json/parse-with
+pub func ParseWith(allocator: Allocator,
+                   input: string,
+                   limits: JsonLimits,
+                   duplicates: DuplicateKeyPolicy,
+                   outcome: *var JsonParseOutcome) -> JsonValue {
+    return ParseWith(allocator, Slice<char8> { data: input.data, length: input.length }, limits, duplicates, outcome);
 }
