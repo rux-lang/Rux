@@ -119,6 +119,7 @@ set(RUX_TEST_SOURCES
     SourceLoaderTests.cpp
     SourceModelTests.cpp
     UserMessageProcessTests.cpp
+    UtfTests.cpp
     VariantEqualityTests.cpp
     VariantDropGlueTests.cpp
     VariantRepresentationTests.cpp

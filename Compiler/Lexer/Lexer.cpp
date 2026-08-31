@@ -1,6 +1,7 @@
 #include "Lexer/Lexer.h"
 
 #include "Numeric/IntegerLiteral.h"
+#include "Unicode/Utf.h"
 
 #include <algorithm>
 #include <cassert>
@@ -13,82 +14,7 @@
 
 namespace Rux {
 namespace {
-struct DecodedUtf8 {
-    std::uint32_t codePoint;
-    std::size_t width;
-};
-
 constexpr std::string_view LiteralDocumentation = "https://rux-lang.dev/docs/";
-
-/// Decode the leading UTF-8 code point, rejecting an overlong encoding or a truncated sequence rather than accepting
-/// the bytes as-is: the lexer reports malformed input as a diagnostic instead of passing it downstream.
-std::optional<DecodedUtf8> DecodeUtf8(std::string_view text) {
-    if (text.empty()) {
-        return std::nullopt;
-    }
-
-    const auto continuation = [&](std::size_t index) -> std::optional<std::uint32_t> {
-        if (index >= text.size()) {
-            return std::nullopt;
-        }
-        const auto byte = static_cast<unsigned char>(text[index]);
-        if ((byte & 0xC0) != 0x80) {
-            return std::nullopt;
-        }
-        return static_cast<std::uint32_t>(byte & 0x3F);
-    };
-
-    const auto b0 = static_cast<unsigned char>(text[0]);
-    std::uint32_t codePoint = 0;
-    std::size_t width = 0;
-    std::uint32_t minValue = 0;
-    if (b0 <= 0x7F) {
-        codePoint = b0;
-        width = 1;
-        minValue = 0;
-    }
-    else if ((b0 & 0xE0) == 0xC0) {
-        codePoint = b0 & 0x1F;
-        width = 2;
-        minValue = 0x80;
-    }
-    else if ((b0 & 0xF0) == 0xE0) {
-        codePoint = b0 & 0x0F;
-        width = 3;
-        minValue = 0x800;
-    }
-    else if ((b0 & 0xF8) == 0xF0) {
-        codePoint = b0 & 0x07;
-        width = 4;
-        minValue = 0x10000;
-    }
-    else {
-        return std::nullopt;
-    }
-
-    if (text.size() < width) {
-        return std::nullopt;
-    }
-    for (std::size_t i = 1; i < width; ++i) {
-        const auto byte = continuation(i);
-        if (!byte) {
-            return std::nullopt;
-        }
-        codePoint = (codePoint << 6) | *byte;
-    }
-    if (codePoint < minValue || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
-        return std::nullopt;
-    }
-    return DecodedUtf8{codePoint, width};
-}
-
-std::optional<std::uint32_t> DecodeUtf8CodePoint(const std::string_view text) {
-    const auto decoded = DecodeUtf8(text);
-    if (!decoded || decoded->width != text.size()) {
-        return std::nullopt;
-    }
-    return decoded->codePoint;
-}
 
 /// Whether the character is a digit in this base. Knowing the base is what lets `0b12` be reported as a bad binary
 /// digit rather than silently ending the literal at the `1`.
@@ -321,7 +247,19 @@ Token Lexer::NextToken() {
     if (IsDocumentationBlockStart()) {
         return ScanDocumentationBlock(start);
     }
-    // Prefixed string literals
+    // Prefixed string literals. Only the exact spellings below are prefixes: `s8` with anything but a quote after
+    // it, and `s16 "x"` with a space between, are an identifier and go on to be scanned as one.
+    if (c == 's') {
+        if (Peek(1) == '8' && Peek(2) == '"') {
+            return ScanString(start, 2);
+        }
+        if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') {
+            return ScanString(start, 3);
+        }
+        if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') {
+            return ScanString(start, 3);
+        }
+    }
     if (c == 'c') {
         if (Peek(1) == '8' && Peek(2) == '"') {
             return ScanString(start, 2);
