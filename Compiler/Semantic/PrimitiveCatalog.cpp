@@ -18,7 +18,7 @@ constexpr std::uint32_t PointerSized = 0;
 ///
 /// Alignment is capped at 16, the largest scalar alignment any supported ABI asks for, so the wider integers and
 /// floats share the alignment their 128-bit counterparts already have.
-constexpr std::array<PrimitiveInfo, 38> Catalog{{
+constexpr std::array<PrimitiveInfo, 41> Catalog{{
     {K::Bool8, "bool8", C::Bool, 8, 1, 1, true},
     {K::Bool16, "bool16", C::Bool, 16, 2, 2, true},
     {K::Bool32, "bool32", C::Bool, 32, 4, 4, true},
@@ -62,16 +62,26 @@ constexpr std::array<PrimitiveInfo, 38> Catalog{{
     {K::Float128, "float128", C::Float, 128, 16, 16, false},
     {K::Float256, "float256", C::Float, 256, 32, 16, false},
     {K::Float512, "float512", C::Float, 512, 64, 16, false},
+
+    // A string is a borrowed view -- a pointer to its code units and a length counted in them -- so `bits` is the
+    // width of one code unit of the encoding and `size` is the width of the view, the same 16 bytes whatever the
+    // encoding.
+    {K::String8, "string8", C::String, 8, 16, 8, false},
+    {K::String16, "string16", C::String, 16, 16, 8, false},
+    {K::String32, "string32", C::String, 32, 16, 8, false},
 }};
 
 /// The last code point Unicode defines, and so the ceiling on every scalar-valued character width.
 constexpr std::uint32_t MaxScalarValue = 0x10FFFF;
 
-constexpr std::array<PrimitiveAlias, 4> Aliases{{
+constexpr std::array<PrimitiveAlias, 5> Aliases{{
     {"bool", K::Bool8},
     {"byte", K::UInt8},
     {"char", K::Char32},
     {"float", K::Float64},
+    // `string` is the UTF-8 encoding because a bare string literal is UTF-8, where `char` is the widest character
+    // because that is the one that holds a whole scalar value.
+    {"string", K::String8},
 }};
 } // namespace
 
@@ -153,6 +163,21 @@ std::optional<std::uint32_t> MaxCharacterValue(const TypeRef::Kind kind) noexcep
     }
     const PrimitiveInfo *info = FindPrimitive(kind);
     return info->bits == 8 ? 0xFFU : 0xFFFFU;
+}
+
+TypeRef::Kind StringCodeUnitKind(const TypeRef::Kind kind) noexcept {
+    const PrimitiveInfo *info = FindPrimitive(kind);
+    if (!info || info->category != PrimitiveCategory::String) {
+        return TypeRef::Kind::Unknown;
+    }
+    switch (info->bits) {
+    case 8:
+        return TypeRef::Kind::Char8;
+    case 16:
+        return TypeRef::Kind::Char16;
+    default:
+        return TypeRef::Kind::Char32;
+    }
 }
 
 bool IsSurrogate(const std::uint64_t value) noexcept {

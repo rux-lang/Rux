@@ -73,6 +73,12 @@ std::optional<std::string_view> FloatConstant(const TypeRef::Kind kind, const st
 
 std::optional<PrimitiveConstant> LookupPrimitiveConstant(const TypeRef &type, const std::string_view name,
                                                          const CompileTimeContext &context) {
+    // A string has no width constants: `Bits` and `Bytes` would have to choose between describing the view and
+    // describing one code unit of the encoding, and `Min` and `Max` describe neither.
+    if (type.IsString()) {
+        return std::nullopt;
+    }
+
     const auto bits = StorageBits(type, context);
     if (!bits) {
         return std::nullopt;
