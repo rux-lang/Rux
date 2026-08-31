@@ -106,6 +106,7 @@ private:
 
     [[nodiscard]] bool IsInterfaceType(const TypeRef &type) const;
     [[nodiscard]] static bool IsSliceType(const TypeRef &type);
+    [[nodiscard]] static bool IsViewType(const TypeRef &type);
     [[nodiscard]] static bool IsArrayType(const TypeRef &type);
     [[nodiscard]] std::optional<std::uint64_t> EnumLayoutSize(const TypeRef &type) const;
     [[nodiscard]] bool IsInstantiatedPayloadEnum(const TypeRef &type) const;
@@ -114,6 +115,7 @@ private:
     [[nodiscard]] static bool IsStringSliceLiteral(const HirLiteralExpr &expression);
     [[nodiscard]] static TypeRef StringSliceElementType(const HirLiteralExpr &expression);
     [[nodiscard]] static TypeRef SliceElementTypeFromType(const TypeRef &type);
+    [[nodiscard]] static std::uint64_t StringLiteralLength(const std::string &value, const TypeRef &elementType);
 
     [[nodiscard]] LirModule LowerModule(const HirModule &module);
     [[nodiscard]] static std::string PrintConstExpr(const HirExpr &expression);

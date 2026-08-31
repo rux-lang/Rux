@@ -2,6 +2,7 @@
 
 #include "Lowering/HirToLir/HirToLirContext.h"
 #include "Semantic/PrimitiveCatalog.h"
+#include "Unicode/Utf.h"
 
 #include <algorithm>
 #include <cassert>
@@ -334,6 +335,9 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
 // For void expressions the return value is LirNoReg.
 
 TypeRef HirToLirContext::SliceElementTypeFromType(const TypeRef &type) {
+    if (type.IsString()) {
+        return TypeRef::MakePrimitive(StringCodeUnitKind(type.kind));
+    }
     if (type.kind == TypeRef::Kind::Named) {
         if (type.name == "Slice<char16>") {
             return TypeRef::MakeChar16();
@@ -444,7 +448,7 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
         StoreArrayToSlice(*coerce, slot);
         return;
     }
-    if (IsSliceType(type)) {
+    if (IsViewType(type)) {
         const LirReg src = LowerLValue(expr);
         CopySliceValue(src, slot, type);
         return;
@@ -885,12 +889,22 @@ LirReg HirToLirContext::LowerStringLiteralSlice(const HirLiteralExpr &e) {
     return slot;
 }
 
+/// How many code units of `elementType` a literal's UTF-8 value transcodes to. The length a view publishes counts
+/// the units it actually holds, so a wider encoding does not report the byte count of the source spelling.
+std::uint64_t HirToLirContext::StringLiteralLength(const std::string &value, const TypeRef &elementType) {
+    const auto units = elementType.kind == TypeRef::Kind::Char16 ? Utf16CodeUnitCount(value)
+                     : elementType.kind == TypeRef::Kind::Char32 ? Utf32CodeUnitCount(value)
+                                                                 : std::optional{value.size()};
+    // Malformed UTF-8 was already reported by the lexer, so nothing valid reaches here without a count.
+    return static_cast<std::uint64_t>(units.value_or(0));
+}
+
 void HirToLirContext::StoreStringLiteralSlice(const HirLiteralExpr &e, LirReg slot) {
     const TypeRef elemType = StringSliceElementType(e);
     const LirReg data = EmitStringAddr(e.value, elemType);
     LirReg dataField = EmitFieldPtr(slot, "data", TypeRef::MakePointer(elemType));
     EmitStore(data, dataField, TypeRef::MakePointer(elemType));
-    LirReg len = EmitConst(std::to_string(e.value.size()), TypeRef::MakeUInt64());
+    LirReg len = EmitConst(std::to_string(StringLiteralLength(e.value, elemType)), TypeRef::MakeUInt64());
     LirReg lenField = EmitFieldPtr(slot, "length", TypeRef::MakeUInt64());
     EmitStore(len, lenField, TypeRef::MakeUInt64());
 }

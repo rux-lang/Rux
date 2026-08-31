@@ -2,6 +2,7 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cctype>
@@ -469,6 +470,14 @@ bool HirToLirContext::IsSliceType(const TypeRef &type) {
     return type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<");
 }
 
+/// Whether a value is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its
+/// code units through the same two fields, so every rule about how such a value is stored, copied, and passed holds
+/// for both. What differs between them -- writability, iteration, sub-ranging -- semantic analysis has already
+/// settled before anything reaches here.
+bool HirToLirContext::IsViewType(const TypeRef &type) {
+    return IsSliceType(type) || type.IsString();
+}
+
 bool HirToLirContext::IsArrayType(const TypeRef &type) {
     return type.kind == TypeRef::Kind::Array;
 }
@@ -530,11 +539,17 @@ TypeRef HirToLirContext::EnumTagType(const TypeRef &enumType) const {
 }
 
 bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {
+    if (e.type.IsString()) {
+        return true;
+    }
     return e.type.kind == TypeRef::Kind::Named &&
            (e.type.name == "Slice<char8>" || e.type.name == "Slice<char16>" || e.type.name == "Slice<char32>");
 }
 
 TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
+    if (e.type.IsString()) {
+        return TypeRef::MakePrimitive(StringCodeUnitKind(e.type.kind));
+    }
     if (e.type.kind == TypeRef::Kind::Named) {
         if (e.type.name == "Slice<char16>") {
             return TypeRef::MakeChar16();
@@ -674,7 +689,7 @@ std::optional<std::string> HirToLirContext::PrintConstElement(const HirExpr &e) 
 
 /// Records constant slice/array contents for direct read-only emission.
 void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) const {
-    if (!IsSliceType(c.type) && !IsArrayType(c.type)) {
+    if (!IsViewType(c.type) && !IsArrayType(c.type)) {
         return;
     }
     if (auto *lit = dynamic_cast<const HirLiteralExpr *>(c.value.get()); lit && IsStringSliceLiteral(*lit)) {
@@ -751,9 +766,9 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
             locals[name] = pr;
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }
-        else if (IsSliceType(type)) {
-            // Slice values are 16-byte {data, length} structs; callers
-            // pass a pointer. pr holds that pointer directly — FieldPtr
+        else if (IsViewType(type)) {
+            // Slice and string values are 16-byte {data, length} structs;
+            // callers pass a pointer. pr holds that pointer directly — FieldPtr
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
             locals[name] = pr;
