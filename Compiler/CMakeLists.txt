@@ -55,6 +55,9 @@ rux_add_component(RuxNumeric
     Numeric/SoftwareFloatMultiply.cpp
     Numeric/WideInteger.cpp)
 
+rux_add_component(RuxUnicode
+    Unicode/Utf.cpp)
+
 rux_add_component(RuxReporting
     Reporting/Reporting.cpp)
 
@@ -112,7 +115,7 @@ target_link_libraries(RuxPackage PUBLIC RuxCrypto RuxTarget)
 rux_add_component(RuxLexer
     Lexer/Token.cpp
     Lexer/Lexer.cpp)
-target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxNumeric RuxSourceModel)
+target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxNumeric RuxSourceModel RuxUnicode)
 
 rux_add_component(RuxSyntax
     Syntax/DocumentationComment.cpp
@@ -342,7 +345,8 @@ if (WIN32)
     set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxCliReporting RuxReporting RuxSource
         RuxSystem RuxCrypto
         RuxPackage
-        RuxNumeric RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir RuxOptimization
+        RuxNumeric RuxUnicode RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir
+        RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive
         RuxLinker RuxDriver PROPERTY
         MSVC_RUNTIME_LIBRARY

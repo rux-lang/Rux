@@ -197,6 +197,50 @@ TEST_CASE("Comment delimiters in literals do not produce trivia") {
     CHECK_EQ(stringCount, 3);
 }
 
+TEST_CASE("A string prefix is part of the literal's spelling") {
+    const auto result = Lex(R"(let a = "plain"; let b = s8"eight"; let c = s16"sixteen"; let d = s32"thirty-two";)");
+    REQUIRE(result.diagnostics.empty());
+
+    std::vector<std::string> literals;
+    for (const auto &token : result.tokens) {
+        if (token.Is(TokenKind::StringLiteral)) {
+            literals.push_back(token.text);
+        }
+    }
+    REQUIRE_EQ(literals.size(), 4);
+    CHECK_EQ(literals[0], R"("plain")");
+    CHECK_EQ(literals[1], R"(s8"eight")");
+    CHECK_EQ(literals[2], R"(s16"sixteen")");
+    CHECK_EQ(literals[3], R"(s32"thirty-two")");
+}
+
+TEST_CASE("Escapes inside a prefixed string are scanned like any other") {
+    const auto result = Lex(R"(let a = s16"a\tb\u{1F680}\"";)");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_GE(result.tokens.size(), 4);
+    CHECK(result.tokens[3].Is(TokenKind::StringLiteral));
+    CHECK_EQ(result.tokens[3].text, R"(s16"a\tb\u{1F680}\"")");
+}
+
+TEST_CASE("A string prefix needs its quote to be a prefix at all") {
+    // Only the exact spelling is a prefix: the identifier `s8`, an identifier that merely starts with one, and a
+    // prefix separated from its quote are all ordinary identifiers.
+    const auto result = Lex(R"(s8 s8x s16foo s16 "spaced")");
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE_EQ(result.tokens.size(), 6);
+    CHECK(result.tokens[0].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[0].text, "s8");
+    CHECK(result.tokens[1].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[1].text, "s8x");
+    CHECK(result.tokens[2].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[2].text, "s16foo");
+    CHECK(result.tokens[3].Is(TokenKind::Ident));
+    CHECK_EQ(result.tokens[3].text, "s16");
+    CHECK(result.tokens[4].Is(TokenKind::StringLiteral));
+    CHECK_EQ(result.tokens[4].text, R"("spaced")");
+    CHECK(result.tokens[5].IsEof());
+}
+
 TEST_CASE("Comments preserve spacing-sensitive token separation") {
     const auto result = Lex("a?; a /* gap */ ?; [] [/* gap */] []= [/* gap */] =");
     REQUIRE(result.diagnostics.empty());
