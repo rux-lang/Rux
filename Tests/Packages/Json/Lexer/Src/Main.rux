@@ -5,29 +5,14 @@
 import Core::{ Assert, Slice };
 import Json::{ JsonLexError, JsonLexer, JsonLimits, JsonTokenKind };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
-func FirstToken(text: Slice<char8>) -> JsonTokenKind {
+func FirstToken(text: string) -> JsonTokenKind {
     var lexer = JsonLexer(text, JsonLimits::Default());
     return lexer.Next().kind;
 }
 
-// The same helper for text.
-func FirstToken(text: string) -> JsonTokenKind {
-    return FirstToken(TextBytes(text));
-}
-
-func FirstError(text: Slice<char8>) -> JsonLexError {
+func FirstError(text: string) -> JsonLexError {
     var lexer = JsonLexer(text, JsonLimits::Default());
     return lexer.Next().error;
-}
-
-// The same helper for text.
-func FirstError(text: string) -> JsonLexError {
-    return FirstError(TextBytes(text));
 }
 
 func Main() -> int {

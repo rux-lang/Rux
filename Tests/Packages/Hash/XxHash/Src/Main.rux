@@ -11,22 +11,12 @@ func TextBytes(text: string) -> Slice<char8> {
 // partial block is where that would break. So the long input below is written back in every possible pair of
 // pieces, and each one has to agree with hashing it at once.
 
-func Hash(text: Slice<char8>) -> uint64 {
+func Hash(text: string) -> uint64 {
     return XxHash64Of(text.data as *byte, text.length);
 }
 
-// The same helper for text.
-func Hash(text: string) -> uint64 {
-    return Hash(TextBytes(text));
-}
-
-func Seeded(text: Slice<char8>, seed: uint64) -> uint64 {
-    return XxHash64SeededOf(text.data as *byte, text.length, seed);
-}
-
-// The same helper for text.
 func Seeded(text: string, seed: uint64) -> uint64 {
-    return Seeded(TextBytes(text), seed);
+    return XxHash64SeededOf(text.data as *byte, text.length, seed);
 }
 
 func Main() -> int {

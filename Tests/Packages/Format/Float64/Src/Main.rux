@@ -3,18 +3,13 @@ import Format::{ ByteCursor, FormatSpec, Display, TextWriter, IsNan, IsInfinite,
 import Core::Result;
 import Core::{ MutableSlice, Slice };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // Std is deliberately absent from the dependencies: it exports conversions of
 // the same name, and the compiler pools the overloads of two same-named symbols,
 // so Std's would win over this package's and the code under test would never
 // run. That rules out Std::Assert, so a failed check reports itself through the
 // exit code instead: each one below is numbered, and `rux test` prints the
 // number of the first that fails.
-func Check(value: float64, expected: Slice<char8>, code: int) -> int {
+func Check(value: float64, expected: string, code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
     let sink: &var TextWriter = cursor;
@@ -37,12 +32,7 @@ func Check(value: float64, expected: Slice<char8>, code: int) -> int {
     return 0;
 }
 
-// The same helper for text.
-func Check(value: float64, expected: string, code: int) -> int {
-    return Check(value, TextBytes(expected), code);
-}
-
-func CheckParse(str: Slice<char8>, expected: float64, code: int) -> int {
+func CheckParse(str: string, expected: float64, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
         Result::Success(value) => value == expected ? 0 : code,
@@ -50,22 +40,12 @@ func CheckParse(str: Slice<char8>, expected: float64, code: int) -> int {
     };
 }
 
-// The same helper for text.
-func CheckParse(str: string, expected: float64, code: int) -> int {
-    return CheckParse(TextBytes(str), expected, code);
-}
-
-func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int {
+func CheckParseError(str: string, expected: ParseError, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
         Result::Success(_) => code,
         Result::Error(error) => error == expected ? 0 : code
     };
-}
-
-// The same helper for text.
-func CheckParseError(str: string, expected: ParseError, code: int) -> int {
-    return CheckParseError(TextBytes(str), expected, code);
 }
 
 func CheckParsedValues() -> int {

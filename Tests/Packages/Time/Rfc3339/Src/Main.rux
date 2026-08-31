@@ -1,27 +1,17 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Time::{ Date, DateTime, FormatRfc3339, ParseRfc3339, TimeOfDay, UtcOffset };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // The text boundary of time, both directions: the strict shape parses, every near-miss of it is refused, the
 // formatter never writes what the parser would not read, and the leap second folds exactly as the module says --
 // accepted going in, never produced coming out.
 
-func Parses(text: Slice<char8>) -> bool {
+func Parses(text: string) -> bool {
     var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
     var offset = UtcOffset::Utc();
     return ParseRfc3339(text, @dateTime, @offset);
 }
 
-// The same helper for text.
-func Parses(text: string) -> bool {
-    return Parses(TextBytes(text));
-}
-
-func Renders(dateTime: DateTime, offset: UtcOffset, expected: Slice<char8>) -> bool {
+func Renders(dateTime: DateTime, offset: UtcOffset, expected: string) -> bool {
     var storage: char8[40];
     let room = MutableSlice::From<char8>(@storage[0], 40);
     var written: uint = 0;
@@ -39,11 +29,6 @@ func Renders(dateTime: DateTime, offset: UtcOffset, expected: Slice<char8>) -> b
         index = index + 1;
     }
     return true;
-}
-
-// The same helper for text.
-func Renders(dateTime: DateTime, offset: UtcOffset, expected: string) -> bool {
-    return Renders(dateTime, offset, TextBytes(expected));
 }
 
 func Main() -> int {

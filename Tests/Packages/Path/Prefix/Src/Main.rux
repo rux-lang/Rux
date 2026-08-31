@@ -3,22 +3,12 @@ import Core::{ #target, Assert, Slice };
 import Path::{ HasRoot, IsAbsolute, OsString, OsStringView, OsUnit, Path, PrefixKind, PrefixLength };
 import Text::{ String, StringView, TextError };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // The fallible direction of the conversion, at the values that make it fallible, and the prefixes as each platform
 // actually has them: none on the Unix systems, where a name is rooted or it is not, and the Windows family with
 // its case left unfolded -- C: and c: are the same drive to the system and different units here, on purpose.
 
-func PathText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> OsString {
-    return OsString::FromText(allocator, text, error);
-}
-
-// The same helper for text.
 func PathText(allocator: Allocator, text: string, error: *var TextError) -> OsString {
-    return PathText(allocator, TextBytes(text), error);
+    return OsString::FromText(allocator, text, error);
 }
 
 func Main() -> int {

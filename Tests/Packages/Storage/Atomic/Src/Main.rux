@@ -15,20 +15,15 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
     return Path::FromView((*holder).View());
 }
 
-// The same helper for text.
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
-    return PathOf(allocator, TextBytes(text), holder);
-}
-
 // Reads the whole file and checks it against `expected`, length included.
-func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
+func CheckWhole(allocator: Allocator, path: Path, expected: string) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Reading(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the target opens for reading");
@@ -44,11 +39,6 @@ func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
         index = index + 1;
     }
     Assert(file.Close().IsOk(), "and closes");
-}
-
-// The same helper for text.
-func CheckWhole(allocator: Allocator, path: Path, expected: string) {
-    CheckWhole(allocator, path, TextBytes(expected));
 }
 
 // How many entries the directory holds, which is how a leftover partial file is caught.

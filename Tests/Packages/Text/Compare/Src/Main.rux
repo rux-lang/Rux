@@ -2,11 +2,6 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Ordering, Slice };
 import Text::{ String, StringView, TextError };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // Comparison is by bytes, and for UTF-8 that is also by code point: the encoding is built so that comparing the
 // bytes of two strings and comparing their characters give the same answer. That is worth checking with characters
 // whose encodings differ in length, since it is exactly there that a byte comparison could have disagreed.
@@ -15,13 +10,8 @@ func TextBytes(text: string) -> Slice<char8> {
 // reader would call the same after normalization. Both of those need Unicode tables and a locale, and neither is
 // what a container keying on text wants.
 
-func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
-}
-
-// The same helper for text.
 func View(bytes: string) -> StringView {
-    return View(TextBytes(bytes));
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {

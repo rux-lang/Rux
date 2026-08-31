@@ -8,21 +8,11 @@ import Path::{ OsString, OsStringView, Path };
 import Storage::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
 import Text::TextError;
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
-func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
     return Path::FromView((*holder).View());
-}
-
-// The same helper for text.
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
-    return PathOf(allocator, TextBytes(text), holder);
 }
 
 func Touch(allocator: Allocator, path: Path) {
@@ -32,16 +22,11 @@ func Touch(allocator: Allocator, path: Path) {
     Assert(made.Close().IsOk(), "and closed");
 }
 
-func NameOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> OsStringView {
+func NameOf(allocator: Allocator, text: string, holder: *var OsString) -> OsStringView {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the expected name converts");
     return (*holder).View();
-}
-
-// The same helper for text.
-func NameOf(allocator: Allocator, text: string, holder: *var OsString) -> OsStringView {
-    return NameOf(allocator, TextBytes(text), holder);
 }
 
 func Main() -> int {
