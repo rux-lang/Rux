@@ -148,27 +148,27 @@ func Main() -> int {
     }
 
     // Text parses by the same grammar, through the overloads that take a string rather than raw bytes.
-    match ParseInt64(s8"-42") {
+    match ParseInt64("-42") {
         .Success(value) => { if value != -42i64 { return 100; } },
         .Error(_) => { return 101; }
     }
-    match ParseUint64(s8"0xff") {
+    match ParseUint64("0xff") {
         .Success(value) => { if value != 255u64 { return 102; } },
         .Error(_) => { return 103; }
     }
-    match ParseFloat64(s8"2.5") {
+    match ParseFloat64("2.5") {
         .Success(value) => { if value != 2.5 { return 104; } },
         .Error(_) => { return 105; }
     }
-    match ParseBool(s8"true") {
+    match ParseBool("true") {
         .Success(value) => { if !value { return 106; } },
         .Error(_) => { return 107; }
     }
-    match ParseChar(s8"\u{20AC}") {
+    match ParseChar("\u{20AC}") {
         .Success(value) => { if value as uint32 != 0x20ACu32 { return 108; } },
         .Error(_) => { return 109; }
     }
-    if ParseInt64(s8"nope").IsSuccess() { return 110; }
+    if ParseInt64("nope").IsSuccess() { return 110; }
 
     return 0;
 }

@@ -144,7 +144,7 @@ pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarE
     }
     if start >= digits.length { return TomlScalarError::Malformed; }
     // The three named values, which have no digits to check.
-    if MatchesWord(digits, start, s8"inf") {
+    if MatchesWord(digits, start, "inf") {
         *result = negative ? -PositiveInfinity64() : PositiveInfinity64();
         return TomlScalarError::None;
     }

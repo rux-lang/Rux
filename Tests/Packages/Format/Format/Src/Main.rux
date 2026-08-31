@@ -99,9 +99,9 @@ func Main() -> int {
 
     // Text as the format and as an argument. A string renders itself, which is what makes it usable as a
     // variadic argument at all.
-    let fromText = Format(allocator, s8"{} and {}", @error, s8"text", 1);
+    let fromText = Format(allocator, "{} and {}", @error, "text", 1);
     if error != TextError::None || !Matches(fromText.View(), "text and 1") { return 71; }
-    let padded = Format(allocator, "[{:>6}]", @error, s8"ab");
+    let padded = Format(allocator, "[{:>6}]", @error, "ab");
     if error != TextError::None || !Matches(padded.View(), "[    ab]") { return 73; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.

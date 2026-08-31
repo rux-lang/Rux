@@ -1,0 +1,4 @@
+// A string has no primitive constants: it is a view over code units rather than a value with a width, so
+// string::Bits and string::Bytes would have to choose between describing the view and describing one code
+// unit, and string::Min and string::Max describe neither. Its length is a property of the value, not of
+// the type, and is read from the string itself.

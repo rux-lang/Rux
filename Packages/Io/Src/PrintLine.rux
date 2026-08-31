@@ -7,7 +7,7 @@ import Text::{ String, StringView };
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine() -> IoError {
-    return PrintBytes(s8"\n");
+    return PrintBytes("\n");
 }
 
 /// Provides the public `PrintLine` operation.

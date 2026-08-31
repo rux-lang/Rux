@@ -70,7 +70,7 @@ func Main() -> int {
     Assert(rejected.IsNone() && error == TextError::InvalidUtf8, "a surrogate half from C is refused");
 
     // Text crosses the boundary the same way a view does, since a view is what it becomes.
-    var crossed = CString::FromText(allocator, s8"crossing", @error).ValueOr(
+    var crossed = CString::FromText(allocator, "crossing", @error).ValueOr(
         CString { data: null, length: 0, allocator: allocator });
     Assert(error == TextError::None, "text makes a C string");
     Assert(crossed.Length() == 8, "spanning what it was given");

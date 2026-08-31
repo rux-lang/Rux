@@ -108,7 +108,7 @@ func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteEr
             failure = EmitByte(writer, c);
         }
         else if c == 0x08u8 {
-            failure = Emit(writer, s8"\\b");
+            failure = Emit(writer, "\\b");
         }
         else if c == 0x09u8 {
             failure = Emit(writer, "\\t");
@@ -389,7 +389,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
         }
         let mark = path.length;
         if !root {
-            if !path.Append(s8".") { return TomlWriteError::PathTooLong; }
+            if !path.Append(".") { return TomlWriteError::PathTooLong; }
         }
         var named = KeyIntoPath(path, (*entry).key.View().Bytes());
         if named != TomlWriteError::None { return named; }
