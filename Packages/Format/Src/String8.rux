@@ -1,0 +1,39 @@
+// A `string` is text, so rendering it is writing it.
+//
+// The bytes go straight through with no conversion and nothing copied: a string is UTF-8 by construction, which is
+// exactly what a writer takes. That construction is also why there is no safety caveat here and one on
+// `Slice<char8>`: a slice is whatever bytes it was built over, while a string was checked before it existed.
+//
+// `Debug` is where the two partings show. Text shown to a reader is its characters; text shown to somebody looking
+// at a program is quoted, so that where it starts and stops is visible and an empty string is not invisible.
+//
+// Only `string` renders. `string16` and `string32` would each need a transcoding printer, and nothing yet asks for
+// one.
+
+import Core::Slice;
+import Text::TextError;
+
+extend string : Display {
+    /// Writes this text.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string8/format
+    pub func Format(self: &string, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+        return WriteAligned(writer, spec, Slice<char8> { data: self.data, length: self.length }, false);
+    }
+}
+
+extend string : Debug {
+    /// Writes this text, quoted.
+    ///
+    /// The quotes are all that is added. Escaping the characters between them is a question about which of them
+    /// need it, which is a Unicode question and belongs where the Unicode tables are.
+    ///
+    /// https://rux-lang.dev/docs/api/format/string8/format-debug
+    pub func FormatDebug(self: &string, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+        let opening = WriteAscii(writer, c8'"');
+        if opening.IsError() { return opening; }
+        let body = self.Format(writer, spec);
+        if body.IsError() { return body; }
+        return WriteAscii(writer, c8'"');
+    }
+}

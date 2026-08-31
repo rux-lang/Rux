@@ -52,6 +52,12 @@ func Main() -> int {
     if error != TextError::None { return 1; }
     Print(text); Separator();
     Print("slice-value"); Separator();
-    Print("formatted {} {} {{ok}}", 7, 2.5);
+    Print("formatted {} {} {{ok}}", 7, 2.5); Separator();
+
+    // The same three shapes with text rather than bytes: a value, a format, and text as an argument, which is the
+    // one that needs text to render itself.
+    Print(s8"string-typed"); Separator();
+    Print(s8"formatted {} {}", 7, 2.5); Separator();
+    Print(s8"{} and {}", s8"text", "bytes");
     return 0;
 }

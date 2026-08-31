@@ -38,6 +38,16 @@ extend CString {
     /// Copying a C string would give two owners of one terminated block.
     func =(self: &var CString, other: &CString);
 
+    /// A terminated copy of `text`, or nothing when the text cannot cross the boundary.
+    ///
+    /// Refuses a zero byte for the reason `FromView` does: text that ends early on the C side of the boundary is
+    /// how a checked name and a used name part company.
+    ///
+    /// https://rux-lang.dev/docs/api/text/c-string/from-text
+    pub func FromText(allocator: Allocator, text: string, error: *var TextError) -> Option<CString> {
+        return CString::FromView(allocator, StringView::FromValidated(text), error);
+    }
+
     /// A terminated copy of `view`, or nothing when the text cannot cross the boundary.
     ///
     /// Reports `InvalidUtf8` through `error` when the text contains a zero byte -- refused rather than truncated,

@@ -97,6 +97,13 @@ func Main() -> int {
     let at = Format(allocator, "at {}", @error, Point { x: -1, y: 2 });
     if error != TextError::None || !Matches(at.View(), "at (-1, 2)") { return 70; }
 
+    // Text as the format and as an argument. A string renders itself, which is what makes it usable as a
+    // variadic argument at all.
+    let fromText = Format(allocator, s8"{} and {}", @error, s8"text", 1);
+    if error != TextError::None || !Matches(fromText.View(), "text and 1") { return 71; }
+    let padded = Format(allocator, "[{:>6}]", @error, s8"ab");
+    if error != TextError::None || !Matches(padded.View(), "[    ab]") { return 73; }
+
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
     let long = Format(allocator, "<{}>", @error, Filler { count: 100 });
     if error != TextError::None || long.Length() != 1602 { return 80; }

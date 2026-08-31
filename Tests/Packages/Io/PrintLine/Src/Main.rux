@@ -51,5 +51,9 @@ func Main() -> int {
     PrintLine(text);
     PrintLine("slice-value");
     PrintLine("formatted {} {} {{ok}}", 7, 2.5);
+
+    // The same shapes with text rather than bytes.
+    PrintLine(s8"string-typed");
+    PrintLine(s8"formatted {} and {}", s8"text", "bytes");
     return 0;
 }

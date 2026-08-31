@@ -103,6 +103,13 @@ pub func Print(value: Slice<char8>) -> IoError {
     return PrintBytes(value);
 }
 
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(value: string) -> IoError {
+    return PrintBytes(Slice<char8> { data: value.data, length: value.length });
+}
+
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
 ///
 /// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
@@ -117,6 +124,13 @@ pub func Print(format: Slice<char8>, args: Display...) -> IoError {
     if failure.IsError() { return failure; }
     if formatted != TextError::None { return OfTextFailure(formatted); }
     return IoError::Ok();
+}
+
+/// Provides the public `Print` operation.
+///
+/// https://rux-lang.dev/docs/api/io/print
+pub func Print(format: string, args: Display...) -> IoError {
+    return Print(Slice<char8> { data: format.data, length: format.length }, args...);
 }
 
 /// Provides the public `Print` operation.
