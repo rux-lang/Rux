@@ -3,6 +3,11 @@ import Core::{ Assert, Option, Slice };
 import Path::{ Join, Normalize, OsString, OsStringView, Path, PathBuffer };
 import Text::TextError;
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // The named parts at their edges -- the root has no parent, a leading dot is a name, one extension comes off --
 // and normalization exercising the honesty line: `.` and `x/..` simplify, a climb past a relative path's start
 // survives, and a climb past the root vanishes.
@@ -27,6 +32,11 @@ func Spells(path: Path, expected: Slice<char8>) -> bool {
         index = index + 1;
     }
     return true;
+}
+
+// The same helper for text.
+func Spells(path: Path, expected: string) -> bool {
+    return Spells(path, TextBytes(expected));
 }
 
 func PathOf(text: &OsString) -> Path {

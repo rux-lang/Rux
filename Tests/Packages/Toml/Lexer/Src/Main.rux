@@ -8,17 +8,37 @@ import Core::{ Assert, Slice };
 import Text::{ String, TextError };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func FirstToken(text: Slice<char8>) -> TomlToken {
     var lexer = TomlLexer(text);
     return lexer.Next();
+}
+
+// The same helper for text.
+func FirstToken(text: string) -> TomlToken {
+    return FirstToken(TextBytes(text));
 }
 
 func FirstKind(text: Slice<char8>) -> TomlTokenKind {
     return FirstToken(text).kind;
 }
 
+// The same helper for text.
+func FirstKind(text: string) -> TomlTokenKind {
+    return FirstKind(TextBytes(text));
+}
+
 func FirstError(text: Slice<char8>) -> TomlLexError {
     return FirstToken(text).error;
+}
+
+// The same helper for text.
+func FirstError(text: string) -> TomlLexError {
+    return FirstError(TextBytes(text));
 }
 
 // The decoded content of the first token, which must be a text token.
@@ -31,6 +51,11 @@ func FirstText(text: Slice<char8>) -> String {
     var bad = false;
     let span = lexer.TextOf(token);
     return TomlDecodeText(allocator, span, token.form, @error, @bad);
+}
+
+// The same helper for text.
+func FirstText(text: string) -> String {
+    return FirstText(TextBytes(text));
 }
 
 func Same(value: &String, expected: Slice<char8>) -> bool {
@@ -46,6 +71,11 @@ func Same(value: &String, expected: Slice<char8>) -> bool {
         index = index + 1u;
     }
     return true;
+}
+
+// The same helper for text.
+func Same(value: &String, expected: string) -> bool {
+    return Same(value, TextBytes(expected));
 }
 
 func Main() -> int {

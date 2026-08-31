@@ -5,6 +5,11 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Crypto::{ Equal, Hmac, HmacOf, Sha256, Sha512 };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
@@ -33,6 +38,11 @@ func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
     FromHex(expectedHex, room);
     let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
     Assert(Equal(got, expectedBytes), what);
+}
+
+// The same helper for text.
+func Check(got: string, expectedHex: string, what: string) {
+    Check(TextBytes(got), TextBytes(expectedHex), TextBytes(what));
 }
 
 func Main() -> int {

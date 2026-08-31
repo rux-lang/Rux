@@ -8,8 +8,18 @@ import Core::{ Assert, Slice };
 import Text::{ String, StringView, TextError };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 func Accepts(allocator: Allocator, text: Slice<char8>, note: Slice<char8>) -> TomlValue {
@@ -19,10 +29,20 @@ func Accepts(allocator: Allocator, text: Slice<char8>, note: Slice<char8>) -> To
     return <-value;
 }
 
+// The same helper for text.
+func Accepts(allocator: Allocator, text: string, note: string) -> TomlValue {
+    return Accepts(allocator, TextBytes(text), TextBytes(note));
+}
+
 func Refuses(allocator: Allocator, text: Slice<char8>) -> TomlParseError {
     var outcome = TomlParseOutcome();
     var value = TomlParse(allocator, text, @outcome);
     return outcome.error;
+}
+
+// The same helper for text.
+func Refuses(allocator: Allocator, text: string) -> TomlParseError {
+    return Refuses(allocator, TextBytes(text));
 }
 
 func Main() -> int {

@@ -10,6 +10,11 @@ import Time::UtcOffset;
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue, TomlWriteDocument,
                TomlWriteError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Renders `value` into `storage` and returns the bytes.
 func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
     var cursor = ByteCursor(storage);
@@ -20,6 +25,11 @@ func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
 
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
@@ -34,6 +44,11 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
         index = index + 1u;
     }
     return true;
+}
+
+// The same helper for text.
+func Same(left: string, right: string) -> bool {
+    return Same(TextBytes(left), TextBytes(right));
 }
 
 func Main() -> int {

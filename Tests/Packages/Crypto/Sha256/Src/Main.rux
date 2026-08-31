@@ -5,6 +5,11 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Parses a hex string into bytes, so the vectors below read as they are published.
 func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     var index: uint = 0;
@@ -43,6 +48,11 @@ func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, w
     let gotBytes = Slice<char8> { data: @got[0], length: wide ? 32u : 28u };
     let expectedBytes = Slice<char8> { data: @expected[0], length: wide ? 32u : 28u };
     Assert(Equal(gotBytes, expectedBytes), what);
+}
+
+// The same helper for text.
+func CheckDigest(message: string, expectedHex: string, wide: bool, what: string) {
+    CheckDigest(TextBytes(message), TextBytes(expectedHex), wide, TextBytes(what));
 }
 
 func Main() -> int {

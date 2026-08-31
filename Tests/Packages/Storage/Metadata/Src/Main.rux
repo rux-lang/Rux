@@ -11,11 +11,21 @@ import Storage::{ CapabilitiesOfSystem, DeleteDirectory, DeleteFile, File, FileK
 import Text::TextError;
 import Time::Timestamp;
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
     return Path::FromView((*holder).View());
+}
+
+// The same helper for text.
+func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+    return PathOf(allocator, TextBytes(text), holder);
 }
 
 func Main() -> int {

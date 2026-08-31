@@ -13,6 +13,11 @@ import Json::{ JsonEvent, JsonEventReader, JsonKind, JsonLexError, JsonLimits, J
                JsonStyle, JsonValue, JsonWriteError, DuplicateKeyPolicy, Parse, ParseWith, WriteValue };
 import Text::{ String, StringBuilder, StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 struct SliceState {
     bytes: Slice<char8>;
     offset: uint;
@@ -243,8 +248,18 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
     Assert(streamNames == treeNames, "and the same member names");
 }
 
+// The same helper for text.
+func CheckRoundTrip(allocator: Allocator, text: string, parsed: *var JsonParseOutcome, wrote: *var JsonWriteError) {
+    CheckRoundTrip(allocator, TextBytes(text), parsed, wrote);
+}
+
 // Requires a document to be refused, and the value handed back to be the empty one rather than a partial tree.
 func CheckRefused(allocator: Allocator, text: Slice<char8>, parsed: *var JsonParseOutcome) {
     var value = Parse(allocator, text, parsed);
     Assert(parsed.error != JsonParseError::None, "a malformed document is refused");
+}
+
+// The same helper for text.
+func CheckRefused(allocator: Allocator, text: string, parsed: *var JsonParseOutcome) {
+    CheckRefused(allocator, TextBytes(text), parsed);
 }

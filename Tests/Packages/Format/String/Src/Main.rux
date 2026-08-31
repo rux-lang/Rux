@@ -3,12 +3,22 @@ import Core::Slice;
 import Format::{ Debug, Display, Format, FormatSpec, TextWriter };
 import Text::{ String, StringBuilder, StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
 // make an empty one visible. Std stays out of the dependencies and a failed check reports through the exit code.
 
 func Matches(actual: StringView, expected: Slice<char8>) -> bool {
     let wanted = StringView::FromValidated(expected);
     return actual.Equals(wanted);
+}
+
+// The same helper for text.
+func Matches(actual: StringView, expected: string) -> bool {
+    return Matches(actual, TextBytes(expected));
 }
 
 func Main() -> int {

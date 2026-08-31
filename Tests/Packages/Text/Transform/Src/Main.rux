@@ -2,11 +2,21 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
 import Text::{ Replace, StringView, TextError, ToAsciiLower, ToAsciiUpper };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Replacement and case conversion make new text out of old, so the questions are about edges: a needle at either
 // end, a replacement that contains the needle, and bytes that are not ASCII passing through case conversion whole.
 
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 func Main() -> int {

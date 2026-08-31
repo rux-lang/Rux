@@ -2,6 +2,11 @@ import Core::Assert;
 import Hash::{ Fnv1a32, Fnv1a32Of, Fnv1a64, Fnv1a64Of, FnvOffsetBasis32, FnvOffsetBasis64, HashBytes, WriteByte,
                WriteUint32, WriteUint64 };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // FNV-1a is a published algorithm, so the test is the published answers: a hash that agrees with the specification is
 // correct, and one that merely looks random is not. What the vectors cannot check is the contract around them -- that
 // splitting the writes changes nothing, that finishing twice gives the same answer, and that a reset really starts
@@ -11,8 +16,18 @@ func Hash32(text: Slice<char8>) -> uint32 {
     return Fnv1a32Of(text.data as *byte, text.length);
 }
 
+// The same helper for text.
+func Hash32(text: string) -> uint32 {
+    return Hash32(TextBytes(text));
+}
+
 func Hash64(text: Slice<char8>) -> uint64 {
     return Fnv1a64Of(text.data as *byte, text.length);
+}
+
+// The same helper for text.
+func Hash64(text: string) -> uint64 {
+    return Hash64(TextBytes(text));
 }
 
 func Main() -> int {

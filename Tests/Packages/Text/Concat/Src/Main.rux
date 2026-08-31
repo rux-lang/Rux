@@ -2,12 +2,22 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
 import Text::{ Concat, Repeat, String, StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Joining and repeating are the operations that make new text, so what is worth checking is what they allocate and
 // what they leave behind: the inputs are borrowed views and stay whole, the result is an owning string with a block
 // of its own, and the empty cases cost nothing.
 
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 func Main() -> int {

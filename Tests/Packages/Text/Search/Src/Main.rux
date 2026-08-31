@@ -2,6 +2,11 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Option, Slice };
 import Text::{ IsAsciiSpace, StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no
 // character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
 // of one. A match on bytes therefore always lands on a character boundary. That is the claim worth testing, so the
@@ -11,6 +16,11 @@ import Text::{ IsAsciiSpace, StringView, TextError };
 
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 func Main() -> int {

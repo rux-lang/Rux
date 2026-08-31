@@ -6,6 +6,11 @@
 import Core::{ Assert, Slice };
 import Toml::{ TomlEvent, TomlEventReader, TomlParseError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Whether the events of `text`, written as one letter each, are `expected`.
 func Shape(text: Slice<char8>) -> uint {
     var reader = TomlEventReader(text);
@@ -20,6 +25,11 @@ func Shape(text: Slice<char8>) -> uint {
     return count;
 }
 
+// The same helper for text.
+func Shape(text: string) -> uint {
+    return Shape(TextBytes(text));
+}
+
 func FailsWith(text: Slice<char8>) -> TomlParseError {
     var reader = TomlEventReader(text);
     while true {
@@ -29,6 +39,11 @@ func FailsWith(text: Slice<char8>) -> TomlParseError {
         }
     }
     return reader.Error();
+}
+
+// The same helper for text.
+func FailsWith(text: string) -> TomlParseError {
+    return FailsWith(TextBytes(text));
 }
 
 func Main() -> int {
