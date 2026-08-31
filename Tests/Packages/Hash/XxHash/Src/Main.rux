@@ -45,7 +45,7 @@ func Main() -> int {
     Assert(Seeded("abc", 1) == 0xBEA9CA8199328908, "and a seeded short one");
     Assert(Seeded("abc", 1) != Hash("abc"), "a seed really changes the answer");
 
-    let pangram: Slice<char8> = "The quick brown fox jumps over the lazy dog";
+    let pangram = TextBytes("The quick brown fox jumps over the lazy dog");
     let bytes = pangram.data as *byte;
     let length = pangram.length;
     let expected = 0x0B242D361FDA71BCu64;
@@ -80,7 +80,7 @@ func Main() -> int {
     Assert(padded.Finish() == expected, "a zero-length write changes nothing");
 
     // Exactly one block, and one byte either side of it, since that is where the short and long paths part.
-    let full: Slice<char8> = "0123456789abcdefghijklmnopqrstuv";
+    let full = TextBytes("0123456789abcdefghijklmnopqrstuv");
     Assert(full.length == XxBlockSize, "the block-sized input really is one block");
     let block = full.data as *byte;
     Assert(XxHash64Of(block, XxBlockSize) == Hash("0123456789abcdefghijklmnopqrstuv"), "one whole block hashes");

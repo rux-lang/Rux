@@ -1,0 +1,8 @@
+// The character prefixes spell a character, never a string: `c8'x'` is one code unit and `c8"x"` is nothing. What
+// used to be the second is now the identifier `c8` followed by a literal, which is what the parser reports.
+func Main() {
+    let one = c8'x';
+    let eight = c8"text";
+    let sixteen = c16"text";
+    let thirtyTwo = c32"text";
+}

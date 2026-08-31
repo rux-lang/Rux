@@ -745,7 +745,7 @@ private:
                 writeStatic(layout.prefix);
 
                 prepareWrite();
-                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeString8()));
                 enc.MovR10Rax();
                 enc.MovRdxR10Load();
                 enc.MovR8R10Load(8);
@@ -772,7 +772,7 @@ private:
                 };
 
                 writeStatic(layout.prefix);
-                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")));
+                LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeString8()));
                 enc.MovR10Rax();
                 enc.MovRsiR10Load();
                 enc.MovRdxR10Load(8);

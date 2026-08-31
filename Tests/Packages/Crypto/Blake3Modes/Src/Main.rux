@@ -5,6 +5,11 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Crypto::{ Blake3, Blake3DeriveKey, Blake3KeyedOf, Blake3Of, Digest, Equal };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func Main() -> int {
     var key: char8[32];
     var otherKey: char8[32];
@@ -21,9 +26,9 @@ func Main() -> int {
     var unkeyed: char8[32];
     var keyed: char8[32];
     var otherKeyed: char8[32];
-    Blake3Of("message", MutableSlice::From<char8>(@unkeyed[0], 32));
-    Blake3KeyedOf(keyBytes, "message", MutableSlice::From<char8>(@keyed[0], 32));
-    Blake3KeyedOf(otherKeyBytes, "message", MutableSlice::From<char8>(@otherKeyed[0], 32));
+    Blake3Of(TextBytes("message"), MutableSlice::From<char8>(@unkeyed[0], 32));
+    Blake3KeyedOf(keyBytes, TextBytes("message"), MutableSlice::From<char8>(@keyed[0], 32));
+    Blake3KeyedOf(otherKeyBytes, TextBytes("message"), MutableSlice::From<char8>(@otherKeyed[0], 32));
 
     let unkeyedBytes = Slice<char8> { data: @unkeyed[0], length: 32 };
     let keyedBytes = Slice<char8> { data: @keyed[0], length: 32 };
@@ -33,11 +38,11 @@ func Main() -> int {
 
     // A keyed hash is deterministic and incremental like any other.
     var replay: char8[32];
-    Blake3KeyedOf(keyBytes, "message", MutableSlice::From<char8>(@replay[0], 32));
+    Blake3KeyedOf(keyBytes, TextBytes("message"), MutableSlice::From<char8>(@replay[0], 32));
     Assert(Equal(keyedBytes, Slice<char8> { data: @replay[0], length: 32 }), "a keyed hash repeats exactly");
     var incremental = Blake3::NewKeyed(keyBytes);
-    incremental.Update("mes");
-    incremental.Update("sage");
+    incremental.Update(TextBytes("mes"));
+    incremental.Update(TextBytes("sage"));
     var incrementalOut: char8[32];
     incremental.Finish(MutableSlice::From<char8>(@incrementalOut[0], 32));
     Assert(Equal(keyedBytes, Slice<char8> { data: @incrementalOut[0], length: 32 }),
@@ -75,11 +80,11 @@ func Main() -> int {
     var derivedOne: char8[32];
     var derivedTwo: char8[32];
     var derivedOther: char8[32];
-    Blake3DeriveKey("example.com 2026-08-22 signing key", "material",
+    Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
                     MutableSlice::From<char8>(@derivedOne[0], 32));
-    Blake3DeriveKey("example.com 2026-08-22 signing key", "material",
+    Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
                     MutableSlice::From<char8>(@derivedTwo[0], 32));
-    Blake3DeriveKey("example.com 2026-08-22 encryption key", "material",
+    Blake3DeriveKey(TextBytes("example.com 2026-08-22 encryption key"), TextBytes("material"),
                     MutableSlice::From<char8>(@derivedOther[0], 32));
     let oneBytes = Slice<char8> { data: @derivedOne[0], length: 32 };
     let twoBytes = Slice<char8> { data: @derivedTwo[0], length: 32 };
@@ -88,16 +93,16 @@ func Main() -> int {
     Assert(!Equal(oneBytes, otherBytes), "a different context derives an unrelated key from the same material");
 
     var differentMaterial: char8[32];
-    Blake3DeriveKey("example.com 2026-08-22 signing key", "other material",
+    Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("other material"),
                     MutableSlice::From<char8>(@differentMaterial[0], 32));
     Assert(!Equal(oneBytes, Slice<char8> { data: @differentMaterial[0], length: 32 }),
            "and different material derives an unrelated key under the same context");
 
     // All three modes on the same bytes are mutually unrelated, which is the whole point of the flags.
     var asKeyed: char8[32];
-    Blake3KeyedOf(keyBytes, "material", MutableSlice::From<char8>(@asKeyed[0], 32));
+    Blake3KeyedOf(keyBytes, TextBytes("material"), MutableSlice::From<char8>(@asKeyed[0], 32));
     var asPlain: char8[32];
-    Blake3Of("material", MutableSlice::From<char8>(@asPlain[0], 32));
+    Blake3Of(TextBytes("material"), MutableSlice::From<char8>(@asPlain[0], 32));
     let keyedOfMaterial = Slice<char8> { data: @asKeyed[0], length: 32 };
     let plainOfMaterial = Slice<char8> { data: @asPlain[0], length: 32 };
     Assert(!Equal(oneBytes, keyedOfMaterial), "a derived key is not the keyed hash of the same material");
@@ -106,7 +111,7 @@ func Main() -> int {
 
     // Derivation extends like any other BLAKE3 output.
     var longDerived: char8[128];
-    Blake3DeriveKey("example.com 2026-08-22 signing key", "material",
+    Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
                     MutableSlice::From<char8>(@longDerived[0], 128));
     Assert(Equal(oneBytes, Slice<char8> { data: @longDerived[0], length: 32 }),
            "a longer derived key starts with the shorter one");

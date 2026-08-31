@@ -36,10 +36,10 @@ TEST_CASE("unary diagnostics name the operator and required operand family") {
 
     REQUIRE_EQ(diagnostics.size(), 5);
     CHECK_EQ(diagnostics[0].message, "operator '!' requires a bool operand, but found 'int'");
-    CHECK_EQ(diagnostics[1].message, "operator '-' requires a numeric operand, but found 'Slice<char8>'");
+    CHECK_EQ(diagnostics[1].message, "operator '-' requires a numeric operand, but found 'string8'");
     CHECK_EQ(diagnostics[2].message, "operator '~' requires an integer or bool operand, but found 'float64'");
     CHECK_EQ(diagnostics[3].message, "operator '*' requires a pointer operand, but found 'int'");
-    CHECK_EQ(diagnostics[4].message, "operator '++' requires a numeric operand, but found 'Slice<char8>'");
+    CHECK_EQ(diagnostics[4].message, "operator '++' requires a numeric operand, but found 'string8'");
 }
 
 TEST_CASE("binary diagnostics identify left and right operands across every operator family") {
@@ -58,8 +58,7 @@ TEST_CASE("binary diagnostics identify left and right operands across every oper
     )");
 
     REQUIRE_EQ(diagnostics.size(), 9);
-    CHECK_EQ(diagnostics[0].message,
-             "operator '*' cannot combine left operand 'int' with right operand 'Slice<char8>'");
+    CHECK_EQ(diagnostics[0].message, "operator '*' cannot combine left operand 'int' with right operand 'string8'");
     CHECK_EQ(diagnostics[1].message, "operator '/' cannot combine left operand 'uint8' with right operand 'float32'");
     CHECK_EQ(diagnostics[2].message,
              "operator '&' requires an integer, bool, or character left operand, but found 'float64'");
@@ -69,8 +68,7 @@ TEST_CASE("binary diagnostics identify left and right operands across every oper
     CHECK_EQ(diagnostics[5].message, "operator '>>' requires an integer right operand, but found 'bool8'");
     CHECK_EQ(diagnostics[6].message, "operator '&&' requires a bool left operand, but found 'int'");
     CHECK_EQ(diagnostics[7].message, "operator '||' requires a bool right operand, but found 'int'");
-    CHECK_EQ(diagnostics[8].message,
-             "operator '<' cannot compare left operand 'int' with right operand 'Slice<char8>'");
+    CHECK_EQ(diagnostics[8].message, "operator '<' cannot compare left operand 'int' with right operand 'string8'");
 }
 
 TEST_CASE("signed unsigned and logical shifts report the precise rejected operand") {
@@ -331,8 +329,7 @@ TEST_CASE("compound assignments apply the matching operator requirements") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 3);
-    CHECK_EQ(diagnostics[0].message,
-             "operator '+=' cannot combine left operand 'int' with right operand 'Slice<char8>'");
+    CHECK_EQ(diagnostics[0].message, "operator '+=' cannot combine left operand 'int' with right operand 'string8'");
     CHECK_EQ(diagnostics[1].message, "operator '<<=' requires an integer right operand, but found 'bool8'");
     CHECK_EQ(diagnostics[2].message, "operator '>>>=' requires a signed integer left operand, but found 'uint8'");
 }
@@ -588,8 +585,8 @@ TEST_CASE("an indexed assignment checks its value and index against the setter i
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "cannot pass 'Slice<char8>' to parameter of type 'int'");
-    CHECK_EQ(diagnostics[1].message, "no '[]=' on 'Vect' accepts an index of type 'Slice<char8>'");
+    CHECK_EQ(diagnostics[0].message, "cannot pass 'string8' to parameter of type 'int'");
+    CHECK_EQ(diagnostics[1].message, "no '[]=' on 'Vect' accepts an index of type 'string8'");
 }
 
 TEST_CASE("an indexed assignment needs a receiver it may write, and conflicts with an exclusive borrow") {

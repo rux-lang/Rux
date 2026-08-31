@@ -82,7 +82,7 @@ func Main() -> int {
     Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
 
     // A target that does not exist yet is created by the replacement.
-    Assert(WriteAtomically(allocator, target, "first contents").IsOk(), "the first write lands");
+    Assert(WriteAtomically(allocator, target, TextBytes("first contents")).IsOk(), "the first write lands");
     CheckWhole(allocator, target, "first contents");
     Assert(CountEntries(allocator, dir) == 1, "and leaves exactly one file behind");
 
@@ -90,7 +90,7 @@ func Main() -> int {
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a replacement begins");
     var sink: Writer = replacement.Stream();
-    Assert(WriteAll(sink, "second contents, longer").IsOk(), "and takes the new contents");
+    Assert(WriteAll(sink, TextBytes("second contents, longer")).IsOk(), "and takes the new contents");
     CheckWhole(allocator, target, "first contents");
     Assert(CountEntries(allocator, dir) == 2, "with the partial file alongside, not on top");
 
@@ -104,7 +104,7 @@ func Main() -> int {
     var discarded = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a second replacement begins");
     var discardedSink: Writer = discarded.Stream();
-    Assert(WriteAll(discardedSink, "never published").IsOk(), "and takes contents");
+    Assert(WriteAll(discardedSink, TextBytes("never published")).IsOk(), "and takes contents");
     Assert(discarded.Abandon(allocator).IsOk(), "abandoning reports success");
     CheckWhole(allocator, target, "second contents, longer");
     Assert(CountEntries(allocator, dir) == 1, "and leaves nothing behind");
@@ -116,7 +116,7 @@ func Main() -> int {
     Assert(CountEntries(allocator, dir) == 1, "an undecided replacement leaves no partial file");
 
     // Replacing with something shorter really shortens it, rather than leaving a tail of the old file.
-    Assert(WriteAtomically(allocator, target, "short").IsOk(), "a shorter write lands");
+    Assert(WriteAtomically(allocator, target, TextBytes("short")).IsOk(), "a shorter write lands");
     CheckWhole(allocator, target, "short");
 
     Assert(DeleteFile(allocator, target).IsOk(), "the target cleans up");
@@ -130,5 +130,5 @@ func Dropped(allocator: Allocator, target: Path) {
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "the undecided replacement begins");
     var sink: Writer = replacement.Stream();
-    Assert(WriteAll(sink, "abandoned by scope").IsOk(), "and takes contents");
+    Assert(WriteAll(sink, TextBytes("abandoned by scope")).IsOk(), "and takes contents");
 }

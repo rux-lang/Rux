@@ -26,8 +26,8 @@ using namespace Rux;
 
 namespace {
 constexpr std::string_view kRuntimePrelude = "struct Slice<T> { data: *T; length: uint; }\n"
-                                             "intrinsic func Assert(condition: bool, message: Slice<char8>);\n"
-                                             "intrinsic func Panic(message: Slice<char8>);\n";
+                                             "intrinsic func Assert(condition: bool, message: string);\n"
+                                             "intrinsic func Panic(message: string);\n";
 
 LirPackage CompileRuntimeFailures(const Target::OS os, const Target::Arch arch) {
     const auto triple = Target::TargetTriple::From(os, arch);

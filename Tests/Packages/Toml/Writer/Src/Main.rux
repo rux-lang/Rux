@@ -47,8 +47,8 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
 }
 
 // The same helper for text.
-func Same(left: string, right: string) -> bool {
-    return Same(TextBytes(left), TextBytes(right));
+func Same(left: Slice<char8>, right: string) -> bool {
+    return Same(left, TextBytes(right));
 }
 
 func Main() -> int {

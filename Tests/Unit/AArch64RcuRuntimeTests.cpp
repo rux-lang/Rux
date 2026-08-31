@@ -27,8 +27,8 @@ constexpr std::string_view kAssertIntrinsics = R"(
             length: uint;
         }
 
-        intrinsic func Assert(condition: bool, message: Slice<char8>);
-        intrinsic func Panic(message: Slice<char8>);
+        intrinsic func Assert(condition: bool, message: string);
+        intrinsic func Panic(message: string);
 )";
 
 // The words a write to standard error takes once its buffer and length are in

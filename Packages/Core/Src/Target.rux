@@ -129,7 +129,7 @@ pub struct Target {
     /// The object-file format compiled code is emitted in.
     pub objectFormat: ObjectFormat;
     /// The canonical target name, spelled `<os>-<arch>`, which is what `--target` accepts.
-    pub triple: Slice<char8>;
+    pub triple: string;
 }
 
 extend Target {

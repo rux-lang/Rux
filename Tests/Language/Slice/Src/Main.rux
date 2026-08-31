@@ -1,7 +1,10 @@
 import Core::Assert;
 
+// A literal is text, so a slice over its code units is built from the text's own members. That spelling is the
+// only way from one to the other, and it is what the rest of this file is about.
 func PlatformName() -> Slice<char8> {
-    return "Windows";
+    let name = "Windows";
+    return Slice<char8> { data: name.data, length: name.length };
 }
 
 func IsWindows(value: Slice<char8>) -> bool {
@@ -33,7 +36,8 @@ func IsFull(value: RangeFull) -> bool {
 }
 
 func Main() -> int {
-    var str: Slice<char8> = "Hello, world!";
+    let greeting = "Hello, world!";
+    var str: Slice<char8> = Slice<char8> { data: greeting.data, length: greeting.length };
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");
     Assert(str.data != null, "Expected non-null data pointer");

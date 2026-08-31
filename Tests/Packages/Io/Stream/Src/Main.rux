@@ -1,6 +1,11 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // The helpers' whole job is looping over honesty: a reader that hands over two bytes at a time, a writer that
 // takes three, a stream that says "interrupted" before every real answer, and one that reports success while
 // moving nothing. Each of those lives here as a small scripted stream, and the helpers must assemble the truth
@@ -85,7 +90,7 @@ extend ScriptedWriter : Writer {
 func Main() -> int {
     // ReadExact assembles a full buffer from two-byte reads, riding out an interruption before each.
     var source = ScriptedReader {
-        bytes: "abcdefgh",
+        bytes: TextBytes("abcdefgh"),
         cursor: 0,
         chunk: 2,
         interruptions: 10,
@@ -99,7 +104,7 @@ func Main() -> int {
 
     // A stream that ends early says so, rather than succeeding by silence.
     var short = ScriptedReader {
-        bytes: "abc",
+        bytes: TextBytes("abc"),
         cursor: 0,
         chunk: 2,
         interruptions: 0,
@@ -118,7 +123,7 @@ func Main() -> int {
         chunk: 3,
         stalling: false
     };
-    let sent = WriteAll(sink, "hello world");
+    let sent = WriteAll(sink, TextBytes("hello world"));
     Assert(sent.IsOk(), "the whole write goes through partial writes");
 
     // A writer that takes nothing while claiming success is refused rather than spun on.
@@ -129,7 +134,7 @@ func Main() -> int {
         chunk: 4,
         stalling: true
     };
-    let refused = WriteAll(stalled, "data");
+    let refused = WriteAll(stalled, TextBytes("data"));
     Assert(refused.IsError() && refused.kind == IoErrorKind::WriteZero,
            "a stream making no progress is refused, not spun on");
 

@@ -34,7 +34,7 @@ func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
 
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
 // and deletes it. Anything lossy in that circle breaks one of the steps.
-func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: Slice<char8>) {
+func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: string) {
     var error = IoError::Ok();
     var textError = TextError::None;
     var full = PathBuffer::FromPath(allocator, directory, @textError);
@@ -74,11 +74,6 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     Assert(DeleteFile(allocator, full.AsPath()).IsOk(), "and deletes under the original name");
     full.Release();
     reopenPath.Release();
-}
-
-// The same helper for text.
-func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: string) {
-    RoundTrip(allocator, directory, name, TextBytes(what));
 }
 
 func Main() -> int {

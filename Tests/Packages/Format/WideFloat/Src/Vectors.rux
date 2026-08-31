@@ -194,7 +194,7 @@ func FormatBits80(index: uint) -> uint128 {
     return 0u128;
 }
 
-func FormatText80(index: uint) -> Slice<char8> {
+func FormatText80(index: uint) -> string {
     if index == 0u {
         return "0.0";
     }
@@ -382,7 +382,7 @@ func HalfwayCount80() -> uint {
     return 3;
 }
 
-func HalfwayText80(index: uint) -> Slice<char8> {
+func HalfwayText80(index: uint) -> string {
     if index == 0u {
         return "1.3029833958735759851205009141050794596594641916453838348388671875";
     }
@@ -596,7 +596,7 @@ func FormatBits128(index: uint) -> uint128 {
     return 0u128;
 }
 
-func FormatText128(index: uint) -> Slice<char8> {
+func FormatText128(index: uint) -> string {
     if index == 0u {
         return "0.0";
     }
@@ -784,7 +784,7 @@ func HalfwayCount128() -> uint {
     return 3;
 }
 
-func HalfwayText128(index: uint) -> Slice<char8> {
+func HalfwayText128(index: uint) -> string {
     if index == 0u {
         return "1.52676408716675457638866414411311466420939029821898168093829354726410842298112147119582004961557686328887939453125";
     }
@@ -998,7 +998,7 @@ func FormatBits256(index: uint) -> uint256 {
     return 0u256;
 }
 
-func FormatText256(index: uint) -> Slice<char8> {
+func FormatText256(index: uint) -> string {
     if index == 0u {
         return "0.0";
     }
@@ -1186,7 +1186,7 @@ func HalfwayCount256() -> uint {
     return 3;
 }
 
-func HalfwayText256(index: uint) -> Slice<char8> {
+func HalfwayText256(index: uint) -> string {
     if index == 0u {
         return "1.157189000103532557790601928225566542860950178134903388609287682132424331841838795202361136899816565794965530817524951833893565437009210178967274138038130534662463824728461627691816466688960011468222111030712540014064870774745941162109375";
     }
@@ -1407,7 +1407,7 @@ func FormatBits512(index: uint) -> uint512 {
     return 0u512;
 }
 
-func FormatText512(index: uint) -> Slice<char8> {
+func FormatText512(index: uint) -> string {
     if index == 0u {
         return "0.0";
     }
@@ -1556,7 +1556,7 @@ func HalfwayCount512() -> uint {
     return 3;
 }
 
-func HalfwayText512(index: uint) -> Slice<char8> {
+func HalfwayText512(index: uint) -> string {
     if index == 0u {
         return "1.744227415176014659005288208042144393448643996984748255938026255526552446067063764435883002333152482715701465100323418198641976955234942801206449471023424297202972482573860480406677862703545420736809064532341332329615771071137774501895156613777281200887290576902040083614598472534619436267959830473664368637455478850265932660111544439013880119722911738026884406989714249117788946537136478284602236232688455408787084311113323513279699751497620852330565355270408645083080045878887176513671875";
     }

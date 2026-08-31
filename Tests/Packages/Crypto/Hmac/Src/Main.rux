@@ -32,7 +32,7 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
     var expected: char8[64];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
@@ -41,8 +41,8 @@ func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
 }
 
 // The same helper for text.
-func Check(got: string, expectedHex: string, what: string) {
-    Check(TextBytes(got), TextBytes(expectedHex), TextBytes(what));
+func Check(got: Slice<char8>, expectedHex: string, what: string) {
+    Check(got, TextBytes(expectedHex), what);
 }
 
 func Main() -> int {
@@ -56,17 +56,17 @@ func Main() -> int {
         index = index + 1;
     }
     let shortKey = Slice<char8> { data: @key[0], length: 20 };
-    HmacOf<Sha256>(Sha256(), shortKey, "Hi There", MutableSlice::From<char8>(@tag[0], 32));
+    HmacOf<Sha256>(Sha256(), shortKey, TextBytes("Hi There"), MutableSlice::From<char8>(@tag[0], 32));
     Check(Slice<char8> { data: @tag[0], length: 32 },
           "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
           "HMAC-SHA-256, RFC 4231 case 1");
-    HmacOf<Sha512>(Sha512(), shortKey, "Hi There", MutableSlice::From<char8>(@tag[0], 64));
+    HmacOf<Sha512>(Sha512(), shortKey, TextBytes("Hi There"), MutableSlice::From<char8>(@tag[0], 64));
     Check(Slice<char8> { data: @tag[0], length: 64 },
           "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854",
           "HMAC-SHA-512, RFC 4231 case 1");
 
     // RFC 4231 case 2: key "Jefe", message "what do ya want for nothing?".
-    HmacOf<Sha256>(Sha256(), "Jefe", "what do ya want for nothing?",
+    HmacOf<Sha256>(Sha256(), TextBytes("Jefe"), TextBytes("what do ya want for nothing?"),
                    MutableSlice::From<char8>(@tag[0], 32));
     Check(Slice<char8> { data: @tag[0], length: 32 },
           "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
@@ -82,13 +82,13 @@ func Main() -> int {
     }
     let longKey = Slice<char8> { data: @key[0], length: 131 };
     HmacOf<Sha256>(Sha256(), longKey,
-                   "Test Using Larger Than Block-Size Key - Hash Key First",
+                   TextBytes("Test Using Larger Than Block-Size Key - Hash Key First"),
                    MutableSlice::From<char8>(@tag[0], 32));
     Check(Slice<char8> { data: @tag[0], length: 32 },
           "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
           "HMAC-SHA-256, RFC 4231 case 6");
     HmacOf<Sha512>(Sha512(), longKey,
-                   "Test Using Larger Than Block-Size Key - Hash Key First",
+                   TextBytes("Test Using Larger Than Block-Size Key - Hash Key First"),
                    MutableSlice::From<char8>(@tag[0], 64));
     Check(Slice<char8> { data: @tag[0], length: 64 },
           "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598",
@@ -105,10 +105,10 @@ func Main() -> int {
     var firstTag: char8[32];
     var secondTag: char8[32];
     let keyA = Slice<char8> { data: @stretched[0], length: 200 };
-    HmacOf<Sha256>(Sha256(), keyA, "message", MutableSlice::From<char8>(@firstTag[0], 32));
+    HmacOf<Sha256>(Sha256(), keyA, TextBytes("message"), MutableSlice::From<char8>(@firstTag[0], 32));
     stretched[250] = (stretched[250] as uint8 ^ 0xFFu8) as char8;
     let keyB = Slice<char8> { data: @stretched[0], length: 200 };
-    HmacOf<Sha256>(Sha256(), keyB, "message", MutableSlice::From<char8>(@secondTag[0], 32));
+    HmacOf<Sha256>(Sha256(), keyB, TextBytes("message"), MutableSlice::From<char8>(@secondTag[0], 32));
     Assert(Equal(Slice<char8> { data: @firstTag[0], length: 32 },
                  Slice<char8> { data: @secondTag[0], length: 32 }),
            "a change past the key's used length changes nothing, since the key was already hashed");
@@ -117,7 +117,7 @@ func Main() -> int {
     stretched[10] = (stretched[10] as uint8 ^ 0xFFu8) as char8;
     let keyC = Slice<char8> { data: @stretched[0], length: 200 };
     var thirdTag: char8[32];
-    HmacOf<Sha256>(Sha256(), keyC, "message", MutableSlice::From<char8>(@thirdTag[0], 32));
+    HmacOf<Sha256>(Sha256(), keyC, TextBytes("message"), MutableSlice::From<char8>(@thirdTag[0], 32));
     Assert(!Equal(Slice<char8> { data: @firstTag[0], length: 32 },
                   Slice<char8> { data: @thirdTag[0], length: 32 }),
            "while a change within it does");
@@ -149,9 +149,9 @@ func Main() -> int {
 
     // An empty key and an empty message are both legal.
     let emptyKey = Slice<char8> { data: @key[0], length: 0 };
-    HmacOf<Sha256>(Sha256(), emptyKey, "", MutableSlice::From<char8>(@tag[0], 32));
+    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), MutableSlice::From<char8>(@tag[0], 32));
     var repeat: char8[32];
-    HmacOf<Sha256>(Sha256(), emptyKey, "", MutableSlice::From<char8>(@repeat[0], 32));
+    HmacOf<Sha256>(Sha256(), emptyKey, TextBytes(""), MutableSlice::From<char8>(@repeat[0], 32));
     Assert(Equal(Slice<char8> { data: @tag[0], length: 32 }, Slice<char8> { data: @repeat[0], length: 32 }),
            "an empty key and message authenticate deterministically");
 

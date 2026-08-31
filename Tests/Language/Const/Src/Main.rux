@@ -12,7 +12,7 @@ const SIGNED: int64[3] = [-1i64, 0i64, 9223372036854775807i64];
 const REALS: float64[3] = [1.5, -2.5, 1e300];
 const SMALL: uint8[3] = [1u8, 2u8, 255u8];
 const NAMED: uint32[2] = [SCALAR, 7u32];
-const TEXT: Slice<char8> = "abc";
+const TEXT: string = "abc";
 
 func Sum(values: Slice<uint32>) -> uint32 {
     var total: uint32 = 0;

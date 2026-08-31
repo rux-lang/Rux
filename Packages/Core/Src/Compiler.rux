@@ -172,7 +172,7 @@ extend Compiler {
     /// Cannot fail: an unknown name is absent rather than an error. Costs nothing in the built program.
     ///
     /// https://rux-lang.dev/docs/api/core/compiler/has-feature
-    pub intrinsic func HasFeature(self: &Compiler, feature: Slice<char8>) -> bool;
+    pub intrinsic func HasFeature(self: &Compiler, feature: string) -> bool;
 }
 
 /// The compiler performing the build, as a compile-time value.

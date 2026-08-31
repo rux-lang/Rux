@@ -19,6 +19,48 @@ constexpr auto Analyze = [](Module &module, const std::string &targetSystem = "W
 constexpr auto AnalyzeNoDeps = AnalyzeConditionalModuleWithoutDependencies;
 } // namespace
 
+TEST_CASE("a configuration value is compared as text while compiling") {
+    // Comparing two strings has no runtime meaning and is refused there; in a `when` condition the compiler holds
+    // both sides and answers from their contents, which is what selects a branch on a configuration value.
+    auto parsed = ParseSource(R"(
+import Core::{ #config };
+
+when #config.Get("allocator") == "arena" {
+    func Chosen() -> int { return 1; }
+} else {
+    func Chosen() -> int { return 0; }
+}
+
+when #config.Get("allocator") != "system" {
+    func Differs() -> int { return 1; }
+}
+)");
+
+    CompileTimeContext context;
+    context.config.emplace("allocator", "arena");
+
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(context, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    evaluator.SetImports(parsed.module);
+
+    REQUIRE_EQ(parsed.module.items.size(), 3);
+    auto *chosen = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
+    auto *differs = dynamic_cast<WhenDecl *>(parsed.module.items[2].get());
+    REQUIRE(chosen != nullptr);
+    REQUIRE(differs != nullptr);
+
+    const auto matching = evaluator.Evaluate(*chosen->branches[0].condition);
+    REQUIRE(matching.value.has_value());
+    CHECK(std::get<bool>(*matching.value));
+    CHECK(matching.diagnostics.empty());
+
+    const auto differing = evaluator.Evaluate(*differs->branches[0].condition);
+    REQUIRE(differing.value.has_value());
+    CHECK(std::get<bool>(*differing.value));
+    CHECK(differing.diagnostics.empty());
+}
+
 TEST_CASE("the conditional evaluator returns typed results without mutating the module") {
     auto parsed = ParseSource(R"(
 import Core::{ #target, #build, #compiler, #source, #config };
@@ -228,7 +270,7 @@ enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, S
 
 struct Target {
     pointerBits: uint;
-    triple: Slice<char8>;
+    triple: string;
 }
 
 extend Target {
@@ -236,13 +278,13 @@ extend Target {
 }
 
 struct Build {
-    profile: Slice<char8>;
+    profile: string;
     debugAssertions: bool;
     debugInfo: bool;
     isTest: bool;
     timestamp: uint64;
-    date: Slice<char8>;
-    time: Slice<char8>;
+    date: string;
+    time: string;
 }
 
 struct SemanticVersion {
@@ -252,22 +294,22 @@ struct SemanticVersion {
 }
 struct Compiler { version: SemanticVersion; }
 extend Compiler {
-    intrinsic func HasFeature(self: &Compiler, feature: Slice<char8>) -> bool;
+    intrinsic func HasFeature(self: &Compiler, feature: string) -> bool;
 }
 
 struct Source {
     line: uint;
     column: uint;
-    fileName: Slice<char8>;
-    filePath: Slice<char8>;
-    function: Slice<char8>;
-    module: Slice<char8>;
+    fileName: string;
+    filePath: string;
+    function: string;
+    module: string;
 }
 
 struct Config {}
 extend Config {
-    intrinsic func Get(self: &Config, name: Slice<char8>) -> Slice<char8>;
-    intrinsic func Has(self: &Config, name: Slice<char8>) -> bool;
+    intrinsic func Get(self: &Config, name: string) -> string;
+    intrinsic func Has(self: &Config, name: string) -> bool;
 }
 
 intrinsic #target: Target;

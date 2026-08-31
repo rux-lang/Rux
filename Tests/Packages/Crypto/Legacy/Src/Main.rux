@@ -31,7 +31,7 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
     var expected: char8[32];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
@@ -40,40 +40,40 @@ func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
 }
 
 // The same helper for text.
-func Check(got: string, expectedHex: string, what: string) {
-    Check(TextBytes(got), TextBytes(expectedHex), TextBytes(what));
+func Check(got: Slice<char8>, expectedHex: string, what: string) {
+    Check(got, TextBytes(expectedHex), what);
 }
 
 func Main() -> int {
     var digest: char8[32];
 
     // The MD5 vectors from RFC 1321.
-    LegacyMd5Of("", MutableSlice::From<char8>(@digest[0], 16));
+    LegacyMd5Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "d41d8cd98f00b204e9800998ecf8427e",
           "MD5 of the empty message");
-    LegacyMd5Of("a", MutableSlice::From<char8>(@digest[0], 16));
+    LegacyMd5Of(TextBytes("a"), MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "0cc175b9c0f1b6a831c399e269772661", "MD5 of a");
-    LegacyMd5Of("abc", MutableSlice::From<char8>(@digest[0], 16));
+    LegacyMd5Of(TextBytes("abc"), MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "900150983cd24fb0d6963f7d28e17f72", "MD5 of abc");
-    LegacyMd5Of("message digest", MutableSlice::From<char8>(@digest[0], 16));
+    LegacyMd5Of(TextBytes("message digest"), MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "f96b697d7cb7938d525a2f31aaf161d0",
           "MD5 of message digest");
-    LegacyMd5Of("abcdefghijklmnopqrstuvwxyz", MutableSlice::From<char8>(@digest[0], 16));
+    LegacyMd5Of(TextBytes("abcdefghijklmnopqrstuvwxyz"), MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "c3fcd3d76192e4007dfb496cca67e13b",
           "MD5 of the lowercase alphabet");
-    LegacyMd5Of("12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+    LegacyMd5Of(TextBytes("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
                 MutableSlice::From<char8>(@digest[0], 16));
     Check(Slice<char8> { data: @digest[0], length: 16 }, "57edf4a22be3c955ac49da2e2107b67a",
           "MD5 of the eighty-digit message, which spans two blocks");
 
     // The SHA-1 vectors from FIPS 180-1.
-    LegacySha1Of("", MutableSlice::From<char8>(@digest[0], 20));
+    LegacySha1Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 20));
     Check(Slice<char8> { data: @digest[0], length: 20 }, "da39a3ee5e6b4b0d3255bfef95601890afd80709",
           "SHA-1 of the empty message");
-    LegacySha1Of("abc", MutableSlice::From<char8>(@digest[0], 20));
+    LegacySha1Of(TextBytes("abc"), MutableSlice::From<char8>(@digest[0], 20));
     Check(Slice<char8> { data: @digest[0], length: 20 }, "a9993e364706816aba3e25717850c26c9cd0d89d",
           "SHA-1 of abc");
-    LegacySha1Of("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+    LegacySha1Of(TextBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
                  MutableSlice::From<char8>(@digest[0], 20));
     Check(Slice<char8> { data: @digest[0], length: 20 }, "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
           "SHA-1 of the two-block example");

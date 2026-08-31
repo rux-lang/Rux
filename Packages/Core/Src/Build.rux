@@ -55,7 +55,7 @@ pub enum OutputKind: uint8 {
 pub struct Build {
     /// The profile's name as the project spelled it, which may be a project-defined profile rather than one of the
     /// two standard ones.
-    pub profile: Slice<char8>;
+    pub profile: string;
     /// The mode the profile implies, which is what a package should branch on.
     pub mode: BuildMode;
     /// What the profile asked the optimizer to favor.
@@ -72,9 +72,9 @@ pub struct Build {
     /// does not measure time.
     pub timestamp: uint64;
     /// The build's start date as `YYYY-MM-DD`.
-    pub date: Slice<char8>;
+    pub date: string;
     /// The build's start time as `HH:MM:SS`.
-    pub time: Slice<char8>;
+    pub time: string;
 }
 
 /// The active build, as a compile-time value.

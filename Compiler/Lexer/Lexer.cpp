@@ -261,20 +261,11 @@ Token Lexer::NextToken() {
         }
     }
     if (c == 'c') {
-        if (Peek(1) == '8' && Peek(2) == '"') {
-            return ScanString(start, 2);
-        }
         if (Peek(1) == '8' && Peek(2) == '\'') {
             return ScanChar(start, 2);
         }
-        if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') {
-            return ScanString(start, 3);
-        }
         if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'') {
             return ScanChar(start, 3);
-        }
-        if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') {
-            return ScanString(start, 3);
         }
         if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') {
             return ScanChar(start, 3);

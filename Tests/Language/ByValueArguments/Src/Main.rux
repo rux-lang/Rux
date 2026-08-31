@@ -15,6 +15,11 @@
 
 import Core::{ Assert, Slice };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 const Seeds: uint64[4] = [11, 22, 33, 44];
 
 func SumArray(values: uint64[4], tail: uint64) -> uint64 {
@@ -80,7 +85,7 @@ func Main() -> int {
 
     var counter = Counter { total: 0 };
     var sink: Sink = counter;
-    Assert(sink.Put("hello") == 5u * 256u + 104u, "a slice reaches an interface method whole");
-    Assert(sink.Put("ab") == 2u * 256u + 97u, "and so does the next one");
+    Assert(sink.Put(TextBytes("hello")) == 5u * 256u + 104u, "a slice reaches an interface method whole");
+    Assert(sink.Put(TextBytes("ab")) == 2u * 256u + 97u, "and so does the next one");
     return 0;
 }

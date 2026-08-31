@@ -10,7 +10,7 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func Refuses(text: Slice<char8>, expected: UuidParseError, what: Slice<char8>) {
+func Refuses(text: Slice<char8>, expected: UuidParseError, what: string) {
     var error = UuidParseError::None;
     var value = Parse(text, @error);
     Assert(error == expected, what);
@@ -19,7 +19,7 @@ func Refuses(text: Slice<char8>, expected: UuidParseError, what: Slice<char8>) {
 
 // The same helper for text.
 func Refuses(text: string, expected: UuidParseError, what: string) {
-    Refuses(TextBytes(text), expected, TextBytes(what));
+    Refuses(TextBytes(text), expected, what);
 }
 
 func Main() -> int {

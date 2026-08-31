@@ -25,7 +25,7 @@ HirExprPtr CompilerLiteral(const SourceLocation location, TypeRef type, std::str
 }
 
 HirExprPtr CompilerString(const SourceLocation location, std::string value) {
-    return CompilerLiteral(location, TypeRef::MakeNamed("Slice<char8>"), std::move(value));
+    return CompilerLiteral(location, TypeRef::MakeString8(), std::move(value));
 }
 
 /// Convert to UTC, not local time, so the same source and the same build timestamp produce identical output wherever
@@ -350,31 +350,31 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         break;
     case Kind::File:
     case Kind::FileName:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = std::filesystem::path(currentFile).filename().string();
         break;
     case Kind::FilePath:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = LogicalCurrentFilePath();
         break;
     case Kind::Function:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = currentFunctionName;
         break;
     case Kind::Date:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = FormatBuildTime(context, "%Y-%m-%d");
         break;
     case Kind::Time:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = FormatBuildTime(context, "%H:%M:%S");
         break;
     case Kind::Module:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = currentModulePath;
         break;
     case Kind::CompilerVersion:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = context.buildInfo.CompilerVersion();
         break;
     case Kind::Os:
@@ -393,7 +393,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         value = std::to_string(context.target.pointer_size * 8);
         break;
     case Kind::TargetTriple:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = context.targetTriple;
         break;
     case Kind::TargetFeature:
@@ -401,7 +401,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         value = TargetHasFeature(context, intrinsicArgument()) ? "true" : "false";
         break;
     case Kind::BuildProfile:
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         value = context.ProfileName();
         break;
     case Kind::DebugAssertions:
@@ -425,7 +425,7 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
         value = CompilerHasFeature(intrinsicArgument()) ? "true" : "false";
         break;
     case Kind::Config: {
-        type = TypeRef::MakeNamed("Slice<char8>");
+        type = TypeRef::MakeString8();
         const auto config = context.config.find(intrinsicArgument());
         value = config == context.config.end() ? std::string{} : config->second;
         break;

@@ -6,6 +6,11 @@ import Core::{ Assert, MutableSlice, Slice };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
 
+// The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // A reader serving a fixed slice a few bytes at a time, so token boundaries fall inside reads.
 struct SliceState {
     bytes: Slice<char8>;
@@ -46,7 +51,7 @@ func Main() -> int {
     var error = IoError::Ok();
 
     // A small document, event by event, served three bytes at a time so every token straddles a read.
-    var state = SliceState { bytes: "{\"name\":42,\"list\":[true,null,\"x\"]}", offset: 0, step: 3 };
+    var state = SliceState { bytes: TextBytes("{\"name\":42,\"list\":[true,null,\"x\"]}"), offset: 0, step: 3 };
     let handle: Reader = SliceHandle { state: @state };
     var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default(), @error);
     Assert(error.IsOk(), "the reader starts");
@@ -121,7 +126,7 @@ func Main() -> int {
     bigReader.Release();
 
     // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
-    var mismatchedState = SliceState { bytes: "{\"a\":1]", offset: 0, step: 16 };
+    var mismatchedState = SliceState { bytes: TextBytes("{\"a\":1]"), offset: 0, step: 16 };
     let mismatchedHandle: Reader = SliceHandle { state: @mismatchedState };
     var mismatched = JsonEventReader::New(allocator, mismatchedHandle, JsonLimits::Default(), @error);
     Assert(mismatched.Next() == JsonEvent::ObjectStart, "the object opens");
@@ -134,7 +139,7 @@ func Main() -> int {
     // Depth is bounded here as it is in the tree parser.
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 2;
-    var deepState = SliceState { bytes: "[[[1]]]", offset: 0, step: 16 };
+    var deepState = SliceState { bytes: TextBytes("[[[1]]]"), offset: 0, step: 16 };
     let deepHandle: Reader = SliceHandle { state: @deepState };
     var deep = JsonEventReader::New(allocator, deepHandle, shallow, @error);
     Assert(deep.Next() == JsonEvent::ArrayStart, "the first level opens");

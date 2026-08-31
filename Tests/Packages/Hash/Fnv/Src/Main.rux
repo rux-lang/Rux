@@ -50,7 +50,7 @@ func Main() -> int {
     Assert(Hash32("hello world") == 0xD58B3FA7, "FNV-1a 32 of 'hello world'");
     Assert(Hash64("hello world") == 0x779A65E7023CD2E7, "FNV-1a 64 of 'hello world'");
 
-    let foobar: Slice<char8> = "foobar";
+    let foobar = TextBytes("foobar");
     let bytes = foobar.data as *byte;
 
     // Splitting the writes must not change the answer. There is no block to align to, so this is a property of the

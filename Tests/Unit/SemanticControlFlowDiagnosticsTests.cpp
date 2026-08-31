@@ -83,7 +83,7 @@ TEST_CASE("conditions and loop exits name the construct and the offending type o
     )");
 
     CHECK(HasMessage(diagnostics, "condition for 'if' must have type 'bool', but found 'int'"));
-    CHECK(HasMessage(diagnostics, "condition for 'else if' must have type 'bool', but found 'Slice<char8>'"));
+    CHECK(HasMessage(diagnostics, "condition for 'else if' must have type 'bool', but found 'string8'"));
     CHECK(HasMessage(diagnostics, "condition for 'while' must have type 'bool', but found 'int'"));
     CHECK(HasMessage(diagnostics, "condition for 'do-while' must have type 'bool', but found 'int'"));
     CHECK(HasMessage(diagnostics, "condition for '?:' must have type 'bool', but found 'int'"));

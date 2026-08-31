@@ -3,8 +3,8 @@
 77:9: error: operator '+=' cannot read and write through the '[]' operator on 'Vect' at once
 78:9: error: operator '++' cannot read and write through the '[]' operator on 'Vect' at once
 82:5: error: cannot modify immutable variable 'frozen'
-86:15: error: cannot pass 'Slice<char8>' to parameter of type 'int'
-87:10: error: no '[]=' on 'Vect' accepts an index of type 'Slice<char8>'
+86:15: error: cannot pass 'string8' to parameter of type 'int'
+87:10: error: no '[]=' on 'Vect' accepts an index of type 'string8'
 92:14: error: cannot assign through the '[]' operator on 'Holder'
 95:16: error: argument 1 to 'Borrow' has type 'int', but parameter 'value' requires '&int'
 100:20: error: type 'Plain' cannot be indexed

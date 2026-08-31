@@ -29,6 +29,11 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     return true;
 }
 
+// The rendered side is bytes and the expected side is text, which is the comparison every vector makes.
+func Same(left: Slice<char8>, right: string) -> bool {
+    return Same(left, TextBytes(right));
+}
+
 // The same helper for text.
 func Same(left: string, right: string) -> bool {
     return Same(TextBytes(left), TextBytes(right));
@@ -39,6 +44,11 @@ func StartsWith(text: Slice<char8>, prefix: Slice<char8>) -> bool {
         return false;
     }
     return Same(Slice<char8> { data: text.data, length: prefix.length }, prefix);
+}
+
+// The rendered side is bytes and the expected prefix is text.
+func StartsWith(text: Slice<char8>, prefix: string) -> bool {
+    return StartsWith(text, TextBytes(prefix));
 }
 
 // The same helper for text.

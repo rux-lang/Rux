@@ -36,7 +36,7 @@ func FromHex(text: string, into: MutableSlice<char8>) {
     FromHex(TextBytes(text), into);
 }
 
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
+func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
     var expected: char8[128];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
@@ -45,8 +45,8 @@ func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: Slice<char8>) {
 }
 
 // The same helper for text.
-func Check(got: string, expectedHex: string, what: string) {
-    Check(TextBytes(got), TextBytes(expectedHex), TextBytes(what));
+func Check(got: Slice<char8>, expectedHex: string, what: string) {
+    Check(got, TextBytes(expectedHex), what);
 }
 
 func Main() -> int {
@@ -114,8 +114,8 @@ func Main() -> int {
     // Separation: the info string is what keeps two purposes apart, and the salt what keeps two protocols apart.
     var forSigning: char8[32];
     var forEncryption: char8[32];
-    Hkdf<Sha256>(Sha256(), saltBytes, ikm, "signing", MutableSlice::From<char8>(@forSigning[0], 32));
-    Hkdf<Sha256>(Sha256(), saltBytes, ikm, "encryption", MutableSlice::From<char8>(@forEncryption[0], 32));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, TextBytes("signing"), MutableSlice::From<char8>(@forSigning[0], 32));
+    Hkdf<Sha256>(Sha256(), saltBytes, ikm, TextBytes("encryption"), MutableSlice::From<char8>(@forEncryption[0], 32));
     Assert(!Equal(Slice<char8> { data: @forSigning[0], length: 32 },
                   Slice<char8> { data: @forEncryption[0], length: 32 }),
            "two purposes derive unrelated keys from one secret");
@@ -123,7 +123,7 @@ func Main() -> int {
     var otherSalt: char8[16];
     FromHex("0102030405060708090a0b0c0d", MutableSlice::From<char8>(@otherSalt[0], 13));
     var underOtherSalt: char8[32];
-    Hkdf<Sha256>(Sha256(), Slice<char8> { data: @otherSalt[0], length: 13 }, ikm, "signing",
+    Hkdf<Sha256>(Sha256(), Slice<char8> { data: @otherSalt[0], length: 13 }, ikm, TextBytes("signing"),
                  MutableSlice::From<char8>(@underOtherSalt[0], 32));
     Assert(!Equal(Slice<char8> { data: @forSigning[0], length: 32 },
                   Slice<char8> { data: @underOtherSalt[0], length: 32 }),

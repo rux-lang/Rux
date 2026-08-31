@@ -138,8 +138,7 @@ TEST_CASE("call diagnostics identify the argument and named parameter that disag
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics[0].message,
-             "argument 2 to 'Add' has type 'Slice<char8>', but parameter 'right' requires 'int'");
+    CHECK_EQ(diagnostics[0].message, "argument 2 to 'Add' has type 'string8', but parameter 'right' requires 'int'");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK(diagnostics[0].notes[0].contains("parameter 'right' declared at 'types-and-calls.rux':2:"));
 }
@@ -201,7 +200,7 @@ TEST_CASE("overload failures list candidate signatures with declaration context"
     )");
 
     REQUIRE_EQ(diagnostics.size(), 1);
-    CHECK_EQ(diagnostics[0].message, "no matching overload for 'Choose' with argument types (Slice<char8>)");
+    CHECK_EQ(diagnostics[0].message, "no matching overload for 'Choose' with argument types (string8)");
     REQUIRE_EQ(diagnostics[0].notes.size(), 2);
     CHECK(diagnostics[0].notes[0].contains("candidate 'Choose(value: int)' declared at 'types-and-calls.rux':2:"));
     CHECK(diagnostics[0].notes[1].contains("candidate 'Choose(value: bool)' declared at 'types-and-calls.rux':3:"));
@@ -248,7 +247,7 @@ TEST_CASE("struct initializer diagnostics identify duplicate unknown missing and
 
     REQUIRE_EQ(diagnostics.size(), 4);
     CHECK_EQ(diagnostics[0].message,
-             "field 'x' in initializer for 'Point' has type 'Slice<char8>', but its declaration requires 'int'");
+             "field 'x' in initializer for 'Point' has type 'string8', but its declaration requires 'int'");
     CHECK_EQ(diagnostics[1].message, "field 'x' is initialized more than once for 'Point'");
     CHECK_EQ(diagnostics[2].message, "struct 'Point' has no field 'z'");
     REQUIRE_EQ(diagnostics[2].notes.size(), 1);
@@ -273,7 +272,7 @@ TEST_CASE("enum constructors diagnose positional and named payload expectations"
     REQUIRE_EQ(diagnostics.size(), 3);
     CHECK_EQ(diagnostics[0].message, "call to 'Choice::Empty' expects 0 arguments, but 1 was provided");
     CHECK_EQ(diagnostics[1].message,
-             "argument 2 to variant case 'Choice::Pair' has type 'Slice<char8>', but field 2 requires 'bool8'");
+             "argument 2 to variant case 'Choice::Pair' has type 'string8', but field 2 requires 'bool8'");
     CHECK_EQ(diagnostics[2].message,
              "field 'value' in initializer for 'Choice::Named' has type 'bool8', but its declaration requires 'int'");
 }
@@ -422,7 +421,7 @@ TEST_CASE("array tuple slice and index diagnostics state the aggregate requireme
 
     REQUIRE_EQ(diagnostics.size(), 5);
     CHECK_EQ(diagnostics[0].message,
-             "array element 2 has type 'Slice<char8>', but element 1 established element type 'int'");
+             "array element 2 has type 'string8', but element 1 established element type 'int'");
     CHECK_EQ(diagnostics[1].message, "index for type 'int[2]' must be an integer or range, but has type 'bool8'");
     CHECK_EQ(diagnostics[2].message, "tuple type '(int, bool8)' has no member 'name'");
     REQUIRE(diagnostics[2].help.has_value());
