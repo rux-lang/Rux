@@ -172,8 +172,8 @@ TEST_CASE("TypeRef sizes agree with the catalog") {
 TEST_CASE("the implemented widths are the ones with a representation today") {
     // One list, not two: a width is reserved exactly when it is named here, so implementing one is a single edit.
     const std::unordered_set<std::string_view> reserved{
-        "bool128", "bool256",  "bool512",  "char128",  "char256", "char512",  "float8",   "float16",
-        "float80", "float128", "float256", "float512", "string8", "string16", "string32",
+        "bool128", "bool256", "bool512", "char128",  "char256",  "char512",
+        "float8",  "float16", "float80", "float128", "float256", "float512",
     };
 
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {

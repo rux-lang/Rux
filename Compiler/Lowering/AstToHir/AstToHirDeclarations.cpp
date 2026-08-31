@@ -1,8 +1,10 @@
-// Declaration lowering, and the literal decoding it needs: character and
-// string escapes are resolved here so HIR carries values rather than syntax.
+// Declaration lowering, and the literal typing and decoding it needs: a literal's type is read from its own
+// spelling and its escapes are resolved here, so HIR carries values rather than syntax.
 
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Numeric/IntegerLiteral.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cassert>
@@ -216,6 +218,65 @@ std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
         }
     }
     return out;
+}
+
+// Literal typing. Each literal kind answers from its own spelling, and `LiteralType` below is the one
+// dispatch over them.
+TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
+    const NumericLiteralSuffixInfo *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(tok.text));
+    if (!suffix) {
+        return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
+    }
+    if (suffix->bits == 0) {
+        return suffix->isSigned ? TypeRef::MakeInt() : TypeRef::MakeUInt();
+    }
+    const PrimitiveCategory category = suffix->isFloat  ? PrimitiveCategory::Float
+                                     : suffix->isSigned ? PrimitiveCategory::SignedInt
+                                                        : PrimitiveCategory::UnsignedInt;
+    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (primitive.bits == suffix->bits && primitive.category == category) {
+            return TypeRef::MakePrimitive(primitive.kind);
+        }
+    }
+    return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
+}
+
+TypeRef AstToHirContext::StringLiteralElementType(const Token &tok) {
+    if (tok.text.starts_with("c16\"")) {
+        return TypeRef::MakeChar16();
+    }
+    if (tok.text.starts_with("c32\"")) {
+        return TypeRef::MakeChar32();
+    }
+    return TypeRef::MakeChar8();
+}
+
+// The type a string literal has. Deliberately the same rule the semantic analyzer applies, spelled out in both
+// places the way every other literal type already is.
+TypeRef AstToHirContext::StringLiteralType(const Token &tok) {
+    if (tok.text.starts_with("s8\"")) {
+        return TypeRef::MakeString8();
+    }
+    if (tok.text.starts_with("s16\"")) {
+        return TypeRef::MakeString16();
+    }
+    if (tok.text.starts_with("s32\"")) {
+        return TypeRef::MakeString32();
+    }
+    return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
+}
+
+TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
+    if (tok.text.starts_with("c8'")) {
+        return TypeRef::MakeChar8();
+    }
+    if (tok.text.starts_with("c16'")) {
+        return TypeRef::MakeChar16();
+    }
+    if (tok.text.starts_with("c32'")) {
+        return TypeRef::MakeChar32();
+    }
+    return TypeRef::MakeChar();
 }
 
 TypeRef AstToHirContext::LiteralType(const Token &tok) const {

@@ -247,33 +247,6 @@ std::vector<TypeRef> AstToHirContext::ParseTypeArgsFromTypeName(const std::strin
     return args;
 }
 
-TypeRef AstToHirContext::StringLiteralElementType(const Token &tok) {
-    if (tok.text.starts_with("c16\"")) {
-        return TypeRef::MakeChar16();
-    }
-    if (tok.text.starts_with("c32\"")) {
-        return TypeRef::MakeChar32();
-    }
-    return TypeRef::MakeChar8();
-}
-
-TypeRef AstToHirContext::StringLiteralType(const Token &tok) {
-    return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
-}
-
-TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
-    if (tok.text.starts_with("c8'")) {
-        return TypeRef::MakeChar8();
-    }
-    if (tok.text.starts_with("c16'")) {
-        return TypeRef::MakeChar16();
-    }
-    if (tok.text.starts_with("c32'")) {
-        return TypeRef::MakeChar32();
-    }
-    return TypeRef::MakeChar();
-}
-
 std::string AstToHirContext::NumericLiteralSuffix(const std::string_view text) {
     return std::string(NumericLiteralSuffixOf(text));
 }
@@ -571,6 +544,9 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     case TypeRef::Kind::UInt:
     case TypeRef::Kind::Float32:
     case TypeRef::Kind::Float64:
+    case TypeRef::Kind::String8:
+    case TypeRef::Kind::String16:
+    case TypeRef::Kind::String32:
         return named->ToString();
     default:
         return {};
@@ -585,25 +561,6 @@ AstToHirContext::StructTypeSubstitutions(const StructDecl &decl, const std::vect
         substitutions.emplace(decl.typeParams[i].name, ResolveType(*typeArgs[i]));
     }
     return substitutions;
-}
-
-TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
-    const NumericLiteralSuffixInfo *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(tok.text));
-    if (!suffix) {
-        return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
-    }
-    if (suffix->bits == 0) {
-        return suffix->isSigned ? TypeRef::MakeInt() : TypeRef::MakeUInt();
-    }
-    const PrimitiveCategory category = suffix->isFloat  ? PrimitiveCategory::Float
-                                     : suffix->isSigned ? PrimitiveCategory::SignedInt
-                                                        : PrimitiveCategory::UnsignedInt;
-    for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (primitive.bits == suffix->bits && primitive.category == category) {
-            return TypeRef::MakePrimitive(primitive.kind);
-        }
-    }
-    return tok.kind == TokenKind::FloatLiteral ? TypeRef::MakeFloat64() : TypeRef::MakeInt();
 }
 
 std::optional<TypeRef> AstToHirContext::BuiltinTypeFromName(const std::string &name) {
