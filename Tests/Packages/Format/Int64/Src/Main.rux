@@ -3,14 +3,9 @@ import Format::{ ByteCursor, FormatSpec, Display, TextWriter, ParseError, ParseI
 import Core::Result;
 import Core::{ MutableSlice, Slice };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
-func Check(value: int64, expected: Slice<char8>, code: int) -> int {
+func Check(value: int64, expected: string, code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
     let sink: &var TextWriter = cursor;
@@ -33,12 +28,7 @@ func Check(value: int64, expected: Slice<char8>, code: int) -> int {
     return 0;
 }
 
-// The same helper for text.
-func Check(value: int64, expected: string, code: int) -> int {
-    return Check(value, TextBytes(expected), code);
-}
-
-func CheckParse(str: Slice<char8>, expected: int64, code: int) -> int {
+func CheckParse(str: string, expected: int64, code: int) -> int {
     let result = ParseInt64(str);
     return match result {
         Result::Success(value) => value == expected ? 0 : code,
@@ -46,22 +36,12 @@ func CheckParse(str: Slice<char8>, expected: int64, code: int) -> int {
     };
 }
 
-// The same helper for text.
-func CheckParse(str: string, expected: int64, code: int) -> int {
-    return CheckParse(TextBytes(str), expected, code);
-}
-
-func CheckParseError(str: Slice<char8>, expected: ParseError, code: int) -> int {
+func CheckParseError(str: string, expected: ParseError, code: int) -> int {
     let result = ParseInt64(str);
     return match result {
         Result::Success(_) => code,
         Result::Error(error) => error == expected ? 0 : code
     };
-}
-
-// The same helper for text.
-func CheckParseError(str: string, expected: ParseError, code: int) -> int {
-    return CheckParseError(TextBytes(str), expected, code);
 }
 
 func CheckParsedValues() -> int {

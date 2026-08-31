@@ -3,11 +3,6 @@ import Core::Slice;
 import Format::Format;
 import Text::{ StringView, TextError };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // The wide widths, checked at their edges: the largest value of each unsigned width, the most negative of each
 // signed one -- the value with no positive counterpart, which is exactly where a negation-based magnitude goes
 // wrong -- and the bases, whose digit counts at these widths are known numbers.
@@ -15,15 +10,10 @@ func TextBytes(text: string) -> Slice<char8> {
 // The expected digit strings are facts about powers of two, not about this implementation, so a reader can check
 // them against any source.
 
-func Matches(allocator: Allocator, rendered: Slice<char8>, expected: Slice<char8>) -> bool {
+func Matches(allocator: Allocator, rendered: Slice<char8>, expected: string) -> bool {
     let got = StringView::FromValidated(rendered);
     let wanted = StringView::FromValidated(expected);
     return got.Equals(wanted);
-}
-
-// The same helper for text.
-func Matches(allocator: Allocator, rendered: Slice<char8>, expected: string) -> bool {
-    return Matches(allocator, rendered, TextBytes(expected));
 }
 
 func Main() -> int {

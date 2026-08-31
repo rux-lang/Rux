@@ -12,22 +12,12 @@ func TextBytes(text: string) -> Slice<char8> {
 // message has its polynomial, its reflection, its initial value and its final complement all right at once, since
 // getting any one of them wrong changes it.
 
-func Crc(text: Slice<char8>) -> uint32 {
+func Crc(text: string) -> uint32 {
     return Crc32Of(text.data as *byte, text.length);
 }
 
-// The same helper for text.
-func Crc(text: string) -> uint32 {
-    return Crc(TextBytes(text));
-}
-
-func Crcc(text: Slice<char8>) -> uint32 {
-    return Crc32cOf(text.data as *byte, text.length);
-}
-
-// The same helper for text.
 func Crcc(text: string) -> uint32 {
-    return Crcc(TextBytes(text));
+    return Crc32cOf(text.data as *byte, text.length);
 }
 
 // The table is division by the generator, precomputed. Recomputing an entry the slow way is what proves the table

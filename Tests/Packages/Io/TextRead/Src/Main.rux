@@ -10,13 +10,8 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
-}
-
-// The same helper for text.
 func View(bytes: string) -> StringView {
-    return View(TextBytes(bytes));
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 // A source that serves a fixed byte string in pieces of at most `step` bytes, to force refills mid-line.
@@ -55,7 +50,7 @@ extend ScriptHandle : Reader {
 
 // Reads one line from `bytes`, served `step` bytes at a time into a 16-byte buffer, and checks the outcome.
 func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: uint,
-                expectedKind: IoErrorKind, expected: Slice<char8>) {
+                expectedKind: IoErrorKind, expected: string) {
     var state = ScriptState { bytes: bytes, offset: 0, step: step };
     let source: Reader = ScriptHandle { state: @state };
     var error = IoError::Ok();
@@ -68,12 +63,6 @@ func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: ui
     let want = View(expected);
     Assert(line.View().Equals(want), "and the content is the line, no more and no less");
     reader.Release();
-}
-
-// The same helper for text.
-func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: uint,
-                expectedKind: IoErrorKind, expected: string) {
-    CheckBytes(allocator, bytes, step, limit, expectedKind, TextBytes(expected));
 }
 
 

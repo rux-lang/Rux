@@ -1,11 +1,6 @@
 import Core::{ MutableSlice, Slice };
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
 // Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
 // the overloads of two same-named symbols, so Std's would win over this package's and the code under test would
 // never run. That rules out Std::Assert, so a failed check reports itself through the exit code instead: each one
@@ -13,7 +8,7 @@ func TextBytes(text: string) -> Slice<char8> {
 //
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
 // buys: this test needs no allocator at all.
-func Check(value: int32, expected: Slice<char8>, code: int) -> int {
+func Check(value: int32, expected: string, code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
     let sink: &var TextWriter = cursor;
@@ -34,11 +29,6 @@ func Check(value: int32, expected: Slice<char8>, code: int) -> int {
         index = index + 1;
     }
     return 0;
-}
-
-// The same helper for text.
-func Check(value: int32, expected: string, code: int) -> int {
-    return Check(value, TextBytes(expected), code);
 }
 
 func Main() -> int {

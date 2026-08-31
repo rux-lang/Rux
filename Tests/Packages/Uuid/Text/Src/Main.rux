@@ -5,21 +5,11 @@
 import Core::{ Assert, MutableSlice, Slice };
 import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError };
 
-// The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
-}
-
-func Refuses(text: Slice<char8>, expected: UuidParseError, what: string) {
+func Refuses(text: string, expected: UuidParseError, what: string) {
     var error = UuidParseError::None;
     var value = Parse(text, @error);
     Assert(error == expected, what);
     Assert(value.IsNil(), "and a refused parse gives nil rather than a half-filled value");
-}
-
-// The same helper for text.
-func Refuses(text: string, expected: UuidParseError, what: string) {
-    Refuses(TextBytes(text), expected, what);
 }
 
 func Main() -> int {

@@ -9,7 +9,7 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+func FromHex(text: string, into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
         var value = 0u8;
@@ -31,22 +31,12 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-// The same helper for text.
-func FromHex(text: string, into: MutableSlice<char8>) {
-    FromHex(TextBytes(text), into);
-}
-
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
+func Check(got: Slice<char8>, expectedHex: string, what: string) {
     var expected: char8[128];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
     let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
     Assert(Equal(got, expectedBytes), what);
-}
-
-// The same helper for text.
-func Check(got: Slice<char8>, expectedHex: string, what: string) {
-    Check(got, TextBytes(expectedHex), what);
 }
 
 func Main() -> int {

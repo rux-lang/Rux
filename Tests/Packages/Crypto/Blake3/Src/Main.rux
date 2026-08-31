@@ -11,7 +11,7 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+func FromHex(text: string, into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
         var value = 0u8;
@@ -31,11 +31,6 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
         into.data[index] = value as char8;
         index = index + 1;
     }
-}
-
-// The same helper for text.
-func FromHex(text: string, into: MutableSlice<char8>) {
-    FromHex(TextBytes(text), into);
 }
 
 func Main() -> int {

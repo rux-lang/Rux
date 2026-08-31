@@ -13,13 +13,8 @@ func TextBytes(text: string) -> Slice<char8> {
     return Slice<char8> { data: text.data, length: text.length };
 }
 
-func View(bytes: Slice<char8>) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
-}
-
-// The same helper for text.
 func View(bytes: string) -> StringView {
-    return View(TextBytes(bytes));
+    return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Main() -> int {

@@ -12,22 +12,12 @@ func TextBytes(text: string) -> Slice<char8> {
 // splitting the writes changes nothing, that finishing twice gives the same answer, and that a reset really starts
 // over -- so those are checked separately.
 
-func Hash32(text: Slice<char8>) -> uint32 {
+func Hash32(text: string) -> uint32 {
     return Fnv1a32Of(text.data as *byte, text.length);
 }
 
-// The same helper for text.
-func Hash32(text: string) -> uint32 {
-    return Hash32(TextBytes(text));
-}
-
-func Hash64(text: Slice<char8>) -> uint64 {
-    return Fnv1a64Of(text.data as *byte, text.length);
-}
-
-// The same helper for text.
 func Hash64(text: string) -> uint64 {
-    return Hash64(TextBytes(text));
+    return Fnv1a64Of(text.data as *byte, text.length);
 }
 
 func Main() -> int {

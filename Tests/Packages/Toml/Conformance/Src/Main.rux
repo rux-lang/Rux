@@ -990,7 +990,7 @@ func Same(left: Slice<char8>, right: string) -> bool {
 }
 
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
-func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
+func StreamedScalars(text: string, clean: *var bool) -> uint {
     var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
@@ -1010,11 +1010,6 @@ func StreamedScalars(text: Slice<char8>, clean: *var bool) -> uint {
     }
     *clean = false;
     return count;
-}
-
-// The same helper for text.
-func StreamedScalars(text: string, clean: *var bool) -> uint {
-    return StreamedScalars(TextBytes(text), clean);
 }
 
 // How many scalar values a tree holds, counted the same way.
