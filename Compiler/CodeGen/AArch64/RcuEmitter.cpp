@@ -16,6 +16,7 @@
 #include "CodeGen/RcuModuleBuilder.h"
 #include "CodeGen/RuntimeFailure.h"
 #include "Object/Rcu/RcuMetadata.h"
+#include "Unicode/Utf.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -484,6 +485,11 @@ private:
             return true;
         }
         if (t.IsRange()) {
+            return true;
+        }
+        // A string is a 16-byte {data, length} view, exactly the shape a slice has, so it is
+        // classified and placed the way a slice is.
+        if (t.IsString()) {
             return true;
         }
         switch (t.kind) {
@@ -1279,11 +1285,14 @@ private:
         const std::uint32_t elemsOff = AlignRodata(std::min(elemSize, 8));
         std::uint64_t length = 0;
         if (c.isTextSlice) {
-            for (const unsigned char byte : c.text) {
+            // Text is emitted in the constant's own encoding, and its length counts that encoding's code units.
+            // Writing the value's UTF-8 bytes under a wider element type would publish a different text, at a length
+            // that does not describe it.
+            for (const unsigned char byte : EncodeStringLiteral(c.text, elemSize)) {
                 RodataData().push_back(byte);
             }
-            RodataData().push_back(0); // keep C interop's terminator
-            length = c.text.size();
+            RodataData().push_back(0); // completes the terminator EncodeStringLiteral left room for
+            length = CodeUnitCount(c.text, elemSize).value_or(0);
         }
         else {
             for (const auto &element : c.elements) {

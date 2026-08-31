@@ -39,6 +39,12 @@ struct DecodedUtf8 {
 /// @return nullopt when `text` is not valid UTF-8
 [[nodiscard]] std::optional<std::size_t> Utf32CodeUnitCount(std::string_view text) noexcept;
 
+/// How many code units of the encoding whose unit is `codeUnitBytes` wide `text` transcodes to. A width other
+/// than 2 or 4 is UTF-8, whose units are the value's own bytes.
+///
+/// @return nullopt when `text` is not valid UTF-8
+[[nodiscard]] std::optional<std::size_t> CodeUnitCount(std::string_view text, int codeUnitBytes) noexcept;
+
 /// Transcode `text` to UTF-16, little-endian, returned as the raw bytes of the result: two bytes per code unit, so
 /// the size is twice `Utf16CodeUnitCount`.
 ///
