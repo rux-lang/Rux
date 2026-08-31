@@ -38,16 +38,3 @@ extend char8 : Debug {
         return WriteAscii(writer, c8'\'');
     }
 }
-
-extend Slice<char8> : Display {
-    /// Writes these bytes.
-    ///
-    /// # Safety
-    ///
-    /// The bytes must be well-formed UTF-8; a slice is not checked, which is what `StringView` is for.
-    ///
-    /// https://rux-lang.dev/docs/api/format/slice-char8/format
-    pub func Format(self: Slice<char8>, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return WriteAligned(writer, spec, self, false);
-    }
-}

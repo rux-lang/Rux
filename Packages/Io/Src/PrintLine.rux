@@ -22,26 +22,8 @@ pub func PrintLine(value: String) -> IoError {
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(value: Slice<char8>) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
-}
-
-/// Provides the public `PrintLine` operation.
-///
-/// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: string) -> IoError {
     let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
-}
-
-/// Provides the public `PrintLine` operation.
-///
-/// https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(format: string, args: Display...) -> IoError {
-    let first = Print(format, args...);
     let second = PrintLine();
     return first.IsError() ? first : second;
 }
@@ -58,7 +40,7 @@ pub func PrintLine(value: StringView) -> IoError {
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(format: Slice<char8>, args: Display...) -> IoError {
+pub func PrintLine(format: string, args: Display...) -> IoError {
     let first = Print(format, args...);
     let second = PrintLine();
     return first.IsError() ? first : second;

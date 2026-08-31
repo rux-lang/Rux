@@ -101,18 +101,11 @@ pub func Print(value: StringView) -> IoError {
     return PrintBytes(value.Bytes());
 }
 
-/// Provides the public `Print` operation.
-///
-/// https://rux-lang.dev/docs/api/io/print
-pub func Print(value: Slice<char8>) -> IoError {
-    return PrintBytes(value);
-}
-
-/// Provides the public `Print` operation.
+/// Writes text to standard output.
 ///
 /// https://rux-lang.dev/docs/api/io/print
 pub func Print(value: string) -> IoError {
-    return PrintBytes(Slice<char8> { data: value.data, length: value.length });
+    return PrintBytes(value);
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
@@ -121,7 +114,7 @@ pub func Print(value: string) -> IoError {
 /// `PrintValue`'s do.
 ///
 /// https://rux-lang.dev/docs/api/io/print-format
-pub func Print(format: Slice<char8>, args: Display...) -> IoError {
+pub func Print(format: string, args: Display...) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
@@ -129,13 +122,6 @@ pub func Print(format: Slice<char8>, args: Display...) -> IoError {
     if failure.IsError() { return failure; }
     if formatted != TextError::None { return OfTextFailure(formatted); }
     return IoError::Ok();
-}
-
-/// Provides the public `Print` operation.
-///
-/// https://rux-lang.dev/docs/api/io/print
-pub func Print(format: string, args: Display...) -> IoError {
-    return Print(Slice<char8> { data: format.data, length: format.length }, args...);
 }
 
 /// Provides the public `Print` operation.
