@@ -185,11 +185,14 @@ bool IsSurrogate(const std::uint64_t value) noexcept {
 }
 
 bool IsValidCharacterValue(const TypeRef::Kind kind, const std::uint64_t value) noexcept {
+    // Both answers come from the same question -- whether `kind` is a character -- so both are asked once and
+    // checked together rather than one being taken on the strength of the other.
     const auto domain = CharacterDomainOf(kind);
-    if (!domain) {
+    const auto maximum = MaxCharacterValue(kind);
+    if (!domain || !maximum) {
         return false;
     }
-    if (value > *MaxCharacterValue(kind)) {
+    if (value > *maximum) {
         return false;
     }
     return *domain == CharacterDomain::CodeUnit || !IsSurrogate(value);
