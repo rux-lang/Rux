@@ -13,7 +13,7 @@ func TextBytes(text: string) -> Slice<char8> {
 // prefix, precision on text at a multi-byte boundary, and the ill-formed specs that must come through as literal
 // text rather than half-applied.
 
-func Matches(allocator: Allocator, format: Slice<char8>, expected: Slice<char8>) -> bool {
+func Matches(allocator: Allocator, format: string, expected: string) -> bool {
     var error = TextError::None;
     let rendered = Format(allocator, format, @error, 0);
     if error != TextError::None {
@@ -22,11 +22,6 @@ func Matches(allocator: Allocator, format: Slice<char8>, expected: Slice<char8>)
     let wanted = StringView::FromValidated(expected);
     let renderedView = rendered.View();
     return renderedView.Equals(wanted);
-}
-
-// The same helper for text.
-func Matches(allocator: Allocator, format: string, expected: string) -> bool {
-    return Matches(allocator, TextBytes(format), TextBytes(expected));
 }
 
 func Main() -> int {

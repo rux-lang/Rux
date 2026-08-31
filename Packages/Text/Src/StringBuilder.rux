@@ -176,6 +176,15 @@ extend StringBuilder {
         return self.AppendValidated(view.bytes);
     }
 
+    /// Appends `text`.
+    ///
+    /// Text was checked before it existed, so nothing is checked again and nothing can fail but the storage.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-builder/append
+    pub func Append(self: &var StringBuilder, text: string) -> TextError {
+        return self.AppendValidated(Slice<char8> { data: text.data, length: text.length });
+    }
+
     /// Appends `bytes` when they are UTF-8, and reports `InvalidUtf8` when they are not.
     ///
     /// Costs a pass over the bytes. `Append` of a view costs none, which is the reason views exist.

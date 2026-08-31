@@ -22,7 +22,7 @@ import Text::{ String, StringBuilder, TextError };
 /// Reports whatever the writer reported, having written what it managed to first.
 ///
 /// https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Display...) -> TextError {
+pub func WriteFormat(writer: &var TextWriter, format: string, args: Display...) -> TextError {
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
     // ever moves forward.
     var next: uint = 0;
@@ -78,20 +78,13 @@ pub func WriteFormat(writer: &var TextWriter, format: Slice<char8>, args: Displa
     return TextError::None;
 }
 
-/// Provides the public `WriteFormat` operation.
-///
-/// https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: string, args: Display...) -> TextError {
-    return WriteFormat(writer, Slice<char8> { data: format.data, length: format.length }, args...);
-}
-
 /// The text `format` becomes with its placeholders filled, as a string of its own.
 ///
 /// `allocator` is what the string is built with and what it will give its block back to. `error` receives what went
 /// wrong, and the string comes back holding whatever was written before that.
 ///
 /// https://rux-lang.dev/docs/api/format/format
-pub func Format(allocator: Allocator, format: Slice<char8>, error: *var TextError, args: Display...) -> String {
+pub func Format(allocator: Allocator, format: string, error: *var TextError, args: Display...) -> String {
     var builder = StringBuilder(allocator);
     // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
     // builder is there to absorb; the short calls that most of them are fill in without one.
@@ -101,11 +94,4 @@ pub func Format(allocator: Allocator, format: Slice<char8>, error: *var TextErro
     let writer: &var TextWriter = sink;
     *error = WriteFormat(writer, format, args...);
     return builder.IntoString();
-}
-
-/// Provides the public `Format` operation.
-///
-/// https://rux-lang.dev/docs/api/format/format
-pub func Format(allocator: Allocator, format: string, error: *var TextError, args: Display...) -> String {
-    return Format(allocator, Slice<char8> { data: format.data, length: format.length }, error, args...);
 }
