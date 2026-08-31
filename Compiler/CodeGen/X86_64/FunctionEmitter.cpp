@@ -37,6 +37,11 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsRange()) {
         return true;
     }
+    // A string is a 16-byte {data, length} view, exactly the shape a slice has, so it is
+    // classified and placed the way a slice is.
+    if (type.IsString()) {
+        return true;
+    }
     switch (type.kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:

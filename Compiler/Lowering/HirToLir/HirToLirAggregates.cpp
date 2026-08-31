@@ -892,11 +892,11 @@ LirReg HirToLirContext::LowerStringLiteralSlice(const HirLiteralExpr &e) {
 /// How many code units of `elementType` a literal's UTF-8 value transcodes to. The length a view publishes counts
 /// the units it actually holds, so a wider encoding does not report the byte count of the source spelling.
 std::uint64_t HirToLirContext::StringLiteralLength(const std::string &value, const TypeRef &elementType) {
-    const auto units = elementType.kind == TypeRef::Kind::Char16 ? Utf16CodeUnitCount(value)
-                     : elementType.kind == TypeRef::Kind::Char32 ? Utf32CodeUnitCount(value)
-                                                                 : std::optional{value.size()};
-    // Malformed UTF-8 was already reported by the lexer, so nothing valid reaches here without a count.
-    return static_cast<std::uint64_t>(units.value_or(0));
+    const int unitBytes = elementType.kind == TypeRef::Kind::Char16 ? 2
+                        : elementType.kind == TypeRef::Kind::Char32 ? 4
+                                                                    : 1;
+    // The lexer rejects source that is not valid UTF-8, so nothing valid reaches here without a count.
+    return static_cast<std::uint64_t>(CodeUnitCount(value, unitBytes).value_or(0));
 }
 
 void HirToLirContext::StoreStringLiteralSlice(const HirLiteralExpr &e, LirReg slot) {

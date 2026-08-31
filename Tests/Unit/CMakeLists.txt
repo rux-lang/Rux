@@ -119,6 +119,7 @@ set(RUX_TEST_SOURCES
     SoftwareFloatTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
+    StringCodeGenTests.cpp
     StringLoweringTests.cpp
     UserMessageProcessTests.cpp
     UtfTests.cpp

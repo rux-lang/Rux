@@ -128,6 +128,16 @@ std::optional<std::size_t> Utf32CodeUnitCount(const std::string_view text) noexc
     return valid ? std::optional{units} : std::nullopt;
 }
 
+std::optional<std::size_t> CodeUnitCount(const std::string_view text, const int codeUnitBytes) noexcept {
+    if (codeUnitBytes == 2) {
+        return Utf16CodeUnitCount(text);
+    }
+    if (codeUnitBytes == 4) {
+        return Utf32CodeUnitCount(text);
+    }
+    return IsValidUtf8(text) ? std::optional{text.size()} : std::nullopt;
+}
+
 std::optional<std::string> TranscodeUtf8ToUtf16LE(const std::string_view text) {
     std::string bytes;
     bytes.reserve(text.size() * 2);

@@ -1,0 +1,99 @@
+import Core::Assert;
+
+// The three encodings a string literal can be written in, and what each one publishes: a pointer to its code units
+// and a length counted in those units.
+
+const Greeting: string = s8"Hello";
+
+struct Message {
+    text: string;
+    tag: int32;
+}
+
+func Length(text: string) -> uint {
+    return text.length;
+}
+
+func First(text: string) -> char8 {
+    return text[0];
+}
+
+func Widest(text: string32) -> string32 {
+    return text;
+}
+
+func Main() -> int {
+    // A bare literal is still a slice of code units; an s-prefixed one is text.
+    let eight: string8 = s8"Hello";
+    let sixteen: string16 = s16"Hello";
+    let thirtyTwo: string32 = s32"Hello";
+
+    // 'string' is a spelling of 'string8'.
+    let text: string = s8"Hello";
+    Assert(text.length == 5u, "a string spells string8");
+
+    // A length is in the code units of the encoding, so plain ASCII agrees across all three.
+    Assert(eight.length == 5u, "ASCII is five UTF-8 code units");
+    Assert(sixteen.length == 5u, "ASCII is five UTF-16 code units");
+    Assert(thirtyTwo.length == 5u, "ASCII is five UTF-32 code units");
+
+    // Above the ASCII range the counts diverge: one code point above the basic multilingual plane is four UTF-8
+    // bytes, the two units of a UTF-16 surrogate pair, and one UTF-32 unit.
+    let rocket8: string8 = s8"\u{1F680}";
+    let rocket16: string16 = s16"\u{1F680}";
+    let rocket32: string32 = s32"\u{1F680}";
+    Assert(rocket8.length == 4u, "a supplementary code point is four UTF-8 code units");
+    Assert(rocket16.length == 2u, "a supplementary code point is a UTF-16 surrogate pair");
+    Assert(rocket32.length == 1u, "a supplementary code point is one UTF-32 code unit");
+
+    // The euro sign sits inside the basic multilingual plane, so UTF-16 holds it whole.
+    let euro8: string8 = s8"\u{20AC}";
+    let euro16: string16 = s16"\u{20AC}";
+    Assert(euro8.length == 3u, "the euro sign is three UTF-8 code units");
+    Assert(euro16.length == 1u, "the euro sign is one UTF-16 code unit");
+
+    // A literal written directly into the source file and one written as an escape are the same text.
+    Assert(s8"€".length == 3u, "a literal character and its escape agree");
+
+    // The data pointer reaches the code units the length counts.
+    Assert(eight.data != null, "a string literal has data");
+    Assert(sixteen.data != null, "a wide string literal has data");
+
+    // Indexing yields one code unit of the string's own encoding.
+    Assert(eight[0] == c8'H', "the first UTF-8 code unit");
+    Assert(eight[4] == c8'o', "the last UTF-8 code unit");
+    Assert(sixteen[0] == c16'H', "the first UTF-16 code unit");
+    Assert(thirtyTwo[0] == c32'H', "the first UTF-32 code unit");
+
+    // The transcoding is real, so a wide encoding holds code points rather than widened bytes.
+    Assert(euro16[0] == c16'\u{20AC}', "UTF-16 holds the euro sign as one unit");
+    Assert(rocket16[0] as uint32 == 0xD83Du32, "the high surrogate of U+1F680");
+    Assert(rocket16[1] as uint32 == 0xDE80u32, "the low surrogate of U+1F680");
+    Assert(rocket32[0] as uint32 == 0x1F680u32, "UTF-32 holds U+1F680 whole");
+    Assert(euro8[0] as uint8 == 0xE2, "the first UTF-8 byte of the euro sign");
+
+    // A string passes into a function and comes back out of one.
+    Assert(Length(eight) == 5u, "a string passes by value");
+    Assert(First(eight) == c8'H', "a string reaches its code units through a call");
+    Assert(Widest(thirtyTwo).length == 5u, "a string returns by value");
+
+    // A constant lives in read-only data and is reached by address.
+    Assert(Greeting.length == 5u, "a string constant keeps its length");
+    Assert(Greeting[0] == c8'H', "a string constant keeps its code units");
+    Assert(Length(Greeting) == 5u, "a string constant passes by value");
+
+    // A string is a field like any other value of its size.
+    let message = Message { text: s8"Hello", tag: 7i32 };
+    Assert(message.text.length == 5u, "a string field keeps its length");
+    Assert(message.text[1] == c8'e', "a string field keeps its code units");
+    Assert(message.tag == 7i32, "a string field does not disturb the one beside it");
+
+    // An empty literal is a zero length, and a copy of a string is the same view.
+    let empty: string = s8"";
+    Assert(empty.length == 0u, "an empty string has no code units");
+    let copy = eight;
+    Assert(copy.length == eight.length, "a copied string views the same text");
+    Assert(copy[2] == c8'l', "a copied string reaches the same code units");
+
+    return 0;
+}
