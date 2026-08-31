@@ -186,7 +186,7 @@ pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
     if level > 512u { return JsonWriteError::TooDeep; }
     let kind = value.Kind();
-    if kind == JsonKind::Null { return WriteBytes(writer, s8"null"); }
+    if kind == JsonKind::Null { return WriteBytes(writer, "null"); }
     if kind == JsonKind::Boolean {
         var flag = false;
         value.AsBoolean(@flag);

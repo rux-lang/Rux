@@ -92,7 +92,7 @@ extend AtomicWrite {
             held.Release();
             return <-result;
         }
-        var scratch = TemporaryFile::Create(allocator, directory.AsPath(), s8".rux-atomic-", error);
+        var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-", error);
         directory.Release();
         if (*error).IsError() {
             held.Release();

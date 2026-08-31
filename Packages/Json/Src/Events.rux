@@ -416,7 +416,7 @@ extend JsonEventReader {
             if !self.ScanWhile(false) { return JsonEvent::Error; }
             return JsonEvent::Number;
         }
-        if self.Matches(s8"true") { return JsonEvent::True; }
+        if self.Matches("true") { return JsonEvent::True; }
         if self.Matches("false") { return JsonEvent::False; }
         if self.Matches("null") { return JsonEvent::Null; }
         self.failure = JsonParseError::Lexical;

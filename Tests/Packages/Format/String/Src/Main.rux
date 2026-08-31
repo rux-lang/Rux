@@ -51,13 +51,13 @@ func Main() -> int {
     // A `string` renders itself the same way, and is quoted the same way. It needs no safety caveat, because it
     // was text before it existed.
     builder.Clear();
-    let shownText: Display = s8"Hello World!";
+    let shownText: Display = "Hello World!";
     let textWriter: &var TextWriter = builder;
     if shownText.Format(textWriter, FormatSpec::Plain()) != TextError::None { return 30; }
     if !Matches(builder.View(), "Hello World!") { return 31; }
 
     builder.Clear();
-    let shownTextDebug: Debug = s8"";
+    let shownTextDebug: Debug = "";
     let textDebugWriter: &var TextWriter = builder;
     if shownTextDebug.FormatDebug(textDebugWriter, FormatSpec::Plain()) != TextError::None { return 32; }
     if !Matches(builder.View(), "\"\"") { return 33; }

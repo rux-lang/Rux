@@ -99,9 +99,9 @@ func Main() -> int {
     Assert(held.Compare(shorter) == Ordering::Greater, "and the other way round");
 
     // A view over text is free: it was checked before it existed, so neither spelling makes a pass over it.
-    let overText = StringView::FromValidated(s8"hi");
+    let overText = StringView::FromValidated("hi");
     Assert(overText.Length() == 2, "a view over text spans its bytes");
-    let checkedText = StringView::FromBytes(s8"hi").ValueOr(StringView());
+    let checkedText = StringView::FromBytes("hi").ValueOr(StringView());
     Assert(checkedText.Equals(overText), "and the checked spelling answers the same view");
 
     let empty = StringView();

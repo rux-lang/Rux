@@ -1,9 +1,10 @@
 import Core::Assert;
 
 // The three encodings a string literal can be written in, and what each one publishes: a pointer to its code units
-// and a length counted in those units.
+// and a length counted in those units. The bare form is UTF-8, which is what an unprefixed literal in a UTF-8
+// source file already is.
 
-const Greeting: string = s8"Hello";
+const Greeting: string = "Hello";
 
 struct Message {
     text: string;
@@ -23,13 +24,13 @@ func Widest(text: string32) -> string32 {
 }
 
 func Main() -> int {
-    // A bare literal is still a slice of code units; an s-prefixed one is text.
-    let eight: string8 = s8"Hello";
+    // A bare literal is UTF-8; a prefix names one of the two wider encodings.
+    let eight: string8 = "Hello";
     let sixteen: string16 = s16"Hello";
     let thirtyTwo: string32 = s32"Hello";
 
     // 'string' is a spelling of 'string8'.
-    let text: string = s8"Hello";
+    let text: string = "Hello";
     Assert(text.length == 5u, "a string spells string8");
 
     // A length is in the code units of the encoding, so plain ASCII agrees across all three.
@@ -39,7 +40,7 @@ func Main() -> int {
 
     // Above the ASCII range the counts diverge: one code point above the basic multilingual plane is four UTF-8
     // bytes, the two units of a UTF-16 surrogate pair, and one UTF-32 unit.
-    let rocket8: string8 = s8"\u{1F680}";
+    let rocket8: string8 = "\u{1F680}";
     let rocket16: string16 = s16"\u{1F680}";
     let rocket32: string32 = s32"\u{1F680}";
     Assert(rocket8.length == 4u, "a supplementary code point is four UTF-8 code units");
@@ -47,13 +48,13 @@ func Main() -> int {
     Assert(rocket32.length == 1u, "a supplementary code point is one UTF-32 code unit");
 
     // The euro sign sits inside the basic multilingual plane, so UTF-16 holds it whole.
-    let euro8: string8 = s8"\u{20AC}";
+    let euro8: string8 = "\u{20AC}";
     let euro16: string16 = s16"\u{20AC}";
     Assert(euro8.length == 3u, "the euro sign is three UTF-8 code units");
     Assert(euro16.length == 1u, "the euro sign is one UTF-16 code unit");
 
     // A literal written directly into the source file and one written as an escape are the same text.
-    Assert(s8"€".length == 3u, "a literal character and its escape agree");
+    Assert("€".length == 3u, "a literal character and its escape agree");
 
     // The data pointer reaches the code units the length counts.
     Assert(eight.data != null, "a string literal has data");
@@ -83,13 +84,13 @@ func Main() -> int {
     Assert(Length(Greeting) == 5u, "a string constant passes by value");
 
     // A string is a field like any other value of its size.
-    let message = Message { text: s8"Hello", tag: 7i32 };
+    let message = Message { text: "Hello", tag: 7i32 };
     Assert(message.text.length == 5u, "a string field keeps its length");
     Assert(message.text[1] == c8'e', "a string field keeps its code units");
     Assert(message.tag == 7i32, "a string field does not disturb the one beside it");
 
     // An empty literal is a zero length, and a copy of a string is the same view.
-    let empty: string = s8"";
+    let empty: string = "";
     Assert(empty.length == 0u, "an empty string has no code units");
     let copy = eight;
     Assert(copy.length == eight.length, "a copied string views the same text");

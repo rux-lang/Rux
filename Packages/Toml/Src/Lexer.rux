@@ -368,7 +368,7 @@ extend TomlLexer {
         let first = self.input.data[start] as uint8;
         let digitLike = (first >= 0x30u8 && first <= 0x39u8) || first == 0x2Bu8 || first == 0x2Du8;
         var kind = TomlTokenKind::BareKey;
-        if self.Matches(start, end, s8"true") || self.Matches(start, end, "false") {
+        if self.Matches(start, end, "true") || self.Matches(start, end, "false") {
             kind = TomlTokenKind::Boolean;
         }
         else if self.Matches(start, end, "inf") || self.Matches(start, end, "nan") ||
