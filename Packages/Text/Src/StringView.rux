@@ -63,6 +63,29 @@ extend StringView {
         return StringView { bytes: bytes };
     }
 
+    /// A view over `text`.
+    ///
+    /// Text is UTF-8 by construction, so this makes no pass over it and cannot fail; the `Option` is there so a
+    /// caller that has a string reads the result the same way it reads the one from bytes.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/from-bytes
+    pub func FromBytes(text: string) -> Option<StringView> {
+        return Option::Some<StringView>(StringView::FromValidated(text));
+    }
+
+    /// A view over `text`.
+    ///
+    /// `text` is borrowed and must outlive the view. Nothing is checked, because nothing needs to be.
+    ///
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string-view/from-validated
+    pub func FromValidated(text: string) -> StringView {
+        return StringView { bytes: Slice<char8> { data: text.data, length: text.length } };
+    }
+
     /// How many bytes the view spans.
     ///
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.

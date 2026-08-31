@@ -48,6 +48,20 @@ func Main() -> int {
     if shownDebug.FormatDebug(emptyDebugWriter, FormatSpec::Plain()) != TextError::None { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
+    // A `string` renders itself the same way, and is quoted the same way. It needs no safety caveat, because it
+    // was text before it existed.
+    builder.Clear();
+    let shownText: Display = s8"Hello World!";
+    let textWriter: &var TextWriter = builder;
+    if shownText.Format(textWriter, FormatSpec::Plain()) != TextError::None { return 30; }
+    if !Matches(builder.View(), "Hello World!") { return 31; }
+
+    builder.Clear();
+    let shownTextDebug: Debug = s8"";
+    let textDebugWriter: &var TextWriter = builder;
+    if shownTextDebug.FormatDebug(textDebugWriter, FormatSpec::Plain()) != TextError::None { return 32; }
+    if !Matches(builder.View(), "\"\"") { return 33; }
+
     builder.Clear();
     let shownHello: Debug = hello.View();
     let helloDebugWriter: &var TextWriter = builder;

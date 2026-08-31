@@ -74,6 +74,14 @@ func Main() -> int {
     let rebuilt = String::FromView(allocator, view, @error);
     Assert(error == TextError::None && rebuilt.Equals(text), "and a string built from it holds the same text");
 
+    // Text needs no checking on the way in, so a string built from text is built from the same overloads under
+    // the same names.
+    let fromText = String::FromBytes(allocator, s8"hié€😀", @error);
+    Assert(error == TextError::None, "text makes a string");
+    Assert(fromText.Equals(text), "holding what the same bytes hold");
+    let vouched = String::FromValidated(allocator, s8"hié€😀", @error);
+    Assert(error == TextError::None && vouched.Equals(text), "and so does the unchecked spelling");
+
     // Comparison is by bytes, which for UTF-8 is also by code point.
     let shorter = String::FromBytes(allocator, "hi", @error);
     Assert(!shorter.Equals(text), "different text is not equal");

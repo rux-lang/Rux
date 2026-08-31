@@ -127,6 +127,28 @@ extend String {
         return String::FromValidated(allocator, bytes, error);
     }
 
+    /// A copy of `text`.
+    ///
+    /// Text is UTF-8 by construction, so this copies without checking. `error` receives `OutOfMemory` when the copy
+    /// cannot be made, and `None` when the string was built.
+    ///
+    /// Runs in time proportional to the length and allocates once.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/from-bytes
+    pub func FromBytes(allocator: Allocator, text: string, error: *var TextError) -> String {
+        return String::FromValidated(allocator, text, error);
+    }
+
+    /// A copy of `text`.
+    ///
+    /// The same as `FromBytes` for text, which needs no checking; both spellings exist so a caller that has a
+    /// string does not have to know which one it is holding.
+    ///
+    /// https://rux-lang.dev/docs/api/text/string/from-validated
+    pub func FromValidated(allocator: Allocator, text: string, error: *var TextError) -> String {
+        return String::FromValidated(allocator, Slice<char8> { data: text.data, length: text.length }, error);
+    }
+
     /// A copy of what `view` spans.
     ///
     /// The view was checked when it was made, so this copies without checking again.

@@ -69,6 +69,13 @@ func Main() -> int {
     let rejected = CString::FromRaw(allocator, @mangled[0], 8, @error);
     Assert(rejected.IsNone() && error == TextError::InvalidUtf8, "a surrogate half from C is refused");
 
+    // Text crosses the boundary the same way a view does, since a view is what it becomes.
+    var crossed = CString::FromText(allocator, s8"crossing", @error).ValueOr(
+        CString { data: null, length: 0, allocator: allocator });
+    Assert(error == TextError::None, "text makes a C string");
+    Assert(crossed.Length() == 8, "spanning what it was given");
+    Assert((crossed.Raw()[8] as uint32) == 0, "with the terminator sitting just past it");
+
     // Null is C's nothing, and nothing is not text.
     let missing = CString::FromRaw(allocator, null, 8, @error);
     Assert(missing.IsNone(), "and a null pointer makes nothing");
