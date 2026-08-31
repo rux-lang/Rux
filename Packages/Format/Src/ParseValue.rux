@@ -56,3 +56,17 @@ pub func ParseChar(str: Slice<char8>) -> Result<char32, ParseError> {
 pub func ParseChar(str: StringView) -> Result<char32, ParseError> {
     return ParseChar(str.Bytes());
 }
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-bool-text
+pub func ParseBool(str: string) -> Result<bool, ParseError> {
+    return ParseBool(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-char-text
+pub func ParseChar(str: string) -> Result<char32, ParseError> {
+    return ParseChar(Slice<char8> { data: str.data, length: str.length });
+}

@@ -48,6 +48,13 @@ pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: Slice
     return TextError::None;
 }
 
+/// Provides the public `WriteAligned` operation.
+///
+/// https://rux-lang.dev/docs/api/format/write-aligned
+pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: string, numeric: bool) -> TextError {
+    return WriteAligned(writer, spec, Slice<char8> { data: rendered.data, length: rendered.length }, numeric);
+}
+
 /// How many fill bytes go on each side of a rendering that occupies `occupied` columns.
 ///
 /// https://rux-lang.dev/docs/api/format/padding-around

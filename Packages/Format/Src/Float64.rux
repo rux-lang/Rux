@@ -82,7 +82,7 @@ extend float64 : Debug {
 // costs no String of its own.
 func WriteFloat(cursor: &var ByteCursor, value: float64) {
     if IsNan(value) {
-        cursor.PushBytes("NaN");
+        cursor.PushBytes(s8"NaN");
         return;
     }
     if IsInfinite(value) {

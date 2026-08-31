@@ -186,6 +186,15 @@ extend TemporaryFile {
         return <-result;
     }
 
+    /// Provides the public `Create` operation.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-file/create
+    pub func Create(allocator: Allocator, directory: Path, prefix: string,
+                error: *var IoError) -> TemporaryFile {
+        return TemporaryFile::Create(allocator, directory,
+                                     Slice<char8> { data: prefix.data, length: prefix.length }, error);
+    }
+
     /// The file's path, for handing to something that needs a name.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-file/path
@@ -281,6 +290,15 @@ extend TemporaryDirectoryHandle {
         }
         *error = IoError::Of(IoErrorKind::AlreadyExists);
         return <-result;
+    }
+
+    /// Provides the public `Create` operation.
+    ///
+    /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/create
+    pub func Create(allocator: Allocator, directory: Path, prefix: string,
+                error: *var IoError) -> TemporaryDirectoryHandle {
+        return TemporaryDirectoryHandle::Create(allocator, directory,
+                                                Slice<char8> { data: prefix.data, length: prefix.length }, error);
     }
 
     /// The directory's path, for building names inside it.

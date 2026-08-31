@@ -36,6 +36,13 @@ pub func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> TextError {
     return writer.Write(bytes);
 }
 
+/// Provides the public `WriteBytes` operation.
+///
+/// https://rux-lang.dev/docs/api/format/write-bytes
+pub func WriteBytes(writer: &var TextWriter, text: string) -> TextError {
+    return WriteBytes(writer, Slice<char8> { data: text.data, length: text.length });
+}
+
 /// Writes one ASCII byte.
 ///
 /// Reports `InvalidUtf8` for a byte above 0x7F: a single byte above that is never a whole character, and a writer

@@ -347,6 +347,11 @@ extend JsonEventReader {
         return true;
     }
 
+    // The same comparison for text.
+    func Matches(self: &var JsonEventReader, word: string) -> bool {
+        return self.Matches(Slice<char8> { data: word.data, length: word.length });
+    }
+
     /// The next event.
     ///
     /// Separators are consumed silently: a caller sees values and structure, not commas and colons, which is
@@ -411,7 +416,7 @@ extend JsonEventReader {
             if !self.ScanWhile(false) { return JsonEvent::Error; }
             return JsonEvent::Number;
         }
-        if self.Matches("true") { return JsonEvent::True; }
+        if self.Matches(s8"true") { return JsonEvent::True; }
         if self.Matches("false") { return JsonEvent::False; }
         if self.Matches("null") { return JsonEvent::Null; }
         self.failure = JsonParseError::Lexical;

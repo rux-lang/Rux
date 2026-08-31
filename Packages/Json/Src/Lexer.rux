@@ -198,6 +198,11 @@ extend JsonLexer {
         }
         return true;
     }
+
+    // The same comparison for text.
+    func MatchesWord(self: &JsonLexer, word: string) -> bool {
+        return self.MatchesWord(Slice<char8> { data: word.data, length: word.length });
+    }
 }
 
 extend JsonLexer {
@@ -369,7 +374,7 @@ extend JsonLexer {
         if c == 0x2Cu8 { return self.Simple(JsonTokenKind::Comma); }
         if c == 0x22u8 { return self.LexText(); }
         if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) { return self.LexNumber(); }
-        if self.MatchesWord("true") { return self.Word(JsonTokenKind::True, 4u); }
+        if self.MatchesWord(s8"true") { return self.Word(JsonTokenKind::True, 4u); }
         if self.MatchesWord("false") { return self.Word(JsonTokenKind::False, 5u); }
         if self.MatchesWord("null") { return self.Word(JsonTokenKind::Null, 4u); }
         return self.Fail(JsonLexError::UnexpectedByte);

@@ -27,3 +27,10 @@ pub func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
 pub func TryParseInt64(str: StringView, value: *var int64) -> bool {
     return TryParseInt64(str.Bytes(), value);
 }
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/try-parse-int64-text
+pub func TryParseInt64(str: string, value: *var int64) -> bool {
+    return TryParseInt64(Slice<char8> { data: str.data, length: str.length }, value);
+}
