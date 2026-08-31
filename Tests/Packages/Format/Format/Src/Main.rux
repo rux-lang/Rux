@@ -3,6 +3,11 @@ import Core::Slice;
 import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, TextWriter };
 import Text::{ StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
 // ways to spell a literal brace, and the mismatched calls are the interesting ones -- extra arguments go unused, and
 // a placeholder with nothing left renders as nothing, so the mistake shows in the text rather than at the point of
@@ -50,6 +55,11 @@ extend Filler : Display {
 func Matches(actual: StringView, expected: Slice<char8>) -> bool {
     let wanted = StringView::FromValidated(expected);
     return actual.Equals(wanted);
+}
+
+// The same helper for text.
+func Matches(actual: StringView, expected: string) -> bool {
+    return Matches(actual, TextBytes(expected));
 }
 
 func Main() -> int {

@@ -14,6 +14,11 @@ import Core::{ Assert, MutableSlice, Slice };
 import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256,
                  Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // How many bits differ between two byte sequences.
 func BitsDiffering(left: Slice<char8>, right: Slice<char8>) -> uint {
     var count: uint = 0;
@@ -71,6 +76,11 @@ func CheckAvalanche(digestLength: uint, which: uint, what: Slice<char8>) {
     Assert(worstHigh < totalBits, "nor inverts it entirely");
 }
 
+// The same helper for text.
+func CheckAvalanche(digestLength: uint, which: uint, what: string) {
+    CheckAvalanche(digestLength, which, TextBytes(what));
+}
+
 // Dispatches to one of the algorithms by index, since they do not share an interface uniformly.
 func HashWith(which: uint, message: Slice<char8>, into: MutableSlice<char8>) {
     if which == 0u {
@@ -103,6 +113,11 @@ func HashWith(which: uint, message: Slice<char8>, into: MutableSlice<char8>) {
     else {
         LegacyMd5Of(message, into);
     }
+}
+
+// The same helper for text.
+func HashWith(which: uint, message: string, into: MutableSlice<char8>) {
+    HashWith(which, TextBytes(message), into);
 }
 
 func Main() -> int {

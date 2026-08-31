@@ -10,6 +10,11 @@ import Format::{ ByteCursor, Display, Float128, Float256, Float512, Float80, Flo
                  ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
 import Text::TextError;
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     if left.length != right.length {
         return false;
@@ -24,11 +29,21 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     return true;
 }
 
+// The same helper for text.
+func Same(left: string, right: string) -> bool {
+    return Same(TextBytes(left), TextBytes(right));
+}
+
 func StartsWith(text: Slice<char8>, prefix: Slice<char8>) -> bool {
     if text.length < prefix.length {
         return false;
     }
     return Same(Slice<char8> { data: text.data, length: prefix.length }, prefix);
+}
+
+// The same helper for text.
+func StartsWith(text: string, prefix: string) -> bool {
+    return StartsWith(TextBytes(text), TextBytes(prefix));
 }
 
 // Renders `bits` under `layout` into `storage` and hands back what was written.
@@ -59,12 +74,22 @@ func Bits(text: Slice<char8>, layout: &FloatLayout) -> uint512 {
     return parsed.ValueOr(0u512);
 }
 
+// The same helper for text.
+func Bits(text: string, layout: &FloatLayout) -> uint512 {
+    return Bits(TextBytes(text), layout);
+}
+
 func Refused(text: Slice<char8>, layout: &FloatLayout) -> bool {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     let parsed = ParseWideFloat(allocator, text, layout);
     var failure = ParseError::Empty;
     return parsed.TryIntoError(@failure);
+}
+
+// The same helper for text.
+func Refused(text: string, layout: &FloatLayout) -> bool {
+    return Refused(TextBytes(text), layout);
 }
 
 func Main() -> int {

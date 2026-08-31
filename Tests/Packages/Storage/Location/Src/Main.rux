@@ -9,11 +9,21 @@ import Storage::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, Del
                   OpenOptions };
 import Text::TextError;
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
     return Path::FromView((*holder).View());
+}
+
+// The same helper for text.
+func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+    return PathOf(allocator, TextBytes(text), holder);
 }
 
 func Touch(allocator: Allocator, path: Path) {
@@ -41,6 +51,11 @@ func EndsWith(buffer: *PathBuffer, tail: Slice<char8>) -> bool {
         index = index + 1;
     }
     return true;
+}
+
+// The same helper for text.
+func EndsWith(buffer: *PathBuffer, tail: string) -> bool {
+    return EndsWith(buffer, TextBytes(tail));
 }
 
 func Main() -> int {

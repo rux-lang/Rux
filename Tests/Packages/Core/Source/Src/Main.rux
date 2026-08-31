@@ -1,5 +1,10 @@
 import Core::{ Assert, #source };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // A dependency-free slice comparison, so the test can check the exact strings
 // the compiler fills in without pulling in Text for its String type.
 func SliceEquals(a: Slice<char8>, b: Slice<char8>) -> bool {
@@ -14,6 +19,11 @@ func SliceEquals(a: Slice<char8>, b: Slice<char8>) -> bool {
         i++;
     }
     return true;
+}
+
+// The same helper for text.
+func SliceEquals(a: string, b: string) -> bool {
+    return SliceEquals(TextBytes(a), TextBytes(b));
 }
 
 func Main() -> int {

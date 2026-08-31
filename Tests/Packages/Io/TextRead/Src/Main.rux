@@ -5,8 +5,18 @@ import Core::{ Assert, MutableSlice, Slice };
 import Io::{ BufferedReader, IoError, IoErrorKind, Reader, ReadTextLine };
 import Text::{ String, StringBuilder, StringView };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 func View(bytes: Slice<char8>) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
+}
+
+// The same helper for text.
+func View(bytes: string) -> StringView {
+    return View(TextBytes(bytes));
 }
 
 // A source that serves a fixed byte string in pieces of at most `step` bytes, to force refills mid-line.
@@ -58,6 +68,16 @@ func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: ui
     let want = View(expected);
     Assert(line.View().Equals(want), "and the content is the line, no more and no less");
     reader.Release();
+}
+
+// The same helper for text.
+func CheckBytes(allocator: Allocator,
+                bytes: string,
+                step: uint,
+                limit: uint,
+                expectedKind: IoErrorKind,
+                expected: string) {
+    CheckBytes(allocator, TextBytes(bytes), step, limit, expectedKind, TextBytes(expected));
 }
 
 

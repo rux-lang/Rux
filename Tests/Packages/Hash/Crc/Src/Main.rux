@@ -2,6 +2,11 @@ import Core::Assert;
 import Hash::{ Crc32, Crc32Of, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial, Crc32cTable, Crc32Initial,
                Crc32Polynomial, HashBytes };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // Both CRCs are specified, so the test is the standard answers -- above all the check value every CRC catalogue
 // lists, which is the checksum of the nine characters "123456789". A CRC that agrees on that and on the empty
 // message has its polynomial, its reflection, its initial value and its final complement all right at once, since
@@ -11,8 +16,18 @@ func Crc(text: Slice<char8>) -> uint32 {
     return Crc32Of(text.data as *byte, text.length);
 }
 
+// The same helper for text.
+func Crc(text: string) -> uint32 {
+    return Crc(TextBytes(text));
+}
+
 func Crcc(text: Slice<char8>) -> uint32 {
     return Crc32cOf(text.data as *byte, text.length);
+}
+
+// The same helper for text.
+func Crcc(text: string) -> uint32 {
+    return Crcc(TextBytes(text));
 }
 
 // The table is division by the generator, precomputed. Recomputing an entry the slow way is what proves the table

@@ -3,6 +3,11 @@ import Core::Slice;
 import Format::Format;
 import Text::{ StringView, TextError };
 
+// The bytes a string spans, which is how a text overload reaches the slice one.
+func TextBytes(text: string) -> Slice<char8> {
+    return Slice<char8> { data: text.data, length: text.length };
+}
+
 // The spec grammar, exercised through whole format calls so what is checked is what a caller sees. Each family gets
 // its edges: alignment with and without a named fill, zero-padding around a sign, each base with and without its
 // prefix, precision on text at a multi-byte boundary, and the ill-formed specs that must come through as literal
@@ -17,6 +22,11 @@ func Matches(allocator: Allocator, format: Slice<char8>, expected: Slice<char8>)
     let wanted = StringView::FromValidated(expected);
     let renderedView = rendered.View();
     return renderedView.Equals(wanted);
+}
+
+// The same helper for text.
+func Matches(allocator: Allocator, format: string, expected: string) -> bool {
+    return Matches(allocator, TextBytes(format), TextBytes(expected));
 }
 
 func Main() -> int {
