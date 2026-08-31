@@ -54,6 +54,10 @@ review_exception() {
         reviewed_limit=1700
         reviewed_reason='dense one-line instruction reference vectors whose locality makes coverage auditable'
         ;;
+    Tests/Unit/CompilerDriverTests.cpp)
+        reviewed_limit=1300
+        reviewed_reason='end-to-end driver contracts sharing one workspace fixture across manifests, artifacts, and diagnostics'
+        ;;
     Tests/Unit/CliProcessTests.cpp)
         reviewed_limit=1400
         reviewed_reason='end-to-end CLI stream, option, workspace, and process contracts sharing one filesystem fixture'
