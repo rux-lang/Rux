@@ -16,6 +16,7 @@ enum class PrimitiveCategory : std::uint8_t {
     SignedInt,
     UnsignedInt,
     Float,
+    String,
 };
 
 /// One primitive type, described once.
@@ -27,7 +28,9 @@ struct PrimitiveInfo {
     /// Canonical spelling. An alias resolves to this, so nothing downstream ever sees the alias.
     std::string_view name;
     PrimitiveCategory category = PrimitiveCategory::UnsignedInt;
-    /// Value width in bits, or 0 for a pointer-sized type whose width the target supplies.
+    /// Value width in bits, or 0 for a pointer-sized type whose width the target supplies. A string carries the
+    /// width of one code unit of its encoding rather than the width of the view, which is why its size is not
+    /// `bits / 8` either.
     std::uint32_t bits = 0;
     /// Storage size in bytes, or 0 for a pointer-sized type. `float80` stores 80 value bits in 16 bytes, so this is
     /// deliberately not `bits / 8`.
@@ -59,7 +62,7 @@ enum class CharacterDomain : std::uint8_t {
 /// Every primitive type, in declaration order within each family.
 [[nodiscard]] std::span<const PrimitiveInfo> PrimitiveCatalog() noexcept;
 
-/// Every alternative spelling: `bool`, `byte`, `char` and `float`.
+/// Every alternative spelling: `bool`, `byte`, `char`, `float` and `string`.
 [[nodiscard]] std::span<const PrimitiveAlias> PrimitiveAliases() noexcept;
 
 /// @return the catalog entry for `kind`, or nullptr when `kind` is not a primitive
@@ -103,6 +106,12 @@ enum class CharacterDomain : std::uint8_t {
 ///
 /// @return nullopt when `kind` is not a character
 [[nodiscard]] std::optional<std::uint32_t> MaxCharacterValue(TypeRef::Kind kind) noexcept;
+
+/// The character a string of this encoding is made of: `string8` is UTF-8 and so holds `char8` code units, and
+/// likewise for the two wider encodings.
+///
+/// @return `Kind::Unknown` when `kind` is not a string
+[[nodiscard]] TypeRef::Kind StringCodeUnitKind(TypeRef::Kind kind) noexcept;
 
 /// Whether `value` names a Unicode surrogate, U+D800 through U+DFFF. A surrogate is half of a UTF-16 pair and is a
 /// code unit rather than a character, so it is a value a scalar-valued width may not hold.

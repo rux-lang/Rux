@@ -48,6 +48,20 @@ TEST_CASE("every primitive exposes its recommended constants") {
     CHECK_FALSE(LookupPrimitiveConstant("int32", "Infinity", context).has_value());
 }
 
+TEST_CASE("a string exposes no constants at all") {
+    // `Bits` and `Bytes` would have to choose between describing the view and describing one code unit, and a view
+    // has no smallest or largest value, so the whole family answers nothing.
+    const CompileTimeContext context;
+
+    for (const std::string_view type : {"string", "string8", "string16", "string32"}) {
+        CAPTURE(type);
+        for (const std::string_view name : {"Bits", "Bytes", "Min", "Max"}) {
+            CAPTURE(name);
+            CHECK_FALSE(LookupPrimitiveConstant(type, name, context).has_value());
+        }
+    }
+}
+
 TEST_CASE("native integer constants follow the target pointer width") {
     CompileTimeContext context;
     context.target.pointer_size = 4;

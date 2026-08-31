@@ -331,6 +331,9 @@ static std::string NormalizePrimitiveName(const std::string &name) {
     if (name == "float") {
         return "float64";
     }
+    if (name == "string") {
+        return "string8";
+    }
     return name;
 }
 

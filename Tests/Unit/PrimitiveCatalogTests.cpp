@@ -16,10 +16,11 @@ std::string ImplTypeName(const TypeExpr &type);
 namespace {
 /// Every primitive the language currently spells, in the order the catalog declares them.
 constexpr std::string_view ExpectedNames[] = {
-    "bool8",  "bool16",  "bool32",  "bool64",  "bool128", "bool256",  "bool512",  "char8",    "char16",  "char32",
-    "char64", "char128", "char256", "char512", "int8",    "int16",    "int32",    "int64",    "int128",  "int256",
-    "int512", "int",     "uint8",   "uint16",  "uint32",  "uint64",   "uint128",  "uint256",  "uint512", "uint",
-    "float8", "float16", "float32", "float64", "float80", "float128", "float256", "float512",
+    "bool8",    "bool16",   "bool32",  "bool64",   "bool128",  "bool256", "bool512", "char8",   "char16",
+    "char32",   "char64",   "char128", "char256",  "char512",  "int8",    "int16",   "int32",   "int64",
+    "int128",   "int256",   "int512",  "int",      "uint8",    "uint16",  "uint32",  "uint64",  "uint128",
+    "uint256",  "uint512",  "uint",    "float8",   "float16",  "float32", "float64", "float80", "float128",
+    "float256", "float512", "string8", "string16", "string32",
 };
 
 [[nodiscard]] const PrimitiveInfo &Entry(const std::string_view name) {
@@ -47,11 +48,13 @@ TEST_CASE("an alias resolves to its canonical spelling and kind") {
     CHECK_EQ(CanonicalPrimitiveName("byte"), "uint8");
     CHECK_EQ(CanonicalPrimitiveName("char"), "char32");
     CHECK_EQ(CanonicalPrimitiveName("float"), "float64");
+    CHECK_EQ(CanonicalPrimitiveName("string"), "string8");
 
     CHECK_EQ(PrimitiveTypeFromName("bool"), TypeRef::MakeBool8());
     CHECK_EQ(PrimitiveTypeFromName("byte"), TypeRef::MakeUInt8());
     CHECK_EQ(PrimitiveTypeFromName("char"), TypeRef::MakeChar32());
     CHECK_EQ(PrimitiveTypeFromName("float"), TypeRef::MakeFloat64());
+    CHECK_EQ(PrimitiveTypeFromName("string"), TypeRef::MakeString8());
 }
 
 TEST_CASE("a name that is not a primitive is left alone") {
@@ -105,6 +108,25 @@ TEST_CASE("a wide primitive is 16-byte aligned whatever its size") {
     CHECK_EQ(Entry("int512").size, 64);
 }
 
+TEST_CASE("a string is a 16-byte view whose width is one code unit of its encoding") {
+    for (const std::string_view name : {"string8", "string16", "string32"}) {
+        CAPTURE(name);
+        CHECK_EQ(Entry(name).size, 16);
+        CHECK_EQ(Entry(name).align, 8);
+    }
+    CHECK_EQ(Entry("string8").bits, 8);
+    CHECK_EQ(Entry("string16").bits, 16);
+    CHECK_EQ(Entry("string32").bits, 32);
+}
+
+TEST_CASE("a string is made of the characters of its encoding") {
+    CHECK_EQ(StringCodeUnitKind(TypeRef::Kind::String8), TypeRef::Kind::Char8);
+    CHECK_EQ(StringCodeUnitKind(TypeRef::Kind::String16), TypeRef::Kind::Char16);
+    CHECK_EQ(StringCodeUnitKind(TypeRef::Kind::String32), TypeRef::Kind::Char32);
+    CHECK_EQ(StringCodeUnitKind(TypeRef::Kind::Char8), TypeRef::Kind::Unknown);
+    CHECK_EQ(StringCodeUnitKind(TypeRef::Kind::Named), TypeRef::Kind::Unknown);
+}
+
 TEST_CASE("float80 holds 80 value bits in 16 bytes of storage") {
     const PrimitiveInfo &extended = Entry("float80");
     CHECK_EQ(extended.bits, 80);
@@ -119,6 +141,7 @@ TEST_CASE("a primitive's family drives the type predicates") {
         CHECK_EQ(type.ToString(), primitive.name);
         CHECK_EQ(type.IsBool(), primitive.category == PrimitiveCategory::Bool);
         CHECK_EQ(type.IsChar(), primitive.category == PrimitiveCategory::Char);
+        CHECK_EQ(type.IsString(), primitive.category == PrimitiveCategory::String);
         CHECK_EQ(type.IsFloat(), primitive.category == PrimitiveCategory::Float);
         CHECK_EQ(type.IsSigned(), primitive.category == PrimitiveCategory::SignedInt);
         CHECK_EQ(type.IsInteger(), primitive.category == PrimitiveCategory::SignedInt ||
@@ -132,6 +155,7 @@ TEST_CASE("a non-primitive answers no to every primitive predicate") {
     CHECK_FALSE(named.IsPrimitive());
     CHECK_FALSE(named.IsBool());
     CHECK_FALSE(named.IsChar());
+    CHECK_FALSE(named.IsString());
     CHECK_FALSE(named.IsNumeric());
     CHECK_FALSE(named.IsInteger());
     CHECK_FALSE(named.IsFloat());
@@ -148,8 +172,8 @@ TEST_CASE("TypeRef sizes agree with the catalog") {
 TEST_CASE("the implemented widths are the ones with a representation today") {
     // One list, not two: a width is reserved exactly when it is named here, so implementing one is a single edit.
     const std::unordered_set<std::string_view> reserved{
-        "bool128", "bool256", "bool512", "char128",  "char256",  "char512",
-        "float8",  "float16", "float80", "float128", "float256", "float512",
+        "bool128", "bool256",  "bool512",  "char128",  "char256", "char512",  "float8",   "float16",
+        "float80", "float128", "float256", "float512", "string8", "string16", "string32",
     };
 
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {

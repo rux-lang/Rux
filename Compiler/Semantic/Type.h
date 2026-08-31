@@ -49,7 +49,10 @@ struct TypeRef {
         Float80,
         Float128,
         Float256,
-        Float512,         // String
+        Float512,
+        String8,
+        String16,
+        String32,
         Pointer,          // *T  — inner[0] = pointee
         Reference,        // &T  — inner[0] = referent
         Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
@@ -71,6 +74,9 @@ struct TypeRef {
         Byte = UInt8,    // byte is an alias for uint8
         Char = Char32,   // char is an alias for char32
         Float = Float64, // float is an alias for float64
+        // `string` is UTF-8 rather than the widest encoding, because a bare literal is UTF-8. This is the deliberate
+        // asymmetry with `char`, which aliases the widest character so it holds a whole scalar value.
+        String = String8,
     };
 
     Kind kind = Kind::Unknown;
@@ -234,6 +240,30 @@ struct TypeRef {
         return t;
     }
 
+    static TypeRef MakeString8() {
+        TypeRef t;
+        t.kind = Kind::String8;
+        return t;
+    }
+
+    static TypeRef MakeString16() {
+        TypeRef t;
+        t.kind = Kind::String16;
+        return t;
+    }
+
+    static TypeRef MakeString32() {
+        TypeRef t;
+        t.kind = Kind::String32;
+        return t;
+    }
+
+    static TypeRef MakeString() {
+        TypeRef t;
+        t.kind = Kind::String8;
+        return t;
+    }
+
     static TypeRef MakeNamed(std::string n) {
         TypeRef t;
         t.kind = Kind::Named;
@@ -322,6 +352,7 @@ struct TypeRef {
 
     [[nodiscard]] bool IsBool() const noexcept;
     [[nodiscard]] bool IsChar() const noexcept;
+    [[nodiscard]] bool IsString() const noexcept;
     [[nodiscard]] bool IsNumeric() const noexcept;
     [[nodiscard]] bool IsInteger() const noexcept;
 
