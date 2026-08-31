@@ -418,3 +418,101 @@ pub func ParseUint512(str: StringView) -> Result<uint512, ParseError> {
 pub func ParseInt512(str: StringView) -> Result<int512, ParseError> {
     return ParseInt512(str.Bytes());
 }
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint8-text
+pub func ParseUint8(str: string) -> Result<uint8, ParseError> {
+    return ParseUint8(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int8-text
+pub func ParseInt8(str: string) -> Result<int8, ParseError> {
+    return ParseInt8(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint16-text
+pub func ParseUint16(str: string) -> Result<uint16, ParseError> {
+    return ParseUint16(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int16-text
+pub func ParseInt16(str: string) -> Result<int16, ParseError> {
+    return ParseInt16(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint32-text
+pub func ParseUint32(str: string) -> Result<uint32, ParseError> {
+    return ParseUint32(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int32-text
+pub func ParseInt32(str: string) -> Result<int32, ParseError> {
+    return ParseInt32(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint64-text
+pub func ParseUint64(str: string) -> Result<uint64, ParseError> {
+    return ParseUint64(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int64-text
+pub func ParseInt64(str: string) -> Result<int64, ParseError> {
+    return ParseInt64(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint128-text
+pub func ParseUint128(str: string) -> Result<uint128, ParseError> {
+    return ParseUint128(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int128-text
+pub func ParseInt128(str: string) -> Result<int128, ParseError> {
+    return ParseInt128(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint256-text
+pub func ParseUint256(str: string) -> Result<uint256, ParseError> {
+    return ParseUint256(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int256-text
+pub func ParseInt256(str: string) -> Result<int256, ParseError> {
+    return ParseInt256(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-uint512-text
+pub func ParseUint512(str: string) -> Result<uint512, ParseError> {
+    return ParseUint512(Slice<char8> { data: str.data, length: str.length });
+}
+
+/// The same grammar for text, which is what a caller holding a string literal has.
+///
+/// https://rux-lang.dev/docs/api/format/parse-int512-text
+pub func ParseInt512(str: string) -> Result<int512, ParseError> {
+    return ParseInt512(Slice<char8> { data: str.data, length: str.length });
+}

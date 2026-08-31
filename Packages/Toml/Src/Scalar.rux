@@ -144,7 +144,7 @@ pub func TomlParseFloat(text: Slice<char8>, result: *var float64) -> TomlScalarE
     }
     if start >= digits.length { return TomlScalarError::Malformed; }
     // The three named values, which have no digits to check.
-    if MatchesWord(digits, start, "inf") {
+    if MatchesWord(digits, start, s8"inf") {
         *result = negative ? -PositiveInfinity64() : PositiveInfinity64();
         return TomlScalarError::None;
     }
@@ -171,6 +171,11 @@ func MatchesWord(digits: Slice<char8>, start: uint, word: Slice<char8>) -> bool 
         index = index + 1u;
     }
     return true;
+}
+
+// The same comparison for text.
+func MatchesWord(digits: Slice<char8>, start: uint, word: string) -> bool {
+    return MatchesWord(digits, start, Slice<char8> { data: word.data, length: word.length });
 }
 
 // TOML's float shape: digits, optionally a point with digits after it, optionally an exponent with digits after

@@ -14,6 +14,11 @@ func PrintBytes(bytes: Slice<char8>) -> IoError {
     return WriteAll(out, bytes);
 }
 
+// The same write for text, which is bytes that were checked before they existed.
+func PrintBytes(text: string) -> IoError {
+    return PrintBytes(Slice<char8> { data: text.data, length: text.length });
+}
+
 /// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
 ///
 /// The formatting interfaces speak `TextError`, which has no vocabulary for a broken stream; so the writer

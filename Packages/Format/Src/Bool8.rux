@@ -9,7 +9,7 @@ extend bool8 : Display {
     ///
     /// https://rux-lang.dev/docs/api/format/bool8/format
     pub func Format(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return WriteAligned(writer, spec, *self ? "true" : "false", false);
+        return WriteAligned(writer, spec, *self ? s8"true" : s8"false", false);
     }
 }
 

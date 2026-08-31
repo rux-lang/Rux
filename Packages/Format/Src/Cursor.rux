@@ -54,6 +54,13 @@ extend ByteCursor {
         }
     }
 
+    /// Provides the public `PushBytes` operation.
+    ///
+    /// https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
+    pub func PushBytes(self: &var ByteCursor, text: string) {
+        self.PushBytes(Slice<char8> { data: text.data, length: text.length });
+    }
+
     /// What has been written.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/written

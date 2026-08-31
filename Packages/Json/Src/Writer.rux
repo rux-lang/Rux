@@ -149,6 +149,11 @@ func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> JsonWriteError 
     return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
 }
 
+// The same write for text.
+func WriteBytes(writer: &var TextWriter, text: string) -> JsonWriteError {
+    return WriteBytes(writer, Slice<char8> { data: text.data, length: text.length });
+}
+
 func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
     if style.indent == 0u { return JsonWriteError::None; }
     var newline: char8[1];
@@ -181,7 +186,7 @@ pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
     if level > 512u { return JsonWriteError::TooDeep; }
     let kind = value.Kind();
-    if kind == JsonKind::Null { return WriteBytes(writer, "null"); }
+    if kind == JsonKind::Null { return WriteBytes(writer, s8"null"); }
     if kind == JsonKind::Boolean {
         var flag = false;
         value.AsBoolean(@flag);

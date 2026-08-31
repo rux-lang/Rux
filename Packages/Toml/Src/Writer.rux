@@ -54,6 +54,11 @@ extend TomlPath {
         return true;
     }
 
+    // The same append for text.
+    func Append(self: &var TomlPath, text: string) -> bool {
+        return self.Append(Slice<char8> { data: text.data, length: text.length });
+    }
+
     func Bytes(self: &TomlPath) -> Slice<char8> {
         return Slice<char8> { data: self.room.data, length: self.length };
     }
@@ -78,6 +83,11 @@ func Emit(writer: &var TextWriter, bytes: Slice<char8>) -> TomlWriteError {
     return sink.Write(bytes) == TextError::None ? TomlWriteError::None : TomlWriteError::Failed;
 }
 
+// The same write for text.
+func Emit(writer: &var TextWriter, text: string) -> TomlWriteError {
+    return Emit(writer, Slice<char8> { data: text.data, length: text.length });
+}
+
 func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {
     var one: char8[1];
     one[0] = byte as char8;
@@ -98,7 +108,7 @@ func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteEr
             failure = EmitByte(writer, c);
         }
         else if c == 0x08u8 {
-            failure = Emit(writer, "\\b");
+            failure = Emit(writer, s8"\\b");
         }
         else if c == 0x09u8 {
             failure = Emit(writer, "\\t");
@@ -379,7 +389,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
         }
         let mark = path.length;
         if !root {
-            if !path.Append(".") { return TomlWriteError::PathTooLong; }
+            if !path.Append(s8".") { return TomlWriteError::PathTooLong; }
         }
         var named = KeyIntoPath(path, (*entry).key.View().Bytes());
         if named != TomlWriteError::None { return named; }
