@@ -1,6 +1,7 @@
 // Checking for struct, enum, union, array, slice and index expressions.
 
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
+#include "Semantic/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <format>
@@ -206,6 +207,10 @@ std::optional<TypeRef> SemanticAnalyzerContext::IndexElementType(const TypeRef &
     }
     if (auto elementType = SliceElementType(value)) {
         return elementType;
+    }
+    // A string is indexed in the code units of its own encoding, which is what its length counts.
+    if (value.IsString()) {
+        return TypeRef::MakePrimitive(StringCodeUnitKind(value.kind));
     }
     if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
         return value.inner[0];
@@ -622,6 +627,13 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
             if (elementType) {
                 return TypeRef::MakeNamed(SliceTypeName(*elementType));
             }
+            if (objectValueType.IsString()) {
+                EmitError(index->location,
+                          std::format("cannot take a range of string type '{}'", objectType.ToString()),
+                          {"a sub-range could split one character's code units and leave text that is not valid"},
+                          "index a single code unit with '[i]', or build a slice from '.data' and '.length'");
+                return TypeRef::MakeUnknown();
+            }
             std::optional<std::string> sliceHelp;
             if (isNamedType) {
                 sliceHelp = std::format("declare 'func []' taking a range on '{}'", objectType.ToString());
@@ -671,6 +683,20 @@ std::optional<TypeRef> SemanticAnalyzerContext::CheckAggregateExpression(const E
             EmitError(field->location,
                       std::format("slice type '{}' has no member '{}'", objectType.ToString(), field->field),
                       {"available slice members are 'data' and 'length'"});
+            return TypeRef::MakeUnknown();
+        }
+        // A string has no struct declaration to read fields from, so the view's two members are answered here. They
+        // are the escape hatch to the raw code units: a `Slice` built from them is a sequence of units again.
+        if (objectValueType.IsString()) {
+            if (field->field == "data") {
+                return TypeRef::MakePointer(TypeRef::MakePrimitive(StringCodeUnitKind(objectValueType.kind)));
+            }
+            if (field->field == "length") {
+                return TypeRef::MakeUInt();
+            }
+            EmitError(field->location,
+                      std::format("string type '{}' has no member '{}'", objectType.ToString(), field->field),
+                      {"available string members are 'data' and 'length'"});
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {

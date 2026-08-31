@@ -66,9 +66,9 @@ constexpr std::array<PrimitiveInfo, 41> Catalog{{
     // A string is a borrowed view -- a pointer to its code units and a length counted in them -- so `bits` is the
     // width of one code unit of the encoding and `size` is the width of the view, the same 16 bytes whatever the
     // encoding.
-    {K::String8, "string8", C::String, 8, 16, 8, false},
-    {K::String16, "string16", C::String, 16, 16, 8, false},
-    {K::String32, "string32", C::String, 32, 16, 8, false},
+    {K::String8, "string8", C::String, 8, 16, 8, true},
+    {K::String16, "string16", C::String, 16, 16, 8, true},
+    {K::String32, "string32", C::String, 32, 16, 8, true},
 }};
 
 /// The last code point Unicode defines, and so the ceiling on every scalar-valued character width.

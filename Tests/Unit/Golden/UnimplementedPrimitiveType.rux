@@ -1,4 +1,3 @@
 func Main() {
     var s: bool128 = true;
-    var t: string16 = "reserved";
 }

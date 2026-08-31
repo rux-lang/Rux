@@ -303,7 +303,20 @@ private:
         return TypeRef::MakeChar8();
     }
 
+    /// The type a string literal has.
+    ///
+    /// An `s`-prefixed literal is text: a string of the encoding the prefix names, whose length is counted in that
+    /// encoding's code units. Every other spelling is still a slice of raw code units.
     static TypeRef StringLiteralType(const Token &tok) {
+        if (tok.text.starts_with("s8\"")) {
+            return TypeRef::MakeString8();
+        }
+        if (tok.text.starts_with("s16\"")) {
+            return TypeRef::MakeString16();
+        }
+        if (tok.text.starts_with("s32\"")) {
+            return TypeRef::MakeString32();
+        }
         return TypeRef::MakeNamed(SliceTypeName(StringLiteralElementType(tok)));
     }
 
