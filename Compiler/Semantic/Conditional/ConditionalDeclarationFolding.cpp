@@ -141,8 +141,8 @@ private:
                         EmitWarning(branch.directiveLocation, branch.directiveMessage);
                     }
                     else {
-                        ResolveDecls(branch.items);
                         evaluator.RegisterDeclarations(branch.items);
+                        ResolveDecls(branch.items);
                         for (auto &item : branch.items) {
                             resolved.push_back(std::move(item));
                         }
@@ -171,8 +171,8 @@ private:
                 if (branch.condition && !EvalCondition(branch.condition.get(), when->location)) {
                     continue;
                 }
-                ResolveDecls(branch.items);
                 evaluator.RegisterDeclarations(branch.items);
+                ResolveDecls(branch.items);
                 for (auto &item : branch.items) {
                     resolved.push_back(std::move(item));
                 }

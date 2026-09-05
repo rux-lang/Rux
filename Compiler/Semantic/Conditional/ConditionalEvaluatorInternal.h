@@ -23,7 +23,8 @@ namespace ConditionalEvaluation {
 /// function it appears in, which is why the source context is set before each evaluation rather than passed in.
 class ConditionalEvaluator::Impl {
 public:
-    Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules);
+    Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules,
+         ConditionalImportResolver imports);
 
     void SetSourceContext(std::string_view file, std::string_view modulePath, std::string_view function);
     void SetImports(const Module &module);
@@ -41,6 +42,23 @@ private:
     using Value = CompileTimeValue;
 
     const CompileTimeContext &context;
+    ConditionalImportResolver resolveImports;
+    std::vector<Module *> localModules;
+
+    struct ConstantBinding {
+        const ConstDecl *declaration;
+        std::vector<Module *> modules;
+        const Module *source;
+    };
+
+    std::unordered_map<std::string, ConstantBinding> associatedDeclarations;
+    std::unordered_map<std::string, ConstantBinding> importedConstants;
+    std::unordered_map<std::string, std::string> intrinsicBindings;
+    std::unordered_set<const ConstDecl *> activeAssociatedConstants;
+    void ImportDeclarations(const UseDecl &use);
+    void BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules, const Module &source,
+                                 bool external = true);
+    [[nodiscard]] std::optional<Value> EvalDeclaredConstant(const ConstantBinding &binding, SourceLocation location);
     std::vector<Diagnostic> diags;
     std::string currentFile;
     std::string currentFunction;
@@ -69,7 +87,7 @@ private:
     [[nodiscard]] bool RequireRuxImport(const std::string &name, SourceLocation location);
     [[nodiscard]] std::optional<std::string> IntrinsicArgument(const IntrinsicExpr &expr, bool allowEnum = false);
     [[nodiscard]] bool TargetHasFeature(std::string_view name) const;
-    [[nodiscard]] static std::optional<std::string_view> CompilerParamRoot(const Expr &expr);
+    [[nodiscard]] std::optional<std::string_view> CompilerParamRoot(const Expr &expr) const;
     [[nodiscard]] std::optional<Value> EvalCompilerParamField(std::string_view root, std::string_view field,
                                                               SourceLocation location);
     [[nodiscard]] std::optional<ParsedSemanticVersion> EvalSemanticVersion(const Expr &expr);

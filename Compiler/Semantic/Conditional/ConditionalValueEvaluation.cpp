@@ -198,6 +198,10 @@ std::optional<std::uint32_t> ConditionalEvaluator::Impl::UnsignedIntegerWidth(co
 }
 
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalConstantReference(const IdentExpr &expr) {
+    if (const auto imported = importedConstants.find(expr.name); imported != importedConstants.end()) {
+        return EvalDeclaredConstant(imported->second, expr.location);
+    }
+
     const auto declaration = constExprs.find(expr.name);
     if (declaration == constExprs.end()) {
         EmitError(expr.location, std::format("'{}' is not a compile-time constant", expr.name));
