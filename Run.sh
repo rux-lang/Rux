@@ -252,7 +252,7 @@ run_build() {
     build_started_at=$(date +%s)
 
     step "Configuring $configuration build"
-    run_checked cmake cmake \
+    run_filtered cmake "$configure_report_program" cmake \
         -S "$repository_root" \
         -B "$build_path" \
         -G Ninja \
@@ -264,9 +264,9 @@ run_build() {
 
     step "Building compiler and unit tests"
     if [ -n "$jobs" ]; then
-        run_checked cmake cmake --build "$build_path" --config "$configuration" --parallel "$jobs"
+        run_filtered cmake "$build_report_program" cmake --build "$build_path" --config "$configuration" --parallel "$jobs"
     else
-        run_checked cmake cmake --build "$build_path" --config "$configuration"
+        run_filtered cmake "$build_report_program" cmake --build "$build_path" --config "$configuration"
     fi
 
     built_rux=$repository_root/Bin/rux
@@ -410,11 +410,159 @@ run_tidy() {
     passed "clang-tidy ($tidy_total files) in $clang_tidy_elapsed"
 }
 
+# Prelude shared by the report programs below: the compiler's duration and
+# count spellings, and the rule that turns the exit-status marker run_filtered
+# appends into awk's own exit status, printing whatever partial line preceded it.
+report_prelude='
+/__rux_status__=[0-9]+$/ {
+    marker = index($0, "__rux_status__=")
+    status = substr($0, marker + 15) + 0
+    if (marker > 1) {
+        print substr($0, 1, marker - 1)
+        fflush()
+    }
+    next
+}
+function duration(seconds,    ms, text) {
+    ms = int(seconds * 1000 + 0.5)
+    if (ms < 1000) return ms " ms"
+    if (ms < 60000) {
+        text = sprintf("%.2f", ms / 1000)
+        sub(/0+$/, "", text)
+        sub(/[.]$/, "", text)
+        return text " s"
+    }
+    return int(ms / 60000) " min " sprintf("%.1f", (ms % 60000) / 1000) " s"
+}
+function count(n) { return n " " (n == 1 ? "test" : "tests") }
+'
+
+# Run a command with its combined output reshaped by an awk report program.
+# The command's exit status rides a trailing marker line, which the program
+# turns into its own exit status, since POSIX sh has no pipefail; a failure
+# is then reported the way run_checked reports one.
+run_filtered() {
+    filtered_name=$1
+    filtered_program=$2
+    shift 2
+    if {
+        "$@" 2>&1
+        printf '__rux_status__=%s\n' "$?"
+    } | awk -v running_verb="$(status_verb Running 36)" -v passed_verb="$(status_verb Passed 32)" \
+        -v failed_verb="$(status_verb Failed 31)" "$report_prelude$filtered_program"; then
+        return 0
+    else
+        filtered_status=$?
+    fi
+    printf "error: command '%s' failed with exit code %s\n" "$filtered_name" "$filtered_status" >&2
+    exit "$filtered_status"
+}
+
+# CMake's configure report: `-- Configuring done (0.1s)` becomes
+# `Configuring done in 100 ms`, the build-files line becomes a detail, and
+# other status lines lose their `-- ` prefix. Anything else passes through.
+configure_report_program='
+/^-- (Configuring|Generating) done [(][0-9.]+s[)]$/ {
+    seconds = $0
+    sub(/^.*[(]/, "", seconds)
+    sub(/s[)]$/, "", seconds)
+    print $2 " done in " duration(seconds)
+    fflush()
+    next
+}
+/^-- Build files have been written to: / {
+    path = $0
+    sub(/^-- Build files have been written to: /, "", path)
+    print "  Build files: \047" path "\047"
+    fflush()
+    next
+}
+/^-- / { line = $0; sub(/^-- /, "", line); print line; fflush(); next }
+{ print; fflush() }
+END { exit status }
+'
+
+# Ninja progress: `[3/414] Building CXX object .../CMakeFiles/RuxSystem.dir/Process.cpp.obj`
+# becomes `Compiling Compiler/System/Process.cpp (3/414)`, a link names its
+# output, and an up-to-date tree says so. Diagnostics pass through unchanged.
+build_report_program='
+/^[[][0-9]+.[0-9]+[]] / {
+    progress = $1
+    sub(/^[[]/, "(", progress)
+    sub(/[]]$/, ")", progress)
+    action = $0
+    sub(/^[[][0-9]+.[0-9]+[]] /, "", action)
+    if (action ~ /^Building CXX object /) {
+        source = action
+        sub(/^Building CXX object /, "", source)
+        gsub("CMakeFiles/[^/]+[.]dir/", "", source)
+        sub(/[.](obj|o)$/, "", source)
+        gsub("__/", "../", source)
+        print "Compiling " source " " progress
+    } else if (action ~ /^Linking CXX (executable|static library|shared library) /) {
+        target = action
+        sub(/^Linking CXX (executable|static library|shared library) /, "", target)
+        print "Linking \047" target "\047 " progress
+    } else {
+        print action " " progress
+    }
+    fflush()
+    next
+}
+/^ninja: no work to do[.]$/ { print "Up to date"; fflush(); next }
+{ print; fflush() }
+END { exit status }
+'
+
+# Reshapes CTest's report into the `rux test` vocabulary: one line per group as
+# it completes, then a total. A failing group's output (--output-on-failure) and
+# anything unrecognized pass through unchanged.
+unit_report_program='
+/^ *[0-9]+.[0-9]+ Test +#[0-9]+: / {
+    line = $0
+    sub(/^ *[0-9]+./, "", line)
+    total = line + 0
+    sub(/^[0-9]+ Test +#[0-9]+: /, "", line)
+    name = line
+    sub(/ .*$/, "", name)
+    sub(/^[^ ]+ +[.]* */, "", line)
+    seconds = line
+    sub(/ sec *$/, "", seconds)
+    sub(/^.* /, "", seconds)
+    state = line
+    sub(/ +[0-9]+[.][0-9]+ sec *$/, "", state)
+    sub(/^[*]+/, "", state)
+    gsub(/  +/, " ", state)
+    sub(/ +$/, "", state)
+    if (!announced) { announced = 1; print running_verb " " count(total) }
+    detail = name " in " duration(seconds)
+    if (state == "Passed") { passed++; print passed_verb " " detail }
+    else { failed++; if (state != "Failed") detail = detail " (" state ")"; print failed_verb " " detail }
+    fflush()
+    next
+}
+/^Total Test time [(]real[)] += / { elapsed = $(NF - 1); next }
+/^[0-9]+% tests passed/ { summarizing = 1; next }
+summarizing { next }
+/^Test project / { next }
+/^ *Start +[0-9]+: / { next }
+/^ *$/ { next }
+{ print; fflush() }
+END {
+    if (passed + failed > 0) {
+        totals = count(passed + failed) " in " duration(elapsed) " (" passed " passed, " failed " failed)"
+        print (status == 0 ? passed_verb : failed_verb) " " totals
+    }
+    exit status
+}
+'
+
 run_unit() {
     command -v ctest >/dev/null 2>&1 || die "required tool 'ctest' was not found; install it and ensure it is available on PATH"
 
     step "Running C++ unit tests"
-    run_checked ctest ctest --test-dir "$build_path" --output-on-failure -C "$configuration" --parallel "$worker_count" --no-tests=error
+    run_filtered ctest "$unit_report_program" \
+        ctest --test-dir "$build_path" --output-on-failure -C "$configuration" --parallel "$worker_count" --no-tests=error
 }
 
 run_rux_suites() {
